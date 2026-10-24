@@ -5,7 +5,8 @@ import XCTest
 ///
 /// Text-level, like PrivacyManifestTests: it reads the Swift sources, not the
 /// view tree. A control is icon-only when an `Image(systemName:` sits within 4
-/// lines after a `Button(`, `Button {` or `} label: {` line (the owner). From
+/// lines after a `Button(`, `Button {`, `Menu(`, `Menu {` or `} label: {` line
+/// (the owner; a helper such as `sortMenu {` counts as its control). From
 /// the image it scans forward until a line indented less than the owner, the
 /// next `Button`/`Menu` at the owner's depth, another control's
 /// `Image(systemName:` (one with its own owner within 4 lines above) once the
@@ -164,9 +165,25 @@ final class AccessibilityLabelAuditTests: XCTestCase {
         )
     }
 
+    func testFlagsAnIconOnlyMenuWithoutALabel() {
+        // A menu helper whose trailing closure is the label: no `label:`
+        // line, so only the Menu owner sees the icon.
+        let source = """
+            HStack {
+                sortMenu {
+                    Image(systemName: "arrow.up.arrow.down")
+                }
+            }
+        """
+        XCTAssertEqual(
+            Self.unnamedIconButtons(in: source, path: "A.swift").map(\.line),
+            [3]
+        )
+    }
+
     // MARK: - Scanner
 
-    private static let owners = ["Button(", "Button {", "} label: {"]
+    private static let owners = ["Button(", "Button {", "Menu(", "Menu {", "} label: {"]
     private static let naming = [".accessibilityLabel(", ".accessibilityHidden(true)"]
     private static let labelContent = ["Text(", "Label("]
 

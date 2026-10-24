@@ -88,7 +88,8 @@ extension AppState {
                 guard let self,
                       let latest = await self.latestLiveVoiceThreadReplyMessage(self.scopedShortcutChat(chat)) else { return nil }
                 return ShortcutReply(text: latest.message.content, rowID: latest.message.rowId,
-                                     openChatID: latest.inOpenChat ? latest.message.id : nil)
+                                     openChatID: latest.inOpenChat ? latest.message.id : nil,
+                                     prompt: latest.prompt)
             },
             retryLanded: { [weak self] in
                 // The text went in after all: the failed try's error goes.

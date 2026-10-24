@@ -419,6 +419,54 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    /// A room's staged files are kept with its text: leaving and reopening
+    /// brings them back, and a room that leaves the list deletes their
+    /// local copies.
+    func testRoomDraftKeepsItsStagedFilesUntilTheRoomIsGone() async throws {
+        final class ListBox {
+            var rooms: [GroupRoom] = []
+        }
+        let box = ListBox()
+        let room = self.room()
+        box.rooms = [room]
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in (box.rooms, nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+
+        let url = try AttachmentStaging.destination(for: "notes.pdf")
+        try Data("%PDF-1.7".utf8).write(to: url)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        let file = Attachment(id: UUID().uuidString, name: "notes.pdf", uri: url.absoluteString,
+                              mimeType: "application/pdf", kind: .document)
+        appState.saveActiveRoomDraft("see attached")
+        appState.saveActiveRoomAttachments([file])
+        appState.closeGroupRoom()
+
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.activeRoomDraft(), "see attached")
+        XCTAssertEqual(appState.activeRoomAttachments(), [file])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        appState.closeGroupRoom()
+
+        box.rooms = []
+        await appState.refreshGroupRooms()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), "the gone room's file is deleted")
+
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.activeRoomAttachments(), [])
+        appState.closeGroupRoom()
+    }
+
     /// A partial room-list page (next_offset set) does not prove a room is
     /// gone, so the room keeps its parked send.
     func testPartialRoomListKeepsAMissingRoomsParkedSend() async {

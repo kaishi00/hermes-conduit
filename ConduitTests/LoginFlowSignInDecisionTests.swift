@@ -214,7 +214,7 @@ final class LoginFlowSignInDecisionTests: XCTestCase {
 
     /// The same half-typed token on a saved dashboard's address never
     /// borrows that dashboard's older token.
-    func testAnIncompleteServiceTokenNeverFallsBackToTheSavedOne() async {
+    func testAnIncompleteServiceTokenNeverFallsBackToTheSavedOne() async throws {
         let transport = RecordingTransport(unreachable: [])
         var asked: [CloudflareAccessCredentials?] = []
         let flow = LoginFlowModel(makeTransport: { baseURL, access in
@@ -224,9 +224,9 @@ final class LoginFlowSignInDecisionTests: XCTestCase {
         let appState = makeAppState()
         flow.attach(appState)
         let baseURL = "https://saved-token.example.test"
-        let dashboardID = try! XCTUnwrap(appState.resolveDashboardID(forURL: baseURL, registerIfMissing: true))
+        let dashboardID = try XCTUnwrap(appState.resolveDashboardID(forURL: baseURL, registerIfMissing: true))
         KeychainHelper.saveCloudflareAccess(
-            try! XCTUnwrap(CloudflareAccessCredentials.from(clientID: "old-id", clientSecret: "old-secret")),
+            try XCTUnwrap(CloudflareAccessCredentials.from(clientID: "old-id", clientSecret: "old-secret")),
             origin: baseURL,
             dashboardID: dashboardID
         )
@@ -247,14 +247,14 @@ final class LoginFlowSignInDecisionTests: XCTestCase {
     /// A new address's browser sign-in uses the WebKit store of the
     /// dashboard it saves, so Sign Out, Remove Dashboard and the abandoned
     /// attempt's cleanup clear the store that holds its cookies.
-    func testANewAddresssBrowserSignInUsesItsSavedDashboardsWebKitStore() async {
+    func testANewAddresssBrowserSignInUsesItsSavedDashboardsWebKitStore() async throws {
         let (flow, appState) = makeWireFlow()
         let baseURL = "https://flow-prepassword.example.test"
         flow.address = baseURL
 
         await flow.continueFromAddress()
 
-        let request = try! XCTUnwrap(flow.browserRequest)
+        let request = try XCTUnwrap(flow.browserRequest)
         let dashboardID = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: false)
         XCTAssertNotNil(dashboardID, "The new address has its saved dashboard before the sheet opens")
         XCTAssertEqual(request.webKitStoreID, dashboardID)
@@ -266,7 +266,7 @@ final class LoginFlowSignInDecisionTests: XCTestCase {
         )
     }
 
-    func testANewAddresssBrowserSignInWithAServiceTokenUsesTheSameStoreItsTokenIsSavedTo() async {
+    func testANewAddresssBrowserSignInWithAServiceTokenUsesTheSameStoreItsTokenIsSavedTo() async throws {
         let (flow, appState) = makeWireFlow()
         let baseURL = "https://flow-prepassword.example.test"
         flow.address = baseURL
@@ -276,8 +276,8 @@ final class LoginFlowSignInDecisionTests: XCTestCase {
 
         await flow.continueFromAddress()
 
-        let request = try! XCTUnwrap(flow.browserRequest)
-        let dashboardID = try! XCTUnwrap(appState.resolveDashboardID(forURL: baseURL, registerIfMissing: false))
+        let request = try XCTUnwrap(flow.browserRequest)
+        let dashboardID = try XCTUnwrap(appState.resolveDashboardID(forURL: baseURL, registerIfMissing: false))
         XCTAssertEqual(request.webKitStoreID, dashboardID)
         XCTAssertEqual(KeychainHelper.loadCloudflareAccess(dashboardID: dashboardID, for: baseURL)?.clientID, "client-id")
     }

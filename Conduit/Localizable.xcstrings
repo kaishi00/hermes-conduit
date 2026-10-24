@@ -40927,88 +40927,6 @@
         }
       }
     },
-    "Talk with Gemini Live instead of the Hermes speech pipeline. Hermes still does the work: Gemini starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Gemini answers what Hermes asks you only with what you say, and approves a command only on your yes." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sprich mit Gemini Live statt über die Sprachverarbeitung von Hermes. Hermes erledigt weiterhin die Arbeit: Gemini startet Hintergrundjobs in diesem Profil und teilt dir ihre Ergebnisse mit. Der API-Schlüssel bleibt auf deinem Hermes-Server. Gemini beantwortet, was Hermes dich fragt, nur mit dem, was du sagst, und gibt einen Befehl nur auf dein Ja frei."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Habla con Gemini Live en lugar de con el sistema de voz de Hermes. Hermes sigue haciendo el trabajo: Gemini inicia trabajos en segundo plano en este perfil y te cuenta sus resultados. La clave de API se queda en tu servidor Hermes. Gemini responde lo que Hermes te pregunta solo con lo que tú dices, y aprueba un comando solo con tu sí."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Parlez avec Gemini Live au lieu du pipeline vocal d'Hermes. Hermes fait toujours le travail : Gemini lance des jobs en arrière-plan sur ce profil et vous donne leurs résultats. La clé API reste sur votre serveur Hermes. Gemini ne répond à ce que Hermes vous demande qu'avec ce que vous dites, et n'approuve une commande que sur votre oui."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Berbicara dengan Gemini Live, bukan pemrosesan ucapan Hermes. Pekerjaannya tetap dilakukan Hermes: Gemini memulai pekerjaan latar di profil ini dan memberi tahu Anda hasilnya. Kunci API tetap di server Hermes Anda. Gemini menjawab pertanyaan Hermes hanya dengan apa yang Anda katakan, dan menyetujui perintah hanya jika Anda bilang ya."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Parla con Gemini Live invece che con l'elaborazione vocale di Hermes. Il lavoro lo fa sempre Hermes: Gemini avvia job in background su questo profilo e ti comunica i risultati. La chiave API resta sul tuo server Hermes. Gemini risponde a ciò che Hermes ti chiede solo con quello che dici, e approva un comando solo con il tuo sì."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermesの音声パイプラインの代わりにGemini Liveで会話します。作業は引き続きHermesが行い、Geminiはこのプロファイルでバックグラウンドジョブを開始してその結果を伝えます。APIキーはHermesサーバに保管されたままです。GeminiはHermesからの質問にあなたの言葉でのみ答え、コマンドはあなたが「はい」と言ったときだけ承認します。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 음성 처리 대신 Gemini Live로 대화해요. 작업은 여전히 Hermes가 해요. Gemini가 이 프로필에서 백그라운드 작업을 시작하고 그 결과를 알려 줘요. API 키는 Hermes 서버에 그대로 있어요. Gemini는 Hermes의 질문에 내가 말한 내용으로만 답하고, 명령은 내가 '네'라고 할 때만 승인해요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rozmawiaj z Gemini Live zamiast korzystać z przetwarzania mowy Hermesa. Pracę nadal wykonuje Hermes: Gemini uruchamia zlecenia w tle w tym profilu i przekazuje Ci ich wyniki. Klucz API pozostaje na Twoim serwerze Hermes. Gemini odpowiada na pytania Hermesa tylko tym, co powiesz, a polecenie zatwierdza tylko po Twoim „tak”."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Converse com o Gemini Live em vez de usar o fluxo de fala do Hermes. O Hermes continua fazendo o trabalho: o Gemini inicia trabalhos em segundo plano neste perfil e conta os resultados para você. A chave de API fica no seu servidor Hermes. O Gemini responde ao que o Hermes pergunta só com o que você diz, e aprova um comando só com o seu sim."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Говорите с Gemini Live вместо конвейера речи Hermes. Работу по-прежнему выполняет Hermes: Gemini запускает фоновые задания в этом профиле и сообщает вам их результаты. Ключ API остаётся на вашем сервере Hermes. Gemini отвечает на вопросы Hermes только вашими словами и разрешает команду только после вашего «да»."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes konuşma işleme hattı yerine Gemini Live ile konuşun. İşi yine Hermes yapar: Gemini bu profilde arka plan işleri başlatır ve size sonuçlarını söyler. API anahtarı Hermes sunucunuzda kalır. Gemini, Hermes'in sorduklarını yalnızca sizin söylediklerinizle yanıtlar ve bir komutu yalnızca siz evet dediğinizde onaylar."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 Gemini Live 进行语音对话，替代 Hermes 的语音流程。工作仍由 Hermes 完成：Gemini 会在此配置中启动后台任务并告诉你结果。API 密钥保存在你的 Hermes 服务器上。Gemini 只会用你说的话回答 Hermes 的问题，只有在你说“是”时才会批准命令。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "改用 Gemini Live 進行語音，而不是 Hermes 的語音處理流程。實際工作仍由 Hermes 完成：Gemini 會在此設定檔上開始背景工作並告訴你結果。API 金鑰會保留在你的 Hermes 伺服器上。Gemini 只會用你說的話回答 Hermes 的問題，只有在你說「是」時才會核准指令。"
-          }
-        }
-      }
-    },
     "Try again" : {
       "localizations" : {
         "de" : {
@@ -290526,6 +290444,88 @@
         }
       }
     },
+    "Your message to “%@” wasn't sent: Hermes no longer has that chat. It's in the composer now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Nachricht an „%@“ wurde nicht gesendet: Hermes hat diesen Chat nicht mehr. Sie steht jetzt im Eingabefeld."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu mensaje a «%@» no se envió: Hermes ya no tiene ese chat. Ahora está en el cuadro de texto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre message à « %@ » n'a pas été envoyé : Hermes n'a plus cette discussion. Il est maintenant dans la zone de saisie."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan Anda ke “%@” tidak terkirim: Hermes tidak lagi memiliki obrolan itu. Pesan sekarang ada di kolom tulis."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo messaggio a «%@» non è stato inviato: Hermes non ha più quella chat. Ora è nel campo di scrittura."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」宛てのメッセージは送信されませんでした。Hermes にそのチャットがもうありません。入力欄に戻しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”에 보낼 메시지가 전송되지 않았어요. Hermes에 그 채팅이 더 이상 없어요. 지금 입력란에 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twoja wiadomość do „%@” nie została wysłana: Hermes nie ma już tego czatu. Jest teraz w polu wpisywania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sua mensagem para “%@” não foi enviada: o Hermes não tem mais esse chat. Ela está agora no campo de texto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщение в «%@» не отправлено: у Hermes больше нет этого чата. Теперь оно в поле ввода."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” sohbetine yazdığınız mesaj gönderilmedi: Hermes'te artık o sohbet yok. Mesaj şimdi yazma alanında."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发往“%@”的消息未发送：Hermes 已没有该聊天。消息现在在输入框中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳給「%@」的訊息未傳送：Hermes 已沒有該聊天。訊息現在在輸入框中。"
+          }
+        }
+      }
+    },
     "Puts the message back in the composer to change or delete" : {
       "localizations" : {
         "de" : {
@@ -329932,6 +329932,662 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示機器人說的內容。"
+          }
+        }
+      }
+    },
+    "The calendar or list to move it to isn't on this iPhone any more." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Kalender oder die Liste, in die es verschoben werden soll, ist nicht mehr auf diesem iPhone."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El calendario o la lista adonde moverlo ya no está en este iPhone."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le calendrier ou la liste où le déplacer n'est plus sur cet iPhone."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kalender atau daftar tujuan pemindahannya sudah tidak ada di iPhone ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il calendario o l'elenco in cui spostarlo non è più su questo iPhone."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動先のカレンダーまたはリストは、このiPhoneにもうありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "옮길 캘린더나 목록이 더 이상 이 iPhone에 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Docelowego kalendarza lub listy nie ma już na tym iPhonie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O calendário ou a lista para onde movê-lo não está mais neste iPhone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Календаря или списка, куда его нужно перенести, больше нет на этом iPhone."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taşınacağı takvim veya liste artık bu iPhone'da değil."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要移到的日历或列表已不在这台 iPhone 上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要移至的行事曆或列表已不在這部 iPhone 上。"
+          }
+        }
+      }
+    },
+    "%@ is larger than the %@ MB a group room takes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist größer als die %@ MB, die ein Raum annimmt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ supera los %@ MB que admite una sala."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ dépasse les %@ Mo qu'accepte un salon."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ melebihi batas %@ MB yang diterima ruang."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ supera i %@ MB accettati da una stanza."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@はグループで送れる上限（%@MB）を超えています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 파일이 방에서 받을 수 있는 %@MB보다 커요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plik %@ przekracza %@ MB, które przyjmuje pokój."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ excede os %@ MB que uma sala aceita."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ превышает %@ МБ — столько принимает комната."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, bir odanın kabul ettiği %@ MB sınırından büyük."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 超过了群聊可接收的 %2$@ MB 上限。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 超過群組可接收的 %2$@ MB 上限。"
+          }
+        }
+      }
+    },
+    "These files are larger than the %@ MB a group room takes: %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Dateien sind größer als die %@ MB, die ein Raum annimmt: %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estos archivos superan los %@ MB que admite una sala: %@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ces fichiers dépassent les %@ Mo qu'accepte un salon : %@."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File ini melebihi batas %@ MB yang diterima ruang: %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questi file superano i %@ MB accettati da una stanza: %@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次のファイルはグループで送れる上限（%@MB）を超えています：%@。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음 파일이 방에서 받을 수 있는 %@MB보다 커요: %@."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te pliki przekraczają %@ MB, które przyjmuje pokój: %@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estes arquivos excedem os %@ MB que uma sala aceita: %@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эти файлы превышают %@ МБ — столько принимает комната: %@."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu dosyalar bir odanın kabul ettiği %@ MB sınırından büyük: %@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以下文件超过了群聊可接收的 %1$@ MB 上限：%2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以下檔案超過群組可接收的 %1$@ MB 上限：%2$@。"
+          }
+        }
+      }
+    },
+    "Lost the connection to Hermes speech." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Verbindung zur Hermes-Sprachausgabe wurde unterbrochen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se perdió la conexión con la voz de Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La connexion à la voix d'Hermes a été perdue."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koneksi ke ucapan Hermes terputus."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connessione alla voce di Hermes persa."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesの音声との接続が切れました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 음성과의 연결이 끊겼어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utracono połączenie z mową Hermesa."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A conexão com a fala do Hermes foi perdida."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Соединение с речью Hermes потеряно."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ses bağlantısı koptu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与 Hermes 语音的连接已断开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與 Hermes 語音的連線已中斷。"
+          }
+        }
+      }
+    },
+    "Conduit couldn't reopen that chat, so nothing was sent. Open it in Conduit and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit konnte diesen Chat nicht wieder öffnen, deshalb wurde nichts gesendet. Öffne ihn in Conduit und versuch es noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no pudo volver a abrir ese chat, así que no se envió nada. Ábrelo en Conduit e inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit n'a pas pu rouvrir cette discussion, donc rien n'a été envoyé. Ouvrez-la dans Conduit et réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak dapat membuka kembali obrolan itu, jadi tidak ada yang terkirim. Buka obrolan itu di Conduit dan coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non è riuscito a riaprire quella chat, quindi non è stato inviato nulla. Aprila in Conduit e riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitはそのチャットを開き直せなかったため、何も送信されていません。Conduitでチャットを開いて、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit이 해당 채팅을 다시 열지 못해 아무것도 보내지 않았습니다. Conduit에서 채팅을 열고 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie mógł ponownie otworzyć tego czatu, więc nic nie wysłano. Otwórz go w Conduit i spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não conseguiu reabrir esse chat, então nada foi enviado. Abra-o no Conduit e tente de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit не смог снова открыть этот чат, поэтому ничего не отправлено. Откройте его в Conduit и попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bu sohbeti yeniden açamadı, bu yüzden hiçbir şey gönderilmedi. Sohbeti Conduit'te açıp tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法重新打开该聊天，因此未发送任何内容。请在 Conduit 中打开它后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 無法重新開啟該聊天，因此未傳送任何內容。請在 Conduit 中開啟它後再試一次。"
+          }
+        }
+      }
+    },
+    "On by default on a Mac. Turn it off to make Return insert a new line." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf einem Mac standardmäßig an. Schalte es aus, damit die Eingabetaste eine neue Zeile einfügt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activado de forma predeterminada en un Mac. Desactívalo para que Intro inserte una nueva línea."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activé par défaut sur un Mac. Désactivez-le pour que la touche Retour insère une nouvelle ligne."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktif secara default di Mac. Matikan agar Return menyisipkan baris baru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attivo per impostazione predefinita su un Mac. Disattivalo perché Invio inserisca una nuova riga."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Macでは最初からオンです。オフにすると、Returnキーで改行が入力されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac에서는 기본적으로 켜져 있어요. 끄면 Return 키가 줄 바꿈을 입력해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na Macu domyślnie włączone. Wyłącz, aby Return wstawiał nowy wiersz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ativado por padrão no Mac. Desative para que Retorno insira uma nova linha."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На Mac включено по умолчанию. Выключите, чтобы Return вставлял новую строку."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac'te varsayılan olarak açık. Return tuşunun yeni satır eklemesi için kapatın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Mac 上默认开启。关闭后，Return 键会插入换行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Mac 上預設為開啟。關閉後，Return 鍵會插入新行。"
+          }
+        }
+      }
+    },
+    "Off by default on iPhone and iPad." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf iPhone und iPad standardmäßig aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desactivado de forma predeterminada en iPhone y iPad."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Désactivé par défaut sur iPhone et iPad."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nonaktif secara default di iPhone dan iPad."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disattivato per impostazione predefinita su iPhone e iPad."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhoneとiPadでは最初はオフです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone과 iPad에서는 기본적으로 꺼져 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na iPhonie i iPadzie domyślnie wyłączone."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desativado por padrão no iPhone e no iPad."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На iPhone и iPad выключено по умолчанию."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone ve iPad'de varsayılan olarak kapalı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 iPhone 和 iPad 上默认关闭。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 iPhone 和 iPad 上預設為關閉。"
+          }
+        }
+      }
+    },
+    "Talk with Gemini Live instead of the Hermes speech pipeline. Hermes still does the work: Gemini starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Gemini answers what Hermes asks you only with what you say, and approves a command only on your yes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprich mit Gemini Live statt über die Sprachverarbeitung von Hermes. Hermes erledigt weiterhin die Arbeit: Gemini startet Hintergrundjobs in diesem Profil und teilt dir ihre Ergebnisse mit. Der API-Schlüssel bleibt auf deinem Hermes-Server. Gemini beantwortet, was Hermes dich fragt, nur mit dem, was du sagst, und gibt einen Befehl nur auf dein Ja frei."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Habla con Gemini Live en lugar de con el sistema de voz de Hermes. Hermes sigue haciendo el trabajo: Gemini inicia trabajos en segundo plano en este perfil y te cuenta sus resultados. La clave de API se queda en tu servidor Hermes. Gemini responde lo que Hermes te pregunta solo con lo que tú dices, y aprueba un comando solo con tu sí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parlez avec Gemini Live au lieu du pipeline vocal d'Hermes. Hermes fait toujours le travail : Gemini lance des jobs en arrière-plan sur ce profil et vous donne leurs résultats. La clé API reste sur votre serveur Hermes. Gemini ne répond à ce que Hermes vous demande qu'avec ce que vous dites, et n'approuve une commande que sur votre oui."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berbicara dengan Gemini Live, bukan pemrosesan ucapan Hermes. Pekerjaannya tetap dilakukan Hermes: Gemini memulai pekerjaan latar di profil ini dan memberi tahu Anda hasilnya. Kunci API tetap di server Hermes Anda. Gemini menjawab pertanyaan Hermes hanya dengan apa yang Anda katakan, dan menyetujui perintah hanya jika Anda bilang ya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parla con Gemini Live invece che con l'elaborazione vocale di Hermes. Il lavoro lo fa sempre Hermes: Gemini avvia job in background su questo profilo e ti comunica i risultati. La chiave API resta sul tuo server Hermes. Gemini risponde a ciò che Hermes ti chiede solo con quello che dici, e approva un comando solo con il tuo sì."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesの音声パイプラインの代わりにGemini Liveで会話します。作業は引き続きHermesが行い、Geminiはこのプロファイルでバックグラウンドジョブを開始してその結果を伝えます。APIキーはHermesサーバに保管されたままです。GeminiはHermesからの質問にあなたの言葉でのみ答え、コマンドはあなたが「はい」と言ったときだけ承認します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 음성 처리 대신 Gemini Live로 대화해요. 작업은 여전히 Hermes가 해요. Gemini가 이 프로필에서 백그라운드 작업을 시작하고 그 결과를 알려 줘요. API 키는 Hermes 서버에 그대로 있어요. Gemini는 Hermes의 질문에 내가 말한 내용으로만 답하고, 명령은 내가 '네'라고 할 때만 승인해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmawiaj z Gemini Live zamiast korzystać z przetwarzania mowy Hermesa. Pracę nadal wykonuje Hermes: Gemini uruchamia zlecenia w tle w tym profilu i przekazuje Ci ich wyniki. Klucz API pozostaje na Twoim serwerze Hermes. Gemini odpowiada na pytania Hermesa tylko tym, co powiesz, a polecenie zatwierdza tylko po Twoim „tak”."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Converse com o Gemini Live em vez de usar o fluxo de fala do Hermes. O Hermes continua fazendo o trabalho: o Gemini inicia trabalhos em segundo plano neste perfil e conta os resultados para você. A chave de API fica no seu servidor Hermes. O Gemini responde ao que o Hermes pergunta só com o que você diz, e aprova um comando só com o seu sim."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Говорите с Gemini Live вместо конвейера речи Hermes. Работу по-прежнему выполняет Hermes: Gemini запускает фоновые задания в этом профиле и сообщает вам их результаты. Ключ API остаётся на вашем сервере Hermes. Gemini отвечает на вопросы Hermes только вашими словами и разрешает команду только после вашего «да»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes konuşma işleme hattı yerine Gemini Live ile konuşun. İşi yine Hermes yapar: Gemini bu profilde arka plan işleri başlatır ve size sonuçlarını söyler. API anahtarı Hermes sunucunuzda kalır. Gemini, Hermes'in sorduklarını yalnızca sizin söylediklerinizle yanıtlar ve bir komutu yalnızca siz evet dediğinizde onaylar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Gemini Live 进行语音对话，替代 Hermes 的语音流程。工作仍由 Hermes 完成：Gemini 会在此配置中启动后台任务并告诉你结果。API 密钥保存在你的 Hermes 服务器上。Gemini 只会用你说的话回答 Hermes 的问题，只有在你说“是”时才会批准命令。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "改用 Gemini Live 進行語音，而不是 Hermes 的語音處理流程。實際工作仍由 Hermes 完成：Gemini 會在此設定檔上開始背景工作並告訴你結果。API 金鑰會保留在你的 Hermes 伺服器上。Gemini 只會用你說的話回答 Hermes 的問題，只有在你說「是」時才會核准指令。"
           }
         }
       }

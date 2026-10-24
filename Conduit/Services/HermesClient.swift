@@ -2541,7 +2541,8 @@ final class HermesClient: ObservableObject {
     private var gatewayRefusesVoiceTurn = false
 
     /// Set once this gateway refused `prompt.submit`'s `queued` key.
-    private var gatewayRefusesQueued = false
+    /// Internal so tests can stand in for that refusal.
+    var gatewayRefusesQueued = false
 
     /// This gateway is known to refuse Queue.
     var refusesQueuedPrompts: Bool { gatewayRefusesQueued }

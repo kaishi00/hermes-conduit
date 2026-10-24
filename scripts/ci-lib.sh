@@ -77,7 +77,11 @@ run_with_deadline() {
   shift 2
   local started deadline poll printed heartbeat timed_out now remaining runner grace
   local finalize_grace grace_granted budget_deadline
+  # Same guard as the poll cadence below: a non-numeric override would make
+  # the deadline arithmetic read it as 0 (an instant kill) or abort the script.
   finalize_grace="${XCODEBUILD_FINALIZE_GRACE_S:-180}"
+  case "$finalize_grace" in ''|*[!0-9]*) finalize_grace=180 ;; esac
+  [ "$finalize_grace" -lt 1 ] && finalize_grace=1
   # Poll cadence. 15s keeps hosted-lane log streaming and deadline checks
   # cheap for minute-scale invocations; the state-machine tests shrink it so
   # stub invocations (which exit instantly) do not each pay a full interval.

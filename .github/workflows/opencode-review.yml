@@ -117,10 +117,13 @@ jobs:
           echo "$opencode_bin_dir" >> "$GITHUB_PATH"
       # opencode reads the PR number from the event's pull_request, which a
       # manual run's event doesn't have: give it the event a pull_request run
-      # for that PR would carry.
+      # for that PR would carry. shell: bash adds pipefail, so a gh api
+      # failure (a PR number that does not exist) fails this step instead of
+      # leaving jq an empty event file for the review step to trip over.
       - name: Build the pull_request event for a manual run
         id: dispatch_event
         if: github.event_name == 'workflow_dispatch'
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ inputs.pr_number }}

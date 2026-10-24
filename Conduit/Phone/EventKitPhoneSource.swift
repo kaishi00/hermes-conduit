@@ -23,6 +23,9 @@ import Foundation
 enum PhoneCalendarSourceError: LocalizedError {
     case denied
     case notFound
+    /// An update named a calendar or list to move the item to that isn't
+    /// on the phone any more: the item itself is still there.
+    case noSuchCalendar
     case readOnly
     case writeOnly
     case locationAlarm
@@ -31,6 +34,7 @@ enum PhoneCalendarSourceError: LocalizedError {
         switch self {
         case .denied: return AppLocalization.string("Conduit doesn't have access to your calendar or reminders. Allow it in the Settings app.")
         case .notFound: return AppLocalization.string("That item isn't on this iPhone any more.")
+        case .noSuchCalendar: return AppLocalization.string("The calendar or list to move it to isn't on this iPhone any more.")
         case .readOnly: return AppLocalization.string("That calendar can't be changed.")
         case .writeOnly: return AppLocalization.string("Conduit can only add events, so it can't find existing ones.")
         case .locationAlarm: return AppLocalization.string("Reminders that go off at a place can't be set from Hermes yet.")
@@ -418,7 +422,7 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
     /// one is gone; only a read-only one fails it.
     static func moveDestination<Destination>(_ id: String?, find: (String) -> Destination?, isWritable: (Destination) -> Bool) throws -> Destination? {
         guard let id else { return nil }
-        guard let found = find(id) else { throw PhoneCalendarSourceError.notFound }
+        guard let found = find(id) else { throw PhoneCalendarSourceError.noSuchCalendar }
         guard isWritable(found) else { throw PhoneCalendarSourceError.readOnly }
         return found
     }

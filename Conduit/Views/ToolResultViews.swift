@@ -68,7 +68,7 @@ struct ToolResultBodyView: View {
             }
         case .diff(let diff):
             SelectableTextView(
-                attributedText: Self.coloredDiff(ToolCard.truncateForDisplay(diff, maxLines: 500), font: Self.monospaced),
+                attributedText: Self.coloredDiff(ToolCard.truncateForDisplay(diff, maxLines: ToolResultPresentation.displayLineLimit), font: Self.monospaced),
                 font: Self.monospaced,
                 textColor: .secondaryLabel,
                 maximumNumberOfLines: 0,
@@ -77,7 +77,7 @@ struct ToolResultBodyView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         case .text(let text):
             SelectableTextView(
-                attributedText: NSAttributedString(string: ToolCard.truncateForDisplay(text, maxLines: 500)),
+                attributedText: NSAttributedString(string: ToolCard.truncateForDisplay(text, maxLines: ToolResultPresentation.displayLineLimit)),
                 font: Self.monospaced,
                 textColor: .label,
                 maximumNumberOfLines: 0
