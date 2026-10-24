@@ -473,8 +473,9 @@ final class HermesSpeechStream: VoiceSpeechStream {
         }
     }
 
+    /// Not a timeout: the stream heard nothing back from a dead path.
     private static var pathLostError: Error {
-        VoiceAudioError.unavailable(AppLocalization.string("Hermes speech streaming timed out."))
+        VoiceAudioError.unavailable(AppLocalization.string("Lost the connection to Hermes speech."))
     }
 
     private func sendJSON(_ object: [String: Any]) async throws {

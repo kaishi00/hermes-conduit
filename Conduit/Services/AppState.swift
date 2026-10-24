@@ -8091,22 +8091,29 @@ final class AppState: ObservableObject {
         await latestLiveVoiceThreadReplyMessage(thread)?.message.content
     }
 
-    /// The same reply as its message, and whether it was read from the open
-    /// chat, so a caller can tell two replies worded alike apart.
-    func latestLiveVoiceThreadReplyMessage(_ thread: VoiceThreadTarget) async -> (message: ChatMessage, inOpenChat: Bool)? {
+    /// The same reply as its message, whether it was read from the open
+    /// chat, and the user's message it answers when the read reached it,
+    /// so a caller can tell two replies worded alike apart.
+    func latestLiveVoiceThreadReplyMessage(_ thread: VoiceThreadTarget) async -> (message: ChatMessage, inOpenChat: Bool, prompt: String?)? {
         // Read once, without suspending: the chat on screen can change at
         // any await.
-        if isOpenChat(thread) { return latestReplyMessageInOpenChat(thread).map { ($0, true) } }
+        if isOpenChat(thread) {
+            return Self.latestReplyTurn(in: messages).map { ($0.reply, true, $0.prompt) }
+        }
         guard let bridge = dashboardTicketBridge else { return nil }
         // One profile for every read: a reply from another profile's history
         // is never read out. A Bot Chat's history is in the bot's profile.
         let workspace = activeProfile
-        guard let reply = await latestSavedThreadReply(thread, bridge: bridge, profile: thread.profile ?? workspace),
+        guard let turn = await latestSavedThreadReply(thread, bridge: bridge, profile: thread.profile ?? workspace),
               workspace == activeProfile else { return nil }
-        return (reply, false)
+        return (turn.reply, false, turn.prompt)
     }
 
-    private func latestSavedThreadReply(_ thread: VoiceThreadTarget, bridge: DashboardTicketBridge, profile: String) async -> ChatMessage? {
+    private func latestSavedThreadReply(
+        _ thread: VoiceThreadTarget,
+        bridge: DashboardTicketBridge,
+        profile: String
+    ) async -> (reply: ChatMessage, prompt: String?)? {
         var ids: [String] = []
         for id in [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }) where !id.isEmpty && !ids.contains(id) {
             ids.append(id)
@@ -8129,12 +8136,12 @@ final class AppState: ObservableObject {
                 guard page?.honorsTailContract == true else {
                     if let full = await read(PersistedTranscriptPagination.legacyQuery),
                        let fullRows = Self.persistedMessageRows(in: full),
-                       let reply = Self.latestAssistantMessage(inMessageRows: fullRows) {
-                        return reply
+                       let turn = Self.latestAssistantTurn(inMessageRows: fullRows) {
+                        return turn
                     }
                     break
                 }
-                if let reply = Self.latestAssistantMessage(inMessageRows: rows) { return reply }
+                if let turn = Self.latestAssistantTurn(inMessageRows: rows) { return turn }
                 if rows.isEmpty { break }
                 offset += rows.count
             }
@@ -8154,7 +8161,13 @@ final class AppState: ObservableObject {
 
     /// The same reply as its message, its text trimmed.
     static func latestAssistantMessage(inMessageRows rows: [Any]) -> ChatMessage? {
-        Self.latestReplyMessage(in: MessageNormalizer.normalizeMessages(rows.map(AnyCodable.from)))
+        latestAssistantTurn(inMessageRows: rows)?.reply
+    }
+
+    /// The same reply with the user's message it answers, when the rows
+    /// reach back to it.
+    static func latestAssistantTurn(inMessageRows rows: [Any]) -> (reply: ChatMessage, prompt: String?)? {
+        Self.latestReplyTurn(in: MessageNormalizer.normalizeMessages(rows.map(AnyCodable.from)))
     }
 
     /// The open chat's latest assistant reply.
@@ -8169,12 +8182,20 @@ final class AppState: ObservableObject {
     }
 
     private static func latestReplyMessage(in messages: [ChatMessage]) -> ChatMessage? {
-        guard var reply = messages.last(where: { message in
+        latestReplyTurn(in: messages)?.reply
+    }
+
+    private static func latestReplyTurn(in messages: [ChatMessage]) -> (reply: ChatMessage, prompt: String?)? {
+        guard let index = messages.lastIndex(where: { message in
             message.role == .assistant && message.tool == nil
                 && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }) else { return nil }
+        var reply = messages[index]
         reply.content = reply.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        return reply
+        // A steer is part of the turn, not what started it.
+        let prompt = messages[..<index].last(where: { $0.role == .user && !$0.isSteer })?
+            .content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (reply, prompt)
     }
 
     /// The user message a just-finished turn answered: the only one since
@@ -10146,6 +10167,9 @@ final class AppState: ObservableObject {
     private var parkedRoomOutboxes: [String: GroupRoomOutbox] = [:]
     /// Unsent room composer text, keyed like `parkedRoomOutboxes`.
     private var groupRoomDrafts: [String: String] = [:]
+    /// The files staged in a room's composer, kept with its text. Their
+    /// local copies are deleted when the draft is dropped.
+    private var groupRoomAttachments: [String: [Attachment]] = [:]
     /// The send-failure text currently shown in `errorMessage`, if any, so
     /// a settled send retires its own banner and nothing else.
     private var roomSendErrorMessage: String?
@@ -10234,6 +10258,7 @@ final class AppState: ObservableObject {
         closeRoomSurface(clearingRoomError: false, parkingPendingSend: false)
         parkedRoomOutboxes.removeAll()
         groupRoomDrafts.removeAll()
+        dropRoomAttachments { _ in true }
         // A send still awaiting its reply belongs to the outgoing identity;
         // its defer's removal is a no-op once the key is gone.
         inFlightRoomSendTokens.removeAll()
@@ -10264,6 +10289,16 @@ final class AppState: ObservableObject {
         }
         parkedRoomOutboxes = parkedRoomOutboxes.filter { !isGone($0.key) }
         groupRoomDrafts = groupRoomDrafts.filter { !isGone($0.key) }
+        dropRoomAttachments(where: isGone)
+    }
+
+    /// Drops the staged files of the rooms `isDropped` names, and their
+    /// local copies.
+    private func dropRoomAttachments(where isDropped: (String) -> Bool) {
+        for (key, files) in groupRoomAttachments where isDropped(key) {
+            files.forEach(ComposerBar.discardStagedFile)
+            groupRoomAttachments.removeValue(forKey: key)
+        }
     }
 
     /// Close a room that no longer exists (disbanded or not found): nothing
@@ -10273,6 +10308,7 @@ final class AppState: ObservableObject {
             let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
             parkedRoomOutboxes.removeValue(forKey: key)
             groupRoomDrafts.removeValue(forKey: key)
+            dropRoomAttachments { $0 == key }
         }
         closeRoomSurface(parkingPendingSend: false)
     }
@@ -10389,6 +10425,25 @@ final class AppState: ObservableObject {
             groupRoomDrafts.removeValue(forKey: key)
         } else {
             groupRoomDrafts[key] = text
+        }
+    }
+
+    /// The files staged in the open room's composer.
+    func activeRoomAttachments() -> [Attachment] {
+        guard let surface = activeRoomSurface else { return [] }
+        return groupRoomAttachments[Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)] ?? []
+    }
+
+    /// Keep the open room's staged files with its text, so leaving and
+    /// reopening the room brings them back. The composer deletes the local
+    /// copy of a file it removes or sends.
+    func saveActiveRoomAttachments(_ attachments: [Attachment]) {
+        guard let surface = activeRoomSurface else { return }
+        let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+        if attachments.isEmpty {
+            groupRoomAttachments.removeValue(forKey: key)
+        } else {
+            groupRoomAttachments[key] = attachments
         }
     }
 
@@ -13031,11 +13086,13 @@ final class AppState: ObservableObject {
         return client
     }
 
-    /// Match the React Native client's recovery order: the securely persisted
-    /// connection is the first cold-start attempt. The dashboard bridge is
-    /// only needed to mint a replacement ticket after that socket actually
-    /// disconnects or fails. Requiring a freshly restored WebKit cookie before
-    /// every launch was what turned a healthy saved Hermes session into login.
+    /// Cold-start restore of the saved connection. Its ticket was spent when
+    /// it last opened the socket, so the dashboard bridge mints a fresh one
+    /// first; the saved record is only the fallback when that mint fails,
+    /// and its refusal then schedules the reconnect. A failed mint never
+    /// sends the user to login: requiring a freshly restored WebKit cookie
+    /// before every launch was what turned a healthy saved Hermes session
+    /// into login.
     private func restoreSavedConnection(_ saved: HermesConnection, switchGeneration: UInt64? = nil, widgetLease: WidgetLaunchLease? = nil) async {
         guard widgetLease?.isCurrent != false else { return }
         if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
@@ -14071,6 +14128,13 @@ final class AppState: ObservableObject {
                     // workspace: the conversation's authoritative absence is
                     // not evidence about which surface it belonged to.
                     chatResumeCoordinator.rememberSession(nil, for: profile)
+                    // Gone for the rest of this run, as a listed row that
+                    // answers 4007: a message waiting for it doesn't go back
+                    // into its draft (#996).
+                    deadResumeRowIDs[
+                        Self.deadResumeRowKey(dashboardID: dashboardID, profile: profile),
+                        default: []
+                    ].insert(missingSavedSessionID)
                     // Its agents go with it, whichever conversation (or new
                     // chat) is opened instead.
                     keepDelegateAgents(of: [])
@@ -14488,6 +14552,13 @@ final class AppState: ObservableObject {
 
     private static func deadResumeRowKey(dashboardID: UUID?, profile: String) -> String {
         "\(dashboardID?.uuidString ?? "-")|\(profile)"
+    }
+
+    /// Whether this run found any of `sessionIDs` gone from Hermes
+    /// (`session.resume` 4007): a chat that can't be opened again.
+    func conversationIsGone(sessionIDs: Set<String>, dashboardID: UUID?, profile: String) -> Bool {
+        let dead = deadResumeRowIDs[Self.deadResumeRowKey(dashboardID: dashboardID, profile: profile)] ?? []
+        return !dead.isDisjoint(with: sessionIDs)
     }
 
     /// Whether any identity of `row` (its id, aliases or stored id) is in `ids`.

@@ -626,7 +626,10 @@ final class DashboardTicketBridge: NSObject {
     var usesNativeOAuth: Bool { nativeOAuthSession != nil }
 
     /// A same-mode bridge is reusable only while its live grant still matches
-    /// storage. Internal refresh updates the live grant as well as storage.
+    /// storage. Internal refresh updates the live grant as well as storage;
+    /// when that save fails, the Keychain copy it couldn't overwrite still
+    /// counts as matching, so the bridge keeps the rotated live grant rather
+    /// than being rebuilt from the retired one.
     func matchesNativeOAuthTokens(_ tokens: NativeOAuthTokenSet?) -> Bool {
         guard let tokens else { return nativeOAuthSession == nil }
         return nativeOAuthSession?.matchesStoredTokens(tokens) == true

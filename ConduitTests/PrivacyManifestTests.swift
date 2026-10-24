@@ -45,7 +45,7 @@ final class PrivacyManifestTests: XCTestCase {
             let manifest = try Self.manifest(at: url)
             XCTAssertEqual(manifest["NSPrivacyTracking"] as? Bool, false, folder)
             XCTAssertEqual((manifest["NSPrivacyTrackingDomains"] as? [String])?.isEmpty, true, folder)
-            XCTAssertNotNil(manifest["NSPrivacyCollectedDataTypes"] as? [Any], folder)
+            XCTAssertEqual((manifest["NSPrivacyCollectedDataTypes"] as? [Any])?.isEmpty, true, folder)
             XCTAssertEqual(try Self.accessedReasons(manifest), reasons, folder)
         }
     }

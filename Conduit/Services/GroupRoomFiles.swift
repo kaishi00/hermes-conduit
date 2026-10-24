@@ -20,6 +20,22 @@ final class GroupRoomFilesClient {
         min(preference, maximumMegabytes)
     }
 
+    /// What the room composer says about files over its limit. When the
+    /// room route's cap is the one that binds (a Settings limit at or above
+    /// it), raising the Settings limit can't help, so the message names the
+    /// room's cap and offers no setting.
+    static func tooLargeMessage(names: [String], preference: Int) -> String {
+        guard AttachmentSizeLimit.clampedMegabytes(preference) >= maximumMegabytes else {
+            return AttachmentSizeLimit.tooLargeMessage(names: names, megabytes: preference)
+        }
+        let limit = String(maximumMegabytes)
+        if names.count == 1, let name = names.first {
+            return AppLocalization.string("\(name) is larger than the \(limit) MB a group room takes.")
+        }
+        let list = names.joined(separator: ", ")
+        return AppLocalization.string("These files are larger than the \(limit) MB a group room takes: \(list).")
+    }
+
     /// At least the minimum, plus about 1 s for every 64 KB of body (about
     /// 0.5 Mbit/s), so a slow link can still finish a large upload.
     static func timeoutMilliseconds(forBodyBytes count: Int) -> Int {

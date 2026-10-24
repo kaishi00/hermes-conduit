@@ -188,6 +188,37 @@ extension ScreenQuestionTests {
         XCTAssertEqual(hermes.submitted.map(\.text), ["one"])
     }
 
+    /// A reopen that fails, or a reopened runtime that's gone too, ends the
+    /// run with Conduit's own words, never Hermes's raw "session not found"
+    /// for Siri to read out (#1056). Nothing was sent either way.
+    @MainActor
+    func testAChatThatCannotBeReopenedSaysNothingWasSent() async throws {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        let deadline = hermes.now.addingTimeInterval(25)
+        _ = try await sender(hermes, chats).send(shortcutRequest("one", chat: "Drop box"), deadline: deadline)
+        hermes.goneRuntimes = ["resumed-1"]
+        var backend = hermes.backend()
+        backend.reopenChat = { _ in throw RpcError(code: 4001, message: "session not found") }
+        do {
+            _ = try await ShortcutSender(backend: backend, chats: chats)
+                .send(shortcutRequest("two", chat: "Drop box"), deadline: deadline)
+            XCTFail("the run should fail")
+        } catch {
+            XCTAssertEqual(error as? ShortcutSendError, .reopenFailed)
+        }
+
+        hermes.goneRuntimes = ["resumed-2", "reopened-1"]
+        do {
+            _ = try await sender(hermes, chats).send(shortcutRequest("three", chat: "Drop box"), deadline: deadline)
+            XCTFail("the run should fail")
+        } catch {
+            XCTAssertEqual(error as? ShortcutSendError, .reopenFailed)
+        }
+        XCTAssertEqual(hermes.submitted.map(\.text), ["one"])
+        XCTAssertEqual(hermes.retriesLanded, 0)
+    }
+
     @MainActor
     func testOtherSendFailuresAreNotRetried() async throws {
         let hermes = FakeHermes()
@@ -266,6 +297,41 @@ extension ScreenQuestionTests {
         let outcome = try await sender(hermes, chats).send(shortcutRequest("Lights off", chat: "Home", wait: true), deadline: hermes.now.addingTimeInterval(25))
 
         XCTAssertEqual(outcome, .answered("Done."))
+    }
+
+    /// Read from the saved history before sending and from the open chat
+    /// after: the ids can't be compared, but the new reply answers what
+    /// this run sent (#996).
+    @MainActor
+    func testASameWordedReplyInTheOpenChatAfterASavedOneIsTheAnswer() async throws {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        _ = try await sender(hermes, chats).send(shortcutRequest("Lights off", chat: "Home"), deadline: hermes.now.addingTimeInterval(25))
+        hermes.polls = [[liveRow("resumed-1", "working")], [liveRow("resumed-1", "idle")]]
+        hermes.replies = [
+            ShortcutReply(text: "Done.", rowID: 7, prompt: "Lights on"),
+            ShortcutReply(text: "Done.", openChatID: "live", prompt: "Lights off"),
+        ]
+        let outcome = try await sender(hermes, chats).send(shortcutRequest("Lights off", chat: "Home", wait: true), deadline: hermes.now.addingTimeInterval(25))
+
+        XCTAssertEqual(outcome, .answered("Done."))
+    }
+
+    func testARepliesPromptTellsTurnsApartAcrossReads() {
+        let saved = ShortcutReply(text: "Done.", rowID: 7, prompt: "Lights on")
+        XCTAssertFalse(ShortcutReply(text: "Done.", openChatID: "live", prompt: "Lights off").mayBe(saved, sent: "Lights off"),
+                       "the open chat's reply to this run, after a saved reply to another message")
+        XCTAssertFalse(ShortcutReply(text: "Done.", rowID: 9, prompt: "Lights off")
+            .mayBe(ShortcutReply(text: "Done.", openChatID: "a", prompt: "Lights on"), sent: "Lights off"),
+                       "saved since, after an open chat's reply to another message")
+        // The same reply read again answers the same message: still the old one.
+        XCTAssertTrue(ShortcutReply(text: "Done.", openChatID: "live", prompt: "Lights on").mayBe(saved, sent: "Lights off"))
+        // The same message sent twice: only the wording is left to go by.
+        XCTAssertTrue(ShortcutReply(text: "Done.", openChatID: "live", prompt: "Lights off")
+            .mayBe(ShortcutReply(text: "Done.", rowID: 7, prompt: "Lights off"), sent: "Lights off"))
+        // The earlier read didn't reach its message: the same.
+        XCTAssertTrue(ShortcutReply(text: "Done.", openChatID: "live", prompt: "Lights off")
+            .mayBe(ShortcutReply(text: "Done.", rowID: 7), sent: "Lights off"))
     }
 
     func testARepliesIdentityDecidesBeforeItsWording() {
