@@ -539,13 +539,11 @@ private struct ArtifactsList: View {
     // MARK: - Loading
 
     private func reload() async {
-        guard appState.supportsArtifacts else { return }
         let key = currentKey
-        generation &+= 1
-        let ticket = generation
         if !key.showsRows(of: loadedKey) {
             // Another server's list isn't shown, even dimmed, under this one,
-            // nor a file of it still opening.
+            // nor a file of it still opening: also when this one has no
+            // artifacts to show.
             items = []
             nextBefore = nil
             failure = nil
@@ -554,6 +552,9 @@ private struct ArtifactsList: View {
             openTask = nil
             openingID = nil
         }
+        guard appState.supportsArtifacts else { return }
+        generation &+= 1
+        let ticket = generation
         isLoading = true
         defer { if ticket == generation { isLoading = false } }
         do {
