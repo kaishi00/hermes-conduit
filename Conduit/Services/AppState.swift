@@ -14977,6 +14977,15 @@ final class AppState: ObservableObject {
             case .success:
                 context?.resolvedSessionId = result.sessionId
                 context?.acceptedSessionIDs.insert(result.sessionId)
+                // A row this run found dead (4007) that resumes after all is
+                // alive: later automatic returns may pick it again.
+                let deadRowKey = Self.deadResumeRowKey(dashboardID: activeDashboardID, profile: profile)
+                if deadResumeRowIDs[deadRowKey] != nil {
+                    deadResumeRowIDs[deadRowKey]?.subtract(
+                        acceptedSessionIDs.union([sessionId, result.sessionId])
+                            .union([result.storedSessionId].compactMap { $0 })
+                    )
+                }
                 // A response that explicitly names the durable identity may
                 // ESTABLISH it for a runtime-only conversation (the same
                 // adoption the create path performs) or confirm the selected
