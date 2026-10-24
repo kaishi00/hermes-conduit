@@ -144,6 +144,10 @@ struct BotCapabilitiesView: View {
                 signInTask?.cancel()
             }
             .ignoresSafeArea()
+            // Safari gone without the flow closing it (the editor torn down
+            // under it): give the sign-in up. After a finished sign-in the
+            // task is already done, so this does nothing.
+            .onDisappear { signInTask?.cancel() }
         }
     }
 
