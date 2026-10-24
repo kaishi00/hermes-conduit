@@ -45,8 +45,8 @@ without.
 
 **Siblings:** chat card · notification · Classic voice (phone, CarPlay) ·
 Gemini Live · Grok Live · GPT-Live · Local Live · Watch calls · a call from
-Hermes about it · group rooms · the resume jump · what models and Settings
-say about it
+Hermes about it · a confirmation Hermes shows on the call screen · group
+rooms · the resume jump · what models and Settings say about it
 
 | Where | Says it | Answer by voice | Card on screen |
 |---|---|---|---|
@@ -66,6 +66,7 @@ A call Hermes made about an approval or question takes the answer by voice:
 - Live modes: `Conduit/Voice/VoiceBackgroundJobs.swift` (waitingNotice, answerJobApproval), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`, `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (jobApprovalRule), `Conduit/Views/LiveVoiceCallJobs.swift`
 - Call from Hermes: `Conduit/Services/AppState+HermesCalls.swift` (answerHermesCallApproval, answerHermesCallQuestion)
 - Phone changes: `Conduit/Phone/PhoneChangeConfirmation.swift`, `Conduit/Phone/PhoneVoiceTools.swift` (confirmsChange)
+- Call-screen confirmations: `Conduit/Services/PresentedScreens.swift` (PresentedConfirm.isConfirmed), `Conduit/Voice/VoiceBackgroundJobs.swift` (VoiceThreadRouting.containsRefusal), tests in `ConduitTests/PresentedScreensTests.swift`
 - Watch: `ConduitWatch/WatchCallView.swift` (WatchApprovalCard), `ConduitWatch/WatchDirectCallModel.swift`, `ConduitWatch/WatchBridgeCallModel.swift`, `Shared/WatchVoice/WatchJobRelay.swift`, `Conduit/Watch/WatchSettingsSection.swift`
 - Group rooms: `Conduit/Views/GroupChatView.swift` (GroupApprovalCard)
 - Resume jump: `Conduit/Views/ChatView.swift` ("Go to your question")
@@ -76,6 +77,7 @@ A call Hermes made about an approval or question takes the answer by voice:
 - A spoken answer counts only when exactly one item is waiting, and it can only approve once or deny (2026-10-20, #991).
 - A phone change needs the user's own yes, as their next words after the reply that asked (2026-10-20, #991, #1051).
 - Only the user's own words answer: never the model's judgment, a web page or a job's output (2026-10-20, #991).
+- What a refusal is, the handset decides: on a call-screen confirmation, a no, cancel, wait or refuse verb in the user's words, in any shipped language, vetoes whatever Hermes listed in spoken_yes. Classic approvals and phone changes take only the handset's own yes, so no Hermes-listed phrase reaches them (2026-10-24, #1042, #1191).
 
 **Open gaps**
 - Classic: a clarify question sits silently on Thinking (#1161).
@@ -86,7 +88,7 @@ A call Hermes made about an approval or question takes the answer by voice:
 - Settings > Gemini Live says "Approvals are never given by voice", and the header comments of `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` and `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` say the same; stale since #991.
 - Group rooms: the card's failure line shows the error text raw, while the chat card reveals hidden characters in its error and expiry text (#951 follow-up).
 
-**Checked:** 2026-10-24, at 78f21da: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups.
+**Checked:** 2026-10-24, at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
 
 ## Voice follow-ups
 
