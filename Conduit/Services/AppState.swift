@@ -20808,9 +20808,10 @@ final class AppState: ObservableObject {
     }
 
     /// A Bot Chat's pins are kept under the profile in use, not the bot's,
-    /// so deleting the bot drops the ones made in its chats there: the
-    /// sessions this process saw opened as the bot's, and its canonical
-    /// chat.
+    /// so deleting the bot drops the ones made in its chats under every
+    /// profile (a pin made while another profile was active stays under
+    /// that one): the sessions this process saw opened as the bot's, and
+    /// its canonical chat.
     func forgetBotChatPinnedReplies(of bot: BotProfile) {
         var ids = Set(botChatSessionProfiles.compactMap { id, owner in
             owner.caseInsensitiveCompare(bot.name) == .orderedSame ? id : nil
@@ -20819,10 +20820,14 @@ final class AppState: ObservableObject {
             if let id = ChatScrollIdentityNormalization.sessionID(id) { ids.insert(id) }
         }
         guard !ids.isEmpty else { return }
-        let stored = pinnedRepliesByProfile[activeProfile] ?? []
-        let remaining = stored.filter { !ids.contains($0.sessionID) }
-        guard remaining.count != stored.count else { return }
-        pinnedRepliesByProfile[activeProfile] = remaining.isEmpty ? nil : remaining
+        var changed = false
+        for (profile, stored) in pinnedRepliesByProfile {
+            let remaining = stored.filter { !ids.contains($0.sessionID) }
+            guard remaining.count != stored.count else { continue }
+            pinnedRepliesByProfile[profile] = remaining.isEmpty ? nil : remaining
+            changed = true
+        }
+        guard changed else { return }
         if let reveal = pendingPinnedReplyReveal, ids.contains(reveal.pin.sessionID) {
             pendingPinnedReplyReveal = nil
         }
