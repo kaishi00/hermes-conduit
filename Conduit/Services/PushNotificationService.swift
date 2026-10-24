@@ -479,6 +479,9 @@ final class PushNotificationService: ObservableObject {
     /// Settings > Notifications > Rotate: the next provisioning run gives
     /// every pairing that can rotate a new key.
     private var rotationRequested = false
+    /// Inline rotations whose reply didn't arrive, by gateway: the host
+    /// answers a resend with the same reply, so the new key isn't lost.
+    private var pendingRotations: [String: NotificationKeyRotation.Pending] = [:]
     @Published private(set) var relayMeta: RelayMetaInfo? {
         // Plaintext from a pairing this iPhone has never seen listed isn't
         // trusted once it holds an encryption key (#431). Kept on failure.
@@ -795,7 +798,7 @@ final class PushNotificationService: ObservableObject {
     /// Whether a pairing's notifications are private, for the padlock.
     enum EncryptionAssurance: Equatable {
         /// The host seals with a key only this iPhone holds, and it's fresh.
-        case ensured(keyCreatedAt: Date, rotates: Bool)
+        case ensured(keyCreatedAt: Date, rotates: Bool, quantumSafe: Bool)
         /// This iPhone holds a key the host hasn't confirmed yet (it does
         /// on the next connect to its dashboard).
         case unconfirmed
@@ -827,7 +830,8 @@ final class PushNotificationService: ObservableObject {
            now.timeIntervalSince(held.createdAt) >= NotificationE2E.keyMaxAge + NotificationE2E.previousKeyGrace {
             return .overdue(keyCreatedAt: held.createdAt)
         }
-        return .ensured(keyCreatedAt: held.createdAt, rotates: confirmation.rotates)
+        return .ensured(keyCreatedAt: held.createdAt, rotates: confirmation.rotates,
+                        quantumSafe: held.suite == NotificationKeyRotation.suitePQ)
     }
 
     func encryptionAssurance(gatewayID: String) -> EncryptionAssurance {
@@ -937,11 +941,22 @@ final class PushNotificationService: ObservableObject {
             // A plugin that reports `rotate` keeps a replaced key, so new
             // keys lose nothing in flight (notifier 0.70+).
             let rotates = status["rotate"] is Bool
+            // Inline rotation (notifier 0.71+): the best suite both sides run.
+            let inlineSuite = NotificationKeyRotation.suite(hostSuites: status["rotate_suites"] as? [String] ?? [])
+            if let statusGateway = status["gateway_id"] as? String, let pending = pendingRotations[statusGateway],
+               (status["e2e"] as? [String: Any])?["kid"] as? String == pending.kidNew {
+                // The host took a rotation whose reply was lost: ask again.
+                await finishInlineRotation(pending, dashboardID: dashboardID, profile: profile, records: &records, request: request)
+            }
             guard let gatewayID = Self.gatewayNeedingEncryptionKey(status: status, installationID: installationID, records: records) else {
                 if let held = Self.confirmedKey(status: status, installationID: installationID, records: records) {
                     adoptConfirmedKey(kid: held.kid, installationID: installationID, gatewayID: held.gatewayID, records: &records, now: now)
                     setEncryptionConfirmation(EncryptionConfirmation(kid: held.kid, rotates: rotates, confirmedAt: now), gatewayID: held.gatewayID)
-                    if rotates && (status["rotate"] as? Bool == true || forceRotation) {
+                    if let inlineSuite, Self.wantsInlineRotation(held: held, suite: inlineSuite,
+                                                                  hostAsks: status["rotate"] as? Bool == true || forceRotation) {
+                        await rotateInline(held, suite: inlineSuite, dashboardID: dashboardID, profile: profile,
+                                           records: &records, request: request)
+                    } else if rotates && (status["rotate"] as? Bool == true || forceRotation) {
                         await rotateEncryptionKey(of: held, dashboardID: dashboardID, profile: profile, path: path,
                                                   records: &records, request: request)
                     }
@@ -999,8 +1014,71 @@ final class PushNotificationService: ObservableObject {
             }
             records.append(record)
             setEncryptionConfirmation(EncryptionConfirmation(kid: record.kid, rotates: rotates, confirmedAt: now), gatewayID: gatewayID)
+            // That key crossed the dashboard connection: replace it at once
+            // with one from a key exchange, so only this handover depends on
+            // the connection.
+            if let inlineSuite {
+                await rotateInline(record, suite: inlineSuite, dashboardID: dashboardID, profile: profile,
+                                   records: &records, request: request)
+            }
         }
         refreshEncryptionState()
+    }
+
+    /// Whether a pairing's key should rotate inline now: the host asks (age
+    /// or a request), the key was handed over through the dashboard (so only
+    /// that connection protected it), or this iPhone can now run a better
+    /// suite than the one that made it (an update to iOS 26).
+    nonisolated static func wantsInlineRotation(held: E2EKeyRecord, suite: String, hostAsks: Bool) -> Bool {
+        if hostAsks || held.suite == nil { return true }
+        return suite == NotificationKeyRotation.suitePQ && held.suite != NotificationKeyRotation.suitePQ
+    }
+
+    /// Rotates a pairing's key through a key exchange sealed with the
+    /// current key, so the new secret never crosses the dashboard connection.
+    private func rotateInline(
+        _ current: E2EKeyRecord,
+        suite: String,
+        dashboardID: UUID,
+        profile: String,
+        records: inout [E2EKeyRecord],
+        request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
+    ) async {
+        guard let pending = try? NotificationKeyRotation.start(current: current, suite: suite) else { return }
+        pendingRotations[current.gatewayID] = pending
+        await finishInlineRotation(pending, dashboardID: dashboardID, profile: profile, records: &records, request: request)
+    }
+
+    private func finishInlineRotation(
+        _ pending: NotificationKeyRotation.Pending,
+        dashboardID: UUID,
+        profile: String,
+        records: inout [E2EKeyRecord],
+        request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
+    ) async {
+        let path = DashboardPath.withProfile(NotificationKeyRotation.path, profile: profile)
+        let response: [String: Any]
+        do {
+            response = try await request(path, "POST", pending.request)
+        } catch {
+            // Kept for a resend: the host may have rotated already.
+            return
+        }
+        pendingRotations[pending.current.gatewayID] = nil
+        let now = Date()
+        guard response["ok"] as? Bool == true,
+              let reply = response["rotation"] as? [String: Any],
+              let record = try? NotificationKeyRotation.finish(pending, reply: reply, dashboardID: dashboardID.uuidString,
+                                                                profile: profile, now: now),
+              Self.e2eKeyStore.save(record) else {
+            // Refused or unverifiable: the current key stays. A host that
+            // did rotate reports a key this iPhone lacks, and the next
+            // connect hands over a fresh one.
+            return
+        }
+        records.append(record)
+        adoptConfirmedKey(kid: record.kid, installationID: record.installationID, gatewayID: record.gatewayID, records: &records, now: now)
+        setEncryptionConfirmation(EncryptionConfirmation(kid: record.kid, rotates: true, confirmedAt: now), gatewayID: record.gatewayID)
     }
 
     /// The key this iPhone holds that the host says it seals with, or nil.

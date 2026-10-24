@@ -40,8 +40,9 @@ enum NotificationE2E {
     }
 
     /// A key this old is rotated on the next dashboard connect, by hosts
-    /// whose plugin keeps the replaced key (notifier 0.70+).
-    static let keyMaxAge: TimeInterval = 30 * 24 * 60 * 60
+    /// whose plugin keeps the replaced key (notifier 0.70+); the host asks
+    /// with `rotate` and says the same age (plugin E2E_KEY_MAX_AGE_S).
+    static let keyMaxAge: TimeInterval = 7 * 24 * 60 * 60
     /// How long a replaced key is kept, here and on the host: pushes and
     /// answers sealed with it before the rotation still open. Same as the
     /// plugin's e2e.PREVIOUS_KEY_GRACE_S.
@@ -299,6 +300,9 @@ struct E2EKeyRecord: Codable, Equatable {
     /// When a rotation replaced this key. It still opens pushes and seals
     /// nothing; it is deleted after `NotificationE2E.previousKeyGrace`.
     var retiredAt: Date? = nil
+    /// How the key was made: nil for one handed over through the dashboard,
+    /// else the inline rotation suite (`NotificationKeyRotation`).
+    var suite: String? = nil
 
     func retired(at date: Date?) -> E2EKeyRecord {
         var copy = self
