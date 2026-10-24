@@ -109,6 +109,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(WatchCallAnswer.delegatedArguments("Answer:", userWords: "the second one", approves: false)?["answer"] as? String, "the second one")
         XCTAssertNil(WatchCallAnswer.delegatedArguments("Approve: run it", userWords: "yes", approves: false), "The user taps approvals on the Watch")
         XCTAssertEqual(WatchCallAnswer.delegatedArguments("Approve: run it", userWords: "yes", approves: true)?["choice"] as? String, "once")
+        XCTAssertNil(WatchCallAnswer.delegatedArguments("Deny: not now", userWords: "no", approves: false), "Nor denies them")
         XCTAssertNil(WatchCallAnswer.delegatedArguments("Check the weather", userWords: "", approves: false))
     }
 }

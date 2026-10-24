@@ -60,7 +60,8 @@ struct HermesCallWaiting: Equatable {
                 text: Self.clipped(question.question, to: Self.maximumTextCharacters) ?? "",
                 choices: question.choices.map { Choice(label: Self.clipped($0.label, to: Self.maximumChoiceCharacters) ?? $0.value, value: $0.value) },
                 multiSelect: question.multiSelect,
-                answered: !(question.status == .pending || question.status == .error)
+                // Still waiting while its answer is on its way, as an approval is.
+                answered: !(question.status == .pending || question.status == .error || question.status == .submitting)
             )
         }
         guard questions.contains(where: { !$0.answered }) else { return nil }

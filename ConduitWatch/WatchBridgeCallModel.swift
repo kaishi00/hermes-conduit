@@ -1151,9 +1151,9 @@ final class WatchBridgeCallModel: ObservableObject {
             answer(id, WatchToolAnswer.delegatedCantOpen, channel: .commentary)
             return
         }
-        // "Answer: 2" (or "Deny:") for the call from Hermes this call
-        // answers: the host passes it to Hermes (WatchCallAnswer). Never an
-        // approval: on the Watch the user taps those.
+        // "Answer: 2" for the call from Hermes this call answers: the host
+        // passes it to Hermes (WatchCallAnswer). Never an approval: on the
+        // Watch the user taps those.
         if relay.tools.contains(WatchCallAnswer.tool),
            let arguments = WatchCallAnswer.delegatedArguments(itemText, userWords: userWords, approves: false) {
             answerCall(for: id, arguments: arguments, relay: relay)
@@ -1165,7 +1165,8 @@ final class WatchBridgeCallModel: ObservableObject {
             answer(id, WatchCallAnswer.missingArgument(name: "answer_question")["error"] ?? "", channel: .commentary)
             return
         }
-        if relay.tools.contains(WatchCallAnswer.tool), itemText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("approve:") {
+        if relay.tools.contains(WatchCallAnswer.tool),
+           ["approve:", "deny:"].contains(where: itemText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix) {
             answer(id, "Approvals aren't given by voice on the Watch. Tell the user to answer in that chat in Conduit on their iPhone.", channel: .commentary)
             return
         }

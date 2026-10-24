@@ -52,7 +52,7 @@ enum WatchCallAnswer {
     /// user's own words since the last delegation, as the phone's does. A
     /// deny keeps what follows the marker as its reason, so "Deny: Before I
     /// choose: …" asks Hermes to explain. `approves`: false where the
-    /// model may not approve (GPT-Live on the Watch: the user taps).
+    /// model may not answer an approval (GPT-Live on the Watch: the user taps).
     static func delegatedArguments(_ text: String, userWords: String, approves: Bool) -> [String: Any]? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         func rest(after marker: String) -> String? {
@@ -65,6 +65,7 @@ enum WatchCallAnswer {
         }
         if rest(after: "Approve:") != nil { return approves ? ["choice": "once"] : nil }
         if let reason = rest(after: "Deny:") {
+            guard approves else { return nil }
             return reason.hasPrefix(asksFirstLead) ? ["choice": "deny", "reason": reason] : ["choice": "deny"]
         }
         return nil
