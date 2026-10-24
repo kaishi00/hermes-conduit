@@ -2011,6 +2011,28 @@ final class HermesClient: ObservableObject {
         try? await rpc("setup.runtime_check", params: ["profile": profile], timeout: 30, scoped: false)
     }
 
+    /// `image.generate` probe: whether Hermes has an image backend set up.
+    /// False on an older gateway without the method.
+    func imageGenerationAvailable() async -> Bool {
+        let result = try? await rpc(
+            "image.generate",
+            params: PictureGeneration.probeParams,
+            timeout: PictureGeneration.probeTimeoutSeconds,
+            scoped: false
+        )
+        return PictureGeneration.isAvailable(probe: result)
+    }
+
+    /// `image.generate`: one square picture from `prompt`.
+    func generateImage(prompt: String) async throws -> AnyCodable {
+        try await rpc(
+            "image.generate",
+            params: PictureGeneration.params(prompt: prompt),
+            timeout: PictureGeneration.timeoutSeconds,
+            scoped: false
+        )
+    }
+
     /// `profiles.describe`: the editor snapshot (description, SOUL.md, the
     /// profile's own model pin, and its skills, toolsets and MCP servers).
     func describeBotProfile(name: String) async throws -> BotProfileDetails {

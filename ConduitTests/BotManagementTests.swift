@@ -347,6 +347,55 @@ extension BotModeTests {
         )
     }
 
+    // MARK: - Generated pictures
+
+    func testPictureGenerationProbeNeedsAnExplicitYes() {
+        XCTAssertTrue(PictureGeneration.isAvailable(probe: .object(["available": .bool(true)])))
+        XCTAssertFalse(PictureGeneration.isAvailable(probe: .object(["available": .bool(false)])))
+        XCTAssertFalse(PictureGeneration.isAvailable(probe: nil), "an older gateway without image.generate")
+        XCTAssertEqual(PictureGeneration.params(prompt: "x")["aspect_ratio"] as? String, "square")
+    }
+
+    func testPictureGenerationPromptsFollowDesktop() {
+        XCTAssertEqual(
+            PictureGeneration.botPrompt(name: "Scout", description: "Finds deals"),
+            "Cute minimal robot avatar for an AI agent named \"Scout — Finds deals\". "
+                + "Friendly simple mascot face, bold flat vector style, solid color background, centered, no text."
+        )
+        XCTAssertTrue(PictureGeneration.botPrompt(name: " ", description: "").contains("named \"agent\""))
+        XCTAssertNil(PictureGeneration.customPrompt("  ", forGroup: false), "an empty description uses the default prompt")
+        XCTAssertEqual(
+            PictureGeneration.customPrompt("A fox", forGroup: false),
+            "A fox. Avatar for an AI agent: centered, bold flat vector style, solid color background, no text."
+        )
+        XCTAssertTrue(PictureGeneration.groupPrompt(name: "Trip", members: ["Atlas", "Scout"]).contains("named \"Trip\" (Atlas, Scout)"))
+    }
+
+    func testPictureGenerationOutcomePrefersTheInlineImage() throws {
+        let png = Data([0x89, 0x50, 0x4E, 0x47])
+        let dataURL = "data:image/png;base64," + png.base64EncodedString()
+        XCTAssertEqual(
+            PictureGeneration.outcome(of: .object([
+                "success": .bool(true), "image_data": .string(dataURL), "image": .string("https://cdn.example/a.png")
+            ])),
+            .image(png)
+        )
+        XCTAssertEqual(
+            PictureGeneration.outcome(of: .object(["success": .bool(true), "image": .string("https://cdn.example/a.png")])),
+            .remote(try XCTUnwrap(URL(string: "https://cdn.example/a.png")))
+        )
+        XCTAssertEqual(
+            PictureGeneration.outcome(of: .object(["success": .bool(true), "image": .string("/home/me/.hermes/cache/a.png")])),
+            .failed(nil),
+            "a path on the Hermes machine can't be read from the phone"
+        )
+        XCTAssertEqual(
+            PictureGeneration.outcome(of: .object(["success": .bool(false), "error": .string("No image backend")])),
+            .failed("No image backend")
+        )
+        XCTAssertNil(PictureGeneration.imageData(fromDataURL: "data:text/plain;base64,aGk="))
+    }
+
     // MARK: - Avatar images
 
     func testGetAssetResultDecodesTheDataURL() {

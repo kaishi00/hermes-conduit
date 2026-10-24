@@ -451,7 +451,7 @@ same bot.
 
 **Siblings:** New Bot · Edit Bot · Hermes Desktop's bot editor (same
 profile records) · the bot's face in the Bots list, its Bot Chat and group
-rooms · profile pictures in the profile picker · the SOUL a new bot is
+rooms · generated pictures, shared with group pictures · profile pictures in the profile picker · the SOUL a new bot is
 born with (the messaging section older gateways need) · the text that
 describes them (the editor's footers and README.md's bots line)
 
@@ -459,6 +459,7 @@ describes them (the editor's footers and README.md's bots line)
 - Editor: `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/BotRosterView.swift`
 - Writes: `Conduit/Services/BotManagement.swift` (BotCreateRequest, BotCapabilities, BotSoul, BotMetaPatch), `Conduit/Services/AppState.swift` (createBot, updateBot, saveBotModel, loadBotCapabilities, openNewBotChat), `Conduit/Services/HermesClient.swift` (createBotProfile, describeBotProfile, configureBotProfile, configureBotModel, botRuntimeCheck)
 - Roster: `Conduit/Services/BotModeModels.swift`
+- Generated pictures: `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Services/PictureGeneration.swift`, `Conduit/Views/GroupChatView.swift` (GroupRoomPicturePicker)
 
 **Rulings**
 - A bot's look lives on Hermes: title, color and picture kind in `ui_meta['hermes-bots']`, the picture in the profile's asset store, never on the device (2026-10-02, #297; 2026-10-14, #580).
@@ -468,15 +469,15 @@ describes them (the editor's footers and README.md's bots line)
 - Skills, tools and MCP write only the sections the user changed; a new bot's lists start from its Start From profile, as on Desktop. A fresh profile offers no lists until it exists, since its set is Hermes' defaults (Desktop shows the main profile's instead) (2026-10-24, #1177).
 - A bot keeps at least one tool on: `enabled_toolsets: []` means Hermes' default tools, so turning every tool off can't be saved (2026-10-24, #1177).
 - MCP servers are plain on/off per server: `enabled_mcp_servers: []` turns them all off (2026-10-24, #1177).
+- Generated pictures come from Hermes' own image generation (`image.generate`). Generate shows only when Hermes says a backend is set up, and the bot editor and group pictures share one sheet (2026-10-24, #1179).
 
 **Open gaps**
 - No installing MCP servers from Hermes' catalog (with their sign-in or API key); only servers a profile already has can be turned on or off.
-- No generated pictures for bots or group rooms, though Hermes can generate them (`image.generate`).
 - New Bot's model pick isn't guarded: `profiles.create` pins it without the gateway's expensive-model check, the same as on Desktop.
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
 - No Duplicate or Hide in the Bots list.
 
-**Checked:** 2026-10-24, at #1177.
+**Checked:** 2026-10-24, at #1179.
 
 ## Markdown lists in messages
 

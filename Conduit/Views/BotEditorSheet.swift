@@ -33,6 +33,9 @@ struct BotEditorSheet: View {
     @State private var error: String?
     @State private var showingImagePicker = false
     @State private var pickedImage: UIImage?
+    /// Whether Hermes can generate pictures; nil until asked.
+    @State private var canGeneratePictures: Bool?
+    @State private var showingGenerator = false
     @State private var seeded = false
     @State private var showsAdvanced = false
     /// The gateway's message for a model pick it wants confirmed.
@@ -123,17 +126,24 @@ struct BotEditorSheet: View {
         .sheet(isPresented: $showingImagePicker) {
             ImagePicker(image: $pickedImage)
         }
+        .sheet(isPresented: $showingGenerator) {
+            GeneratePictureSheet(
+                defaultPrompt: PictureGeneration.botPrompt(
+                    name: draft.name.isEmpty ? editedBot?.displayLabel ?? "" : draft.name,
+                    description: draft.description
+                ),
+                forGroup: false
+            ) { image in
+                usePicture(image)
+            }
+            .environmentObject(appState)
+        }
         .onChange(of: pickedImage) { _, image in
             guard let image else { return }
-            if let png = BotAvatarImage.normalizedPNG(from: image) {
-                draft.newAvatarPNG = png
-                draft.removesAvatar = false
-                error = nil
-            } else {
-                error = AppLocalization.string("That picture could not be used.")
-            }
+            usePicture(image)
             pickedImage = nil
         }
+        .task { canGeneratePictures = await appState.refreshPictureGeneration() }
         .task { await seed() }
         .task(id: capabilitySource) { await loadStartFromCapabilities() }
         .task {
@@ -169,6 +179,15 @@ struct BotEditorSheet: View {
                     Label(AppLocalization.string("Choose Photo"), systemImage: "photo")
                 }
                 .buttonStyle(.bordered)
+                if canGeneratePictures == true {
+                    Button {
+                        Haptics.light()
+                        showingGenerator = true
+                    } label: {
+                        Label(AppLocalization.string("Generate"), systemImage: "sparkles")
+                    }
+                    .buttonStyle(.bordered)
+                }
                 if previewImage != nil || (hasStoredAvatar && !draft.removesAvatar) {
                     Button(role: .destructive) {
                         Haptics.light()
@@ -194,9 +213,26 @@ struct BotEditorSheet: View {
                 }
             }
             .font(.subheadline)
+            if canGeneratePictures == false {
+                Text(AppLocalization.string("Set up image generation in Hermes to generate pictures."))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 4)
+    }
+
+    /// A chosen or generated picture, scaled to the stored square.
+    private func usePicture(_ image: UIImage) {
+        if let png = BotAvatarImage.normalizedPNG(from: image) {
+            draft.newAvatarPNG = png
+            draft.removesAvatar = false
+            error = nil
+        } else {
+            error = AppLocalization.string("That picture could not be used.")
+        }
     }
 
     private var pictureStateDescription: String {

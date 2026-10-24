@@ -20274,6 +20274,61 @@ final class AppState: ObservableObject {
         return try? await client.modelOptions().providers
     }
 
+    /// Whether Hermes can generate pictures, as last asked
+    /// (`refreshPictureGeneration`).
+    @Published private(set) var canGeneratePictures = false
+
+    /// Asks Hermes whether it can generate pictures (`image.generate`
+    /// probe). Asked each time a picture screen opens: the owner may set a
+    /// backend up meanwhile.
+    @discardableResult
+    func refreshPictureGeneration() async -> Bool {
+        guard let client, isConnected else { return false }
+        let available = await client.imageGenerationAvailable()
+        // The answer belongs to the server it came from.
+        guard self.client === client else { return false }
+        if canGeneratePictures != available { canGeneratePictures = available }
+        return available
+    }
+
+    /// One generated picture from `prompt`, decoded. Throws with a message
+    /// fit to show.
+    func generatePicture(prompt: String) async throws -> UIImage {
+        guard let client, isConnected else {
+            throw PictureGenerationError(message: AppLocalization.string("Connect to Hermes to generate pictures."))
+        }
+        let result: AnyCodable
+        do {
+            result = try await client.generateImage(prompt: prompt)
+        } catch {
+            throw PictureGenerationError(message: AppLocalization.string(
+                "Could not generate a picture: \(UserFacingError.message(for: error))"
+            ))
+        }
+        let data: Data
+        switch PictureGeneration.outcome(of: result) {
+        case .image(let bytes):
+            data = bytes
+        case .remote(let url):
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 60
+            guard let download = try? await URLSession.shared.data(for: request),
+                  (download.1 as? HTTPURLResponse)?.statusCode == 200 else {
+                throw PictureGenerationError(message: AppLocalization.string("The picture was made but could not be downloaded."))
+            }
+            data = download.0
+        case .failed(let reason):
+            if let reason {
+                throw PictureGenerationError(message: AppLocalization.string("Could not generate a picture: \(reason)"))
+            }
+            throw PictureGenerationError(message: AppLocalization.string("Could not generate a picture."))
+        }
+        guard let image = UIImage(data: data) else {
+            throw PictureGenerationError(message: AppLocalization.string("That picture could not be used."))
+        }
+        return image
+    }
+
     /// The profile id a new bot named `name` gets, and whether it is free.
     func newBotSlug(for name: String) -> (slug: String, isValid: Bool, isTaken: Bool) {
         let slug = BotProfileSlug.slug(from: name)
