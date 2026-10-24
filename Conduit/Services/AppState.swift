@@ -20364,12 +20364,24 @@ final class AppState: ObservableObject {
             params["session_id"] = flow.sessionID
             let relayed = try await client.botMcpOAuth("callback", params: params)
             if let problem = BotMcpSetup.failure(relayed) { return .failed(problem) }
+            var pollFailures = 0
             for _ in 0..<BotMcpSetup.pollAttempts {
                 try Task.checkCancellation()
-                let polled = try await client.botMcpOAuth(
-                    "poll",
-                    params: ["profile": profile, "name": name, "session_id": flow.sessionID]
-                )
+                let polled: AnyCodable
+                do {
+                    polled = try await client.botMcpOAuth(
+                        "poll",
+                        params: ["profile": profile, "name": name, "session_id": flow.sessionID]
+                    )
+                    pollFailures = 0
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    pollFailures += 1
+                    if pollFailures >= BotMcpSetup.pollFailureLimit { throw error }
+                    try await Task.sleep(nanoseconds: 1_000_000_000)
+                    continue
+                }
                 switch BotMcpSetup.pollStatus(polled) {
                 case "approved":
                     approved = true

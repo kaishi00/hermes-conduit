@@ -64,6 +64,9 @@ enum BotMcpSignInOutcome: Equatable {
 enum BotMcpSetup {
     /// How long a sign-in may take once Hermes has the callback.
     static let pollAttempts = 30
+    /// Polls that may fail in a row before the sign-in does (Desktop's
+    /// `maxPollFailures`): a dropped request isn't a refused sign-in.
+    static let pollFailureLimit = 3
 
     static func catalog(from result: AnyCodable) -> [BotMcpCatalogEntry] {
         (payload(result)["servers"]?.arrayValue ?? []).compactMap { row in
@@ -123,7 +126,7 @@ enum BotMcpSetup {
         guard let sessionID = body["session_id"]?.stringValue, !sessionID.isEmpty,
               let raw = body["auth_url"]?.stringValue,
               let url = URL(string: raw),
-              let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              url.scheme?.lowercased() == "https",
               let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
               items.first(where: { $0.name == "redirect_uri" })?.value == redirectURI,
               let state = items.first(where: { $0.name == "state" })?.value, !state.isEmpty

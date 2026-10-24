@@ -125,6 +125,11 @@ struct BotCapabilitiesView: View {
         }
         .navigationTitle(AppLocalization.string("Skills, Tools and MCP"))
         .navigationBarTitleDisplayMode(.inline)
+        .onDisappear {
+            // Leaving the page gives up a sign-in. Safari covering it
+            // doesn't: the cover is up then.
+            if browser == nil { signInTask?.cancel() }
+        }
         .task {
             guard let mcpProfile, !mcpSetupRead else { return }
             mcpSetup = await appState.loadBotMcpSetup(profile: mcpProfile)
