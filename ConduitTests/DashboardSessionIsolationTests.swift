@@ -344,6 +344,29 @@ final class DashboardSessionIsolationTests: XCTestCase {
         XCTAssertLessThan(ContinuousClock.now - started, .seconds(5), "the wait gives up at its timeout")
     }
 
+    /// A bridge invalidated before its startup restore runs (a Sign Out
+    /// right after it was built) writes no cookies back into its store.
+    func testABridgeInvalidatedBeforeItsRestoreWritesNoCookies() async throws {
+        let a = track(UUID())
+        let host = "conduit-1058-invalidated.example"
+        let jar = DashboardCookiePersistence.nativeCookieStorage(for: a)
+        jar.setCookie(try hostCookie(name: "session", value: "after-invalidate", domain: host))
+        addTeardownBlock { @MainActor in
+            DashboardCookiePersistence.clearNativeCookies(dashboardID: a, baseURL: "https://\(host)")
+        }
+        let store = attachWebView(to: DashboardCookiePersistence.webKitStore(for: a))
+
+        let bridge = DashboardTicketBridge(baseURL: "https://\(host)", dashboardID: a)
+        bridge.invalidate()
+        // The restore would land over WebKit IPC shortly after the bridge
+        // was built.
+        try await Task.sleep(for: .seconds(3))
+
+        let cookies = try await awaitWebKit("allCookies") { await store.httpCookieStore.allCookies() }
+        XCTAssertFalse(cookies.contains { $0.value == "after-invalidate" }, "an invalidated bridge restores nothing")
+        withExtendedLifetime(bridge) {}
+    }
+
     /// A clear whose WebKit reply never comes holds the next clear of the
     /// same store only until the wait's timeout, not forever.
     func testAHungStoreClearDoesNotStopTheNextOne() async {

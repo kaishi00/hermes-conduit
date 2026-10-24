@@ -791,6 +791,9 @@ final class DashboardTicketBridge: NSObject {
             // The Sign Out or disconnect before this bridge may still be
             // clearing its store (#788).
             await DashboardCookiePersistence.awaitPendingStoreClear(for: self.dashboardID)
+            // Invalidated meanwhile (a Sign Out clearing this store): no
+            // cookies go back in.
+            guard !self.isInvalidated else { return }
             await DashboardCookiePersistence.restore(
                 into: self.webView.configuration.websiteDataStore.httpCookieStore,
                 dashboardID: self.dashboardID
@@ -886,6 +889,9 @@ final class DashboardTicketBridge: NSObject {
             // The Sign Out or disconnect before this bridge may still be
             // clearing its store (#788).
             await DashboardCookiePersistence.awaitPendingStoreClear(for: self.dashboardID)
+            // Invalidated meanwhile (a Sign Out clearing this store): no
+            // cookies go back in.
+            guard !self.isInvalidated else { return }
             await DashboardCookiePersistence.restore(
                 into: self.webView.configuration.websiteDataStore.httpCookieStore,
                 dashboardID: self.dashboardID
