@@ -1108,7 +1108,16 @@ struct MessageBubble: View, Equatable {
             } else if let inbound = BotTeammateMessages.inbound(message.content) {
                 // A teammate bot's delivery is an event in the chat, not
                 // something the user said (Desktop's agent message note).
-                TeammateMessageNote(inbound: inbound, roster: appState.botRoster, appState: appState)
+                VStack(spacing: 4) {
+                    TeammateMessageNote(inbound: inbound, roster: appState.botRoster, appState: appState)
+                    // The agent can react to it like any user turn.
+                    if !message.reactions.isEmpty {
+                        MessageReactionChips(
+                            reactions: message.reactions,
+                            agentName: rowState.agentIdentity.name
+                        )
+                    }
+                }
             } else {
                 UserBubble(
                     message: message,
@@ -1337,6 +1346,8 @@ struct TeammateMessageNote: View {
         .task(id: bot.map { "\($0.name)|\($0.hasAvatar)" }) {
             guard let bot, bot.hasAvatar, image == nil else { return }
             await appState.loadBotAvatarRetrying(bot)
+            // The roster may have named another bot meanwhile.
+            guard !Task.isCancelled, self.bot == bot else { return }
             image = appState.botAvatarImage(for: bot)
         }
     }

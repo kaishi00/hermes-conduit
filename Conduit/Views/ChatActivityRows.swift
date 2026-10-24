@@ -114,7 +114,7 @@ struct ChatStepStyle: Equatable {
 enum ChatStepSubject {
     private static let preferredKeys = [
         "query", "command", "url", "path", "file_path", "pattern", "goal",
-        "prompt", "question", "title", "name", "text", "action",
+        "prompt", "question", "title", "name", "text", "action", "message",
     ]
 
     /// Past this, a JSON input isn't parsed: one line of it is shown as is.

@@ -32,6 +32,7 @@ extension ChatTypographyTests {
         XCTAssertEqual(ChatStepSubject.line(from: #"{"max_results": "5", "query": "dinner downtown"}"#), "dinner downtown")
         XCTAssertEqual(ChatStepSubject.line(from: #"{"command": "git status\nls"}"#), "git status ls")
         XCTAssertEqual(ChatStepSubject.line(from: #"{"zeta": "last", "alpha": "first"}"#), "first")
+        XCTAssertEqual(ChatStepSubject.line(from: #"{"agent": "atlas", "message": "the brief is in"}"#), "the brief is in")
         XCTAssertEqual(ChatStepSubject.line(from: "plain text\nsecond line"), "plain text second line")
         XCTAssertNil(ChatStepSubject.line(from: "   "))
         XCTAssertNil(ChatStepSubject.line(from: #"{"count": 3}"#))

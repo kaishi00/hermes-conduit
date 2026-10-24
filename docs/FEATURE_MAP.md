@@ -498,7 +498,7 @@ the bot's SOUL messaging section · README.md's bots line
 **Code**
 - Tags and the note to the bot: `Conduit/Services/BotMentions.swift`, `Conduit/Services/GroupChatModels.swift` (MentionAutocomplete)
 - Composer: `Conduit/Views/Components/ComposerBar.swift` (mentionCandidates, attachmentButton), `Conduit/Views/Components/GroupRoomComposer.swift`
-- Teammate messages: `Conduit/Services/BotTeammateMessages.swift`, `Conduit/Views/ChatView.swift` (TeammateMessageNote, SettledToolCardContent.stepTitle)
+- Teammate messages: `Conduit/Services/BotTeammateMessages.swift`, `Conduit/Views/ChatView.swift` (TeammateMessageNote, SettledToolCardContent.stepTitle), `Conduit/Views/ChatActivityRows.swift` (ChatStepSubject, the step's subject line)
 - Tool categories: `Shared/Widgets/HermesTurnActivity.swift`, and its twin, `notifier/live_activity.py` (`tool_category`, notifier #338)
 - The messaging protocol a bot is born with: `Conduit/Services/BotManagement.swift` (BotSoul)
 
@@ -515,6 +515,9 @@ the bot's SOUL messaging section · README.md's bots line
 - Desktop folds the sender's reply to a delivery it asked for; Conduit shows every reply as usual.
 - Group rooms have no Mention a Bot item; their recipient picks do the same job.
 - A delivery's text shows as plain text when opened; Desktop renders its Markdown.
+- A terminal delivery's step shows the whole `hermes … chat` command as its subject; a `message_agent` step shows the message.
+- The working line and Live Activity say "Sending a message", not the teammate's name.
+- A signed name with "(" in it ("Atlas (v2)") isn't read as a delivery and stays the user's text.
 - A "Messaged" step drawn before the roster loads names the routing key ("Messaged scout") until the row redraws; the note follows the roster.
 
 **Checked:** 2026-10-24, at #1181.

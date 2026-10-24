@@ -1196,7 +1196,9 @@ struct ComposerBar: View, Equatable {
                         Button {
                             mention(candidate)
                         } label: {
+                            // Two bots can share a title; the tag tells them apart.
                             Text(verbatim: candidate.title)
+                            Text(verbatim: "@\(candidate.tag)")
                         }
                     }
                 } label: {

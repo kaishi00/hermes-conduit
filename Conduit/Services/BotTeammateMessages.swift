@@ -77,7 +77,11 @@ enum BotTeammateMessages {
         if let exact = roster.first(where: { BotMentions.handle(for: $0).lowercased() == wanted }) {
             return exact
         }
-        let claimed = roster.filter { BotMentions.resolvableForms(of: $0).contains(wanted) }
+        // A signature without a handle carries the bot's title ("Trip Scout").
+        let claimed = roster.filter {
+            BotMentions.resolvableForms(of: $0).contains(wanted)
+                || $0.displayLabel.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == wanted
+        }
         return claimed.count == 1 ? claimed[0] : nil
     }
 

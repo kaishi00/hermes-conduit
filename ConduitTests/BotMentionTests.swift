@@ -335,6 +335,7 @@ final class BotMentionTests: XCTestCase {
         let roster = [bot("scout", title: "Trip Scout"), bot("atlas")]
         XCTAssertEqual(BotTeammateMessages.bot(named: "@Scout", in: roster)?.name, "scout")
         XCTAssertEqual(BotTeammateMessages.bot(named: "trip-scout", in: roster)?.name, "scout")
+        XCTAssertEqual(BotTeammateMessages.bot(named: "Trip Scout", in: roster)?.name, "scout", "a signature without a handle names the title")
         XCTAssertEqual(BotTeammateMessages.displayName(for: "scout", in: roster), "Trip Scout")
         XCTAssertEqual(BotTeammateMessages.displayName(for: "nova", in: roster), "nova", "a bot not in the roster keeps its key")
     }
