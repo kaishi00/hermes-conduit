@@ -566,11 +566,12 @@ group rooms (no Artifacts list) · the notifier's artifacts route · README.md
 - A bot whose profile is read whole (the profile in use, or one All shows) isn't read again for its Bot Chat; that chat's rows still go by the bot's name and open the way Bots opens them.
 - The profile in use is always read, even when All leaves it out.
 - One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
+- A file still opening is dropped when the list moves to another server or profile, and only the latest open clears the spinner. Every reload, including one on a dashboard without artifacts, outdates the request before it (2026-10-24, from #895's review, #1191).
 
 **Open gaps**
 - Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
 
-**Checked:** 2026-10-24, at #1203.
+**Checked:** 2026-10-24, at #1203; opens and reloads at #1191.
 
 ## Bots: create and edit
 
@@ -739,11 +740,11 @@ meanwhile.
 
 **Siblings:** the composer's send from the empty canvas · Ask Hermes About
 Screen (the voice sheet's screenshot and a screen question) · Settings' Hermes
-test call and watch prompts · New Chat and its focus · a widget's or
-Shortcut's New Chat · the /new command
+test call and watch prompts · a Classic voice conversation's fresh chat ·
+New Chat and its focus · a widget's or Shortcut's New Chat · the /new command
 
 **Code**
-- Creating the chat: `Conduit/Services/AppState.swift` (createNewSession and createAndReconcileSession return the chat they opened; startChatForComposerSubmission; focusNewChatComposer)
+- Creating the chat: `Conduit/Services/AppState.swift` (createNewSession and createAndReconcileSession return the chat they opened; startChatForComposerSubmission; startNewChat and focusNewChatComposer; prepareVoiceConversation)
 - Screenshots: `Conduit/Services/AppState+ScreenQuestion.swift` (startChatForScreenshot, openScreenQuestion)
 - Hermes calls: `Conduit/Services/AppState+HermesCalls.swift` (startHermesCallsChat)
 - Widget and Shortcut launches: `Conduit/Services/AppState+WidgetLaunch.swift`
@@ -751,7 +752,7 @@ Shortcut's New Chat · the /new command
 
 **Rulings**
 - What waits on a new chat goes in only when the chat createNewSession returned is still the one open. Another chat opened or created meanwhile (a voice action, a screen question, a notification) gets nothing. The message stays in the composer, the screenshot goes back or waits, and the user is told (2026-10-24, #941's review, #1191).
-- New Chat focuses the composer only on the chat it made, by newChatOpenedSessionID, the most recent creation's chat while it's open.
+- New Chat focuses the composer only on the chat it made. A Classic voice conversation files and archives only its own new chat under Voice; a fresh one asked for fails when another chat took the screen.
 
 **Open gaps**
 - A widget's or Shortcut's New Chat and /new put nothing in the chat, so they only report whether the open chat changed.
