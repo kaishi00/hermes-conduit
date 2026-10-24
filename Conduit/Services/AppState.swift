@@ -22764,9 +22764,10 @@ final class AppState: ObservableObject {
         if canStartNewChatNow {
             isStartingNewChat = true
             Task {
-                let previousSessionID = activeSessionId
-                await createNewSessionMarkingStart()
-                if activeSessionId != previousSessionID { focusNewChatComposer() }
+                // Only the chat this New Chat created, while it's open.
+                if let created = await createNewSessionMarkingStart(), activeSessionId == created {
+                    focusNewChatComposer()
+                }
             }
             return
         }
@@ -33842,15 +33843,19 @@ final class AppState: ObservableObject {
         let previousSessionID = activeSessionId
         classicVoiceChatToArchive = nil
         if startsFreshConversation || activeSessionId == nil {
-            await createNewSession(widgetLease: widgetLease)
+            let created = await createNewSession(widgetLease: widgetLease)
             guard widgetLease?.isCurrent != false else { return .deferred }
-            if startsFreshConversation, activeSessionId == previousSessionID {
+            // Only the chat this creation opened, while it is still open,
+            // is the call's own: a chat another creation opened meanwhile
+            // is neither filed under Voice nor archived with the call.
+            let ownChat = created.flatMap { activeSessionId == $0 ? $0 : nil }
+            if startsFreshConversation, ownChat == nil {
                 errorMessage = AppLocalization.string("Hermes could not create the requested voice conversation.")
                 return .failed(AppLocalization.string("Hermes could not create the requested voice conversation."))
             }
             // A chat voice started is filed under Voice; one the user spoke
             // into partway stays a chat.
-            if let created = activeSessionId, created != previousSessionID {
+            if let created = ownChat, created != previousSessionID {
                 tagVoiceSessions(Array(knownSessionIDs(for: created)), kind: .classic)
                 // Archived when this call ends, like a live call's own row (#1124).
                 classicVoiceChatToArchive = (created, activeProfile, activeDashboardID)
