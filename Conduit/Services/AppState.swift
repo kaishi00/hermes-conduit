@@ -13792,6 +13792,7 @@ final class AppState: ObservableObject {
         let preservedIdentity = purpose == .preserveCurrent
             ? captureConversationIdentity(for: activeSessionId)
             : nil
+        let turnStateBeforeSync = turnState
         turnState = .synchronizing
         noteConnectionStep("Chat sync started")
 
@@ -14385,8 +14386,15 @@ final class AppState: ObservableObject {
                 scheduleReconnectAfterFailedSync()
             } else if wasCancelled, isConnected, turnState == .reconnecting {
                 // Nothing retries a cancelled sync of the open chat, and the
-                // socket is still up: the composer isn't left off waiting.
-                setRunning(false)
+                // socket is still up: the chat gets back the state it had,
+                // a running reply included (the cancelled read says nothing
+                // about it). Only a transitional one settles, as a
+                // foreground boundary settles an aborted recovery's.
+                if turnStateBeforeSync == .synchronizing || turnStateBeforeSync == .reconnecting {
+                    setRunning(false)
+                } else {
+                    turnState = turnStateBeforeSync
+                }
             }
             return .completed
         }

@@ -463,4 +463,15 @@ final class SessionCatalogLoadTests: XCTestCase {
             XCTAssertTrue(appState.turnState.acceptsComposerActions, "\(cancellation): \(appState.turnState)")
         }
     }
+
+    /// A reply running when the sync's read is cancelled is still running:
+    /// the cancelled read says nothing about it.
+    func testACancelledSyncReadLeavesARunningReplyRunning() async {
+        let appState = makeSyncingAppState { _, _ in throw CancellationError() }
+        appState.activeSessionId = "a"
+        appState.handleStreamEvent(.sessionBusy(sessionId: "a", busy: true))
+        XCTAssertEqual(appState.turnState, .running)
+        await appState.syncSession()
+        XCTAssertEqual(appState.turnState, .running)
+    }
 }
