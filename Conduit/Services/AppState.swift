@@ -20319,11 +20319,16 @@ final class AppState: ObservableObject {
             return .failed(AppLocalization.string("Could not create the bot: \(UserFacingError.message(for: error))"))
         }
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
-            // The server changed mid-save: the bot exists, its look and
-            // picture were never written.
-            return .saved(warning: AppLocalization.string(
+            // The server changed mid-save: the bot exists, its look,
+            // picture and staged tool choices were never written.
+            var warning = AppLocalization.string(
                 "The bot was created, but its picture or look was not saved. Edit the bot to try again."
-            ))
+            )
+            if let edited = draft.capabilities, let baseline = draft.capabilitiesBaseline,
+               !BotCapabilities.configureParams(original: baseline, edited: edited).isEmpty {
+                warning += " " + AppLocalization.string("The skills, tools or MCP choices were not saved.")
+            }
+            return .saved(warning: warning)
         }
 
         // The picture goes first so ui_meta only claims a photo the asset
@@ -20566,6 +20571,13 @@ final class AppState: ObservableObject {
                 problems.append(AppLocalization.string("The picture was not removed."))
             }
         }
+        // The server may have changed during the writes above: the tool
+        // choices and the model pick must not land on a same-named bot
+        // elsewhere.
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
+            problems += laterWritesSkipped()
+            return .saved(warning: problems.isEmpty ? nil : problems.joined(separator: " "))
+        }
         // Skills, tools and MCP: only the sections the user changed, and
         // only once the editor loaded them from the bot itself.
         if !capabilitySections.isEmpty {
@@ -20581,8 +20593,7 @@ final class AppState: ObservableObject {
                 problems.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
             }
         }
-        // The server may have changed during the writes above: the model
-        // pick must not land on a same-named bot elsewhere.
+        // And again for the model, after the capabilities await.
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
             if modelChanged { problems.append(AppLocalization.string("The model was not saved.")) }
             return .saved(warning: problems.isEmpty ? nil : problems.joined(separator: " "))
