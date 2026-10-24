@@ -254,7 +254,8 @@ final class LocationSyncEngine: ObservableObject {
         case sent
         /// The host won't take this batch as it is: sending it again won't help.
         case refused
-        /// Not sent now (no connection, signed out, a timeout): try later.
+        /// Not sent now (no connection, signed out, a timeout, or a host
+        /// whose plugin needs an update): the batch is kept to try later.
         case failed
     }
 

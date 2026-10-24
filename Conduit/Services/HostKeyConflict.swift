@@ -8,8 +8,9 @@
 //  written by a newer plugin, a layer that's off) can't be fixed by
 //  agreeing a new key. A store written by a newer plugin (`schema`) is
 //  fixed by updating the plugin, so it asks for that. Its dashboard routes
-//  send the message as `detail` (the code goes beside it), so both are
-//  recognized.
+//  send the message as `detail` and the code beside it, and the app's
+//  bridges pass on only the message, so the message is what's read here.
+//  The codes are matched too, should a host send one as the detail.
 //
 
 import Foundation
