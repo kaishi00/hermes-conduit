@@ -19164,6 +19164,11 @@ final class AppState: ObservableObject {
             return PollCadence.stretched(chatListPollPacer.backoff.interval, by: deviceConditions())
         }
         let registryRead = await refreshLiveSessionStatuses()
+        // Left the screen, or the poll stopped, while the registry read was
+        // on its way: nothing more reads.
+        guard isSceneActive, !Task.isCancelled else {
+            return PollCadence.stretched(chatListPollPacer.backoff.interval, by: deviceConditions())
+        }
         var registry: Set<String>?
         var turnRunning = turnState.isRunning
         if let snapshot = freshActiveListSnapshot(maxAge: 2) {

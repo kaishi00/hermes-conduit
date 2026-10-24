@@ -424,6 +424,8 @@ final class ChatSyncTests: XCTestCase {
         var catalog: [SessionSummary] = []
         var loads = 0
         var now = Date(timeIntervalSince1970: 2_000_000)
+        /// Runs while the registry read is on its way.
+        var onProbe: (@MainActor () -> Void)?
     }
 
     private func makeAppState(_ box: Box) -> AppState {
@@ -435,7 +437,10 @@ final class ChatSyncTests: XCTestCase {
                 return box.catalog
             },
             chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
-                probeActiveSessions: { _ in box.live }
+                probeActiveSessions: { _ in
+                    box.onProbe?()
+                    return box.live
+                }
             )
         )
         appState.client = HermesClient(
@@ -649,6 +654,25 @@ final class ChatSyncTests: XCTestCase {
         appState.noteChatListInteraction()
         let wait = await pollWait(appState)
         XCTAssertEqual(wait, 4)
+    }
+
+    /// The poll that was stopped while the registry read was on its way
+    /// (the list left, the app gone to the background) starts no catalog
+    /// read after it.
+    func testAPollStoppedDuringTheRegistryReadReadsNoCatalog() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        box.catalog = [row("listed", profile: appState.activeProfile)]
+        await appState.loadSessions()
+        XCTAssertEqual(box.loads, 1)
+        box.now += 60 // the list's fallback read is due
+
+        var poll: Task<TimeInterval, Never>?
+        box.onProbe = { poll?.cancel() }
+        poll = Task { await appState.chatListPollTick() }
+        _ = await poll?.value
+        await appState.leaveCatalogRefreshTask?.value
+        XCTAssertEqual(box.loads, 1, "No catalog read after the poll was stopped")
     }
 
     func testLowPowerModeStretchesTheListPoll() async {
