@@ -808,9 +808,8 @@ extension AppState {
             let path = DashboardPath.withProfile("\(Self.hermesCallWaitingPath)?session_id=\(encoded)", profile: profile)
             // Short: the Watch call is starting, and without it the call
             // only says where to answer.
-            // A failed request means the dashboard isn't answering: don't
-            // wait out the timeout again for each of the call's chats.
-            guard let response = try? await bridge.requestJSON(path: path, timeoutMilliseconds: 4_000) else { return nil }
+            // One chat's failed read leaves the call's other chats to try.
+            guard let response = try? await bridge.requestJSON(path: path, timeoutMilliseconds: 4_000) else { continue }
             if let waiting = (response["waiting"] as? [String: Any]).flatMap({ HermesCallWaiting(host: $0) }), waiting.kind == kind {
                 return (waiting, call.sessionIDs)
             }
