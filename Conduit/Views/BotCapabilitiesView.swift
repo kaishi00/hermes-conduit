@@ -51,9 +51,6 @@ struct BotCapabilitiesView: View {
                             // Hermes reads no tools as its default tools, so
                             // the last one on stays on.
                             .disabled(!capabilities.canTurnOffToolset(at: index))
-                            .accessibilityHint(capabilities.canTurnOffToolset(at: index)
-                                ? Text(verbatim: "")
-                                : Text(AppLocalization.string("At least one tool stays on.")))
                     }
                 }
             } header: {

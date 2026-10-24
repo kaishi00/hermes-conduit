@@ -336,6 +336,17 @@ extension BotModeTests {
         XCTAssertTrue(capabilities.canTurnOffToolset(at: 1), "an off tool can always be turned back on")
     }
 
+    func testEveryMCPServerOffSendsAnEmptyList() {
+        let original = BotCapabilities(mcpServers: [BotCapability(name: "github", enabled: true)])
+        var edited = original
+        edited.mcpServers[0].enabled = false
+        XCTAssertEqual(
+            BotCapabilities.configureParams(original: original, edited: edited)["enabled_mcp_servers"] as? [String],
+            [],
+            "the gateway turns off every server not listed"
+        )
+    }
+
     // MARK: - Avatar images
 
     func testGetAssetResultDecodesTheDataURL() {

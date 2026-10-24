@@ -514,7 +514,8 @@ struct BotCapabilities: Equatable {
         return toolsets.filter(\.enabled).count > 1
     }
 
-    /// The `applied` keys `configureParams` sections report under.
+    /// The `applied` keys `configureParams` sections report under (the
+    /// gateway's `_configure_cfg_sections` names them so, not by field).
     static func appliedSections(for params: [String: Any]) -> [String] {
         var sections: [String] = []
         if params["disabled_skills"] != nil { sections.append("skills") }

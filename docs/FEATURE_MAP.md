@@ -467,6 +467,7 @@ describes them (the editor's footers and README.md's bots line)
 - On Edit Bot, a model pick the gateway guards (expensive or data-training) is saved only after the user confirms its message (2026-10-23).
 - Skills, tools and MCP write only the sections the user changed; a new bot's lists start from its Start From profile, as on Desktop. A fresh profile offers no lists until it exists, since its set is Hermes' defaults (Desktop shows the main profile's instead) (2026-10-24, #1177).
 - A bot keeps at least one tool on: `enabled_toolsets: []` means Hermes' default tools, so turning every tool off can't be saved (2026-10-24, #1177).
+- MCP servers are plain on/off per server: `enabled_mcp_servers: []` turns them all off (2026-10-24, #1177).
 
 **Open gaps**
 - No installing MCP servers from Hermes' catalog (with their sign-in or API key); only servers a profile already has can be turned on or off.
@@ -475,4 +476,4 @@ describes them (the editor's footers and README.md's bots line)
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
 - No Duplicate or Hide in the Bots list.
 
-**Checked:** 2026-10-24, at 94e46d0.
+**Checked:** 2026-10-24, at #1177.

@@ -468,7 +468,8 @@ struct BotEditorSheet: View {
         draft.capabilitiesBaseline = nil
         capabilitiesLoadFailed = false
         let loaded = await appState.loadBotCapabilities(startingFrom: source)
-        guard !Task.isCancelled else { return }
+        // A Try Again isn't cancelled with the task: a newer Start From wins.
+        guard !Task.isCancelled, source == capabilitySource else { return }
         if let loaded {
             draft.capabilities = loaded
             draft.capabilitiesBaseline = loaded
