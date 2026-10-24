@@ -105,7 +105,7 @@ enum BotTeammateMessages {
     )
 
     private static let deliveryCommandRegex = try? NSRegularExpression(
-        pattern: #"(?:^|[;&|]\s*|\bhermes\s+)-p\s+("?)([a-z0-9][a-z0-9_-]{0,63})\1\s+chat\b[\s\S]*?-q\s+["']Message from"#,
+        pattern: #"(?:^|[;&|]\s*|\bhermes\s+)(?:-p|--profile)(?:\s+|=)(["']?)([a-z0-9][a-z0-9_-]{0,63})\1\s+chat\b[\s\S]*?-q\s+["']Message from"#,
         options: [.caseInsensitive]
     )
 

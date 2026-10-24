@@ -318,6 +318,14 @@ final class BotMentionTests: XCTestCase {
             ),
             "scout"
         )
+        XCTAssertEqual(
+            BotTeammateMessages.deliveryTarget(toolName: "terminal", input: #"hermes --profile=scout chat -q 'Message from Atlas: hi'"#),
+            "scout"
+        )
+        XCTAssertEqual(
+            BotTeammateMessages.deliveryTarget(toolName: "terminal", input: #"hermes -p 'scout' chat -q "Message from Atlas: hi""#),
+            "scout"
+        )
         XCTAssertNil(BotTeammateMessages.deliveryTarget(toolName: "terminal", input: #"{"command":"ls -la"}"#))
         XCTAssertNil(BotTeammateMessages.deliveryTarget(toolName: "message_agent", input: #"{"message":"hi"}"#))
         XCTAssertNil(BotTeammateMessages.deliveryTarget(toolName: "web_search", input: #"{"target":"scout"}"#))

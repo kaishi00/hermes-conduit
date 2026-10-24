@@ -1250,8 +1250,11 @@ struct UserBubble: View {
 /// centered and quiet, with what it said one tap away.
 struct TeammateMessageNote: View {
     let inbound: BotTeammateMessages.Inbound
-    let bot: BotProfile?
-    let name: String
+    /// Resolved from the roster, and again when it changes: the row's
+    /// equality leaves the roster out, so a roster that lands after the row
+    /// would otherwise leave the signed name.
+    @State private var bot: BotProfile?
+    @State private var name: String
     /// Loads the face; held, not observed, like the rows' AppState.
     let appState: AppState
     @State private var expanded = false
@@ -1261,10 +1264,9 @@ struct TeammateMessageNote: View {
 
     init(inbound: BotTeammateMessages.Inbound, roster: [BotProfile], appState: AppState) {
         self.inbound = inbound
-        let bot = BotTeammateMessages.bot(named: inbound.handle, in: roster)
-            ?? BotTeammateMessages.bot(named: inbound.sender, in: roster)
-        self.bot = bot
-        name = bot?.displayLabel ?? inbound.sender
+        let bot = Self.resolve(inbound, in: roster)
+        _bot = State(initialValue: bot)
+        _name = State(initialValue: bot?.displayLabel ?? inbound.sender)
         self.appState = appState
         _image = State(initialValue: bot.flatMap { appState.botAvatarImage(for: $0) })
     }
@@ -1320,11 +1322,23 @@ struct TeammateMessageNote: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .onReceive(appState.$botRoster) { roster in
+            let resolved = Self.resolve(inbound, in: roster)
+            guard resolved != bot else { return }
+            bot = resolved
+            name = resolved?.displayLabel ?? inbound.sender
+            image = resolved.flatMap { appState.botAvatarImage(for: $0) }
+        }
         .task(id: bot.map { "\($0.name)|\($0.hasAvatar)" }) {
             guard let bot, bot.hasAvatar, image == nil else { return }
             await appState.loadBotAvatarRetrying(bot)
             image = appState.botAvatarImage(for: bot)
         }
+    }
+
+    private static func resolve(_ inbound: BotTeammateMessages.Inbound, in roster: [BotProfile]) -> BotProfile? {
+        BotTeammateMessages.bot(named: inbound.handle, in: roster)
+            ?? BotTeammateMessages.bot(named: inbound.sender, in: roster)
     }
 }
 

@@ -480,7 +480,7 @@ describes them (the editor's footers and README.md's bots line)
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
 - No Duplicate or Hide in the Bots list.
 
-**Checked:** 2026-10-24, at #1179.
+**Checked:** 2026-10-24, at #1181.
 
 ## Bot mentions and teammate messages
 
@@ -499,7 +499,7 @@ the bot's SOUL messaging section · README.md's bots line
 - Tags and the note to the bot: `Conduit/Services/BotMentions.swift`, `Conduit/Services/GroupChatModels.swift` (MentionAutocomplete)
 - Composer: `Conduit/Views/Components/ComposerBar.swift` (mentionCandidates, attachmentButton), `Conduit/Views/Components/GroupRoomComposer.swift`
 - Teammate messages: `Conduit/Services/BotTeammateMessages.swift`, `Conduit/Views/ChatView.swift` (TeammateMessageNote, SettledToolCardContent.stepTitle)
-- Tool categories: `Shared/Widgets/HermesTurnActivity.swift`
+- Tool categories: `Shared/Widgets/HermesTurnActivity.swift`, and its twin, `notifier/live_activity.py` (`tool_category`, notifier #338)
 - The messaging protocol a bot is born with: `Conduit/Services/BotManagement.swift` (BotSoul)
 
 **Rulings**
@@ -507,6 +507,7 @@ the bot's SOUL messaging section · README.md's bots line
 - Mention a Bot inserts the same tag the @ list does, at the end of the draft (2026-10-24, #1181, Eric asked for an easier way to tag another bot).
 - A user turn signed "Message from 🤖 Name", "Message from Name (@handle)" or "[Message from agent 'name']" is a teammate's delivery and reads as a note with the bot's face, its text one tap away. An unsigned "Message from Name: …" stays the user's text, unlike Desktop (2026-10-24, #1181).
 - A `message_agent` call, or a terminal `hermes -p name chat … -q "Message from …"` run, reads as "Messaged Name" (2026-10-24, #1181).
+- `message_agent` is a messaging tool on the Live Activity, in both the app's and the plugin's category lists (2026-10-24, #1181, notifier #338).
 
 **Open gaps**
 - Chat list previews and quotes show a delivery's raw "Message from 🤖 …" text.
