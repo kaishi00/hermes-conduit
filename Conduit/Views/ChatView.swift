@@ -1105,6 +1105,10 @@ struct MessageBubble: View, Equatable {
         case .user:
             if message.isSteer {
                 SteerBubble(message: message)
+            } else if let inbound = BotTeammateMessages.inbound(message.content) {
+                // A teammate bot's delivery is an event in the chat, not
+                // something the user said (Desktop's agent message note).
+                TeammateMessageNote(inbound: inbound, roster: appState.botRoster, appState: appState)
             } else {
                 UserBubble(
                     message: message,
@@ -1238,6 +1242,88 @@ struct UserBubble: View {
                     UserMessageCopyButton(message: message)
                 }
             }
+        }
+    }
+}
+
+/// "Message from Atlas" with Atlas's face: a teammate bot's delivery,
+/// centered and quiet, with what it said one tap away.
+struct TeammateMessageNote: View {
+    let inbound: BotTeammateMessages.Inbound
+    let bot: BotProfile?
+    let name: String
+    /// Loads the face; held, not observed, like the rows' AppState.
+    let appState: AppState
+    @State private var expanded = false
+    @State private var image: UIImage?
+    @ScaledMetric(relativeTo: .footnote) private var faceSize: CGFloat = 18
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(inbound: BotTeammateMessages.Inbound, roster: [BotProfile], appState: AppState) {
+        self.inbound = inbound
+        let bot = BotTeammateMessages.bot(named: inbound.handle, in: roster)
+            ?? BotTeammateMessages.bot(named: inbound.sender, in: roster)
+        self.bot = bot
+        name = bot?.displayLabel ?? inbound.sender
+        self.appState = appState
+        _image = State(initialValue: bot.flatMap { appState.botAvatarImage(for: $0) })
+    }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Button {
+                Haptics.selection()
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    BotAvatarView(
+                        name: bot?.name ?? inbound.handle,
+                        label: name,
+                        colorString: bot?.appearanceColor,
+                        image: image,
+                        size: faceSize
+                    )
+                    Text(AppLocalization.string("Message from \(name)"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    if !inbound.body.isEmpty {
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(inbound.body.isEmpty)
+            .accessibilityHint(Text(
+                expanded
+                    ? AppLocalization.string("Hides what the bot said.")
+                    : AppLocalization.string("Shows what the bot said.")
+            ))
+
+            if expanded {
+                Text(inbound.body)
+                    .font(.subheadline)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.secondary.opacity(0.08))
+                    )
+                    .frame(maxWidth: 520)
+                    .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .task(id: bot.map { "\($0.name)|\($0.hasAvatar)" }) {
+            guard let bot, bot.hasAvatar, image == nil else { return }
+            await appState.loadBotAvatarRetrying(bot)
+            image = appState.botAvatarImage(for: bot)
         }
     }
 }
@@ -2723,6 +2809,8 @@ private struct SettledToolCardContent: View, Equatable {
     @Environment(\.chatRowDisclosure) private var disclosure
     /// Nil until tapped here; see SettledThinkingCardContent.
     @State private var tapped: Bool?
+    /// Names the teammate a delivery messaged; read, not observed.
+    @Environment(\.chatRowActions) private var rowActions
 
     /// Open from the start when tools expand by default, rather than opening
     /// on appear: a row that grows after its first layout moves everything
@@ -2737,6 +2825,18 @@ private struct SettledToolCardContent: View, Equatable {
             && lhs.sizeCategory == rhs.sizeCategory
             && lhs.grouped == rhs.grouped
             && lhs.gatewayResolver === rhs.gatewayResolver
+    }
+
+    /// "Messaged Atlas" for a delivery to a teammate bot, as Desktop shows
+    /// it; otherwise the step's own words.
+    private func stepTitle(_ tool: ToolActivity, style: ChatStepStyle, running: Bool) -> String {
+        guard let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) else {
+            return running ? style.runningTitle : style.doneTitle
+        }
+        let name = BotTeammateMessages.displayName(for: key, in: rowActions?.appState.botRoster ?? [])
+        return running
+            ? AppLocalization.string("Messaging \(name)…")
+            : AppLocalization.string("Messaged \(name)")
     }
 
     /// The readable part of a finished call's result, if Conduit has one.
@@ -2768,7 +2868,7 @@ private struct SettledToolCardContent: View, Equatable {
                             // Large text: the time goes under the words
                             // instead of squeezing them.
                             AdaptiveStack(spacing: 6) {
-                                Text(running ? style.runningTitle : style.doneTitle)
+                                Text(stepTitle(tool, style: style, running: running))
                                     .font(.body)
                                     .foregroundStyle(running ? Color.conduitAccent : Color.primary)
                                     .lineLimit(sizeCategory.isAccessibilityCategory ? nil : 1)

@@ -284,4 +284,58 @@ final class BotMentionTests: XCTestCase {
             ["research-buddy", "researchbuddy"]
         )
     }
+
+    // MARK: - Teammate messages
+
+    func testATeammateDeliveryIsReadFromItsSignature() {
+        XCTAssertEqual(
+            BotTeammateMessages.inbound("Message from 🤖 Atlas (@atlas): Found three flights.\nThe cheapest is Tuesday."),
+            BotTeammateMessages.Inbound(sender: "Atlas", handle: "atlas", body: "Found three flights.\nThe cheapest is Tuesday.")
+        )
+        XCTAssertEqual(BotTeammateMessages.inbound("Message from 🤖 Atlas: hi")?.handle, "Atlas")
+        XCTAssertEqual(BotTeammateMessages.inbound("Message from Scout (@scout@laptop): yo")?.handle, "scout")
+        XCTAssertEqual(
+            BotTeammateMessages.inbound("[Message from agent 'scout'] hello"),
+            BotTeammateMessages.Inbound(sender: "scout", handle: "scout", body: "hello")
+        )
+    }
+
+    func testAnUnsignedMessageFromStaysTheUsersText() {
+        XCTAssertNil(BotTeammateMessages.inbound("Message from Mom: call me back"), "no bot signature")
+        XCTAssertNil(BotTeammateMessages.inbound("Can you pass a message from 🤖 Atlas: on?"))
+        XCTAssertNil(BotTeammateMessages.inbound("hello"))
+    }
+
+    func testDeliveriesNameTheirTeammate() {
+        XCTAssertEqual(
+            BotTeammateMessages.deliveryTarget(toolName: "message_agent", input: #"{"target":"@Scout@laptop","message":"hi"}"#),
+            "scout"
+        )
+        XCTAssertEqual(
+            BotTeammateMessages.deliveryTarget(
+                toolName: "terminal",
+                input: #"{"command":"hermes -p scout chat --in ~ -c \"Bot Chat\" -Q -q \"Message from 🤖 atlas (@atlas): hi\""}"#
+            ),
+            "scout"
+        )
+        XCTAssertNil(BotTeammateMessages.deliveryTarget(toolName: "terminal", input: #"{"command":"ls -la"}"#))
+        XCTAssertNil(BotTeammateMessages.deliveryTarget(toolName: "message_agent", input: #"{"message":"hi"}"#))
+        XCTAssertNil(BotTeammateMessages.deliveryTarget(toolName: "web_search", input: #"{"target":"scout"}"#))
+    }
+
+    func testATeammateIsNamedFromTheRoster() {
+        let roster = [bot("scout", title: "Trip Scout"), bot("atlas")]
+        XCTAssertEqual(BotTeammateMessages.bot(named: "@Scout", in: roster)?.name, "scout")
+        XCTAssertEqual(BotTeammateMessages.bot(named: "trip-scout", in: roster)?.name, "scout")
+        XCTAssertEqual(BotTeammateMessages.displayName(for: "scout", in: roster), "Trip Scout")
+        XCTAssertEqual(BotTeammateMessages.displayName(for: "nova", in: roster), "nova", "a bot not in the roster keeps its key")
+    }
+
+    func testAMenuMentionIsSpacedOffTheDraft() {
+        let scout = MentionAutocomplete.Candidate(tag: "scout", title: "Scout")
+        XCTAssertEqual(MentionAutocomplete.inserting("", with: scout), "@scout ")
+        XCTAssertEqual(MentionAutocomplete.inserting("ask", with: scout), "ask @scout ")
+        XCTAssertEqual(MentionAutocomplete.inserting("ask ", with: scout), "ask @scout ")
+        XCTAssertEqual(MentionAutocomplete.inserting("ask @sc", with: scout), "ask @scout ", "a typed @query is completed")
+    }
 }

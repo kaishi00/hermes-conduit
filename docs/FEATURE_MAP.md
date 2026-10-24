@@ -482,6 +482,40 @@ describes them (the editor's footers and README.md's bots line)
 
 **Checked:** 2026-10-24, at #1179.
 
+## Bot mentions and teammate messages
+
+How the user brings another bot into a chat, and how bots' messages to each
+other read in it.
+
+**Siblings:** the @ list while typing · Mention a Bot in the composer's + menu ·
+chats, project chats and Bot Chats (the chat's own bot is left out) · group
+rooms (their own @ list and recipient picks) · the note that tells the bot
+who each tag is · a teammate's delivery in the chat ("Message from Atlas") ·
+the sender's step ("Messaged Atlas") · the Live Activity's tool line ·
+Hermes Desktop's bot chat · chat list previews · Read Aloud and live voice ·
+the bot's SOUL messaging section · README.md's bots line
+
+**Code**
+- Tags and the note to the bot: `Conduit/Services/BotMentions.swift`, `Conduit/Services/GroupChatModels.swift` (MentionAutocomplete)
+- Composer: `Conduit/Views/Components/ComposerBar.swift` (mentionCandidates, attachmentButton), `Conduit/Views/Components/GroupRoomComposer.swift`
+- Teammate messages: `Conduit/Services/BotTeammateMessages.swift`, `Conduit/Views/ChatView.swift` (TeammateMessageNote, SettledToolCardContent.stepTitle)
+- Tool categories: `Shared/Widgets/HermesTurnActivity.swift`
+- The messaging protocol a bot is born with: `Conduit/Services/BotManagement.swift` (BotSoul)
+
+**Rulings**
+- A tag is sent as typed; Conduit only adds a note naming the teammate, and the bot sends with its own `message_agent` tool. Nothing is delivered from the phone (upstream Desktop's mention middleware).
+- Mention a Bot inserts the same tag the @ list does, at the end of the draft (2026-10-24, #1181, Eric asked for an easier way to tag another bot).
+- A user turn signed "Message from 🤖 Name", "Message from Name (@handle)" or "[Message from agent 'name']" is a teammate's delivery and reads as a note with the bot's face, its text one tap away. An unsigned "Message from Name: …" stays the user's text, unlike Desktop (2026-10-24, #1181).
+- A `message_agent` call, or a terminal `hermes -p name chat … -q "Message from …"` run, reads as "Messaged Name" (2026-10-24, #1181).
+
+**Open gaps**
+- Chat list previews and quotes show a delivery's raw "Message from 🤖 …" text.
+- Read Aloud and live voice read a delivery as written.
+- Desktop folds the sender's reply to a delivery it asked for; Conduit shows every reply as usual.
+- Group rooms have no Mention a Bot item; their recipient picks do the same job.
+
+**Checked:** 2026-10-24, at #1181.
+
 ## Markdown lists in messages
 
 How a reply's lists read: numbering, loose lists, and the same list in every

@@ -1116,6 +1116,15 @@ enum MentionAutocomplete {
         return String(text[..<at]) + "@" + candidate.tag + " "
     }
 
+    /// The draft with `@tag ` added at its end, for a pick from a menu
+    /// rather than a typed `@`: a trailing `@query` is completed, otherwise
+    /// the tag is spaced off whatever the draft ends with.
+    static func inserting(_ text: String, with candidate: Candidate) -> String {
+        if activeQuery(in: text) != nil { return completing(text, with: candidate) }
+        let separator = text.isEmpty || text.last?.isWhitespace == true ? "" : " "
+        return text + separator + "@" + candidate.tag + " "
+    }
+
     /// Room members, then `@all`. Members without a handle cannot be routed
     /// and are left out.
     static func roomCandidates(_ members: [GroupMember]) -> [Candidate] {

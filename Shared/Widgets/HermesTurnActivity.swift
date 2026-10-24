@@ -94,7 +94,7 @@ enum HermesToolCategory: String, Codable, CaseIterable {
         "web_search": .web, "web_extract": .web, "web_crawl": .web,
         "delegate_task": .agents, "memory": .memory, "session_search": .memory,
         "vision_analyze": .images, "image_generate": .images, "text_to_speech": .audio,
-        "todo": .planning, "cronjob": .schedule, "send_message": .messages,
+        "todo": .planning, "cronjob": .schedule, "send_message": .messages, "message_agent": .messages,
         "skill_view": .skills, "skills_list": .skills, "skill_manage": .skills,
     ]
     private static let prefixes: [(String, HermesToolCategory)] = [
