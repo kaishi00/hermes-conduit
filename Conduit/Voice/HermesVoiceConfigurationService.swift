@@ -498,16 +498,6 @@ final class HermesVoiceConfigurationService: ObservableObject {
         }
     }
 
-    /// Call after a live voice operation reports that a route is absent. This
-    /// does not disconnect Hermes or change ordinary text-chat capabilities.
-    func markAudioEndpointUnavailable(kind: VoiceProviderDescriptor.Kind, reason: String) {
-        switch kind {
-        case .stt: snapshot.capability.supportsTranscription = false
-        case .tts: snapshot.capability.supportsSpeech = false
-        }
-        snapshot.capability.unavailableReason = reason
-    }
-
     private func result(for path: String) async -> Result<[String: Any], Error> {
         do { return .success(try await requester.requestJSON(path: profilePath(path), method: "GET", body: nil)) }
         catch { return .failure(error) }

@@ -535,14 +535,6 @@ extension AppState {
         }
     }
 
-    /// What the live call from Hermes waits on, read from its chat's card
-    /// with the choices and what Hermes wrote before asking; nil while the
-    /// card isn't there, when the push's reason stands in.
-    func liveHermesCallWaiting() -> HermesCallWaiting? {
-        guard let call = liveHermesCall else { return nil }
-        return hermesCallWaiting(call)
-    }
-
     /// `liveHermesCall`'s instructions for the live model, with what its
     /// chat's card says. Read by the session builders, so a reconnect gets
     /// the card as it stands then.

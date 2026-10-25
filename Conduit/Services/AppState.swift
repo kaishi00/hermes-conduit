@@ -22195,12 +22195,6 @@ final class AppState: ObservableObject {
         profileOwnershipVerdict(for: profile)
     }
 
-    /// The persisted selection for a workspace, so a test can pin that the
-    /// conversation's KIND — not just its id — survived restoration.
-    func storedSessionReferenceForTesting(_ profile: String) -> SessionReference? {
-        chatResumeCoordinator.lastSession(for: profile)
-    }
-
     func adoptActiveSessionForWidgetTesting(_ sessionID: String) {
         setActiveSessionState(id: sessionID)
     }

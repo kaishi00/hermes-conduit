@@ -743,19 +743,6 @@ extension View {
                 }
         }
     }
-
-    @ViewBuilder
-    func conduitGlassButtonStyle(prominent: Bool = false) -> some View {
-        if #available(iOS 26.0, *) {
-            if prominent {
-                self.buttonStyle(.glassProminent)
-            } else {
-                self.buttonStyle(.glass)
-            }
-        } else {
-            self.buttonStyle(.plain)
-        }
-    }
 }
 
 extension View {

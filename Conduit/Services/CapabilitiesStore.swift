@@ -454,10 +454,6 @@ final class CapabilitiesStore: ObservableObject {
         if case .failed = connectorInstalls[name] { connectorInstalls[name] = nil }
     }
 
-    func clearSkillInstallFailure(_ identifier: String) {
-        if case .failed = skillInstalls[identifier] { skillInstalls[identifier] = nil }
-    }
-
     /// Starts a server's OAuth sign-in; the person finishes it in the
     /// browser at the returned address.
     func startSignIn(_ name: String) async throws -> (flowID: String, url: URL) {
