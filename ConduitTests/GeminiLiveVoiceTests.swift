@@ -3358,6 +3358,23 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(socket.sent.last, "a4")
     }
 
+    func testLiveVoiceSocketWriterCountsTheAudioFrameOnTheSocket() async {
+        let socket = StallingLiveSocket()
+        let writer = LiveVoiceSocketWriter(socket: socket, maxQueuedAudio: 2)
+        var outcomes: [String: Bool] = [:]
+        func note(_ name: String) -> @MainActor (Error?) -> Void { { outcomes[name] = $0 == nil } }
+
+        XCTAssertTrue(writer.enqueue(["a1"], isAudio: true, done: note("a1")))
+        await settle(until: { socket.isStalled })
+        XCTAssertTrue(writer.enqueue(["a2"], isAudio: true, done: note("a2")))
+        XCTAssertFalse(writer.enqueue(["a3"], isAudio: true, done: note("a3")), "the stalled frame takes one place in the bound")
+        XCTAssertEqual(writer.droppedAudio, 1)
+
+        socket.release()
+        await settle(until: { outcomes.count == 2 })
+        XCTAssertEqual(socket.sent, ["a1", "a2"])
+    }
+
     func testClosedLiveVoiceSocketWriterFailsWhatItStillHeld() async {
         let socket = StallingLiveSocket()
         let writer = LiveVoiceSocketWriter(socket: socket)
