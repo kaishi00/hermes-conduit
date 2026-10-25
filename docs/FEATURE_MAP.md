@@ -1906,8 +1906,9 @@ on, and go when it turns off. They slide in and out on the app's motion
 curve rather than popping in one frame.
 
 **Siblings:** Calls from Hermes · Location (talking and background layers) ·
-Health (detailed readings per category) · Phone (Reminders read only,
-attendee email addresses) · Voice: Enable voice on this device (the setup
+Health (detailed readings per category, and sharing turned on from its
+consent sheet) · Phone (Reminders read only, attendee email addresses, and
+sharing turned on from its consent sheet) · Voice: Enable voice on this device (the setup
 checklist and tests), Hands-free on your speech server (its speech server
 section), the wake phrase · Live call style's greeting · Sync across devices ·
 Cloudflare Access's service token · a connector's Turned on (Capabilities) ·
