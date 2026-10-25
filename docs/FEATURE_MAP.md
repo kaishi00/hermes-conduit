@@ -78,7 +78,7 @@ the host answers with the user's words (`_local_live_call_answer`).
 - Call from Hermes: `Conduit/Voice/HermesCalls.swift` (instructionBlock), `Conduit/Services/AppState+HermesCalls.swift` (liveHermesCallInstructions, noteHermesCallChatWaiting, answerHermesCallApproval, answerHermesCallQuestion, watchHermesCallWaiting)
 - Phone changes: `Conduit/Phone/PhoneChangeConfirmation.swift`, `Conduit/Phone/PhoneVoiceTools.swift` (confirmsChange)
 - Call-screen confirmations: `Conduit/Services/PresentedScreens.swift` (PresentedConfirm.isConfirmed), `Conduit/Voice/VoiceBackgroundJobs.swift` (VoiceThreadRouting.containsRefusal), tests in `ConduitTests/PresentedScreensTests.swift`
-- Watch: `ConduitWatch/WatchCallView.swift` (WatchApprovalCard), `ConduitWatch/WatchDirectCallModel.swift` (answerCallThroughRelay), `ConduitWatch/WatchBridgeCallModel.swift` (answerCall), `Shared/WatchVoice/WatchCallAnswer.swift`, `Shared/WatchVoice/WatchJobRelay.swift`, `Conduit/Watch/WatchDirectBroker.swift` (grants), `Conduit/Watch/WatchToolGrantClient.swift` (answer_sessions, answer_approvals), `Conduit/Watch/WatchSettingsSection.swift`
+- Watch: `ConduitWatch/WatchCallView.swift` (WatchApprovalCard), `ConduitWatch/WatchDirectCallModel.swift` (answerCallThroughRelay, answerApprovalByVoice, answer: said as a text update when the call reconnects), `ConduitWatch/WatchBridgeCallModel.swift` (answerCall), `Shared/WatchVoice/WatchCallAnswer.swift`, `Shared/WatchVoice/WatchJobRelay.swift`, `Conduit/Watch/WatchDirectBroker.swift` (grants), `Conduit/Watch/WatchToolGrantClient.swift` (answer_sessions, answer_approvals), `Conduit/Watch/WatchSettingsSection.swift`
 - Group rooms: `Conduit/Views/GroupChatView.swift` (GroupApprovalCard)
 - Resume jump: `Conduit/Services/ChatResumeCoordinator.swift` (pendingClarifyMessageID), `Conduit/Views/ChatView.swift` ("Go to your question", "Go to the approval")
 - Settings text: `Conduit/Views/GeminiLiveViews.swift`
@@ -101,7 +101,7 @@ the host answers with the user's words (`_local_live_call_answer`).
 **Open gaps**
 - Group rooms: the card's failure line shows the error text raw, while the chat card reveals hidden characters in its error and expiry text (#951 follow-up).
 
-**Checked:** 2026-10-24, at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
+**Checked:** 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
 
 ## Voice follow-ups
 
@@ -169,7 +169,7 @@ the saved transcript's job cards · `docs/VOICE_BACKGROUND_JOBS.md`
 - Classic: `Conduit/Voice/VoiceConversationController.swift`
 - Call screen: `Conduit/Views/LiveVoiceCallJobs.swift` (LiveVoiceJobCard, LiveVoiceCallTimeline), `Conduit/Services/AppState+PresentedScreens.swift` (cards Hermes shows)
 - Saved transcript: `Conduit/Services/AppState.swift` (voiceJobStartedNote), `Conduit/Voice/VoiceJobLinkNote.swift`, `Conduit/Views/VoiceJobLinkCard.swift`
-- Watch: `Shared/WatchVoice/WatchJobRelay.swift` (notice), `ConduitWatch/WatchDirectCallModel.swift`, `ConduitWatch/WatchBridgeCallModel.swift`
+- Watch: `Shared/WatchVoice/WatchJobRelay.swift` (notice), `ConduitWatch/WatchDirectCallModel.swift` (answer, lostAnswerText), `ConduitWatch/WatchBridgeCallModel.swift`, `Conduit/Watch/WatchDirectBroker.swift` (lateAnswers, jobRefusal)
 - Notifier (Watch relay jobs): `notifier/dashboard/plugin_api.py`
 
 **Rulings**
@@ -177,11 +177,12 @@ the saved transcript's job cards · `docs/VOICE_BACKGROUND_JOBS.md`
 - Results show during the call as job cards on the call screen, on the phone only, with no writes to the host mid-call (2026-10-03, #364).
 - The saved transcript links each job the call started, drawn as a card (2026-10-03, #358; 2026-10-18, #758).
 - Local Live agent calls announce results; calls that hand each turn to Hermes drop them (2026-10-23, #1160).
+- On the Watch, a job answered as accepted that Hermes then refuses is taken back as news, and an answer that can't go on its call while the session reconnects is said as a text update, as the phone's fallback is (2026-10-24, #1221).
 
 **Open gaps**
 - GPT-Live's model can't put a card on the call screen: Gemini, Grok and Local Live agent have `show_on_screen`, GPT-Live has no marker for it. Cards Hermes shows still appear (#366).
 
-**Checked:** 2026-10-24, at 78f21da; at #1191: a cut screen card keeps its last line unless it can be half a fence, so prose that opens with inline code stays (#926 review), and message.interim counts as a job's progress (#912 review).
+**Checked:** 2026-10-24, at #1221, for the Watch's late refusals and answers lost to a reconnect; at 78f21da; at #1191: a cut screen card keeps its last line unless it can be half a fence, so prose that opens with inline code stays (#926 review), and message.interim counts as a job's progress (#912 review).
 
 ## Tools and consent in calls
 
@@ -261,7 +262,7 @@ Hermes · Resume Call · memory at call end (notifier)
 - Recording and saving: `Conduit/Voice/VoiceHistory.swift` (VoiceTranscriptRecorder, VoiceTranscriptSaveRequest, VoiceCallChatLink)
 - In the app: `Conduit/Services/AppState.swift` (chatCallReconnectWindow, isArchivedVoiceChat, saveWatchVoiceCall)
 - The call's card in its chat: `Conduit/Views/VoiceChatCallTranscriptSheet.swift`
-- Watch: `Conduit/Watch/WatchDirectBroker.swift`
+- Watch: `Conduit/Watch/WatchDirectBroker.swift`, `ConduitWatch/WatchDirectCallModel.swift` (trimTranscript), `ConduitWatch/WatchBridgeCallModel.swift` (trimTranscript), `Shared/WatchVoice/WatchVoiceWire.swift` (DirectTranscript)
 - Notifier: `notifier/dashboard/plugin_api.py` (/voice/sessions, /voice/chat-calls, /voice/archive), `notifier/voice_archive.py`
 
 **Rulings**
@@ -271,11 +272,37 @@ Hermes · Resume Call · memory at call end (notifier)
 - A call that stands alone, and a chat a Classic call created, are archived when the call ends; a typed turn brings them back (2026-10-22, #1127, notifier #295).
 - Ending a call runs Hermes' session-end hooks and memory commit; a call kept with its chat writes memory under the chat (2026-10-06, notifier #46; 2026-10-13, notifier #98).
 - A call's turns stay in memory until the host has them; each capture starts after the last line it took, and rescans only when the engine changed a line before it (2026-10-24, #1222, from #1004).
+- A Watch call, in every voice mode, keeps only the newest 40 KB of its transcript while it runs, the most its saved call can carry. Lines still in use (an open line, the user turn a tool call answers) and a single newest turn over 40 KB are kept whole; the saved call clips them (2026-10-24, #1221).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-24, at #1222; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review).
+**Checked:** 2026-10-24, at #1222 (capture cursor); at #1221, for the Watch's transcript tail; at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review).
+
+## The Watch call log
+
+Timings and connection events from Watch calls, never what was said, kept
+on the Watch and sent to the iPhone, where the user shares them for a
+support question.
+
+**Siblings:** the Watch's batcher and its unsent file · the Watch's own log
+file and its Clear button · the iPhone's copy, with Share call log and Clear
+Log in Voice settings > Apple Watch · the iPhone's own Watch-call lines
+(WatchVoiceLink)
+
+**Code**
+- Watch: `ConduitWatch/WatchCallLog.swift`, `ConduitWatch/WatchHomeView.swift` (Clear), `Shared/WatchVoice/WatchCallLogBatch.swift`
+- iPhone: `Conduit/Watch/WatchPhoneCallLog.swift`, `Conduit/Watch/WatchVoiceLink.swift` (note), `Conduit/Watch/WatchSettingsSection.swift`
+
+**Rulings**
+- Lines travel in batches of up to 50 lines or 32 KB, about 30 seconds after the oldest, and at once around a call's end.
+- While WatchConnectivity can't deliver, the waiting lines keep to 600 lines and 300 KB in memory and when the next run restores them, and the unsent file is written again from them once it passes twice that; past the budget the oldest go, and a first `watchLogDropped` line says how many (2026-10-24, #1221).
+- The iPhone appends whatever lines arrive, the dropped line included.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-24, at #1221.
 
 ## Calls from Hermes
 
@@ -460,12 +487,13 @@ confirmation and README say about restarts
 - App Store builds are asked only below the stable floor, TestFlight and Xcode builds for every version on notifier main (2026-10-20, #984; 2026-10-23, #1166, Eric).
 - The notice stays until the update truly ends: after the host is done, it shows Reconnecting until Conduit is back, has read the new plugin and the gateway serves, and only then says the plugin is ready. A failure the plugin's report contradicts (the new version runs) reads as ready, not as a silent close (2026-10-24, Eric's report on build 228).
 - A gateway restart that takes the dashboard down with it (a service manager restarting both) still finishes the host job: the restarted dashboard marks it done when it loaded the new version (2026-10-24, notifier 0.69.1).
+- The notice's What's New opens the notes in a sheet, presented by the notes it shows (a sheet item, not a flag); Settings shows the same notes inline in a disclosure (2026-10-25, Eric's report of a blank sheet, #1227).
 
 **Open gaps**
 - Hermes Desktop's own serve process on the host keeps the old plugin until Desktop restarts; nothing tells the user.
 - A dashboard without a fixed basic-auth secret signs Conduit out at every restart; the updater signs in again, but the chat may land on the sign-in screen.
 
-**Checked:** 2026-10-25, at #1222 (install and update requests wait in the profile config queue); before that main 79a5319.
+**Checked:** 2026-10-25, at #1222 (install and update requests wait in the profile config queue); at #1227: the notice's What's New sheet opened blank; Settings' disclosure and the notifier's CHANGELOG.md needed no change.
 
 ## Notifications
 
@@ -486,11 +514,12 @@ Dashboards and the Profiles sheet)
 - App: `Conduit/Services/PushNotificationService.swift` (showPreviews; the relay registration and its updates), `Conduit/Services/AppState.swift` (openNotificationTarget, routeBotOwnedNotification), `Conduit/Services/ChatOnScreen.swift`, `Conduit/Services/AppState+ChatOnScreen.swift`, `Conduit/Services/CronNotifications.swift`, `Conduit/Services/ReplySourceNotifications.swift`
 - Missed calls: `Conduit/Voice/HermesCalls.swift`
 - Settings: `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Views/SavedDashboardsView.swift` (padlock on dashboard rows, also drawn by `Conduit/Views/ProfilePickerSheet.swift`)
-- Notifier: `notifier/events.py` (push_event), `notifier/session_titles.py`, `notifier/chat_on_screen.py`, `notifier/e2e.py`, `notifier/relay/src/apns.mjs`
+- Notifier: `notifier/events.py` (push_event, plain_text, media_free, sanitize_decision, sanitize_call), `notifier/session_titles.py`, `notifier/chat_on_screen.py`, `notifier/e2e.py`, `notifier/relay/src/apns.mjs`
 
 **Rulings**
 - Notifications follow the App Language: the extension builds the words from the event's title_label and session_title (2026-10-23, #1158, notifier #326).
 - Pushes are titled with the Hermes session title (2026-10-12, notifier #93 and #94).
+- No push shows a host path: replies (Bot Chat and Pulse included), background tasks, failed turns, questions, approvals, calls, updates and phone changes show each MEDIA tag as 📎 and the file's name, or its type when the name is only a hash, in the plain and the sealed copy alike, and so do the answer card and the call screen that come with them; a reply's fenced code stays as written (2026-10-24, Eric's review, #1212, notifier #348).
 - A reply's push stays quiet while its chat is on screen and in use (2026-10-22, #1132, notifier #301).
 - A push from a Bot Chat opens the Bot Chat (2026-10-16, #654), and a call from one opens the bot (2026-10-16, #630).
 - Notification status in Settings is for the active dashboard only (2026-10-05, #395).
@@ -505,7 +534,7 @@ Dashboards and the Profiles sheet)
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
 - A registration update landing after a relay move is dropped rather than written onto the new registration (#865 follow-up, #1191); the move itself has no test seam (it registers through URLSession.shared).
 
-**Checked:** 2026-10-24, at #1197, carried in #1217 (encryption keys and padlock; fork CI #82); the registration update race at #1191.
+**Checked:** 2026-10-24, #1212 (MEDIA tags in pushes, answer cards and the call screen); at #1197, carried in #1217 (encryption keys and padlock; fork CI #82); the registration update race at #1191.
 
 ## Pulse
 
@@ -565,7 +594,7 @@ group rooms (no Artifacts list) · the notifier's artifacts route · README.md
 
 **Code**
 - List model and merge: `Conduit/Services/Artifacts.swift` (ArtifactItem, ArtifactSource, ArtifactFeed, ArtifactsClient)
-- Which stores a list reads, Show in Chat: `Conduit/Services/AppState+Artifacts.swift` (artifactSources, showArtifactInChat)
+- Which stores a list reads, a chat's ids, Show in Chat: `Conduit/Services/AppState+Artifacts.swift` (artifactSources, activeChatArtifactSessionIDs, botChatIDs, showArtifactInChat)
 - Screens: `Conduit/Views/V2/V2ArtifactsViews.swift`
 - A chat's store: `Conduit/Services/AppState.swift` (botStoreProfile, openLinkedBotChat, openOtherProfileChat)
 - Host: `notifier/artifacts_index.py`, `notifier/dashboard/plugin_api.py` (GET /artifacts, one profile per request)
@@ -575,13 +604,15 @@ group rooms (no Artifacts list) · the notifier's artifacts route · README.md
 - Stores are read one at a time (the host reads two lists at once at most) and each shows as it arrives; a refresh keeps the list it is refreshing until every store answers. A bot's chat or other profile that can't be read leaves the rest listed.
 - A bot whose profile is read whole (the profile in use, or one All shows) isn't read again for its Bot Chat; that chat's rows still go by the bot's name and open the way Bots opens them.
 - The profile in use is always read, even when All leaves it out.
+- A Bot Chat has no row in the workspace's chat list, so its ⋯ menu finds its ids from the chat itself (with the durable id Hermes confirmed under the bot's profile, so a relaunch or a reopened runtime still finds it) and the roster's registry id and lineage tip (2026-10-24, #1218, Eric's report: the item was greyed out).
+- A picture image generation made is listed: the host reads `image_generate`'s result, a saved file as a written image and a hosted one as an image link (2026-10-24, #1218 with notifier #353, plugin 0.71.1, Eric's report: a bot's generated pictures were missing).
 - One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
 - A file still opening is dropped when the list moves to another server or profile, and only the latest open clears the spinner. Every reload, including one on a dashboard without artifacts, outdates the request before it (2026-10-24, from #895's review, #1191).
 
 **Open gaps**
 - Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
 
-**Checked:** 2026-10-24, at #1203; opens and reloads at #1191.
+**Checked:** 2026-10-24, #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
 
 ## Bots: create and edit
 
@@ -1085,7 +1116,8 @@ the plugin list)
 `config.set` (model, reasoning, speed, yolo for one chat) changes no config
 file either. `profiles.create` (New Bot, Duplicate) writes a new profile's
 first config, which nothing else is saving yet, and Delete Bot
-(`DELETE /api/profiles/{name}`) removes the whole profile, so neither waits.
+(`DELETE /api/profiles/{name}`) removes the whole profile, so neither waits. The notifier, the Watch and
+CarPlay don't write a profile's config.
 
 **Open gaps**
 - A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.
@@ -1098,7 +1130,8 @@ Saying a phrase while Conduit is open starts voice on that phrase's profile.
 
 **Siblings:** the foreground listener (iPhone and CarPlay) · Settings' Wake
 phrase section and its captions · Siri, Shortcuts and the Action button (the
-other ways to start, in Starting a call)
+other ways to start, in Starting a call) · the Sherpa wake service (not
+wired into the app, so not needed)
 
 **Code**
 - Listener: `Conduit/Voice/Wake/AppleSpeechWakeWordService.swift` (makeRecognizers, watchInterruption), `Conduit/Voice/Wake/WakeSpeechLocale.swift`, `Conduit/Voice/Wake/WakePhraseMatcher.swift`

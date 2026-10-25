@@ -16,6 +16,10 @@
 //  appends the text as one line, still writes valid JSON lines, and a
 //  newer one splits it.
 //
+//  While the link can't deliver (WatchConnectivity never activated), the
+//  lines wait within a budget, here, on disk and when a new run restores
+//  them: past it the oldest go, and a first line says how many (#1008).
+//
 
 import Foundation
 
@@ -30,6 +34,13 @@ struct WatchCallLogBatch: Equatable {
     static let maxBytes = 32_000
     /// After a call's summary, lines go at once for this long.
     static let afterCallSpan: TimeInterval = 60
+    /// The most lines kept waiting while none can be sent, the dropped
+    /// line's included...
+    static let maxWaitingLines = 600
+    /// ...and their bytes, a newline each.
+    static let maxWaitingBytes = 300_000
+    /// The event of the first waiting line once older ones were dropped.
+    static let droppedEvent = "watchLogDropped"
 
     /// What the caller does after adding a line.
     enum Action: Equatable {
@@ -44,16 +55,22 @@ struct WatchCallLogBatch: Equatable {
     private(set) var lines: [String] = []
     private var sendsAtOnceUntil: TimeInterval?
 
-    /// Lines kept from a run that ended before sending them.
+    /// Lines kept from a run that ended before sending them, within the
+    /// budget.
     init(restoring lines: [String] = []) {
         self.lines = lines
+        keepWithinBudget()
     }
+
+    /// Lines dropped to keep the budget, as the first waiting line says.
+    var droppedLines: Int { lines.first.flatMap(Self.droppedCount(in:)) ?? 0 }
 
     var isEmpty: Bool { lines.isEmpty }
 
     mutating func add(_ line: String, at now: TimeInterval) -> Action {
         let wasEmpty = lines.isEmpty
         lines.append(line)
+        keepWithinBudget()
         if let until = sendsAtOnceUntil, now < until { return .sendNow }
         sendsAtOnceUntil = nil
         if lines.count >= Self.maxLines || Self.bytes(of: lines) >= Self.maxBytes { return .sendNow }
@@ -106,7 +123,37 @@ struct WatchCallLogBatch: Equatable {
             .filter { !$0.isEmpty }
     }
 
-    private static func bytes(of lines: [String]) -> Int {
+    private static func bytes<Lines: Collection>(of lines: Lines) -> Int where Lines.Element == String {
         lines.reduce(0) { $0 + $1.utf8.count + 1 }
+    }
+
+    /// Drops the oldest waiting lines past the budget, counting them in
+    /// the first line. The newest line always stays.
+    private mutating func keepWithinBudget() {
+        guard lines.count > Self.maxWaitingLines || Self.bytes(of: lines) > Self.maxWaitingBytes else { return }
+        let earlier = lines.first.flatMap(Self.droppedCount(in:))
+        var waiting = earlier == nil ? lines[...] : lines.dropFirst()
+        var dropped = earlier ?? 0
+        var total = Self.bytes(of: waiting)
+        // Room for the dropped line at its longest count.
+        let marker = Self.droppedLine(Int.max).utf8.count + 1
+        while waiting.count > 1, waiting.count + 1 > Self.maxWaitingLines || total + marker > Self.maxWaitingBytes {
+            total -= waiting[waiting.startIndex].utf8.count + 1
+            waiting = waiting.dropFirst()
+            dropped += 1
+        }
+        lines = (dropped > 0 ? [Self.droppedLine(dropped)] : []) + Array(waiting)
+    }
+
+    /// The line that says how many older lines were dropped.
+    static func droppedLine(_ count: Int) -> String {
+        "{\"event\":\"\(droppedEvent)\",\"lines\":\(count),\"side\":\"watch\"}"
+    }
+
+    /// The count in a dropped line; nil for any other line.
+    static func droppedCount(in line: String) -> Int? {
+        let prefix = "{\"event\":\"\(droppedEvent)\",\"lines\":"
+        guard line.hasPrefix(prefix) else { return nil }
+        return Int(line.dropFirst(prefix.count).prefix { $0.isNumber })
     }
 }

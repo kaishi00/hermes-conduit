@@ -491,9 +491,10 @@ struct NotifierPluginUpdateBanner: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @State private var confirming = false
-    @State private var showsNotes = false
     /// The notes as they were when What's New was tapped: an hourly
-    /// changelog read can't empty the open sheet.
+    /// changelog read can't empty the open sheet. The sheet is presented
+    /// by this item, not a separate flag: a flag's sheet built its content
+    /// before it saw the notes and opened blank.
     @State private var shownNotes: NotifierPluginReleaseNotes?
 
     /// The finished update's timer starts over when Conduit reconnects.
@@ -514,10 +515,8 @@ struct NotifierPluginUpdateBanner: View {
         }
         .animation(.snappy, value: appState.showsNotifierPluginUpdateNotice)
         .notifierPluginUpdateConfirmation(isPresented: $confirming, install: isInstall)
-        .sheet(isPresented: $showsNotes) {
-            if let shownNotes {
-                NotifierPluginChangesSheet(notes: shownNotes)
-            }
+        .sheet(item: $shownNotes) { notes in
+            NotifierPluginChangesSheet(notes: notes)
         }
     }
 
@@ -566,7 +565,6 @@ struct NotifierPluginUpdateBanner: View {
                     } else if !line.isEmpty {
                         Button {
                             shownNotes = notes
-                            showsNotes = true
                         } label: {
                             Text(verbatim: line)
                                 .font(.footnote)
@@ -709,8 +707,9 @@ struct NotifierPluginChangesList: View {
 
 /// What the update to the offered version brings, and when that version
 /// came out, for the notice and Settings > Conduit plugin.
-struct NotifierPluginReleaseNotes: Equatable {
+struct NotifierPluginReleaseNotes: Equatable, Identifiable {
     var version: String
+    var id: String { version }
     var released: Date?
     var changes: [NotifierPluginChangelog.Change]
 
