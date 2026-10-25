@@ -123,8 +123,8 @@ struct PulseCard: Equatable, Identifiable {
     }
 }
 
-/// The Pulse screen's order: morning briefs with the cards they brought,
-/// then what's still open, then what's done or swiped away.
+/// The Pulse screen's order: morning briefs with the cards they brought
+/// (or their summary alone), then what's still open, then what's done or swiped away.
 struct PulseLayout: Equatable {
     struct Brief: Equatable, Identifiable {
         let card: PulseCard
@@ -132,6 +132,8 @@ struct PulseLayout: Equatable {
         let items: [PulseCard]
 
         var id: Int { card.id }
+        /// Brought no held cards (0.73.0): the brief is its summary alone.
+        var isSummary: Bool { items.isEmpty }
         var left: Int { items.filter { !$0.isCleared }.count }
         /// Every card it brought is done or swiped away.
         var isHandled: Bool { left == 0 }
@@ -157,11 +159,11 @@ struct PulseLayout: Equatable {
         var taken: Set<Int> = []
         var newest = true
         for card in cards where card.kind == "brief" && !card.brief.isEmpty {
-            guard let items = grouped[card.brief], !items.isEmpty else { continue }
+            let items = grouped[card.brief] ?? []
             let brief = Brief(card: card, items: items.sorted { ($0.createdAt ?? .distantPast, $0.id) < ($1.createdAt ?? .distantPast, $1.id) })
             taken.insert(card.id)
             taken.formUnion(items.map(\.id))
-            if !brief.isHandled || newest || items.contains(where: { keeping.contains($0.id) }) {
+            if !brief.isHandled || newest || keeping.contains(card.id) || items.contains(where: { keeping.contains($0.id) }) {
                 briefs.append(brief)
             } else {
                 clearedBriefs.append(brief)
@@ -173,7 +175,8 @@ struct PulseLayout: Equatable {
         }
     }
 
-    var clearedCount: Int { cleared.count + clearedBriefs.reduce(0) { $0 + $1.items.count } }
+    /// A brief that brought nothing counts as one.
+    var clearedCount: Int { cleared.count + clearedBriefs.reduce(0) { $0 + max(1, $1.items.count) } }
 }
 
 /// A kind's loudness on the ladder, loudest first.

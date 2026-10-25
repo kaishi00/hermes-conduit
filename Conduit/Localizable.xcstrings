@@ -340160,84 +340160,84 @@
         }
       }
     },
-    "Each look that finds something sends one notification. Things you've asked to hear less often wait for the morning brief instead." : {
+    "Each look that finds something sends one notification. The morning brief comes every day at its time with what's still open, today's calendar and reminders, and anything you've asked to hear less often." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jede Durchsicht, die etwas findet, sendet eine Mitteilung. Was du seltener hören wolltest, wartet stattdessen auf das Morgenbriefing."
+            "value" : "Jede Durchsicht, die etwas findet, sendet eine Mitteilung. Das Morgenbriefing kommt jeden Tag zu seiner Zeit, mit allem, was noch offen ist, dem heutigen Kalender und den Erinnerungen und allem, was du seltener hören wolltest."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cada revisión que encuentra algo envía una notificación. Lo que pediste oír con menos frecuencia espera al resumen matutino."
+            "value" : "Cada revisión que encuentra algo envía una notificación. El resumen matutino llega cada día a su hora con lo que sigue pendiente, el calendario y los recordatorios de hoy, y lo que pediste oír con menos frecuencia."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Chaque passage qui trouve quelque chose envoie une notification. Ce que vous avez demandé à entendre moins souvent attend plutôt le point du matin."
+            "value" : "Chaque passage qui trouve quelque chose envoie une notification. Le point du matin arrive chaque jour à son heure avec ce qui reste ouvert, l’agenda et les rappels du jour, et ce que vous avez demandé à entendre moins souvent."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Setiap pemeriksaan yang menemukan sesuatu mengirim satu notifikasi. Hal yang kamu minta lebih jarang didengar akan menunggu ringkasan pagi."
+            "value" : "Setiap pemeriksaan yang menemukan sesuatu mengirim satu notifikasi. Ringkasan pagi datang setiap hari pada waktunya dengan hal yang masih terbuka, kalender dan pengingat hari ini, serta hal yang kamu minta lebih jarang didengar."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ogni controllo che trova qualcosa invia una notifica. Le cose che hai chiesto di sentire meno spesso aspettano invece il riepilogo del mattino."
+            "value" : "Ogni controllo che trova qualcosa invia una notifica. Il riepilogo del mattino arriva ogni giorno alla sua ora con ciò che è ancora aperto, il calendario e i promemoria di oggi e le cose che hai chiesto di sentire meno spesso."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "何か見つかった確認ごとに通知を1件送ります。頻度を減らすよう頼んだものは、代わりに朝のブリーフまで待ちます。"
+            "value" : "何か見つかった確認ごとに通知を1件送ります。朝のブリーフは毎日決まった時刻に届き、まだ残っていること、今日の予定とリマインダー、頻度を減らすよう頼んだものをまとめます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "무언가를 찾은 확인마다 알림을 하나 보냅니다. 덜 자주 듣고 싶다고 한 항목은 대신 아침 브리핑까지 기다립니다."
+            "value" : "무언가를 찾은 확인마다 알림을 하나 보냅니다. 아침 브리핑은 매일 정해진 시간에 아직 남은 일, 오늘의 일정과 미리 알림, 덜 자주 듣고 싶다고 한 항목을 담아 도착합니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Każde przejrzenie, które coś znajdzie, wysyła jedno powiadomienie. To, o czym chcesz słyszeć rzadziej, poczeka na poranny przegląd."
+            "value" : "Każde przejrzenie, które coś znajdzie, wysyła jedno powiadomienie. Poranny przegląd przychodzi codziennie o swojej porze z tym, co wciąż otwarte, dzisiejszym kalendarzem i przypomnieniami oraz tym, o czym chcesz słyszeć rzadziej."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cada verificação que encontra algo envia uma notificação. O que você pediu para ouvir com menos frequência espera pelo resumo da manhã."
+            "value" : "Cada verificação que encontra algo envia uma notificação. O resumo da manhã chega todo dia no horário com o que ainda está em aberto, a agenda e os lembretes de hoje e o que você pediu para ouvir com menos frequência."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Каждый просмотр, который что-то находит, отправляет одно уведомление. То, о чём вы просили напоминать реже, будет ждать утренней сводки."
+            "value" : "Каждый просмотр, который что-то находит, отправляет одно уведомление. Утренняя сводка приходит каждый день в своё время: что ещё не сделано, календарь и напоминания на сегодня и то, о чём вы просили напоминать реже."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bir şey bulan her tarama bir bildirim gönderir. Daha seyrek duymak istediğin şeyler bunun yerine sabah özetini bekler."
+            "value" : "Bir şey bulan her tarama bir bildirim gönderir. Sabah özeti her gün kendi saatinde gelir: hâlâ açık olanlar, bugünün takvimi ve anımsatıcıları ve daha seyrek duymak istediğin şeyler."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每次查看有发现时会发送一条通知。你要求少提醒的事项会改为留到晨间简报。"
+            "value" : "每次查看有发现时会发送一条通知。晨间简报每天按时送达，包含仍未完成的事项、今天的日历和提醒，以及你要求少提醒的事项。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每次查看有發現時會傳送一則通知。你要求少提醒的事項會改為留到晨間簡報。"
+            "value" : "每次查看有發現時會傳送一則通知。晨間簡報每天準時送達，包含仍未完成的事項、今天的行事曆和提醒，以及你要求少提醒的事項。"
           }
         }
       }

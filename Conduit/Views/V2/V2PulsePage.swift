@@ -355,14 +355,15 @@ struct V2PulsePage: View {
     /// anything in it is, else one row that opens it again.
     @ViewBuilder private func briefRows(_ brief: PulseLayout.Brief) -> some View {
         // Open when a push pointed at one of its cards, even before focus() could expand it.
-        if brief.isHandled, !expandedBriefs.contains(brief.id), !brief.items.contains(where: { $0.id == focusedCard }) {
+        if !brief.isSummary, brief.isHandled, !expandedBriefs.contains(brief.id),
+           !brief.items.contains(where: { $0.id == focusedCard }) {
             handledBriefRow(brief)
                 .id(brief.card.id)
                 .pulseRow()
         } else {
             briefHeader(brief)
                 .id(brief.card.id)
-                .pulseRow(bottom: 0)
+                .pulseRow(bottom: brief.isSummary ? 6 : 0)
             ForEach(Array(brief.items.enumerated()), id: \.element.id) { index, item in
                 briefItem(item, last: index == brief.items.count - 1)
                     .accessibilityElement(children: .contain)
@@ -386,7 +387,7 @@ struct V2PulsePage: View {
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 0)
-                if brief.isHandled {
+                if brief.isHandled, !brief.isSummary {
                     Button {
                         withAnimation(.snappy) { _ = expandedBriefs.remove(brief.id) }
                     } label: {
@@ -411,12 +412,13 @@ struct V2PulsePage: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(briefBackground(top: true, bottom: false))
+        .background(briefBackground(top: true, bottom: brief.isSummary))
     }
 
-    /// "08:00 · 2 left".
+    /// "08:00 · 2 left", or "08:00" for a brief that brought no cards.
     private func briefStamp(_ brief: PulseLayout.Brief) -> String {
         let time = brief.card.createdAt.map { $0.formatted(date: .omitted, time: .shortened) }
+        if brief.isSummary { return time ?? "" }
         let left = brief.isHandled ? AppLocalization.string("All handled")
             : AppLocalization.string("\(Int(brief.left)) left")
         return [time, left].compactMap { $0 }.joined(separator: " · ")

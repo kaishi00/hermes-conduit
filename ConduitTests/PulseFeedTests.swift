@@ -277,6 +277,24 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(PulseLayout(cards: page.cards, keeping: [2]).open.map(\.id), [9, 3, 2])
     }
 
+    func testABriefThatBroughtNoCardsShowsAsItsSummary() throws {
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"cards": [
+          {"id": 9, "kind": "brief", "level": "push", "news": "A calm day.", "brief": "b3", "created_at": 300},
+          {"id": 8, "kind": "noticed", "topic": "date", "level": "screen", "news": "New", "created_at": 250},
+          {"id": 5, "kind": "brief", "level": "push", "news": "Yesterday", "brief": "b2", "created_at": 200}
+        ]}
+        """)))
+        let layout = PulseLayout(cards: page.cards)
+        XCTAssertEqual(layout.briefs.map(\.id), [9], "the newest brief stays at the top")
+        XCTAssertEqual(layout.briefs.first?.isSummary, true)
+        XCTAssertEqual(layout.open.map(\.id), [8])
+        XCTAssertEqual(layout.clearedBriefs.map(\.id), [5], "older ones fold into Done and cleared")
+        XCTAssertEqual(layout.clearedCount, 1)
+        // The one a push opened stays where it is.
+        XCTAssertEqual(PulseLayout(cards: page.cards, keeping: [5]).briefs.map(\.id), [9, 5])
+    }
+
     func testNotNowPostsTheCardToThePlugin() async throws {
         var calls: [(path: String, body: [String: Any]?)] = []
         let client = PulseClient { path, _, body in

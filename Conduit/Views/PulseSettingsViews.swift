@@ -207,7 +207,7 @@ struct PulseSettingsPage: View {
             }
             // The plugin takes the brief's time with the Pulse screen (0.55.0).
             if appState.notifierPlugin.reports(PulseClient.feedCapability) { briefTime(state) }
-            Text("Each look that finds something sends one notification. Things you've asked to hear less often wait for the morning brief instead.")
+            Text("Each look that finds something sends one notification. The morning brief comes every day at its time with what's still open, today's calendar and reminders, and anything you've asked to hear less often.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -359,7 +359,7 @@ struct PulseSettingsPage: View {
         }
     }
 
-    /// The morning brief: when cards held for it arrive together, with one push.
+    /// The morning brief: every day at this time, what's still open and the cards held for it, with one push.
     @ViewBuilder
     private func briefTime(_ state: PulseState) -> some View {
         DatePicker(
