@@ -813,8 +813,17 @@ struct V2PulsePage: View {
                 }
             }
         } label: {
-            Label(AppLocalization.string("Do it"), systemImage: "arrow.right.circle.fill")
-                .font(.footnote.weight(.semibold))
+            // The icon's colour is set outright: in a prominent button a
+            // Label's icon can take the tint, which is the button's own fill,
+            // and vanish, leaving the title alone at the right.
+            Label {
+                Text(AppLocalization.string("Do it"))
+            } icon: {
+                Image(systemName: "arrow.right.circle")
+                    .foregroundStyle(.white)
+            }
+            .labelStyle(.titleAndIcon)
+            .font(.footnote.weight(.semibold))
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.small)

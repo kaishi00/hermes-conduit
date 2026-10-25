@@ -267,6 +267,36 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(PulseCardKind.topic("something new"), PulseCardKind.topic(""))  // unknown topics read "Noticed"
     }
 
+    func testDoItsMessageFitsWhatTheCardIsAbout() throws {
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"cards": [
+          {"id": 1, "kind": "followup", "level": "push", "news": "The backup is still on the server", "chat_id": "work"},
+          {"id": 2, "kind": "noticed", "topic": "promise", "item_id": 4, "level": "screen", "news": "I still owe you the build check", "chat_id": "work"},
+          {"id": 3, "kind": "noticed", "topic": "commitment", "item_id": 5, "level": "screen", "news": "Renew your passport", "chat_id": "work"},
+          {"id": 4, "kind": "noticed", "topic": "reminder", "level": "screen", "news": "Send the release notes", "chat_id": ""},
+          {"id": 5, "kind": "noticed", "topic": "date", "level": "screen", "news": "Ana lands at 18:00", "chat_id": ""},
+          {"id": 6, "kind": "noticed", "topic": "watch", "level": "screen", "news": "The deploy is still flaky", "chat_id": "work"},
+          {"id": 7, "kind": "noticed", "topic": "interest", "level": "screen", "news": "A new Swift release is out", "chat_id": "work"},
+          {"id": 8, "kind": "noticed", "topic": "fact", "level": "screen", "news": "", "title": "Your sister is Ana", "chat_id": "work"},
+          {"id": 9, "kind": "noticed", "topic": "", "level": "screen", "news": "Something else", "chat_id": "work"}
+        ]}
+        """)))
+        let message = Dictionary(uniqueKeysWithValues: page.cards.map { ($0.id, $0.actionMessage) })
+        // What Hermes said it would do gets a go-ahead, whether the card is a
+        // follow-up or a remembered promise.
+        XCTAssertEqual(message[1], "Pulse reminded me: The backup is still on the server\n\nGo ahead with it now.")
+        XCTAssertEqual(message[2], "Pulse reminded me: I still owe you the build check\n\nGo ahead with it now.")
+        // What the user meant to do gets taken care of.
+        XCTAssertEqual(message[3], "Pulse reminded me: Renew your passport\n\nLet's take care of it now.")
+        XCTAssertEqual(message[4], "Pulse reminded me: Send the release notes\n\nLet's take care of it now.")
+        XCTAssertEqual(message[5], "Pulse brought this up: Ana lands at 18:00\n\nHelp me get ready for it.")
+        XCTAssertEqual(message[6], "Pulse brought this up: The deploy is still flaky\n\nWhere does that stand now?")
+        XCTAssertEqual(message[7], "Pulse brought this up: A new Swift release is out\n\nTell me more.")
+        // The title stands in for empty news; a fact or an unknown topic gets a look.
+        XCTAssertEqual(message[8], "Pulse brought this up: Your sister is Ana\n\nLet's look into it.")
+        XCTAssertEqual(message[9], "Pulse brought this up: Something else\n\nLet's look into it.")
+    }
+
     func testACardPointingAtPulsesOwnChatOpensNoChat() throws {
         let state = try appState()
         let page = try XCTUnwrap(PulseFeedPage(json: json("""

@@ -357213,6 +357213,416 @@
           }
         }
       }
+    },
+    "Pulse reminded me: %@\n\nGo ahead with it now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse hat mich erinnert: %@\n\nLeg jetzt damit los."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse me recordó: %@\n\nAdelante, hazlo ahora."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse m'a rappelé : %@\n\nVas-y, fais-le maintenant."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mengingatkan saya: %@\n\nSilakan lanjutkan sekarang."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mi ha ricordato: %@\n\nProcedi pure adesso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulseからのリマインダー：%@\n\n今すぐ進めてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse가 알려 준 일: %@\n\n지금 진행해 줘."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mi przypomniał: %@\n\nŚmiało, zrób to teraz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Pulse me lembrou: %@\n\nVá em frente com isso agora."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse напомнил мне: %@\n\nПриступай к этому сейчас."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse bana hatırlattı: %@\n\nHadi, şimdi yap."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提醒我：%@\n\n现在就去做吧。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提醒我：%@\n\n現在就去做吧。"
+          }
+        }
+      }
+    },
+    "Pulse brought this up: %@\n\nHelp me get ready for it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse hat das angesprochen: %@\n\nHilf mir, mich darauf vorzubereiten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mencionó esto: %@\n\nAyúdame a prepararme."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse a signalé ceci : %@\n\nAide-moi à m'y préparer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mengangkat ini: %@\n\nBantu saya bersiap untuk itu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse ha segnalato questo: %@\n\nAiutami a prepararmi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulseからのお知らせ：%@\n\n準備を手伝ってください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse가 알려 준 소식: %@\n\n준비하는 걸 도와줘."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse zwrócił na to uwagę: %@\n\nPomóż mi się do tego przygotować."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Pulse trouxe isto: %@\n\nMe ajude a me preparar para isso."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse обратил на это внимание: %@\n\nПомоги мне к этому подготовиться."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse bunu gündeme getirdi: %@\n\nBuna hazırlanmama yardım et."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提到了这件事：%@\n\n帮我做好准备。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提到了這件事：%@\n\n幫我做好準備。"
+          }
+        }
+      }
+    },
+    "Pulse brought this up: %@\n\nWhere does that stand now?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse hat das angesprochen: %@\n\nWie steht es damit jetzt?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mencionó esto: %@\n\n¿Cómo va eso ahora?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse a signalé ceci : %@\n\nOù en est-on maintenant ?"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mengangkat ini: %@\n\nBagaimana statusnya sekarang?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse ha segnalato questo: %@\n\nA che punto è adesso?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulseからのお知らせ：%@\n\n今はどうなっていますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse가 알려 준 소식: %@\n\n지금 상황이 어때?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse zwrócił na to uwagę: %@\n\nJak to teraz wygląda?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Pulse trouxe isto: %@\n\nComo isso está agora?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse обратил на это внимание: %@\n\nКак с этим обстоят дела сейчас?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse bunu gündeme getirdi: %@\n\nŞu an durum ne?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提到了这件事：%@\n\n现在进展如何？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提到了這件事：%@\n\n現在進展如何？"
+          }
+        }
+      }
+    },
+    "Pulse brought this up: %@\n\nTell me more." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse hat das angesprochen: %@\n\nErzähl mir mehr dazu."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mencionó esto: %@\n\nCuéntame más."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse a signalé ceci : %@\n\nDis-m'en plus."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mengangkat ini: %@\n\nCeritakan lebih lanjut."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse ha segnalato questo: %@\n\nDimmi di più."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulseからのお知らせ：%@\n\nもっと詳しく教えてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse가 알려 준 소식: %@\n\n더 자세히 알려 줘."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse zwrócił na to uwagę: %@\n\nOpowiedz mi więcej."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Pulse trouxe isto: %@\n\nMe conte mais."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse обратил на это внимание: %@\n\nРасскажи подробнее."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse bunu gündeme getirdi: %@\n\nDaha fazla anlat."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提到了这件事：%@\n\n再多说说。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提到了這件事：%@\n\n再多說說。"
+          }
+        }
+      }
+    },
+    "Pulse brought this up: %@\n\nLet's look into it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse hat das angesprochen: %@\n\nSchauen wir uns das an."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mencionó esto: %@\n\nVeamos de qué se trata."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse a signalé ceci : %@\n\nRegardons ça de plus près."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mengangkat ini: %@\n\nMari kita lihat lebih lanjut."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse ha segnalato questo: %@\n\nDiamoci un'occhiata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulseからのお知らせ：%@\n\n詳しく見てみましょう。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse가 알려 준 소식: %@\n\n같이 살펴보자."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse zwrócił na to uwagę: %@\n\nPrzyjrzyjmy się temu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Pulse trouxe isto: %@\n\nVamos dar uma olhada nisso."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse обратил на это внимание: %@\n\nДавай разберёмся с этим."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse bunu gündeme getirdi: %@\n\nHadi buna bir bakalım."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提到了这件事：%@\n\n我们来看看。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提到了這件事：%@\n\n我們來看看。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

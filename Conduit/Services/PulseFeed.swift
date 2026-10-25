@@ -119,11 +119,28 @@ struct PulseCard: Equatable, Identifiable {
     /// The card's heading: a report item's topic, else its kind.
     var heading: String { isNoticed ? PulseCardKind.topic(topic) : PulseCardKind.title(kind) }
 
-    /// What Do it leaves in that chat's composer: the reminder, and the ask
-    /// to take care of it, for the user to send or change.
+    /// What Do it leaves in that chat's composer: the reminder, and an ask
+    /// that fits what the card is about, for the user to send or change.
+    /// Something the user meant to do gets taken care of; what Hermes said
+    /// it would do (a follow-up, a promise) gets a go-ahead; a date ahead,
+    /// getting ready; something watched, where it stands; an interest, more
+    /// about it; anything else, a look.
     var actionMessage: String {
         let reminder = news.isEmpty ? title : news
-        return AppLocalization.string("Pulse reminded me: \(reminder)\n\nLet's take care of it now.")
+        switch kind == "followup" ? "promise" : topic {
+        case "promise":
+            return AppLocalization.string("Pulse reminded me: \(reminder)\n\nGo ahead with it now.")
+        case "commitment", "reminder", "intention", "follow-up":
+            return AppLocalization.string("Pulse reminded me: \(reminder)\n\nLet's take care of it now.")
+        case "date":
+            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nHelp me get ready for it.")
+        case "watch":
+            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nWhere does that stand now?")
+        case "interest":
+            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nTell me more.")
+        default:
+            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nLet's look into it.")
+        }
     }
 
     private static func formatted(_ news: String, markdown: Bool) -> AttributedString {
