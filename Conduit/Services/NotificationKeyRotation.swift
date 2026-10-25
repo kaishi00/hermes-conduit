@@ -80,9 +80,16 @@ enum NotificationKeyRotation {
         let createdAt: Date
     }
 
-    static func start(current: E2EKeyRecord, suite: String, now: Date = Date()) throws -> Pending {
-        let kidNew = NotificationE2E.newRecord(installationID: "", gatewayID: "", dashboardID: nil, profile: nil).kid
-        let xPrivate = Curve25519.KeyAgreement.PrivateKey()
+    /// `kidNew` and `xPrivate` are fresh for every real rotation; tests pass
+    /// fixed ones to replay a request the plugin answered.
+    static func start(
+        current: E2EKeyRecord,
+        suite: String,
+        now: Date = Date(),
+        kidNew fixedKidNew: String? = nil,
+        xPrivate: Curve25519.KeyAgreement.PrivateKey = Curve25519.KeyAgreement.PrivateKey()
+    ) throws -> Pending {
+        let kidNew = fixedKidNew ?? NotificationE2E.newRecord(installationID: "", gatewayID: "", dashboardID: nil, profile: nil).kid
         var inner: [String: String] = [
             "kid_new": kidNew,
             "suite": suite,

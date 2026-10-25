@@ -415,6 +415,50 @@ extension NotificationE2ETests {
                        "3e1d41576dbc23aae71465d40df6185ddc2dedef720e3f6da49a767b2f89b1fd")
     }
 
+    /// tests/rotation_classical_vector.json in hermes-conduit-notifier: a
+    /// classical (X25519-only) rotation the plugin's answer_rotation really
+    /// answered, the suite every iOS 17 to 25 device runs. The phone must
+    /// open that reply and reach the same secret.
+    func testAClassicalRotationMatchesThePlugin() throws {
+        let current = E2EKeyRecord(
+            kid: "0123456789abcdef0123456789abcdef", secret: Self.secret, installationID: "11111111-2222-3333-4444-555555555555",
+            gatewayID: "gw-1", dashboardID: nil, profile: nil, createdAt: now
+        )
+        let devicePrivate = try XCTUnwrap(NotificationE2E.base64URLDecoded("QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8"))
+        let deviceKey = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: devicePrivate)
+        let pending = try NotificationKeyRotation.start(
+            current: current, suite: NotificationKeyRotation.suiteClassical, kidNew: "fedcba9876543210fedcba9876543210",
+            xPrivate: deviceKey
+        )
+        // The plugin's recorded request carries this device's share.
+        let recorded: [String: String] = ["n": "G1bbJOSYgHDLmk24",
+                                          "ct": "frWCv8aycNJd8WKC3xj-tDboB5FYtHvuz1uckJvrnslmY-uVYmIelIm0O3KSlm_veDbks2zaE6LijvhaROO0EQJMxHIG3hQK_tF57D_jThoB7Ok7-CqiAQ7bXyJorxoX_WItM7jsjemXM9K8hLOoAMXTHo9IgxQUUdITQhUEYSWngUR7"]
+        let combined = try XCTUnwrap(recorded["ct"].flatMap(NotificationE2E.base64URLDecoded))
+        let box = try ChaChaPoly.SealedBox(
+            nonce: ChaChaPoly.Nonce(data: try XCTUnwrap(recorded["n"].flatMap(NotificationE2E.base64URLDecoded))),
+            ciphertext: combined.prefix(combined.count - 16), tag: combined.suffix(16)
+        )
+        let plain = try ChaChaPoly.open(box, using: NotificationE2E.keys(secret: current.secret).answer, authenticating:
+            NotificationKeyRotation.requestAAD(kid: current.kid, installationID: current.installationID,
+                                               gatewayID: current.gatewayID, suite: NotificationKeyRotation.suiteClassical))
+        let inner = try XCTUnwrap(JSONSerialization.jsonObject(with: plain) as? [String: String])
+        XCTAssertEqual(inner["xpub"], NotificationE2E.base64URL(deviceKey.publicKey.rawRepresentation))
+        XCTAssertEqual(inner["kid_new"], pending.kidNew)
+        XCTAssertEqual(inner["suite"], NotificationKeyRotation.suiteClassical)
+        XCTAssertNil(inner["ek"])
+        let reply: [String: Any] = [
+            "kid": "0123456789abcdef0123456789abcdef",
+            "kid_new": "fedcba9876543210fedcba9876543210",
+            "suite": "x25519",
+            "sealed": ["n": "NfqplFqJzYGbbg4Q",
+                       "ct": "gZzIeKHVc67cbdJwbY7DuTj7pa1v0Qy3UAnW4R57DQNG-Ao_uTauSxRZEljpIYkLBVA-dnVf0mC1-Hs4pBj3th6k3kLwaLfoJGSkCIRrUi5TxbUSOaBUtSlWgo0k7sM0GYWR7gb1akaW0ueO-wzEWtY3V-72Uv01fwT6skEzhe-a85e3ziiXb-o"],
+        ]
+        let rotated = try NotificationKeyRotation.finish(pending, reply: reply, dashboardID: nil, profile: nil, now: now)
+        XCTAssertEqual(NotificationE2E.base64URL(rotated.secret), "2DFqSXVOCpSVMZq_GdnfcMhJS-s-JJmdgKbJHulcM38")
+        XCTAssertEqual(rotated.kid, "fedcba9876543210fedcba9876543210")
+        XCTAssertEqual(rotated.suite, NotificationKeyRotation.suiteClassical)
+    }
+
     func testTheBestSuiteBothSidesRunIsChosen() {
         let both = [NotificationKeyRotation.suitePQ, NotificationKeyRotation.suiteClassical]
         XCTAssertEqual(NotificationKeyRotation.suite(hostSuites: both, supportsPQ: true), NotificationKeyRotation.suitePQ)
