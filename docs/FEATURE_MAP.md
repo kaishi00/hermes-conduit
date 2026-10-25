@@ -1035,17 +1035,17 @@ taking it: in order, with a bounded backlog, so a stalled socket doesn't
 pile up audio the model can't use.
 
 **Siblings:** Gemini Live · Grok Live · Local Live · GPT-Live (WebRTC) ·
-Classic's transcription streams · Watch calls (Gemini, Grok, Local Live)
+Classic's transcription streams · Watch calls (Gemini, Grok, Local Live; GPT-Live over the host's audio bridge)
 
 **Code**
 - The writer: `Shared/GeminiLive/LiveVoiceSocketWriter.swift`
 - Sessions: `Shared/GeminiLive/GeminiLiveSession.swift`, `Shared/GrokLive/GrokLiveSession.swift`, `Shared/LocalLive/LocalLiveSession.swift`
-- Watch: `ConduitWatch/WatchDirectCallModel.swift` (maxSendsInFlight, flushUplink; the same Gemini, Grok and Local Live sessions)
+- Watch: `ConduitWatch/WatchDirectCallModel.swift` (maxSendsInFlight, flushUplink; the same Gemini, Grok and Local Live sessions), `ConduitWatch/WatchBridgeCallModel.swift` (sendsInFlightLimit, GPT-Live's bridge socket)
 - Classic: `Conduit/Voice/SpeechServerTranscription.swift`, `Conduit/Voice/HermesLiveTranscription.swift` (sendChain)
 
 **Rulings**
-- Each connection's frames go out one at a time, in order. About two seconds of audio may wait, counted in capture chunks (96 of the tap's 21 ms buffers); audio past that is dropped as it arrives. Text turns and tool answers always wait their turn: they are a few each turn, so they aren't capped. Frames for a socket the session replaced fail instead of going out, and dropped audio is logged (2026-10-24, #1223).
-- GPT-Live's audio is WebRTC's to pace, and Classic's transcription streams keep a whole utterance, since dropping audio there loses words (2026-10-24, #1223).
+- Each connection's frames go out one at a time, in order. Up to 96 capture chunks of audio may wait, about two seconds of the tap's 1,024-frame buffers at 48 kHz (longer on a route that captures at a lower rate); audio past that is dropped as it arrives. Text turns and tool answers always wait their turn: they are a few each turn, so they aren't capped. Frames for a socket the session replaced fail instead of going out, and dropped audio is logged (2026-10-24, #1223).
+- GPT-Live's audio on the phone is WebRTC's to pace; on the Watch it goes over the host's audio bridge, already capped at 20 sends in flight. Classic's transcription streams keep a whole utterance, since dropping audio there loses words (2026-10-24, #1223).
 
 **Open gaps**
 - None known.
