@@ -132,7 +132,7 @@ struct PulseLayout: Equatable {
         let items: [PulseCard]
 
         var id: Int { card.id }
-        /// Brought no held cards (0.73.0): the brief is its summary alone.
+        /// Brought no held cards (0.76.0): the brief is its summary alone.
         var isSummary: Bool { items.isEmpty }
         var left: Int { items.filter { !$0.isCleared }.count }
         /// Every card it brought is done or swiped away.
@@ -177,6 +177,10 @@ struct PulseLayout: Equatable {
 
     /// A brief that brought nothing counts as one.
     var clearedCount: Int { cleared.count + clearedBriefs.reduce(0) { $0 + max(1, $1.items.count) } }
+
+    /// Nothing left on the screen: no open card, no brief with cards left,
+    /// and no brief that is its summary alone (it lists what's still open).
+    var isCaughtUp: Bool { open.isEmpty && briefs.allSatisfy { $0.isHandled && !$0.isSummary } }
 }
 
 /// A kind's loudness on the ladder, loudest first.

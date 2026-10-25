@@ -331,6 +331,8 @@ final class PulseFeedTests: XCTestCase {
         var handled = page
         if let index = handled.cards.firstIndex(where: { $0.id == 7 }) { handled.cards[index].doneAt = Date() }
         XCTAssertEqual(PulseLayout(cards: handled.cards).briefs.map(\.isHandled), [true])
+        XCTAssertFalse(layout.isCaughtUp)
+        XCTAssertTrue(PulseLayout(cards: handled.cards.filter { [8, 7, 6].contains($0.id) }).isCaughtUp)
         // The card a push opened stays where it is, though cleared.
         XCTAssertEqual(PulseLayout(cards: page.cards, keeping: [2]).open.map(\.id), [9, 3, 2])
     }
@@ -351,6 +353,9 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(layout.clearedCount, 1)
         // The one a push opened stays where it is.
         XCTAssertEqual(PulseLayout(cards: page.cards, keeping: [5]).briefs.map(\.id), [9, 5])
+        let alone = PulseLayout(cards: page.cards.filter { $0.kind == "brief" })
+        XCTAssertTrue(alone.open.isEmpty)
+        XCTAssertFalse(alone.isCaughtUp, "the summary lists what's still open")
     }
 
     func testNotNowPostsTheCardToThePlugin() async throws {

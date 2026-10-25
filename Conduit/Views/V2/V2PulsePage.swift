@@ -234,8 +234,10 @@ struct V2PulsePage: View {
         let layout = PulseLayout(cards: page.cards, keeping: focusedCard.map { [$0] } ?? [])
         let fresh = layout.open.filter { newCards?.contains($0.id) == true }
         let earlier = layout.open.filter { newCards?.contains($0.id) != true }
-        // A brief's new cards count too, though they show in its block.
-        let freshInBriefs = layout.briefs.flatMap(\.items).filter { !$0.isCleared && newCards?.contains($0.id) == true }
+        // A brief's new cards count too, though they show in its block; one
+        // that brought none counts as one.
+        let freshInBriefs = layout.briefs.flatMap { $0.isSummary ? [$0.card] : $0.items }
+            .filter { !$0.isCleared && newCards?.contains($0.id) == true }
         return ScrollViewReader { proxy in
             List {
                 Group {
@@ -308,8 +310,7 @@ struct V2PulsePage: View {
 
     /// The line under the title: how many are new, or that nothing is open.
     @ViewBuilder private func summary(_ layout: PulseLayout, new count: Int) -> some View {
-        let open = layout.open.count + layout.briefs.reduce(0) { $0 + $1.left }
-        if count > 0 || open == 0 {
+        if count > 0 || layout.isCaughtUp {
             Text(verbatim: count > 0 ? AppLocalization.string("\(count) new since you last looked")
                                      : AppLocalization.string("You're all caught up"))
                 .font(.subheadline)
