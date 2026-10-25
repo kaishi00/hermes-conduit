@@ -207,6 +207,10 @@ final class WatchBridgeCallModel: ObservableObject {
     @Published private(set) var transcript: [WatchVoiceWire.DirectTurn] = []
     /// Lines passed on with a delegation already.
     private var handledLines = 0
+    /// Settled lines dropped from the front to keep the call's tail, and
+    /// the user's among them, so counts of the user's lines still hold.
+    private var transcriptLinesDropped = 0
+    private var userLinesDropped = 0
     private var userLine = ""
     /// The profile's spoken end phrases: the user saying one ends the
     /// call once GPT-Live's goodbye has played, as on the iPhone.
@@ -841,6 +845,7 @@ final class WatchBridgeCallModel: ObservableObject {
             if !text.isEmpty {
                 transcript.append(.init(role: role == "user" ? .user : .assistant, text: text, at: Date()))
                 caption = String(text.suffix(120))
+                trimTranscript()
             }
             if role == "user", goodbyeHeardAt == nil, endRequestedAt == nil,
                VoiceSpokenCommands.asksToEndCall(text, endPhrases: endPhrases) {
@@ -1105,7 +1110,7 @@ final class WatchBridgeCallModel: ObservableObject {
         if !open.isEmpty { lines.append(.init(role: .user, text: open, handled: false)) }
         handledLines = transcript.count
         openLineDelegated = !open.isEmpty
-        delegationUserLines[id] = lines.filter { $0.role == .user }.count
+        delegationUserLines[id] = userLinesDropped + lines.filter { $0.role == .user }.count
         let request = WatchBridgeDelegation.request(itemText: itemText, lines: lines)
         let userWords = lines.filter { $0.role == .user && !$0.handled }.map(\.text).joined(separator: " ")
         let ownWords = itemText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? userWords : itemText
@@ -1493,7 +1498,20 @@ final class WatchBridgeCallModel: ObservableObject {
     /// any words of theirs has no line to count from.
     private func userSpokeAfter(_ delegationID: String) -> Bool {
         guard let known = delegationUserLines[delegationID], known > 0 else { return false }
-        return transcript.filter { $0.role == .user }.count > known
+        return userLinesDropped + transcript.filter { $0.role == .user }.count > known
+    }
+
+    /// Keeps the settled lines to what the saved call can hold (#1008):
+    /// the oldest go once a turn settles. A delegation takes its context
+    /// from the newest lines (WatchBridgeDelegation.request), and the
+    /// user's line still being heard is kept apart.
+    private func trimTranscript() {
+        let dropped = WatchVoiceWire.DirectTranscript.overflow(transcript)
+        guard dropped > 0 else { return }
+        userLinesDropped += transcript.prefix(dropped).filter { $0.role == .user }.count
+        transcript.removeFirst(dropped)
+        handledLines = max(0, handledLines - dropped)
+        transcriptLinesDropped += dropped
     }
 
     private var isQuiet: Bool {
@@ -1843,6 +1861,8 @@ final class WatchBridgeCallModel: ObservableObject {
         events = [:]
         transcript = []
         handledLines = 0
+        transcriptLinesDropped = 0
+        userLinesDropped = 0
         userLine = ""
         openLineDelegated = false
         assistantLine = ""
@@ -1958,6 +1978,7 @@ final class WatchBridgeCallModel: ObservableObject {
             "watchSuspendedMs": watchSuspendedMs,
             "watchGaps": watchGaps,
             "transcriptLines": saved.count,
+            "transcriptLinesDropped": transcriptLinesDropped,
             "transcriptQueued": queued,
             "batteryStart": batteryAtStart,
             "batteryEnd": battery,

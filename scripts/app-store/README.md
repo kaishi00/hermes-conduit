@@ -11,9 +11,18 @@ Results:
 - Artifact `app-store-screenshots`: one folder per device with `01-chats.png`
   and the rest, `preview-<device>.mp4` (ready to upload) and the raw
   `preview-<device>.mov`. Artifact `app-store-watch-screenshots` holds
-  the Watch shots.
-- Artifacts `app-store-logs` and `app-store-watch-logs`: the demo Hermes,
-  seeding, recorder and xcodebuild logs.
+  the Watch shots, including the approval card (`04-approval.png`).
+- `clips/`: short silent MP4s for the README and hermesconduit.app, recorded
+  by `record-clip.sh` from the same fixtures: `voice-<device>.mp4` (the live
+  voice orb mid-reply, 10 s) in each device's run, and `watch-speaking.mp4`
+  and `watch-approval.mp4` (8 s) in the Watch run. Each clip's recorder log
+  sits beside it as `clips/<name>.log`. The script needs ffmpeg; both jobs
+  install it. A failed phone clip is listed with the other missing screens at
+  the end of the run; the Watch job has no such list, so it fails its own step
+  after trying both clips.
+- Artifact `app-store-logs`: the demo Hermes, seeding, preview recorder and
+  xcodebuild logs. `app-store-watch-logs` holds the Watch build log. The clip
+  recorder logs travel with the clips in the screenshots artifacts.
 - Git ref `refs/app-store-shots/<run id>` (and `<run id>-watch`) with the same
   files minus large raw videos, for sessions that can't download artifacts:
   `git fetch origin refs/app-store-shots/<id> && git archive FETCH_HEAD | tar -x`.
@@ -36,7 +45,8 @@ Results:
    screens and saves each as a named attachment. Live voice screens use the
    DEBUG-only `-conduitScreenshotCall listening|speaking` fixture
    (`Conduit/Services/ScreenshotCallFixture.swift`); the Watch job launches the
-   Watch app with the same argument (`home|speaking|listening|ended`).
+   Watch app with the same argument (`home|speaking|listening|approval`;
+   `ended` and `approvalDenyOnly` also exist).
 5. `testRecordPreview` runs while `simctl io recordVideo` records; its
    `PREVIEW_MARK` lines and the recorder's stop time let `cut-preview.sh` cut
    the 30 s preview.

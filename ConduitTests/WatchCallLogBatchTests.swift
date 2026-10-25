@@ -136,6 +136,94 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertLessThanOrEqual(transfers, 13)
     }
 
+    /// While WatchConnectivity never activates, the waiting lines keep to
+    /// a budget, here and when the next run restores them, and the first
+    /// one says how many older lines went (#1008).
+    func testWatchCallLogWaitingLinesKeepToABudgetAndSayWhatWent() {
+        var batch = WatchCallLogBatch()
+        let extra = 25
+        for index in 1...(WatchCallLogBatch.maxWaitingLines + extra) {
+            _ = batch.add("{\"n\":\(index)}", at: 0)
+        }
+        XCTAssertFalse(batch.drain(deliverable: false) { _ in })
+        XCTAssertEqual(batch.lines.count, WatchCallLogBatch.maxWaitingLines)
+        XCTAssertEqual(batch.droppedLines, extra + 1)
+        XCTAssertEqual(batch.lines.first, WatchCallLogBatch.droppedLine(extra + 1))
+        XCTAssertEqual(batch.lines.last, "{\"n\":\(WatchCallLogBatch.maxWaitingLines + extra)}")
+
+        // A restored backlog past the budget keeps counting.
+        var restored = WatchCallLogBatch(restoring: batch.lines + ["{\"n\":\"a\"}", "{\"n\":\"b\"}"])
+        XCTAssertEqual(restored.lines.count, WatchCallLogBatch.maxWaitingLines)
+        XCTAssertEqual(restored.droppedLines, extra + 3)
+
+        // Sent, the count goes first and then starts over.
+        var sent: [String] = []
+        XCTAssertTrue(restored.drain(deliverable: true) { sent.append($0) })
+        XCTAssertEqual(sent.first.map(WatchCallLogBatch.lines(in:))?.first, WatchCallLogBatch.droppedLine(extra + 3))
+        XCTAssertEqual(restored.droppedLines, 0)
+        _ = restored.add("{\"n\":1}", at: 0)
+        XCTAssertEqual(restored.lines, ["{\"n\":1}"])
+        // The dropped line is a JSON line like the rest.
+        let marker = try? JSONSerialization.jsonObject(with: Data(WatchCallLogBatch.droppedLine(7).utf8)) as? [String: Any]
+        XCTAssertEqual(marker?["event"] as? String, WatchCallLogBatch.droppedEvent)
+        XCTAssertEqual(marker?["lines"] as? Int, 7)
+
+        // Big lines keep to the byte budget, the newest always kept.
+        let big = "{\"x\":\"" + String(repeating: "a", count: WatchCallLogBatch.maxWaitingBytes / 4) + "\"}"
+        var large = WatchCallLogBatch()
+        for _ in 1...6 { _ = large.add(big, at: 0) }
+        XCTAssertLessThanOrEqual(large.lines.reduce(0) { $0 + $1.utf8.count + 1 }, WatchCallLogBatch.maxWaitingBytes)
+        XCTAssertEqual(large.lines.last, big)
+        XCTAssertEqual(large.droppedLines, 3)
+        let huge = String(repeating: "b", count: WatchCallLogBatch.maxWaitingBytes * 2)
+        let single = WatchCallLogBatch(restoring: [big, huge])
+        XCTAssertEqual(single.lines.last, huge)
+        XCTAssertEqual(single.droppedLines, 1)
+    }
+
+    /// A running Watch call keeps the tail the saved call would keep, and
+    /// never drops a line still in use (#1008).
+    func testWatchCallTranscriptDropsItsOldestLinesPastTheSavedLimit() {
+        let turn = { (text: String) in WatchVoiceWire.DirectTurn(role: .user, text: text, at: Date()) }
+        let limit = WatchVoiceWire.DirectTranscript.maxTextBytes
+        let quarter = String(repeating: "a", count: limit / 4)
+        let turns = (1...6).map { _ in turn(quarter) }
+        XCTAssertEqual(WatchVoiceWire.DirectTranscript.overflow(Array(turns.prefix(4))), 0)
+        XCTAssertEqual(WatchVoiceWire.DirectTranscript.overflow(turns), 2)
+        XCTAssertEqual(WatchVoiceWire.DirectTranscript.overflow(turns, protected: 1), 1)
+        XCTAssertEqual(WatchVoiceWire.DirectTranscript.overflow(turns, protected: 0), 0)
+        // A newest turn too long on its own stays, for the saved call to clip.
+        let long = [turn(quarter), turn(String(repeating: "b", count: limit + 1))]
+        XCTAssertEqual(WatchVoiceWire.DirectTranscript.overflow(long), 1)
+        XCTAssertEqual(WatchVoiceWire.DirectTranscript.overflow([]), 0)
+        // What stays is what the saved call keeps.
+        let kept = Array(turns.dropFirst(WatchVoiceWire.DirectTranscript.overflow(turns)))
+        XCTAssertEqual(WatchVoiceWire.DirectTranscript.capped(turns).count, kept.count)
+    }
+
+    /// A start_job answered as accepted before Hermes refused it: the
+    /// refusal follows as news; a job that started doesn't (#1008).
+    func testWatchLateJobRefusalFollowsAsNews() {
+        typealias Outgoing = GeminiLiveToolBridge.Outgoing
+        let refused: [Outgoing] = [.toolResponse(id: "c1", name: "start_job", result: ["status": "not_started", "message": "Too many jobs."], scheduling: .whenIdle)]
+        XCTAssertEqual(WatchDirectBroker.jobRefusal(in: refused, answering: "c1"), "Too many jobs.")
+        XCTAssertNil(WatchDirectBroker.jobRefusal(in: refused, answering: "c2"))
+        let failed: [Outgoing] = [.toolResponse(id: "c1", name: "start_job", result: ["error": "Hermes isn't connected."], scheduling: nil)]
+        XCTAssertEqual(WatchDirectBroker.jobRefusal(in: failed, answering: "c1"), "Hermes isn't connected.")
+        let started: [Outgoing] = [.toolResponse(id: "c1", name: "start_job", result: ["job_id": "j", "title": "t", "status": "started"], scheduling: nil)]
+        XCTAssertNil(WatchDirectBroker.jobRefusal(in: started, answering: "c1"))
+        XCTAssertNil(WatchDirectBroker.jobRefusal(in: [], answering: "c1"))
+        let moved: [Outgoing] = [.toolResponse(id: "c1", name: "start_job", result: ["error": WatchVoiceStartFailure.connectionChanged], scheduling: nil), .endConversation]
+        XCTAssertNil(WatchDirectBroker.jobRefusal(in: moved, answering: "c1"))
+        // Only a definite refusal lets a repeat go again.
+        XCTAssertTrue(WatchDirectBroker.refusedBeforeStarting(refused, answering: "c1"))
+        XCTAssertFalse(WatchDirectBroker.refusedBeforeStarting(failed, answering: "c1"))
+        XCTAssertFalse(WatchDirectBroker.refusedBeforeStarting(started, answering: "c1"))
+        let text = WatchDirectBroker.lateJobRefusalText("Too many jobs.")
+        XCTAssertTrue(text.contains("didn't start after all: Too many jobs."))
+        XCTAssertTrue(WatchDirectBroker.lateJobRefusalText("Hermes isn't connected.", definite: false).contains("It may not have started"))
+    }
+
     func testWatchCallTimersTolerateATenthOfASecondOrLongerInterval() {
         XCTAssertEqual(WatchVoiceMain.tolerance(for: 0.1), 0)
         XCTAssertEqual(WatchVoiceMain.tolerance(for: 1), 0.1, accuracy: 1e-9)
