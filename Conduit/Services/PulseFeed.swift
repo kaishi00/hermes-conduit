@@ -415,9 +415,22 @@ extension PulseClient {
 
 extension AppState {
     /// The Pulse screen and its button: TestFlight and Xcode builds whose
-    /// plugin serves the feed (0.55.0 and later).
+    /// plugin serves the feed (0.55.0 and later). Until the plugin reports
+    /// after a launch or a reconnect, a dashboard that had Pulse keeps it.
     var showsPulseScreen: Bool {
-        showsPulseSettings && notifierPlugin.reports(PulseClient.feedCapability)
+        (showsPulseSettings && notifierPlugin.reports(PulseClient.feedCapability))
+            || (appInstallSource != .appStore && pulsePluginUnreported && pulseHomeChat != nil)
+    }
+
+    /// Whether the plugin hasn't said what it serves since the launch or the last reconnect.
+    private var pulsePluginUnreported: Bool {
+        if case .reported = notifierPlugin.state { return false }
+        return true
+    }
+
+    /// Pulse's own chat: the feed's, or until the plugin reports, the one it named last time here.
+    var pulseHomeChat: String? {
+        pulseHomeChatID ?? (pulsePluginUnreported ? activeDashboardID.flatMap { pulseRememberedHomes[$0.uuidString] } : nil)
     }
 
     /// Reads the feed for the button's badge and the chat's Pulse marks.
@@ -427,6 +440,7 @@ extension AppState {
             pulseUnseen = 0
             pulseSources = [:]
             pulseHomeChatID = nil
+            if !pulsePluginUnreported { rememberPulseHome(nil) }  // the plugin said: no Pulse here
             return
         }
         let dashboard = activeDashboardID
@@ -439,12 +453,13 @@ extension AppState {
         let sources = page.sources
         if sources != pulseSources { pulseSources = sources }
         if page.homeChatID != pulseHomeChatID { pulseHomeChatID = page.homeChatID }
+        rememberPulseHome(page.homeChatID)
     }
 
     /// Pulse's own chat: Conduit shows it as the Pulse screen, not in Chats.
     func isPulseHomeChat(_ session: SessionSummary) -> Bool {
         // By the row's own profile: in All a row can be another profile's.
-        guard let home = pulseHomeChatID, showsPulseScreen, profilesMatch(rowProfile(session), Self.pulseHomeProfile) else {
+        guard let home = pulseHomeChat, showsPulseScreen, profilesMatch(rowProfile(session), Self.pulseHomeProfile) else {
             return false
         }
         return session.nestingIDs.contains(home)
@@ -457,8 +472,8 @@ extension AppState {
         guard target.type == "response.ready", target.decision == nil, target.call == nil, !target.isChatLink,
               target.profile.map({ profilesMatch($0, Self.pulseHomeProfile) }) ?? true,
               showsPulseScreen, !isModalSheetPresented else { return false }
-        if pulseHomeChatID == nil { await refreshPulseFeed() }
-        guard let home = pulseHomeChatID, home == target.sessionId || home == target.durableSessionID else {
+        if pulseHomeChat == nil { await refreshPulseFeed() }
+        guard let home = pulseHomeChat, home == target.sessionId || home == target.durableSessionID else {
             return false
         }
         openPulse(card: nil)
@@ -481,7 +496,7 @@ extension AppState {
     /// The card links a chat to open: not Pulse's own, which is hidden (a
     /// report's or brief's cards point there).
     func pulseCardHasChat(_ card: PulseCard) -> Bool {
-        !card.chatID.isEmpty && card.chatID != pulseHomeChatID
+        !card.chatID.isEmpty && card.chatID != pulseHomeChat
     }
 
     /// It opens at the message the card came from, as an artifact's Show

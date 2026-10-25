@@ -2185,6 +2185,18 @@ final class AppState: ObservableObject {
     @Published var pulseSources: [String: [Int: Int]] = [:]
     @Published var pulseOpenRequest: PulseOpenRequest?
     @Published var pulseHomeChatID: String?
+    /// Pulse's chat per dashboard as the last feed named it, kept across
+    /// launches: until the plugin reports again after a launch or a
+    /// reconnect, the Pulse button and the hidden chat go by it.
+    private(set) lazy var pulseRememberedHomes: [String: String] =
+        defaults.dictionary(forKey: Self.pulseHomesKey) as? [String: String] ?? [:]
+    static let pulseHomesKey = "pulse.homeChats"
+
+    func rememberPulseHome(_ chat: String?) {
+        guard let key = activeDashboardID?.uuidString, pulseRememberedHomes[key] != chat else { return }
+        pulseRememberedHomes[key] = chat
+        defaults.set(pulseRememberedHomes, forKey: Self.pulseHomesKey)
+    }
     @Published private(set) var composerPrefillText = ""
     @Published private(set) var composerPrefillToken = UUID()
     /// The draft the prefill is for, until ComposerBar puts it in. A new

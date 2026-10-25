@@ -162,6 +162,29 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(state.pulseHomeChatID, "p")
     }
 
+    func testPulseKeepsItsButtonAndHiddenChatUntilThePluginReportsAgain() throws {
+        let suite = "PulseFeedTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
+        let registry = SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard])
+        let first = AppState(defaults: defaults, loadSavedConnection: false, dashboardRegistry: registry,
+                             clearSessionPresentationCache: {})
+        first.applyPulseFeed(try XCTUnwrap(PulseFeedPage(json: json(#"{"home_chat_id": "p", "cards": []}"#))))
+
+        // The next launch: the plugin hasn't answered yet.
+        let next = AppState(defaults: defaults, loadSavedConnection: false, dashboardRegistry: registry,
+                            clearSessionPresentationCache: {})
+        XCTAssertNil(next.pulseHomeChatID)
+        XCTAssertEqual(next.pulseHomeChat, "p")
+        XCTAssertTrue(next.showsPulseScreen)
+
+        // It answers without Pulse: gone.
+        next.setNotifierPluginStateForTesting(.reported(version: "0.40.0", capabilities: []))
+        XCTAssertNil(next.pulseHomeChat)
+        XCTAssertFalse(next.showsPulseScreen)
+    }
+
     func testDoneAndActedPostTheCardToThePlugin() async throws {
         var calls: [(path: String, method: String, body: [String: Any]?)] = []
         var answer: [String: Any] = ["ok": true, "changed": true]

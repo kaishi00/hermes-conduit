@@ -108,7 +108,7 @@ struct V2VoiceButton: View {
     /// Pulse's own chat, which the Pulse screen stands in for.
     private var recentSessions: [SessionSummary] {
         let sessions = appState.activeProfileSessions
-        guard appState.pulseHomeChatID != nil else { return Self.mostRecent(sessions, limit: 3) }
+        guard appState.pulseHomeChat != nil else { return Self.mostRecent(sessions, limit: 3) }
         return Self.mostRecent(sessions.filter { !appState.isPulseHomeChat($0) }, limit: 3)
     }
 

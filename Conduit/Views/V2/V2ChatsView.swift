@@ -395,7 +395,7 @@ struct V2ChatsView: View, Equatable {
         renderMemo.listed {
             // Pulse's own chat stays behind the Pulse screen, in All too.
             let sessions = appState.chatListSessions
-            let chats = appState.pulseHomeChatID == nil ? sessions : sessions.filter { !appState.isPulseHomeChat($0) }
+            let chats = appState.pulseHomeChat == nil ? sessions : sessions.filter { !appState.isPulseHomeChat($0) }
             return (chats, appState.chatListCronSessions)
         }
     }
@@ -977,7 +977,7 @@ struct V2ChatsView: View, Equatable {
             owner: { session in appState.isAllProfilesChatsOn ? appState.rowProfile(session) : "" }
         )
         // Pulse's chat stays behind the Pulse screen, message matches too.
-        guard let home = appState.pulseHomeChatID else { return rows }
+        guard let home = appState.pulseHomeChat else { return rows }
         return rows.filter { row in
             row.session.map { !appState.isPulseHomeChat($0) }
                 ?? (row.hit.sessionID != home && appState.canonicalSessionID(for: row.hit.sessionID) != home)
