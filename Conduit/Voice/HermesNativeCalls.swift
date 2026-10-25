@@ -716,12 +716,14 @@ final class HermesNativeCalls: NSObject {
         update.localizedCallerName = match?.value.callerName ?? HermesCallerName.fallback
         update.hasVideo = false
         provider.reportNewIncomingCall(with: id, update: update) { _ in
+            // CallKit calls back on its own queue: the provider is read again
+            // on the main actor rather than carried over from there.
             Task { @MainActor in
                 if match != nil, self.calls[id]?.answered == false, self.keepWatchAnswer(id, settled: settled) {
                     completion()
                     return
                 }
-                if let match {
+                if match != nil {
                     // Answered here too: the race in `connect` settles it.
                     if self.calls[id]?.answered == false {
                         HermesCallTrace.shared.note(settled.outcome == .answered ? "Answered on the Watch" : "Declined on the Watch")
@@ -729,10 +731,10 @@ final class HermesNativeCalls: NSObject {
                         self.finish(id, reason: reason, notice: settled.outcome == .answered ? .none : .missed, end: .elsewhere(settled.outcome))
                     } else if self.calls[id] == nil {
                         // Ended meanwhile: the report above may have rung it again.
-                        provider.reportCall(with: id, endedAt: Date(), reason: reason)
+                        self.provider?.reportCall(with: id, endedAt: Date(), reason: reason)
                     }
                 } else {
-                    provider.reportCall(with: id, endedAt: Date(), reason: reason)
+                    self.provider?.reportCall(with: id, endedAt: Date(), reason: reason)
                 }
                 if let start = settled.start {
                     self.pruneRingTargets()

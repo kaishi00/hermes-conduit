@@ -23752,6 +23752,9 @@ final class AppState: ObservableObject {
         })
     }
 
+    /// Most callers only need the sync; the returned context is for the ones
+    /// that send again from where the submission recovered.
+    @discardableResult
     private func recoverComposerSubmission(
         using context: ComposerSubmissionContext
     ) async -> ComposerSubmissionContext? {

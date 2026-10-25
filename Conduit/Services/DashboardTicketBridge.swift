@@ -843,7 +843,19 @@ final class DashboardTicketBridge: NSObject {
         pendingRequests.rejectAll(with: DashboardTicketBridgeError.notReady)
         // The bridge registers exactly one handler; removing them all keeps
         // this nonisolated deinit off the main-actor `DashboardScriptWorld`.
-        webView.configuration.userContentController.removeAllScriptMessageHandlers()
+        // WebKit is main-thread only, and the last release that runs this
+        // deinit can come from any thread: off the main thread, the removal
+        // waits for it.
+        let webView = webView
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                webView.configuration.userContentController.removeAllScriptMessageHandlers()
+            }
+        } else {
+            Task { @MainActor in
+                webView.configuration.userContentController.removeAllScriptMessageHandlers()
+            }
+        }
     }
 
     /// Saves the dashboard's current WebKit cookies as its Keychain mirror.
@@ -1431,9 +1443,10 @@ extension DashboardTicketBridge: WKNavigationDelegate {
             // The mirror is dashboard-owned: without a dashboard identity
             // there is no record to write.
             if let dashboardID = self.dashboardID {
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
                     await DashboardCookiePersistence.capture(
-                        from: webView.configuration.websiteDataStore.httpCookieStore,
+                        from: self.webView.configuration.websiteDataStore.httpCookieStore,
                         for: expectedURL,
                         shouldPersist: { [weak self] in
                             guard let self else { return false }

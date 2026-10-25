@@ -589,7 +589,7 @@ final class NativeOAuthLoopbackServer: @unchecked Sendable {
     func start(timeout: TimeInterval = 5 * 60) async throws -> UInt16 {
         try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
-                queue.async {
+                queue.async { [self] in
                     if let result = self.terminalResult {
                         switch result {
                         case .failure(let error): continuation.resume(throwing: error)
