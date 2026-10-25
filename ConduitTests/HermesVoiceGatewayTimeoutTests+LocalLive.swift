@@ -818,9 +818,7 @@ extension VoiceConversationControllerTests {
 @MainActor
 extension AppStateVoiceCapabilityTests {
     func testLocalLiveIsOneLiveModeAndOpensItsOwnSheet() async {
-        let suite = "LocalLiveAppState.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("LocalLiveAppState")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
         appState.isConnected = true
@@ -854,9 +852,7 @@ extension AppStateVoiceCapabilityTests {
     }
 
     func testLocalLiveAgentModeGivesTheFastModelGrokLivesTools() {
-        let suite = "LocalLiveAgent.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("LocalLiveAgent")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.setLocalLiveEnabled(true)
         XCTAssertFalse(appState.isLocalLiveAgent)
@@ -871,9 +867,7 @@ extension AppStateVoiceCapabilityTests {
     }
 
     func testHermesSettingLocalVoiceModeMeansAgentModeAndClassicKeepsHandsFree() throws {
-        let suite = "LocalLiveVoiceMode.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("LocalLiveVoiceMode")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         let mode = try XCTUnwrap(appState.agentSettingsCatalog.first { $0.key == "voice.mode" })
 

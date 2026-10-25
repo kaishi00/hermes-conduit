@@ -6,9 +6,7 @@ import XCTest
 @MainActor
 extension AppStateVoiceCapabilityTests {
     private func makeModeSwitchAppState() -> AppState {
-        let suite = "VoiceModeSwitch.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("VoiceModeSwitch")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
         appState.isConnected = true

@@ -38,11 +38,7 @@ final class ConnectionRepairTests: XCTestCase {
         reconnectScheduler: ChatResumeReconnectScheduler? = nil
     ) -> (appState: AppState, coordinator: ChatResumeCoordinator, store: ChatResumeStore,
           recoverySequence: ChatResumeRecoverySequence, defaults: UserDefaults) {
-        let suite = "ConnectionRepairTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test defaults suite")
-        }
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("ConnectionRepairTests")
         let store = ChatResumeStore(defaults: defaults)
         let coordinator = ChatResumeCoordinator(store: store)
         let recoverySequence = ChatResumeRecoverySequence()

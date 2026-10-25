@@ -101,9 +101,7 @@ extension HermesVoiceGatewayTimeoutTests {
     /// A chat link routed before a call started can be opened after it
     /// did: the dashboard switch it needs would end the call, so it stops.
     func testRoutedLinkToAnotherDashboardNeverEndsACallThatStartedSince() async throws {
-        let suite = "ConduitExternalLink.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("ConduitExternalLink")
         let current = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://links.example")
         let other = SavedDashboard(id: UUID(), label: "Studio", normalizedURL: "https://studio.example")
         let appState = AppState(
@@ -121,9 +119,7 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testLinkNamingTheDashboardInUseStaysOnIt() throws {
-        let suite = "ConduitExternalLink.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("ConduitExternalLink")
         let current = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://links.example")
         let appState = AppState(
             defaults: defaults,
@@ -240,9 +236,7 @@ extension HermesVoiceGatewayTimeoutTests {
     /// list returns those names; with `hostListFails` it is connected and
     /// the read fails.
     private func makeLinkAppState(listedOnHost: [String]? = nil, hostListFails: Bool = false) throws -> AppState {
-        let suite = "ConduitExternalLink.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("ConduitExternalLink")
         var loader: (@MainActor () async throws -> [String: Any])?
         if hostListFails {
             loader = { throw URLError(.timedOut) }

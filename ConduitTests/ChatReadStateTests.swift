@@ -390,9 +390,7 @@ final class ChatReadStateTests: XCTestCase {
 
     @MainActor
     func testProfileStripDotsMarkEachProfileWithAnUnreadChat() {
-        let suite = "ChatReadStateTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("ChatReadStateTests")
         let appState = AppState(
             defaults: defaults,
             loadSavedConnection: false,

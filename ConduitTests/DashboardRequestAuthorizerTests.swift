@@ -118,9 +118,7 @@ final class DashboardRequestAuthorizerTests: XCTestCase {
     func testAppStateBuildsTheAuthorizerWithTheOtherSavedDashboards() throws {
         let root = SavedDashboard(id: UUID(), label: "Root", normalizedURL: "https://dashboard.example.test")
         let team = SavedDashboard(id: UUID(), label: "Team", normalizedURL: "https://dashboard.example.test/team")
-        let suite = "DashboardRequestAuthorizerTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("DashboardRequestAuthorizerTests")
         let appState = AppState(
             defaults: defaults,
             loadSavedConnection: false,

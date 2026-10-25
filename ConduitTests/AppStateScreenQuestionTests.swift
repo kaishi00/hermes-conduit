@@ -1570,13 +1570,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
     }
 
     private func makeHarness(lifecycleOperations: ChatResumeLifecycleOperations, dashboards: [SavedDashboard] = []) -> Harness {
-        let suite = "AppStateScreenQuestionTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock {
-            defaults.removePersistentDomain(forName: suite)
-        }
+        let defaults = makeScratchDefaults("AppStateScreenQuestionTests")
         let store = ChatResumeStore(defaults: defaults)
         let appState = AppState(
             defaults: defaults,

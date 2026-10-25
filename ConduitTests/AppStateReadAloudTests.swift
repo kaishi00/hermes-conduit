@@ -216,13 +216,7 @@ final class AppStateReadAloudTests: XCTestCase {
         snapshot: VoiceCapabilitySnapshot,
         orderRecorder: CallOrderRecorder? = nil
     ) -> Harness {
-        let suite = "AppStateReadAloudTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock {
-            defaults.removePersistentDomain(forName: suite)
-        }
+        let defaults = makeScratchDefaults("AppStateReadAloudTests")
 
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")

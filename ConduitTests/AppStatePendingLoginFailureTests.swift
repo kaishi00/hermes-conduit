@@ -17,11 +17,7 @@ final class AppStatePendingLoginFailureTests: XCTestCase {
     // MARK: - Harness
 
     private func makeAppState() -> AppState {
-        let suite = "AppStatePendingLoginFailureTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("AppStatePendingLoginFailureTests")
         return AppState(
             defaults: defaults,
             loadSavedConnection: false

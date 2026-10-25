@@ -22,11 +22,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
     private func makeAppState(
         lifecycleOperations: ChatResumeLifecycleOperations = .live
     ) -> AppState {
-        let suite = "AppStateReasoningStreamTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("AppStateReasoningStreamTests")
         return AppState(
             defaults: defaults,
             loadSavedConnection: false,

@@ -21,11 +21,7 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
     }
 
     private func makeAppState(recorder: ReconnectRecorder) -> AppState {
-        let suite = "CarPlayTransportRecoveryTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("CarPlayTransportRecoveryTests")
         let appState = AppState(
             defaults: defaults,
             loadSavedConnection: false,

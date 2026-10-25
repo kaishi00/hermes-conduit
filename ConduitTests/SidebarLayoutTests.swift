@@ -414,11 +414,7 @@ final class SidebarLayoutTests: XCTestCase {
 
     @MainActor
     private func makeAppState() -> AppState {
-        let suite = "SidebarLayoutTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("SidebarLayoutTests")
         return AppState(
             defaults: defaults,
             loadSavedConnection: false,

@@ -9101,13 +9101,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         store: ChatResumeStore,
         recoverySequence: ChatResumeRecoverySequence
     ) {
-        let suite = "AppStateForegroundLifecycleTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock {
-            defaults.removePersistentDomain(forName: suite)
-        }
+        let defaults = makeScratchDefaults("AppStateForegroundLifecycleTests")
         configureDefaults(defaults)
         let store = ChatResumeStore(defaults: defaults)
         let coordinator = ChatResumeCoordinator(store: store)

@@ -450,9 +450,7 @@ extension CarPlayVoiceTemplateFactoryTests {
     }
 
     func testShortcutsAreTrimmedCappedAndSaved() throws {
-        let suite = "CarPlayShortcutTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("CarPlayShortcutTests")
         let preferences = CarPlayPreferences(defaults: defaults)
         XCTAssertTrue(preferences.playsSounds, "sounds are on by default")
         XCTAssertFalse(preferences.choosesChatFirst, "CarPlay opens on the voice screen by default")
@@ -1170,9 +1168,7 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
 
     func testCarPlayOpensOnTheChatListWhenNothingIsRunning() async throws {
         let harness = makeHarness()
-        let suite = "CarPlayChooseChat.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("CarPlayChooseChat")
         let preferences = CarPlayPreferences(defaults: defaults)
         preferences.setChoosesChatFirst(true)
         harness.coordinator.preferencesProvider = { preferences }
@@ -1200,9 +1196,7 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
     func testAFailedVoiceScreenInstallStartsVoiceInsteadOfTheChatList() async throws {
         for listFirst in [true, false] {
             let harness = makeHarness()
-            let suite = "CarPlayChooseChat.\(UUID().uuidString)"
-            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-            addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+            let defaults = makeScratchDefaults("CarPlayChooseChat")
             let preferences = CarPlayPreferences(defaults: defaults)
             preferences.setChoosesChatFirst(true)
             harness.coordinator.preferencesProvider = { preferences }
@@ -1231,9 +1225,7 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
 
     func testCarPlayShowsARunningConversationInsteadOfTheChatList() async throws {
         let harness = makeHarness()
-        let suite = "CarPlayChooseChat.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("CarPlayChooseChat")
         let preferences = CarPlayPreferences(defaults: defaults)
         preferences.setChoosesChatFirst(true)
         harness.coordinator.preferencesProvider = { preferences }
@@ -1550,9 +1542,7 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
 
     func testBrowseScreensOpenOneLevelDown() async throws {
         let harness = makeHarness()
-        let suite = "CarPlayBrowse.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("CarPlayBrowse")
         let preferences = CarPlayPreferences(defaults: defaults)
         harness.coordinator.preferencesProvider = { preferences }
         harness.coordinator.handleConnect(harness.spy)
@@ -1866,9 +1856,7 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
 
     func testSentTurnPlaysTheStatusSoundUnlessTurnedOff() async throws {
         let harness = makeHarness()
-        let suite = "CarPlaySounds.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("CarPlaySounds")
         let preferences = CarPlayPreferences(defaults: defaults)
         var played: [CarPlayEarcon] = []
         harness.coordinator.preferencesProvider = { preferences }
@@ -3088,9 +3076,7 @@ final class CarPlayVoiceRoutePolicyTests: XCTestCase {
 @MainActor
 extension CarPlayVoiceCoordinatorTests {
     private func choosingChatFirst(_ harness: Harness) throws {
-        let suite = "CarPlayChooseChat.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("CarPlayChooseChat")
         let preferences = CarPlayPreferences(defaults: defaults)
         preferences.setChoosesChatFirst(true)
         harness.coordinator.preferencesProvider = { preferences }

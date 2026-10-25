@@ -22,7 +22,7 @@ name: CI
 #                        (scripts/hosted-suite.json), both validated against
 #                        the discovered inventory, and the smoke build's
 #                        project (ui-spec).
-#   self-test  (ubuntu)  three fixed discovery groups in parallel.
+#   self-test  (ubuntu)  the CI-tooling suites, bash wrapper tests included.
 #   smoke      (macos)   builds its test products while its simulator boots in
 #                        the background, then runs the unit smoke classes (one
 #                        invocation, no retry) and the UI smoke classes (one
@@ -81,9 +81,8 @@ jobs:
 
       - name: Validate inventory + planner regression tests
         env:
-          # The minutes-long bash meta-suites (lane-runner state machine,
-          # destination lookup) run in the dedicated self-test job - they must
-          # never delay planning or risk this job's timeout.
+          # The bash wrapper tests (destination lookup) run in the
+          # self-test job, concurrent with the build.
           CONDUIT_CI_SKIP_BASH_WRAPPER_TESTS: "1"
         run: |
           set -euo pipefail
@@ -233,36 +232,23 @@ jobs:
             --selection ci-artifacts/smoke.json >> "$GITHUB_STEP_SUMMARY"
 
   self-test:
-    name: CI tooling self-test (${{ matrix.group }})
-    strategy:
-      fail-fast: false
-      matrix:
-        group: [fast, lane, local-gate]
-    # No `needs`: the meta-suites test the CI tooling itself, not this run's
+    name: CI tooling self-test
+    # No `needs`: the suites test the CI tooling itself, not this run's
     # selection, so they start immediately and run CONCURRENTLY with the macOS
     # build instead of serially delaying it.
     runs-on: ubuntu-latest
-    # Raised from 12 to 16 minutes when the gate's two-worker, merge-mode and
-    # per-worker-evidence cases grew the gate integration suite, and again to 30
-    # when its cap moved to 1200s: the same suite also runs inside the gate's
-    # overlapped static phase, alongside two live xcodebuild chains, where it
-    # measured ~900s on our Mac against ~410s standalone. The hierarchy still
-    # holds with room to spare - every suite's own subprocess cap (1200s for the
-    # gate suite, 480s for the lane runner) < this ceiling - so a suite always
-    # reports its own failure before GitHub kills the job.
-    timeout-minutes: 30
+    # Full discovery takes about a minute; 10 leaves room for a slow runner.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
       - name: Run CI tooling regression suites
-        # The three groups partition full discovery exactly once. The timeout
-        # layering must hold: per-case synthetic-hang watchdogs (<= 6s) < each
-        # wrapper's subprocess cap (1200s for the gate integration suite, 480s
-        # for the lane-runner state machine) < this job ceiling (30m) - GitHub
-        # must never be the first layer to kill a regression suite.
+        # Full discovery, the bash wrapper tests included. Per-case
+        # synthetic-hang watchdogs (<= 6s) stay well under this job ceiling,
+        # so GitHub is never the first layer to kill a regression suite.
         run: |
           set -euo pipefail
-          python3 scripts/ci-self-test.py --group "${{ matrix.group }}"
+          python3 scripts/ci-self-test.py
 
   smoke:
     # The only macOS job of a PR or main run: one build, one booted simulator,
