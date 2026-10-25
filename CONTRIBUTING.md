@@ -22,8 +22,8 @@ current.
 4. Update the entry in the same PR: its siblings, code paths, rulings, the gaps
    opened or closed, and the Checked line, which names this PR (CI fails an
    entry the PR adds or edits whose Checked line doesn't; on a PR into
-   `pulse`, an entry that matches main's copy came in from main and keeps
-   main's line). A feature with
+   `pulse` that merges main, an entry that matches main's copy came in from
+   main and keeps main's line). A feature with
    siblings and no entry gets one in that PR. A fix that brings a sibling in line with an
    earlier change it missed adds that sibling to the entry, so the next change
    reaches it.

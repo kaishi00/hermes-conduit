@@ -122,14 +122,16 @@ jobs:
         # where their code lives; a path that moved would send it to the
         # wrong file. notifier/ paths are checked on the plugin's main. On a
         # PR, an entry it adds or edits names it on its Checked line. A PR
-        # into pulse (pulse's copy of this workflow runs on those) also
-        # passes main's map where the PR meets main (their merge base): the
-        # entries a merge of main brings in match it and keep main's Checked
-        # lines. If GitHub can't give that map, the check warns and runs
+        # into pulse (pulse's copy of this workflow runs on those) that
+        # merges main, so it leaves fewer of main's commits to take than its
+        # base does, also passes main's map where the PR meets main (their
+        # merge base): the entries the merge brings in match it and keep
+        # main's Checked lines. If GitHub can't say, the check warns and runs
         # without it, as it would have before.
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -141,13 +143,17 @@ jobs:
             fi
             main_map=()
             if [ "$BASE_REF" != "main" ]; then
-              if meets=$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$HEAD_SHA" --jq .merge_base_commit.sha) \
-                  && [ -n "$meets" ] \
-                  && git fetch --no-tags --depth=1 origin "$meets" \
-                  && git show FETCH_HEAD:docs/FEATURE_MAP.md > "$RUNNER_TEMP/main-map.md"; then
-                main_map=(--main-map "$RUNNER_TEMP/main-map.md")
-              else
-                echo "::warning::Couldn't read docs/FEATURE_MAP.md on main where the PR meets it (${meets:-no merge base}), so entries that came in from main count as this PR's edits."
+              compare="repos/$GITHUB_REPOSITORY/compare/main..."
+              if ! head=$(gh api "$compare$HEAD_SHA?per_page=1" --jq '"\(.merge_base_commit.sha) \(.behind_by)"') \
+                  || ! base_behind=$(gh api "$compare$BASE_SHA?per_page=1" --jq .behind_by); then
+                echo "::warning::Couldn't ask GitHub whether the PR merges main, so entries that came in from main count as this PR's edits."
+              elif [ "${head#* }" -lt "$base_behind" ]; then
+                if git fetch --no-tags --depth=1 origin "${head% *}" \
+                    && git show FETCH_HEAD:docs/FEATURE_MAP.md > "$RUNNER_TEMP/main-map.md"; then
+                  main_map=(--main-map "$RUNNER_TEMP/main-map.md")
+                else
+                  echo "::warning::Couldn't read docs/FEATURE_MAP.md on main at ${head% *}, so entries that came in from main count as this PR's edits."
+                fi
               fi
             fi
             python3 scripts/check-feature-map.py --repo-root . \

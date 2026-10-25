@@ -14,8 +14,9 @@ date and the PR or commit it was checked at.
 On a pull request, CI also passes the PR's number and the base's copy of the
 map: an entry the PR adds or edits names that PR on its Checked line, so the
 line says who checked it last, not the commit the branch started from. A PR
-into another branch (`pulse`) also gets main's copy where the PR meets main:
-an entry that matches it came in by merging main and keeps main's Checked line.
+into another branch (`pulse`) that merges main also gets main's copy where the
+PR meets main: an entry that matches it came in with main and keeps main's
+Checked line.
 
 A notifier file missing on main fails. If GitHub can't be reached at all the
 check warns and passes, so an outage doesn't block every PR.
@@ -188,8 +189,8 @@ def main(argv=None):
                         help="the pull request's number: entries it adds or edits name it")
     parser.add_argument("--base-map", help="the map on the PR's base, to tell which entries it edits")
     parser.add_argument("--main-map",
-                        help="for a PR into another branch, the map on main where the PR meets it: "
-                             "entries that match it came from main")
+                        help="for a PR into another branch that merges main, the map on main where "
+                             "the PR meets it: entries that match it came from main")
     args = parser.parse_args(argv)
     if bool(args.pr) != bool(args.base_map):
         parser.error("--pr and --base-map go together")

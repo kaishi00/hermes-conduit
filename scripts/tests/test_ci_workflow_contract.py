@@ -176,10 +176,17 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("--base-map", step)
         self.assertIn("BASE_REF: ${{ github.event.pull_request.base.ref }}", step)
         self.assertIn('if [ "$BASE_REF" != "main" ]', step)
-        self.assertIn('compare/main...$HEAD_SHA" --jq .merge_base_commit.sha', step)
+        # Only a PR that merges main (fewer of main's commits left to take
+        # than its base) gets main's map, from where its head meets main.
+        self.assertIn("BASE_SHA: ${{ github.event.pull_request.base.sha }}", step)
+        self.assertIn('compare="repos/$GITHUB_REPOSITORY/compare/main..."', step)
+        self.assertIn('"$compare$HEAD_SHA?per_page=1" --jq \'"\\(.merge_base_commit.sha) \\(.behind_by)"\'', step)
+        self.assertIn('"$compare$BASE_SHA?per_page=1" --jq .behind_by', step)
+        self.assertIn('elif [ "${head#* }" -lt "$base_behind" ]', step)
         self.assertIn("git show FETCH_HEAD:docs/FEATURE_MAP.md", step)
         self.assertIn("--main-map", step)
         # GitHub out of reach: warn and check as before, like the notifier lookup.
+        self.assertIn("::warning::Couldn't ask GitHub whether the PR merges main", step)
         self.assertIn("::warning::Couldn't read docs/FEATURE_MAP.md on main", step)
 
     def test_smoke_job_builds_while_the_simulator_boots(self):
