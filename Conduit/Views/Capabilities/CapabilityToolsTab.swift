@@ -12,7 +12,7 @@ import SwiftUI
 struct CapabilityToolsTab: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     let query: String
     let refresh: () async -> Void
     @AppStorage("capabilities.tools.mostUsedFirst") private var mostUsedFirst = true
@@ -192,7 +192,7 @@ struct CapabilityToolsetDetailPage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     let name: String
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     @State private var config: ToolsetConfig?
     @State private var configError: String?
     @State private var backends: [TerminalBackendOption]?

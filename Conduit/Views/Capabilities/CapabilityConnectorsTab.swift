@@ -13,7 +13,7 @@ import SwiftUI
 
 struct CapabilityConnectorsTab: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     let query: String
     @State private var installing: ConnectorCatalogEntry?
     @State private var actionError: String?
@@ -203,7 +203,7 @@ private struct ConnectorServerRow: View {
     let server: ConnectorServer
     let state: ConnectorState
     let catalogEntry: ConnectorCatalogEntry?
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     let onError: (String?) -> Void
 
     var body: some View {
@@ -248,7 +248,7 @@ private struct ConnectorServerRow: View {
 
 private struct ConnectorCatalogRow: View {
     let entry: ConnectorCatalogEntry
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     let install: () -> Void
 
     private var state: CapabilityInstallState? { store.connectorInstalls[entry.name] }
@@ -286,7 +286,7 @@ struct ConnectorDetailPage: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let name: String
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     @State private var signInFlow: String?
     @State private var signInTask: Task<Void, Never>?
     @State private var message: String?

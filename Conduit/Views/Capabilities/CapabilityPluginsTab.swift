@@ -13,7 +13,7 @@ import SwiftUI
 
 struct CapabilityPluginsTab: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     let query: String
     @State private var message: String?
     @State private var pendingInstall: PluginCatalogEntry?
@@ -214,7 +214,7 @@ private struct AgentPluginListRow: View {
     let plugin: AgentPluginRow
     let catalogEntry: PluginCatalogEntry?
     let canManage: Bool
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     let onError: (String?) -> Void
 
     private var pills: [CapabilityPillModel] {
@@ -317,7 +317,7 @@ struct AgentPluginDetailPage: View {
     @Environment(\.dismiss) private var dismiss
     let name: String
     let canManage: Bool
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     @State private var message: String?
     @State private var confirmingRemove = false
     @State private var consent: PluginConsent?
