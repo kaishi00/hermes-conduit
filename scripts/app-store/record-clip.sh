@@ -23,8 +23,10 @@ stop_recorder() {
   kill -TERM "$recorder" 2>/dev/null || true
   wait "$recorder" || true
 }
-# A clip that fails leaves no raw recording behind for the shots artifact.
-trap 'stop_recorder; rm -f "$raw"' EXIT
+# A clip that fails leaves no raw recording or partial clip behind for the
+# shots artifact.
+done=0
+trap 'stop_recorder; rm -f "$raw"; [ "$done" = 1 ] || rm -f "$out"' EXIT
 # recordVideo's first frame comes seconds after it starts.
 sleep 3
 xcrun simctl launch "$udid" "$bundle" -conduitScreenshotCall "$state" >> "${out%.mp4}.log" 2>&1
@@ -44,4 +46,5 @@ from=$(python3 -c "print(max(0.0, $duration - $seconds))")
 ffmpeg -v error -y -i "$raw" \
   -filter_complex "fps=30,tpad=stop_mode=clone:stop_duration=$seconds,trim=start=$from:duration=$seconds,setpts=PTS-STARTPTS,format=yuv420p" \
   -an -c:v libx264 -profile:v high -crf 20 -movflags +faststart "$out"
+done=1
 echo "$out: ${seconds}s from ${from}s"
