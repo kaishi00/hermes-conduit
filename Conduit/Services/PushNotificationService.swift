@@ -962,12 +962,16 @@ final class PushNotificationService: ObservableObject {
                (status["e2e"] as? [String: Any])?["kid"] as? String == pending.kidNew {
                 // The host took a rotation whose reply was lost, or whose key
                 // couldn't be saved: ask again.
-                // Otherwise the dashboard handover below stays the fallback.
-                if await finishInlineRotation(pending, dashboardID: dashboardID, profile: profile,
-                                              records: &records, request: request) == .rotated {
+                let outcome = await finishInlineRotation(pending, dashboardID: dashboardID, profile: profile,
+                                                         records: &records, request: request)
+                if outcome == .rotated {
                     rotatedAny = true
                     rotatedGateways.insert(statusGateway)
                 }
+                // Still not saved: it stays pending for the next connect
+                // rather than handing a key over through the dashboard now.
+                // Otherwise the dashboard handover below stays the fallback.
+                if outcome.waitsForNextConnect { continue }
             }
             guard let gatewayID = Self.gatewayNeedingEncryptionKey(status: status, installationID: installationID, records: records) else {
                 if let held = Self.confirmedKey(status: status, installationID: installationID, records: records) {
@@ -1054,9 +1058,10 @@ final class PushNotificationService: ObservableObject {
             // That key crossed the dashboard connection: replace it at once
             // with one from a key exchange, so only this handover depends on
             // the connection.
-            if let inlineSuite {
-                await rotateInline(record, suite: inlineSuite, dashboardID: dashboardID, profile: profile,
-                                   records: &records, request: request)
+            if let inlineSuite,
+               await rotateInline(record, suite: inlineSuite, dashboardID: dashboardID, profile: profile,
+                                  records: &records, request: request) == .rotated {
+                rotatedAny = true
             }
         }
         refreshEncryptionState()
@@ -1096,6 +1101,12 @@ final class PushNotificationService: ObservableObject {
 
         /// Whether the pending request is kept for a resend.
         var keepsPending: Bool { self == .unreachable || self == .unsaved }
+
+        /// Whether a resend that ended this way leaves the pairing alone
+        /// until the next connect: a verified key the Keychain refused is
+        /// asked for again then, not replaced by a dashboard handover in the
+        /// same run. An unreachable or refusing host still gets the handover.
+        var waitsForNextConnect: Bool { self == .unsaved }
     }
 
     /// Rotates a pairing's key through a key exchange sealed with the
@@ -1165,8 +1176,8 @@ final class PushNotificationService: ObservableObject {
         guard Self.e2eKeyStore.save(record) else {
             // The host seals with the new key now, so its pushes show generic
             // text until this iPhone holds it. The next connect asks again
-            // (the host answers the same request the same way) before falling
-            // back to a handover through the dashboard.
+            // (the host answers the same request the same way) instead of
+            // handing a key over through the dashboard.
             return .unsaved
         }
         records.append(record)

@@ -596,6 +596,11 @@ extension NotificationE2ETests {
         XCTAssertTrue(Outcome.unreachable.keepsPending)
         XCTAssertFalse(Outcome.refused.keepsPending, "A refused or unverifiable reply would only be refused again")
         XCTAssertFalse(Outcome.rotated.keepsPending)
+        XCTAssertTrue(Outcome.unsaved.waitsForNextConnect,
+                      "A resend that still can't be saved waits for the next connect, not a handover in the same run")
+        XCTAssertFalse(Outcome.unreachable.waitsForNextConnect, "An unreachable host still gets the handover fallback")
+        XCTAssertFalse(Outcome.refused.waitsForNextConnect)
+        XCTAssertFalse(Outcome.rotated.waitsForNextConnect)
 
         let pending = try NotificationKeyRotation.start(current: record, suite: NotificationKeyRotation.suiteClassical)
         let (reply, secret) = try hostAnswer(pending.request, current: record)
