@@ -50,9 +50,10 @@ extension AppState {
         if inUse { await loadSessions(forceRefresh: true) }
     }
 
-    /// Hermes' model slot for Pulse's memory, report lists and follow-up
-    /// checks, which the plugin registers; nil leaves it on "auto", where
-    /// the plugin runs them on the Pulse chat's model.
+    /// Hermes' model slot for Pulse's memory, report lists, and follow-up
+    /// and Do it checks, which the plugin registers; nil leaves it on
+    /// "auto", where the plugin runs them on the Pulse chat's model (Hermes'
+    /// main model when the chat has none of its own, or its provider is gone).
     static let pulseMemoryTask = "pulse_memory"
 
     /// Puts Pulse's memory on `model` (nil: the Pulse chat's model), in the
