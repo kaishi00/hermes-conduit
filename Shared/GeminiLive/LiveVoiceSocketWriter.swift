@@ -11,8 +11,10 @@ private let liveVoiceWriterLogger = Logger(subsystem: "com.milim.relay", categor
 /// few each turn) always queues.
 @MainActor
 final class LiveVoiceSocketWriter {
-    /// About two seconds of the iPhone's 64 ms microphone chunks.
-    static let defaultMaxQueuedAudio = 32
+    /// About two seconds of capture: the tap hands over 1,024 frames at
+    /// the hardware rate (48 kHz, 21 ms a chunk), converted down for the
+    /// session. Capture that hands over bigger chunks waits longer.
+    static let defaultMaxQueuedAudio = 96
 
     private struct Frame {
         let texts: [String]
