@@ -445,7 +445,8 @@ struct PhoneSettingsPage: View {
                     showsTurnOff = true
                     return
                 }
-                choices = next
+                // Animated: Reminders and the details switch reveal rows.
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { choices = next }
                 applyIfOn()
             }
         )

@@ -1684,6 +1684,32 @@ Settings caption, briefing or doc says how pictures load)
 
 **Checked:** 2026-10-25, at #1239.
 
+## Settings rows a toggle reveals
+
+Rows, captions and fields that appear under a Settings switch when it turns
+on, and go when it turns off. They slide in and out on the app's motion
+curve rather than popping in one frame.
+
+**Siblings:** Calls from Hermes · Location (talking and background layers) ·
+Health (detailed readings per category) · Phone (Reminders read only,
+attendee email addresses) · the voice modes' Use switches (Gemini Live and
+Qwen Live, Grok Live, GPT-Live) · Live call style's greeting · the wake
+phrase · Sync across devices · Cloudflare Access's service token · text that
+describes it (none: no caption or doc mentions the motion)
+
+**Code**
+- Motion: `Conduit/Theme.swift` (ConduitMotion.ease)
+- A switch that sets state at once animates its own setter: `Conduit/Views/HermesCallSettingsViews.swift` (change), `Conduit/Views/HealthSettingsViews.swift` (categoryBinding), `Conduit/Views/PhoneSettingsViews.swift` (binding), `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/GrokLiveViews.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Views/LiveVoiceStyleViews.swift`, `Conduit/Views/VoiceSettingsView.swift` (WakePhraseSettingsSection.save), `Conduit/Views/AuxiliaryViews.swift` (GatewaySettingsDetail, Cloudflare Access)
+- A switch whose state lands later (a consent sheet, the host's answer) animates on the value, page-wide: `Conduit/Views/LocationSettingsViews.swift` (LocationSettingsPage), `Conduit/Views/SyncedPreferencesViews.swift`
+
+**Rulings**
+- Revealed rows animate with `ConduitMotion.ease`, which is the settle fade under Reduce Motion. Use withAnimation in the setter, or `.animation(_:value:)` on the whole page, never on one section alone: an animation scoped to a section grows its card while the sections below jump (2026-10-25, #FORK).
+
+**Open gaps**
+- A row revealed by something other than a switch (a picker, a host answer, a permission) isn't covered here.
+
+**Checked:** 2026-10-25, at #FORK.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays

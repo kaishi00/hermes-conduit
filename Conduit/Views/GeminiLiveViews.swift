@@ -37,6 +37,7 @@ struct GeminiLiveSettingsSection: View {
     /// section then only shows this mode's settings.
     let showsModeToggle: Bool
     @State private var enabled: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var search: GeminiLiveSearchMode
     /// Empty is Gemini's default voice (a Picker tag can't be nil).
     @State private var voice: String
@@ -78,7 +79,7 @@ struct GeminiLiveSettingsSection: View {
                 Toggle("Use Gemini Live for voice", isOn: Binding(
                     get: { enabled },
                     set: { requested in
-                        enabled = requested
+                        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { enabled = requested }
                         model.setEnabled(requested)
                         if requested { Task { await check() } }
                     }

@@ -1844,6 +1844,7 @@ private struct WakePhraseSettingsSection: View {
     /// What's said beside each phrase about its language, worked out when
     /// the phrases change: it builds speech recognizers to ask.
     @State private var languageNotes: [String: (text: String, isUnheard: Bool)] = [:]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(model: WakePhraseSettingsModel) {
         self.model = model
@@ -1991,8 +1992,13 @@ private struct WakePhraseSettingsSection: View {
 
     private func save(_ updated: [String]) {
         let canonical = VoiceSpokenCommands.canonicalizedPhraseList(updated)
-        phrases = canonical
-        isEnabled = !canonical.isEmpty
+        // Animated only when the switch reveals or hides the phrase rows,
+        // not on each phrase edit.
+        let reveals = canonical.isEmpty != phrases.isEmpty
+        withAnimation(reveals ? ConduitMotion.ease(reduceMotion: reduceMotion) : nil) {
+            phrases = canonical
+            isEnabled = !canonical.isEmpty
+        }
         model.save(canonical, startsFresh)
     }
 }

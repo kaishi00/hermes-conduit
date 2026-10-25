@@ -10,6 +10,7 @@ import SwiftUI
 
 struct SyncedPreferencesSettingsDetail: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var appState: AppState
     @ObservedObject var controller: SyncedPreferencesController
     /// Asked when turning sync on finds preferences from another device.
@@ -84,6 +85,9 @@ struct SyncedPreferencesSettingsDetail: View {
                 }
             }
         }
+        // Sync turns on after the host is checked, so the rows and the
+        // "Another host" section it reveals animate on the value.
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: controller.isEnabled)
         .navigationTitle(AppLocalization.string("Sync across devices"))
         .onDisappear {
             turningOn?.cancel()

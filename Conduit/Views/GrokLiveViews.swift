@@ -32,6 +32,7 @@ struct GrokLiveSettingsSection: View {
     /// section then only shows this mode's settings.
     let showsModeToggle: Bool
     @State private var enabled: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var memory: Bool
     @State private var personality: Bool
     @State private var saveCalls: Bool
@@ -58,7 +59,7 @@ struct GrokLiveSettingsSection: View {
                 Toggle("Use Grok Live for voice", isOn: Binding(
                     get: { enabled },
                     set: { requested in
-                        enabled = requested
+                        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { enabled = requested }
                         model.setEnabled(requested)
                         if requested { Task { await check() } }
                     }
