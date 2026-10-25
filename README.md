@@ -7,6 +7,23 @@ A native iPhone, iPad and Apple Watch app for [Hermes Agent](https://github.com/
 [![Website](https://img.shields.io/badge/Website-hermesconduit.app-blue)](https://hermesconduit.app)
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/agrias)
 
+## See it in action
+
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="docs/media/voice.webp" width="200" alt="A live voice call: Hermes answers, its waveform moving"></td>
+    <td align="center" valign="top"><img src="docs/media/watch-speaking.webp" width="200" alt="A live voice call on Apple Watch while Hermes speaks"></td>
+    <td align="center" valign="top"><img src="docs/media/watch-approval.webp" width="200" alt="The Watch asking to approve a command, with Approve once"></td>
+  </tr>
+  <tr>
+    <td align="center">Talk to Hermes live, and talk over it</td>
+    <td align="center">Call from your wrist</td>
+    <td align="center">Approve a command on the Watch</td>
+  </tr>
+</table>
+
+More on [hermesconduit.app](https://hermesconduit.app): [live voice](https://hermesconduit.app/voice/), [Apple Watch](https://hermesconduit.app/watch/), [CarPlay](https://hermesconduit.app/carplay/) and [privacy](https://hermesconduit.app/privacy/).
+
 Want new features sooner? The [TestFlight beta](https://testflight.apple.com/join/gcF9BBJ3) gets newer builds before they reach the App Store.
 
 ## What it does

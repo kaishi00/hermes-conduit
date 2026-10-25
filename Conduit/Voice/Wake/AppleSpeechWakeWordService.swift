@@ -10,6 +10,7 @@
 //
 
 import AVFAudio
+import CallKit
 import Foundation
 import OSLog
 import os
@@ -23,7 +24,15 @@ final class AppleSpeechWakeWordService: WakeWordService {
     var bindings: [WakePhraseBinding] = [] {
         didSet {
             guard bindings != oldValue, isArmed else { return }
-            // New phrases also become recognition hints on the next cycle.
+            // New phrases also become recognition hints on the next cycle,
+            // and one in another language brings its recognizer.
+            makeRecognizers()
+            guard !recognizers.isEmpty else {
+                // No phrase left that a recognizer here hears: stop, as
+                // arming would, rather than keep the old phrases' cycle.
+                recordFailure(unheardReason())
+                return
+            }
             startRecognitionCycle()
         }
     }
@@ -41,10 +50,12 @@ final class AppleSpeechWakeWordService: WakeWordService {
     private let cycleDuration: Duration
     private let audioCoordinator: VoiceAudioSessionCoordinator
     private let audioSink = WakeAudioSink()
-    private var recognizer: SFSpeechRecognizer?
+    /// One recognizer per language the phrases are heard in, each with
+    /// its phrases as hints. They all hear the same microphone.
+    private var recognizers: [WakeRecognizer] = []
     private var engine: AVAudioEngine?
     private var lease: VoiceAudioLease?
-    private var recognitionTask: SFSpeechRecognitionTask?
+    private var recognitionTasks: [SFSpeechRecognitionTask] = []
     private var cycleTask: Task<Void, Never>?
     private var recoveryTask: Task<Void, Never>?
     private var cycleGeneration: UInt64 = 0
@@ -102,17 +113,10 @@ final class AppleSpeechWakeWordService: WakeWordService {
                 AppLocalization.string("Wake phrases need microphone and speech recognition access.")
             )
         }
-        // The app's locale, not the spoken language dictation uses
-        // (SpeechRecognitionLocale): wake phrases are agent names, and a
-        // Russian recognizer would write "Hey Hermes" in Cyrillic, which
-        // never matches the phrase.
-        let locale = Locale.current
-        guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.supportsOnDeviceRecognition else {
-            throw WakeWordServiceError.unavailable(
-                AppLocalization.string("On-device Apple speech recognition is unavailable for \(locale.identifier).")
-            )
+        makeRecognizers()
+        guard !recognizers.isEmpty else {
+            throw WakeWordServiceError.unavailable(unheardReason())
         }
-        self.recognizer = recognizer
         isArmed = true
         consecutiveFailures = 0
         do {
@@ -282,24 +286,16 @@ final class AppleSpeechWakeWordService: WakeWordService {
         switch type {
         case .began:
             isInterrupted = true
-            recoveryTask?.cancel()
-            // Watchdog: if the matching `.ended` never arrives, try once
-            // more; a failed restart then stops the listener cleanly.
-            recoveryTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(60))
-                guard let self, !Task.isCancelled, self.isArmed, self.isInterrupted else { return }
-                self.recoveryTask = nil
-                self.isInterrupted = false
-                self.scheduleAudioRecovery()
-            }
+            watchInterruption()
             cycleGeneration &+= 1
             cycleTask?.cancel()
             cycleTask = nil
-            audioSink.replace(with: nil)
-            recognitionTask?.cancel()
-            recognitionTask = nil
+            audioSink.replace(with: [])
+            cancelRecognition()
             stopAudio()
         case .ended:
+            // The watchdog may have resumed already: nothing to recover.
+            guard isInterrupted else { return }
             isInterrupted = false
             recoveryTask?.cancel()
             recoveryTask = nil
@@ -307,6 +303,44 @@ final class AppleSpeechWakeWordService: WakeWordService {
         default:
             break
         }
+    }
+
+    /// Watchdog for an `.ended` iOS never posts. It resumes only on
+    /// evidence the interruption is over: no phone call in progress (a
+    /// CarPlay call can run for an hour), no other Conduit audio owner,
+    /// and the session activating again. Otherwise it keeps waiting, with
+    /// the interruption observer in place for the real `.ended` (#1004).
+    private func watchInterruption() {
+        recoveryTask?.cancel()
+        recoveryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.interruptionWatchdogInterval)
+            guard let self, !Task.isCancelled, self.isArmed, self.isInterrupted else { return }
+            self.recoveryTask = nil
+            guard !Self.isPhoneCallInProgress(),
+                  !self.audioCoordinator.hasOwnersOtherThanWakeListening else {
+                self.watchInterruption()
+                return
+            }
+            do {
+                try self.audioCoordinator.reassert()
+                try self.startAudio()
+            } catch {
+                // The session is still held elsewhere: still interrupted.
+                self.stopAudio()
+                self.watchInterruption()
+                return
+            }
+            wakeLogger.info("wake listening resumed after an interruption without an end")
+            self.isInterrupted = false
+            self.startRecognitionCycle()
+        }
+    }
+
+    private static let interruptionWatchdogInterval: Duration = .seconds(60)
+    private static let callObserver = CXCallObserver()
+
+    private static func isPhoneCallInProgress() -> Bool {
+        callObserver.calls.contains { !$0.hasEnded }
     }
 
     private func removeObservers() {
@@ -340,31 +374,67 @@ final class AppleSpeechWakeWordService: WakeWordService {
 
     // MARK: - Recognition
 
+    /// A recognizer for each language the usable phrases are heard in
+    /// (WakeSpeechLocale): Latin-letter phrases in the app's locale, and a
+    /// phrase in another writing system in a language that writes it. A
+    /// phrase no on-device recognizer here writes is left out; Settings
+    /// says so beside it.
+    private func makeRecognizers() {
+        let phrases = bindings.map(\.phrase).filter(WakePhraseMatcher.isUsable)
+        recognizers = WakeSpeechLocale.listening(for: phrases).compactMap { group -> WakeRecognizer? in
+            // Reused while its language stays, so a phrase edit doesn't
+            // rebuild a recognizer that is listening.
+            let recognizer = recognizers.first(where: { $0.locale.identifier == group.locale.identifier })?.recognizer
+                ?? SFSpeechRecognizer(locale: group.locale)
+            guard let recognizer, recognizer.supportsOnDeviceRecognition else { return nil }
+            return WakeRecognizer(locale: group.locale, recognizer: recognizer, phrases: group.phrases)
+        }
+    }
+
+    /// Why no recognizer hears the phrases: the phrase's own language when
+    /// that's what is missing, as Settings says beside it.
+    private func unheardReason() -> String {
+        let phrases = bindings.map(\.phrase).filter(WakePhraseMatcher.isUsable)
+        let notes = phrases.compactMap { WakeSpeechLocale.note(for: $0, among: phrases) }
+        if let note = notes.first(where: \.isUnheard) ?? notes.first {
+            return note.text
+        }
+        let locale = Locale.current
+        return AppLocalization.string("On-device Apple speech recognition is unavailable for \(locale.identifier).")
+    }
+
+    private func cancelRecognition() {
+        for task in recognitionTasks { task.cancel() }
+        recognitionTasks = []
+    }
+
     private func startRecognitionCycle() {
-        guard isArmed, let recognizer else { return }
+        guard isArmed, !recognizers.isEmpty else { return }
         cycleGeneration &+= 1
         let generation = cycleGeneration
-        recognitionTask?.cancel()
-        recognitionTask = nil
+        cancelRecognition()
         cycleTask?.cancel()
 
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.requiresOnDeviceRecognition = true
-        request.shouldReportPartialResults = true
-        request.taskHint = .search
-        // Bias the recognizer toward the bound phrases (profile names are
-        // often unusual words).
-        request.contextualStrings = bindings.map(\.phrase)
-        audioSink.replace(with: request)
-
-        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            let transcript = result?.bestTranscription.formattedString
-            let isFinal = result?.isFinal ?? false
-            let failed = error != nil
-            Task { @MainActor [weak self] in
-                self?.receive(transcript: transcript, isFinal: isFinal, failed: failed, generation: generation)
-            }
+        var requests: [SFSpeechAudioBufferRecognitionRequest] = []
+        for wake in recognizers {
+            let request = SFSpeechAudioBufferRecognitionRequest()
+            request.requiresOnDeviceRecognition = true
+            request.shouldReportPartialResults = true
+            request.taskHint = .search
+            // Bias the recognizer toward its bound phrases (profile names
+            // are often unusual words).
+            request.contextualStrings = wake.phrases
+            requests.append(request)
+            recognitionTasks.append(wake.recognizer.recognitionTask(with: request) { [weak self] result, error in
+                let transcript = result?.bestTranscription.formattedString
+                let isFinal = result?.isFinal ?? false
+                let failed = error != nil
+                Task { @MainActor [weak self] in
+                    self?.receive(transcript: transcript, isFinal: isFinal, failed: failed, generation: generation)
+                }
+            })
         }
+        audioSink.replace(with: requests)
         cycleTask = Task { @MainActor [weak self, cycleDuration] in
             try? await Task.sleep(for: cycleDuration)
             guard let self, !Task.isCancelled, self.cycleGeneration == generation else { return }
@@ -422,9 +492,9 @@ final class AppleSpeechWakeWordService: WakeWordService {
         recoveryTask?.cancel()
         recoveryTask = nil
         removeObservers()
-        audioSink.replace(with: nil)
-        recognitionTask?.cancel()
-        recognitionTask = nil
+        audioSink.replace(with: [])
+        cancelRecognition()
+        recognizers = []
         stopAudio()
         clearPreferredInput()
         if let lease {
@@ -434,25 +504,32 @@ final class AppleSpeechWakeWordService: WakeWordService {
     }
 }
 
-/// Hands microphone buffers from the render thread to whichever recognition
-/// request is current.
+/// One language's recognizer and the phrases it listens for.
+private struct WakeRecognizer {
+    let locale: Locale
+    let recognizer: SFSpeechRecognizer
+    var phrases: [String]
+}
+
+/// Hands microphone buffers from the render thread to the current
+/// recognition requests, one per language.
 private final class WakeAudioSink: @unchecked Sendable {
     /// An unfair lock: the render thread only ever waits for a request swap,
     /// never for a contended mutex with priority inversion.
-    private let state = OSAllocatedUnfairLock<SFSpeechAudioBufferRecognitionRequest?>(uncheckedState: nil)
+    private let state = OSAllocatedUnfairLock<[SFSpeechAudioBufferRecognitionRequest]>(uncheckedState: [])
 
     /// Both calls hold the lock for the whole operation, so a render-thread
     /// append never runs concurrently with endAudio on the same request.
-    func replace(with newRequest: SFSpeechAudioBufferRecognitionRequest?) {
-        state.withLockUnchecked { request in
-            request?.endAudio()
-            request = newRequest
+    func replace(with newRequests: [SFSpeechAudioBufferRecognitionRequest]) {
+        state.withLockUnchecked { requests in
+            for request in requests { request.endAudio() }
+            requests = newRequests
         }
     }
 
     func append(_ buffer: AVAudioPCMBuffer) {
-        state.withLockUnchecked { request in
-            request?.append(buffer)
+        state.withLockUnchecked { requests in
+            for request in requests { request.append(buffer) }
         }
     }
 }

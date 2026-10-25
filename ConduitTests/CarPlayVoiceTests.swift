@@ -2115,6 +2115,64 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertEqual(harness.activations.last, .listening)
     }
 
+    /// The phone switches to a live mode while a classic start waits for
+    /// Hermes (#999): the old start neither stops the new mode's call nor
+    /// carries on into a classic listening turn.
+    func testAClassicStartWaitingForHermesStopsWhenTheModeTurnsLive() async {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        harness.appState.activeSessionId = "existing-session"
+        harness.appState.isConnected = false
+        harness.appState.isConnecting = true
+        harness.coordinator.connectionWaiter = { appState in
+            appState.setGeminiLiveEnabled(true)
+            appState.isConnecting = false
+            appState.isConnected = true
+            return true
+        }
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+
+        await harness.coordinator.performStartListeningTurn(generation: harness.coordinator.connectionGeneration)
+
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession, "classic Voice wasn't prepared for a live mode")
+        XCTAssertNotEqual(harness.controller.state, .listening)
+        XCTAssertEqual(harness.capture.startCount, 0, "the microphone is never acquired")
+        XCTAssertFalse(harness.activations.contains(.error), "\(harness.activations)")
+    }
+
+    /// A switch to a live mode that lands while the prepare is arming
+    /// classic Voice: the prepare closes the conversation it armed instead
+    /// of leaving it open behind the new mode.
+    func testAModeSwitchDuringAClassicPrepareClosesWhatThePrepareArmed() async {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        harness.appState.activeSessionId = "existing-session"
+        let requester = HeldOnceVoiceConfigRequester()
+        harness.appState.voiceCapabilityRequesterForTesting = requester
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        let generation = harness.coordinator.connectionGeneration
+
+        let start = Task { @MainActor in
+            await harness.coordinator.establishVoice(generation: generation)
+        }
+        for _ in 0..<500 where !requester.isHolding { await Task.yield() }
+        XCTAssertTrue(requester.isHolding, "the classic prepare is in flight")
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession)
+
+        harness.appState.setGeminiLiveEnabled(true)
+        requester.release()
+        await start.value
+
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession, "the classic conversation the prepare armed was closed")
+        XCTAssertNotEqual(harness.controller.state, .listening)
+    }
+
     /// End, then Listen, while the first start's prepare is still on its
     /// way: End closes what that start opens, but not the conversation the
     /// driver's Listen opened meanwhile (there is one classic conversation).

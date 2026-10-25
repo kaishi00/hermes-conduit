@@ -318,8 +318,12 @@ final class HermesDictationRecognizer: DictationRecognizer {
     private var live: VoiceLiveTranscription?
     private var opening: Task<Void, Never>?
     private var finishing: Task<Void, Never>?
-    /// The whole recording, 16 kHz mono PCM16, for the upload.
+    /// The whole recording, 16 kHz mono PCM16, for the upload. Never more
+    /// than `maximumRecordedBytes`: the dictation stops itself there.
     private var recorded = Data()
+    /// The dictation limit's worth of audio, with a second to spare for
+    /// buffers still on their way when it stops.
+    static let maximumRecordedBytes = Int(sampleRate) * 2 * Int(VoiceMessageRecorder.maximumDuration + 1)
     private var sentBytes = 0
     private var partial = ""
 
@@ -388,7 +392,9 @@ final class HermesDictationRecognizer: DictationRecognizer {
     /// sends what the live socket hasn't had yet.
     private func pump() {
         guard onUpdate != nil else { return }
-        if let pcm = input?.drain() { recorded.append(pcm) }
+        if let pcm = input?.drain() {
+            recorded.append(pcm.prefix(max(0, Self.maximumRecordedBytes - recorded.count)))
+        }
         guard let live, recorded.count > sentBytes else { return }
         live.push(recorded.subdata(in: sentBytes..<recorded.count))
         sentBytes = recorded.count

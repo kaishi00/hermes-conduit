@@ -4375,3 +4375,45 @@ final class FakeGPTLiveSpokenWords: GPTLiveSpokenWords {
     func lastUserLine() -> String { lastLine }
     func settleWords(_ words: GPTLiveDelegationBridge.SettledWords) { settled.append(words) }
 }
+
+// MARK: - A start's late answers (#999)
+
+@MainActor
+extension VoiceConversationControllerTests {
+    func testGPTLiveStoppedStartsLateAnswerLeavesTheNewerStartAlone() async {
+        let held = HeldLiveAvailability<GPTLiveAvailability>()
+        let session = FakeGPTLiveSessionControl()
+        var sessionsMade = 0
+        let supervisor = VoiceBackgroundJobSupervisor(backend: FakeVoiceJobBackend().backend, pollInterval: .seconds(3_600))
+        let controller = GPTLiveConversationController(
+            makeSession: { sessionsMade += 1; return session },
+            availability: { try await held.next() },
+            briefing: { "[rules]" },
+            openingPrompt: { nil },
+            supervisor: supervisor,
+            requestPermission: { true },
+            now: Date.init,
+            endConversationPhrases: { [] },
+            headsetMute: HeadsetMicrophoneMute(system: FakeSystemInputMute())
+        )
+
+        let first = Task { await controller.start() }
+        await settle(until: { held.waiting.count == 1 })
+        // Stop, then Start again: both leave the controller `.connecting`.
+        controller.stop()
+        let second = Task { await controller.start() }
+        await settle(until: { held.waiting.count == 2 })
+
+        // The stopped start hears back late, that GPT-Live isn't there.
+        held.answer(0, with: .unavailable(reason: "old answer"))
+        await first.value
+        XCTAssertEqual(controller.phase, .connecting, "the old answer doesn't fail the newer start")
+        XCTAssertEqual(sessionsMade, 0)
+
+        held.answer(1, with: .available(model: "gpt-live-1-codex", voice: "cove"))
+        await second.value
+        XCTAssertEqual(sessionsMade, 1, "only the newer start connects")
+        XCTAssertEqual(session.started, 1)
+        controller.stop()
+    }
+}

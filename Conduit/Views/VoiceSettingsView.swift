@@ -1807,6 +1807,9 @@ struct WakePhraseSettingsModel {
     var save: (_ phrases: [String], _ startsFreshConversation: Bool) -> Void
     var setListensOnCarPlay: (Bool) -> Void
     var setListensOverOtherAudio: (Bool) -> Void
+    /// Every profile's phrases as the listener gets them, with this one's
+    /// replaced by the edited list, so the language cap matches it.
+    var listenedPhrases: ([String]) -> [String] = { $0.filter(WakePhraseMatcher.isUsable) }
 }
 
 /// Foreground wake phrase for this profile (#174). Device-local: phrases
@@ -1822,6 +1825,9 @@ private struct WakePhraseSettingsSection: View {
     @State private var isEnabled: Bool
     @State private var isRequestingPermission = false
     @State private var permissionDenied = false
+    /// What's said beside each phrase about its language, worked out when
+    /// the phrases change: it builds speech recognizers to ask.
+    @State private var languageNotes: [String: (text: String, isUnheard: Bool)] = [:]
 
     init(model: WakePhraseSettingsModel) {
         self.model = model
@@ -1862,6 +1868,15 @@ private struct WakePhraseSettingsSection: View {
                     Label("Phrases with a single word are ignored.", systemImage: "exclamationmark.circle")
                         .font(.caption)
                         .foregroundStyle(.orange)
+                }
+                // A phrase in another writing system is heard by a
+                // recognizer for its own language, when this iPhone has one.
+                ForEach(phrases.filter(WakePhraseMatcher.isUsable), id: \.self) { phrase in
+                    if let note = languageNotes[phrase] {
+                        Label(note.text, systemImage: note.isUnheard ? "exclamationmark.circle" : "globe")
+                            .font(.caption)
+                            .foregroundStyle(note.isUnheard ? Color.orange : Color.secondary)
+                    }
                 }
                 Toggle("Start a new conversation", isOn: Binding(
                     get: { startsFresh },
@@ -1909,6 +1924,10 @@ private struct WakePhraseSettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        .onAppear { updateLanguageNotes() }
+        .onChange(of: phrases) { _, _ in updateLanguageNotes() }
+        // Another profile's phrases can change which languages fit the cap.
+        .onChange(of: model.listenedPhrases(phrases)) { _, _ in updateLanguageNotes() }
         // Follow changes made elsewhere while this page stays open.
         .onChange(of: model.phrases) { _, newPhrases in
             guard !isRequestingPermission, newPhrases != phrases else { return }
@@ -1924,6 +1943,20 @@ private struct WakePhraseSettingsSection: View {
         .onChange(of: model.listensOverOtherAudio) { _, value in
             listensOverOtherAudio = value
         }
+    }
+
+    private func updateLanguageNotes() {
+        let usable = phrases.filter(WakePhraseMatcher.isUsable)
+        // The cap counts other profiles' languages too, in the listener's order.
+        let listened = model.listenedPhrases(phrases)
+        // Each phrase's recognizer is looked up once.
+        let locales = Dictionary(listened.map { ($0, WakeSpeechLocale.locale(for: $0)) }, uniquingKeysWith: { first, _ in first })
+        let localeFor: (String) -> Locale? = { locales[$0] ?? WakeSpeechLocale.locale(for: $0) }
+        var notes: [String: (text: String, isUnheard: Bool)] = [:]
+        for phrase in usable {
+            notes[phrase] = WakeSpeechLocale.note(for: phrase, among: listened, localeFor: localeFor)
+        }
+        languageNotes = notes
     }
 
     private func enable() {

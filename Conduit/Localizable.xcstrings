@@ -335839,6 +335839,252 @@
           }
         }
       }
+    },
+    "“%@” can't be heard: this iPhone has no on-device speech recognition for %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ ist nicht hörbar: Dieses iPhone hat keine Spracherkennung auf dem Gerät für %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«%@» no se puede oír: este iPhone no tiene reconocimiento de voz en el dispositivo para %@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "« %@ » ne peut pas être entendu : cet iPhone n'a pas de reconnaissance vocale sur l'appareil pour %@."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” tidak dapat didengar: iPhone ini tidak punya pengenalan ucapan di perangkat untuk %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” non può essere sentita: questo iPhone non ha il riconoscimento vocale sul dispositivo per %@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」は聞き取れません：このiPhoneには%@のオンデバイス音声認識がありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”은(는) 들을 수 없어요. 이 iPhone에는 %@ 온디바이스 음성 인식이 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@” nie zostanie usłyszane: ten iPhone nie ma rozpoznawania mowy na urządzeniu dla języka %@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” não pode ser ouvida: este iPhone não tem reconhecimento de fala no dispositivo para %@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«%@» не будет услышана: на этом iPhone нет распознавания речи на устройстве для языка %@."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” duyulamaz: Bu iPhone'da %@ için cihaz üzerinde konuşma tanıma yok."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法听到“%@”：这台 iPhone 没有%@的设备端语音识别。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法聽到「%@」：這部 iPhone 沒有%@的裝置端語音辨識。"
+          }
+        }
+      }
+    },
+    "Conduit listens for “%@” in %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit hört auf „%@“ in %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit escucha «%@» en %@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit écoute « %@ » en %@."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit mendengarkan “%@” dalam %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit ascolta “%@” in %@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitは「%1$@」を%2$@で聞き取ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit은 “%@”을(를) %@로 들어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nasłuchuje „%@” w języku %@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit escuta “%@” em %@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit слушает «%@» на языке %@."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit “%@” ifadesini %@ dilinde dinler."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 会用%2$@聆听“%1$@”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 會用%2$@聆聽「%1$@」。"
+          }
+        }
+      }
+    },
+    "“%@” isn't heard: wake listens in three languages at most." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ wird nicht gehört: Das Aktivierungswort hört in höchstens drei Sprachen zu."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«%@» no se oye: la frase de activación escucha en tres idiomas como máximo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "« %@ » n'est pas entendu : l'écoute du mot d'activation se limite à trois langues."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” tidak didengar: frasa pemicu mendengarkan dalam paling banyak tiga bahasa."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” non viene sentita: l'ascolto della frase di attivazione è limitato a tre lingue."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」は聞き取られません：ウェイクフレーズは最大3つの言語で聞き取ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”은(는) 들리지 않아요. 호출 문구는 최대 세 가지 언어로만 들어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@” nie zostanie usłyszane: fraza wybudzająca działa najwyżej w trzech językach."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” não é ouvida: a frase de ativação escuta em no máximo três idiomas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«%@» не будет услышана: фраза активации слушает не больше чем на трёх языках."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” duyulmaz: Uyandırma ifadesi en fazla üç dilde dinler."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法听到“%@”：唤醒词最多同时聆听三种语言。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法聽到「%@」：喚醒片語最多同時聆聽三種語言。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

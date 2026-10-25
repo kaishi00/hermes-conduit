@@ -99,7 +99,10 @@ reply pending or playing):
   talking after asking, the result tells the model to deal with anything they
   said since (passing it on to Hermes if needed) and then say that Hermes has
   come back on the earlier request. Hanging up returns an unsaid result to
-  the job, as for other notices.
+  the job, as for other notices, and so does a reconnect that replaces the
+  conversation while a result is still on its way (#1223). A quiet result
+  the conversation couldn't take yet waits for the next quiet window instead
+  of being dropped.
 - Gemini Live: a job that finishes while the model is answering something
   else no longer has its result sent on its call straight away (Gemini could
   take it without saying it). The answer waits for the same quiet window; if

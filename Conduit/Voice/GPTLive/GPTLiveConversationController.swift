@@ -278,6 +278,9 @@ final class GPTLiveConversationController: ObservableObject {
 
     /// The call's audio is paused for another sound (#376).
     private var audioPaused = false
+    /// Counts calls to `start()`, so a start's late answers can tell it
+    /// still owns the call.
+    private var startAttempt = 0
     /// Where the call settles when nobody is speaking.
     private var restingPhase: Phase { audioPaused ? .paused : .listening }
 
@@ -416,6 +419,10 @@ final class GPTLiveConversationController: ObservableObject {
         // So is the speaker mute.
         isSpeakerMuted = false
         phase = .connecting
+        // Stop then Start leaves `.connecting` again, so an older start's
+        // late availability or permission answer is told apart by attempt.
+        startAttempt &+= 1
+        let attempt = startAttempt
         transcript = []
         voiceNote = nil
         billing = nil
@@ -454,7 +461,7 @@ final class GPTLiveConversationController: ObservableObject {
         }
         do {
             let status = try await availability()
-            guard phase == .connecting else { return }
+            guard isStarting(attempt) else { return }
             guard widgetAuthorization?.mayStartCapture != false else { phase = .idle; return }
             guard status.isAvailable else {
                 hostIssue = LiveVoiceHostIssue(status)
@@ -462,18 +469,18 @@ final class GPTLiveConversationController: ObservableObject {
                 return
             }
         } catch {
-            guard phase == .connecting else { return }
+            guard isStarting(attempt) else { return }
             hostIssue = LiveVoiceHostIssue(error: error)
             phase = .failed(UserFacingError.message(for: error))
             return
         }
         guard await requestPermission() else {
-            guard phase == .connecting else { return }
+            guard isStarting(attempt) else { return }
             phase = .failed(VoiceAudioError.microphonePermissionDenied.localizedDescription)
             return
         }
-        guard phase == .connecting, widgetAuthorization?.mayStartCapture != false else {
-            if widgetAuthorization?.mayStartCapture == false { phase = .idle }
+        guard isStarting(attempt), widgetAuthorization?.mayStartCapture != false else {
+            if isStarting(attempt), widgetAuthorization?.mayStartCapture == false { phase = .idle }
             return
         }
         bridge.connectionReplaced()
@@ -485,6 +492,12 @@ final class GPTLiveConversationController: ObservableObject {
         audioPaused = false
         self.session = session
         session.start(initialCaptureAuthorization: widgetAuthorization)
+    }
+
+    /// The start numbered `attempt` is still the one under way: nobody
+    /// stopped it, and no newer start replaced it.
+    private func isStarting(_ attempt: Int) -> Bool {
+        phase == .connecting && startAttempt == attempt
     }
 
     func installInitialWidgetCaptureAuthorization(_ authorization: WidgetInitialCaptureAuthorization?) {
@@ -1123,9 +1136,14 @@ final class GPTLiveConversationController: ObservableObject {
             switch item {
             case .delegationReply(let id, let text, let channel):
                 guard channel == .speakable else {
-                    // Quiet progress goes out at once.
+                    // Quiet progress goes out at once. One the data channel
+                    // can't take now (WebRTC's disconnect grace) waits with
+                    // the spoken ones instead of being lost: quiet replies
+                    // carry host tools' results too (#1007).
                     if appendContext(text, channel: channel, delegationID: id) {
                         bridge.replyDelivered(delegationID: id)
+                    } else {
+                        pendingContext.append(PendingSend(text: text, channel: channel, jobID: nil, delegationID: id))
                     }
                     continue
                 }
@@ -1178,7 +1196,10 @@ final class GPTLiveConversationController: ObservableObject {
             // Where a request stands (held, sent), not what came back: its
             // delegation's result is still to come (#451).
             let isStatus = GPTLiveDelegationBridge.isStatus(item.text)
-            if let delegationID = item.delegationID, !isStatus, userSpokeAfterAsking(delegationID), !bridge.answersReadBack(delegationID) {
+            // Only a spoken result is introduced as one: a quiet reply that
+            // waited for the channel (a dropped request, a progress note) is
+            // no result of Hermes'.
+            if let delegationID = item.delegationID, item.channel == .speakable, !isStatus, userSpokeAfterAsking(delegationID), !bridge.answersReadBack(delegationID) {
                 text = Self.resultAfterUserNote + text
             }
             guard appendContext(text, channel: item.channel, delegationID: item.delegationID, to: session) else {

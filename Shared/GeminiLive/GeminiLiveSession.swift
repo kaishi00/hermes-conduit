@@ -280,7 +280,19 @@ final class GeminiLiveSession {
     /// `Task.yield` settles cannot always cover on a loaded runner.
     private let reconnectDelay: @MainActor @Sendable (Int) async throws -> Void
 
-    private var socket: GeminiLiveSocket?
+    private var socket: GeminiLiveSocket? {
+        // Frames queued for a socket that's no longer the session's fail
+        // instead of going out on it. The old writer is let go before it
+        // fails them: a failure handler that sends again gets a writer for
+        // the new socket, which must outlive this.
+        didSet {
+            guard let old = writer, old.socket !== socket else { return }
+            writer = nil
+            old.close()
+        }
+    }
+    /// Sends the current socket's frames in order, with bounded audio.
+    private var writer: LiveVoiceSocketWriter?
     /// Identity of the connection whose frames are current. Frames from any
     /// other connection are ignored.
     private var connectionID = UUID()
@@ -381,15 +393,23 @@ final class GeminiLiveSession {
             return
         }
         let id = connectionID
-        Task { [weak self] in
-            do {
-                try await socket.send(text)
+        let queued = socketWriter(for: socket).enqueue([text], isAudio: message.isAudio) { [weak self] error in
+            guard let error else {
                 onSent?()
-            } catch {
-                onFailure?()
-                self?.connectionFailed(id, error: error)
+                return
             }
+            onFailure?()
+            // A closed writer's frames belong to a connection already gone.
+            if !(error is CancellationError) { self?.connectionFailed(id, error: error) }
         }
+        if !queued { onFailure?() }
+    }
+
+    private func socketWriter(for socket: GeminiLiveSocket) -> LiveVoiceSocketWriter {
+        if let writer, writer.socket === socket { return writer }
+        let writer = LiveVoiceSocketWriter(socket: socket)
+        self.writer = writer
+        return writer
     }
 
     // MARK: Connection

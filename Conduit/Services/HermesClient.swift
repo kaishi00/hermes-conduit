@@ -2049,12 +2049,14 @@ final class HermesClient: ObservableObject {
 
     /// `mcp.servers.add` from a catalog preset.
     func addBotMcpServer(profile: String, name: String, preset: String) async throws -> AnyCodable {
-        try await rpc(
-            "mcp.servers.add",
-            params: ["profile": profile, "name": name, "preset": preset],
-            timeout: 60,
-            scoped: false
-        )
+        try await ProfileConfigWriteQueue.runThrowing { [self] in
+            try await rpc(
+                "mcp.servers.add",
+                params: ["profile": profile, "name": name, "preset": preset],
+                timeout: 60,
+                scoped: false
+            )
+        }
     }
 
     /// `mcp.servers.set_api_key`: Hermes keeps the value in the profile's
@@ -2098,7 +2100,10 @@ final class HermesClient: ObservableObject {
     func configureBotModel(name: String, provider: String, model: String, confirmed: Bool) async throws -> AnyCodable {
         var params: [String: Any] = ["name": name, "provider": provider, "model": model]
         if confirmed { params["confirm_expensive_model"] = true }
-        return try await rpc("profiles.configure", params: params, scoped: false)
+        // A profile config write: it waits its turn with Settings' saves.
+        return try await ProfileConfigWriteQueue.runThrowing { [self] in
+            try await rpc("profiles.configure", params: params, scoped: false)
+        }
     }
 
     /// `profiles.configure`. Sections are independent; the answer's
@@ -2122,7 +2127,9 @@ final class HermesClient: ObservableObject {
         }
         if let description { params["description"] = description }
         if let soul { params["soul"] = soul }
-        return try await rpc("profiles.configure", params: params, scoped: false)
+        return try await ProfileConfigWriteQueue.runThrowing { [self] in
+            try await rpc("profiles.configure", params: params, scoped: false)
+        }
     }
 
     /// `profiles.get_asset` for the bot's avatar. Nil when it has none.
@@ -2385,7 +2392,10 @@ final class HermesClient: ObservableObject {
     }
 
     func setBusyInputMode(_ mode: BusyInputMode) async throws {
-        _ = try await rpc("config.set", params: ["key": "busy", "value": mode.rawValue])
+        // Saved in the profile config, so it queues with the other saves.
+        _ = try await ProfileConfigWriteQueue.runThrowing { [self] in
+            try await rpc("config.set", params: ["key": "busy", "value": mode.rawValue])
+        }
     }
 
     /// `inProfile` creates the session in another profile on the same

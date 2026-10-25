@@ -1846,7 +1846,8 @@ final class CarPlayVoiceCoordinator {
     /// connected yet, waits (bounded) for the connection and prepares once
     /// more. A connection that never arrives keeps `.deferred`, which the
     /// callers settle into the error state. A wait cancelled by End, a
-    /// disconnect or a newer start returns nil without settling a terminal
+    /// disconnect, a newer start or a switch to a live mode returns nil
+    /// without settling a terminal
     /// state (the car may still show the Thinking state set before the
     /// wait): whatever cancelled the wait owns the car's next state.
     func prepareWaitingForConnection(
@@ -1854,11 +1855,29 @@ final class CarPlayVoiceCoordinator {
         generation: UInt64,
         startsFreshConversation: Bool = false
     ) async -> AppState.VoiceConversationPrepareOutcome? {
+        // This prepares classic Voice. A switch to a live mode meanwhile
+        // leaves the car to that mode, started on the next tap as in
+        // establishLiveVoice: the old start must not stop the new mode's
+        // call, or carry on into a classic listening turn.
+        func stillClassic() -> Bool { CarPlayVoiceMode.current(in: appState) == .classic }
+        // A prepare that armed classic Voice before the switch landed
+        // closes what it armed, as an End meanwhile does; one that only
+        // attached to a conversation already open leaves it. Unlike
+        // closeStartEndedMeanwhile it needs no driver-start check: it runs
+        // only once the mode left classic, so no newer classic start can
+        // own the conversation it closes.
+        func standDown(_ outcome: AppState.VoiceConversationPrepareOutcome, hadConversation: Bool) -> AppState.VoiceConversationPrepareOutcome? {
+            if outcome == .handled, !hadConversation { appState.closeVoiceConversation() }
+            return nil
+        }
+        guard stillClassic() else { return nil }
         appState.keepVoiceFromHermesCallCleanup()
+        let hadConversation = appState.voiceConversationController.hasLiveVoiceSession
         let outcome = await appState.prepareVoiceConversation(
             profile: nil,
             startsFreshConversation: startsFreshConversation
         )
+        guard stillClassic() else { return standDown(outcome, hadConversation: hadConversation) }
         guard outcome == .deferred else { return outcome }
         carPlayLogger.notice("voice prepare deferred: waiting for Hermes to connect")
         // A lost transport is re-established by the CarPlay surface itself
@@ -1870,10 +1889,13 @@ final class CarPlayVoiceCoordinator {
         guard connected, isCurrent(generation), isConnected else {
             return .deferred
         }
-        return await appState.prepareVoiceConversation(
+        guard stillClassic() else { return nil }
+        let hadConversationAfterWait = appState.voiceConversationController.hasLiveVoiceSession
+        let prepared = await appState.prepareVoiceConversation(
             profile: nil,
             startsFreshConversation: startsFreshConversation
         )
+        return stillClassic() ? prepared : standDown(prepared, hadConversation: hadConversationAfterWait)
     }
 
     /// Waits (bounded) for Hermes when it isn't connected, showing Thinking

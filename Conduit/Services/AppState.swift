@@ -2382,11 +2382,15 @@ final class AppState: ObservableObject {
         guard let owner = currentDashboardRuntimeOwner() else { return false }
         let dashboardTicketBridge = owner.bridge
         do {
-            let result = try await dashboardTicketBridge.requestJSON(
-                path: dashboardPath("/api/model/set", profile: profile),
-                method: "POST",
-                body: setting.assignmentBody(profile: profile)
-            )
+            // Hermes writes the profile config for it: in turn with every
+            // other config save.
+            let result = try await ProfileConfigWriteQueue.runThrowing { [self] in
+                try await dashboardTicketBridge.requestJSON(
+                    path: dashboardPath("/api/model/set", profile: profile),
+                    method: "POST",
+                    body: setting.assignmentBody(profile: profile)
+                )
+            }
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             if result["confirm_required"] as? Bool == true {
                 errorMessage = result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
@@ -29962,11 +29966,15 @@ final class AppState: ObservableObject {
         // After every switch flipped before it; a failure puts back what
         // Hermes last confirmed, unless a newer flip is on its way.
         let outcome = await capabilityToggleWrites.send("\(ObjectIdentifier(owner.bridge))|\(profile)|skill|\(name)", enabled: enabled, current: current) {
-            _ = try await dashboardTicketBridge.requestJSON(
-                path: "/api/skills/toggle",
-                method: "PUT",
-                body: ["name": name, "enabled": enabled, "profile": profile]
-            )
+            // Hermes rewrites the profile config for it: in turn with
+            // every other config save.
+            try await ProfileConfigWriteQueue.runThrowing {
+                _ = try await dashboardTicketBridge.requestJSON(
+                    path: "/api/skills/toggle",
+                    method: "PUT",
+                    body: ["name": name, "enabled": enabled, "profile": profile]
+                )
+            }
         }
         guard ownsDashboardRuntime(owner), let error = outcome.error, profile == activeProfile else { return }
         if let restore = outcome.restore, let index = skills.firstIndex(where: { $0.name == name }) {
@@ -29989,11 +29997,15 @@ final class AppState: ObservableObject {
         let encodedName = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
         // In the same order as skill switches: Hermes rewrites one config.
         let outcome = await capabilityToggleWrites.send("\(ObjectIdentifier(owner.bridge))|\(profile)|toolset|\(name)", enabled: enabled, current: current) {
-            _ = try await dashboardTicketBridge.requestJSON(
-                path: "/api/tools/toolsets/\(encodedName)",
-                method: "PUT",
-                body: ["enabled": enabled, "profile": profile]
-            )
+            // Hermes rewrites the profile config for it: in turn with
+            // every other config save.
+            try await ProfileConfigWriteQueue.runThrowing {
+                _ = try await dashboardTicketBridge.requestJSON(
+                    path: "/api/tools/toolsets/\(encodedName)",
+                    method: "PUT",
+                    body: ["enabled": enabled, "profile": profile]
+                )
+            }
         }
         guard ownsDashboardRuntime(owner), let error = outcome.error, profile == activeProfile else { return }
         if let restore = outcome.restore, let index = toolsets.firstIndex(where: { $0.name == name }) {
@@ -30457,11 +30469,15 @@ final class AppState: ObservableObject {
         guard let owner = currentDashboardRuntimeOwner() else { return false }
         let dashboardTicketBridge = owner.bridge
         do {
-            let result = try await dashboardTicketBridge.requestJSON(
-                path: dashboardPath("/api/model/set", profile: profile),
-                method: "POST",
-                body: ["model": model, "provider": provider, "scope": "main", "profile": profile]
-            )
+            // Hermes writes the profile config for it: in turn with every
+            // other config save.
+            let result = try await ProfileConfigWriteQueue.runThrowing { [self] in
+                try await dashboardTicketBridge.requestJSON(
+                    path: dashboardPath("/api/model/set", profile: profile),
+                    method: "POST",
+                    body: ["model": model, "provider": provider, "scope": "main", "profile": profile]
+                )
+            }
             // Another dashboard took over: stop. A profile switch on this
             // dashboard doesn't stop the save: the model change already
             // reached Hermes, and the captured profile's config must follow
@@ -30497,12 +30513,11 @@ final class AppState: ObservableObject {
         }
     }
 
-    private var profileConfigWrites: Task<Void, Never>?
-
     /// One GET, change and PUT of the whole profile config, run after any
-    /// earlier one finishes. Settings pages save independently (the Model
-    /// page has three savers), and two overlapping round trips would let
-    /// the later PUT put back what the earlier one changed.
+    /// earlier one finishes (ProfileConfigWriteQueue, shared with the
+    /// voice settings' own service). Settings pages save independently
+    /// (the Model page has three savers), and two overlapping round trips
+    /// would let the later PUT put back what the earlier one changed.
     private func updateProfileConfig(
         profile: String,
         _ change: @escaping @MainActor (inout [String: Any]) -> Void
@@ -30511,9 +30526,7 @@ final class AppState: ObservableObject {
         // write that outlives a switch must not reach the next dashboard's
         // profile of the same name.
         let owner = currentDashboardRuntimeOwner()
-        let previous = profileConfigWrites
-        let write = Task { @MainActor [weak self] in
-            await previous?.value
+        try await ProfileConfigWriteQueue.runThrowing { @MainActor [weak self] in
             guard let self, let owner, self.ownsDashboardRuntime(owner) else { throw CancellationError() }
             let bridge = owner.bridge
             var config = try await bridge.requestJSON(path: self.dashboardPath("/api/config", profile: profile))
@@ -30525,8 +30538,6 @@ final class AppState: ObservableObject {
                 body: ["config": config, "profile": profile]
             )
         }
-        profileConfigWrites = Task { _ = try? await write.value }
-        try await write.value
     }
 
     /// The profile's default reasoning effort. Hermes keeps it at
@@ -30606,7 +30617,11 @@ final class AppState: ObservableObject {
             if profile == "default" && (key == "context.engine" || key == "memory.provider") {
                 let raw = value.textValue ?? ""
                 let body = key == "context.engine" ? ["context_engine": raw] : ["memory_provider": raw]
-                _ = try await dashboardTicketBridge.requestJSON(path: "/api/dashboard/plugin-providers", method: "PUT", body: body)
+                // Hermes writes the profile config for it: in turn with
+                // every other config save.
+                try await ProfileConfigWriteQueue.runThrowing {
+                    _ = try await dashboardTicketBridge.requestJSON(path: "/api/dashboard/plugin-providers", method: "PUT", body: body)
+                }
                 guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
                 return true
             }
@@ -30699,22 +30714,17 @@ final class AppState: ObservableObject {
             displayPreferences = previous
             return false
         }
-        let dashboardTicketBridge = owner.bridge
 
         do {
-            var config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
-            var display = config["display"] as? [String: Any] ?? [:]
-            switch key {
-            case .reasoning: display["show_reasoning"] = enabled
-            case .toolProgress: display["tool_progress"] = enabled ? "on" : "off"
-            case .expandTools: display["expand_tools"] = enabled
+            try await updateProfileConfig(profile: profile) { config in
+                var display = config["display"] as? [String: Any] ?? [:]
+                switch key {
+                case .reasoning: display["show_reasoning"] = enabled
+                case .toolProgress: display["tool_progress"] = enabled ? "on" : "off"
+                case .expandTools: display["expand_tools"] = enabled
+                }
+                config["display"] = display
             }
-            config["display"] = display
-            _ = try await dashboardTicketBridge.requestJSON(
-                path: dashboardPath("/api/config", profile: profile),
-                method: "PUT",
-                body: ["config": config, "profile": profile]
-            )
             return true
         } catch {
             // After a dashboard switch the preferences on screen are the next

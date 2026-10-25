@@ -654,7 +654,8 @@ struct SettingsView: View {
                 )
             },
             setListensOnCarPlay: { appState.setWakeListensOnCarPlay($0) },
-            setListensOverOtherAudio: { appState.setWakeListensOverOtherAudio($0) }
+            setListensOverOtherAudio: { appState.setWakeListensOverOtherAudio($0) },
+            listenedPhrases: { appState.wakeListenedPhrases(replacing: $0, forProfile: profile) }
         )
     }
 

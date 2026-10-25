@@ -130,13 +130,28 @@ final class CapabilitiesStore: ObservableObject {
         timeout: Int = 12_000
     ) async throws -> [String: Any] {
         guard let requester else { throw CapabilitiesStoreError.notConnected }
-        return try await requester.requestJSON(
-            path: path,
-            method: method,
-            body: body,
-            timeoutMilliseconds: timeout,
-            maxResponseBytes: DataURLLimits.maxJSONResponseBytes
-        )
+        let send = {
+            try await requester.requestJSON(
+                path: path,
+                method: method,
+                body: body,
+                timeoutMilliseconds: timeout,
+                maxResponseBytes: DataURLLimits.maxJSONResponseBytes
+            )
+        }
+        // A backend, connector or install change makes Hermes rewrite the
+        // profile config: in turn with every other config save.
+        guard Self.writesProfileConfig(method: method, path: path) else { return try await send() }
+        return try await ProfileConfigWriteQueue.runThrowing { try await send() }
+    }
+
+    /// Writes Hermes keeps in the profile config. Keys (`/api/env`),
+    /// connector tests, sign-ins and reads don't wait for config saves.
+    static func writesProfileConfig(method: String, path: String) -> Bool {
+        guard method != "GET" else { return false }
+        let route = path.split(separator: "?").first.map(String.init) ?? path
+        if route.hasSuffix("/test") || route.hasSuffix("/auth") { return false }
+        return !route.hasPrefix("/api/env") && !route.hasPrefix("/api/mcp/oauth/")
     }
 
     private func scoped(_ path: String) -> String {

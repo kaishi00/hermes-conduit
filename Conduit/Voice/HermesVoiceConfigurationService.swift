@@ -247,56 +247,64 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// lands in `<section>.provider` and any stale `use_gateway`
     /// gateway-routing intent is removed — a leftover `use_gateway: true`
     /// would override the user's fresh BYOK selection on legacy runtimes.
-    /// Like the other config editors, this is a full-document GET→PUT, so a
-    /// concurrent profile-config edit from another writer could be clobbered;
-    /// the single-writer UI flow makes that a deliberate, pre-existing
-    /// trade-off rather than a new one.
+    /// Like the other config editors, this is a full-document GET→PUT; it
+    /// runs in ProfileConfigWriteQueue, so another save can't land between
+    /// the two and be put back.
     private func saveVendorSelection(_ vendor: String, kind: VoiceProviderDescriptor.Kind) async -> Bool {
         let sectionKey = kind.rawValue
-        guard var config = try? await requester.requestJSON(path: profilePath("/api/config"), method: "GET", body: nil) else {
-            errorMessage = AppLocalization.string("Could not load voice settings to save this change.")
-            return false
+        let saved = await ProfileConfigWriteQueue.run { @MainActor [self] () -> Bool in
+            guard var config = try? await requester.requestJSON(path: profilePath("/api/config"), method: "GET", body: nil) else {
+                errorMessage = AppLocalization.string("Could not load voice settings to save this change.")
+                return false
+            }
+            var section = config[sectionKey] as? [String: Any] ?? [:]
+            section["provider"] = vendor
+            section.removeValue(forKey: "use_gateway")
+            config[sectionKey] = section
+            do {
+                _ = try await requester.requestJSON(
+                    path: profilePath("/api/config"), method: "PUT",
+                    body: ["config": config]
+                )
+                return true
+            } catch {
+                errorMessage = AppLocalization.string("Could not save \(sectionKey).provider: \(UserFacingError.message(for: error))")
+                return false
+            }
         }
-        var section = config[sectionKey] as? [String: Any] ?? [:]
-        section["provider"] = vendor
-        section.removeValue(forKey: "use_gateway")
-        config[sectionKey] = section
-        do {
-            _ = try await requester.requestJSON(
-                path: profilePath("/api/config"), method: "PUT",
-                body: ["config": config]
-            )
-            await reload()
-            return true
-        } catch {
-            errorMessage = AppLocalization.string("Could not save \(sectionKey).provider: \(UserFacingError.message(for: error))")
-            return false
-        }
+        if saved { await reload() }
+        return saved
     }
 
     private func saveProviderSelection(rowName: String, kind: VoiceProviderDescriptor.Kind) async -> Bool {
-        do {
-            let response = try await requester.requestJSON(
-                path: profilePath("/api/tools/toolsets/\(kind.rawValue)/provider"),
-                method: "PUT",
-                body: ["provider": rowName]
-            )
-            if let error = response["error"] as? String, !error.isEmpty {
-                errorMessage = AppLocalization.string("Could not select \(rowName): \(error)")
-                return false
+        // Hermes writes the profile config for this one, so it waits its
+        // turn behind (and holds off) the GET→PUT saves.
+        let needsNousAuth: Bool? = await ProfileConfigWriteQueue.run { @MainActor [self] () -> Bool? in
+            do {
+                let response = try await requester.requestJSON(
+                    path: profilePath("/api/tools/toolsets/\(kind.rawValue)/provider"),
+                    method: "PUT",
+                    body: ["provider": rowName]
+                )
+                if let error = response["error"] as? String, !error.isEmpty {
+                    errorMessage = AppLocalization.string("Could not select \(rowName): \(error)")
+                    return nil
+                }
+                return response["needs_nous_auth"] as? Bool == true
+            } catch {
+                errorMessage = AppLocalization.string("Could not select \(rowName): \(UserFacingError.message(for: error))")
+                return nil
             }
-            await reload()
-            if response["needs_nous_auth"] as? Bool == true {
-                // The write landed; Hermes is flagging that the managed route
-                // still needs sign-in. Diagnostic, never a silent failure.
-                let feature = kind == .stt ? "speech-to-text" : "speech"
-                errorMessage = AppLocalization.string("Hermes saved this selection, but the Nous subscription needs sign-in before \(feature) can use it.")
-            }
-            return true
-        } catch {
-            errorMessage = AppLocalization.string("Could not select \(rowName): \(UserFacingError.message(for: error))")
-            return false
         }
+        guard let needsNousAuth else { return false }
+        await reload()
+        if needsNousAuth {
+            // The write landed; Hermes is flagging that the managed route
+            // still needs sign-in. Diagnostic, never a silent failure.
+            let feature = kind == .stt ? "speech-to-text" : "speech"
+            errorMessage = AppLocalization.string("Hermes saved this selection, but the Nous subscription needs sign-in before \(feature) can use it.")
+        }
+        return true
     }
 
     func save(value: String, for key: String) async -> Bool {
@@ -305,6 +313,15 @@ final class HermesVoiceConfigurationService: ObservableObject {
             return false
         }
         let stored = VoiceConfigurationParser.storedValue(for: value, key: key)
+        // The whole GET→PUT waits for any other config save, here or on
+        // another settings page: overlapping, the later PUT would put back
+        // what the earlier one changed, such as a speech server key.
+        return await ProfileConfigWriteQueue.run { @MainActor [self] () -> Bool in
+            await writeValue(stored, original: value, for: key)
+        }
+    }
+
+    private func writeValue(_ stored: String, original value: String, for key: String) async -> Bool {
         guard var config = try? await requester.requestJSON(path: profilePath("/api/config"), method: "GET", body: nil) else {
             errorMessage = AppLocalization.string("Could not load voice settings to save this change.")
             return false
@@ -347,6 +364,12 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// this profile. It is a Hermes setting, so it also applies to Hermes'
     /// own CLI and Desktop voice input.
     func saveLiveTranscription(_ enabled: Bool) async -> Bool {
+        await ProfileConfigWriteQueue.run { @MainActor [self] () -> Bool in
+            await writeLiveTranscription(enabled)
+        }
+    }
+
+    private func writeLiveTranscription(_ enabled: Bool) async -> Bool {
         guard var config = try? await requester.requestJSON(path: profilePath("/api/config"), method: "GET", body: nil) else {
             errorMessage = AppLocalization.string("Could not load voice settings to save this change.")
             return false

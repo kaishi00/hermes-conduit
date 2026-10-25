@@ -82,7 +82,17 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     private let keepaliveInterval: Duration
     private let reconnectDelay: @MainActor @Sendable (Int) async throws -> Void
 
-    private var socket: GeminiLiveSocket?
+    private var socket: GeminiLiveSocket? {
+        // Frames queued for a socket that's no longer the session's fail
+        // instead of going out on it. The old writer is let go before it
+        // fails them: a failure handler that sends again gets a writer for
+        // the new socket, which must outlive this.
+        didSet {
+            guard let old = writer, old.socket !== socket else { return }
+            writer = nil
+            old.close()
+        }
+    }
     /// Identity of the current connection; frames from any other are ignored.
     private var connectionID = UUID()
     /// The connection's capture, upsampled as one stream.
@@ -114,8 +124,8 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     /// Whether the current response's transcript came as deltas; if not,
     /// its final transcript is shown instead.
     private var responseHadTranscript = false
-    /// Frames go out one after another, in order.
-    private var sendChain: Task<Void, Never>?
+    /// Frames go out one after another, in order, with bounded audio.
+    private var writer: LiveVoiceSocketWriter?
 
     init(
         client: LocalLiveConnecting,
@@ -194,7 +204,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         if wantsResponse, let create = try? LocalLiveProtocol.encode(GrokLiveProtocol.responseCreate) {
             texts.append(create)
         }
-        enqueue(texts, onSent: onSent, onFailure: onFailure)
+        enqueue(texts, isAudio: message.isAudio, onSent: onSent, onFailure: onFailure)
     }
 
     // MARK: Turns
@@ -237,27 +247,29 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         send(.textTurn(text), onSent: nil, onFailure: nil)
     }
 
-    private func enqueue(_ texts: [String], onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
+    private func enqueue(_ texts: [String], isAudio: Bool = false, onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
         guard !texts.isEmpty, let socket else {
             if texts.isEmpty { onSent?() } else { onFailure?() }
             return
         }
         let id = connectionID
-        let previous = sendChain
-        sendChain = Task { @MainActor [weak self] in
-            await previous?.value
-            guard let self, id == self.connectionID else {
-                onFailure?()
+        let writer: LiveVoiceSocketWriter
+        if let current = self.writer, current.socket === socket {
+            writer = current
+        } else {
+            writer = LiveVoiceSocketWriter(socket: socket)
+            self.writer = writer
+        }
+        let queued = writer.enqueue(texts, isAudio: isAudio) { [weak self] error in
+            guard let error else {
+                onSent?()
                 return
             }
-            do {
-                for text in texts { try await socket.send(text) }
-                onSent?()
-            } catch {
-                onFailure?()
-                self.connectionFailed(id, error: error)
-            }
+            onFailure?()
+            // A closed writer's frames belong to a connection already gone.
+            if !(error is CancellationError) { self?.connectionFailed(id, error: error) }
         }
+        if !queued { onFailure?() }
     }
 
     // MARK: Connection

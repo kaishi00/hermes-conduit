@@ -23,6 +23,12 @@ enum LiveVoiceClientMessage: Equatable {
     case contextNote(String)
     /// The answer to a function call.
     case toolResponse(id: String, name: String, result: [String: String], scheduling: GeminiLiveProtocol.Scheduling?)
+
+    /// Microphone audio, which a backed-up connection may drop.
+    var isAudio: Bool {
+        if case .audio = self { return true }
+        return false
+    }
 }
 
 enum GeminiLiveProtocol {
