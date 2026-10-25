@@ -1862,7 +1862,10 @@ final class CarPlayVoiceCoordinator {
         func stillClassic() -> Bool { CarPlayVoiceMode.current(in: appState) == .classic }
         // A prepare that armed classic Voice before the switch landed
         // closes what it armed, as an End meanwhile does; one that only
-        // attached to a conversation already open leaves it.
+        // attached to a conversation already open leaves it. Unlike
+        // closeStartEndedMeanwhile it needs no driver-start check: it runs
+        // only once the mode left classic, so no newer classic start can
+        // own the conversation it closes.
         func standDown(_ outcome: AppState.VoiceConversationPrepareOutcome, hadConversation: Bool) -> AppState.VoiceConversationPrepareOutcome? {
             if outcome == .handled, !hadConversation { appState.closeVoiceConversation() }
             return nil
