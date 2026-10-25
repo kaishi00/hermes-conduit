@@ -66,7 +66,7 @@ enum NotificationE2E {
     /// A new pairing key: a random secret and an unrelated random key id.
     static func newRecord(installationID: String, gatewayID: String, dashboardID: String?, profile: String?, now: Date = Date()) -> E2EKeyRecord {
         E2EKeyRecord(
-            kid: randomBytes(16).map { String(format: "%02x", $0) }.joined(),
+            kid: newKid(),
             secret: randomBytes(32),
             installationID: installationID,
             gatewayID: gatewayID,
@@ -74,6 +74,11 @@ enum NotificationE2E {
             profile: profile,
             createdAt: now
         )
+    }
+
+    /// A random key id, unrelated to any secret: 32 lowercase hex digits.
+    static func newKid() -> String {
+        randomBytes(16).map { String(format: "%02x", $0) }.joined()
     }
 
     private static func randomBytes(_ count: Int) -> Data {

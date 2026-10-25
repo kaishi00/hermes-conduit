@@ -3982,7 +3982,13 @@ private struct NotificationsSettingsDetail: View {
         // The padlock is closed only when the host confirmed it seals with
         // the key this iPhone holds, and that key isn't long overdue.
         let assurance = notifications.encryptionAssurance(gatewayID: gateway.id)
-        if case .ensured(let createdAt, let rotates, let quantumSafe) = assurance {
+        if notifications.unsavedRotationGatewayIDs.contains(gateway.id) {
+            // A rotation the host took whose new key the Keychain refused:
+            // said as it is, not as a generic mismatch.
+            Label(AppLocalization.string("This host has a new encryption key that Conduit couldn't save on this iPhone, so its notifications show only generic text. Conduit asks for it again the next time it connects to this dashboard."), systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+        } else if case .ensured(let createdAt, let rotates, let quantumSafe) = assurance {
             let date = createdAt.formatted(date: .abbreviated, time: .omitted)
             // The shield replaces the padlock once the key came from an
             // ML-KEM rotation: quantum-safe end to end.

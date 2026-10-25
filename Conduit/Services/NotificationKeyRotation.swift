@@ -75,9 +75,10 @@ enum NotificationKeyRotation {
         let suite: String
         let request: [String: Any]
         fileprivate let xPrivate: Curve25519.KeyAgreement.PrivateKey
-        fileprivate let kem: Any?
+        /// Opens the host's ML-KEM ciphertext into its shared secret; nil
+        /// for the X25519 suite.
+        fileprivate let decapsulate: ((Data) throws -> Data)?
         fileprivate let ek: Data
-        let createdAt: Date
     }
 
     /// `kidNew` and `xPrivate` are fresh for every real rotation; tests pass
@@ -85,24 +86,23 @@ enum NotificationKeyRotation {
     static func start(
         current: E2EKeyRecord,
         suite: String,
-        now: Date = Date(),
         kidNew fixedKidNew: String? = nil,
         xPrivate: Curve25519.KeyAgreement.PrivateKey = Curve25519.KeyAgreement.PrivateKey()
     ) throws -> Pending {
-        let kidNew = fixedKidNew ?? NotificationE2E.newRecord(installationID: "", gatewayID: "", dashboardID: nil, profile: nil).kid
+        let kidNew = fixedKidNew ?? NotificationE2E.newKid()
         var inner: [String: String] = [
             "kid_new": kidNew,
             "suite": suite,
             "xpub": NotificationE2E.base64URL(xPrivate.publicKey.rawRepresentation),
         ]
-        var kem: Any?
+        var decapsulate: ((Data) throws -> Data)?
         var ek = Data()
         if suite == suitePQ {
             guard #available(iOS 26.0, *) else { throw RotationError.malformed }
             let privateKey = try MLKEM768.PrivateKey()
             ek = privateKey.publicKey.rawRepresentation
             inner["ek"] = NotificationE2E.base64URL(ek)
-            kem = privateKey
+            decapsulate = { try privateKey.decapsulate($0).withUnsafeBytes { Data($0) } }
         }
         let sealed = try sealJSON(
             inner,
@@ -117,7 +117,7 @@ enum NotificationKeyRotation {
             "sealed": sealed,
         ]
         return Pending(current: current, kidNew: kidNew, suite: suite, request: request,
-                       xPrivate: xPrivate, kem: kem, ek: ek, createdAt: now)
+                       xPrivate: xPrivate, decapsulate: decapsulate, ek: ek)
     }
 
     /// The new key from the host's reply, or a RotationError when the reply
@@ -145,13 +145,13 @@ enum NotificationKeyRotation {
         var ssPQ = Data()
         var ct = Data()
         if pending.suite == suitePQ {
-            guard #available(iOS 26.0, *), let kem = pending.kem as? MLKEM768.PrivateKey,
+            guard let decapsulate = pending.decapsulate,
                   let ciphertext = (content["ct"] as? String).flatMap(NotificationE2E.base64URLDecoded),
                   ciphertext.count == mlkemCiphertextBytes else {
                 throw RotationError.malformed
             }
             ct = ciphertext
-            ssPQ = try kem.decapsulate(ciphertext).withUnsafeBytes { Data($0) }
+            ssPQ = try decapsulate(ciphertext)
         }
         let secret = rotatedSecret(
             ssPQ: ssPQ, ssX: ssX, oldSecret: current.secret,

@@ -201,7 +201,9 @@ struct WatchSettingsView: View {
                     }
                     .font(.footnote)
                 } footer: {
-                    Text("Your active dashboard's notifications are end-to-end encrypted: the relay sees when they arrive, not what they say. Conduit on your iPhone has the details.")
+                    Text(encryption == .quantumSafe
+                        ? String(localized: "Your active dashboard's notifications are end-to-end encrypted and quantum-safe: the relay sees when they arrive, not what they say. Conduit on your iPhone has the details.")
+                        : String(localized: "Your active dashboard's notifications are end-to-end encrypted: the relay sees when they arrive, not what they say. Conduit on your iPhone has the details."))
                 }
             }
             if let version {

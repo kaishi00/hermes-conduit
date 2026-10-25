@@ -559,5 +559,58 @@ extension NotificationE2ETests {
         reply["sealed"] = sealed
         XCTAssertThrowsError(try NotificationKeyRotation.finish(pending, reply: reply, dashboardID: nil, profile: nil))
     }
+
+    /// A lost reply's resend adopts a new key; a Rotate tap (or the host's
+    /// request) in the same run must not rotate that pairing again.
+    func testAPairingRotatedEarlierInTheRunIsNotRotatedAgain() {
+        var key = record
+        key.suite = NotificationKeyRotation.suitePQ
+        XCTAssertTrue(PushNotificationService.wantsInlineRotation(held: key, suite: NotificationKeyRotation.suitePQ, hostAsks: true))
+        XCTAssertFalse(PushNotificationService.wantsInlineRotation(held: key, suite: NotificationKeyRotation.suitePQ, hostAsks: true,
+                                                                   rotatedThisRun: true))
+        key.suite = nil
+        XCTAssertFalse(PushNotificationService.wantsInlineRotation(held: key, suite: NotificationKeyRotation.suitePQ, hostAsks: false,
+                                                                   rotatedThisRun: true),
+                       "Not even a handed-over key: the next run replaces it")
+    }
+
+    /// A Rotate tap is used up by a run that gave a pairing a new key, also
+    /// one made while that run was going (it joins the rotation); a run that
+    /// rotated nothing keeps it.
+    func testARotateTapJoinsTheRunThatRotates() {
+        XCTAssertFalse(PushNotificationService.rotationStillRequested(atStart: true, tappedSince: false, rotatedAny: true))
+        XCTAssertFalse(PushNotificationService.rotationStillRequested(atStart: false, tappedSince: true, rotatedAny: true),
+                       "A tap during a rotation doesn't rotate again on the next connect")
+        XCTAssertFalse(PushNotificationService.rotationStillRequested(atStart: true, tappedSince: true, rotatedAny: true))
+        XCTAssertTrue(PushNotificationService.rotationStillRequested(atStart: true, tappedSince: false, rotatedAny: false))
+        XCTAssertTrue(PushNotificationService.rotationStillRequested(atStart: false, tappedSince: true, rotatedAny: false))
+        XCTAssertFalse(PushNotificationService.rotationStillRequested(atStart: false, tappedSince: false, rotatedAny: false))
+    }
+
+    /// A verified rotation whose key the Keychain refused stays pending, and
+    /// asking again with that same request derives the same key, so the
+    /// host's new key isn't lost to a handover through the dashboard.
+    func testAnUnsavedRotationStaysPendingAndYieldsTheSameKeyAgain() throws {
+        typealias Outcome = PushNotificationService.InlineRotationOutcome
+        XCTAssertTrue(Outcome.unsaved.keepsPending)
+        XCTAssertTrue(Outcome.unreachable.keepsPending)
+        XCTAssertFalse(Outcome.refused.keepsPending, "A refused or unverifiable reply would only be refused again")
+        XCTAssertFalse(Outcome.rotated.keepsPending)
+
+        let pending = try NotificationKeyRotation.start(current: record, suite: NotificationKeyRotation.suiteClassical)
+        let (reply, secret) = try hostAnswer(pending.request, current: record)
+        let first = try NotificationKeyRotation.finish(pending, reply: reply, dashboardID: nil, profile: nil)
+        // The host answers the resent request with the same reply.
+        let again = try NotificationKeyRotation.finish(pending, reply: reply, dashboardID: nil, profile: nil)
+        XCTAssertEqual(first.secret, secret)
+        XCTAssertEqual(again.secret, secret)
+        XCTAssertEqual(again.kid, first.kid)
+    }
+
+    func testANewKeyIDIsRandomHex() {
+        let kid = NotificationE2E.newKid()
+        XCTAssertNotNil(kid.range(of: "^[0-9a-f]{32}$", options: .regularExpression))
+        XCTAssertNotEqual(kid, NotificationE2E.newKid())
+    }
 }
 

@@ -482,6 +482,11 @@ final class PushNotificationService: ObservableObject {
     /// Inline rotations whose reply didn't arrive, by gateway: the host
     /// answers a resend with the same reply, so the new key isn't lost.
     private var pendingRotations: [String: NotificationKeyRotation.Pending] = [:]
+    /// Pairings whose host took an inline rotation this iPhone verified but
+    /// couldn't save to the Keychain. The rotation stays pending, so the next
+    /// connect asks the host again; until then Settings > Notifications says
+    /// so instead of showing a padlock for a key the host no longer uses.
+    @Published private(set) var unsavedRotationGatewayIDs: Set<String> = []
     @Published private(set) var relayMeta: RelayMetaInfo? {
         // Plaintext from a pairing this iPhone has never seen listed isn't
         // trusted once it holds an encryption key (#431). Kept on failure.
@@ -837,6 +842,8 @@ final class PushNotificationService: ObservableObject {
         // Keys that can't be read can't open anything: the row explains
         // that instead of waiting on a host check.
         guard let records = encryptionRecords else { return .notEncrypted }
+        // The host moved to a key this iPhone couldn't save.
+        if unsavedRotationGatewayIDs.contains(gatewayID) { return .mismatched }
         return Self.encryptionAssurance(
             gatewayID: gatewayID,
             installationID: registration?.installationID,
@@ -933,7 +940,14 @@ final class PushNotificationService: ObservableObject {
         let forceRotation = rotationRequested
         rotationRequested = false
         var rotatedAny = false
-        defer { if forceRotation && !rotatedAny { rotationRequested = true } }
+        // Pairings that got a new key in this run, so a lost reply's resend
+        // and a Rotate tap don't rotate the same pairing twice.
+        var rotatedGateways: Set<String> = []
+        defer {
+            rotationRequested = Self.rotationStillRequested(
+                atStart: forceRotation, tappedSince: rotationRequested, rotatedAny: rotatedAny
+            )
+        }
         for profile in profiles {
             let path = DashboardPath.withProfile(Self.e2ePath, profile: profile)
             guard let status = try? await request(path, "GET", nil) else { continue }
@@ -946,23 +960,36 @@ final class PushNotificationService: ObservableObject {
             let inlineSuite = NotificationKeyRotation.suite(hostSuites: status["rotate_suites"] as? [String] ?? [])
             if let statusGateway = status["gateway_id"] as? String, let pending = pendingRotations[statusGateway],
                (status["e2e"] as? [String: Any])?["kid"] as? String == pending.kidNew {
-                // The host took a rotation whose reply was lost: ask again.
-                await finishInlineRotation(pending, dashboardID: dashboardID, profile: profile, records: &records, request: request)
+                // The host took a rotation whose reply was lost, or whose key
+                // couldn't be saved: ask again.
+                // Otherwise the dashboard handover below stays the fallback.
+                if await finishInlineRotation(pending, dashboardID: dashboardID, profile: profile,
+                                              records: &records, request: request) == .rotated {
+                    rotatedAny = true
+                    rotatedGateways.insert(statusGateway)
+                }
             }
             guard let gatewayID = Self.gatewayNeedingEncryptionKey(status: status, installationID: installationID, records: records) else {
                 if let held = Self.confirmedKey(status: status, installationID: installationID, records: records) {
                     adoptConfirmedKey(kid: held.kid, installationID: installationID, gatewayID: held.gatewayID, records: &records, now: now)
                     setEncryptionConfirmation(EncryptionConfirmation(kid: held.kid, rotates: rotates), gatewayID: held.gatewayID)
+                    // The host seals with a key this iPhone holds: no new key
+                    // is waiting to be saved.
+                    unsavedRotationGatewayIDs.remove(held.gatewayID)
                     let hostAsks = status["rotate"] as? Bool == true || forceRotation
-                    if let inlineSuite, Self.wantsInlineRotation(held: held, suite: inlineSuite, hostAsks: hostAsks) {
+                    let rotatedThisRun = rotatedGateways.contains(held.gatewayID)
+                    if let inlineSuite,
+                       Self.wantsInlineRotation(held: held, suite: inlineSuite, hostAsks: hostAsks, rotatedThisRun: rotatedThisRun) {
                         if await rotateInline(held, suite: inlineSuite, dashboardID: dashboardID, profile: profile,
-                                              records: &records, request: request) {
+                                              records: &records, request: request) == .rotated {
                             rotatedAny = true
+                            rotatedGateways.insert(held.gatewayID)
                         }
-                    } else if rotates && hostAsks,
+                    } else if rotates && hostAsks && !rotatedThisRun,
                               await rotateEncryptionKey(of: held, dashboardID: dashboardID, profile: profile, path: path,
                                                         records: &records, request: request) {
                         rotatedAny = true
+                        rotatedGateways.insert(held.gatewayID)
                     }
                 }
                 continue
@@ -1018,7 +1045,12 @@ final class PushNotificationService: ObservableObject {
             }
             records.append(record)
             rotatedAny = true
+            rotatedGateways.insert(gatewayID)
             setEncryptionConfirmation(EncryptionConfirmation(kid: record.kid, rotates: rotates), gatewayID: gatewayID)
+            // An inline rotation the handed-over key replaces can't be
+            // answered any more.
+            pendingRotations[gatewayID] = nil
+            unsavedRotationGatewayIDs.remove(gatewayID)
             // That key crossed the dashboard connection: replace it at once
             // with one from a key exchange, so only this handover depends on
             // the connection.
@@ -1034,9 +1066,36 @@ final class PushNotificationService: ObservableObject {
     /// or a request), the key was handed over through the dashboard (so only
     /// that connection protected it), or this iPhone can now run a better
     /// suite than the one that made it (an update to iOS 26).
-    nonisolated static func wantsInlineRotation(held: E2EKeyRecord, suite: String, hostAsks: Bool) -> Bool {
+    /// A pairing that already got a new key in this run waits for the next.
+    nonisolated static func wantsInlineRotation(held: E2EKeyRecord, suite: String, hostAsks: Bool, rotatedThisRun: Bool = false) -> Bool {
+        if rotatedThisRun { return false }
         if hostAsks || held.suite == nil { return true }
         return suite == NotificationKeyRotation.suitePQ && held.suite != NotificationKeyRotation.suitePQ
+    }
+
+    /// Whether a Rotate tap is still owed after a provisioning run: one the
+    /// run started with, or one made while it ran, is used up once the run
+    /// gave a pairing a new key (a tap during a rotation joins it); a run
+    /// that rotated nothing keeps it for the next.
+    nonisolated static func rotationStillRequested(atStart: Bool, tappedSince: Bool, rotatedAny: Bool) -> Bool {
+        !rotatedAny && (atStart || tappedSince)
+    }
+
+    /// How an inline rotation's request ended.
+    enum InlineRotationOutcome: Equatable {
+        /// The host wasn't reached: it may have rotated, so the request is
+        /// kept for a resend.
+        case unreachable
+        /// Refused, unverifiable or for a pairing this iPhone no longer
+        /// has: the current key stays and the request is dropped.
+        case refused
+        /// Verified, but the new key couldn't be saved: the request is kept
+        /// so the next connect asks again and derives the same key.
+        case unsaved
+        case rotated
+
+        /// Whether the pending request is kept for a resend.
+        var keepsPending: Bool { self == .unreachable || self == .unsaved }
     }
 
     /// Rotates a pairing's key through a key exchange sealed with the
@@ -1049,29 +1108,46 @@ final class PushNotificationService: ObservableObject {
         profile: String,
         records: inout [E2EKeyRecord],
         request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
-    ) async -> Bool {
-        guard let pending = try? NotificationKeyRotation.start(current: current, suite: suite) else { return false }
+    ) async -> InlineRotationOutcome {
+        guard let pending = try? NotificationKeyRotation.start(current: current, suite: suite) else { return .refused }
         pendingRotations[current.gatewayID] = pending
         return await finishInlineRotation(pending, dashboardID: dashboardID, profile: profile, records: &records, request: request)
     }
 
-    @discardableResult
     private func finishInlineRotation(
         _ pending: NotificationKeyRotation.Pending,
         dashboardID: UUID,
         profile: String,
         records: inout [E2EKeyRecord],
         request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
-    ) async -> Bool {
+    ) async -> InlineRotationOutcome {
+        let gatewayID = pending.current.gatewayID
+        let outcome = await sendInlineRotation(pending, dashboardID: dashboardID, profile: profile,
+                                               records: &records, request: request)
+        if !outcome.keepsPending { pendingRotations[gatewayID] = nil }
+        switch outcome {
+        case .unsaved: unsavedRotationGatewayIDs.insert(gatewayID)
+        case .refused, .rotated: unsavedRotationGatewayIDs.remove(gatewayID)
+        case .unreachable: break
+        }
+        return outcome
+    }
+
+    private func sendInlineRotation(
+        _ pending: NotificationKeyRotation.Pending,
+        dashboardID: UUID,
+        profile: String,
+        records: inout [E2EKeyRecord],
+        request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
+    ) async -> InlineRotationOutcome {
         let path = DashboardPath.withProfile(NotificationKeyRotation.path, profile: profile)
         let response: [String: Any]
         do {
             response = try await request(path, "POST", pending.request)
         } catch {
-            // Kept for a resend: the host may have rotated already.
-            return false
+            // The host may have rotated already: asked again later.
+            return .unreachable
         }
-        pendingRotations[pending.current.gatewayID] = nil
         let now = Date()
         // Unregistered or moved relays while the request was out: the key
         // would belong to a pairing this iPhone no longer has.
@@ -1079,17 +1155,24 @@ final class PushNotificationService: ObservableObject {
               response["ok"] as? Bool == true,
               let reply = response["rotation"] as? [String: Any],
               let record = try? NotificationKeyRotation.finish(pending, reply: reply, dashboardID: dashboardID.uuidString,
-                                                                profile: profile, now: now),
-              Self.e2eKeyStore.save(record) else {
-            // Refused or unverifiable: the current key stays. A host that
-            // did rotate reports a key this iPhone lacks, and the next
-            // connect hands over a fresh one.
-            return false
+                                                                profile: profile, now: now) else {
+            // Refused or unverifiable: the current key stays, and asking
+            // again would get the same answer. A host that did rotate reports
+            // a key this iPhone lacks, and the next connect hands over a
+            // fresh one.
+            return .refused
+        }
+        guard Self.e2eKeyStore.save(record) else {
+            // The host seals with the new key now, so its pushes show generic
+            // text until this iPhone holds it. The next connect asks again
+            // (the host answers the same request the same way) before falling
+            // back to a handover through the dashboard.
+            return .unsaved
         }
         records.append(record)
         adoptConfirmedKey(kid: record.kid, installationID: record.installationID, gatewayID: record.gatewayID, records: &records, now: now)
         setEncryptionConfirmation(EncryptionConfirmation(kid: record.kid, rotates: true), gatewayID: record.gatewayID)
-        return true
+        return .rotated
     }
 
     /// Whether the host keeps a replaced key for answers in flight, so new

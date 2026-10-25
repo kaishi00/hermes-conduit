@@ -335184,6 +335184,88 @@
         }
       }
     },
+    "This host has a new encryption key that Conduit couldn't save on this iPhone, so its notifications show only generic text. Conduit asks for it again the next time it connects to this dashboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Host hat einen neuen Verschlüsselungsschlüssel, den Conduit auf diesem iPhone nicht speichern konnte, daher zeigen seine Mitteilungen nur allgemeinen Text. Conduit fragt beim nächsten Verbinden mit diesem Dashboard erneut danach."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este host tiene una clave de cifrado nueva que Conduit no pudo guardar en este iPhone, así que sus notificaciones solo muestran texto genérico. Conduit la vuelve a pedir la próxima vez que se conecte a este panel."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet hôte a une nouvelle clé de chiffrement que Conduit n’a pas pu enregistrer sur cet iPhone : ses notifications n’affichent donc qu’un texte générique. Conduit la redemande à sa prochaine connexion à ce tableau de bord."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Host ini punya kunci enkripsi baru yang tidak bisa disimpan Conduit di iPhone ini, jadi notifikasinya hanya menampilkan teks umum. Conduit memintanya lagi saat berikutnya terhubung ke dasbor ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo host ha una nuova chiave di crittografia che Conduit non è riuscito a salvare su questo iPhone, quindi le sue notifiche mostrano solo testo generico. Conduit la richiede di nuovo alla prossima connessione a questa dashboard."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストには新しい暗号化キーがありますが、ConduitはこのiPhoneに保存できなかったため、通知には一般的なテキストだけが表示されます。Conduitは次にこのダッシュボードに接続したときにもう一度要求します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 호스트에 새 암호화 키가 있지만 Conduit가 이 iPhone에 저장하지 못해 알림에 일반 텍스트만 표시됩니다. Conduit는 다음에 이 대시보드에 연결할 때 다시 요청합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten host ma nowy klucz szyfrowania, którego Conduit nie mógł zapisać na tym iPhonie, więc jego powiadomienia pokazują tylko ogólny tekst. Conduit poprosi o niego ponownie przy następnym połączeniu z tym panelem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este host tem uma nova chave de criptografia que o Conduit não conseguiu salvar neste iPhone, então as notificações dele mostram só texto genérico. O Conduit a pede de novo na próxima vez que se conectar a este painel."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У этого хоста новый ключ шифрования, который Conduit не смог сохранить на этом iPhone, поэтому его уведомления показывают только общий текст. Conduit запросит его снова при следующем подключении к этой панели."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu ana bilgisayarın, Conduit'in bu iPhone'a kaydedemediği yeni bir şifreleme anahtarı var, bu yüzden bildirimleri yalnızca genel metin gösteriyor. Conduit bu panoya bir sonraki bağlanışında anahtarı yeniden ister."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机有一个新的加密密钥，但 Conduit 无法将其保存到这台 iPhone 上，因此它的通知只显示通用文本。Conduit 下次连接此仪表板时会再次请求。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機有一把新的加密金鑰，但 Conduit 無法將它儲存到這支 iPhone 上，因此它的通知只顯示一般文字。Conduit 下次連線到此儀表板時會再次要求。"
+          }
+        }
+      }
+    },
     "End-to-end encryption is set up on this iPhone. Conduit checks it with the host the next time it connects to this dashboard." : {
       "localizations" : {
         "de" : {
