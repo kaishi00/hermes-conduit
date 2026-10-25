@@ -545,22 +545,35 @@ extension AppState {
     /// calendar, reminders or the Shortcuts inbox) gets a new chat in Pulse's
     /// profile, where Pulse reads what came of it. False when no chat opened.
     func actOnPulseCard(_ card: PulseCard) async -> Bool {
-        guard canActOnPulseCard(card) else { return false }
+        guard canActOnPulseCard(card), pulseNewChatRefusal(for: card) == nil else { return false }
         let dashboard = activeDashboardID
         if pulseCardHasChat(card) {
             openPulseCardChat(card)
             guard await waitForOpenChat(card.chatID, on: dashboard) else { return false }
         } else {
             let previous = activeSessionId
-            if profilesMatch(activeProfile, Self.pulseHomeProfile) {
-                startNewChat()
-            } else {
-                startNewChat(inProfile: Self.pulseHomeProfile)
-            }
+            startNewChat(inProfile: Self.pulseHomeProfile)
             guard await waitForNewChat(after: previous, on: dashboard) else { return false }
         }
         prefillComposer(card.actionMessage)
         return true
+    }
+
+    /// Why Do it can't start a new chat for a card from no chat right now,
+    /// for the Pulse screen to say at once instead of after the wait; nil
+    /// when it can, or when the card has a chat of its own. Offline or
+    /// connecting, New Chat would wait for the connection and that chat
+    /// would come without the reminder; from another profile, a call stops
+    /// the switch (startNewChat(inProfile:)).
+    func pulseNewChatRefusal(for card: PulseCard) -> String? {
+        guard !pulseCardHasChat(card) else { return nil }
+        if !profilesMatch(activeProfile, Self.pulseHomeProfile), isVoiceCallInProgress {
+            return AppLocalization.string("End the call to open a chat in another profile.")
+        }
+        guard isConnected, !isConnecting else {
+            return AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
+        }
+        return nil
     }
 
     /// Waits up to ten seconds for `chatID` to be the open chat.

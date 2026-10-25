@@ -312,6 +312,7 @@ final class PulseFeedTests: XCTestCase {
         // no chat to open, so it starts a new one.
         XCTAssertTrue(state.pulseCardHasChat(fact))
         XCTAssertFalse(state.pulseCardHasChat(date))
+        XCTAssertNil(state.pulseNewChatRefusal(for: fact))  // its own chat opens, connected or not
         // A plugin without Done takes it on no card.
         state.setNotifierPluginStateForTesting(.reported(version: "0.77.0", capabilities: [
             PulseClient.feedCapability, PulseClient.foundActionsCapability
@@ -332,6 +333,13 @@ final class PulseFeedTests: XCTestCase {
         ]))
         state.applyPulseFeed(page)
         let date = try XCTUnwrap(page.cards.first)
+        // Offline, Do it says so at once instead of waiting for a chat.
+        XCTAssertEqual(state.pulseNewChatRefusal(for: date),
+                       AppLocalization.string("Couldn't start a new chat. Check your connection and try again."))
+        let refused = await state.actOnPulseCard(date)
+        XCTAssertFalse(refused)
+        state.isConnected = true
+        XCTAssertNil(state.pulseNewChatRefusal(for: date))
         // A chat an earlier New Chat made is still open, under the chat list.
         state.activeSessionId = "earlier"
         state.newChatOpenedSessionID = "earlier"

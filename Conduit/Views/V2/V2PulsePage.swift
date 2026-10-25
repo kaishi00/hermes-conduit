@@ -774,7 +774,13 @@ struct V2PulsePage: View {
     private func doItButton(_ card: PulseCard) -> some View {
         Button {
             Haptics.selection()
-            let failure = AppLocalization.string("Couldn't open that chat. Try again.")
+            if let refusal = appState.pulseNewChatRefusal(for: card) {
+                errorMessage = refusal
+                return
+            }
+            let failure = appState.pulseCardHasChat(card)
+                ? AppLocalization.string("Couldn't open that chat. Try again.")
+                : AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
             let dashboard = appState.activeDashboardID
             actingCard = card.id
             Task {
