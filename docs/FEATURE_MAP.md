@@ -892,7 +892,7 @@ create and edit)
 **Rulings**
 - A list read that started before a switch was flipped commits nothing, in AppState and in CapabilitiesStore alike (#867; AppState's lists at #1191).
 - Switches reach Hermes one after another in the order flipped, since each rewrites one config.yaml. A failed write puts back what Hermes last confirmed only when no newer flip of that switch is on its way, and a flip a newer one replaced reports no failure (#868 follow-up, #1191).
-- Switches and the store's other config-changing writes wait their turn with every other profile config save (Profile config saves), so a settings GET→PUT can't put a flip back (2026-10-24, #1222).
+- Switches, the store's other config-changing writes and the bot editor's writes wait their turn with every other profile config save (Profile config saves), so a settings GET→PUT can't put a flip back (2026-10-24, #1222).
 
 **Open gaps**
 - AppState's list reads go through a live DashboardTicketBridge with no test seam, so its generation guard has no test.
@@ -1065,18 +1065,25 @@ config) · Advanced settings (`setProfileSetting`, and the default profile's
 context engine and memory provider through `/api/dashboard/plugin-providers`)
 · display preferences · Capabilities' skill and toolset switches, backends,
 terminal backend, connectors and installs (Hermes writes the config; see
-Skill and tool switches)
+Skill and tool switches) · the bot editor's skills, tools, MCP servers and
+model (`profiles.configure`, `mcp.servers.add`) · the busy input mode
+(`config.set busy`) · the Conduit plugin's install and update (Hermes writes
+the plugin list)
 
 **Code**
 - Queue: `Conduit/Services/ProfileConfigWriteQueue.swift`
 - Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (save, saveLiveTranscription, saveVendorSelection, saveProviderSelection), used by `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/SpeechServerSettingsView.swift`, `Conduit/Views/LocalLiveViews.swift`
 - AppState: `Conduit/Services/AppState.swift` (updateProfileConfig, setDisplayPreference, setProfileFallbackModels, setProfileMainModel, setVoiceReplyModel, setProfileSetting, toggleSkill, toggleToolset)
 - Capabilities: `Conduit/Services/CapabilitiesStore.swift` (request, writesProfileConfig)
+- Gateway RPCs: `Conduit/Services/HermesClient.swift` (configureBotProfile, configureBotModel, addBotMcpServer, setBusyInputMode)
+- Plugin update: `Conduit/Services/NotifierPluginUpdate.swift` (NotifierPluginUpdater install and update requests)
 - Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+OverlappingSaves.swift`
 
 **Rulings**
 - Every profile config write, whichever page or service makes it, runs in the one app-wide queue, one at a time; a failed one doesn't hold up the next (2026-10-24, #1222, from #1004).
-- Credentials go to `/api/env` and the speech server's voice key to the notifier's token store, and connector tests and sign-ins change no config, so none of them waits in the queue.
+- Credentials go to `/api/env` and the speech server's voice key to the notifier's token store, and connector tests and sign-ins change no config, so none of them waits in the queue. Session-scoped
+`config.set` (model, reasoning, speed, yolo for one chat) changes no config
+file either.
 
 **Open gaps**
 - A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.

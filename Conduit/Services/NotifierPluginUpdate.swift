@@ -180,7 +180,9 @@ struct NotifierPluginUpdater {
             var replaces = false
             if !installs {
                 do {
-                    try Self.check(try await request(Self.updatePath, "POST", nil))
+                    // Installing writes the profile config's plugin list,
+                    // so it waits its turn with Settings' saves.
+                    try Self.check(try await ProfileConfigWriteQueue.runThrowing { try await request(Self.updatePath, "POST", nil) })
                 } catch let error where Self.isNotInstalled(error) {
                     installs = true
                 } catch let error where Self.needsReinstall(error) {
@@ -194,7 +196,7 @@ struct NotifierPluginUpdater {
                 // Replacing the copy on disk takes force. The plugin keeps its
                 // state in the Hermes home, not in its own folder.
                 if replaces { body["force"] = true }
-                try Self.check(try await request(Self.installPath, "POST", body))
+                try Self.check(try await ProfileConfigWriteQueue.runThrowing { try await request(Self.installPath, "POST", body) })
             }
         } catch {
             if Task.isCancelled { return .idle }
