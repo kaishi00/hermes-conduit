@@ -624,11 +624,13 @@ rulings, opening the Pulse screen) · a call from Hermes (Pulse may call only
 once the user opts in) · the hidden Pulse chat · the notifier's loop (report, brief, follow-ups,
 memory), its routes under /pulse and its capabilities · the Shortcuts inbox
 (the report and the morning brief read it, and with Pulse memory on, new
-events bring watches' checks forward) · the
-`hermes conduit-push pulse` commands
+events bring watches' checks forward) · the phone's calendar and reminders
+(the report and the morning brief read them) · Hermes's scheduled jobs and
+its notes (the report reads them) · a new chat Do it starts, for an item from
+no chat · the `hermes conduit-push pulse` commands
 
 **Code**
-- App, on the `pulse` branch only, so not in backticks (the map check reads main): Conduit/Views/V2/V2PulsePage.swift (the screen, the morning brief's block), Conduit/Views/V2/V2ChatsView.swift (V2PulseButton in the Chats bar, Pulse's chat left out of the list and content search), Conduit/Views/V2/V2VoiceButton.swift (Pulse's chat left out of voice recents), Conduit/Views/V2/V2Shell.swift (the `.pulse` route, full screen on a phone), Conduit/Services/PulseFeed.swift (cards, marks, ratings, the brief's layout, which chat is Pulse's), Conduit/Services/AppState+Pulse.swift and Conduit/Services/AppState.swift (opensPulseScreen, for pushes; pulseRememberedHomes, Pulse's chat per dashboard across launches), Conduit/Services/PulseSettings.swift and Conduit/Views/PulseSettingsViews.swift (Settings > Pulse)
+- App, on the `pulse` branch only, so not in backticks (the map check reads main): Conduit/Views/V2/V2PulsePage.swift (the screen, the morning brief's block), Conduit/Views/V2/V2ChatsView.swift (V2PulseButton in the Chats bar, Pulse's chat left out of the list and content search), Conduit/Views/V2/V2VoiceButton.swift (Pulse's chat left out of voice recents), Conduit/Views/V2/V2Shell.swift (the `.pulse` route, full screen on a phone), Conduit/Services/PulseFeed.swift (cards, marks, ratings, which cards take Done and Do it, the brief's layout, which chat is Pulse's), Conduit/Services/AppState+Pulse.swift and Conduit/Services/AppState.swift (opensPulseScreen, for pushes; pulseRememberedHomes, Pulse's chat per dashboard across launches; startPulseNewChat, the new chat Do it fills), Conduit/Services/PulseSettings.swift and Conduit/Views/PulseSettingsViews.swift (Settings > Pulse)
 - Loop: `notifier/pulse.py` (the tick, the report's candidate run, cards from turns, push copy), `notifier/pulse_delivery.py`, `notifier/pulse_host.py`, `notifier/pulse_hermes.py`, `notifier/chat_takeover.py`
 - Report: `notifier/pulse_report.py` (what it reads), `notifier/pulse_candidates.py` (the candidate list, the router and the 30-day journal)
 - Memory, follow-ups and the brief: `notifier/pulse_memory.py`, `notifier/pulse_followup.py`, `notifier/pulse_brief.py` (what the brief reads: held cards, open items, the phone, the inbox)
@@ -648,8 +650,10 @@ events bring watches' checks forward) · the
 - Tone stays out of what Pulse learns, and a reason given on a thumbs-down applies at once (2026-10-24, Eric).
 - Pulse pushes follow the Notifications rulings: App Language from title_label, titled with the session title (2026-10-23, notifier #334).
 - Code picks the report's items from a candidate list the model makes, and every candidate is journaled for 30 days (2026-10-24, notifier #337).
-- Before Pulse speaks up about an item it reads what happened since, wherever: the item's chat and its continuation, other chats and cron runs on the same subject, what Hermes runs in the background, and the phone's calendar and reminders. That holds for follow-up checks, held reminders, cards waiting for the brief, the report and Do it checks. Pulse's own hidden chat stays out of the evidence (2026-10-24, Eric; notifier #346, #347).
+- Before Pulse speaks up about an item it reads what happened since, wherever: the item's chat and its continuation, other chats and cron runs on the same subject, what Hermes runs in the background, and the phone's calendar and reminders. That holds for follow-up checks, held reminders, cards waiting for the brief, the report and Do it checks. Pulse's own hidden chat stays out of the evidence (2026-10-24, Eric; notifier #346, #347). A long chat counts whole: checks read its newest lines and then its earlier ones on the same subject, and the report never takes an earlier turn in Pulse's own chat as news (2026-10-25, notifier #364, Eric's report: a card blamed a reminder job for bringing back finished items).
 - Main reaches `pulse` by a merge commit, never a squash, so archives don't re-stitch old conflicts (2026-10-24, #1186; build 228's stitch lost the Chats Pulse button).
+- Done and Do it work on every report item, one Pulse found on its own included. Do it opens the chat it was found in, or, for one from the calendar, reminders, Hermes's notes or scheduled jobs, or the Shortcuts inbox, a new chat in the dashboard's default profile, with the reminder in the composer, and only in the chat Do it's New Chat made. It starts that chat only when New Chat can start one at once: connecting, during a profile switch or with another new chat on its way, the Pulse screen says why instead. The Do it check then reads that chat with the others on the subject. Done on a found item marks only the card, and the next report reads it as done. On a found item the app shows them only to a plugin that reports `pulse_found_actions`; with an older plugin they stay on items about something Pulse remembers (2026-10-25, Eric; notifier #362, #1240; Eric asked why date and worth-knowing cards couldn't be acted on).
+- What's finished stays finished. A reminder sent on with Do it, and Hermes's answer to it, can close a remembered item but never add one, and a commitment Pulse learns of more than half a day after its time (reading older chats) is kept as expired, never reminded (2026-10-25, Eric; notifier #364, Eric's report: a card blamed a reminder job for bringing back finished items).
 
 **Open gaps**
 - Learning from ratings in code is the next slice. Until it lands, the persona criteria (Quiet and Samantha diverge, a changed interest is heard, due items always surface) are strict xfail in `notifier/tests/test_pulse_personas.py`.
@@ -657,7 +661,7 @@ events bring watches' checks forward) · the
 - The app paths above aren't checked by the map check while they live only on `pulse`; they go in backticks if the app side ever reaches main.
 - What a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked.
 
-**Checked:** 2026-10-25, at #1234 on the `pulse` branch (which took main's lines from #1211 and #1232), with notifier #357; carried to main in #1237.
+**Checked:** 2026-10-25, at #1240 on the `pulse` branch, with notifier #362 and #364; carried to main in #1241.
 
 ## Artifacts
 
@@ -860,22 +864,25 @@ meanwhile.
 Screen (the voice sheet's screenshot and a screen question) · Settings' Hermes
 test call and watch prompts · a Classic voice conversation's fresh chat ·
 New Chat and its focus · a widget's or Shortcut's New Chat · the /new command
+· Pulse's Do it on an item from no chat (the `pulse` branch)
 
 **Code**
 - Creating the chat: `Conduit/Services/AppState.swift` (createNewSession and createAndReconcileSession return the chat they opened; startChatForComposerSubmission; startNewChat and focusNewChatComposer; prepareVoiceConversation)
 - Screenshots: `Conduit/Services/AppState+ScreenQuestion.swift` (startChatForScreenshot, openScreenQuestion)
 - Hermes calls: `Conduit/Services/AppState+HermesCalls.swift` (startHermesCallsChat)
 - Widget and Shortcut launches: `Conduit/Services/AppState+WidgetLaunch.swift`
-- Tests: `ConduitTests/SessionRenameTests.swift`
+- Pulse's Do it, on the `pulse` branch only, so not in backticks: Conduit/Services/AppState.swift (startPulseNewChat), Conduit/Services/PulseFeed.swift (actOnPulseCard)
+- Tests: `ConduitTests/SessionRenameTests.swift`; on the `pulse` branch, ConduitTests/PulseFeedTests.swift
 
 **Rulings**
 - What waits on a new chat goes in only when the chat createNewSession returned is still the one open. Another chat opened or created meanwhile (a voice action, a screen question, a notification) gets nothing. The message stays in the composer, the screenshot goes back or waits, and the user is told (2026-10-24, #941's review, #1191).
 - New Chat focuses the composer only on the chat it made. A Classic voice conversation files and archives only its own new chat under Voice; a fresh one asked for fails when another chat took the screen.
+- Pulse's Do it on an item from no chat starts a chat only when New Chat can start one at once, and puts the reminder only in the chat its own create returned, while that one is still open. The Pulse screen stays up until then, so a chat that didn't start leaves it there to say why (2026-10-25, #1240 on the `pulse` branch).
 
 **Open gaps**
 - A widget's or Shortcut's New Chat and /new put nothing in the chat, so they only report whether the open chat changed.
 
-**Checked:** 2026-10-24, at #1191.
+**Checked:** 2026-10-25, at #1191 on main, with Pulse's Do it from #1240 on the `pulse` branch.
 
 ## Composer Return key
 
