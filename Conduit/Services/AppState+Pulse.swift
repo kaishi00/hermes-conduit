@@ -50,11 +50,12 @@ extension AppState {
         if inUse { await loadSessions(forceRefresh: true) }
     }
 
-    /// Hermes' model slot for Pulse's memory and follow-up checks, which
-    /// the plugin registers; nil follows the main model.
+    /// Hermes' model slot for Pulse's memory, report lists and follow-up
+    /// checks, which the plugin registers; nil leaves it on "auto", where
+    /// the plugin runs them on the Pulse chat's model.
     static let pulseMemoryTask = "pulse_memory"
 
-    /// Puts Pulse's memory on `model` (nil: the main model), in the
+    /// Puts Pulse's memory on `model` (nil: the Pulse chat's model), in the
     /// dashboard's default profile where Pulse runs. The user picked it for
     /// Pulse, so Hermes' price check doesn't ask again. It goes to the
     /// dashboard in use: the caller checks that's still the one it means.
