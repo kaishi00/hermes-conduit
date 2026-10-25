@@ -557,8 +557,8 @@ extension AppState {
         } else {
             if !profilesMatch(activeProfile, Self.pulseHomeProfile) {
                 // The switch returns with Pulse's profile connected and its chat open.
-                await switchProfile(to: Self.pulseHomeProfile)
-                guard activeDashboardID == dashboard, profilesMatch(activeProfile, Self.pulseHomeProfile) else { return false }
+                guard await switchProfileForPulse(), activeDashboardID == dashboard,
+                      profilesMatch(activeProfile, Self.pulseHomeProfile) else { return false }
             }
             guard await startPulseNewChat() != nil, activeDashboardID == dashboard else { return false }
         }

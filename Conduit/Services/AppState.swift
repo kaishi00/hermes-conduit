@@ -2213,12 +2213,21 @@ final class AppState: ObservableObject {
     /// chat is the one this call's own create opened, as createNewSession
     /// returns it, while it's still the one open: another create landing
     /// meanwhile (a call's chat, Ask Hermes About, a widget) opens a chat
-    /// that isn't this one's. Nil when none started.
+    /// that isn't this one's. The Pulse screen stays up until it opened, so
+    /// a chat that didn't start leaves it there to say why. Nil when none
+    /// started.
     func startPulseNewChat() async -> String? {
         guard canStartNewChatNow, !isStartingNewChat, !showsPendingNewChat else { return nil }
-        dismissSidebarDrawer()
         guard let created = await createNewSessionMarkingStart(), activeSessionId == created else { return nil }
+        dismissSidebarDrawer()
         return created
+    }
+
+    /// Do it's switch to Pulse's profile, for a new chat there: whether it
+    /// finished with that profile on screen. False when a newer navigation
+    /// took the screen meanwhile, which a new chat mustn't replace.
+    func switchProfileForPulse() async -> Bool {
+        await switchProfile(to: Self.pulseHomeProfile, reusing: nil)
     }
 
     private func storePulseHomes(_ homes: [String: String]) {

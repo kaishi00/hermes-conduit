@@ -357,6 +357,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertFalse(failed)
         XCTAssertEqual(state.activeSessionId, "earlier")
         XCTAssertEqual(state.composerPrefillText, "")
+        XCTAssertTrue(state.showSidebar, "the Pulse screen stays up to say why")
         // The chat its New Chat made gets the reminder, uncovered.
         state.showSidebar = true
         state.widgetSessionCreatorOverride = { _, _ in ("fresh", "fresh", "default") }
