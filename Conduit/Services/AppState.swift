@@ -2186,7 +2186,7 @@ final class AppState: ObservableObject {
     @Published var pulseOpenRequest: PulseOpenRequest?
     @Published var pulseHomeChatID: String?
     /// Pulse's chat per dashboard as the last feed named it, kept across
-    /// launches: until the plugin reports again after a launch or a
+    /// launches: until the feed is read again after a launch or a
     /// reconnect, the Pulse button and the hidden chat go by it.
     private(set) lazy var pulseRememberedHomes: [String: String] =
         defaults.dictionary(forKey: Self.pulseHomesKey) as? [String: String] ?? [:]
@@ -23568,8 +23568,14 @@ final class AppState: ObservableObject {
     /// What the host's notifier plugin serves; Settings nudges an update.
     @Published private(set) var notifierPlugin = NotifierPluginStatus() {
         // A plugin that just said it takes on-screen reports gets the turn
-        // already running.
-        didSet { if oldValue.state != notifierPlugin.state { updateChatOnScreen() } }
+        // already running; one that answered without Pulse ends the Pulse
+        // this dashboard remembered.
+        didSet {
+            if oldValue.state != notifierPlugin.state {
+                updateChatOnScreen()
+                forgetPulseHomeIfGone()
+            }
+        }
     }
     /// The plugin on its repository's main branch, once read. A reset for
     /// another host keeps it (`freshNotifierPluginStatus`).

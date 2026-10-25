@@ -415,22 +415,26 @@ extension PulseClient {
 
 extension AppState {
     /// The Pulse screen and its button: TestFlight and Xcode builds whose
-    /// plugin serves the feed (0.55.0 and later). Until the plugin reports
+    /// plugin serves the feed (0.55.0 and later). Until the plugin answers
     /// after a launch or a reconnect, a dashboard that had Pulse keeps it.
     var showsPulseScreen: Bool {
         (showsPulseSettings && notifierPlugin.reports(PulseClient.feedCapability))
-            || (appInstallSource != .appStore && pulsePluginUnreported && pulseHomeChat != nil)
+            || (appInstallSource != .appStore && pulsePluginUnanswered && pulseHomeChat != nil)
     }
 
-    /// Whether the plugin hasn't said what it serves since the launch or the last reconnect.
-    private var pulsePluginUnreported: Bool {
-        if case .reported = notifierPlugin.state { return false }
-        return true
-    }
+    /// Whether the plugin hasn't answered since the launch or the last reconnect.
+    private var pulsePluginUnanswered: Bool { notifierPlugin.state == .unknown }
 
-    /// Pulse's own chat: the feed's, or until the plugin reports, the one it named last time here.
+    /// Pulse's own chat: the feed's, or until the feed is read, the one it named last time here.
     var pulseHomeChat: String? {
-        pulseHomeChatID ?? (pulsePluginUnreported ? activeDashboardID.flatMap { pulseRememberedHomes[$0.uuidString] } : nil)
+        pulseHomeChatID ?? activeDashboardID.flatMap { pulseRememberedHomes[$0.uuidString] }
+    }
+
+    /// A plugin that answered without the feed (or predates reporting):
+    /// this dashboard has no Pulse to remember.
+    func forgetPulseHomeIfGone() {
+        guard !pulsePluginUnanswered, !notifierPlugin.reports(PulseClient.feedCapability) else { return }
+        rememberPulseHome(nil)
     }
 
     /// Reads the feed for the button's badge and the chat's Pulse marks.
@@ -440,7 +444,7 @@ extension AppState {
             pulseUnseen = 0
             pulseSources = [:]
             pulseHomeChatID = nil
-            if !pulsePluginUnreported { rememberPulseHome(nil) }  // the plugin said: no Pulse here
+            if !pulsePluginUnanswered { rememberPulseHome(nil) }  // the plugin said: no Pulse here
             return
         }
         let dashboard = activeDashboardID

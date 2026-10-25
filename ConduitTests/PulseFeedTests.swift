@@ -179,10 +179,26 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(next.pulseHomeChat, "p")
         XCTAssertTrue(next.showsPulseScreen)
 
-        // It answers without Pulse: gone.
+        // It answers with Pulse before the feed is read: still hidden.
+        next.setNotifierPluginStateForTesting(.reported(version: "0.74.0",
+                                                        capabilities: [PulseClient.capability, PulseClient.feedCapability]))
+        XCTAssertEqual(next.pulseHomeChat, "p")
+        XCTAssertTrue(next.showsPulseScreen)
+
+        // It answers without Pulse, or predates reporting: gone, and forgotten.
         next.setNotifierPluginStateForTesting(.reported(version: "0.40.0", capabilities: []))
         XCTAssertNil(next.pulseHomeChat)
         XCTAssertFalse(next.showsPulseScreen)
+        let later = AppState(defaults: defaults, loadSavedConnection: false, dashboardRegistry: registry,
+                             clearSessionPresentationCache: {})
+        XCTAssertNil(later.pulseHomeChat)
+
+        later.applyPulseFeed(try XCTUnwrap(PulseFeedPage(json: json(#"{"home_chat_id": "p", "cards": []}"#))))
+        let older = AppState(defaults: defaults, loadSavedConnection: false, dashboardRegistry: registry,
+                             clearSessionPresentationCache: {})
+        older.setNotifierPluginStateForTesting(.predatesCapabilities)
+        XCTAssertNil(older.pulseHomeChat)
+        XCTAssertFalse(older.showsPulseScreen)
     }
 
     func testDoneAndActedPostTheCardToThePlugin() async throws {

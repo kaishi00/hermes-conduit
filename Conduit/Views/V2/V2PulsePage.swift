@@ -33,9 +33,11 @@ struct V2PulseButton: View {
             : AppLocalization.string("Pulse"))
         .accessibilityIdentifier("chats.pulse")
         // While the Chats tab shows, every minute: new cards light the dot and
-        // mark their messages in the chats.
+        // mark their messages in the chats. At once when the plugin answers
+        // after a launch or a reconnect, so the feed names Pulse's chat.
         .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID,
-                                  active: scenePhase == .active && shell.isTabActive)) {
+                                  active: scenePhase == .active && shell.isTabActive,
+                                  served: appState.notifierPlugin.reports(PulseClient.feedCapability))) {
             guard scenePhase == .active, shell.isTabActive else { return }
             while !Task.isCancelled {
                 await appState.refreshPulseFeed()
@@ -48,6 +50,7 @@ struct V2PulseButton: View {
 private struct PulseRefreshKey: Hashable {
     let dashboard: UUID?
     let active: Bool
+    let served: Bool
 }
 
 /// The mark under a message whose promise Pulse follows up: opens its card.
