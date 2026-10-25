@@ -1926,7 +1926,7 @@ mode picker shows a mode's section only once that mode is picked)
 **Open gaps**
 - A row revealed by something other than a switch (a picker or a host answer) isn't covered here.
 
-**Checked:** 2026-10-25, at #PRNUM: Health and Phone's consent-sheet turn-on animate; the live voice Use switches are not needed (never shown). Earlier at #1246 (fork CI #92): Eric's review added Enable voice and Hands-free; a connector's Turned on and Sync's failed check added from the bot reviews.
+**Checked:** 2026-10-25, at #1274: Health and Phone's consent-sheet turn-on animate; the live voice Use switches are not needed (never shown). Earlier at #1246 (fork CI #92): Eric's review added Enable voice and Hands-free; a connector's Turned on and Sync's failed check added from the bot reviews.
 
 ## Feature map rules
 
