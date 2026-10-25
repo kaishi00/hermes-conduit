@@ -4351,7 +4351,7 @@ final class AppState: ObservableObject {
     /// never hot-start the microphone when SwiftUI recreates the sheet's
     /// view identity. Lifecycle suspension and every destructive Voice
     /// boundary disarm it.
-    internal(set) var voiceSheetShouldAutoListen = false
+    var voiceSheetShouldAutoListen = false
 
     func consumeVoiceSheetAutoListen() -> Bool {
         guard voiceSheetShouldAutoListen else { return false }
@@ -4390,7 +4390,7 @@ final class AppState: ObservableObject {
     /// user's mute, while a Close arriving after a profile flip (the sheet's
     /// deferred `onDismiss`) must not write the outgoing profile's mute into
     /// the now-active profile's blob.
-    internal(set) var voiceControllerSessionProfile: String?
+    var voiceControllerSessionProfile: String?
 
     // MARK: - Wake phrase (#174)
 
@@ -6654,7 +6654,7 @@ final class AppState: ObservableObject {
     @Published var isNativeHermesCallActive = false
     /// That call was answered here (not only ringing): see
     /// `isNativeCallVoiceSurfaceActive`.
-    @Published internal(set) var isNativeHermesCallAnswered = false
+    @Published var isNativeHermesCallAnswered = false
     /// Whether Conduit's phone screen is up, for a classic call's restart
     /// after an interruption (#1145). Test seam.
     var hermesCallPhoneOnScreen: @MainActor () -> Bool = { PhoneScenePresence.isInForeground }
@@ -6662,7 +6662,7 @@ final class AppState: ObservableObject {
     var hermesCallVoiceRunning: @MainActor () -> Bool = { HermesNativeCalls.shared.isCallVoiceRunning }
     /// The call's CallKit mute: a classic voice the call opens while muted
     /// doesn't start listening on its own.
-    internal(set) var isNativeHermesCallMuted = false
+    var isNativeHermesCallMuted = false
     /// A profile's call settings on the host (AppState+HermesCalls), for
     /// the dashboard and profile in `hermesCallsStatusKey`.
     @Published var hermesCallsStatus: HermesCallsStatus?
@@ -11438,7 +11438,7 @@ final class AppState: ObservableObject {
 
     /// Internal so the saved-dashboard migration can normalize the legacy
     /// identity key the same way the runtime boundary does.
-    static func normalizedChatResumeServerIdentity(_ baseURL: String) -> String? {
+    nonisolated static func normalizedChatResumeServerIdentity(_ baseURL: String) -> String? {
         guard let normalized = try? ConnectionURLPolicy.normalizedBaseURL(baseURL),
               var components = URLComponents(string: normalized),
               let scheme = components.scheme?.lowercased(),

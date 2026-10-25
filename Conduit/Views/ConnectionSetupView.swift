@@ -305,7 +305,7 @@ struct ConnectionSetupView: View {
                 testGeneration: flow.testGeneration,
                 testSucceededAtRevision: flow.testSucceededAtRevision
               ),
-              let onRepair else { return }
+              onRepair != nil else { return }
         // The candidate is one-shot: consumed here, whether activation
         // succeeds or fails. A failed activation requires a fresh test.
         repairCandidate = nil

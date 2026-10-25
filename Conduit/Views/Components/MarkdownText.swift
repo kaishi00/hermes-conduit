@@ -2930,7 +2930,7 @@ enum MarkdownParser {
         }
     }
 
-    nonisolated(unsafe) private static func recordParseSize(_ bytes: Int) {
+    nonisolated private static func recordParseSize(_ bytes: Int) {
         parseSizeLock.lock()
         defer { parseSizeLock.unlock() }
         parseSizes.append(bytes)

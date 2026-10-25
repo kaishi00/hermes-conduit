@@ -595,7 +595,7 @@ struct KanbanView: View {
                     description: Text(errorMessage)
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let board = store.board {
+            } else if store.board != nil {
                 if visibleColumns.isEmpty {
                     ContentUnavailableView("No Columns", systemImage: "rectangle.3.group")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)

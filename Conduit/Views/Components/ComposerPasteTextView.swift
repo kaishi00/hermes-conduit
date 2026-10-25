@@ -175,7 +175,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         uiView.canSubmitFromReturn = canSubmitFromReturn
         uiView.onSubmitFromReturn = onSubmitFromReturn
         if isFocused, !uiView.isFirstResponder { uiView.becomeFirstResponder() }
-        if !isFocused, uiView.isFirstResponder { uiView.resignFirstResponder() }
+        if !isFocused, uiView.isFirstResponder { _ = uiView.resignFirstResponder() }
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {

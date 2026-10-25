@@ -2727,7 +2727,7 @@ final class PushNotificationService: ObservableObject {
         let url = relayURL.appending(path: path)
         // A request carrying the pairing credential enforces the transport
         // policy (HTTPS, or loopback HTTP for self-hosted development).
-        if let credential, !RelayTransportPolicy.allowsCredentialTransport(url) {
+        if credential != nil, !RelayTransportPolicy.allowsCredentialTransport(url) {
             throw RelayDecisionError.insecureTransport
         }
         var request = URLRequest(url: url)
