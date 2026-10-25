@@ -431,9 +431,10 @@ extension AppState {
     }
 
     /// A plugin that answered without the feed (or predates reporting):
-    /// this dashboard has no Pulse to remember.
+    /// this dashboard has no Pulse chat to hide or remember.
     func forgetPulseHomeIfGone() {
         guard !pulsePluginUnanswered, !notifierPlugin.reports(PulseClient.feedCapability) else { return }
+        if pulseHomeChatID != nil { pulseHomeChatID = nil }
         rememberPulseHome(nil)
     }
 
@@ -561,4 +562,6 @@ extension PulseClient {
     static let actedCapability = "pulse_acted"
     /// Cards can be swiped away, and briefs name the cards they brought (0.68.0).
     static let dismissCapability = "pulse_dismiss"
+    /// The morning brief comes every day with what's still open (0.76.0).
+    static let dailyBriefCapability = "pulse_daily_brief"
 }

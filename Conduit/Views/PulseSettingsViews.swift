@@ -207,9 +207,16 @@ struct PulseSettingsPage: View {
             }
             // The plugin takes the brief's time with the Pulse screen (0.55.0).
             if appState.notifierPlugin.reports(PulseClient.feedCapability) { briefTime(state) }
-            Text("Each look that finds something sends one notification. The morning brief comes every day at its time with what's still open, today's calendar and reminders, and anything you've asked to hear less often.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            // Before 0.76.0 the brief only came with news held for it.
+            Group {
+                if appState.notifierPlugin.reports(PulseClient.dailyBriefCapability) {
+                    Text("Each look that finds something sends one notification. The morning brief comes every day at its time with what's still open, today's calendar and reminders, and anything you've asked to hear less often.")
+                } else {
+                    Text("Each look that finds something sends one notification. Things you've asked to hear less often wait for the morning brief instead.")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
