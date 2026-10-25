@@ -711,20 +711,24 @@ struct V2PulsePage: View {
                 clearedUndoButton(card)
             }
         } else {
-            HStack(spacing: 8) {
-                if card.doneAt == nil, untoldCards.contains(card.id) {
+            let untold = untoldCards.contains(card.id)
+            VStack(alignment: .leading, spacing: 8) {
+                // Do it opened the chat but Pulse wasn't told to check it:
+                // the note asks for Done, so Done stays.
+                if untold {
                     Label(Self.untoldNote, systemImage: "exclamationmark.circle")
                         .font(.footnote)
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    if appState.canActOnPulseCard(card) { doItButton(card) }
-                    if appState.canMarkPulseCardDone(card) { doneButton(card) }
                 }
-                Spacer(minLength: 0)
-                if card.isRatable {
-                    thumb(card, up: true)
-                    thumb(card, up: false)
+                HStack(spacing: 8) {
+                    if !untold, appState.canActOnPulseCard(card) { doItButton(card) }
+                    if appState.canMarkPulseCardDone(card) { doneButton(card) }
+                    Spacer(minLength: 0)
+                    if card.isRatable {
+                        thumb(card, up: true)
+                        thumb(card, up: false)
+                    }
                 }
             }
         }

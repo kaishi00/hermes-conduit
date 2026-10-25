@@ -319,6 +319,51 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertFalse(state.canMarkPulseCardDone(date) || state.canMarkPulseCardDone(owed))
     }
 
+    func testDoItOnAReportItemFromNoChatFillsOnlyTheChatItsNewChatMade() async throws {
+        let state = try appState()
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"home_chat_id": "pulse_chat", "cards": [
+          {"id": 1, "kind": "noticed", "topic": "date", "level": "screen", "news": "Dentist Friday", "chat_id": "pulse_chat"}
+        ]}
+        """)))
+        state.setNotifierPluginStateForTesting(.reported(version: "0.77.0", capabilities: [
+            PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.actedCapability,
+            PulseClient.foundActionsCapability
+        ]))
+        state.applyPulseFeed(page)
+        let date = try XCTUnwrap(page.cards.first)
+        // A chat an earlier New Chat made is still open, under the chat list.
+        state.activeSessionId = "earlier"
+        state.newChatOpenedSessionID = "earlier"
+        state.showSidebar = true
+        let acting = Task { await state.actOnPulseCard(date) }
+        // Its New Chat uncovered the chat; the earlier one didn't count.
+        let started = await waitUntil("Do it never started a new chat") { !state.showSidebar }
+        XCTAssertTrue(started)
+        XCTAssertEqual(state.composerPrefillText, "")
+        // The chat its New Chat made opens.
+        state.activeSessionId = "fresh"
+        state.newChatOpenedSessionID = "fresh"
+        let opened = await acting.value
+        XCTAssertTrue(opened)
+        XCTAssertEqual(state.composerPrefillText, date.actionMessage)
+        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "fresh", profile: "default"))
+    }
+
+    /// Yields until `condition` holds, for up to 10 s: a fixed number of
+    /// yields can run out on a busy hosted runner.
+    private func waitUntil(_ failure: String, _ condition: () -> Bool) async -> Bool {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+        while !condition() {
+            guard ContinuousClock.now < deadline else {
+                XCTFail(failure)
+                return false
+            }
+            await Task.yield()
+        }
+        return true
+    }
+
     func testOpeningACardsChatShowsTheMessageItCameFrom() throws {
         let state = try appState()
         let page = try XCTUnwrap(PulseFeedPage(json: json("""

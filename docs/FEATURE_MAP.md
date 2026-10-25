@@ -463,7 +463,9 @@ rulings, opening the Pulse screen) · a call from Hermes (Pulse may call only
 once the user opts in) · the hidden Pulse chat · the notifier's loop (report, brief, follow-ups,
 memory), its routes under /pulse and its capabilities · the Shortcuts inbox
 (the report and the morning brief read it, and with Pulse memory on, new
-events bring watches' checks forward) · the
+events bring watches' checks forward) · the phone's calendar and reminders
+(the report and the morning brief read them) · a new chat Do it starts, for an
+item from no chat (as in A new chat that something waits on) · the
 `hermes conduit-push pulse` commands
 
 **Code**
@@ -489,7 +491,7 @@ events bring watches' checks forward) · the
 - Code picks the report's items from a candidate list the model makes, and every candidate is journaled for 30 days (2026-10-24, notifier #337).
 - Before Pulse speaks up about an item it reads what happened since, wherever: the item's chat and its continuation, other chats and cron runs on the same subject, what Hermes runs in the background, and the phone's calendar and reminders. That holds for follow-up checks, held reminders, cards waiting for the brief, the report and Do it checks. Pulse's own hidden chat stays out of the evidence (2026-10-24, Eric; notifier #346, #347).
 - Main reaches `pulse` by a merge commit, never a squash, so archives don't re-stitch old conflicts (2026-10-24, #1186; build 228's stitch lost the Chats Pulse button).
-- Done and Do it work on every report item, one Pulse found on its own included. Do it opens the chat it was found in, or, for one from the calendar, reminders, notes, jobs or the Shortcuts inbox, a new chat in the dashboard's default profile, with the reminder in the composer; the Do it check then reads that chat with the others on the subject. Done on a found item marks only the card, and the next report reads it as done. The app shows both only to a plugin that reports `pulse_found_actions` (2026-10-25, Eric; notifier #362, #1240; Eric asked why date and worth-knowing cards couldn't be acted on).
+- Done and Do it work on every report item, one Pulse found on its own included. Do it opens the chat it was found in, or, for one from the calendar, reminders, notes, jobs or the Shortcuts inbox, a new chat in the dashboard's default profile, with the reminder in the composer, and only in the chat Do it's New Chat made; the Do it check then reads that chat with the others on the subject. Done on a found item marks only the card, and the next report reads it as done. The app shows both only to a plugin that reports `pulse_found_actions` (2026-10-25, Eric; notifier #362, #1240; Eric asked why date and worth-knowing cards couldn't be acted on).
 
 **Open gaps**
 - Learning from ratings in code is the next slice. Until it lands, the persona criteria (Quiet and Samantha diverge, a changed interest is heard, due items always surface) are strict xfail in `notifier/tests/test_pulse_personas.py`.
