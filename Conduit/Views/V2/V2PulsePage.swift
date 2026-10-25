@@ -831,7 +831,7 @@ struct V2PulsePage: View {
         .controlSize(.small)
         .tint(.conduitAccent)
         .accessibilityHint(Text(card.isFound
-            ? AppLocalization.string("Tells Pulse this is taken care of, so it doesn't bring it up again")
+            ? AppLocalization.string("Tells Pulse this is taken care of, so the next report knows it's done")
             : AppLocalization.string("Tells Pulse this is taken care of, so it stops checking on it")))
         .disabled(isBusy(card))
         .accessibilityIdentifier("pulse.card.done")

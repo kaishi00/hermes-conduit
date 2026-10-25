@@ -344644,84 +344644,166 @@
         }
       }
     },
-    "Tells Pulse this is taken care of, so it doesn't bring it up again" : {
+    "Tells Pulse this is taken care of, so the next report knows it's done" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sagt Pulse, dass das erledigt ist, damit es nicht mehr darauf zurückkommt"
+            "value" : "Sagt Pulse, dass das erledigt ist, damit der nächste Bericht das weiß"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le dice a Pulse que ya está resuelto, para que no vuelva a mencionarlo"
+            "value" : "Le dice a Pulse que ya está resuelto, para que el próximo informe lo sepa"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Indique à Pulse que c'est réglé, pour qu'il n'en reparle plus"
+            "value" : "Indique à Pulse que c'est réglé, pour que le prochain rapport le sache"
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Memberi tahu Pulse bahwa ini sudah beres, jadi Pulse tidak mengungkitnya lagi"
+            "value" : "Memberi tahu Pulse bahwa ini sudah beres, jadi laporan berikutnya mengetahuinya"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dice a Pulse che è già fatto, così non lo ripropone più"
+            "value" : "Dice a Pulse che è già fatto, così il prossimo resoconto lo sa"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "これは対応済みだと Pulse に伝え、もう取り上げないようにします"
+            "value" : "これは対応済みだと Pulse に伝え、次のレポートに反映させます"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "처리했다고 Pulse에 알려 다시 꺼내지 않게 합니다"
+            "value" : "처리했다고 Pulse에 알려 다음 리포트에 반영되게 합니다"
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mówi Pulse, że to już załatwione, więc więcej o tym nie wspomina"
+            "value" : "Mówi Pulse, że to już załatwione, żeby następny raport o tym wiedział"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avisa ao Pulse que isso já foi resolvido, para ele não trazer o assunto de novo"
+            "value" : "Avisa ao Pulse que isso já foi resolvido, para o próximo relatório saber"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Сообщает Pulse, что это уже сделано, и он больше не напоминает об этом"
+            "value" : "Сообщает Pulse, что это уже сделано, чтобы следующий отчёт это учёл"
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pulse'a bunun halledildiğini söyler, böylece bir daha gündeme getirmez"
+            "value" : "Pulse'a bunun halledildiğini söyler, böylece bir sonraki rapor bunu bilir"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "告诉 Pulse 这件事已经处理好，它就不再提起"
+            "value" : "告诉 Pulse 这件事已经处理好，下一份报告就会知道"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "告訴 Pulse 這件事已經處理好，它就不再提起"
+            "value" : "告訴 Pulse 這件事已經處理好，下一份報告就會知道"
+          }
+        }
+      }
+    },
+    "Another new chat is starting. Try again in a moment." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein anderer neuer Chat wird gerade gestartet. Versuche es gleich noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ya se está iniciando otro chat nuevo. Vuelve a intentarlo en un momento."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une autre nouvelle discussion est en cours de lancement. Réessayez dans un instant."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrolan baru lain sedang dimulai. Coba lagi sebentar lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si sta già avviando un'altra nuova chat. Riprova tra un momento."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別の新しいチャットを開始しています。しばらくしてからもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 새 채팅을 시작하는 중이에요. 잠시 후 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trwa rozpoczynanie innego nowego czatu. Spróbuj ponownie za chwilę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Outro chat novo já está sendo iniciado. Tente novamente daqui a pouco."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уже начинается другой новый чат. Повторите попытку чуть позже."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başka bir yeni sohbet başlatılıyor. Biraz sonra yeniden deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "另一个新聊天正在开始。请稍后再试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "另一個新聊天正在開始。請稍後再試。"
           }
         }
       }

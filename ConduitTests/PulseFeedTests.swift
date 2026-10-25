@@ -338,6 +338,11 @@ final class PulseFeedTests: XCTestCase {
                        AppLocalization.string("Couldn't start a new chat. Check your connection and try again."))
         let refused = await state.actOnPulseCard(date)
         XCTAssertFalse(refused)
+        // Connecting, it says so too: New Chat would make a chat that waits.
+        state.isConnecting = true
+        XCTAssertEqual(state.pulseNewChatRefusal(for: date),
+                       AppLocalization.string("Conduit is still connecting to your dashboard. Try again in a moment."))
+        state.isConnecting = false
         state.isConnected = true
         XCTAssertNil(state.pulseNewChatRefusal(for: date))
         // A chat an earlier New Chat made is still open, under the chat list.

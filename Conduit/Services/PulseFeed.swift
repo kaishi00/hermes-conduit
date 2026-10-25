@@ -560,18 +560,29 @@ extension AppState {
     }
 
     /// Why Do it can't start a new chat for a card from no chat right now,
-    /// for the Pulse screen to say at once instead of after the wait; nil
-    /// when it can, or when the card has a chat of its own. Offline or
-    /// connecting, New Chat would wait for the connection and that chat
-    /// would come without the reminder; from another profile, a call stops
-    /// the switch (startNewChat(inProfile:)).
+    /// for the Pulse screen to say at once, before a chat covers it; nil
+    /// when it can, or when the card has a chat of its own. Do it starts
+    /// its chat only when New Chat can start one at once (AppState's
+    /// canStartNewChatNow): connecting or synchronizing, New Chat would make
+    /// one that waits and may come without the reminder, and a New Chat
+    /// already starting or waiting would be the chat Do it fills. From
+    /// another profile, a call stops the switch (startNewChat(inProfile:)).
     func pulseNewChatRefusal(for card: PulseCard) -> String? {
         guard !pulseCardHasChat(card) else { return nil }
         if !profilesMatch(activeProfile, Self.pulseHomeProfile), isVoiceCallInProgress {
             return AppLocalization.string("End the call to open a chat in another profile.")
         }
-        guard isConnected, !isConnecting else {
+        guard isConnected || isConnecting else {
             return AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
+        }
+        if isProfileSwitching {
+            return AppLocalization.string("Wait for the workspace switch to finish before starting a conversation.")
+        }
+        if isConnecting || turnState == .synchronizing || offlineChatPresentation != nil {
+            return AppLocalization.string("Conduit is still connecting to your dashboard. Try again in a moment.")
+        }
+        if isStartingNewChat || showsPendingNewChat {
+            return AppLocalization.string("Another new chat is starting. Try again in a moment.")
         }
         return nil
     }
