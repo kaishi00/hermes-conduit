@@ -1224,27 +1224,30 @@ workflow table
 ## App Store screenshots and showcase clips
 
 What the capture run shows of each screen: the App Store screenshots and
-previews, and the short clips the README and hermesconduit.app use.
+previews, and the short clips hermesconduit.app shows (kaishi00/hermes-conduit-website#2).
 
 **Siblings:** the iPhone and iPad capture · the Watch capture · the call
 fixtures they launch (phone and Watch) · the showcase clips · the App Preview
-cut · scripts/app-store/README.md
+cut · scripts/app-store/README.md · the hermesconduit.app pages that show the
+clips (kaishi00/hermes-conduit-website)
 
 **Code**
 - Workflow: `.github/workflows/app-store-screenshots.yml`
 - Scripts: `scripts/app-store/record-clip.sh`, `scripts/app-store/cut-preview.sh`
 - UI test: `ConduitScreenshots/AppStoreScreenshotTests.swift`
 - Fixtures: `Conduit/Services/ScreenshotCallFixture.swift`, `ConduitWatch/WatchVoiceCall.swift` (applyScreenshotFixture)
+- Demo Hermes: `scripts/app-store/start-demo-hermes.sh`, `scripts/app-store/llm_stub.py`, `scripts/app-store/demo-script.json`
 - Text: `scripts/app-store/README.md`
 
 **Rulings**
 - A real Hermes with a scripted model, not a mock gateway; only audio-driven states (calls) use DEBUG-only launch fixtures (2026-10-17, #753).
-- Clips come from the same fixtures as the screenshots. The workflow lists the screenshot states and the clip states separately, so a new call state goes into both lists (2026-10-25, #1226).
+- Clips come from the same fixtures as the screenshots. The workflow lists the screenshot states and the clip states separately, so a call state that should move goes into both lists. `home` and `listening` are screenshots only: neither moves enough to need a clip (2026-10-25, #1226).
 - The site and README show only V2 media; footage from before the V2 redesign isn't reused (2026-10-24, Eric, #1226).
 
 **Open gaps**
 - No clips yet of an incoming Hermes call or of CarPlay; the CarPlay window may need Eric's Mac rather than a hosted runner.
 - A lock-screen approval can't be captured on a simulator; it needs a recording from a phone.
+- The README has no "See it in action" strip of the clips yet (#1193).
 
 **Checked:** 2026-10-25, at #1226.
 
