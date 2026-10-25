@@ -27,6 +27,12 @@ final class AppleSpeechWakeWordService: WakeWordService {
             // New phrases also become recognition hints on the next cycle,
             // and one in another language brings its recognizer.
             makeRecognizers()
+            guard !recognizers.isEmpty else {
+                // No phrase left that a recognizer here hears: stop, as
+                // arming would, rather than keep the old phrases' cycle.
+                recordFailure(unheardReason())
+                return
+            }
             startRecognitionCycle()
         }
     }
@@ -109,16 +115,7 @@ final class AppleSpeechWakeWordService: WakeWordService {
         }
         makeRecognizers()
         guard !recognizers.isEmpty else {
-            let phrases = bindings.map(\.phrase).filter(WakePhraseMatcher.isUsable)
-            // The phrase's own language when that's what is missing, as
-            // Settings says beside it.
-            if let note = phrases.lazy.compactMap({ WakeSpeechLocale.note(for: $0, among: phrases) }).first {
-                throw WakeWordServiceError.unavailable(note.text)
-            }
-            let locale = Locale.current
-            throw WakeWordServiceError.unavailable(
-                AppLocalization.string("On-device Apple speech recognition is unavailable for \(locale.identifier).")
-            )
+            throw WakeWordServiceError.unavailable(unheardReason())
         }
         isArmed = true
         consecutiveFailures = 0
@@ -297,6 +294,8 @@ final class AppleSpeechWakeWordService: WakeWordService {
             cancelRecognition()
             stopAudio()
         case .ended:
+            // The watchdog may have resumed already: nothing to recover.
+            guard isInterrupted else { return }
             isInterrupted = false
             recoveryTask?.cancel()
             recoveryTask = nil
@@ -390,6 +389,17 @@ final class AppleSpeechWakeWordService: WakeWordService {
             guard let recognizer, recognizer.supportsOnDeviceRecognition else { return nil }
             return WakeRecognizer(locale: group.locale, recognizer: recognizer, phrases: group.phrases)
         }
+    }
+
+    /// Why no recognizer hears the phrases: the phrase's own language when
+    /// that's what is missing, as Settings says beside it.
+    private func unheardReason() -> String {
+        let phrases = bindings.map(\.phrase).filter(WakePhraseMatcher.isUsable)
+        if let note = phrases.lazy.compactMap({ WakeSpeechLocale.note(for: $0, among: phrases) }).first {
+            return note.text
+        }
+        let locale = Locale.current
+        return AppLocalization.string("On-device Apple speech recognition is unavailable for \(locale.identifier).")
     }
 
     private func cancelRecognition() {
