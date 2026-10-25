@@ -15597,7 +15597,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// The chat it opened, nil when it opened none.
+    /// Returns the chat it created and opened, nil when it opened none.
     @discardableResult
     private func createAndReconcileSession(
         using client: HermesClient,
@@ -22410,8 +22410,8 @@ final class AppState: ObservableObject {
         requestComposerFocus(on: created)
     }
 
-    /// The chat this call opened, nil when it opened none: a chat
-    /// another create opened meanwhile isn't this one's.
+    /// Returns the chat this call created and opened, nil when it opened
+    /// none (refused, failed, or replaced by a newer navigation).
     @discardableResult
     func createNewSession(cwd: String? = nil, widgetLease: WidgetLaunchLease? = nil) async -> String? {
         guard !isProfileSwitching, isConnected, !isConnecting, let client else {
@@ -23043,7 +23043,7 @@ final class AppState: ObservableObject {
 
     /// Creates a chat as New Chat does, marked as starting until it is
     /// done, so neither New Chat nor a send starts a second one meanwhile.
-    /// The chat it opened, as createNewSession returns it.
+    /// Returns the chat it created and opened, as createNewSession does.
     @discardableResult
     private func createNewSessionMarkingStart() async -> String? {
         isStartingNewChat = true
