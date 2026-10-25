@@ -763,13 +763,7 @@ final class HermesNativeCalls: NSObject {
             log.note("watchAnswerHandoff", ["ok": false, "why": "unreadableStart"])
             return
         }
-        var taskID = UIBackgroundTaskIdentifier.invalid
-        let end = {
-            guard taskID != .invalid else { return }
-            UIApplication.shared.endBackgroundTask(taskID)
-            taskID = .invalid
-        }
-        taskID = UIApplication.shared.beginBackgroundTask(withName: "conduit.hermesCall.watchStart", expirationHandler: end)
+        let end = BackgroundTaskHold.begin("conduit.hermesCall.watchStart")
         let startedAt = Date()
         WatchVoiceLink.shared.startAnsweredCall(start) { reply in
             guard let data = reply[WatchVoiceWire.messageKey] as? Data,
@@ -831,13 +825,7 @@ final class HermesNativeCalls: NSObject {
         HermesCallTrace.shared.note("Answered on the Watch with a headset on here: keeping it here")
         calls[id]?.keptFromWatch = true
         calls[id]?.unanswered?.cancel()
-        var taskID = UIBackgroundTaskIdentifier.invalid
-        let end = {
-            guard taskID != .invalid else { return }
-            UIApplication.shared.endBackgroundTask(taskID)
-            taskID = .invalid
-        }
-        taskID = UIApplication.shared.beginBackgroundTask(withName: "conduit.hermesCall.keepFromWatch", expirationHandler: end)
+        let end = BackgroundTaskHold.begin("conduit.hermesCall.keepFromWatch")
         Task {
             defer { end() }
             await self.keepFromWatch(id, ring: ring, key: key, callID: callID, sealedStart: sealedStart)
@@ -948,13 +936,7 @@ final class HermesNativeCalls: NSObject {
     private func muteOnWatch(_ id: UUID, muted: Bool) {
         guard let call = calls[id], call.keptFromWatch, let ring = call.ring, call.controlMuted != muted else { return }
         calls[id]?.controlMuted = muted
-        var taskID = UIBackgroundTaskIdentifier.invalid
-        let end = {
-            guard taskID != .invalid else { return }
-            UIApplication.shared.endBackgroundTask(taskID)
-            taskID = .invalid
-        }
-        taskID = UIApplication.shared.beginBackgroundTask(withName: "conduit.hermesCall.muteOnWatch", expirationHandler: end)
+        let end = BackgroundTaskHold.begin("conduit.hermesCall.muteOnWatch")
         Task {
             defer { end() }
             // Until it lands, or a newer mute or the call's end takes over.
@@ -989,13 +971,7 @@ final class HermesNativeCalls: NSObject {
         guard call.keptFromWatch, let ring = call.ring else { return }
         call.following?.cancel()
         guard !call.controlEnded else { return }
-        var taskID = UIBackgroundTaskIdentifier.invalid
-        let end = {
-            guard taskID != .invalid else { return }
-            UIApplication.shared.endBackgroundTask(taskID)
-            taskID = .invalid
-        }
-        taskID = UIApplication.shared.beginBackgroundTask(withName: "conduit.hermesCall.endOnWatch", expirationHandler: end)
+        let end = BackgroundTaskHold.begin("conduit.hermesCall.endOnWatch")
         Task {
             _ = await HermesRingControl.set(ring, by: .phone, ended: true, attempts: 10)
             end()
@@ -1032,13 +1008,7 @@ final class HermesNativeCalls: NSObject {
     /// finish if Conduit goes back to the background meanwhile.
     @discardableResult
     private func settleRing(_ ring: HermesRing, outcome: HermesRingOutcome) -> Task<HermesRingSettleResult, Never> {
-        var taskID = UIBackgroundTaskIdentifier.invalid
-        let end = {
-            guard taskID != .invalid else { return }
-            UIApplication.shared.endBackgroundTask(taskID)
-            taskID = .invalid
-        }
-        taskID = UIApplication.shared.beginBackgroundTask(withName: "conduit.hermesCall.settle", expirationHandler: end)
+        let end = BackgroundTaskHold.begin("conduit.hermesCall.settle")
         return Task {
             let result = await HermesRingSettler.settle(ring, by: .phone, outcome: outcome)
             end()

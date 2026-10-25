@@ -5101,16 +5101,7 @@ final class AppState: ObservableObject {
     /// presentation cache's queued disk writes have landed. Main actor only:
     /// both callbacks that end the task arrive on the main queue.
     private func holdBackgroundTaskUntilPresentationCacheWritesLand() {
-        var taskID = UIBackgroundTaskIdentifier.invalid
-        let end = {
-            guard taskID != .invalid else { return }
-            UIApplication.shared.endBackgroundTask(taskID)
-            taskID = .invalid
-        }
-        taskID = UIApplication.shared.beginBackgroundTask(
-            withName: "conduit.sessionPresentationCache.flush",
-            expirationHandler: end
-        )
+        let end = BackgroundTaskHold.begin("conduit.sessionPresentationCache.flush")
         sessionPresentationCache.notifyWhenPendingWritesLand(end)
     }
 
@@ -7288,17 +7279,7 @@ final class AppState: ObservableObject {
     /// Main actor only: the expiration handler and the closing save's
     /// `defer` both run on the main queue, so the one-shot `end` never races.
     func beginVoiceTranscriptBackgroundTask(named name: String = "conduit.voiceTranscript.save") -> () -> Void {
-        var taskID = UIBackgroundTaskIdentifier.invalid
-        let end = {
-            guard taskID != .invalid else { return }
-            UIApplication.shared.endBackgroundTask(taskID)
-            taskID = .invalid
-        }
-        taskID = UIApplication.shared.beginBackgroundTask(
-            withName: name,
-            expirationHandler: end
-        )
-        return end
+        BackgroundTaskHold.begin(name)
     }
 
     /// Recounts the active dashboard and profile's queued calls. A running

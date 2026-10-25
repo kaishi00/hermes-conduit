@@ -1600,14 +1600,7 @@ final class WatchDirectBroker {
     /// Keeps Conduit running while it answers the Watch; the expiration
     /// ends it early.
     private static func beginBackgroundTask(_ name: String) -> () -> Void {
-        var taskID = UIBackgroundTaskIdentifier.invalid
-        let end = {
-            guard taskID != .invalid else { return }
-            UIApplication.shared.endBackgroundTask(taskID)
-            taskID = .invalid
-        }
-        taskID = UIApplication.shared.beginBackgroundTask(withName: name, expirationHandler: end)
-        return end
+        BackgroundTaskHold.begin(name)
     }
 
     /// A Watch call's user turn as an id, the same for every tool call it
