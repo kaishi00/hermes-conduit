@@ -1703,12 +1703,12 @@ describes it (none: no caption or doc mentions the motion)
 - A switch whose state lands later (a consent sheet, the host's answer) animates on the value, page-wide: `Conduit/Views/LocationSettingsViews.swift` (LocationSettingsPage), `Conduit/Views/SyncedPreferencesViews.swift`
 
 **Rulings**
-- Revealed rows animate with `ConduitMotion.ease`, which is the settle fade under Reduce Motion. Use withAnimation in the setter, or `.animation(_:value:)` on the whole page, never on one section alone: an animation scoped to a section grows its card while the sections below jump (2026-10-25, fork CI #92).
+- Revealed rows animate with `ConduitMotion.ease`, which is the settle fade under Reduce Motion. Use withAnimation in the setter, or `.animation(_:value:)` on the whole page, never on one section alone: an animation scoped to a section grows its card while the sections below jump (2026-10-25, #1246, fork CI #92).
 
 **Open gaps**
 - A row revealed by something other than a switch (a picker, a host answer, a permission) isn't covered here.
 
-**Checked:** 2026-10-25, at fork CI #92.
+**Checked:** 2026-10-25, at #1246 (fork CI #92).
 
 ## Feature map rules
 
