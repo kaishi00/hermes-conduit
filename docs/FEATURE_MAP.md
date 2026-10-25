@@ -1722,5 +1722,7 @@ point at the map and its check
 - A connection nobody has noticed yet isn't caught by any check; it goes in the first time a fix turns it up.
 - A notifier PR that moves a file listed here fails the next hermes-conduit PR's map check, not its own.
 - A PR that changes a mapped feature's code without touching its entry isn't caught by CI; a reviewer flags it (minor).
+- On a merge of main into `pulse`, an entry both sides changed that the merge settles on main's copy keeps main's Checked line, so CI doesn't flag dropping `pulse`'s edit; a reviewer checks that choice. CI only sees content, and that copy is main's word for word.
+- If GitHub can't say whether a PR into `pulse` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
 
 **Checked:** 2026-10-25, #1248.

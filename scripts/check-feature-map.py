@@ -19,8 +19,8 @@ the PR meets main and where its base did: an entry main changed between the
 two that matches main's copy came in with the merge and keeps main's Checked
 line.
 
-A notifier file missing on main fails. If GitHub can't be reached at all the
-check warns and passes, so an outage doesn't block every PR.
+A notifier file missing on main fails. If GitHub can't be reached for that
+lookup, the check warns and skips it, so an outage doesn't block every PR.
 """
 
 import argparse
