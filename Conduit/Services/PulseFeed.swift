@@ -90,6 +90,11 @@ struct PulseCard: Equatable, Identifiable {
     /// One of a report's items, on its own card.
     var isNoticed: Bool { kind == "noticed" }
 
+    /// A report item Pulse found on its own, in a chat it didn't remember,
+    /// the calendar, reminders or the Shortcuts inbox: nothing remembered
+    /// is behind it.
+    var isFound: Bool { isNoticed && itemID == nil }
+
     /// Done or swiped away: it goes under Done and cleared.
     var isCleared: Bool { doneAt != nil || dismissedAt != nil }
 
@@ -98,13 +103,18 @@ struct PulseCard: Equatable, Identifiable {
     var isRatable: Bool { kind == "followup" || isNoticed }
 
     /// A follow-up, or a report item drawn from something Pulse remembers,
-    /// can be marked done: that thing closes, without a rating.
+    /// can be marked done: that thing closes, without a rating. One Pulse
+    /// found on its own can be too, by a plugin that takes it
+    /// (AppState.canMarkPulseCardDone).
     var canBeDone: Bool { (kind == "followup" || isNoticed) && itemID != nil }
 
     /// It can be acted on in the chat the remembered thing came from.
     var isActionable: Bool {
-        (kind == "followup" || (isNoticed && itemID != nil)) && !chatID.isEmpty && !(news.isEmpty && title.isEmpty)
+        (kind == "followup" || (isNoticed && itemID != nil)) && !chatID.isEmpty && hasReminder
     }
+
+    /// Do it has a reminder to leave in the composer.
+    var hasReminder: Bool { !(news.isEmpty && title.isEmpty) }
 
     /// The card's heading: a report item's topic, else its kind.
     var heading: String { isNoticed ? PulseCardKind.topic(topic) : PulseCardKind.title(kind) }
@@ -376,15 +386,15 @@ extension PulseClient {
         return (response["learned"] as? [Any] ?? []).compactMap(PulseLesson.init(json:))
     }
 
-    /// Marks a follow-up card done (its promise closes, no rating), or
-    /// takes the mark off; whether it changed.
+    /// Marks a card done (a promise behind it closes, no rating), or takes
+    /// the mark off; whether it changed.
     @discardableResult
     func markDone(card: Int, done: Bool) async throws -> Bool {
         let response = try await request("\(Self.path)/done", "POST", ["card": card, "done": done])
         return PulseJSON.bool(response["changed"]) ?? false
     }
 
-    /// Do it on a follow-up card: Pulse reads that chat once Hermes has
+    /// Do it on a card: Pulse reads the chat it opened once Hermes has
     /// answered and marks the card done if it got done.
     func acted(card: Int) async throws {
         _ = try await request("\(Self.path)/acted", "POST", ["card": card])
@@ -501,13 +511,27 @@ extension AppState {
         pulseOpenRequest = PulseOpenRequest(card: card)
     }
 
-    /// Opens the chat a card came from.
     /// The card links a chat to open: not Pulse's own, which is hidden (a
     /// report's or brief's cards point there).
     func pulseCardHasChat(_ card: PulseCard) -> Bool {
         !card.chatID.isEmpty && card.chatID != pulseHomeChat
     }
 
+    /// Done on this card: a follow-up's or a remembered report item's
+    /// (0.64.0), or one Pulse found on its own (0.77.0).
+    func canMarkPulseCardDone(_ card: PulseCard) -> Bool {
+        notifierPlugin.reports(PulseClient.doneCapability)
+            && (card.canBeDone || card.isFound && notifierPlugin.reports(PulseClient.foundActionsCapability))
+    }
+
+    /// Do it on this card: one about something Pulse remembers, or a report
+    /// item Pulse found on its own (0.77.0).
+    func canActOnPulseCard(_ card: PulseCard) -> Bool {
+        card.isActionable
+            || card.isFound && card.hasReminder && notifierPlugin.reports(PulseClient.foundActionsCapability)
+    }
+
+    /// Opens the chat a card came from.
     /// It opens at the message the card came from, as an artifact's Show
     /// in chat does, whatever the chat would otherwise land on.
     func openPulseCardChat(_ card: PulseCard) {
@@ -516,27 +540,51 @@ extension AppState {
         openAppLink(.session(id: card.chatID, profile: card.profile.isEmpty ? Self.pulseHomeProfile : card.profile))
     }
 
-    /// Do it on a follow-up card: opens the chat the promise or to-do came
-    /// from with the reminder in its composer, ready to send. False when the
-    /// chat didn't open.
+    /// Do it: opens the chat the card came from with the reminder in its
+    /// composer, ready to send. A card from no chat (a report item from the
+    /// calendar, reminders or the Shortcuts inbox) gets a new chat in Pulse's
+    /// profile, where Pulse reads what came of it. False when no chat opened.
     func actOnPulseCard(_ card: PulseCard) async -> Bool {
-        guard card.isActionable else { return false }
+        guard canActOnPulseCard(card) else { return false }
         let dashboard = activeDashboardID
-        openPulseCardChat(card)
-        guard await waitForOpenChat(card.chatID, on: dashboard) else { return false }
+        if pulseCardHasChat(card) {
+            openPulseCardChat(card)
+            guard await waitForOpenChat(card.chatID, on: dashboard) else { return false }
+        } else {
+            let previous = activeSessionId
+            if profilesMatch(activeProfile, Self.pulseHomeProfile) {
+                startNewChat()
+            } else {
+                startNewChat(inProfile: Self.pulseHomeProfile)
+            }
+            guard await waitForNewChat(after: previous, on: dashboard) else { return false }
+        }
         prefillComposer(card.actionMessage)
         return true
     }
 
-    /// Waits up to ten seconds for `chatID` to be the open chat. Gives up
-    /// when the task is cancelled or the dashboard changes meanwhile, so a
-    /// same-named chat elsewhere never gets the text.
+    /// Waits up to ten seconds for `chatID` to be the open chat.
     private func waitForOpenChat(_ chatID: String, on dashboard: UUID?) async -> Bool {
+        await waitForChat(on: dashboard) {
+            activeSessionId == chatID || activeSessionId.flatMap({ canonicalSessionID(for: $0) }) == chatID
+        }
+    }
+
+    /// Waits up to ten seconds for a chat New Chat made, not `previous`, to
+    /// be the open chat.
+    private func waitForNewChat(after previous: String?, on dashboard: UUID?) async -> Bool {
+        await waitForChat(on: dashboard) {
+            newChatOpenedSessionID.map { $0 != previous && $0 == activeSessionId } ?? false
+        }
+    }
+
+    /// Waits up to ten seconds for `isOpen`. Gives up when the task is
+    /// cancelled or the dashboard changes meanwhile, so a same-named chat
+    /// elsewhere never gets the text.
+    private func waitForChat(on dashboard: UUID?, until isOpen: () -> Bool) async -> Bool {
         for _ in 0..<40 {
             guard activeDashboardID == dashboard, !Task.isCancelled else { return false }
-            if activeSessionId == chatID || activeSessionId.flatMap({ canonicalSessionID(for: $0) }) == chatID {
-                return true
-            }
+            if isOpen() { return true }
             do {
                 try await Task.sleep(for: .milliseconds(250))
             } catch {
@@ -568,4 +616,7 @@ extension PulseClient {
     static let dismissCapability = "pulse_dismiss"
     /// The morning brief comes every day with what's still open (0.76.0).
     static let dailyBriefCapability = "pulse_daily_brief"
+    /// Done and Do it take report items Pulse found on its own, and one found
+    /// in a chat points at that chat (0.77.0).
+    static let foundActionsCapability = "pulse_found_actions"
 }

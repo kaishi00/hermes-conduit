@@ -718,8 +718,8 @@ struct V2PulsePage: View {
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    if card.isActionable { doItButton(card) }
-                    if canMarkDone(card) { doneButton(card) }
+                    if appState.canActOnPulseCard(card) { doItButton(card) }
+                    if appState.canMarkPulseCardDone(card) { doneButton(card) }
                 }
                 Spacer(minLength: 0)
                 if card.isRatable {
@@ -784,7 +784,7 @@ struct V2PulsePage: View {
                 if errorMessage == failure { errorMessage = nil }
                 // Pulse reads the chat once Hermes has answered and marks the card done itself.
                 // Only a card Pulse can mark done, with a Done button to fall back on.
-                if canMarkDone(card), appState.notifierPlugin.reports(PulseClient.actedCapability) {
+                if appState.canMarkPulseCardDone(card), appState.notifierPlugin.reports(PulseClient.actedCapability) {
                     do {
                         try await client.acted(card: card.id)
                         untoldCards.remove(card.id)
@@ -802,14 +802,11 @@ struct V2PulsePage: View {
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
         .tint(.conduitAccent)
-        .accessibilityHint(Text(AppLocalization.string("Opens the chat with this reminder ready to send")))
+        .accessibilityHint(Text(appState.pulseCardHasChat(card)
+            ? AppLocalization.string("Opens the chat with this reminder ready to send")
+            : AppLocalization.string("Opens a new chat with this reminder ready to send")))
         .disabled(actingCard != nil || isBusy(card))
         .accessibilityIdentifier("pulse.card.do-it")
-    }
-
-    /// The plugin takes Done (0.64.0) and this card is a follow-up's.
-    private func canMarkDone(_ card: PulseCard) -> Bool {
-        card.canBeDone && appState.notifierPlugin.reports(PulseClient.doneCapability)
     }
 
     private func doneButton(_ card: PulseCard) -> some View {
@@ -823,7 +820,9 @@ struct V2PulsePage: View {
         .buttonStyle(.bordered)
         .controlSize(.small)
         .tint(.conduitAccent)
-        .accessibilityHint(Text(AppLocalization.string("Tells Pulse this is taken care of, so it stops checking on it")))
+        .accessibilityHint(Text(card.isFound
+            ? AppLocalization.string("Tells Pulse this is taken care of, so it doesn't bring it up again")
+            : AppLocalization.string("Tells Pulse this is taken care of, so it stops checking on it")))
         .disabled(isBusy(card))
         .accessibilityIdentifier("pulse.card.done")
     }
