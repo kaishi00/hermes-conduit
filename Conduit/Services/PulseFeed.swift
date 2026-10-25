@@ -543,7 +543,9 @@ extension AppState {
     /// Do it: opens the chat the card came from with the reminder in its
     /// composer, ready to send. A card from no chat (a report item from the
     /// calendar, reminders or the Shortcuts inbox) gets a new chat in Pulse's
-    /// profile, where Pulse reads what came of it. False when no chat opened.
+    /// profile, where Pulse reads what came of it, and only the chat that
+    /// New Chat made gets the reminder (startPulseNewChat). False when no
+    /// chat opened.
     func actOnPulseCard(_ card: PulseCard) async -> Bool {
         guard canActOnPulseCard(card), pulseNewChatRefusal(for: card) == nil else { return false }
         let dashboard = activeDashboardID
@@ -551,22 +553,24 @@ extension AppState {
             openPulseCardChat(card)
             guard await waitForOpenChat(card.chatID, on: dashboard) else { return false }
         } else {
-            let previous = activeSessionId
-            startNewChat(inProfile: Self.pulseHomeProfile)
-            guard await waitForNewChat(after: previous, on: dashboard) else { return false }
+            if !profilesMatch(activeProfile, Self.pulseHomeProfile) {
+                // The switch returns with Pulse's profile connected and its chat open.
+                await switchProfile(to: Self.pulseHomeProfile)
+                guard activeDashboardID == dashboard, profilesMatch(activeProfile, Self.pulseHomeProfile) else { return false }
+            }
+            guard await startPulseNewChat() != nil, activeDashboardID == dashboard else { return false }
         }
         prefillComposer(card.actionMessage)
         return true
     }
 
     /// Why Do it can't start a new chat for a card from no chat right now,
-    /// for the Pulse screen to say at once, before a chat covers it; nil
-    /// when it can, or when the card has a chat of its own. Do it starts
-    /// its chat only when New Chat can start one at once (AppState's
-    /// canStartNewChatNow): connecting or synchronizing, New Chat would make
-    /// one that waits and may come without the reminder, and a New Chat
-    /// already starting or waiting would be the chat Do it fills. From
-    /// another profile, a call stops the switch (startNewChat(inProfile:)).
+    /// for the Pulse screen to say before a chat covers it; nil when it can,
+    /// or when the card has a chat of its own. Do it starts its chat only
+    /// when New Chat can start one at once (startPulseNewChat): connecting
+    /// or synchronizing, New Chat would make one that waits, and a New Chat
+    /// already starting or waiting comes first. From another profile, a call
+    /// stops the switch, as it does New Chat's (startNewChat(inProfile:)).
     func pulseNewChatRefusal(for card: PulseCard) -> String? {
         guard !pulseCardHasChat(card) else { return nil }
         if !profilesMatch(activeProfile, Self.pulseHomeProfile), isVoiceCallInProgress {
@@ -587,28 +591,15 @@ extension AppState {
         return nil
     }
 
-    /// Waits up to ten seconds for `chatID` to be the open chat.
+    /// Waits up to ten seconds for `chatID` to be the open chat. Gives up
+    /// when the task is cancelled or the dashboard changes meanwhile, so a
+    /// same-named chat elsewhere never gets the text.
     private func waitForOpenChat(_ chatID: String, on dashboard: UUID?) async -> Bool {
-        await waitForChat(on: dashboard) {
-            activeSessionId == chatID || activeSessionId.flatMap({ canonicalSessionID(for: $0) }) == chatID
-        }
-    }
-
-    /// Waits up to ten seconds for a chat New Chat made, not `previous`, to
-    /// be the open chat.
-    private func waitForNewChat(after previous: String?, on dashboard: UUID?) async -> Bool {
-        await waitForChat(on: dashboard) {
-            newChatOpenedSessionID.map { $0 != previous && $0 == activeSessionId } ?? false
-        }
-    }
-
-    /// Waits up to ten seconds for `isOpen`. Gives up when the task is
-    /// cancelled or the dashboard changes meanwhile, so a same-named chat
-    /// elsewhere never gets the text.
-    private func waitForChat(on dashboard: UUID?, until isOpen: () -> Bool) async -> Bool {
         for _ in 0..<40 {
             guard activeDashboardID == dashboard, !Task.isCancelled else { return false }
-            if isOpen() { return true }
+            if activeSessionId == chatID || activeSessionId.flatMap({ canonicalSessionID(for: $0) }) == chatID {
+                return true
+            }
             do {
                 try await Task.sleep(for: .milliseconds(250))
             } catch {

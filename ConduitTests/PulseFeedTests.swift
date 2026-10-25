@@ -344,37 +344,28 @@ final class PulseFeedTests: XCTestCase {
                        AppLocalization.string("Conduit is still connecting to your dashboard. Try again in a moment."))
         state.isConnecting = false
         state.isConnected = true
+        state.client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+                                    profile: "default")
         XCTAssertNil(state.pulseNewChatRefusal(for: date))
         // A chat an earlier New Chat made is still open, under the chat list.
         state.activeSessionId = "earlier"
         state.newChatOpenedSessionID = "earlier"
         state.showSidebar = true
-        let acting = Task { await state.actOnPulseCard(date) }
-        // Its New Chat uncovered the chat; the earlier one didn't count.
-        let started = await waitUntil("Do it never started a new chat") { !state.showSidebar }
-        XCTAssertTrue(started)
+        // A new chat that doesn't start gets nothing, and the earlier one isn't taken for it.
+        state.widgetSessionCreatorOverride = { _, _ in throw URLError(.timedOut) }
+        let failed = await state.actOnPulseCard(date)
+        XCTAssertFalse(failed)
+        XCTAssertEqual(state.activeSessionId, "earlier")
         XCTAssertEqual(state.composerPrefillText, "")
-        // The chat its New Chat made opens.
-        state.activeSessionId = "fresh"
-        state.newChatOpenedSessionID = "fresh"
-        let opened = await acting.value
+        // The chat its New Chat made gets the reminder, uncovered.
+        state.showSidebar = true
+        state.widgetSessionCreatorOverride = { _, _ in ("fresh", "fresh", "default") }
+        let opened = await state.actOnPulseCard(date)
         XCTAssertTrue(opened)
+        XCTAssertEqual(state.activeSessionId, "fresh")
+        XCTAssertFalse(state.showSidebar)
         XCTAssertEqual(state.composerPrefillText, date.actionMessage)
         XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "fresh", profile: "default"))
-    }
-
-    /// Yields until `condition` holds, for up to 10 s: a fixed number of
-    /// yields can run out on a busy hosted runner.
-    private func waitUntil(_ failure: String, _ condition: () -> Bool) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
-        while !condition() {
-            guard ContinuousClock.now < deadline else {
-                XCTFail(failure)
-                return false
-            }
-            await Task.yield()
-        }
-        return true
     }
 
     func testOpeningACardsChatShowsTheMessageItCameFrom() throws {

@@ -2208,6 +2208,19 @@ final class AppState: ObservableObject {
         storePulseHomes(homes)
     }
 
+    /// Do it's New Chat, for a Pulse item from no chat (PulseFeed.swift):
+    /// only when New Chat can start one at once, never one that waits. The
+    /// chat is the one this New Chat opened, read as createNewSession
+    /// returns, before anything else can run. Nil when none started.
+    func startPulseNewChat() async -> String? {
+        guard canStartNewChatNow, !isStartingNewChat, !showsPendingNewChat else { return nil }
+        dismissSidebarDrawer()
+        let previous = activeSessionId
+        await createNewSessionMarkingStart()
+        guard let created = newChatOpenedSessionID, created != previous, activeSessionId == created else { return nil }
+        return created
+    }
+
     private func storePulseHomes(_ homes: [String: String]) {
         objectWillChange.send()
         pulseRememberedHomes = homes
