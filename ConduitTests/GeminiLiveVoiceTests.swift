@@ -52,9 +52,24 @@ final class FakeGeminiLiveSocket: GeminiLiveSocket {
     /// the first send throws and the refusal is readable afterwards.
     var upgradeRefusal: GeminiLiveServerClose?
 
+    /// Set to hold the next send on the socket until `releaseSend()`.
+    var holdsNextSend = false
+    private var heldSend: CheckedContinuation<Void, Never>?
+    var isHoldingSend: Bool { heldSend != nil }
+
     init(url: URL) { self.url = url }
 
+    func releaseSend() {
+        let held = heldSend
+        heldSend = nil
+        held?.resume()
+    }
+
     func send(_ text: String) async throws {
+        if holdsNextSend {
+            holdsNextSend = false
+            await withCheckedContinuation { heldSend = $0 }
+        }
         attempted.append((try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]) ?? [:])
         if let upgradeRefusal {
             recordedClose = upgradeRefusal
@@ -503,6 +518,39 @@ extension VoiceConversationControllerTests {
         session.send(.audio(Data([3, 4])))
         await settle()
         XCTAssertEqual(second.sent.count, 2, "The new connection carries the conversation once set up")
+        session.stop()
+    }
+
+    /// A frame still queued when the handoff completes fails, and a failure
+    /// handler that sends it again reaches the new connection: the writer
+    /// that send makes isn't let go with the old one.
+    func testGeminiLiveFrameResentFromAHandoffFailureGoesOutOnTheNewConnection() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.start()
+        await settle()
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["setupComplete": [String: Any]()])
+        first.deliver(["sessionResumptionUpdate": ["newHandle": "h-1", "resumable": true]])
+        first.deliver(["goAway": ["timeLeft": "5s"]])
+        await settle(until: { sockets().count == 2 })
+        let second = sockets()[1]
+
+        first.holdsNextSend = true
+        session.send(.audio(Data([1])), onSent: nil, onFailure: nil)
+        await settle(until: { first.isHoldingSend })
+        var resent = false
+        var failedAgain = false
+        session.send(.textTurn("result"), onSent: nil, onFailure: {
+            session.send(.textTurn("result again"), onSent: { resent = true }, onFailure: { failedAgain = true })
+        })
+
+        second.deliver(["setupComplete": [String: Any]()])
+        await settle(until: { resent || failedAgain })
+        XCTAssertTrue(resent, "the resend went out on the new connection")
+        XCTAssertFalse(failedAgain)
+        XCTAssertNotNil(second.sent.last?["clientContent"])
+        first.releaseSend()
         session.stop()
     }
 

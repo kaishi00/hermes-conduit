@@ -84,8 +84,14 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
 
     private var socket: GeminiLiveSocket? {
         // Frames queued for a socket that's no longer the session's fail
-        // instead of going out on it.
-        didSet { if writer?.socket !== socket { writer?.close(); writer = nil } }
+        // instead of going out on it. The old writer is let go before it
+        // fails them: a failure handler that sends again gets a writer for
+        // the new socket, which must outlive this.
+        didSet {
+            guard let old = writer, old.socket !== socket else { return }
+            writer = nil
+            old.close()
+        }
     }
     /// Identity of the current connection; frames from any other are ignored.
     private var connectionID = UUID()
