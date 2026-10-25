@@ -643,7 +643,7 @@ final class KanbanTests: XCTestCase {
             CapabilitiesView.localError(for: .unavailable(profile: "p"), hasData: false),
             "Connect to a Hermes dashboard to load capabilities."
         )
-        XCTAssertNil(CapabilitiesView.localError(for: .superseded(requestedProfile: "a", activeProfile: "b"), hasData: true))
+        XCTAssertNil(CapabilitiesView.localError(for: .superseded(requested: rows("a"), active: rows("b")), hasData: true))
     }
 
     // MARK: - Concrete slug resolution
@@ -747,22 +747,40 @@ final class KanbanTests: XCTestCase {
     func testCapabilityCommitPolicyRejectsABAAndForeignProfiles() {
         // A -> B -> A: old A1 finishes after A2 started; latestGeneration moved on.
         XCTAssertFalse(CapabilityLoadPolicy.canCommit(
-            generation: 1, latestGeneration: 3, requestedProfile: "A", activeProfile: "A"
+            generation: 1, latestGeneration: 3, requested: rows("A"), active: rows("A")
         ))
         // Newer request for the same still-active profile commits.
         XCTAssertTrue(CapabilityLoadPolicy.canCommit(
-            generation: 3, latestGeneration: 3, requestedProfile: "A", activeProfile: "A"
+            generation: 3, latestGeneration: 3, requested: rows("A"), active: rows("A")
         ))
         // Profile changed mid-flight.
         XCTAssertFalse(CapabilityLoadPolicy.canCommit(
-            generation: 2, latestGeneration: 2, requestedProfile: "A", activeProfile: "B"
+            generation: 2, latestGeneration: 2, requested: rows("A"), active: rows("B")
         ))
     }
 
+    func testCapabilitiesOfAnotherDashboardWithTheSameProfileNeverCommitOrShow() {
+        // Two dashboards each with a "default" profile: dashboard A's read
+        // finishing after the switch to B commits nothing, and A's rows
+        // never show (or act) under B.
+        let otherDashboard = rows("default", dashboard: Self.capabilityDashboardB)
+        XCTAssertFalse(CapabilityLoadPolicy.canCommit(
+            generation: 2, latestGeneration: 2, requested: rows("default"), active: otherDashboard
+        ))
+        XCTAssertFalse(CapabilityLoadPolicy.shouldPresentRows(snapshot: rows("default"), active: otherDashboard))
+        XCTAssertEqual(
+            CapabilityLoadPolicy.resolvePresentation(snapshot: rows("default"), active: otherDashboard, isLoading: false, loadError: nil, hasRows: true),
+            .loading
+        )
+        // The same dashboard through a new bridge loads again too.
+        let newBridge = CapabilitySnapshotOwner(dashboardID: Self.capabilityDashboardA, bridge: ObjectIdentifier(NSObject.self), profile: "default")
+        XCTAssertFalse(CapabilityLoadPolicy.shouldPresentRows(snapshot: rows("default"), active: newBridge))
+    }
+
     func testCapabilityRowsNeverRenderForForeignSnapshotProfile() {
-        XCTAssertFalse(CapabilityLoadPolicy.shouldPresentRows(snapshotProfile: "A", activeProfile: "B"))
-        XCTAssertFalse(CapabilityLoadPolicy.shouldPresentRows(snapshotProfile: nil, activeProfile: "B"))
-        XCTAssertTrue(CapabilityLoadPolicy.shouldPresentRows(snapshotProfile: "B", activeProfile: "B"))
+        XCTAssertFalse(CapabilityLoadPolicy.shouldPresentRows(snapshot: rows("A"), active: rows("B")))
+        XCTAssertFalse(CapabilityLoadPolicy.shouldPresentRows(snapshot: nil, active: rows("B")))
+        XCTAssertTrue(CapabilityLoadPolicy.shouldPresentRows(snapshot: rows("B"), active: rows("B")))
     }
 
     // MARK: - Capabilities rendering boundary policy
@@ -771,12 +789,12 @@ final class KanbanTests: XCTestCase {
         // A rows under active B while B's request is still in flight (SwiftUI
         // render race): the transition state must stay loading, never rows.
         XCTAssertEqual(
-            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "A", activeProfile: "B", isLoading: true, loadError: nil, hasRows: true),
+            CapabilityLoadPolicy.resolvePresentation(snapshot: rows("A"), active: rows("B"), isLoading: true, loadError: nil, hasRows: true),
             .loading
         )
         // Foreign snapshot with nothing settled for B yet: still loading.
         XCTAssertEqual(
-            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "A", activeProfile: "B", isLoading: false, loadError: nil, hasRows: true),
+            CapabilityLoadPolicy.resolvePresentation(snapshot: rows("A"), active: rows("B"), isLoading: false, loadError: nil, hasRows: true),
             .loading
         )
     }
@@ -784,7 +802,7 @@ final class KanbanTests: XCTestCase {
     func testFailedFirstLoadWithoutSnapshotShowsFailure() {
         // First load fails before any snapshot exists (e.g. offline).
         XCTAssertEqual(
-            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: nil, activeProfile: "B", isLoading: false, loadError: "offline", hasRows: false),
+            CapabilityLoadPolicy.resolvePresentation(snapshot: nil, active: rows("B"), isLoading: false, loadError: "offline", hasRows: false),
             .failure("offline")
         )
     }
@@ -792,8 +810,8 @@ final class KanbanTests: XCTestCase {
     func testNoDashboardUnavailableFirstLoadShowsConnectionFailure() {
         XCTAssertEqual(
             CapabilityLoadPolicy.resolvePresentation(
-                snapshotProfile: nil,
-                activeProfile: "B",
+                snapshot: nil,
+                active: rows("B"),
                 isLoading: false,
                 loadError: "Connect to a Hermes dashboard to load capabilities.",
                 hasRows: false
@@ -804,31 +822,39 @@ final class KanbanTests: XCTestCase {
 
     func testCurrentSnapshotEmptySuccessShowsExplicitEmptyState() {
         XCTAssertEqual(
-            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "B", activeProfile: "B", isLoading: false, loadError: nil, hasRows: false),
+            CapabilityLoadPolicy.resolvePresentation(snapshot: rows("B"), active: rows("B"), isLoading: false, loadError: nil, hasRows: false),
             .emptySuccess
         )
     }
 
     func testCurrentSnapshotEmptyFailureShowsFullFailureState() {
         XCTAssertEqual(
-            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "B", activeProfile: "B", isLoading: false, loadError: "boom", hasRows: false),
+            CapabilityLoadPolicy.resolvePresentation(snapshot: rows("B"), active: rows("B"), isLoading: false, loadError: "boom", hasRows: false),
             .failure("boom")
         )
     }
 
     func testPopulatedSameProfileRefreshFailureKeepsRowsWithBanner() {
         XCTAssertEqual(
-            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "B", activeProfile: "B", isLoading: false, loadError: "refresh boom", hasRows: true),
+            CapabilityLoadPolicy.resolvePresentation(snapshot: rows("B"), active: rows("B"), isLoading: false, loadError: "refresh boom", hasRows: true),
             .list(banner: "refresh boom")
         )
         // Clean populated load renders the plain list.
         XCTAssertEqual(
-            CapabilityLoadPolicy.resolvePresentation(snapshotProfile: "B", activeProfile: "B", isLoading: false, loadError: nil, hasRows: true),
+            CapabilityLoadPolicy.resolvePresentation(snapshot: rows("B"), active: rows("B"), isLoading: false, loadError: nil, hasRows: true),
             .list(banner: nil)
         )
     }
 
     // MARK: - Helpers
+
+    private static let capabilityDashboardA = UUID(uuidString: "00000000-0000-0000-0000-00000000000A")!
+    private static let capabilityDashboardB = UUID(uuidString: "00000000-0000-0000-0000-00000000000B")!
+
+    /// A capability snapshot of `profile` on a dashboard, through no bridge.
+    private func rows(_ profile: String, dashboard: UUID = KanbanTests.capabilityDashboardA) -> CapabilitySnapshotOwner {
+        CapabilitySnapshotOwner(dashboardID: dashboard, bridge: nil, profile: profile)
+    }
 
     private func makeStore(
         requester: MockKanbanRequester,

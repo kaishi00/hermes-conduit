@@ -310,7 +310,8 @@ struct V2SessionRow: View {
 }
 
 /// A chat the search found by its messages: the title, then up to two lines
-/// of the matching text with the matched words picked out.
+/// of the matching text (four at accessibility text sizes) with the matched
+/// words picked out.
 struct V2ContentMatchRow: View {
     let title: String
     let time: String

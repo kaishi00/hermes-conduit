@@ -113,6 +113,13 @@ final class CapabilitiesStore: ObservableObject {
         pluginsNeedRestart = false
     }
 
+    /// Whether requests go to `owner`'s bridge and profile. False after a
+    /// switch until the Capabilities screen points the store at them, so a
+    /// detail page never reads the previous dashboard or profile.
+    func serves(_ owner: CapabilitySnapshotOwner) -> Bool {
+        requester.map { ObjectIdentifier($0) } == owner.bridge && profile == owner.profile
+    }
+
     private static func same(_ lhs: (any DashboardJSONRequester)?, _ rhs: (any DashboardJSONRequester)?) -> Bool {
         switch (lhs, rhs) {
         case (nil, nil): return true

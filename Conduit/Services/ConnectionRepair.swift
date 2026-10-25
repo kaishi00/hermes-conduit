@@ -85,6 +85,14 @@ enum ConnectionRepairHandoff: CustomStringConvertible, CustomDebugStringConverti
     // while the browser case carries a raw ticket.
     var description: String { "ConnectionRepairHandoff(redacted)" }
     var debugDescription: String { description }
+
+    /// The address the repair connects to.
+    var baseURL: String {
+        switch self {
+        case .native(let candidate): return candidate.configuration.serverURL
+        case .browserSignIn(_, let baseURL, _), .nativeOAuth(_, let baseURL, _): return baseURL
+        }
+    }
 }
 
 /// What Repair's Sign In to Reconnect opens: the sign-in the current staged
@@ -157,6 +165,10 @@ struct ConnectionSetupRepairReview {
 enum ConnectionRepairActivationOutcome: Equatable {
     case activated
     case failed(ConnectionFailure)
+    /// The address is another saved dashboard's. Nothing was connected or
+    /// written: a repair would replace that dashboard's own sign-in, so the
+    /// user switches to it instead (#995, Eric 2026-10-24).
+    case addressBelongsToDashboard(id: UUID, label: String)
 }
 
 /// The activation boundary for Repair mode. Production wraps the

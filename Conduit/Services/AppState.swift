@@ -2309,9 +2309,11 @@ final class AppState: ObservableObject {
     private var toolCatalogOwner: String?
     private var toolCatalogFetched: Set<String> = []
     private var toolCatalogLoading: Set<String> = []
-    /// Profile that owns the currently displayed skills/toolsets. Rows are
-    /// only presentable while this equals the active profile.
-    @Published private(set) var capabilitiesProfile: String?
+    /// The dashboard, bridge and profile the installed skills/toolsets were
+    /// read from. Rows are only presentable, and their switches only act,
+    /// while this equals `currentCapabilitiesOwner`: two dashboards can have
+    /// a profile of the same name.
+    @Published private(set) var capabilitiesOwner: CapabilitySnapshotOwner?
     /// Monotonic request token for capability loads; older requests can never
     /// commit over newer ones (protects the A -> B -> A race).
     private var capabilityLoadGeneration: UInt64 = 0
@@ -12233,6 +12235,7 @@ final class AppState: ObservableObject {
     /// opens, so it can never install a connection underneath the repair.
     @discardableResult
     func beginSavedConnectionRepair() -> ConnectionRepairContext? {
+        repairRegisteredDashboardIDs = []
         guard let context = makeSavedConnectionRepairContext() else { return nil }
         cancelChatResumeTransportRecovery()
         return context
@@ -12258,6 +12261,7 @@ final class AppState: ObservableObject {
     /// restart the loop; the user is left in the stable disconnected state.
     @discardableResult
     func beginConnectionRepair() -> ConnectionRepairContext? {
+        repairRegisteredDashboardIDs = []
         guard let context = makeConnectionRepairContext() else { return nil }
         cancelChatResumeTransportRecovery()
         return context
@@ -12285,6 +12289,12 @@ final class AppState: ObservableObject {
         // the tested URL counts as changed (remember it) and whether the
         // Cloudflare token needs a same-origin re-bind.
         let failedTarget = connection?.baseUrl
+        // A sign-in's address was checked before its sheet registered it
+        // (ConnectionSetupView.beginRepairSignIn); a tested password
+        // reconnect is checked here, before its cookies are committed.
+        if case .native = handoff, let owner = repairAddressOwner(handoff.baseURL, repairing: failedTarget) {
+            return .addressBelongsToDashboard(id: owner.id, label: owner.label)
+        }
         cancelChatResumeTransportRecovery()
         let outcome: ConnectionRepairActivationOutcome
         switch handoff {
@@ -12297,10 +12307,7 @@ final class AppState: ObservableObject {
             // (login and ticket mint both succeeded first) — they are
             // naturally superseded by the next explicit test or sign-in and
             // are deliberately not rolled back.
-            if let dashboardID = resolveDashboardID(
-                forURL: candidate.configuration.serverURL,
-                registerIfMissing: true
-            ) {
+            if let dashboardID = registerRepairDashboard(forURL: candidate.configuration.serverURL) {
                 candidate.nativeConnection.commitCookies(dashboardID: dashboardID)
             }
             outcome = await activateRepairedConnection(with: HermesConnection(
@@ -12313,7 +12320,7 @@ final class AppState: ObservableObject {
                 ticket: ticket
             ))
         case .nativeOAuth(let result, let baseURL, _):
-            guard let dashboardID = resolveDashboardID(forURL: baseURL, registerIfMissing: true) else {
+            guard let dashboardID = registerRepairDashboard(forURL: baseURL) else {
                 return .failed(.unexpectedServerResponse)
             }
             let storedTokens = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID)
@@ -12336,8 +12343,43 @@ final class AppState: ObservableObject {
             }
         }
         guard outcome == .activated else { return outcome }
+        // Connected: what this repair registered is a dashboard of its own
+        // now, and a later repair starts without it.
+        repairRegisteredDashboardIDs = []
         persistActivatedRepair(handoff, failedTarget: failedTarget)
         return outcome
+    }
+
+    /// Dashboards a repair registered for a new address, by sign-in or
+    /// password reconnect (`registerRepairDashboard`); cleared when a
+    /// repair begins (either entry) and once one connects, so a later
+    /// repair never inherits them.
+    private var repairRegisteredDashboardIDs: Set<UUID> = []
+
+    /// The saved dashboard other than the one being repaired that already
+    /// has this address, if any. Repair never writes onto it: its saved
+    /// password, Face ID choice, Cloudflare token and sign-in cookies stay
+    /// its own, as in Edit Connection.
+    func repairAddressOwner(_ baseURL: String, repairing failedTarget: String?) -> SavedDashboard? {
+        let normalized = (try? ConnectionURLPolicy.normalizedBaseURL(baseURL))
+            ?? baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let owner = savedDashboardRegistry.dashboard(claiming: normalized),
+              !repairRegisteredDashboardIDs.contains(owner.id) else { return nil }
+        let repairing = failedTarget.flatMap { resolveDashboardID(forURL: $0, registerIfMissing: false) }
+            ?? activeDashboardID
+        return owner.id == repairing ? nil : owner
+    }
+
+    /// Registers a repair's address: a sign-in's before its sheet opens, a
+    /// password reconnect's before its cookies are committed. One it newly
+    /// registers stays the repair's own, so a later try at that address
+    /// (after a failed activation, say) isn't refused as another
+    /// dashboard's.
+    func registerRepairDashboard(forURL baseURL: String) -> UUID? {
+        let existing = resolveDashboardID(forURL: baseURL, registerIfMissing: false)
+        guard let id = existing ?? resolveDashboardID(forURL: baseURL, registerIfMissing: true) else { return nil }
+        if existing == nil { repairRegisteredDashboardIDs.insert(id) }
+        return id
     }
 
     /// Activates a normal-login native OAuth result transactionally. The
@@ -13012,6 +13054,7 @@ final class AppState: ObservableObject {
         voiceConversationController.setGateway(nil)
         voiceCapabilitySnapshot = .unavailable
         isVoiceEnabled = false
+        retireCapabilitySnapshot()
         retireOutstandingPreferredReturnSurfaceRequests()
         // An open call transcript is the outgoing dashboard's, and its fetch
         // still in flight must not open one over the next.
@@ -29900,9 +29943,9 @@ final class AppState: ObservableObject {
         case success(profile: String)
         case failed(profile: String, message: String)
         case unavailable(profile: String)
-        /// The active profile changed mid-request; the result belongs to an
-        /// abandoned profile and callers should discard it.
-        case superseded(requestedProfile: String, activeProfile: String)
+        /// The active dashboard or profile changed mid-request; the result
+        /// belongs to an abandoned one and callers should discard it.
+        case superseded(requested: CapabilitySnapshotOwner, active: CapabilitySnapshotOwner)
 
         var isSuperseded: Bool {
             if case .superseded = self { return true }
@@ -29915,22 +29958,24 @@ final class AppState: ObservableObject {
         capabilityLoadGeneration &+= 1
         let generation = capabilityLoadGeneration
         let profile = activeProfile
+        let owner = currentCapabilitiesOwner
         guard let dashboardTicketBridge else { return .unavailable(profile: profile) }
         async let skillsResult = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/skills", profile: profile))
         async let toolsetsResult = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/tools/toolsets", profile: profile))
         // Commit gate: this exact request must still be the newest one AND
-        // target the still-active profile (A -> B -> A stale commits rejected).
+        // target the still-active dashboard and profile (A -> B -> A stale
+        // commits rejected).
         func ownsRequest() -> Bool {
             CapabilityLoadPolicy.canCommit(
                 generation: generation,
                 latestGeneration: capabilityLoadGeneration,
-                requestedProfile: profile,
-                activeProfile: activeProfile
+                requested: owner,
+                active: currentCapabilitiesOwner
             )
         }
         do {
             let (skillsResponse, toolsetsResponse) = try await (skillsResult, toolsetsResult)
-            guard ownsRequest() else { return .superseded(requestedProfile: profile, activeProfile: activeProfile) }
+            guard ownsRequest() else { return .superseded(requested: owner, active: currentCapabilitiesOwner) }
             let skillsValues = skillsResponse["_array"] as? [Any] ?? []
             self.skills = skillsValues.compactMap(decodeCapabilitySkill)
                 .sorted { lhs, rhs in
@@ -29943,18 +29988,20 @@ final class AppState: ObservableObject {
             self.toolsets = toolsetsValues.compactMap(decodeCapabilityToolset)
                 .sorted { ($0.label ?? $0.name) < ($1.label ?? $1.name) }
             adoptToolCatalog(ToolCatalog(toolsets: self.toolsets), key: toolCatalogKey)
-            capabilitiesProfile = profile
+            capabilitiesOwner = owner
             return .success(profile: profile)
         } catch {
-            guard ownsRequest() else { return .superseded(requestedProfile: profile, activeProfile: activeProfile) }
+            guard ownsRequest() else { return .superseded(requested: owner, active: currentCapabilitiesOwner) }
             errorMessage = AppLocalization.string("Could not load capabilities: \(UserFacingError.message(for: error))")
             return .failed(profile: profile, message: AppLocalization.string("Could not load capabilities: \(UserFacingError.message(for: error))"))
         }
     }
 
-    func toggleSkill(name: String, enabled: Bool) async {
+    /// `rows` is the snapshot the switch was flipped in (a bulk change's
+    /// first one); nothing is sent once it is no longer the one showing.
+    func toggleSkill(name: String, enabled: Bool, rows: CapabilitySnapshotOwner? = nil) async {
         let profile = activeProfile
-        guard let owner = currentDashboardRuntimeOwner() else { return }
+        guard capabilityRowsAreCurrent(rows), let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
         let current = skills.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update. A list read still on its way was read before
@@ -29983,9 +30030,11 @@ final class AppState: ObservableObject {
         errorMessage = AppLocalization.string("Could not update skill: \(UserFacingError.message(for: error))")
     }
 
-    func toggleToolset(name: String, enabled: Bool) async {
+    /// `rows` is the snapshot the switch was flipped in (a bulk change's
+    /// first one); nothing is sent once it is no longer the one showing.
+    func toggleToolset(name: String, enabled: Bool, rows: CapabilitySnapshotOwner? = nil) async {
         let profile = activeProfile
-        guard let owner = currentDashboardRuntimeOwner() else { return }
+        guard capabilityRowsAreCurrent(rows), let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
         let current = toolsets.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update. A list read still on its way was read before
@@ -30012,6 +30061,40 @@ final class AppState: ObservableObject {
             toolsets[index].enabled = restore
         }
         errorMessage = AppLocalization.string("Could not update toolset: \(UserFacingError.message(for: error))")
+    }
+
+    /// The dashboard, bridge and profile a capability read made now would
+    /// belong to.
+    var currentCapabilitiesOwner: CapabilitySnapshotOwner {
+        CapabilitySnapshotOwner(
+            dashboardID: activeDashboardID,
+            bridge: dashboardTicketBridge.map { ObjectIdentifier($0) },
+            profile: activeProfile
+        )
+    }
+
+    /// Whether the installed skills and toolsets are the current dashboard's
+    /// and profile's: anything that shows them checks this first.
+    var capabilitiesAreCurrent: Bool {
+        CapabilityLoadPolicy.shouldPresentRows(snapshot: capabilitiesOwner, active: currentCapabilitiesOwner)
+    }
+
+    /// Whether a switch flipped in `rows` (nil: the rows showing) may still
+    /// act: they are the rows showing, and those are the current
+    /// dashboard's and profile's.
+    private func capabilityRowsAreCurrent(_ rows: CapabilitySnapshotOwner?) -> Bool {
+        guard let rows = rows ?? capabilitiesOwner else { return false }
+        return rows == capabilitiesOwner && rows == currentCapabilitiesOwner
+    }
+
+    /// The installed skills and toolsets belong to the dashboard switched
+    /// away from: a read still on its way commits nothing, and its rows
+    /// never show (or act) under the next one.
+    private func retireCapabilitySnapshot() {
+        capabilityLoadGeneration &+= 1
+        capabilitiesOwner = nil
+        skills = []
+        toolsets = []
     }
 
     private func decodeCapabilitySkill(_ value: Any) -> CapabilitySkill? {
@@ -35706,23 +35789,45 @@ enum KeychainHelper {
 
 // MARK: - Attachment Helper
 
+/// Whose installed skills and toolsets a capability read holds: the
+/// dashboard, the bridge it went through (as Capabilities' own scope) and
+/// the profile.
+struct CapabilitySnapshotOwner: Equatable {
+    let dashboardID: UUID?
+    /// Only meaningful with `dashboardID`: an identifier can be reused once
+    /// its bridge is gone, which is why a dashboard switch also clears the
+    /// snapshot (`retireCapabilitySnapshot`).
+    let bridge: ObjectIdentifier?
+    let profile: String
+}
+
+/// What a capability detail page reads for: the owner, and whether the
+/// store already serves it.
+struct CapabilityDetailScope: Equatable {
+    let owner: CapabilitySnapshotOwner
+    let ready: Bool
+}
+
 /// Pure ownership rules for capability loads, extracted for deterministic
 /// testing of the rapid-profile-switch races.
 enum CapabilityLoadPolicy {
     /// A finished request may commit only while it is still the newest load
-    /// AND its profile is still active (A -> B -> A stale commits rejected).
+    /// AND its dashboard and profile are still active (A -> B -> A stale
+    /// commits rejected, and so is one from a dashboard switched away from
+    /// that has a profile of the same name).
     static func canCommit(
         generation: UInt64,
         latestGeneration: UInt64,
-        requestedProfile: String,
-        activeProfile: String
+        requested: CapabilitySnapshotOwner,
+        active: CapabilitySnapshotOwner
     ) -> Bool {
-        generation == latestGeneration && requestedProfile == activeProfile
+        generation == latestGeneration && requested == active
     }
 
-    /// Rows may render only when the snapshot belongs to the active profile.
-    static func shouldPresentRows(snapshotProfile: String?, activeProfile: String) -> Bool {
-        snapshotProfile == activeProfile
+    /// Rows may render only when the snapshot belongs to the active
+    /// dashboard and profile.
+    static func shouldPresentRows(snapshot: CapabilitySnapshotOwner?, active: CapabilitySnapshotOwner) -> Bool {
+        snapshot == active
     }
 
     /// Final rendering boundary for the Capabilities screen. Foreign or absent
@@ -35736,16 +35841,13 @@ enum CapabilityLoadPolicy {
     }
 
     static func resolvePresentation(
-        snapshotProfile: String?,
-        activeProfile: String,
+        snapshot: CapabilitySnapshotOwner?,
+        active: CapabilitySnapshotOwner,
         isLoading: Bool,
         loadError: String?,
         hasRows: Bool
     ) -> PresentationState {
-        let ownsSnapshot = shouldPresentRows(
-            snapshotProfile: snapshotProfile,
-            activeProfile: activeProfile
-        )
+        let ownsSnapshot = shouldPresentRows(snapshot: snapshot, active: active)
 
         // The view's request token guarantees a settled error belongs to the
         // CURRENT request/profile - never to a foreign one. So errors surface

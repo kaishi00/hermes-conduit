@@ -142,15 +142,16 @@ struct CapabilitySkillsTab: View {
     }
 
     /// One switch at a time, as Hermes takes them; skills already in that
-    /// state are left alone.
+    /// state are left alone. A dashboard or profile switch midway stops it:
+    /// the rest were this list's, not the next one's.
     private func setAll(_ skills: [CapabilitySkill], enabled: Bool) {
         let targets = skills.filter { $0.enabled != enabled }.map(\.name)
-        guard !bulkRunning, !targets.isEmpty else { return }
+        guard !bulkRunning, !targets.isEmpty, let rows = appState.capabilitiesOwner else { return }
         Haptics.selection()
         bulkRunning = true
         Task {
             for name in targets {
-                await appState.toggleSkill(name: name, enabled: enabled)
+                await appState.toggleSkill(name: name, enabled: enabled, rows: rows)
             }
             bulkRunning = false
         }
@@ -273,7 +274,17 @@ struct CapabilitySkillDetailPage: View {
     @State private var document: SkillFrontmatter?
     @State private var loadError: String?
 
-    private var skill: CapabilitySkill? { appState.skills.first { $0.name == name } }
+    /// Reads again for another dashboard or profile, and once the store
+    /// has been pointed at it.
+    private var detailScope: CapabilityDetailScope {
+        let owner = appState.currentCapabilitiesOwner
+        return CapabilityDetailScope(owner: owner, ready: store.serves(owner))
+    }
+
+    /// Only while the list is this dashboard's and profile's.
+    private var skill: CapabilitySkill? {
+        appState.capabilitiesAreCurrent ? appState.skills.first { $0.name == name } : nil
+    }
 
     var body: some View {
         SettingsDetailContainer {
@@ -297,18 +308,27 @@ struct CapabilitySkillDetailPage: View {
                     .tint(.conduitAccent)
                 }
             }
-            CapabilitySkillDocument(document: document, error: loadError)
+            if appState.capabilitiesAreCurrent {
+                CapabilitySkillDocument(document: document, error: loadError)
+            }
             Text("Changes apply to new sessions.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
         }
         .navigationTitle(Text(verbatim: name))
-        .task(id: name) {
+        // Read again for another dashboard or profile.
+        .task(id: detailScope) {
+            let owner = appState.currentCapabilitiesOwner
+            document = nil
+            loadError = nil
+            guard store.serves(owner) else { return }
             do {
-                document = SkillFrontmatter.parse(try await store.skillContent(name: name))
-                loadError = nil
+                let content = try await store.skillContent(name: name)
+                guard appState.currentCapabilitiesOwner == owner, store.serves(owner), !Task.isCancelled else { return }
+                document = SkillFrontmatter.parse(content)
             } catch {
+                guard appState.currentCapabilitiesOwner == owner, store.serves(owner), !Task.isCancelled else { return }
                 loadError = UserFacingError.message(for: error)
             }
         }
@@ -318,11 +338,21 @@ struct CapabilitySkillDetailPage: View {
 /// A catalog skill's page before it's installed: its SKILL.md and Install.
 struct OfficialSkillDetailPage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    @EnvironmentObject private var appState: AppState
     let skill: OfficialSkill
     @ObservedObject var store: CapabilitiesStore
     let reload: () async -> Void
     @State private var document: SkillFrontmatter?
     @State private var loadError: String?
+    /// The dashboard and profile the page was opened for: its installed
+    /// state, Install and SKILL.md belong to them, and after a switch the
+    /// page shows only the skill's name and description.
+    @State private var openedFor: CapabilitySnapshotOwner?
+
+    private var isCurrent: Bool {
+        guard let openedFor else { return false }
+        return appState.currentCapabilitiesOwner == openedFor && store.serves(openedFor)
+    }
 
     private var state: CapabilityInstallState? { store.skillInstalls[skill.identifier] }
     private var installed: Bool {
@@ -340,7 +370,9 @@ struct OfficialSkillDetailPage: View {
                 ],
                 usage: nil
             ) {
-                if installed {
+                if !isCurrent {
+                    EmptyView()
+                } else if installed {
                     Label(AppLocalization.string("Installed"), systemImage: "checkmark.circle.fill")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.green)
@@ -348,6 +380,7 @@ struct OfficialSkillDetailPage: View {
                     Button {
                         Haptics.selection()
                         Task {
+                            guard isCurrent else { return }
                             if await store.installSkill(skill) {
                                 Haptics.success()
                                 await reload()
@@ -371,14 +404,23 @@ struct OfficialSkillDetailPage: View {
                     }
                 }
             }
-            CapabilitySkillDocument(document: document, error: loadError)
+            if isCurrent {
+                CapabilitySkillDocument(document: document, error: loadError)
+            }
         }
         .navigationTitle(Text(verbatim: skill.name))
-        .task(id: skill.identifier) {
+        // Again on a return to the dashboard and profile it was opened for,
+        // in case a switch cut the first read short.
+        .task(id: isCurrent) {
+            if openedFor == nil { openedFor = appState.currentCapabilitiesOwner }
+            guard isCurrent, document == nil else { return }
             do {
-                document = SkillFrontmatter.parse(try await store.skillPreview(identifier: skill.identifier))
+                let content = try await store.skillPreview(identifier: skill.identifier)
+                guard isCurrent, !Task.isCancelled else { return }
+                document = SkillFrontmatter.parse(content)
                 loadError = nil
             } catch {
+                guard isCurrent, !Task.isCancelled else { return }
                 loadError = UserFacingError.message(for: error)
             }
         }

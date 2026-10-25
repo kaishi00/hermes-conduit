@@ -95,14 +95,15 @@ struct CapabilityToolsTab: View {
         .accessibilityLabel(Text("Tool options"))
     }
 
+    /// One switch at a time; a dashboard or profile switch midway stops it.
     private func setAll(enabled: Bool) {
         let targets = visible.filter { $0.enabled != enabled }.map(\.name)
-        guard !bulkRunning, !targets.isEmpty else { return }
+        guard !bulkRunning, !targets.isEmpty, let rows = appState.capabilitiesOwner else { return }
         Haptics.selection()
         bulkRunning = true
         Task {
             for name in targets {
-                await appState.toggleToolset(name: name, enabled: enabled)
+                await appState.toggleToolset(name: name, enabled: enabled, rows: rows)
             }
             bulkRunning = false
         }
@@ -202,7 +203,17 @@ struct CapabilityToolsetDetailPage: View {
     @State private var keyValue = ""
     @State private var backendToConfirm: TerminalBackendOption?
 
-    private var toolset: CapabilityToolset? { appState.toolsets.first { $0.name == name } }
+    /// Reads again for another dashboard or profile, and once the store
+    /// has been pointed at it.
+    private var detailScope: CapabilityDetailScope {
+        let owner = appState.currentCapabilitiesOwner
+        return CapabilityDetailScope(owner: owner, ready: store.serves(owner))
+    }
+
+    /// Only while the list is this dashboard's and profile's.
+    private var toolset: CapabilityToolset? {
+        appState.capabilitiesAreCurrent ? appState.toolsets.first { $0.name == name } : nil
+    }
 
     var body: some View {
         SettingsDetailContainer {
@@ -218,23 +229,23 @@ struct CapabilityToolsetDetailPage: View {
                     }
                 }
             }
-            if let notice {
+            if appState.capabilitiesAreCurrent, let notice {
                 Text(verbatim: notice)
                     .font(.footnote)
                     .foregroundStyle(.orange)
                     .padding(.horizontal, 16)
             }
-            if name == "terminal" {
+            if appState.capabilitiesAreCurrent, name == "terminal" {
                 terminalSection
             }
-            if let config, config.hasCategory, !config.providers.isEmpty {
+            if appState.capabilitiesAreCurrent, let config, config.hasCategory, !config.providers.isEmpty {
                 ConduitSettingsSection(title: AppLocalization.string("Backends"), symbol: "server.rack", tint: .conduitAccent) {
                     ForEach(Array(config.providers.enumerated()), id: \.element.id) { index, provider in
                         if index > 0 { Divider().opacity(0.6) }
                         providerRow(provider, config: config)
                     }
                 }
-            } else if let configError {
+            } else if appState.capabilitiesAreCurrent, let configError {
                 Text(verbatim: configError)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -246,7 +257,22 @@ struct CapabilityToolsetDetailPage: View {
                 .padding(.horizontal, 16)
         }
         .navigationTitle(Text(verbatim: toolset.map(CapabilityToolsetOrdering.label) ?? name))
-        .task(id: name) { await load() }
+        // Read again for another dashboard or profile: what the last one
+        // answered never stays on screen to be acted on.
+        .task(id: detailScope) {
+            config = nil
+            configError = nil
+            backends = nil
+            backendsError = nil
+            notice = nil
+            // A key prompt or backend confirmation still open belongs to
+            // the last one.
+            keyPrompt = nil
+            keyValue = ""
+            backendToConfirm = nil
+            guard store.serves(appState.currentCapabilitiesOwner) else { return }
+            await load()
+        }
         .alert(
             Text(verbatim: keyPrompt?.key ?? ""),
             isPresented: Binding(get: { keyPrompt != nil }, set: { if !$0 { keyPrompt = nil } }),
@@ -487,8 +513,11 @@ struct CapabilityToolsetDetailPage: View {
 
     private func load() async {
         async let configLoad = try? store.toolsetConfig(name: name)
+        // A read a switch cancelled leaves the next one's page alone.
         if name == "terminal" {
-            if let fresh = try? await store.terminalBackends() {
+            let fresh = try? await store.terminalBackends()
+            guard !Task.isCancelled else { return }
+            if let fresh {
                 backends = fresh
                 backendsError = nil
             } else if backends == nil {
@@ -496,6 +525,7 @@ struct CapabilityToolsetDetailPage: View {
             }
         }
         let loaded = await configLoad
+        guard !Task.isCancelled else { return }
         if let loaded {
             config = loaded
             configError = nil
@@ -508,19 +538,25 @@ struct CapabilityToolsetDetailPage: View {
         Haptics.selection()
         working = provider.name
         notice = nil
+        let owner = appState.currentCapabilitiesOwner
         Task {
+            defer { working = nil }
             do {
+                guard serves(owner) else { return }
                 let needsNous = try await store.selectProvider(toolset: name, provider: provider.name, capability: capability)
+                guard serves(owner) else { return }
                 if needsNous {
                     notice = AppLocalization.string("Sign in to Nous Portal on your host to use this backend.")
                 }
                 // A failed read keeps what's on screen.
-                if let fresh = try? await store.toolsetConfig(name: name) { config = fresh }
+                let fresh = try? await store.toolsetConfig(name: name)
+                guard serves(owner) else { return }
+                if let fresh { config = fresh }
                 await appState.loadCapabilities()
             } catch {
+                guard serves(owner) else { return }
                 notice = UserFacingError.message(for: error)
             }
-            working = nil
         }
     }
 
@@ -528,14 +564,19 @@ struct CapabilityToolsetDetailPage: View {
         Haptics.selection()
         working = backend.name
         notice = nil
+        let owner = appState.currentCapabilitiesOwner
         Task {
+            defer { working = nil }
             do {
+                guard serves(owner) else { return }
                 try await store.selectTerminalBackend(backend.name)
-                if let fresh = try? await store.terminalBackends() { backends = fresh }
+                let fresh = try? await store.terminalBackends()
+                guard serves(owner) else { return }
+                if let fresh { backends = fresh }
             } catch {
+                guard serves(owner) else { return }
                 notice = UserFacingError.message(for: error)
             }
-            working = nil
         }
     }
 
@@ -544,16 +585,27 @@ struct CapabilityToolsetDetailPage: View {
         keyValue = ""
         guard !trimmed.isEmpty else { return }
         notice = nil
+        let owner = appState.currentCapabilitiesOwner
         Task {
             do {
+                guard serves(owner) else { return }
                 try await store.saveKey(env.key, value: trimmed)
                 Haptics.success()
                 // A failed read keeps what's on screen.
-                if let fresh = try? await store.toolsetConfig(name: name) { config = fresh }
+                let fresh = try? await store.toolsetConfig(name: name)
+                guard serves(owner) else { return }
+                if let fresh { config = fresh }
                 await appState.loadCapabilities()
             } catch {
+                guard serves(owner) else { return }
                 notice = UserFacingError.message(for: error)
             }
         }
+    }
+
+    /// Whether an answer started for `owner` may still land on this page:
+    /// after a dashboard or profile switch it belongs to the old one.
+    private func serves(_ owner: CapabilitySnapshotOwner) -> Bool {
+        appState.currentCapabilitiesOwner == owner && store.serves(owner)
     }
 }

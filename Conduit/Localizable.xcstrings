@@ -126614,84 +126614,84 @@
         }
       }
     },
-    "Press Return to send. Use Shift-Return for a new line." : {
+    "When on, Return sends and Shift-Return starts a new line." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Drücke die Eingabetaste zum Senden. Verwende Umschalt-Eingabetaste für eine neue Zeile."
+            "value" : "Wenn aktiviert, sendet die Eingabetaste und Umschalt-Eingabetaste beginnt eine neue Zeile."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pulsa Intro para enviar. Usa Mayúsculas + Intro para una nueva línea."
+            "value" : "Si está activado, Intro envía y Mayúsculas + Intro crea una nueva línea."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Appuyez sur Retour pour envoyer. Utilisez Maj + Retour pour aller à la ligne."
+            "value" : "Une fois activé, Retour envoie et Maj + Retour va à la ligne."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tekan Return untuk mengirim. Gunakan Shift-Return untuk baris baru."
+            "value" : "Jika aktif, Return mengirim dan Shift-Return membuat baris baru."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Premi Invio per inviare. Usa Maiusc-Invio per andare a capo."
+            "value" : "Se attivo, Invio invia e Maiusc-Invio va a capo."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Returnキーで送信します。改行するにはShift-Returnキーを使用します。"
+            "value" : "オンにすると、Returnキーで送信し、Shift-Returnキーで改行します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Return 키를 누르면 보내요. 줄을 바꾸려면 Shift-Return을 사용하세요."
+            "value" : "켜면 Return 키로 보내고 Shift-Return으로 줄을 바꿔요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Naciśnij Return, aby wysłać. Użyj Shift-Return, aby wstawić nowy wiersz."
+            "value" : "Gdy włączone, Return wysyła, a Shift-Return wstawia nowy wiersz."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pressione Retorno para enviar. Use Shift-Retorno para uma nova linha."
+            "value" : "Quando ativado, Retorno envia e Shift-Retorno cria uma nova linha."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Нажмите Return, чтобы отправить. Для новой строки используйте Shift-Return."
+            "value" : "Если включено, Return отправляет, а Shift-Return начинает новую строку."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Göndermek için Return'e basın. Yeni satır için Shift-Return kullanın."
+            "value" : "Açıkken Return ile mesaj gönderilir; Shift-Return ile yeni satır başlatılır."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "按 Return 发送。按 Shift-Return 换行。"
+            "value" : "开启后，按 Return 发送，按 Shift-Return 换行。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "按 Return 鍵傳送。使用 Shift-Return 換行。"
+            "value" : "開啟後，按 Return 鍵傳送，按 Shift-Return 換行。"
           }
         }
       }
@@ -335918,6 +335918,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "通知已端對端加密，可抵禦量子電腦"
+          }
+        }
+      }
+    },
+    "Already a Saved Dashboard" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereits ein gespeichertes Dashboard"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ya es un panel guardado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Déjà un tableau de bord enregistré"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sudah menjadi dasbor tersimpan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Già una dashboard salvata"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存済みのダッシュボードです"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이미 저장된 대시보드예요"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To już zapisany panel"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Já é um painel salvo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уже сохранённый дашборд"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zaten kayıtlı bir panel"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已是保存的仪表板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已是儲存的儀表板"
+          }
+        }
+      }
+    },
+    "This address is your saved dashboard “%@”. Repair won't change its sign-in; switch to it instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Adresse gehört zu deinem gespeicherten Dashboard „%@“. Die Reparatur ändert seine Anmeldung nicht; wechsle stattdessen dorthin."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta dirección es tu panel guardado «%@». La reparación no cambiará su inicio de sesión; cambia a él."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette adresse est celle de votre tableau de bord enregistré « %@ ». La réparation ne modifiera pas sa connexion ; basculez plutôt vers celui-ci."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alamat ini adalah dasbor tersimpan Anda “%@”. Perbaikan tidak akan mengubah info masuknya; beralihlah ke dasbor itu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo indirizzo è la tua dashboard salvata “%@”. La riparazione non cambierà il suo accesso; passa a quella."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このアドレスは保存済みのダッシュボード「%@」のものです。修復ではそのサインインは変更されません。そちらに切り替えてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 주소는 저장된 대시보드 “%@”의 주소예요. 복구해도 그 로그인은 바뀌지 않으니 그 대시보드로 전환하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten adres należy do zapisanego panelu „%@”. Naprawa nie zmieni jego logowania; zamiast tego przełącz się na niego."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este endereço é do seu painel salvo “%@”. O reparo não altera o login dele; mude para ele."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот адрес принадлежит сохранённому дашборду «%@». Восстановление не изменит его вход; переключитесь на него."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu adres kayıtlı panelin “%@” adresi. Onarım onun girişini değiştirmez; bunun yerine ona geç."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此地址属于你已保存的仪表板“%@”。修复不会更改它的登录信息，请改为切换到它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此位址屬於你已儲存的儀表板「%@」。修復不會變更它的登入資訊，請改為切換到它。"
           }
         }
       }

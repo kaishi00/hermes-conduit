@@ -1957,7 +1957,7 @@ final class PushNotificationService: ObservableObject {
         if tokenContinuation == nil {
             // A launch or return-to-front refresh: shown in Settings >
             // Notifications, and the next return asks again.
-            pushTokenLogger.error("Push token refresh failed: \(error.localizedDescription, privacy: .public)")
+            pushTokenLogger.error("Push token refresh failed: \(LogRedaction.message(error), privacy: .public)")
             if registration != nil {
                 lastError = UserFacingError.message(for: error)
                 tokenUpdateError = lastError

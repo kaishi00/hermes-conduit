@@ -121,7 +121,7 @@ final class AppleOnDeviceSpeechTranscriber: DeviceSpeechTranscriptionService {
         if let errorDescription {
             // The framework's text ("kAFAssistantErrorDomain error 1101") is for
             // the log; the person gets what to try.
-            speechTranscriberLogger.error("on-device recognition failed: \(errorDescription, privacy: .public)")
+            speechTranscriberLogger.error("on-device recognition failed: \(LogRedaction.redactingURLs(errorDescription), privacy: .public)")
             complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Apple speech recognition stopped. Try again, or choose another speech-to-text option in Settings > Voice."))))
             return
         }

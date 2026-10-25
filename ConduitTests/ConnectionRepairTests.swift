@@ -586,6 +586,47 @@ final class ConnectionRepairTests: XCTestCase {
         XCTAssertEqual(connectCount.value, 1, "Exactly one activation")
     }
 
+    func testRepairToAnotherSavedDashboardsAddressConnectsAndWritesNothing() async {
+        let connectCount = RepairConnectCount()
+        let harness = makeHarness(lifecycleOperations: sessionPreservingFakes(connectClient: { _ in
+            connectCount.value += 1
+        }))
+        let repairing = harness.appState.registerDashboard(forNormalizedURL: ConnectionRepairTests.failedURL)
+        let other = harness.appState.registerDashboard(forNormalizedURL: "https://other.example")
+        let otherCredentials = DashboardCredentials(baseURL: "https://other.example", username: "b", password: "b-secret", requiresFaceID: false)
+        KeychainHelper.saveCredentials(otherCredentials, dashboardID: other)
+        harness.appState.connection = HermesConnection(baseUrl: ConnectionRepairTests.failedURL, ticket: "stale-ticket")
+
+        let outcome = await harness.appState.performConnectionRepair(.native(candidate(
+            serverURL: "https://other.example",
+            ticket: "repaired-ticket",
+            revision: 4,
+            generation: 2
+        )))
+
+        guard case .addressBelongsToDashboard(let id, _) = outcome else {
+            return XCTFail("expected the other dashboard's address to be refused, got \(outcome)")
+        }
+        XCTAssertEqual(id, other)
+        XCTAssertEqual(connectCount.value, 0, "Nothing connects")
+        XCTAssertEqual(harness.appState.connection?.ticket, "stale-ticket")
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: other), otherCredentials, "B's sign-in is untouched")
+        // Its own address, or a new one, still repairs.
+        XCTAssertNil(harness.appState.repairAddressOwner(ConnectionRepairTests.failedURL, repairing: ConnectionRepairTests.failedURL))
+        XCTAssertNil(harness.appState.repairAddressOwner("https://new.example", repairing: ConnectionRepairTests.failedURL))
+        XCTAssertNotEqual(repairing, other)
+        // A new address a repair's sign-in registered stays that repair's.
+        let registered = harness.appState.registerRepairDashboard(forURL: "https://fresh.example")
+        XCTAssertNotNil(registered)
+        XCTAssertNil(harness.appState.repairAddressOwner("https://fresh.example", repairing: ConnectionRepairTests.failedURL))
+        XCTAssertEqual(harness.appState.registerRepairDashboard(forURL: "https://other.example"), other)
+        XCTAssertNotNil(harness.appState.repairAddressOwner("https://other.example", repairing: ConnectionRepairTests.failedURL),
+                        "An address that was already saved is still another dashboard's")
+        // A later repair doesn't inherit it.
+        _ = harness.appState.beginSavedConnectionRepair()
+        XCTAssertNotNil(harness.appState.repairAddressOwner("https://fresh.example", repairing: ConnectionRepairTests.failedURL))
+    }
+
     func testChangedEndpointFailsSafelyIntoTheExistingIdentityBoundary() async {
         let harness = makeHarness(lifecycleOperations: activationFakes(
             connectClient: { _ in },
@@ -635,6 +676,8 @@ final class ConnectionRepairTests: XCTestCase {
         XCTAssertEqual(harness.defaults.string(forKey: "conduit.dashboardURL"), remembered,
                        "A failed activation must not move the remembered dashboard")
         XCTAssertFalse(harness.appState.isConnected)
+        XCTAssertNil(harness.appState.repairAddressOwner("https://replacement.example", repairing: remembered),
+                     "The address this repair registered stays its own, so a fresh test there isn't refused")
     }
 
     func testBrowserSignInRepairActivatesAndRemembersWithoutInventingCredentials() async {

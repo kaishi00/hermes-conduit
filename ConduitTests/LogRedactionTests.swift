@@ -33,6 +33,47 @@ final class LogRedactionTests: XCTestCase {
                        "The operation couldn’t be completed. (Code 3)")
     }
 
+    func testATLSErrorLosesTheHostItDistrusts() {
+        let error = NSError(domain: NSURLErrorDomain, code: -1202, userInfo: [
+            NSLocalizedDescriptionKey: "The certificate for this server is invalid. You might be connecting to a server that is pretending to be “dash.example.com” which could put your confidential information at risk.",
+        ])
+        let text = LogRedaction.message(error)
+        XCTAssertFalse(text.contains("example.com"), text)
+        XCTAssertTrue(text.contains("pretending to be “<host>”"), text)
+        XCTAssertEqual(LogRedaction.redactingURLs("pretending to be “localhost” which"), "pretending to be “<host>” which")
+    }
+
+    func testBareHostsAndAddressesAreRedacted() {
+        XCTAssertEqual(
+            LogRedaction.redactingURLs("Could not connect to agriass-air.local:9119, then Mac.Local:80."),
+            "Could not connect to <host>, then <host>."
+        )
+        XCTAssertEqual(
+            LogRedaction.redactingURLs("192.168.1.20:8765 refused; [fe80::1%25en0]:9119 and 100.64.0.1."),
+            "<host> refused; <host> and <host>."
+        )
+        XCTAssertEqual(LogRedaction.redactingURLs("foo.tail1234.ts.net timed out"), "<host> timed out")
+        XCTAssertEqual(
+            LogRedaction.redactingURLs("GET backup.example.com/dump?token=abc failed (retry)."),
+            "GET <host> failed (retry)."
+        )
+        XCTAssertEqual(LogRedaction.redactingURLs("backup.example.com/dump.json"), "<host>")
+        XCTAssertEqual(LogRedaction.redactingURLs("example.com?token=abc and my_host.lan"), "<host> and <host>")
+    }
+
+    func testTypeNamesVersionsAndFileNamesAreKept() {
+        for text in [
+            "HermesClientError.invalidResponse(statusCode: 500)",
+            "Swift.DecodingError.keyNotFound(CodingKeys(stringValue: \"session_id\", intValue: nil))",
+            "The file “config.yaml” couldn’t be opened.",
+            "Version 1.2.3 at 12:30, item [0], e.g. this.",
+            "Could not read data.xml or Base.xcconfig",
+            "Error Domain=NSURLErrorDomain Code=-1200 UserInfo={_kCFStreamErrorCodeKey=-9813}",
+        ] {
+            XCTAssertEqual(LogRedaction.redactingURLs(text), text)
+        }
+    }
+
     func testAnAbsentErrorReadsNil() {
         let none: Error? = nil
         XCTAssertEqual(LogRedaction.describing(none), "nil")
