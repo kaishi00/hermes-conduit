@@ -55,10 +55,30 @@ extension AppState {
 
     /// Every id the open chat is known by, for its own Artifacts sheet.
     /// Empty when no chat with a row of its own is open (a room, a new chat).
+    /// A Bot Chat has no row in the workspace's list: it goes by its own ids
+    /// and the roster's registry id and lineage tip for it.
     var activeChatArtifactSessionIDs: [String] {
-        guard let session = activeChatSessionSummary else { return [] }
-        let seeds = [session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds
-        return Array(chatOwnSessionIDs(for: session.id).union(seeds)).sorted()
+        if let session = activeChatSessionSummary {
+            let seeds = [session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds
+            return Array(chatOwnSessionIDs(for: session.id).union(seeds)).sorted()
+        }
+        guard activeRoomSurface == nil, offlineChatPresentation == nil, !showsPendingNewChat,
+              let sessionID = activeSessionId, !sessionID.isEmpty,
+              let profile = botStoreProfile(forSessionIDs: [sessionID]) ?? reboundBotChatProfile(sessionID)
+        else { return [] }
+        // The open id is the runtime one; its store keeps the durable id,
+        // confirmed under the bot's profile even when the registry hasn't
+        // noted the chat yet (after a relaunch).
+        var ids = chatOwnSessionIDs(for: sessionID)
+        if let durable = ChatScrollIdentityNormalization.sessionID(
+            confirmedDurableSessionID(forRuntime: sessionID, profile: profile)
+        ) {
+            ids.insert(durable)
+        }
+        if let bot = botRoster.first(where: { Self.profilesMatch($0.name, profile) }) {
+            ids.formUnion(Self.botChatIDs(bot))
+        }
+        return ids.sorted()
     }
 
     /// The stores an Artifacts list reads. A chat's own list reads the
@@ -95,6 +115,15 @@ extension AppState {
             }
             return sources
         }
+    }
+
+    /// The bot whose Bot Chat a runtime id was rebound to (a shortcut
+    /// reopening a dead runtime records only its durable id).
+    private func reboundBotChatProfile(_ sessionID: String) -> String? {
+        botRoster.first { bot in
+            guard let durable = confirmedDurableSessionID(forRuntime: sessionID, profile: bot.name) else { return false }
+            return Self.botChatIDs(bot).contains(durable)
+        }?.name
     }
 
     /// A bot's Bot Chat by its registry id and lineage tip.

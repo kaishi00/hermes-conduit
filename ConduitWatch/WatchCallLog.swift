@@ -7,7 +7,9 @@
 //  iPhone isn't reachable right now), where Voice settings > Apple Watch
 //  can share it for a support question. Kept to its newest megabyte.
 //  Lines go to the iPhone in batches (WatchCallLogBatch), kept in a file
-//  of their own until sent, so a batch outlives the app.
+//  of their own until sent, so a batch outlives the app. While they
+//  can't be sent, the batch's budget bounds them in memory, in that file
+//  and when the next run restores them.
 //
 
 import Foundation
@@ -34,6 +36,9 @@ final class WatchCallLog: ObservableObject {
     /// The batch's lines on disk until they are sent: the app can be
     /// stopped or suspended with some waiting.
     private let unsentURL: URL?
+    /// The unsent file's size: once lines appended to it pass twice the
+    /// batch's budget, it is written again from the batch.
+    private var unsentFileBytes = 0
 
     private init() {
         let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
@@ -41,15 +46,16 @@ final class WatchCallLog: ObservableObject {
         unsentURL = directory?.appendingPathComponent("watch-call-log-unsent.jsonl")
         // What a previous run didn't send: the newest of it, sent once the
         // link is up (WatchLink).
-        let unsent = unsentURL
-            .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
-            .map(WatchCallLogBatch.lines(in:)) ?? []
-        batch = WatchCallLogBatch(restoring: Array(unsent.suffix(Self.keptLines)))
+        let unsentText = unsentURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+        let unsent = unsentText.map(WatchCallLogBatch.lines(in:)) ?? []
+        batch = WatchCallLogBatch(restoring: unsent)
+        unsentFileBytes = unsentText?.utf8.count ?? 0
         if let directory {
             // The proof of concept's log, which nothing reads any more.
             try? FileManager.default.removeItem(at: directory.appendingPathComponent("watch-probe.jsonl"))
         }
         if let fileURL { WatchVoiceStats.trimLog(at: fileURL, maxBytes: Self.maxFileBytes) }
+        if batch.lines != unsent { saveUnsent() }
         // A suspended app's timer doesn't fire: what waits goes first
         // (and again from the app's scene phase, ConduitWatchApp).
         NotificationCenter.default.addObserver(
@@ -135,6 +141,8 @@ final class WatchCallLog: ObservableObject {
         } else {
             try? data.write(to: unsentURL)
         }
+        unsentFileBytes += data.count
+        if unsentFileBytes > WatchCallLogBatch.maxWaitingBytes * 2 { saveUnsent() }
     }
 
     /// The unsent file holds what the batch still holds.
@@ -142,8 +150,11 @@ final class WatchCallLog: ObservableObject {
         guard let unsentURL else { return }
         if batch.isEmpty {
             try? FileManager.default.removeItem(at: unsentURL)
+            unsentFileBytes = 0
         } else {
-            try? (batch.lines.joined(separator: "\n") + "\n").data(using: .utf8)?.write(to: unsentURL, options: .atomic)
+            let data = (batch.lines.joined(separator: "\n") + "\n").data(using: .utf8) ?? Data()
+            try? data.write(to: unsentURL, options: .atomic)
+            unsentFileBytes = data.count
         }
     }
 
