@@ -260,7 +260,7 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         guard await waitForGate(createEntered, "widget create never reached session creation") else { return }
         currentLease = false
         await createRelease.signal()
-        await creating.value
+        _ = await creating.value
 
         XCTAssertEqual(appState.activeSessionId, "existing-session")
         XCTAssertEqual(appState.turnState, .idle, "the chat still open must not stay synchronizing")

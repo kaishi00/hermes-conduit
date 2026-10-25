@@ -583,6 +583,13 @@ struct V2PulsePage: View {
         AccessibilityNotification.Announcement(message).post()
     }
 
+    /// A card's request failed. It shows at the top of the list, which can
+    /// be far above the card tapped, so VoiceOver says it too.
+    private func showError(_ message: String) {
+        errorMessage = message
+        AccessibilityNotification.Announcement(message).post()
+    }
+
     private static var untoldNote: String {
         AppLocalization.string("Pulse couldn't be told about this one. Tap Done once it's taken care of.")
     }
@@ -775,7 +782,7 @@ struct V2PulsePage: View {
         Button {
             Haptics.selection()
             if let refusal = appState.pulseNewChatRefusal(for: card) {
-                errorMessage = refusal
+                showError(refusal)
                 return
             }
             let failure = appState.pulseCardHasChat(card)
@@ -788,7 +795,7 @@ struct V2PulsePage: View {
                 let opened = await appState.actOnPulseCard(card)
                 guard appState.activeDashboardID == dashboard else { return }
                 if !opened {
-                    errorMessage = failure
+                    showError(failure)
                     return
                 }
                 if errorMessage == failure { errorMessage = nil }
@@ -909,7 +916,7 @@ struct V2PulsePage: View {
                     : AppLocalization.string("Pulse learned: \(lessons.map(\.text).joined(separator: "; "))")
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
-                errorMessage = PulseRefusal.message(for: error)
+                showError(PulseRefusal.message(for: error))
             }
         }
     }
@@ -935,7 +942,7 @@ struct V2PulsePage: View {
                 errorMessage = nil
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
-                errorMessage = PulseRefusal.message(for: error)
+                showError(PulseRefusal.message(for: error))
             }
         }
     }
@@ -966,7 +973,7 @@ struct V2PulsePage: View {
                 errorMessage = nil
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
-                errorMessage = PulseRefusal.message(for: error)
+                showError(PulseRefusal.message(for: error))
             }
         }
     }

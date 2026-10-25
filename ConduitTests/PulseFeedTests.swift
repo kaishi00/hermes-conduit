@@ -368,6 +368,67 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "fresh", profile: "default"))
     }
 
+    func testDoItNeverFillsAChatAnotherCreateOpenedWhileItsOwnWasStarting() async throws {
+        let state = try appState()
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"home_chat_id": "pulse_chat", "cards": [
+          {"id": 1, "kind": "noticed", "topic": "date", "level": "screen", "news": "Dentist Friday", "chat_id": "pulse_chat"}
+        ]}
+        """)))
+        state.setNotifierPluginStateForTesting(.reported(version: "0.77.0", capabilities: [
+            PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.actedCapability,
+            PulseClient.foundActionsCapability
+        ]))
+        state.applyPulseFeed(page)
+        let date = try XCTUnwrap(page.cards.first)
+        state.isConnected = true
+        state.client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+                                    profile: "default")
+        // Another create (a call's chat, Ask Hermes About) starts while Do
+        // it's own is on its way, and opens its chat first.
+        var creates = 0
+        state.widgetSessionCreatorOverride = { [weak state] _, _ in
+            creates += 1
+            guard creates == 1 else { return ("other", "other", "default") }
+            _ = await state?.createNewSession()
+            return ("mine", "mine", "default")
+        }
+        let opened = await state.actOnPulseCard(date)
+        XCTAssertEqual(creates, 2)
+        XCTAssertFalse(opened)
+        XCTAssertEqual(state.activeSessionId, "other")
+        XCTAssertEqual(state.composerPrefillText, "", "the reminder never goes into a chat Do it didn't start")
+        XCTAssertFalse(state.isStartingNewChat)
+    }
+
+    func testDoItOnAnItemFoundInAChatFillsThatChat() async throws {
+        let state = try appState()
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"home_chat_id": "pulse_chat", "cards": [
+          {"id": 2, "kind": "noticed", "topic": "fact", "level": "screen", "news": "The repo moved", "chat_id": "work",
+           "message_id": 42}
+        ]}
+        """)))
+        state.setNotifierPluginStateForTesting(.reported(version: "0.77.0", capabilities: [
+            PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.actedCapability,
+            PulseClient.foundActionsCapability
+        ]))
+        state.applyPulseFeed(page)
+        let fact = try XCTUnwrap(page.cards.first)
+        var creates = 0
+        state.widgetSessionCreatorOverride = { _, _ in
+            creates += 1
+            return ("fresh", "fresh", "default")
+        }
+        state.activeSessionId = "work"
+        let opened = await state.actOnPulseCard(fact)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(creates, 0, "an item found in a chat starts no new one")
+        XCTAssertEqual(state.pendingArtifactReveal?.messageID, 42)
+        XCTAssertEqual(state.composerPrefillText, fact.actionMessage)
+        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "work", profile: "default"))
+    }
+
     func testOpeningACardsChatShowsTheMessageItCameFrom() throws {
         let state = try appState()
         let page = try XCTUnwrap(PulseFeedPage(json: json("""

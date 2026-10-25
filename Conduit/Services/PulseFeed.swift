@@ -395,7 +395,9 @@ extension PulseClient {
     }
 
     /// Do it on a card: Pulse reads the chat it opened once Hermes has
-    /// answered and marks the card done if it got done.
+    /// answered and marks the card done if it got done. Only the card is
+    /// named: a new chat Do it started for an item from no chat is found by
+    /// the reminder's words, which it shares with the card (notifier #362).
     func acted(card: Int) async throws {
         _ = try await request("\(Self.path)/acted", "POST", ["card": card])
     }
@@ -567,10 +569,11 @@ extension AppState {
     /// Why Do it can't start a new chat for a card from no chat right now,
     /// for the Pulse screen to say before a chat covers it; nil when it can,
     /// or when the card has a chat of its own. Do it starts its chat only
-    /// when New Chat can start one at once (startPulseNewChat): connecting
-    /// or synchronizing, New Chat would make one that waits, and a New Chat
-    /// already starting or waiting comes first. From another profile, a call
-    /// stops the switch, as it does New Chat's (startNewChat(inProfile:)).
+    /// when New Chat can start one at once (startPulseNewChat, by
+    /// canStartNewChatNow): connecting or synchronizing, New Chat would make
+    /// one that waits, and a New Chat already starting or waiting comes
+    /// first. From another profile, a call stops the switch, as it does New
+    /// Chat's (startNewChat(inProfile:)).
     func pulseNewChatRefusal(for card: PulseCard) -> String? {
         guard !pulseCardHasChat(card) else { return nil }
         if !profilesMatch(activeProfile, Self.pulseHomeProfile), isVoiceCallInProgress {
@@ -582,7 +585,8 @@ extension AppState {
         if isProfileSwitching {
             return AppLocalization.string("Wait for the workspace switch to finish before starting a conversation.")
         }
-        if isConnecting || turnState == .synchronizing || offlineChatPresentation != nil {
+        // Connecting, synchronizing, an offline copy on screen, or no client yet.
+        if !canStartNewChatNow {
             return AppLocalization.string("Conduit is still connecting to your dashboard. Try again in a moment.")
         }
         if isStartingNewChat || showsPendingNewChat {
