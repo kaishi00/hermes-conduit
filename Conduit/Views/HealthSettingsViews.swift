@@ -65,6 +65,9 @@ struct HealthSettingsPage: View {
             }
         }
         .navigationTitle("Health")
+        // Sharing turns on after its consent sheet, so the rows it reveals
+        // animate on the value rather than in a setter.
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: preferences.isOn)
         .onAppear {
             loadPreferences()
             voiceReads = HealthVoiceReadLog.load()
