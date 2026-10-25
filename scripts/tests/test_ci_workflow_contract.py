@@ -329,11 +329,10 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("ci-lane/ui-smoke.log", upload)
         self.assertIn("UNIT_SMOKE_LOG: ci-lane/unit-smoke.log", self._job_text("smoke"))
 
-    def test_all_self_test_groups_remain_required_and_run_after_a_failure(self):
+    def test_the_self_test_job_runs_full_discovery_and_stays_required(self):
         text = self._job_text("self-test")
-        self.assertIn("group: [fast, lane, local-gate]", text)
-        self.assertIn("fail-fast: false", text)
-        self.assertIn('python3 scripts/ci-self-test.py --group "${{ matrix.group }}"', text)
+        self.assertNotIn("matrix", text)
+        self.assertIn("python3 scripts/ci-self-test.py", text)
         self.assertIn("self-test]", self._job_text("ci-gate"))
         self.assertIn('--self-test "${{ needs.self-test.result }}"', self._job_text("ci-gate"))
 
