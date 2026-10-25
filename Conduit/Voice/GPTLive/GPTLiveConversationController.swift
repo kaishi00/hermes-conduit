@@ -1196,7 +1196,10 @@ final class GPTLiveConversationController: ObservableObject {
             // Where a request stands (held, sent), not what came back: its
             // delegation's result is still to come (#451).
             let isStatus = GPTLiveDelegationBridge.isStatus(item.text)
-            if let delegationID = item.delegationID, !isStatus, userSpokeAfterAsking(delegationID), !bridge.answersReadBack(delegationID) {
+            // Only a spoken result is introduced as one: a quiet reply that
+            // waited for the channel (a dropped request, a progress note) is
+            // no result of Hermes'.
+            if let delegationID = item.delegationID, item.channel == .speakable, !isStatus, userSpokeAfterAsking(delegationID), !bridge.answersReadBack(delegationID) {
                 text = Self.resultAfterUserNote + text
             }
             guard appendContext(text, channel: item.channel, delegationID: item.delegationID, to: session) else {

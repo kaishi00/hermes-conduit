@@ -1048,7 +1048,7 @@ Classic's transcription streams · Watch calls (Gemini, Grok, Local Live; GPT-Li
 - GPT-Live's audio on the phone is WebRTC's to pace; on the Watch it goes over the host's audio bridge, already capped at 20 sends in flight. Classic's transcription streams keep a whole utterance, since dropping audio there loses words (2026-10-24, #1223).
 
 **Open gaps**
-- None known.
+- Text turns and tool answers aren't capped: a socket that stalls without failing or closing keeps them waiting until the session's own timeouts end the connection.
 
 **Checked:** 2026-10-24, #1223.
 
