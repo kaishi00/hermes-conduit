@@ -40,7 +40,7 @@ struct GrokLiveSettingsSection: View {
     @State private var isAvailable: Bool?
     @State private var isChecking = false
 
-    init(model: GrokLiveSettingsModel, showsModeToggle: Bool = true) {
+    init(model: GrokLiveSettingsModel, showsModeToggle: Bool = false) {
         self.model = model
         self.showsModeToggle = showsModeToggle
         // Shown by the mode picker only once this mode is picked, maybe

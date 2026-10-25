@@ -58,7 +58,7 @@ struct GPTLiveSettingsSection: View {
     @State private var isAvailable: Bool?
     @State private var isChecking = false
 
-    init(model: GPTLiveSettingsModel, showsModeToggle: Bool = true) {
+    init(model: GPTLiveSettingsModel, showsModeToggle: Bool = false) {
         self.model = model
         self.showsModeToggle = showsModeToggle
         // Shown by the mode picker only once this mode is picked, maybe
