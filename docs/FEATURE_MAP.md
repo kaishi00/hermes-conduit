@@ -1221,6 +1221,33 @@ workflow table
 
 **Checked:** 2026-10-24, at #1216.
 
+## App Store screenshots and showcase clips
+
+What the capture run shows of each screen: the App Store screenshots and
+previews, and the short clips the README and hermesconduit.app use.
+
+**Siblings:** the iPhone and iPad capture · the Watch capture · the call
+fixtures they launch (phone and Watch) · the showcase clips · the App Preview
+cut · scripts/app-store/README.md
+
+**Code**
+- Workflow: `.github/workflows/app-store-screenshots.yml`
+- Scripts: `scripts/app-store/record-clip.sh`, `scripts/app-store/cut-preview.sh`
+- UI test: `ConduitScreenshots/AppStoreScreenshotTests.swift`
+- Fixtures: `Conduit/Services/ScreenshotCallFixture.swift`, `ConduitWatch/WatchVoiceCall.swift` (applyScreenshotFixture)
+- Text: `scripts/app-store/README.md`
+
+**Rulings**
+- A real Hermes with a scripted model, not a mock gateway; only audio-driven states (calls) use DEBUG-only launch fixtures (2026-10-17, #753).
+- Clips come from the same fixtures as the screenshots, so a new call state is added to the fixture once and captured as both (2026-10-25, #1226).
+- The site and README show only V2 media; footage from before the V2 redesign isn't reused (2026-10-24, Eric, #1226).
+
+**Open gaps**
+- No clips yet of an incoming Hermes call or of CarPlay; the CarPlay window may need Eric's Mac rather than a hosted runner.
+- A lock-screen approval can't be captured on a simulator; it needs a recording from a phone.
+
+**Checked:** 2026-10-25, at #1226.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays

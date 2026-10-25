@@ -5,10 +5,13 @@
 # record the simulator screen, and keep the last SECONDS as a silent,
 # web-ready H.264 MP4 for the README and the website.
 #
+# Needs ffmpeg and ffprobe. The recorder's log lands next to OUT.mp4.
+#
 # Usage: record-clip.sh UDID BUNDLE_ID STATE OUT.mp4 [SECONDS]
 set -euo pipefail
 udid="$1"; bundle="$2"; state="$3"; out="$4"; seconds="${5:-10}"
 raw="${out%.mp4}.mov"
+mkdir -p "$(dirname "$out")"
 xcrun simctl terminate "$udid" "$bundle" 2>/dev/null || true
 xcrun simctl io "$udid" recordVideo --codec h264 --force "$raw" > "${out%.mp4}.log" 2>&1 &
 recorder=$!
@@ -32,6 +35,7 @@ trap - EXIT
 # recordVideo only writes a frame when the screen changes, so a still screen
 # (the Watch approval card) records short: hold its last frame to SECONDS.
 duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$raw")
+[ -n "$duration" ] || { echo "$raw: ffprobe found no duration" >&2; exit 1; }
 python3 -c "import sys; sys.exit(0 if $duration >= $seconds else 1)" \
   || echo "$raw: ${duration}s of changing frames; the last one is held to ${seconds}s" >&2
 from=$(python3 -c "print(max(0.0, $duration - $seconds))")

@@ -15,7 +15,11 @@ Results:
 - `clips/`: short silent MP4s for the README and hermesconduit.app, recorded
   by `record-clip.sh` from the same fixtures: `voice-<device>.mp4` (the live
   voice orb mid-reply, 10 s) in each device's run, and `watch-speaking.mp4`
-  and `watch-approval.mp4` (8 s) in the Watch run.
+  and `watch-approval.mp4` (8 s) in the Watch run. Each clip's recorder log
+  sits beside it as `clips/<name>.log`. The script needs ffmpeg; both jobs
+  install it. A failed phone clip is listed with the other missing screens at
+  the end of the run; the Watch job has no such list, so it fails its own step
+  after trying both clips.
 - Artifacts `app-store-logs` and `app-store-watch-logs`: the demo Hermes,
   seeding, recorder and xcodebuild logs.
 - Git ref `refs/app-store-shots/<run id>` (and `<run id>-watch`) with the same
