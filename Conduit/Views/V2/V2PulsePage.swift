@@ -402,9 +402,11 @@ struct V2PulsePage: View {
                     .buttonStyle(.borderless)
                     .accessibilityLabel(AppLocalization.string("Fold the morning brief"))
                 }
-                Text(verbatim: briefStamp(brief))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let stamp = briefStamp(brief) {
+                    Text(verbatim: stamp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             if !brief.card.news.isEmpty {
                 Text(brief.card.formattedNews)
@@ -418,10 +420,11 @@ struct V2PulsePage: View {
         .background(briefBackground(top: true, bottom: brief.isSummary))
     }
 
-    /// "08:00 · 2 left", or "08:00" for a brief that brought no cards.
-    private func briefStamp(_ brief: PulseLayout.Brief) -> String {
+    /// "08:00 · 2 left", or "08:00" for a brief that brought no cards
+    /// (nothing, when it has no time either).
+    private func briefStamp(_ brief: PulseLayout.Brief) -> String? {
         let time = brief.card.createdAt.map { $0.formatted(date: .omitted, time: .shortened) }
-        if brief.isSummary { return time ?? "" }
+        if brief.isSummary { return time }
         let left = brief.isHandled ? AppLocalization.string("All handled")
             : AppLocalization.string("\(Int(brief.left)) left")
         return [time, left].compactMap { $0 }.joined(separator: " · ")

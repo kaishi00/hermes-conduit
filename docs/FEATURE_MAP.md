@@ -461,28 +461,33 @@ off, model, nudge, budgets, home chat) · Pulse pushes (kinds
 pulse.noticed, pulse.brief and pulse.followup, titled per the Notifications
 rulings, opening the Pulse screen) · a call from Hermes (Pulse may call only
 once the user opts in) · the hidden Pulse chat · the notifier's loop (report, brief, follow-ups,
-memory), its routes under /pulse and its capabilities · the
+memory), its routes under /pulse and its capabilities · the Shortcuts inbox
+(the report and the morning brief read it, and with Pulse memory on, new
+events bring watches' checks forward) · the
 `hermes conduit-push pulse` commands
 
 **Code**
-- App, on the `pulse` branch only, so not in backticks (the map check reads main): Conduit/Views/V2/V2PulsePage.swift (the screen), Conduit/Views/V2/V2ChatsView.swift (V2PulseButton in the Chats bar, Pulse's chat left out of the list and content search), Conduit/Views/V2/V2Shell.swift (the `.pulse` route, full screen on a phone), Conduit/Services/PulseFeed.swift (cards, marks, ratings), Conduit/Services/AppState+Pulse.swift and Conduit/Services/AppState.swift (opensPulseScreen, for pushes), Conduit/Services/PulseSettings.swift and Conduit/Views/PulseSettingsViews.swift (Settings > Pulse)
+- App, on the `pulse` branch only, so not in backticks (the map check reads main): Conduit/Views/V2/V2PulsePage.swift (the screen, the morning brief's block), Conduit/Views/V2/V2ChatsView.swift (V2PulseButton in the Chats bar, Pulse's chat left out of the list and content search), Conduit/Views/V2/V2VoiceButton.swift (Pulse's chat left out of voice recents), Conduit/Views/V2/V2Shell.swift (the `.pulse` route, full screen on a phone), Conduit/Services/PulseFeed.swift (cards, marks, ratings, the brief's layout, which chat is Pulse's), Conduit/Services/AppState+Pulse.swift and Conduit/Services/AppState.swift (opensPulseScreen, for pushes; pulseRememberedHomes, Pulse's chat per dashboard across launches), Conduit/Services/PulseSettings.swift and Conduit/Views/PulseSettingsViews.swift (Settings > Pulse)
 - Loop: `notifier/pulse.py` (the tick, the report's candidate run, cards from turns, push copy), `notifier/pulse_delivery.py`, `notifier/pulse_host.py`, `notifier/pulse_hermes.py`, `notifier/chat_takeover.py`
 - Report: `notifier/pulse_report.py` (what it reads), `notifier/pulse_candidates.py` (the candidate list, the router and the 30-day journal)
-- Memory, follow-ups and the brief: `notifier/pulse_memory.py`, `notifier/pulse_followup.py`, `notifier/pulse_brief.py`
+- Memory, follow-ups and the brief: `notifier/pulse_memory.py`, `notifier/pulse_followup.py`, `notifier/pulse_brief.py` (what the brief reads: held cards, open items, the phone, the inbox)
+- What happened since an item came up: `notifier/pulse_evidence.py` (later chats and cron runs, background processes); follow-up, held-reminder, brief-card and Do it checks read it with the item's chat in `notifier/pulse_followup.py`, its continuation through `notifier/pulse_hermes.py` (`chain_messages`), the phone's calendar and reminders and the report in `notifier/pulse_report.py`
 - Ratings and lessons: `notifier/pulse_learning.py`; outcomes: `notifier/pulse_ledger.py`; store: `notifier/pulse_store.py`
 - Control: `notifier/pulse_control.py` (shared by the commands and the routes), `notifier/cli.py`, `notifier/dashboard/plugin_api.py` (/pulse)
-- Tests: `notifier/tests/test_pulse.py`, `notifier/tests/test_pulse_candidates.py`, `notifier/tests/test_pulse_personas.py` (personas over two weeks)
+- Tests: `notifier/tests/test_pulse.py`, `notifier/tests/test_pulse_learning.py` (ratings, cards and the brief), `notifier/tests/test_pulse_candidates.py`, `notifier/tests/test_pulse_personas.py` (personas over two weeks); the app's ConduitTests/PulseFeedTests.swift, on `pulse`
 
 **Rulings**
 - The app side stays off main: public TestFlight builds main, and internal testers' builds come from `pulse` (2026-10-21, #1092). The notifier side is on its main, off by default (2026-10-21, notifier #275).
-- No Pulse chat in sight: reports and the brief land as cards on the Pulse screen, and the home chat is hidden from Chats, search and voice recents (2026-10-22, #1116, notifier #291).
+- No Pulse chat in sight: reports and the brief land as cards on the Pulse screen, and the home chat is hidden from Chats, search and voice recents (2026-10-22, #1116, notifier #291). The app remembers each dashboard's Pulse chat, so after a relaunch the Pulse button shows and the chat stays hidden at once; the remembered chat goes when the plugin answers without Pulse or the dashboard is removed (2026-10-25, #1234, Eric's report: Pulse showed as a chat for a while after reopening).
 - Ratings act in code, not as a line in a prompt: thumbs move a kind along the loudness ladder (push now, Pulse screen, brief, off), and a thumbs-down asks one tap for why (2026-10-22, notifier #284). Each report item is its own card with its own thumbs (2026-10-23, notifier #330).
 - A report that finds nothing leaves no card (2026-10-23, notifier #324).
+- The morning brief comes every day at its time (07:00 by default, an hour before the first report) and sums up what's still open: what's due or on the calendar today, open promises and things the user said they'd do, and what the phone's automations logged. Held news still comes as its own cards under it, and a brief that brought none shows as its summary block (2026-10-25, notifier #357, #1234, Eric's report: a 05:00 brief with nothing held never came).
 - Not now hides a card without teaching Pulse anything, and the item rests a week (2026-10-23, #1173, notifier #334); it stays neutral when Pulse learns from ratings (2026-10-24, Eric).
 - Pulse gets louder on its own only within the channels and intensity the user allowed. It never turns on a channel they turned off and never grants calling: calls need an opt-in, and adding the kinds that may call asks first (2026-10-24, Eric).
 - Tone stays out of what Pulse learns, and a reason given on a thumbs-down applies at once (2026-10-24, Eric).
 - Pulse pushes follow the Notifications rulings: App Language from title_label, titled with the session title (2026-10-23, notifier #334).
 - Code picks the report's items from a candidate list the model makes, and every candidate is journaled for 30 days (2026-10-24, notifier #337).
+- Before Pulse speaks up about an item it reads what happened since, wherever: the item's chat and its continuation, other chats and cron runs on the same subject, what Hermes runs in the background, and the phone's calendar and reminders. That holds for follow-up checks, held reminders, cards waiting for the brief, the report and Do it checks. Pulse's own hidden chat stays out of the evidence (2026-10-24, Eric; notifier #346, #347).
 - Main reaches `pulse` by a merge commit, never a squash, so archives don't re-stitch old conflicts (2026-10-24, #1186; build 228's stitch lost the Chats Pulse button).
 
 **Open gaps**
@@ -491,7 +496,7 @@ memory), its routes under /pulse and its capabilities · the
 - The app paths above aren't checked by the map check while they live only on `pulse`; they go in backticks if the app side ever reaches main.
 - What a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked.
 
-**Checked:** 2026-10-24, at #1186 on the `pulse` branch (main brought in at 79a5319c), with notifier #337.
+**Checked:** 2026-10-25, at #1234 on the `pulse` branch, with notifier #357; the main copy's lines from #1211 and #1232 brought over.
 
 ## Bots: create and edit
 

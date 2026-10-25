@@ -121,8 +121,9 @@ struct PulseState: Equatable {
     var dailyReport = false
     /// "HH:MM", in `timeZone`.
     var reportTimes: [String] = []
-    /// When the morning brief brings held cards together ("HH:MM").
-    var briefTime = "08:00"
+    /// When the morning brief comes each day with what's still open and
+    /// anything held for it ("HH:MM"; the plugin's default until it answers).
+    var briefTime = "07:00"
     var timeZone = ""
     /// "" while Pulse uses the phone's or the host's zone.
     var timeZoneSet = ""

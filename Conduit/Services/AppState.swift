@@ -2190,11 +2190,17 @@ final class AppState: ObservableObject {
     /// reconnect, the Pulse button and the hidden chat go by it.
     private(set) lazy var pulseRememberedHomes: [String: String] =
         defaults.dictionary(forKey: Self.pulseHomesKey) as? [String: String] ?? [:]
-    static let pulseHomesKey = "pulse.homeChats"
+    static let pulseHomesKey = "conduit.pulse.homeChats"
 
     func rememberPulseHome(_ chat: String?) {
         guard let key = activeDashboardID?.uuidString, pulseRememberedHomes[key] != chat else { return }
         pulseRememberedHomes[key] = chat
+        defaults.set(pulseRememberedHomes, forKey: Self.pulseHomesKey)
+    }
+
+    /// A removed dashboard's Pulse chat goes with it.
+    func forgetPulseHome(of dashboardID: UUID) {
+        guard pulseRememberedHomes.removeValue(forKey: dashboardID.uuidString) != nil else { return }
         defaults.set(pulseRememberedHomes, forKey: Self.pulseHomesKey)
     }
     @Published private(set) var composerPrefillText = ""
@@ -11589,6 +11595,7 @@ final class AppState: ObservableObject {
         if visibilities.removeValue(forKey: bucket) != nil {
             persistModelVisibilities(visibilities)
         }
+        forgetPulseHome(of: id)
     }
 
     // MARK: Relay gateways each dashboard's host reported

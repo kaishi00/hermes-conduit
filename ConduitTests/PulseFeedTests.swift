@@ -201,6 +201,25 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertFalse(older.showsPulseScreen)
     }
 
+    func testARemovedDashboardTakesItsRememberedPulseChatWithIt() throws {
+        let suite = "PulseFeedTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let active = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
+        let other = SavedDashboard(id: UUID(), label: "Office", normalizedURL: "http://127.0.0.1:2")
+        defaults.set([active.id.uuidString: "p", other.id.uuidString: "q"], forKey: AppState.pulseHomesKey)
+        let appState = AppState(defaults: defaults, loadSavedConnection: false,
+                                dashboardRegistry: SavedDashboardRegistry(activeDashboardID: active.id,
+                                                                          dashboards: [active, other]),
+                                clearSessionPresentationCache: {})
+
+        appState.removeDashboard(other.id)
+
+        XCTAssertEqual(defaults.dictionary(forKey: AppState.pulseHomesKey) as? [String: String],
+                       [active.id.uuidString: "p"])
+        XCTAssertEqual(appState.pulseHomeChat, "p")
+    }
+
     func testDoneAndActedPostTheCardToThePlugin() async throws {
         var calls: [(path: String, method: String, body: [String: Any]?)] = []
         var answer: [String: Any] = ["ok": true, "changed": true]
