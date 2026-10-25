@@ -155,9 +155,11 @@ struct V2PulsePage: View {
         } message: { _ in
             Text("Pulse changes what it does with your answer. You can undo it under What Pulse learned.")
         }
-        .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID, active: isShown && scenePhase == .active)) {
+        .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID, active: isShown && scenePhase == .active,
+                                  served: appState.notifierPlugin.reports(PulseClient.feedCapability))) {
             guard isShown, scenePhase == .active else { return }
-            // Cards that come in while the page is open show up too.
+            // Cards that come in while the page is open show up too, and the
+            // feed is read again once the plugin answers after a launch.
             while !Task.isCancelled {
                 await load()
                 try? await Task.sleep(for: .seconds(60))
