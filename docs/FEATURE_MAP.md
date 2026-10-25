@@ -1873,23 +1873,27 @@ curve rather than popping in one frame.
 
 **Siblings:** Calls from Hermes · Location (talking and background layers) ·
 Health (detailed readings per category) · Phone (Reminders read only,
-attendee email addresses) · the voice modes' Use switches (Gemini Live and
-Qwen Live, Grok Live, GPT-Live) · Live call style's greeting · the wake
-phrase · Sync across devices · Cloudflare Access's service token · text that
-describes it (none: no caption or doc mentions the motion)
+attendee email addresses) · Voice: Enable voice on this device (the setup
+checklist and tests), Hands-free on your speech server (its speech server
+section), the wake phrase · Live call style's greeting · Sync across devices ·
+Cloudflare Access's service token · a connector's Turned on (Capabilities) ·
+text that describes it (none: no caption or doc mentions the motion)
 
 **Code**
 - Motion: `Conduit/Theme.swift` (ConduitMotion.ease)
-- A switch that sets state at once animates its own setter: `Conduit/Views/HermesCallSettingsViews.swift` (change), `Conduit/Views/HealthSettingsViews.swift` (categoryBinding), `Conduit/Views/PhoneSettingsViews.swift` (binding), `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/GrokLiveViews.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Views/LiveVoiceStyleViews.swift`, `Conduit/Views/VoiceSettingsView.swift` (WakePhraseSettingsSection.save), `Conduit/Views/AuxiliaryViews.swift` (GatewaySettingsDetail, Cloudflare Access)
-- A switch whose state lands later (a consent sheet, the host's answer) animates on the value, page-wide: `Conduit/Views/LocationSettingsViews.swift` (LocationSettingsPage), `Conduit/Views/SyncedPreferencesViews.swift`
+- A switch that sets state at once animates its own setter: `Conduit/Views/HermesCallSettingsViews.swift` (change), `Conduit/Views/HealthSettingsViews.swift` (categoryBinding), `Conduit/Views/PhoneSettingsViews.swift` (binding), `Conduit/Views/VoiceSettingsView.swift` (setVoice, localHandsFreeSection, WakePhraseSettingsSection.save), `Conduit/Views/LiveVoiceStyleViews.swift`, `Conduit/Views/AuxiliaryViews.swift` (GatewaySettingsDetail, Cloudflare Access)
+- A switch whose state lands later (a consent sheet, the host's answer) animates on the value, page-wide: `Conduit/Views/LocationSettingsViews.swift` (LocationSettingsPage), `Conduit/Views/SyncedPreferencesViews.swift` (also the switch easing back after a failed host check), `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift` (ConnectorDetailPage)
 
 **Rulings**
-- Revealed rows animate with `ConduitMotion.ease`, which is the settle fade under Reduce Motion. Use withAnimation in the setter, or `.animation(_:value:)` on the whole page, never on one section alone: an animation scoped to a section grows its card while the sections below jump (2026-10-25, #1246, fork CI #92).
+- Revealed rows animate with `ConduitMotion.ease`, which is the settle fade under Reduce Motion. Use withAnimation in the setter, or `.animation(_:value:)` on the whole page, never on one section alone: an animation scoped to a section grows its card while the sections below jump (proposed in #1246, 2026-10-25).
+- Health and Phone sharing turned on from their consent sheets may reveal their rows without animation, named below as a gap (Eric 2026-10-25, #1246 review).
 
 **Open gaps**
+- Turning on Health or Phone sharing from its consent sheet still pops in the rows that sharing reveals.
+- The Gemini Live, Qwen Live, GPT-Live and Grok Live sections have a Use switch that Voice never shows (it picks the mode with Voice mode's picker), so it isn't animated; picking a mode isn't a switch and isn't covered.
 - A row revealed by something other than a switch (a picker, a host answer, a permission) isn't covered here.
 
-**Checked:** 2026-10-25, at #1246 (fork CI #92).
+**Checked:** 2026-10-25, at #1246 (fork CI #92): Eric's review added Enable voice and Hands-free; a connector's Turned on and Sync's failed check added from the bot reviews.
 
 ## Feature map rules
 

@@ -223,6 +223,7 @@ struct VoiceSettingsView: View {
     @AppStorage(LiveVoiceOrbPower.preferenceKey) private var animateCallOrb = true
     @AppStorage(ReadAloudSpeed.preferenceKey) private var readAloudSpeedRaw = ReadAloudSpeed.normal.rawValue
     @AppStorage("conduit.voice.settingsAdvancedExpanded") private var advancedExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let spokenStopPhrases: [String]
     let spokenEndConversationPhrases: [String]
     let setStopPhrases: ([String]) -> Bool
@@ -732,14 +733,20 @@ struct VoiceSettingsView: View {
 
     private func setVoice(_ requested: Bool) {
         let previous = voiceEnabled
-        voiceEnabled = requested
+        // Animated: turning voice on reveals the setup checklist and tests.
+        let animation = ConduitMotion.ease(reduceMotion: reduceMotion)
         // Holds the switch from the tap on, so a second tap can't turn voice
         // off while the defaults are still being written.
-        if requested { isApplyingDefaults = true }
+        withAnimation(animation) {
+            voiceEnabled = requested
+            if requested { isApplyingDefaults = true }
+        }
         Task {
             guard await setVoiceEnabled(requested) else {
-                voiceEnabled = previous
-                if requested { isApplyingDefaults = false }
+                withAnimation(animation) {
+                    voiceEnabled = previous
+                    if requested { isApplyingDefaults = false }
+                }
                 return
             }
             if requested { await applySetupDefaults() }
@@ -862,8 +869,11 @@ struct VoiceSettingsView: View {
                 Toggle(AppLocalization.string("Hands-free on your speech server"), isOn: Binding(
                     get: { on },
                     set: { wanted in
-                        if wanted { localLive.setAgent(false) }
-                        localLive.setEnabled(wanted)
+                        // Animated: on reveals the speech server's section.
+                        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                            if wanted { localLive.setAgent(false) }
+                            localLive.setEnabled(wanted)
+                        }
                     }
                 ))
                 .accessibilityIdentifier("voice.localHandsFree")

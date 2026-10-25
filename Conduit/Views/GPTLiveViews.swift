@@ -43,7 +43,6 @@ struct GPTLiveSettingsSection: View {
     /// section then only shows this mode's settings.
     let showsModeToggle: Bool
     @State private var enabled: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Empty is the host's voice (a Picker tag can't be nil).
     @State private var voice: String
     @State private var memory: Bool
@@ -133,7 +132,7 @@ struct GPTLiveSettingsSection: View {
                 Toggle("Use GPT-Live for voice", isOn: Binding(
                     get: { enabled },
                     set: { requested in
-                        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { enabled = requested }
+                        enabled = requested
                         model.setEnabled(requested)
                         if requested { Task { await check() } }
                     }
