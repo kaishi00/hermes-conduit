@@ -664,7 +664,7 @@ no chat · the `hermes conduit-push pulse` commands
 - The app paths above aren't checked by the map check while they live only on `pulse`; they go in backticks if the app side ever reaches main.
 - What a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked.
 
-**Checked:** 2026-10-25, at #PULSEPR on the `pulse` branch (Pulse's model, with notifier #375; the ruling reached main in #1262); the app side at #1240, with notifier #362 and #364.
+**Checked:** 2026-10-25, at #1264 on the `pulse` branch (Pulse's model, with notifier #375; the ruling reached main in #1262); the app side at #1240, with notifier #362 and #364.
 
 ## Artifacts
 
