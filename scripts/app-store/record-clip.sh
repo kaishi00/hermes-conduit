@@ -23,24 +23,25 @@ stop_recorder() {
   kill -TERM "$recorder" 2>/dev/null || true
   wait "$recorder" || true
 }
-trap stop_recorder EXIT
+# A clip that fails leaves no raw recording behind for the shots artifact.
+trap 'stop_recorder; rm -f "$raw"' EXIT
 # recordVideo's first frame comes seconds after it starts.
 sleep 3
 xcrun simctl launch "$udid" "$bundle" -conduitScreenshotCall "$state" >> "${out%.mp4}.log" 2>&1
 sleep $((seconds + 4))
 stop_recorder
-trap - EXIT
 [ -s "$raw" ] || { echo "$raw: nothing recorded" >&2; exit 1; }
 # The raw file is variable frame rate, so trim with the filter, not -ss.
 # recordVideo only writes a frame when the screen changes, so a still screen
 # (the Watch approval card) records short: hold its last frame to SECONDS.
 duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$raw")
-[ -n "$duration" ] || { echo "$raw: ffprobe found no duration" >&2; exit 1; }
+case "$duration" in
+  ''|*[!0-9.]*) echo "$raw: ffprobe found no usable duration ($duration)" >&2; exit 1 ;;
+esac
 python3 -c "import sys; sys.exit(0 if $duration >= $seconds else 1)" \
   || echo "$raw: ${duration}s of changing frames; the last one is held to ${seconds}s" >&2
 from=$(python3 -c "print(max(0.0, $duration - $seconds))")
 ffmpeg -v error -y -i "$raw" \
   -filter_complex "fps=30,tpad=stop_mode=clone:stop_duration=$seconds,trim=start=$from:duration=$seconds,setpts=PTS-STARTPTS,format=yuv420p" \
   -an -c:v libx264 -profile:v high -crf 20 -movflags +faststart "$out"
-rm -f "$raw"
 echo "$out: ${seconds}s from ${from}s"

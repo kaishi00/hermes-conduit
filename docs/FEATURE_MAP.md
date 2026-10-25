@@ -1239,7 +1239,7 @@ cut · scripts/app-store/README.md
 
 **Rulings**
 - A real Hermes with a scripted model, not a mock gateway; only audio-driven states (calls) use DEBUG-only launch fixtures (2026-10-17, #753).
-- Clips come from the same fixtures as the screenshots, so a new call state is added to the fixture once and captured as both (2026-10-25, #1226).
+- Clips come from the same fixtures as the screenshots. The workflow lists the screenshot states and the clip states separately, so a new call state goes into both lists (2026-10-25, #1226).
 - The site and README show only V2 media; footage from before the V2 redesign isn't reused (2026-10-24, Eric, #1226).
 
 **Open gaps**

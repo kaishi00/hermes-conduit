@@ -20,8 +20,9 @@ Results:
   install it. A failed phone clip is listed with the other missing screens at
   the end of the run; the Watch job has no such list, so it fails its own step
   after trying both clips.
-- Artifacts `app-store-logs` and `app-store-watch-logs`: the demo Hermes,
-  seeding, recorder and xcodebuild logs.
+- Artifact `app-store-logs`: the demo Hermes, seeding, preview recorder and
+  xcodebuild logs. `app-store-watch-logs` holds the Watch build log. The clip
+  recorder logs travel with the clips in the screenshots artifacts.
 - Git ref `refs/app-store-shots/<run id>` (and `<run id>-watch`) with the same
   files minus large raw videos, for sessions that can't download artifacts:
   `git fetch origin refs/app-store-shots/<id> && git archive FETCH_HEAD | tar -x`.
