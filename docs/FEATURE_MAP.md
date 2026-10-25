@@ -1084,7 +1084,8 @@ the plugin list)
 - Credentials go to `/api/env` and the speech server's voice key to the notifier's token store, and connector tests and sign-ins change no config, so none of them waits in the queue. Session-scoped
 `config.set` (model, reasoning, speed, yolo for one chat) changes no config
 file either. `profiles.create` (New Bot, Duplicate) writes a new profile's
-first config, which nothing else is saving yet, so it doesn't wait either.
+first config, which nothing else is saving yet, and Delete Bot
+(`DELETE /api/profiles/{name}`) removes the whole profile, so neither waits.
 
 **Open gaps**
 - A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.

@@ -151,9 +151,10 @@ enum WakeSpeechLocale {
         let script = Self.script(of: phrase)
         let inAppLocale = script.map { writes($0, appLocale.identifier) } ?? true
         guard let locale = localeFor(phrase) else {
-            let language = inAppLocale
-                ? languageName(appLocale)
-                : script?.defaultLanguages.first.map { languageName(Locale(identifier: $0)) } ?? languageName(appLocale)
+            var language = languageName(appLocale)
+            if !inAppLocale, let main = script?.defaultLanguages.first {
+                language = languageName(Locale(identifier: main))
+            }
             return (AppLocalization.string("“\(phrase)” can't be heard: this iPhone has no on-device speech recognition for \(language)."), true)
         }
         guard locale.identifier != appLocale.identifier else { return nil }

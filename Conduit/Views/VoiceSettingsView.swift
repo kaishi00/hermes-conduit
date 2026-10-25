@@ -1926,6 +1926,8 @@ private struct WakePhraseSettingsSection: View {
         }
         .onAppear { updateLanguageNotes() }
         .onChange(of: phrases) { _, _ in updateLanguageNotes() }
+        // Another profile's phrases can change which languages fit the cap.
+        .onChange(of: model.listenedPhrases(phrases)) { _, _ in updateLanguageNotes() }
         // Follow changes made elsewhere while this page stays open.
         .onChange(of: model.phrases) { _, newPhrases in
             guard !isRequestingPermission, newPhrases != phrases else { return }
