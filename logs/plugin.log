@@ -1,0 +1,187 @@
+Warning: custom (unreviewed) source — not from the Hermes catalog.
+Cloning https://github.com/kaishi00/hermes-conduit-notifier.git...
+Preparing the isolated Hermes runtime…
+Using CPython 3.14.7 interpreter at: /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/tools/python-3.14.7+20260901-darwin-arm64/bin/python3
+Creating virtual environment at: 45f4d791ae7f4c6a919b6e0f7b6e3dc6
+Activate with: source 45f4d791ae7f4c6a919b6e0f7b6e3dc6/bin/activate
+Resolved 5 packages in 10ms
+Prepared 4 packages in 130ms
+Installed 4 packages in 6ms
+Bytecode compiled 57 files in 284ms
+ + packaging==26.0
+ + ruamel-yaml==0.18.16
+ + tomli-w==1.2.0
+ + truststore==0.10.4
+
+╭──────────────────────────────── ✓ Installed ─────────────────────────────────╮
+│ Plugin installed: kaishi00/hermes-conduit-notifier                           │
+│ Location:                                                                    │
+│ /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/plugins/co │
+│ nduit_push                                                                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+Using CPython 3.14.7 interpreter at: /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/tools/python-3.14.7+20260901-darwin-arm64/bin/python3
+Creating virtual environment at: venv
+Activate with: source venv/bin/activate
+   Building hermes-agent @ file:///Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/installs/3f24728575140bc4/environments/8cfb6be595af4cc2a875e32ed0883787/workspace
+DEBUG Resolving build requirements
+Downloading pygments (1.2MiB)
+Downloading nemo-relay (10.5MiB)
+Downloading openai (1.1MiB)
+Downloading cryptography (3.8MiB)
+Downloading firecrawl-anydoc (3.1MiB)
+Downloading pillow (4.6MiB)
+Downloading resvg-py (1.1MiB)
+Downloading pillow-heif (4.1MiB)
+Downloading pydantic-core (1.9MiB)
+ Downloaded resvg-py
+ Downloaded pydantic-core
+ Downloaded firecrawl-anydoc
+ Downloaded pillow-heif
+ Downloaded pillow
+ Downloaded nemo-relay
+ Downloaded cryptography
+ Downloaded pygments
+DEBUG Creating PEP 517 build environment
+DEBUG Calling `setuptools.build_meta.get_requires_for_build_editable()`
+ Downloaded openai
+DEBUG running egg_info
+DEBUG creating hermes_agent.egg-info
+DEBUG writing hermes_agent.egg-info/PKG-INFO
+DEBUG writing dependency_links to hermes_agent.egg-info/dependency_links.txt
+DEBUG writing entry points to hermes_agent.egg-info/entry_points.txt
+DEBUG writing requirements to hermes_agent.egg-info/requires.txt
+DEBUG writing top-level names to hermes_agent.egg-info/top_level.txt
+DEBUG writing manifest file 'hermes_agent.egg-info/SOURCES.txt'
+DEBUG reading manifest file 'hermes_agent.egg-info/SOURCES.txt'
+DEBUG adding license file 'LICENSE'
+DEBUG writing manifest file 'hermes_agent.egg-info/SOURCES.txt'
+DEBUG Locking the source tree for setuptools
+DEBUG Calling `setuptools.build_meta.build_editable(__import__("os").fsdecode(b"/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/cache/uv/builds-v0/.tmpoumGoM"), {}, None)`
+DEBUG running editable_wheel
+DEBUG creating /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/cache/uv/builds-v0/.tmpoumGoM/.tmp-sd2lrnc7/hermes_agent.egg-info
+DEBUG writing /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/cache/uv/builds-v0/.tmpoumGoM/.tmp-sd2lrnc7/hermes_agent.egg-info/PKG-INFO
+DEBUG writing dependency_links to /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/cache/uv/builds-v0/.tmpoumGoM/.tmp-sd2lrnc7/hermes_agent.egg-info/dependency_links.txt
+DEBUG writing entry points to /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/cache/uv/builds-v0/.tmpoumGoM/.tmp-sd2lrnc7/hermes_agent.egg-info/entry_points.txt
+DEBUG writing requirements to /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/cache/uv/builds-v0/.tmpoumGoM/.tmp-sd2lrnc7/hermes_agent.egg-info/requires.txt
+DEBUG writing top-level names to /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/cache/uv/builds-v0/.tmpoumGoM/.tmp-sd2lrnc7/hermes_agent.egg-info/top_level.txt
+DEBUG writing manifest file '/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/cache/uv/builds-v0/.tmpoumGoM/.tmp-sd2lrnc7/hermes_agent.egg-info/SOURCES.txt'
+DEBUG reading manifest file '/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/cache/uv/builds-v0/.tmpoumGoM/.tmp-sd2lrnc7/hermes_agent.egg-info/SOURCES.txt'
+DEBUG adding license file 'LICENSE'
+DEBUG writing manifest file '/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/cache/uv/builds-v0/.tmpoumGoM/.tmp-sd2lrnc7/hermes_agent.egg-info/SOURCES.txt'
+DEBUG creating '/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/cache/uv/builds-v0/.tmpoumGoM/.tmp-sd2lrnc7/hermes_agent-0.0.0.dist-info'
+DEBUG creating /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/cache/uv/builds-v0/.tmpoumGoM/.tmp-sd2lrnc7/hermes_agent-0.0.0.dist-info/WHEEL
+DEBUG running build_py
+DEBUG running egg_info
+DEBUG creating /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpsfxcixla.build-temp/hermes_agent.egg-info
+DEBUG writing /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpsfxcixla.build-temp/hermes_agent.egg-info/PKG-INFO
+DEBUG writing dependency_links to /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpsfxcixla.build-temp/hermes_agent.egg-info/dependency_links.txt
+DEBUG writing entry points to /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpsfxcixla.build-temp/hermes_agent.egg-info/entry_points.txt
+DEBUG writing requirements to /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpsfxcixla.build-temp/hermes_agent.egg-info/requires.txt
+DEBUG writing top-level names to /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpsfxcixla.build-temp/hermes_agent.egg-info/top_level.txt
+DEBUG writing manifest file '/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpsfxcixla.build-temp/hermes_agent.egg-info/SOURCES.txt'
+DEBUG reading manifest file '/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpsfxcixla.build-temp/hermes_agent.egg-info/SOURCES.txt'
+DEBUG adding license file 'LICENSE'
+DEBUG writing manifest file '/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmpsfxcixla.build-temp/hermes_agent.egg-info/SOURCES.txt'
+DEBUG Editable install will be performed using a meta path finder.
+DEBUG 
+DEBUG Options like `package-data`, `include/exclude-package-data` or
+DEBUG `packages.find.exclude/include` may have no effect.
+DEBUG 
+DEBUG adding '__editable___hermes_agent_0_0_0_finder.py'
+DEBUG adding '__editable__.hermes_agent-0.0.0.pth'
+DEBUG creating '/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/cache/uv/builds-v0/.tmpoumGoM/.tmp-sd2lrnc7/hermes_agent-0.0.0-0.editable-py3-none-any.whl' and adding '/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp206v9j_ghermes_agent-0.0.0-0.editable-py3-none-any.whl' to it
+DEBUG adding 'hermes_agent-0.0.0.dist-info/licenses/LICENSE'
+DEBUG adding 'hermes_agent-0.0.0.dist-info/METADATA'
+DEBUG adding 'hermes_agent-0.0.0.dist-info/WHEEL'
+DEBUG adding 'hermes_agent-0.0.0.dist-info/entry_points.txt'
+DEBUG adding 'hermes_agent-0.0.0.dist-info/top_level.txt'
+DEBUG adding 'hermes_agent-0.0.0.dist-info/RECORD'
+DEBUG /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/cache/uv/builds-v0/.tmpqzB5HW/lib/python3.14/site-packages/setuptools/command/editable_wheel.py:352: InformationOnly: Editable installation.
+DEBUG !!
+DEBUG 
+DEBUG         ********************************************************************************
+DEBUG         Please be careful with folders in your working directory with the same
+DEBUG         name as your package as they may take precedence during imports.
+DEBUG         ********************************************************************************
+DEBUG 
+DEBUG !!
+DEBUG   with strategy, WheelFile(wheel_path, "w") as wheel_obj:
+      Built hermes-agent @ file:///Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/installs/3f24728575140bc4/environments/8cfb6be595af4cc2a875e32ed0883787/workspace
+Prepared 63 packages in 5.15s
+Installed 67 packages in 211ms
+Bytecode compiled 3213 files in 3.75s
+ + annotated-doc==0.0.5
+ + annotated-types==0.8.0
+ + anyio==4.14.2
+ + browser-harness==0.1.13
+ + cdp-use==1.4.5
+ + certifi==2026.5.20
+ + cffi==2.1.1
+ + charset-normalizer==3.5.1
+ + click==8.4.2
+ + croniter==6.0.0
+ + cryptography==50.0.1
+ + distro==1.9.0
+ + fastapi==0.133.1
+ + fetch-use==0.4.0
+ + fire==0.7.1
+ + firecrawl-anydoc==0.2.4
+ + h11==0.16.0
+ + hermes-agent==0.0.0 (from file:///Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/installs/3f24728575140bc4/environments/8cfb6be595af4cc2a875e32ed0883787/workspace)
+ + httpcore==1.0.9
+ + httptools==0.8.0
+ + httpx==0.28.1
+ + idna==3.19
+ + jinja2==3.1.6
+ + jiter==0.16.0
+ + markdown==3.10.2
+ + markdown-it-py==4.2.0
+ + markupsafe==3.0.3
+ + mdurl==0.1.2
+ + nemo-relay==0.10.0
+ + openai==2.24.0
+ + packaging==26.0
+ + pathspec==1.1.1
+ + pillow==12.3.0
+ + pillow-heif==1.6.0
+ + prompt-toolkit==3.0.52
+ + psutil==7.2.2
+ + ptyprocess==0.7.0
+ + pycparser==3.0
+ + pydantic==2.13.4
+ + pydantic-core==2.46.4
+ + pygments==2.21.0
+ + pyjwt==2.15.1
+ + python-dateutil==2.9.0.post0
+ + python-dotenv==1.2.2
+ + python-multipart==0.0.32
+ + pytz==2026.3.post1
+ + requests==2.33.0
+ + resvg-py==0.4.0
+ + rich==14.3.3
+ + ruamel-yaml==0.18.16
+ + six==1.17.0
+ + sniffio==1.3.1
+ + snowballstemmer==3.1.1
+ + socksio==1.0.0
+ + starlette==1.3.1
+ + tenacity==9.1.4
+ + termcolor==3.3.0
+ + tomli-w==1.2.0
+ + tqdm==4.70.0
+ + truststore==0.10.4
+ + typing-extensions==4.16.0
+ + typing-inspection==0.4.4
+ + urllib3==2.8.0
+ + uvicorn==0.41.0
+ + watchfiles==1.2.0
+ + wcwidth==0.8.2
+ + websockets==15.0.1
+Using Python 3.14.7 environment at: venv
+Checked 67 packages in 81ms
+All installed packages are compatible
+✓ Plugin conduit_push enabled.
+Restart the gateway for the plugin to take effect:
+  hermes gateway restart
+
