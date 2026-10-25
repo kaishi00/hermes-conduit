@@ -882,7 +882,7 @@ New Chat and its focus · a widget's or Shortcut's New Chat · the /new command
 **Open gaps**
 - A widget's or Shortcut's New Chat and /new put nothing in the chat, so they only report whether the open chat changed.
 
-**Checked:** 2026-10-25, at #1191 on main, with Pulse's Do it from #1240 on the `pulse` branch.
+**Checked:** 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
 
 ## Composer Return key
 
