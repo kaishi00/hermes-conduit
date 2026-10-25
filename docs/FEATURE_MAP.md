@@ -1930,6 +1930,55 @@ text that describes it (none: no caption or doc mentions the motion)
 
 **Checked:** 2026-10-25, at #1246 (fork CI #92): Eric's review added Enable voice and Hands-free; a connector's Turned on and Sync's failed check added from the bot reviews.
 
+## Linked Rooms
+
+Group rooms with agents that belong to other people. Each agent runs on its
+owner's Hermes, with its owner's model and keys and its owner's rules for the
+room, and the hosts reach each other through the rooms mailbox. It's being
+built, so its app side is only on the `linked-rooms` branch.
+
+**Siblings:** the room screen and room info (members from other
+installations, their route status, your agents' choices for the room) · New
+Group Chat with linked people · Settings > People (host setup, Links) · the
+Chats list (rooms hosted by others) · the notifier's owner rules for room
+turns (tools, the framing, the reply scrub, past-chat search), with their
+routes and the `hermes conduit-push rooms` commands · the room memory guard ·
+the room planner · the rooms mailbox (rooms.milim.dev) · rooms of only your
+own agents (unchanged) · past-chat search in every chat (it no longer finds
+those rooms) · approvals for your agents in rooms hosted elsewhere · text
+that describes it: the notifier README's "Rooms with other people's agents",
+the framing and block messages models read, Settings captions
+
+**Code**
+- Owner rules: `notifier/room_rules.py` (room_turn, tool_block, framing, scrub, filter_search), `notifier/room_choices.py` (the per-room choices, NEVER), `notifier/__init__.py` (pre_tool_call, pre_llm_call, transform_llm_output, transform_tool_result), `notifier/dashboard/plugin_api.py` (/rooms/choices, /rooms/defaults, capability room-rules), `notifier/cli.py` (rooms show, rooms set)
+- Memory guard and planner: `notifier/room_memory.py`, `notifier/room_planner.py`
+- Mailbox: `notifier/mailbox/src/server.mjs`, `notifier/mailbox/README.md` (protocol v1, self-hosting), `notifier/mailbox/deploy/compose.yaml`
+- App, today's rooms (a member from another installation has target kind peer): `Conduit/Services/GroupChatModels.swift` (GroupMember.target, members(namedBy:)), `Conduit/Views/GroupChatView.swift`, `Conduit/Services/HermesClient.swift` (groups.*)
+- App, on the `linked-rooms` branch only, so not in backticks: none yet
+- Tests: `notifier/tests/test_room_rules.py`, `notifier/tests/test_room_choices.py`, `notifier/tests/test_room_memory.py`, `notifier/mailbox/test/server.e2e.test.mjs`
+
+**Rulings**
+- The app side stays off main: Linked Rooms PRs target `linked-rooms`, which reaches main only once Eric has seen it all work, like `pulse`. The notifier side is on its main, hidden until Conduit shows it (2026-10-23, Eric).
+- Memory stays on in rooms. Instead, past-chat search is off unless chosen, nothing from a room turn is saved to memory, skills or a memory provider, the agent is told who's asking, and what it shares follows its owner's choice for the room. A provider's automatic recall stays on, like MEMORY.md (2026-10-22, Eric; notifier #305).
+- Each owner's rules run on their own host, whichever host the room lives on. A room's choices default to Talk only, ask first, no past-chat search, joins in and 40 turns a day. Memory and skill writes, delegation, messaging, scheduled jobs, running code and Conduit's calls and settings are never allowed, the background review's included (2026-10-25, notifier N1_PR).
+- The rules hold through Hermes' tool hooks, which see a call only when it carries the room session's id. A tool that calls other tools without it (`execute_code`) is never allowed, and a profile whose tools run outside the hooks (the Codex app-server runtime) can't take part in a room with other people's agents (2026-10-25, notifier N1_PR).
+- A room whose store can't be read gets no tools that turn. A room in no store, or a session store that can't be read, runs as Hermes alone would, with a warning in the log (2026-10-25, notifier N1_PR).
+- Rooms of only your own agents behave exactly as before: the rules apply once a room seats a member from another installation (2026-10-25, notifier N1_PR).
+- Every link goes through the mailbox, on one LAN too. The shared one is rooms.milim.dev, a service of its own beside push.milim.dev (2026-10-22, Eric).
+- An agent runs on its owner's host with its owner's model and keys, so each owner pays for their own (2026-10-22, Eric).
+
+**Open gaps**
+- Conduit doesn't show the choices yet: they're set with `hermes conduit-push rooms set` until room info has them.
+- How an agent takes part and its turns a day are kept, not enforced, until the room bridge.
+- Use my data has no room-safe data tools yet (free/busy comes first).
+- A memory provider's automatic recall can't be skipped in a room without a Hermes change (written up for Hermes).
+- A member cut off by its host keeps the room's turn retrying, and disbanding leaves the hidden chats behind.
+- Approvals for your agents in rooms hosted elsewhere don't reach you.
+- A profile on the Codex app-server runtime isn't refused yet: until joining refuses it, keep it out of rooms with other people's agents (the notifier README says so).
+- Agents that aren't Hermes (an A2A member) are left out.
+
+**Checked:** 2026-10-25, C0_PR, with notifier N1_PR.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
