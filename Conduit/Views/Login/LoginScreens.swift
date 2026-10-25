@@ -29,7 +29,7 @@ enum LoginAddressContext {
 
 struct LoginAddressStep: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @ObservedObject var flow: LoginFlowModel
+    @Bindable var flow: LoginFlowModel
     let context: LoginAddressContext
     @FocusState private var focusedField: LoginField?
     /// Set only by the user's Cloudflare switch, so a filled-in token never
@@ -295,7 +295,7 @@ struct LoginAddressStep: View {
 
 struct LoginCredentialsPage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @ObservedObject var flow: LoginFlowModel
+    @Bindable var flow: LoginFlowModel
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var focusedField: LoginField?
     @State private var revealsPassword = false
@@ -481,7 +481,7 @@ struct LoginCredentialsPage: View {
 /// sign-in step and a sign-in code's sheet.
 struct LoginSignInOptionsCard: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @ObservedObject var flow: LoginFlowModel
+    @Bindable var flow: LoginFlowModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -518,7 +518,7 @@ struct LoginSignInOptionsCard: View {
 struct LoginDashboardsScreen: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
-    @ObservedObject var flow: LoginFlowModel
+    @Bindable var flow: LoginFlowModel
     let addDashboard: () -> Void
 
     @State private var signIns: [UUID: SavedSignInKind] = [:]
@@ -949,7 +949,7 @@ struct LoginHelpLink: View {
 struct LoginFailureCard: View {
     @EnvironmentObject private var appState: AppState
     let failure: ConnectionFailurePresentation
-    @ObservedObject var flow: LoginFlowModel
+    @Bindable var flow: LoginFlowModel
     /// Under a dashboard's row, inside its card, rather than a card of its
     /// own.
     var isInline = false
@@ -1100,7 +1100,7 @@ extension View {
 /// Add a dashboard sheet.
 struct LoginFlowPresentations: ViewModifier {
     @EnvironmentObject private var appState: AppState
-    @ObservedObject var flow: LoginFlowModel
+    @Bindable var flow: LoginFlowModel
     /// The Connection Setup assistant's result. By default it fills in the
     /// address step.
     var onSetupResult: ((ConnectionSetupResult) -> Void)? = nil
@@ -1205,7 +1205,7 @@ struct AddDashboardSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var flow = LoginFlowModel()
+    @State private var flow = LoginFlowModel()
     @State private var seeded = false
     /// Filled in from the Connection Setup assistant, when it led here.
     var seed: LoginSeed? = nil
