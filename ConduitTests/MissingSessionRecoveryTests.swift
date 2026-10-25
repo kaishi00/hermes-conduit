@@ -78,9 +78,7 @@ final class MissingSessionRecoveryTests: XCTestCase {
         persistedTranscript: (@MainActor (String, String, String) async -> PersistedTranscriptFetchOutcome)? = nil,
         requests: Requests
     ) -> Fixture {
-        let suite = "MissingSessionRecoveryTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("MissingSessionRecoveryTests")
         let store = ChatResumeStore(defaults: defaults)
         store.setBehavior(.continueWhereLeftOff)
         let scheduler = Scheduler()
@@ -555,9 +553,7 @@ final class MissingSessionRecoveryTests: XCTestCase {
     /// with the client connected, New Chat can still be tapped (it waits for
     /// the chat on screen to settle, then creates its own).
     func testNewChatCanBeTappedWhileSavedCopyIsUpAndConnected() throws {
-        let suite = "MissingSessionRecoveryTests.newChat.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("MissingSessionRecoveryTests.newChat")
         let dashboard = SavedDashboard(
             id: UUID(),
             label: "One",

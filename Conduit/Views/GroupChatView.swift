@@ -20,6 +20,9 @@ struct GroupChatView: View {
     @State private var isFollowingLatest = true
     /// Bumped by the jump-to-latest button; the transcript scrolls on it.
     @State private var latestJumps = 0
+    /// The last row before the newest events, so a member message among
+    /// them can land at its top (GroupRoomFollow.replyStart).
+    @State private var lastSeenEventID: String?
 
     var body: some View {
         Group {
@@ -176,8 +179,15 @@ struct GroupChatView: View {
             // New events and a member starting its turn move the transcript
             // only while it follows the latest; a reader scrolled up stays.
             .onChange(of: appState.activeRoomReplay.cursor) { _, _ in
+                let previousLastID = lastSeenEventID
+                lastSeenEventID = visibleEvents.last?.id
                 guard followFlag.isFollowing else { return }
-                withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
+                if ChatReplyStartPreference.isOn,
+                   let start = GroupRoomFollow.replyStart(in: visibleEvents, after: previousLastID) {
+                    landAtTop(of: start, proxy)
+                } else {
+                    withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
+                }
             }
             .onChange(of: respondingMember?.identityKey) { _, _ in
                 guard followFlag.isFollowing else { return }
@@ -193,6 +203,7 @@ struct GroupChatView: View {
                 withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
             }
             .onAppear {
+                lastSeenEventID = visibleEvents.last?.id
                 followLatest()
                 scrollToBottom(proxy)
             }
@@ -233,6 +244,27 @@ struct GroupChatView: View {
     private func followLatest() {
         followFlag.isFollowing = true
         isFollowingLatest = true
+    }
+
+    /// A new member message goes to the top of the screen, and the room
+    /// stops following there, as a long chat reply does (#365); one that
+    /// fits clamps at the bottom, where following picks up again.
+    private func landAtTop(of eventID: String, _ proxy: ScrollViewProxy) {
+        followFlag.isFollowing = false
+        followFlag.isLanding = true
+        followFlag.landingGeneration &+= 1
+        let generation = followFlag.landingGeneration
+        isFollowingLatest = false
+        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(eventID, anchor: .top) }
+        // Decide from where it lands once the animation is over (it may not
+        // move the offset at all).
+        Task { @MainActor [followFlag] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard followFlag.landingGeneration == generation else { return }
+            // Over even if the locator has gone (the room closed).
+            followFlag.isLanding = false
+            followFlag.reevaluate?()
+        }
     }
 
     /// The bottom-most row: the responding member, else the pending send,

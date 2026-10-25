@@ -27,6 +27,8 @@ extension HermesClientTests {
         XCTAssertEqual(ChatTakeoverState.owner("desktop"), .desktop)
         XCTAssertEqual(ChatTakeoverState.owner("tui"), .terminal)
         XCTAssertEqual(ChatTakeoverState.owner("CLI"), .terminal)
+        XCTAssertEqual(ChatTakeoverState.owner("bot"), .otherBot)
+        XCTAssertEqual(ChatTakeoverState.owner("gateway"), .otherWindow)
         XCTAssertEqual(ChatTakeoverState.owner(nil), .otherWindow)
     }
 
@@ -49,6 +51,8 @@ extension HermesClientTests {
         XCTAssertEqual(state("cli").stillReplyingMessage, "A Hermes terminal is still replying in this chat. Try again when it finishes.")
         XCTAssertEqual(state(nil).stillReplyingMessage, "Another Hermes window is still replying in this chat. Try again when it finishes.")
         XCTAssertEqual(state("desktop").openElsewhereMessage, "This chat is open in Hermes Desktop. Take it over to send from here.")
+        XCTAssertEqual(state("bot").takingOverMessage, "This bot is answering a message from another bot. Conduit sends yours when it finishes.")
+        XCTAssertEqual(state("bot").stillReplyingMessage, "This bot is still answering a message from another bot. Try again when it finishes.")
         XCTAssertEqual(state("tui").takingOverMessage, "Taking this chat over from a Hermes terminal. If it's replying, Conduit waits for the reply to finish.")
     }
 
@@ -76,7 +80,9 @@ extension HermesClientTests {
     func testOutcomes() throws {
         XCTAssertEqual(try ChatTakeoverClient.outcome(from: ["ok": true, "status": "taken_over", "surface": "desktop"]), .ready)
         XCTAssertEqual(try ChatTakeoverClient.outcome(from: ["ok": true, "status": "free"]), .ready)
-        XCTAssertEqual(try ChatTakeoverClient.outcome(from: ["ok": true, "status": "busy"]), .busy)
+        XCTAssertEqual(try ChatTakeoverClient.outcome(from: ["ok": true, "status": "busy"]), .busy(surface: nil))
+        XCTAssertEqual(try ChatTakeoverClient.outcome(from: ["ok": true, "status": "busy", "surface": "bot"]), .busy(surface: "bot"))
+        XCTAssertEqual(try ChatTakeoverClient.outcome(from: ["ok": true, "status": "busy", "surface": " "]), .busy(surface: nil))
         XCTAssertEqual(try ChatTakeoverClient.outcome(from: ["ok": true, "status": "same_host"]), .sameHost)
         XCTAssertThrowsError(try ChatTakeoverClient.outcome(from: ["ok": true, "status": "later"]))
         XCTAssertThrowsError(try ChatTakeoverClient.outcome(from: ["status": "free"]))
@@ -96,7 +102,7 @@ extension HermesClientTests {
             return ["ok": true, "status": "busy"]
         })
         let outcome = try await client.takeOver(sessionIDs: ["a", "b", "c", "d", "e"], profile: "work")
-        XCTAssertEqual(outcome, .busy)
+        XCTAssertEqual(outcome, .busy(surface: nil))
         XCTAssertEqual(seen?.path, "/api/plugins/conduit_push/sessions/takeover?profile=work")
         XCTAssertEqual(seen?.method, "POST")
         XCTAssertEqual(seen?.body?["session_ids"] as? [String], ["a", "b", "c", "d"])
@@ -138,6 +144,22 @@ extension HermesClientTests {
         let phase = await AppState.runChatTakeover(client: client, state: takeoverState(), profile: "default", pollInterval: .zero)
         XCTAssertEqual(phase, .ready)
         XCTAssertEqual(calls, 3)
+    }
+
+    func testTakeoverHearsWhenAnotherBotHoldsTheChat() async {
+        // Hermes' refusal doesn't name another bot's message running in a Bot
+        // Chat; the plugin's busy answer does, and the failure names it too.
+        var owners: [String] = []
+        let client = ChatTakeoverClient(request: { _, _, _ in ["ok": true, "status": "busy", "surface": "bot"] })
+        let state = ChatTakeoverState(sessionID: "s1", sessionIDs: ["s1"], surface: nil, phase: .waiting)
+        let phase = await AppState.runChatTakeover(
+            client: client, state: state, profile: "nahida", pollInterval: .zero, waitLimit: 0,
+            onOwner: { owners.append($0) }
+        )
+        XCTAssertEqual(owners, ["bot"])
+        var named = state
+        named.surface = "bot"
+        XCTAssertEqual(phase, .failed(named.stillReplyingMessage))
     }
 
     func testTakeoverGivesUpAfterRepeatedTransientFailures() async {

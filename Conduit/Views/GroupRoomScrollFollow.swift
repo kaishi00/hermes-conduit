@@ -18,10 +18,26 @@ enum GroupRoomFollow {
     static func following(
         current: Bool,
         userScrolling: Bool,
-        distanceFromBottom: CGFloat
+        distanceFromBottom: CGFloat,
+        landing: Bool = false
     ) -> Bool {
+        // A landing's own animated scroll can pass near the bottom (the
+        // content may grow after its first frame): it decides once it's
+        // over, unless the user takes over.
+        if landing, !userScrolling { return current }
         if distanceFromBottom <= nearBottomTolerance { return true }
         return userScrolling ? false : current
+    }
+
+    /// The member message a following transcript lands at the top of when
+    /// new events arrive, as a long chat reply stops at its start (#365):
+    /// the first one after the row that was last before them. Nil scrolls
+    /// to the bottom as before: nothing new from a member, or that row is
+    /// gone (another room).
+    static func replyStart(in events: [GroupEvent], after previousLastID: String?) -> String? {
+        guard let previousLastID,
+              let index = events.lastIndex(where: { $0.id == previousLastID }) else { return nil }
+        return events[(index + 1)...].first(where: \.isMemberMessage)?.id
     }
 }
 
@@ -30,6 +46,15 @@ enum GroupRoomFollow {
 /// for the published copy.
 final class GroupRoomFollowFlag {
     var isFollowing = true
+    /// A landing at a new member message is scrolling there (landAtTop):
+    /// only the user's own scroll or the landing's end decides.
+    var isLanding = false
+    /// Stamps each landing, so an earlier landing's end can't end a later
+    /// one still scrolling.
+    var landingGeneration = 0
+    /// Decides again from where the transcript is now, for a programmatic
+    /// scroll that may not move the offset at all (set by the locator).
+    var reevaluate: (@MainActor () -> Void)?
 }
 
 /// Placed behind the room's transcript stack inside its ScrollView. Finds
@@ -46,6 +71,7 @@ struct GroupRoomScrollLocator: UIViewRepresentable {
 
     func updateUIView(_ view: GroupRoomScrollLocatorView, context: Context) {
         view.flag = flag
+        flag.reevaluate = { [weak view] in view?.reevaluate() }
         let binding = $isFollowing
         view.onChange = { following in
             // KVO can land mid-update; write the binding after it.
@@ -143,14 +169,22 @@ final class GroupRoomScrollLocatorView: UIView {
         }
     }
 
+    func reevaluate() {
+        flag.isLanding = false
+        scrolled()
+    }
+
     private func scrolled() {
         guard let scrollView else { return }
         let distance = scrollView.contentSize.height + scrollView.adjustedContentInset.bottom
             - (scrollView.contentOffset.y + scrollView.bounds.height)
+        let userScrolling = scrollView.isTracking || scrollView.isDecelerating
+        if userScrolling { flag.isLanding = false }
         let next = GroupRoomFollow.following(
             current: flag.isFollowing,
-            userScrolling: scrollView.isTracking || scrollView.isDecelerating,
-            distanceFromBottom: distance
+            userScrolling: userScrolling,
+            distanceFromBottom: distance,
+            landing: flag.isLanding
         )
         guard next != flag.isFollowing else { return }
         flag.isFollowing = next

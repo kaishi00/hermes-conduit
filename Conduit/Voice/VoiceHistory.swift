@@ -486,6 +486,14 @@ final class VoiceTranscriptRecorder {
         append(.assistant, text)
     }
 
+    /// Rewrites a note not saved yet: a job's line once the call took the
+    /// job's chat as its own (#1250).
+    func replaceNote(_ text: String, with replacement: String) {
+        guard let index = turns.lastIndex(where: { $0.index >= written && $0.role == .assistant && $0.text == Self.clipped(text) }) else { return }
+        let old = turns[index]
+        turns[index] = VoiceTranscriptTurn(index: old.index, role: old.role, text: Self.clipped(replacement), at: old.at, cards: old.cards)
+    }
+
     /// Something the live model put on screen: its Markdown as the line,
     /// and its cards kept with it.
     func screen(_ card: VoiceScreenCard) {

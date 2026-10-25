@@ -108,7 +108,7 @@ private struct OfflineChatRows: View {
         _ = stepToggleRevision
         let preferences = appState.displayPreferences
         return rows.filter { row in
-            row.step?.drawsRow(messageID: row.id, preferences: preferences, isBusy: appState.isBusy, disclosure: disclosure) ?? true
+            row.drawsRow(preferences: preferences, isBusy: appState.isBusy, disclosure: disclosure)
         }
     }
 

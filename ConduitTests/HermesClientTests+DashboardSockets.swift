@@ -215,9 +215,7 @@ extension HermesClientTests {
         seedAmbientCookie()
         let id = UUID()
         KeychainHelper.saveNativeOAuthTokens(DashboardSocketFixture.tokens(access: "access-grok"), dashboardID: id)
-        let suite = "HermesClientTests.grok.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("HermesClientTests.grok")
         let appState = AppState(
             defaults: defaults,
             loadSavedConnection: false,
@@ -250,9 +248,7 @@ extension HermesClientTests {
         useInMemoryKeychain()
         let base = "http://127.0.0.1:9"
         let id = UUID()
-        let suite = "HermesClientTests.localLive.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("HermesClientTests.localLive")
         let appState = AppState(
             defaults: defaults,
             loadSavedConnection: false,

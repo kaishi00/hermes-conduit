@@ -422,9 +422,7 @@ final class StreamEventParserTests: XCTestCase {
     /// window must read 1%, not a full meter.
     @MainActor
     func testSessionUsageAtOnePercentDoesNotFillTheMeter() throws {
-        let suite = "StreamEventParserTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("StreamEventParserTests")
         let state = AppState(
             defaults: defaults,
             loadSavedConnection: false,

@@ -70,13 +70,7 @@ final class AppStateDecisionFenceTests: XCTestCase {
         chatResumeLifecycleOperations: ChatResumeLifecycleOperations = .live,
         cache: SessionPresentationCache? = nil
     ) -> AppState {
-        let suite = "AppStateDecisionFenceTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock {
-            defaults.removePersistentDomain(forName: suite)
-        }
+        let defaults = makeScratchDefaults("AppStateDecisionFenceTests")
         let presentationCache = cache ?? SessionPresentationCache(defaults: defaults)
         return AppState(
             defaults: defaults,
@@ -1238,9 +1232,7 @@ final class AppStateDecisionFenceTests: XCTestCase {
     }
 
     func testBotChatApprovalEvictionAndRecoveryUnderBotProfileNamespace() async throws {
-        let suite = "testBotChatApproval.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("testBotChatApproval")
         let cache = SessionPresentationCache(defaults: defaults)
         let appState = AppState(
             defaults: defaults,
@@ -1707,9 +1699,7 @@ final class AppStateDecisionFenceTests: XCTestCase {
     }
 
     func testRestoredLegacySubmissionWithoutLiveTokenResetsToPendingOnResumeOmission() throws {
-        let suite = "AppStateDecisionFenceTests.RestoredLegacy.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("AppStateDecisionFenceTests.RestoredLegacy")
         let cache = SessionPresentationCache(defaults: defaults)
         let appState = makeAppState(cache: cache)
         prepareActiveSession(appState, id: "restored-legacy-session")

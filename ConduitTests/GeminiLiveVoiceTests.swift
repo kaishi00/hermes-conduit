@@ -1734,9 +1734,7 @@ extension VoiceConversationControllerTests {
 @MainActor
 extension AppStateVoiceCapabilityTests {
     private func makeGeminiAppState() -> AppState {
-        let suite = "GeminiLiveAppState.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("GeminiLiveAppState")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
         appState.isConnected = true
@@ -2472,6 +2470,32 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(GeminiLiveToolBridge.lookupAnswerNote.contains("what this lookup returned"), "a failed lookup returned no answer to start with")
         let lost = try XCTUnwrap(GeminiLiveConversationController.lookupFallbackText(for: ["results": "1. Sunny, 21°C"]))
         XCTAssertTrue(lost.contains(noRepeat))
+    }
+
+    func testEveryLiveModeAcknowledgesHandoffsBrieflyWithoutRepeatingHermes() {
+        // One fixed example ("On it, I'll have Hermes look into that.") was
+        // said word for word on every request, in every live mode.
+        let rule = LiveVoiceAcknowledgement.rule
+        XCTAssertTrue(rule.contains("different each time"))
+        XCTAssertTrue(rule.contains("don't reuse them word for word"))
+        XCTAssertTrue(rule.contains("Don't keep saying you'll ask, tell or check with Hermes"))
+        let modes: [(String, String)] = [
+            ("Gemini and Qwen", GeminiLiveConversationController.instructions(search: .hermes)),
+            ("Watch", GeminiLiveConversationController.instructions(search: .hermes, onWatch: true)),
+            ("Grok", GeminiLiveConversationController.instructions(search: .grok, acknowledgesOnceStarted: true) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)),
+            ("Local Live agent", GeminiLiveConversationController.instructions(search: .none, acknowledgesOnceStarted: true) + LocalLiveProtocol.agentInstructions),
+            ("GPT-Live", GPTLiveConversationController.briefing()),
+            ("GPT-Live on the Watch", GPTLiveConversationController.briefing(onWatch: true)),
+        ]
+        for (mode, text) in modes {
+            XCTAssertEqual(text.components(separatedBy: rule).count, 2, "\(mode) carries the rule once")
+            XCTAssertFalse(text.contains("I'll have Hermes look into that"), mode)
+            XCTAssertFalse(text.contains("that Hermes is on it."), mode)
+        }
+        // Gemini's nudge when the model stayed quiet after start_job.
+        let nudge = GeminiLiveConversationController.acknowledgementPrompt
+        XCTAssertFalse(nudge.contains("Hermes is checking"))
+        XCTAssertTrue(nudge.contains("without saying again that you're asking Hermes"))
     }
 
     func testGeminiLiveSessionWithoutGoogleSearchNeverAsksForIt() async throws {

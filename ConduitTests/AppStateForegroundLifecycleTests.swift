@@ -235,6 +235,42 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
+    func testBotChatTakeoverAsksTheBotsProfile() async {
+        // A Bot Chat's claim is in its bot's registry. The takeover asked the
+        // workspace profile, which found nobody holding the chat, so every
+        // resend was refused again and the offer never went away.
+        let defaults = UserDefaults.standard
+        let savedAutomatic = defaults.object(forKey: ChatTakeoverPreference.automaticKey)
+        defaults.set(true, forKey: ChatTakeoverPreference.automaticKey)
+        defer { defaults.set(savedAutomatic, forKey: ChatTakeoverPreference.automaticKey) }
+        var sent: [String] = []
+        var takenOver = false
+        var takeoverPaths: [String] = []
+        let harness = makeHarness(lifecycleOperations: desktopHeldChatOperations(
+            sends: { sent.append($0) }, takenOver: { takenOver }
+        ))
+        harness.appState.chatTakeoverClient = ChatTakeoverClient(request: { path, _, _ in
+            takeoverPaths.append(path)
+            takenOver = path.contains("profile=nahida")
+            return ["ok": true, "status": takenOver ? "taken_over" : "free"]
+        })
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        harness.appState.noteBotChatSessionForTesting("stored-a", profile: "nahida")
+        harness.appState.noteBotChatSessionForTesting("runtime-a", profile: "nahida")
+
+        let submitted = await harness.appState.submitComposerForCall(text: "Hi Nahida")
+
+        XCTAssertTrue(submitted, "The request goes through once the bot's claim is dropped")
+        XCTAssertEqual(sent, ["Hi Nahida", "Hi Nahida"])
+        XCTAssertEqual(takeoverPaths.count, 1)
+        XCTAssertTrue(takeoverPaths.first?.contains("profile=nahida") ?? false, "Asked of \(takeoverPaths)")
+        XCTAssertNil(harness.appState.chatTakeover)
+        box.client.disconnect()
+    }
+
     func testCallRequestTakesOverEvenWithAutomaticTakeoverOff() async {
         // Starting a call in the chat already says the user wants it here:
         // the call takes over whatever the composer's setting says.
@@ -9101,13 +9137,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         store: ChatResumeStore,
         recoverySequence: ChatResumeRecoverySequence
     ) {
-        let suite = "AppStateForegroundLifecycleTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock {
-            defaults.removePersistentDomain(forName: suite)
-        }
+        let defaults = makeScratchDefaults("AppStateForegroundLifecycleTests")
         configureDefaults(defaults)
         let store = ChatResumeStore(defaults: defaults)
         let coordinator = ChatResumeCoordinator(store: store)

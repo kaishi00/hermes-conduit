@@ -259,6 +259,35 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeSessionId, "stored-newest")
     }
 
+    /// "Self-improvement updates" off hides the review rows a chat already
+    /// has, not only new ones; anything else Hermes reads as showing them.
+    func testReviewRowsFollowTheSelfImprovementSetting() {
+        XCTAssertFalse(ProfileDisplayPreferences.showsReviews("off"))
+        XCTAssertFalse(ProfileDisplayPreferences.showsReviews(" Off "))
+        XCTAssertFalse(ProfileDisplayPreferences.showsReviews(false))
+        for shown: Any? in [nil, "on", "default", "verbose", true] {
+            XCTAssertTrue(ProfileDisplayPreferences.showsReviews(shown), "\(String(describing: shown))")
+        }
+
+        let activity = ReviewActivity(summary: "Memory updated", details: nil, fullSessionId: nil)
+        var cache = ChatMessageScrollTargetCache()
+        cache.update(for: [
+            ChatMessage(id: "u1", role: .user, content: "hi", timestamp: "1"),
+            ChatMessage(id: "r1", role: .system, content: "Memory updated", timestamp: "2", review: activity),
+            // Saved before reviews were tagged: told by its text, as the row draws it.
+            ChatMessage(id: "r2", role: .system, content: "💾 Self-improvement review: Memory updated", timestamp: "3"),
+            ChatMessage(id: "u2", role: .user, content: "💾 Self-improvement review: quoted", timestamp: "4"),
+        ])
+        let disclosure = ChatRowDisclosure()
+        var preferences = ProfileDisplayPreferences()
+        func drawn() -> [String] {
+            cache.targets.filter { $0.drawsRow(preferences: preferences, isBusy: false, disclosure: disclosure) }.map(\.id)
+        }
+        XCTAssertEqual(drawn(), ["u1", "r1", "r2", "u2"])
+        preferences.showReviews = false
+        XCTAssertEqual(drawn(), ["u1", "u2"])
+    }
+
     /// Self-improvement reviews arrive only as `review.summary` stream events
     /// keyed by the RUNTIME session id, and with Hermes' default notification
     /// mode every one reads "Memory updated". Each review must keep its own
@@ -327,9 +356,7 @@ final class AppStateChatResumeTests: XCTestCase {
     /// reconciliation, and matching saved reviews through them pinned that
     /// chat's review cards to the top of every new chat.
     func testANewChatShowsNoReviewsFromTheChatOpenBeforeIt() throws {
-        let suite = "AppStateChatResumeTests.reviewsNewChat.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("AppStateChatResumeTests.reviewsNewChat")
         defaults.set("default", forKey: "conduit.activeProfile")
         let index = ConversationIdentityIndex()
         let appState = AppState(

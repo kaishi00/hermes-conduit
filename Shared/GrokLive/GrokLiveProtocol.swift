@@ -30,9 +30,10 @@ enum GrokLiveProtocol {
     static let delegationInstructions = "\nYou can't see the user's email, messages, calendar and schedule, to-dos, health or patient portals, bank or other accounts, files or systems, and web lookups can't reach them either; their Hermes agent can. Whenever the user asks you to check, read, find, send or do anything there (\"what's on my plate today?\" included), call start_job with their request instead of saying you can't. If they only ask whether you can see it, say Hermes can check it for them. Never answer it from guesses or a web lookup, and if start_job fails, tell them plainly. Public facts anyone could look up (weather, news, sports, stock prices) aren't Hermes work: look them up with web_search or x_search on this call, never with start_job."
 
     /// Grok answers start_job as soon as the job exists, so a claim can wait
-    /// for it. On a user's call Grok spoke a start_job call as text and said
+    /// for it (the shared instructions, built with `acknowledgesOnceStarted`,
+    /// say to acknowledge only once it returns). On a user's call Grok spoke a start_job call as text and said
     /// the work was queued when nothing ran.
-    static let jobClaimInstructions = "\nOn this call start_job answers as soon as Hermes has the job. This replaces the acknowledgement rule above: call start_job without announcing it first, and only once it returns started tell the user in a few words that Hermes is on it. Never say anything was started, queued, sent or done unless a tool's result said so; if a tool returns an error or not_started, tell the user plainly. Tools are only ever function calls: never speak a tool call, its name or its arguments."
+    static let jobClaimInstructions = "\nOn this call start_job answers as soon as Hermes has the job. Never say anything was started, queued, sent or done unless a tool's result said so; if a tool returns an error or not_started, tell the user plainly. Tools are only ever function calls: never speak a tool call, its name or its arguments."
 
     /// What Grok's instructions add after the shared ones: the delegation
     /// and job-claim rules, and the clock.

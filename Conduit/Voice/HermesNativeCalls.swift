@@ -301,12 +301,12 @@ final class HermesNativeCalls: NSObject {
     /// the user gave it on the call's dashboard (the active one for a push
     /// from a relay that names none).
     private static func callerName(_ target: ConduitNotificationTarget?) -> String {
-        HermesCallCopy.callerName(profile: target?.profile, mainName: mainProfileName(target), title: target?.call?.title)
+        HermesCallCopy.callerName(profile: target?.profile, mainName: mainProfileName(target), profileName: target?.profileName, title: target?.call?.title)
     }
 
     /// The profile alone, as a missed call names it.
     private static func profileName(_ target: ConduitNotificationTarget) -> String {
-        HermesCallerName.name(profile: target.profile, mainName: mainProfileName(target))
+        HermesCallerName.name(profile: target.profile, mainName: mainProfileName(target), profileName: target.profileName)
     }
 
     private static func mainProfileName(_ target: ConduitNotificationTarget?) -> String? {

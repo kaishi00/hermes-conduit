@@ -246,7 +246,9 @@ extension HermesVoiceGatewayTimeoutTests {
     func testGrokLiveInstructionsHoldJobClaimsForTheResult() {
         let text = GrokLiveProtocol.grokInstructions(now: Date(timeIntervalSince1970: 0), timeZone: TimeZone(identifier: "UTC")!)
         XCTAssertTrue(text.contains(GrokLiveProtocol.jobClaimInstructions))
-        XCTAssertTrue(GrokLiveProtocol.jobClaimInstructions.contains("only once it returns started"))
+        let shared = GeminiLiveConversationController.instructions(search: .grok, acknowledgesOnceStarted: true)
+        XCTAssertTrue(shared.contains("only once it returns started"))
+        XCTAssertFalse(shared.contains("first acknowledge it out loud"), "one timing per mode")
         XCTAssertTrue(GrokLiveProtocol.jobClaimInstructions.contains("never speak a tool call"))
     }
 
@@ -794,9 +796,7 @@ extension ContinuousConversationPreferenceTests {
 @MainActor
 extension AppStateVoiceCapabilityTests {
     private func makeGrokAppState() -> AppState {
-        let suite = "GrokLiveAppState.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("GrokLiveAppState")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
         appState.isConnected = true

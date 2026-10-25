@@ -2160,11 +2160,7 @@ final class OfflineChatCacheTests: XCTestCase {
         sessionCatalogLoader: ((Bool) async throws -> [SessionSummary])? = nil,
         lifecycleOperations: ChatResumeLifecycleOperations = .live
     ) -> (AppState, OfflineChatCacheStore, UUID) {
-        let suite = "OfflineChatCacheTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("OfflineChatCacheTests")
         configureDefaults(defaults)
         let dashboard = SavedDashboard(id: UUID(), label: "One", normalizedURL: "https://one.example")
         let registry = registry ?? SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard])

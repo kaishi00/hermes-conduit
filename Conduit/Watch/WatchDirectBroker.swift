@@ -885,6 +885,7 @@ final class WatchDirectBroker {
         let supervisor = WatchCallJobSupervisor(appState.voiceBackgroundJobSupervisor)
         // Noted in the saved call, as the phone's own calls note theirs.
         supervisor.onJobCreated = { [weak self] jobID in self?.callJobs[id, default: []].append(jobID) }
+        supervisor.callIsLive = { [weak self] in self?.callID == id }
         // Only the running call's: a straggler from an ended one gets none.
         if callID == id, let mode = hostToolsMode {
             supervisor.hostTools = hostTools
@@ -1450,12 +1451,16 @@ final class WatchDirectBroker {
         // Jobs on another profile are filed there, so the call lists only
         // its own profile's.
         let started = callJobs.removeValue(forKey: id) ?? []
-        let phoneJobs = appState.voiceBackgroundJobSupervisor.jobs.compactMap { job -> WatchVoiceWire.DirectJob? in
-            guard started.contains(job.id), job.profile == nil else { return nil }
+        let supervisor = appState.voiceBackgroundJobSupervisor
+        let waiting = waitingJobs(started)
+        let phoneJobs = supervisor.jobs.compactMap { job -> WatchVoiceWire.DirectJob? in
+            guard started.contains(job.id), !waiting.contains(job.id), job.profile == nil,
+                  !(job.continuesChat && job.status == .cancelled && !job.requestSent) else { return nil }
             let sessionID = [job.storedSessionID, job.runtimeSessionID].compactMap { $0 }.first { !$0.isEmpty }
             return .init(jobID: job.id.uuidString, title: job.title, sessionID: sessionID, startedAt: job.startedAt)
         }
         Task {
+            for jobID in waiting { _ = await supervisor.cancel(jobID: jobID) }
             if let known {
                 await appState.saveWatchVoiceCall(transcript, connection: known.connection, saveCalls: known.saveCalls, phoneJobs: phoneJobs)
             }
@@ -1502,8 +1507,22 @@ final class WatchDirectBroker {
         endCall()
     }
 
+    /// A request still waiting its turn in the call's chat goes no further
+    /// when the call ends, however it ends, as on the relay and in a phone
+    /// call (#1250).
+    private func waitingJobs(_ started: [UUID]) -> [UUID] {
+        appState.voiceBackgroundJobSupervisor.jobs.filter {
+            started.contains($0.id) && $0.continuesChat && !$0.requestSent && $0.status.isActive
+        }.map(\.id)
+    }
+
     /// Unspoken job news goes back to the jobs, which report it as usual.
     private func endCall(keepRecovery: Bool = false) {
+        if let callID {
+            let waiting = waitingJobs(callJobs[callID] ?? [])
+            let supervisor = appState.voiceBackgroundJobSupervisor
+            if !waiting.isEmpty { Task { for jobID in waiting { _ = await supervisor.cancel(jobID: jobID) } } }
+        }
         grantWatchdog?.cancel()
         grantWatchdog = nil
         silenceWatchdog?.cancel()
@@ -1809,13 +1828,64 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
 
     /// Told of each job this call starts.
     var onJobCreated: (@MainActor (UUID) -> Void)?
+    /// The chat this call's first ordinary job made: its later ordinary
+    /// requests run there too, as the relay's do (#1250). The call has no
+    /// attached chat on the phone, so each is still a job of the call.
+    private(set) var callChat: VoiceThreadTarget?
+    /// A first ordinary job is being started: ordinary requests said
+    /// meanwhile wait for its chat rather than make their own.
+    private var startingCallChat = false
+    /// Whether the call is still on: a request that waited past its end
+    /// goes no further.
+    var callIsLive: (@MainActor () -> Bool)?
+    private var callChatWaiters: [CheckedContinuation<Void, Never>] = []
 
-    func startJob(instructions: String, profile: String?, onJobCreated: (@MainActor (UUID) -> Void)?) async -> String {
+    func startJob(instructions: String, profile: String?, joinsCall: Bool, onJobCreated: (@MainActor (UUID) -> Void)?) async -> String {
         let noted = self.onJobCreated
-        return await base.startJob(instructions: instructions, profile: profile, onJobCreated: { jobID in
+        let created: @MainActor (UUID) -> Void = { jobID in
             noted?(jobID)
             onJobCreated?(jobID)
+        }
+        let joins = joinsCall && (profile ?? "").isEmpty
+        var waited = false
+        while joins, callChat == nil, startingCallChat {
+            waited = true
+            await withCheckedContinuation { callChatWaiters.append($0) }
+        }
+        if waited, callIsLive?() == false { return "The call ended before Hermes took this request." }
+        if joins, let callChat {
+            return await base.continueJob(instructions: instructions, in: callChat, onJobCreated: created)
+        }
+        let claims = joins
+        if claims { startingCallChat = true }
+        defer {
+            if claims {
+                // Woken after callChat is set: a failed first start lets the
+                // next waiter make the chat instead.
+                startingCallChat = false
+                let waiters = callChatWaiters
+                callChatWaiters = []
+                waiters.forEach { $0.resume() }
+            }
+        }
+        var startedID: UUID?
+        let base = self.base
+        let reply = await base.startJob(instructions: instructions, profile: profile, onJobCreated: { jobID in
+            startedID = jobID
+            // Marked before Hermes can answer, so its reply is matched
+            // against replays from the start.
+            if claims { base.markOpensCallChat(jobID) }
+            created(jobID)
         })
+        if joins, callChat == nil, let startedID, let job = base.jobs.first(where: { $0.id == startedID }), job.profile == nil,
+           job.requestSent, let runtimeID = job.runtimeSessionID, !runtimeID.isEmpty {
+            switch job.status {
+            case .failed, .cancelled: break
+            case .starting, .running, .needsInput, .finished:
+                callChat = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title)
+            }
+        }
+        return reply
     }
 
     func statusSummary() -> String { base.statusSummary() }

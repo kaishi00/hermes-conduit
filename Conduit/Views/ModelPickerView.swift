@@ -323,8 +323,8 @@ struct ModelPickerView: View {
         NavigationStack {
             ZStack {
                 // V2: a settings page's layout, each group's name over a
-                // quiet card on the profile's glow.
-                ConduitBackdrop(glowTint: appState.profileGlowTint(appState.activeProfile))
+                // quiet card on the open chat's glow (a Bot Chat's bot's).
+                ConduitBackdrop(glowTint: appState.profileGlowTint(appState.conversationIdentityProfile))
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {

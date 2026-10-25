@@ -166,12 +166,33 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_the_feature_map_check_knows_the_pr_and_its_base(self):
         """On a PR, an entry it edits names it on its Checked line: the step
-        passes the PR's number and the base's map (HEAD^1 of the merge commit)."""
+        passes the PR's number and the base's map (HEAD^1 of the merge commit),
+        and for a PR into pulse, main's map where the PR meets main, so the
+        entries a merge of main brings in keep main's Checked lines."""
         step = _step_text(self._job_text("plan"), "Feature map paths exist")
         self.assertIn("PR_NUMBER: ${{ github.event.pull_request.number }}", step)
         self.assertIn("git show HEAD^1:docs/FEATURE_MAP.md", step)
         self.assertIn('--pr "$PR_NUMBER"', step)
         self.assertIn("--base-map", step)
+        self.assertIn("BASE_REF: ${{ github.event.pull_request.base.ref }}", step)
+        self.assertIn('if [ "$BASE_REF" != "main" ]', step)
+        # Only a PR that merges main (fewer of main's commits left to take
+        # than its base) gets main's maps, from where its head and its base
+        # meet main.
+        self.assertIn("BASE_SHA: ${{ github.event.pull_request.base.sha }}", step)
+        self.assertIn('compare="repos/$GITHUB_REPOSITORY/compare/main..."', step)
+        self.assertIn("meets='\"\\(.merge_base_commit.sha) \\(.behind_by)\"'", step)
+        self.assertIn('"$compare$HEAD_SHA?per_page=1" --jq "$meets"', step)
+        self.assertIn('"$compare$BASE_SHA?per_page=1" --jq "$meets"', step)
+        self.assertIn('elif [ "${head#* }" -lt "${base#* }" ]', step)
+        self.assertIn('git fetch --no-tags --depth=1 origin "${head% *}" "${base% *}"', step)
+        self.assertIn('git show "${head% *}:docs/FEATURE_MAP.md"', step)
+        self.assertIn('git show "${base% *}:docs/FEATURE_MAP.md"', step)
+        self.assertIn("--main-map", step)
+        self.assertIn("--main-base-map", step)
+        # GitHub out of reach: warn and check as before, like the notifier lookup.
+        self.assertIn("::warning::Couldn't ask GitHub whether the PR merges main", step)
+        self.assertIn("::warning::Couldn't read docs/FEATURE_MAP.md on main", step)
 
     def test_smoke_job_builds_while_the_simulator_boots(self):
         """The smoke job builds its own products with the simulator booting in
@@ -329,11 +350,10 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("ci-lane/ui-smoke.log", upload)
         self.assertIn("UNIT_SMOKE_LOG: ci-lane/unit-smoke.log", self._job_text("smoke"))
 
-    def test_all_self_test_groups_remain_required_and_run_after_a_failure(self):
+    def test_the_self_test_job_runs_full_discovery_and_stays_required(self):
         text = self._job_text("self-test")
-        self.assertIn("group: [fast, lane, local-gate]", text)
-        self.assertIn("fail-fast: false", text)
-        self.assertIn('python3 scripts/ci-self-test.py --group "${{ matrix.group }}"', text)
+        self.assertNotIn("matrix", text)
+        self.assertIn("python3 scripts/ci-self-test.py", text)
         self.assertIn("self-test]", self._job_text("ci-gate"))
         self.assertIn('--self-test "${{ needs.self-test.result }}"', self._job_text("ci-gate"))
 

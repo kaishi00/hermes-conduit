@@ -1031,7 +1031,7 @@ struct ComposerBar: View, Equatable {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                 case .offered, .ready:
-                    Image(systemName: "desktopcomputer")
+                    Image(systemName: takeover.owner == .otherBot ? "person.2" : "desktopcomputer")
                         .foregroundStyle(.secondary)
                 }
                 Text(Self.chatTakeoverMessage(takeover))

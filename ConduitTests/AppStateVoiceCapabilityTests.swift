@@ -788,13 +788,7 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         appleSpeechAvailability: AppleSpeechRecognitionAvailability = .ready(localeIdentifier: "en-US"),
         isVoiceEnabled: Bool = true
     ) -> AppState {
-        let suite = "AppStateVoiceCapabilityTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock {
-            defaults.removePersistentDomain(forName: suite)
-        }
+        let defaults = makeScratchDefaults("AppStateVoiceCapabilityTests")
 
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
