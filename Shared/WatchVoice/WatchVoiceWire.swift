@@ -204,6 +204,19 @@ enum WatchVoiceWire {
         /// started elsewhere count too): the Watch asks again while there
         /// are any.
         var runningJobs: Int
+        /// The settled jobs whose outcome a `textWhenIdle` above says: the
+        /// iPhone counts it told once the Watch has it, so the Watch keeps
+        /// it on list_jobs until the model says it (#1210). Nil from an
+        /// older iPhone app.
+        var newsJobs: [DirectNewsJob]? = nil
+    }
+
+    /// A settled job and the text update that carries its outcome.
+    struct DirectNewsJob: Codable, Equatable {
+        var text: String
+        var jobID: String
+        var title: String
+        var status: String
     }
 
     /// One settled line of a Watch call's transcript.

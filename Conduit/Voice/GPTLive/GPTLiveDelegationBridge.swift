@@ -1375,7 +1375,7 @@ final class GPTLiveDelegationBridge {
             case .speak(let spoken): text = Self.relay(spoken)
             case .submit(let prompt, _): text = prompt
             }
-            queuedNotices.insert(item.jobID)
+            queuedNotices[item.jobID, default: 0] += 1
             outgoing.append(.sessionContext(text: text, channel: .speakable, whenIdle: true, jobID: item.jobID))
         }
         // The chat of a call from Hermes waits on the user anew: said now.
@@ -1392,18 +1392,27 @@ final class GPTLiveDelegationBridge {
 
     /// Jobs whose notice was handed out but not yet sent, so it can be
     /// handed back if the conversation closes first. Matched by job, never
-    /// by text: two jobs can produce the same notice.
-    private var queuedNotices: Set<UUID> = []
+    /// by text: two jobs can produce the same notice. Counted, since one
+    /// job can have two out at once (a question, then its outcome), and
+    /// each holds the job on the job list until it's released (#1210).
+    private var queuedNotices: [UUID: Int] = [:]
+
+    /// Releases one handed-out notice for the job; false when it had none.
+    private func releaseQueuedNotice(_ jobID: UUID) -> Bool {
+        guard let count = queuedNotices[jobID] else { return false }
+        queuedNotices[jobID] = count > 1 ? count - 1 : nil
+        return true
+    }
 
     /// A queued notice went out: its job is spoken for.
     func contextDelivered(jobID: UUID?) {
-        guard let jobID, queuedNotices.remove(jobID) != nil else { return }
+        guard let jobID, releaseQueuedNotice(jobID) else { return }
         supervisor.noticeSent(jobID: jobID)
     }
 
     /// These notices will never be sent: their jobs become pending again.
     func returnUnsent(jobIDs: [UUID?]) {
-        for case let jobID? in jobIDs where queuedNotices.remove(jobID) != nil {
+        for case let jobID? in jobIDs where releaseQueuedNotice(jobID) {
             supervisor.returnUndeliveredNotice(jobID: jobID)
         }
     }
@@ -1426,6 +1435,11 @@ final class GPTLiveDelegationBridge {
 
     /// Settled delegations whose answer is on its way, by delegation.
     private var deliveredReplies: [String: UUID] = [:]
+
+    /// Whether this delegation's answer is a job's result.
+    func carriesJobResult(delegationID: String) -> Bool {
+        deliveredReplies[delegationID] != nil
+    }
 
     /// How a "call me" went, for the model as quiet context (#449).
     private static func callRequestNote(_ text: String) -> Outgoing {
@@ -1480,7 +1494,7 @@ final class GPTLiveDelegationBridge {
     /// The jobs' state as quiet context, so the model can answer "how's it
     /// going" itself. Not UI copy.
     func statusContext() -> String {
-        let visible = supervisor.jobs.filter { !$0.isThreadTurn && ($0.status.isActive || !$0.outcomeDelivered) }
+        let visible = supervisor.listedJobs
         guard !visible.isEmpty else { return "[Background jobs: none running.]" }
         let lines = visible.map { "Job \($0.number) (\($0.title)): \(GeminiLiveToolBridge.statusName($0.status))" }
         return "[Background jobs on Hermes: " + lines.joined(separator: "; ") + ".]"

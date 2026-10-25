@@ -110,6 +110,20 @@ reply pending or playing):
   a text turn. A result whose call is withdrawn goes out as a text update,
   and hanging up returns an unsaid one to the job. Grok Live already reported
   results as text turns sent only while quiet.
+- A result is checked for being said (#1210). A text update with a job's
+  result, the only way Grok Live and Local Live hear one, counts as told once
+  the model has said something since; if it hasn't within 6 seconds, the
+  result goes out once more and then counts as told, never sent a third
+  time. The same goes for Gemini's
+  text updates, GPT-Live's delegation results and job notices, and job news
+  on Apple Watch calls, whether the job runs on the push relay or on the
+  iPhone. A result already sent when the call ends counts as told, as
+  before: it isn't carried into the next call.
+- `list_jobs` (and Classic's job status, GPT-Live's status note and the
+  Watch's job list) names a finished job until its result counts as told: a
+  result waiting for a quiet moment, or sent and not yet said or sent again,
+  keeps the job listed as finished. Before, a job left the list as soon as its result was
+  queued, so a call that never got to say it showed no job and no result.
 
 ## Limits of this phase
 

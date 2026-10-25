@@ -1262,6 +1262,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Background jobs, as the Voice sheet and job tools list them.
     var backgroundJobs: [VoiceBackgroundJob] { jobs.filter { !$0.isThreadTurn } }
 
+    /// The background jobs a job list names: still running or waiting, or
+    /// settled with an outcome the user hasn't heard yet. One taken for a
+    /// quiet moment, or sent and not yet said, is still unheard: it stays
+    /// listed until the call has said it (#1210).
+    var listedJobs: [VoiceBackgroundJob] {
+        backgroundJobs.filter { $0.status.isActive || !$0.outcomeDelivered || noticesInFlight[$0.id] != nil }
+    }
+
     // MARK: Commands
 
     func performVoiceCommand(_ command: VoiceBackgroundJobCommand) async -> String {
@@ -1887,7 +1895,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     func statusSummary() -> String {
-        let visible = backgroundJobs.filter { $0.status.isActive || !$0.outcomeDelivered }
+        let visible = listedJobs
         guard !visible.isEmpty else {
             return AppLocalization.string("No background jobs are running.")
         }

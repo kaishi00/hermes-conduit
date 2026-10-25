@@ -973,6 +973,29 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumSettledJobs)
     }
 
+    /// #1210: a result taken for a quiet moment hasn't been heard yet, so
+    /// the job lists keep naming the job until the call has said it.
+    func testAJobWhoseOutcomeWaitsToBeSaidStaysListedUntilItIs() async {
+        let (supervisor, _) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "check the server")
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        guard let taken = supervisor.takePendingNoticeForJob(), let title = supervisor.jobs.first?.title else {
+            return XCTFail("no notice")
+        }
+        XCTAssertEqual(supervisor.listedJobs.map(\.id), [taken.jobID])
+        XCTAssertEqual(supervisor.statusSummary(), AppLocalization.string("\(title) has finished."))
+
+        // Handed back unsaid, then taken again: still listed.
+        supervisor.returnUndeliveredNotice(jobID: taken.jobID)
+        XCTAssertEqual(supervisor.listedJobs.count, 1)
+        XCTAssertNotNil(supervisor.takePendingNoticeForJob())
+        XCTAssertEqual(supervisor.listedJobs.count, 1)
+
+        supervisor.noticeSent(jobID: taken.jobID)
+        XCTAssertTrue(supervisor.listedJobs.isEmpty)
+        XCTAssertEqual(supervisor.statusSummary(), AppLocalization.string("No background jobs are running."))
+    }
+
     func testResetForgetsJobsAndIgnoresTheirLateEvents() async {
         let (supervisor, _) = makeSupervisor()
         _ = await supervisor.startJob(instructions: "old server work")

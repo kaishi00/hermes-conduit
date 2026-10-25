@@ -10,7 +10,7 @@ import Foundation
 ///
 /// Latin-script phrases match as whole words in order ("hey fam" matches
 /// "ok hey fam what's up" but never "hey family"). Phrases written without
-/// word spacing (Chinese, Japanese) match as a contiguous run of characters,
+/// word spacing (Han, kana, Hangul, Thai) match as a contiguous run of characters,
 /// because the recognizer does not separate those words with spaces.
 enum WakePhraseMatcher {
     /// A phrase needs at least two words (or two characters for scripts
@@ -59,12 +59,15 @@ enum WakePhraseMatcher {
             .filter { !$0.isEmpty }
     }
 
+    /// Han, kana, Hangul and Thai, as WakeSpeechLocale reads them, so a
+    /// phrase it sends to a recognizer is matched the way that one writes.
+    private static let unspacedScripts: [WakeSpeechLocale.Script] = [.han, .kana, .hangul, .thai]
+
     private static func usesWordSpacing(_ words: [String]) -> Bool {
         words.allSatisfy { word in
             word.unicodeScalars.allSatisfy { scalar in
-                !(0x3040...0x30FF).contains(scalar.value) // Hiragana, Katakana
-                    && !(0x3400...0x9FFF).contains(scalar.value) // CJK ideographs
-                    && !(0xAC00...0xD7AF).contains(scalar.value) // Hangul syllables
+                guard let script = WakeSpeechLocale.script(of: String(scalar)) else { return true }
+                return !unspacedScripts.contains(script)
             }
         }
     }

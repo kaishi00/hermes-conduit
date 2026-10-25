@@ -181,7 +181,9 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
             switch self?.takeResponseRequest(on: id, turn: (sent: onSent, failed: onFailure)) {
             case .send(let create)?:
                 // A failure settles the turn with the rest of the
-                // connection's.
+                // connection's. Holding `writer` here is safe: the frame
+                // that holds this closure leaves its queue once it is sent
+                // or failed.
                 writer.enqueue([create], isAudio: false) { error in
                     if let error { self?.writeFailed(id, error: error) }
                 }

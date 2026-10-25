@@ -57,6 +57,9 @@ protocol GeminiLiveJobSupervising: AnyObject {
     var jobs: [VoiceBackgroundJob] { get }
     func startJob(instructions: String, profile: String?, onJobCreated: (@MainActor (UUID) -> Void)?) async -> String
     func statusSummary() -> String
+    /// The background jobs list_jobs names: running, waiting, or settled
+    /// with an outcome the user hasn't heard yet.
+    var listedJobs: [VoiceBackgroundJob] { get }
     func cancelAll() async -> String
     func cancel(jobID: UUID) async -> String?
     func markOutcomeDelivered(jobID: UUID)
@@ -1221,7 +1224,7 @@ final class GeminiLiveToolBridge {
     }
 
     private func listResult() -> [String: String] {
-        let visible = supervisor.jobs.filter { !$0.isThreadTurn && ($0.status.isActive || !$0.outcomeDelivered) }
+        let visible = supervisor.listedJobs
         var result: [String: String] = ["summary": supervisor.statusSummary()]
         for (index, job) in visible.enumerated() {
             result["job_\(index + 1)"] = "id=\(job.id.uuidString); title=\(job.title); status=\(Self.statusName(job.status))"

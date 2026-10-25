@@ -1387,6 +1387,69 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    func testGPTLiveJobResultTheModelLetsPassIsSentOnceMoreAndStaysListedUntilSaid() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, _) = makeGPTController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Check the server."))
+        session.onEvent?(.outputTranscript("On it."))
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        await settle(40)
+        session.onEvent?(.turnDone(role: "assistant", transcript: "On it."))
+        current += GPTLiveConversationController.userQuietInterval + 0.5
+
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        controller.flushPendingContextIfIdle()
+        XCTAssertEqual(session.speakable.count, 1)
+        XCTAssertEqual(session.speakable.first?.delegationID, "del_1")
+        let result = session.speakable.first?.text ?? ""
+        XCTAssertEqual(supervisor.listedJobs.count, 1, "Sent isn't said: list_jobs still names it (#1210)")
+
+        // The model lets it pass: it goes out once more.
+        current += GPTLiveConversationController.outcomeSpeechGrace
+        controller.confirmResultsSaidForTesting()
+        controller.flushPendingContextIfIdle()
+        XCTAssertEqual(session.speakable.count, 2)
+        XCTAssertEqual(session.speakable.last?.text, result)
+        XCTAssertEqual(supervisor.listedJobs.count, 1)
+
+        // Silent again: no third try, and it counts as told.
+        current += GPTLiveConversationController.outcomeSpeechGrace
+        controller.confirmResultsSaidForTesting()
+        controller.flushPendingContextIfIdle()
+        XCTAssertEqual(session.speakable.count, 2)
+        XCTAssertTrue(supervisor.listedJobs.isEmpty)
+        XCTAssertNil(supervisor.takePendingNotice())
+        controller.stop()
+    }
+
+    func testGPTLiveJobResultTheModelSaysIsToldWithoutAResend() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, supervisor, _) = makeGPTController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Check the server."))
+        session.onEvent?(.delegation(id: "del_1", text: ""))
+        await settle(40)
+        current += GPTLiveConversationController.userQuietInterval + 0.5
+
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        controller.flushPendingContextIfIdle()
+        current += 1
+        session.onEvent?(.outputTranscript("The server's all green."))
+        session.onEvent?(.turnDone(role: "assistant", transcript: "The server's all green."))
+
+        current += GPTLiveConversationController.outcomeSpeechGrace
+        controller.confirmResultsSaidForTesting()
+        controller.flushPendingContextIfIdle()
+        XCTAssertEqual(session.speakable.count, 1, "Said, so not sent again")
+        XCTAssertTrue(supervisor.listedJobs.isEmpty)
+        controller.stop()
+    }
+
     func testGPTLiveHeldDelegationResultGoesBackWhenTheCallEnds() async {
         let current = Date(timeIntervalSince1970: 1_000)
         let (controller, session, supervisor, _) = makeGPTController(clock: { current })

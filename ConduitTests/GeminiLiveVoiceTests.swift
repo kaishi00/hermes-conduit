@@ -554,6 +554,38 @@ extension VoiceConversationControllerTests {
         session.stop()
     }
 
+    /// A socket that stops taking frames while text keeps coming is given
+    /// up on: what it held fails, so each result is handed back, and the
+    /// session reconnects instead of queueing forever.
+    func testGeminiLiveSocketThatStopsTakingTextReconnects() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.start()
+        await settle()
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["setupComplete": [String: Any]()])
+        await settle(until: { session.state == .ready })
+
+        first.holdsNextSend = true
+        var failed = 0
+        session.send(.textTurn("on the socket"), onSent: nil, onFailure: { failed += 1 })
+        await settle(until: { first.isHoldingSend })
+        // The bound counts the frame on the socket too.
+        for index in 0..<(LiveVoiceSocketWriter.defaultMaxQueuedOther - 1) {
+            session.send(.textTurn("waiting \(index)"), onSent: nil, onFailure: { failed += 1 })
+        }
+        XCTAssertEqual(failed, 0, "within the bound, text waits")
+        XCTAssertEqual(session.state, .ready)
+
+        session.send(.textTurn("one too many"), onSent: nil, onFailure: { failed += 1 })
+        XCTAssertEqual(failed, LiveVoiceSocketWriter.defaultMaxQueuedOther, "every waiting frame and the new one failed")
+        XCTAssertNotEqual(session.state, .ready, "the stalled connection is given up")
+        await settle(until: { sockets().count == 2 })
+        XCTAssertEqual(sockets().count, 2, "the session reconnects")
+        first.releaseSend()
+        session.stop()
+    }
+
     func testGeminiLiveConnectionLostDuringAHandoffIsTakenOverByTheHandoffConnection() async throws {
         let tokens = FakeGeminiLiveTokens()
         let (session, sockets) = makeGeminiSession(tokens: tokens)
@@ -1060,6 +1092,7 @@ extension VoiceConversationControllerTests {
         openingPrompt: String? = nil,
         headsetMute: HeadsetMicrophoneMute? = nil,
         notificationCenter: NotificationCenter = NotificationCenter(),
+        holdsJobCalls: Bool = true,
         clock: @escaping () -> Date
     ) -> (GeminiLiveConversationController, FakeGeminiLiveSessionControl, FakeGeminiLiveInput, FakeGeminiLiveOutput, VoiceBackgroundJobSupervisor) {
         let tokens = providedTokens ?? FakeGeminiLiveTokens()
@@ -1070,7 +1103,7 @@ extension VoiceConversationControllerTests {
         let controller = GeminiLiveConversationController(
             makeSession: { session },
             availability: { try await tokens.availability() },
-            tools: GeminiLiveToolBridge(supervisor: supervisor, webSearch: webSearch),
+            tools: GeminiLiveToolBridge(supervisor: supervisor, webSearch: webSearch, holdsJobCalls: holdsJobCalls),
             input: input,
             output: output,
             now: clock,
@@ -1413,6 +1446,43 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.outputTranscription("All green on the server."))
         controller.respeakOutcomeIfSilent(jobID: supervisor.jobs.first?.id, since: current - 1)
         XCTAssertEqual(session.textTurns.count, turns)
+        controller.stop()
+    }
+
+    /// #1210: on Grok (and Local Live) every result is a text update. One
+    /// the model lets pass in silence is sent once more, never a third time,
+    /// and list_jobs names the job until the result has been said.
+    func testGrokJobResultTheModelLetsPassIsSentOnceMoreAndStaysListedUntilSaid() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, output, supervisor) = makeGeminiController(holdsJobCalls: false, clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.toolCall([.init(id: "c1", name: "start_job", arguments: ["instructions": "check the server"])]))
+        await settle(40)
+        session.onEvent?(.turnComplete)
+        output.isPlaying = false
+        func resultTurns() -> Int { session.textTurns.filter { $0.contains("All green.") }.count }
+
+        current += 5
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        XCTAssertEqual(resultTurns(), 1)
+        let jobID = supervisor.jobs.first?.id
+        XCTAssertEqual(supervisor.listedJobs.map(\.id), [jobID].compactMap { $0 }, "Sent, not yet said: still listed")
+
+        // The model said nothing: the result goes out once more.
+        let sentAt = current
+        current += GeminiLiveConversationController.outcomeSpeechGrace
+        controller.respeakOutcomeIfSilent(jobID: jobID, since: sentAt)
+        XCTAssertEqual(resultTurns(), 2)
+        XCTAssertEqual(supervisor.listedJobs.count, 1)
+
+        // Silent again: not a third time, and the job is done with.
+        let resentAt = current
+        current += GeminiLiveConversationController.outcomeSpeechGrace
+        controller.respeakOutcomeIfSilent(jobID: jobID, since: resentAt)
+        XCTAssertEqual(resultTurns(), 2)
+        XCTAssertTrue(supervisor.listedJobs.isEmpty)
         controller.stop()
     }
 
@@ -3421,6 +3491,37 @@ extension HermesVoiceGatewayTimeoutTests {
         socket.release()
         await settle(until: { outcomes.count == 2 })
         XCTAssertEqual(socket.sent, ["a1", "a2"])
+    }
+
+    func testLiveVoiceSocketWriterGivesUpOnASocketThatStoppedTakingText() async {
+        let socket = StallingLiveSocket()
+        let writer = LiveVoiceSocketWriter(socket: socket, maxQueuedAudio: 2, maxQueuedOther: 2)
+        var errors: [String: Error] = [:]
+        var order: [String] = []
+        func note(_ name: String) -> @MainActor (Error?) -> Void {
+            { error in
+                order.append(name)
+                if let error { errors[name] = error }
+            }
+        }
+
+        XCTAssertTrue(writer.enqueue(["t1"], isAudio: false, done: note("t1")))
+        await settle(until: { socket.isStalled })
+        XCTAssertTrue(writer.enqueue(["a1"], isAudio: true, done: note("a1")))
+        XCTAssertTrue(writer.enqueue(["t2"], isAudio: false, done: note("t2")))
+        XCTAssertTrue(order.isEmpty, "text within the bound queues")
+
+        XCTAssertTrue(writer.enqueue(["t3"], isAudio: false, done: note("t3")), "text is never dropped on its own")
+        XCTAssertEqual(order, ["a1", "t2", "t3"], "everything held fails, oldest first, the new frame last")
+        for name in ["a1", "t2", "t3"] {
+            XCTAssertTrue(errors[name] is LiveVoiceSocketWriter.Backlogged, name)
+        }
+        writer.enqueue(["late"], isAudio: false, done: note("late"))
+        XCTAssertTrue(errors["late"] is CancellationError, "the writer is closed")
+
+        socket.release()
+        await settle(until: { order.contains("t1") })
+        XCTAssertEqual(socket.sent, ["t1"], "only the frame already on the socket went out")
     }
 
     func testClosedLiveVoiceSocketWriterFailsWhatItStillHeld() async {

@@ -155,21 +155,22 @@ the saved transcript's job cards · `docs/VOICE_BACKGROUND_JOBS.md`
 |---|---|
 | Classic | Hermes summarizes it in the call's own session; failures and questions are short spoken notices |
 | Gemini | on the job's own tool call once the model is quiet; sent again as text after 6 s of silence |
-| Grok | a text turn, sent only while quiet |
-| GPT-Live | on the delegation, after the user has finished talking |
-| Local Live agent | an update, as in the live modes |
+| Grok | a text turn, sent only while quiet; sent once more if the model says nothing for 6 s |
+| GPT-Live | on the delegation, after the user has finished talking; sent once more if the model says nothing for 6 s |
+| Local Live agent | an update, as in Grok, checked the same way |
 | Local Live, Hermes turns | dropped: Hermes' reply is already the call's turn |
-| Watch | the relay's job news, at the next quiet moment |
+| Watch | the relay's job news, at the next quiet moment; sent once more if the model says nothing for 6 s |
 
 **Code**
 - All modes: `Conduit/Voice/VoiceBackgroundJobs.swift` (takeNotice, outcomePrompt, showOnScreen, VoiceJobCallAnchor)
 - Gemini and Grok: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift`, `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`
-- GPT-Live: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (userQuietInterval), `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift`
+- GPT-Live: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (userQuietInterval, confirmResultSaid), `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift`
 - Local Live: `Conduit/Voice/LocalLive/LocalLiveNoticeRoute.swift`
 - Classic: `Conduit/Voice/VoiceConversationController.swift`
 - Call screen: `Conduit/Views/LiveVoiceCallJobs.swift` (LiveVoiceJobCard, LiveVoiceCallTimeline), `Conduit/Services/AppState+PresentedScreens.swift` (cards Hermes shows)
 - Saved transcript: `Conduit/Services/AppState.swift` (voiceJobStartedNote), `Conduit/Voice/VoiceJobLinkNote.swift`, `Conduit/Views/VoiceJobLinkCard.swift`
-- Watch: `Shared/WatchVoice/WatchJobRelay.swift` (notice), `ConduitWatch/WatchDirectCallModel.swift` (answer, lostAnswerText), `ConduitWatch/WatchBridgeCallModel.swift`, `Conduit/Watch/WatchDirectBroker.swift` (lateAnswers, jobRefusal)
+- Job lists (list_jobs, Classic's status, GPT-Live's status note): `Conduit/Voice/VoiceBackgroundJobs.swift` (listedJobs), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (listResult); the Watch's: `Shared/WatchVoice/WatchJobRelay.swift` (listing), `ConduitWatch/WatchDirectCallModel.swift` (apply, for the iPhone's answer), `Conduit/Watch/WatchDirectBroker.swift` (listedJobs; result, for the jobs the iPhone runs), `Shared/WatchVoice/WatchVoiceWire.swift` (DirectToolResult.newsJobs), `notifier/dashboard/plugin_api.py` (_WatchJobs.list)
+- Watch: `Shared/WatchVoice/WatchJobRelay.swift` (notice), `ConduitWatch/WatchDirectCallModel.swift` (checkNewsSpoken, answer, lostAnswerText), `ConduitWatch/WatchBridgeCallModel.swift` (checkNewsSpoken), `Conduit/Watch/WatchDirectBroker.swift` (lateAnswers, jobRefusal)
 - Notifier (Watch relay jobs): `notifier/dashboard/plugin_api.py`
 
 **Rulings**
@@ -183,7 +184,7 @@ the saved transcript's job cards · `docs/VOICE_BACKGROUND_JOBS.md`
 **Open gaps**
 - GPT-Live's model can't put a card on the call screen: Gemini, Grok and Local Live agent have `show_on_screen`, GPT-Live has no marker for it. Cards Hermes shows still appear (#366).
 
-**Checked:** 2026-10-24, at #1223, for GPT-Live's replies that couldn't go out; at #1221, for the Watch's late refusals and answers lost to a reconnect; at 78f21da; at #1191: a cut screen card keeps its last line unless it can be half a fence, so prose that opens with inline code stays (#926 review), and message.interim counts as a job's progress (#912 review).
+**Checked:** 2026-10-25, at #1224: a result counts as told once the model says something after it or once it has gone out twice (one resend, GPT-Live and Watch included), and a job stays on the job lists until then (#1210), a direct Watch call's iPhone-run jobs included; one already sent when the call ends counts as told, never carried into the next call. Earlier at #1223, for GPT-Live's replies that couldn't go out; at #1221, for the Watch's late refusals and answers lost to a reconnect; at 78f21da; at #1191.
 
 ## Tools and consent in calls
 
@@ -497,7 +498,7 @@ confirmation and README say about restarts
 - Hermes Desktop's own serve process on the host keeps the old plugin until Desktop restarts; nothing tells the user.
 - A dashboard without a fixed basic-auth secret signs Conduit out at every restart; the updater signs in again, but the chat may land on the sign-in screen.
 
-**Checked:** 2026-10-25, at #1222 (install and update requests wait in the profile config queue); at #1227: the notice's What's New sheet opened blank; Settings' disclosure and the notifier's CHANGELOG.md needed no change.
+**Checked:** 2026-10-25, at #1230 (the phone-run install and update requests wait in the profile config queue, the host-run update doesn't); at #1222; at #1227: the notice's What's New sheet opened blank; Settings' disclosure and the notifier's CHANGELOG.md needed no change.
 
 ## Notifications
 
@@ -1097,29 +1098,31 @@ by Hermes through the notifier (its result note) · the phone sync status line
 
 **Checked:** 2026-10-24, at #1190.
 
-## Microphone audio on a slow connection
+## Live-call sends on a slow connection
 
-How a live call's microphone audio goes out when the connection stops
-taking it: in order, with a bounded backlog, so a stalled socket doesn't
-pile up audio the model can't use.
+How a live call's microphone audio, and the text turns and tool answers
+sent beside it, go out when the connection stops taking them: in order,
+with a bounded backlog, so a stalled socket doesn't pile up audio the model
+can't use or hold text without end.
 
 **Siblings:** Gemini Live · Grok Live · Local Live · GPT-Live (WebRTC) ·
 Classic's transcription streams · Watch calls (Gemini, Grok, Local Live; GPT-Live over the host's audio bridge)
 
 **Code**
-- The writer: `Shared/GeminiLive/LiveVoiceSocketWriter.swift`; what counts as audio: `Shared/GeminiLive/GeminiLiveProtocol.swift` (LiveVoiceClientMessage.isAudio)
+- The writer: `Shared/GeminiLive/LiveVoiceSocketWriter.swift` (maxQueuedAudio, maxQueuedOther, Backlogged); what counts as audio: `Shared/GeminiLive/GeminiLiveProtocol.swift` (LiveVoiceClientMessage.isAudio)
 - Sessions: `Shared/GeminiLive/GeminiLiveSession.swift`, `Shared/GrokLive/GrokLiveSession.swift`, `Shared/LocalLive/LocalLiveSession.swift`
-- Watch: `ConduitWatch/WatchDirectCallModel.swift` (maxSendsInFlight, flushUplink; the same Gemini, Grok and Local Live sessions), `ConduitWatch/WatchBridgeCallModel.swift` (sendsInFlightLimit, GPT-Live's bridge socket)
+- Watch: `ConduitWatch/WatchDirectCallModel.swift` (maxSendsInFlight, flushUplink; the same Gemini, Grok and Local Live sessions), `ConduitWatch/WatchBridgeCallModel.swift` (sendsInFlightLimit, eventsInFlightLimit, GPT-Live's bridge socket)
 - Classic: `Conduit/Voice/SpeechServerTranscription.swift`, `Conduit/Voice/HermesLiveTranscription.swift` (sendChain)
 
 **Rulings**
-- Each connection's frames go out one at a time, in order. Up to 96 capture chunks of audio may wait, about two seconds of the tap's 1,024-frame buffers at 48 kHz (longer on a route that captures at a lower rate); audio past that is dropped as it arrives. Text turns and tool answers always wait their turn: they are a few each turn, so they aren't capped. Frames for a socket the session replaced fail instead of going out, and dropped audio is logged (2026-10-24, #1223).
-- GPT-Live's audio on the phone is WebRTC's to pace; on the Watch it goes over the host's audio bridge, already capped at 20 sends in flight. Classic's transcription streams keep a whole utterance, since dropping audio there loses words (2026-10-24, #1223).
+- Each connection's frames go out one at a time, in order. Up to 96 capture chunks of audio may be outstanding, the one on the socket included: for Gemini about two seconds of the tap's 1,024-frame buffers at 48 kHz (longer on a route that captures at a lower rate), and the same count of Grok's and Local Live's own chunks; audio past that is dropped as it arrives. Frames for a socket the session replaced fail instead of going out, and dropped audio is logged (2026-10-24, #1223).
+- Text turns, context notes and tool answers are never dropped on their own. Up to 32 may be outstanding, the one on the socket included; one more means the socket stopped taking frames, so everything it holds fails and the session reconnects, each frame's failure handler handing its result back as for any failed send (2026-10-25, #1231).
+- GPT-Live's audio on the phone is WebRTC's to pace; on the Watch it goes over the host's audio bridge, already capped at 20 sends in flight. The bridge's text events (Hermes' replies) are capped too: before each reply goes out, 32 events outstanding on the connection means the socket stopped taking them, so the Watch rejoins and the replies not yet sent stay pending for the new connection. A reply's chunks go out together, so one reply can take the count past 32. The check guards growth: a stalled socket with nothing more to send holds what it has, and the bridge's ping watchdog ends it (2026-10-25, #1231). Classic's transcription streams keep a whole utterance, since dropping audio there loses words (2026-10-24, #1223).
 
 **Open gaps**
-- Text turns and tool answers aren't capped: a socket that stalls without failing or closing keeps them waiting until the session's own timeouts end the connection.
+- On the Watch's GPT-Live bridge, a reply already handed to a socket that then drops is lost with it, on any dropped connection and not only a backlogged one: the bridge sends without asking for a confirmation, where the phone's writer hands a failed frame's result back.
 
-**Checked:** 2026-10-24, #1223.
+**Checked:** 2026-10-25, #1231, for the text cap; 2026-10-24, #1223.
 
 ## Speech stream failures
 
@@ -1181,12 +1184,14 @@ the plugin list)
 file either. `profiles.create` (New Bot, Duplicate) writes a new profile's
 first config, which nothing else is saving yet, and Delete Bot
 (`DELETE /api/profiles/{name}`) removes the whole profile, so neither waits. The notifier, the Watch and
-CarPlay don't write a profile's config.
+CarPlay don't write a profile's config, and the host-run plugin update
+(`/self/update`) runs as a job on the host that changes the plugin's files,
+not the config.
 
 **Open gaps**
 - A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.
 
-**Checked:** 2026-10-24, at #1222.
+**Checked:** 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
 
 ## Wake phrase
 
@@ -1206,13 +1211,15 @@ wired into the app, so not needed)
 **Rulings**
 - Recognition is on-device only, and nothing is recorded or kept (#174).
 - A Latin-letter phrase is heard in the app's locale. A phrase in another writing system is heard by a recognizer for a language that writes it, the person's own first (the app's language only when it has an on-device model), up to three languages at once; Settings names the language, or says this iPhone can't hear the phrase (2026-10-24, #1222, from #1004).
+- Phrases in Han, kana, Hangul and Thai match as a run of characters, two at least, since those recognizers don't space words; the matcher reads scripts through WakeSpeechLocale, so the two agree (2026-10-25, #1230).
 - A phrase past the third language isn't heard, and Settings says so beside it. The cap counts every profile's phrases on the dashboard, in the listener's order, so Settings and the listener agree (2026-10-24, #1222 review).
 - After an interruption with no end from iOS, listening resumes only when no phone call is in progress, no other Conduit audio owner has the session and the session activates again (2026-10-24, #1222, from #1004).
 
 **Open gaps**
+- A phrase spelled in Bopomofo or in loose Hangul jamo goes to the right language but can't match: the recognizer writes Han characters and whole Hangul syllables (#1230 review).
 - Han-only phrases on a phone with no Chinese or Japanese language set are heard in Simplified Chinese; a Japanese kanji-only name may be missed.
 
-**Checked:** 2026-10-24, at #1222.
+**Checked:** 2026-10-25, at #1230 (halfwidth Hangul, Jamo extensions, Bopomofo); at #1222.
 
 ## Dictation and voice message length
 
