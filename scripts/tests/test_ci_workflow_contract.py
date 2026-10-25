@@ -177,14 +177,19 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("BASE_REF: ${{ github.event.pull_request.base.ref }}", step)
         self.assertIn('if [ "$BASE_REF" != "main" ]', step)
         # Only a PR that merges main (fewer of main's commits left to take
-        # than its base) gets main's map, from where its head meets main.
+        # than its base) gets main's maps, from where its head and its base
+        # meet main.
         self.assertIn("BASE_SHA: ${{ github.event.pull_request.base.sha }}", step)
         self.assertIn('compare="repos/$GITHUB_REPOSITORY/compare/main..."', step)
-        self.assertIn('"$compare$HEAD_SHA?per_page=1" --jq \'"\\(.merge_base_commit.sha) \\(.behind_by)"\'', step)
-        self.assertIn('"$compare$BASE_SHA?per_page=1" --jq .behind_by', step)
-        self.assertIn('elif [ "${head#* }" -lt "$base_behind" ]', step)
-        self.assertIn("git show FETCH_HEAD:docs/FEATURE_MAP.md", step)
+        self.assertIn("meets='\"\\(.merge_base_commit.sha) \\(.behind_by)\"'", step)
+        self.assertIn('"$compare$HEAD_SHA?per_page=1" --jq "$meets"', step)
+        self.assertIn('"$compare$BASE_SHA?per_page=1" --jq "$meets"', step)
+        self.assertIn('elif [ "${head#* }" -lt "${base#* }" ]', step)
+        self.assertIn('git fetch --no-tags --depth=1 origin "${head% *}" "${base% *}"', step)
+        self.assertIn('git show "${head% *}:docs/FEATURE_MAP.md"', step)
+        self.assertIn('git show "${base% *}:docs/FEATURE_MAP.md"', step)
         self.assertIn("--main-map", step)
+        self.assertIn("--main-base-map", step)
         # GitHub out of reach: warn and check as before, like the notifier lookup.
         self.assertIn("::warning::Couldn't ask GitHub whether the PR merges main", step)
         self.assertIn("::warning::Couldn't read docs/FEATURE_MAP.md on main", step)

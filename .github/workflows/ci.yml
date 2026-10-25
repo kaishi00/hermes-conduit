@@ -124,10 +124,11 @@ jobs:
         # PR, an entry it adds or edits names it on its Checked line. A PR
         # into pulse (pulse's copy of this workflow runs on those) that
         # merges main, so it leaves fewer of main's commits to take than its
-        # base does, also passes main's map where the PR meets main (their
-        # merge base): the entries the merge brings in match it and keep
-        # main's Checked lines. If GitHub can't say, the check warns and runs
-        # without it, as it would have before.
+        # base does, also passes main's maps where the PR and its base meet
+        # main (their merge bases): an entry main changed between the two
+        # that matches main's copy came in with the merge and keeps main's
+        # Checked line. If GitHub can't say, the check warns and runs without
+        # them, as it would have before.
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
@@ -141,23 +142,25 @@ jobs:
               echo "::error::Couldn't read docs/FEATURE_MAP.md at HEAD^1, the PR's base."
               exit 1
             fi
-            main_map=()
+            main_maps=()
             if [ "$BASE_REF" != "main" ]; then
               compare="repos/$GITHUB_REPOSITORY/compare/main..."
-              if ! head=$(gh api "$compare$HEAD_SHA?per_page=1" --jq '"\(.merge_base_commit.sha) \(.behind_by)"') \
-                  || ! base_behind=$(gh api "$compare$BASE_SHA?per_page=1" --jq .behind_by); then
+              meets='"\(.merge_base_commit.sha) \(.behind_by)"'
+              if ! head=$(gh api "$compare$HEAD_SHA?per_page=1" --jq "$meets") \
+                  || ! base=$(gh api "$compare$BASE_SHA?per_page=1" --jq "$meets"); then
                 echo "::warning::Couldn't ask GitHub whether the PR merges main, so entries that came in from main count as this PR's edits."
-              elif [ "${head#* }" -lt "$base_behind" ]; then
-                if git fetch --no-tags --depth=1 origin "${head% *}" \
-                    && git show FETCH_HEAD:docs/FEATURE_MAP.md > "$RUNNER_TEMP/main-map.md"; then
-                  main_map=(--main-map "$RUNNER_TEMP/main-map.md")
+              elif [ "${head#* }" -lt "${base#* }" ]; then
+                if git fetch --no-tags --depth=1 origin "${head% *}" "${base% *}" \
+                    && git show "${head% *}:docs/FEATURE_MAP.md" > "$RUNNER_TEMP/main-map.md" \
+                    && git show "${base% *}:docs/FEATURE_MAP.md" > "$RUNNER_TEMP/main-base-map.md"; then
+                  main_maps=(--main-map "$RUNNER_TEMP/main-map.md" --main-base-map "$RUNNER_TEMP/main-base-map.md")
                 else
-                  echo "::warning::Couldn't read docs/FEATURE_MAP.md on main at ${head% *}, so entries that came in from main count as this PR's edits."
+                  echo "::warning::Couldn't read docs/FEATURE_MAP.md on main at ${head% *} and ${base% *}, so entries that came in from main count as this PR's edits."
                 fi
               fi
             fi
             python3 scripts/check-feature-map.py --repo-root . \
-              --pr "$PR_NUMBER" --base-map "$RUNNER_TEMP/base-map.md" "${main_map[@]}"
+              --pr "$PR_NUMBER" --base-map "$RUNNER_TEMP/base-map.md" "${main_maps[@]}"
           else
             python3 scripts/check-feature-map.py --repo-root .
           fi
