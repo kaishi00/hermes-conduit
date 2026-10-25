@@ -56,6 +56,8 @@ extension SpeechRecognitionLocaleTests {
     func testAWakePhraseInTheAppsOwnScriptKeepsTheAppLocale() {
         XCTAssertEqual(wakeLocale("小爱同学", app: "zh_TW", preferred: ["zh-Hant-TW"]), "zh-TW")
         XCTAssertEqual(wakeLocale("小爱同学", app: "ja_JP", preferred: ["ja-JP"]), "ja-JP")
+        // Without an on-device Japanese model, Chinese still hears it.
+        XCTAssertEqual(wakeLocale("小爱同学", app: "ja_JP", preferred: ["ja-JP"], onDevice: { $0.language.languageCode != "ja" }), "zh-CN")
     }
 
     func testAWakePhraseNoOnDeviceRecognizerWritesIsNotHeard() {
