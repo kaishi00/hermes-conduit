@@ -574,9 +574,7 @@ final class SessionRenameTests: XCTestCase {
     private func makeConnectedAppState(
         onPrompt: @escaping @MainActor (String, String) -> Void
     ) -> AppState {
-        let suite = "ArchiveThenSendTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("ArchiveThenSendTests")
         let appState = AppState(
             defaults: defaults,
             loadSavedConnection: false,

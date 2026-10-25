@@ -19,13 +19,7 @@ import XCTest
 extension AppStateDecisionFenceTests {
 
     private func makeMoveAppState() -> AppState {
-        let suite = "AppStateMoveSessionTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock {
-            defaults.removePersistentDomain(forName: suite)
-        }
+        let defaults = makeScratchDefaults("AppStateMoveSessionTests")
         return AppState(
             defaults: defaults,
             loadSavedConnection: false,

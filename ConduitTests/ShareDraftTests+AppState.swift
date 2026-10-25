@@ -19,9 +19,7 @@ extension ShareDraftTests {
     /// `created`.
     @MainActor
     private func makeAppState(active: SavedDashboard, dashboards: [SavedDashboard], created: String? = "shared-new") throws -> AppState {
-        let suite = "ShareDraftTests.\(UUID().uuidString)"
-        addTeardownBlock { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let defaults = makeScratchDefaults("ShareDraftTests")
         let appState = AppState(
             defaults: defaults,
             loadSavedConnection: false,

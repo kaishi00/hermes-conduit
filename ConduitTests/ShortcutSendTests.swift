@@ -80,9 +80,7 @@ private final class FakeHermes {
 extension ScreenQuestionTests {
     /// A chat list of its own for each test, removed when the test ends.
     private func shortcutChats() -> ShortcutChatStore {
-        let suite = "ShortcutSendTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("ShortcutSendTests")
         return ShortcutChatStore(defaults: defaults)
     }
 
@@ -460,9 +458,7 @@ extension ScreenQuestionTests {
     /// runtime id from before, which Hermes no longer has.
     @MainActor
     private func openChatAfterColdLaunch(probeFails: Bool = false) -> (AppState, ShortcutChatStore, OpenChatHermes) {
-        let suite = "ShortcutSendOpenChatTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("ShortcutSendOpenChatTests")
         let hermes = OpenChatHermes()
         hermes.probeFails = probeFails
         var operations = ChatResumeLifecycleOperations()

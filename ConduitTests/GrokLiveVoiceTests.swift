@@ -794,9 +794,7 @@ extension ContinuousConversationPreferenceTests {
 @MainActor
 extension AppStateVoiceCapabilityTests {
     private func makeGrokAppState() -> AppState {
-        let suite = "GrokLiveAppState.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("GrokLiveAppState")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
         appState.isConnected = true

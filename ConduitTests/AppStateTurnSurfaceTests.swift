@@ -139,13 +139,7 @@ final class AppStateTurnSurfaceTests: XCTestCase {
     private typealias Harness = (appState: AppState, defaults: UserDefaults)
 
     private func makeHarness(recorder: TurnSurfaceRecorder?) -> Harness {
-        let suite = "AppStateTurnSurfaceTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock {
-            defaults.removePersistentDomain(forName: suite)
-        }
+        let defaults = makeScratchDefaults("AppStateTurnSurfaceTests")
         let operations = ChatResumeLifecycleOperations(
             sendPrompt: { _, sessionID, text in
                 recorder?.events.append("prompt \(sessionID) \(text)")

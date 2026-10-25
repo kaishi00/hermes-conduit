@@ -1099,9 +1099,7 @@ extension VoiceConversationControllerTests {
     }
 
     private func outcomeDefaults() throws -> UserDefaults {
-        let suite = "HermesCallsTests.outcomes.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("HermesCallsTests.outcomes")
         return defaults
     }
 

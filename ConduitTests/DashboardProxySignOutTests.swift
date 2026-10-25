@@ -703,9 +703,7 @@ final class DashboardProxySignOutTests: XCTestCase {
         addTeardownBlock {
             KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend())
         }
-        let suite = "DashboardProxySignOutTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("DashboardProxySignOutTests")
         let dashboard = SavedDashboard(
             id: UUID(),
             label: "Proxied",

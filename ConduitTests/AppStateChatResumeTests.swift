@@ -327,9 +327,7 @@ final class AppStateChatResumeTests: XCTestCase {
     /// reconciliation, and matching saved reviews through them pinned that
     /// chat's review cards to the top of every new chat.
     func testANewChatShowsNoReviewsFromTheChatOpenBeforeIt() throws {
-        let suite = "AppStateChatResumeTests.reviewsNewChat.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("AppStateChatResumeTests.reviewsNewChat")
         defaults.set("default", forKey: "conduit.activeProfile")
         let index = ConversationIdentityIndex()
         let appState = AppState(

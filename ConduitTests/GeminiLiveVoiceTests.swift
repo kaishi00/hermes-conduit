@@ -1734,9 +1734,7 @@ extension VoiceConversationControllerTests {
 @MainActor
 extension AppStateVoiceCapabilityTests {
     private func makeGeminiAppState() -> AppState {
-        let suite = "GeminiLiveAppState.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("GeminiLiveAppState")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
         appState.isConnected = true

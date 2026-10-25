@@ -417,13 +417,7 @@ final class AppStateServerReplacementSpeechTests: XCTestCase {
     // MARK: - Harness
 
     private func makeHarness() -> Harness {
-        let suite = "AppStateServerReplacementSpeechTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock {
-            defaults.removePersistentDomain(forName: suite)
-        }
+        let defaults = makeScratchDefaults("AppStateServerReplacementSpeechTests")
 
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.connection = HermesConnection(baseUrl: Self.serverA, ticket: "test-ticket")

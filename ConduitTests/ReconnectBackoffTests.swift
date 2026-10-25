@@ -27,9 +27,7 @@ extension CarPlayTransportRecoveryTests {
         jitter: Double = 1,
         updates: AnyPublisher<DeviceConditions, Never> = Empty().eraseToAnyPublisher()
     ) -> AppState {
-        let suite = "ReconnectBackoffTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("ReconnectBackoffTests")
         let appState = AppState(
             defaults: defaults,
             loadSavedConnection: false,

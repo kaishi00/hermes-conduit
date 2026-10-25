@@ -155,9 +155,7 @@ extension CarPlayVoiceCoordinatorTests {
         let harness = makeSetupIssueHarness()
         // The capability refresh reads the saved switch, so turn it off there.
         harness.defaults.set(false, forKey: "conduit.voice.enabled.v1.https://example.com.default")
-        let suite = "VoiceSetupIssueSounds.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("VoiceSetupIssueSounds")
         let preferences = CarPlayPreferences(defaults: defaults)
         var played: [CarPlayEarcon] = []
         harness.coordinator.preferencesProvider = { preferences }
@@ -187,9 +185,7 @@ extension CarPlayVoiceCoordinatorTests {
 
     func testReplacedTemplateStillPlaysTheFailureSound() async throws {
         let harness = makeSetupIssueHarness()
-        let suite = "VoiceSetupIssueSounds.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("VoiceSetupIssueSounds")
         let preferences = CarPlayPreferences(defaults: defaults)
         var played: [CarPlayEarcon] = []
         harness.coordinator.preferencesProvider = { preferences }

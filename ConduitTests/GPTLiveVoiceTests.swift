@@ -1984,9 +1984,7 @@ extension ContinuousConversationPreferenceTests {
 @MainActor
 extension AppStateVoiceCapabilityTests {
     private func makeGPTLiveAppState() -> AppState {
-        let suite = "GPTLiveAppState.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("GPTLiveAppState")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
         appState.isConnected = true
@@ -2493,9 +2491,7 @@ extension AppStateVoiceCapabilityTests {
     /// Conduit reconnecting with GPT-Live chosen over a fake call, and
     /// Siri's request for a call pending in the shared store.
     private func makeSiriWaitingAppState() -> (AppState, FakeGPTLiveSessionControl) {
-        let suite = "GPTLiveSiriWaiting.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("GPTLiveSiriWaiting")
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         _ = appState.handleScenePhase(.active)
         appState.showLogin = false
@@ -2619,9 +2615,7 @@ extension AppStateVoiceCapabilityTests {
         let appState = makeGPTLiveAppState()
         appState.setGPTLiveEnabled(true)
         let (_, session) = installFakeGPTLive(in: appState)
-        let suite = "CarPlayChooseChat.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("CarPlayChooseChat")
         let preferences = CarPlayPreferences(defaults: defaults)
         preferences.setChoosesChatFirst(true)
         let coordinator = CarPlayVoiceCoordinator()
