@@ -693,7 +693,7 @@ no chat · the `hermes conduit-push pulse` commands
 
 **Code**
 - App, on the `pulse` branch only, so not in backticks (the map check reads main): Conduit/Views/V2/V2PulsePage.swift (the screen, the morning brief's block), Conduit/Views/V2/V2ChatsView.swift (V2PulseButton in the Chats bar, Pulse's chat left out of the list and content search), Conduit/Views/V2/V2VoiceButton.swift (Pulse's chat left out of voice recents), Conduit/Views/V2/V2Shell.swift (the `.pulse` route, full screen on a phone), Conduit/Services/PulseFeed.swift (cards, marks, ratings, which cards take Done and Do it, the brief's layout, which chat is Pulse's), Conduit/Services/AppState+Pulse.swift and Conduit/Services/AppState.swift (opensPulseScreen, for pushes; pulseRememberedHomes, Pulse's chat per dashboard across launches; startPulseNewChat, the new chat Do it fills), Conduit/Services/PulseSettings.swift and Conduit/Views/PulseSettingsViews.swift (Settings > Pulse)
-- Loop: `notifier/pulse.py` (the tick, the report's candidate run, cards from turns, push copy), `notifier/pulse_delivery.py`, `notifier/pulse_host.py`, `notifier/pulse_hermes.py`, `notifier/chat_takeover.py`
+- Loop: `notifier/pulse.py` (the tick, the report's candidate run, cards from turns, push copy, the model Pulse's calls outside its chat run on), `notifier/pulse_delivery.py`, `notifier/pulse_host.py`, `notifier/pulse_hermes.py`, `notifier/chat_takeover.py`
 - Report: `notifier/pulse_report.py` (what it reads), `notifier/pulse_candidates.py` (the candidate list, the router and the 30-day journal)
 - Memory, follow-ups and the brief: `notifier/pulse_memory.py`, `notifier/pulse_followup.py`, `notifier/pulse_brief.py` (what the brief reads: held cards, open items, the phone, the inbox)
 - What happened since an item came up: `notifier/pulse_evidence.py` (later chats and cron runs, background processes); follow-up, held-reminder, brief-card and Do it checks read it with the item's chat in `notifier/pulse_followup.py`, its continuation through `notifier/pulse_hermes.py` (`chain_messages`), the phone's calendar and reminders and the report in `notifier/pulse_report.py`
@@ -716,6 +716,7 @@ no chat · the `hermes conduit-push pulse` commands
 - Main reaches `pulse` by a merge commit, never a squash, so archives don't re-stitch old conflicts (2026-10-24, #1186; build 228's stitch lost the Chats Pulse button).
 - Done and Do it work on every report item, one Pulse found on its own included. Do it opens the chat it was found in, or, for one from the calendar, reminders, Hermes's notes or scheduled jobs, or the Shortcuts inbox, a new chat in the dashboard's default profile, with the reminder in the composer, and only in the chat Do it's New Chat made. It starts that chat only when New Chat can start one at once: connecting, during a profile switch or with another new chat on its way, the Pulse screen says why instead. The Do it check then reads that chat with the others on the subject. Done on a found item marks only the card, and the next report reads it as done. On a found item the app shows them only to a plugin that reports `pulse_found_actions`; with an older plugin they stay on items about something Pulse remembers (2026-10-25, Eric; notifier #362, #1240; Eric asked why date and worth-knowing cards couldn't be acted on).
 - What's finished stays finished. A reminder sent on with Do it, and Hermes's answer to it, can close a remembered item but never add one, and a commitment Pulse learns of more than half a day after its time (reading older chats) is kept as expired, never reminded (2026-10-25, Eric; notifier #364, Eric's report: a card blamed a reminder job for bringing back finished items).
+- Settings > Pulse's model runs all of Pulse: its turns, memory, the report's candidate list, and follow-up and Do it checks. On "Same as the Pulse chat" the calls outside the chat use the Pulse chat's own model, as Hermes reads it back when it reopens the chat, unless Hermes's "Pulse memory" slot names one; a chat without a model of its own, or whose provider is gone, leaves them on Hermes's main model (2026-10-25, notifier #375, Eric's report: with the Pulse chat on Volcengine, report lists and a follow-up check ran on the main model and failed while it was out of capacity).
 
 **Open gaps**
 - Learning from ratings in code is the next slice. Until it lands, the persona criteria (Quiet and Samantha diverge, a changed interest is heard, due items always surface) are strict xfail in `notifier/tests/test_pulse_personas.py`.
@@ -723,7 +724,7 @@ no chat · the `hermes conduit-push pulse` commands
 - The app paths above aren't checked by the map check while they live only on `pulse`; they go in backticks if the app side ever reaches main.
 - What a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked.
 
-**Checked:** 2026-10-25, at #1240 on the `pulse` branch, with notifier #362 and #364; carried to main in #1241.
+**Checked:** 2026-10-25, at #1262 with notifier #375 (Pulse's model); the app side at #1240 on the `pulse` branch, with notifier #362 and #364, carried to main in #1241.
 
 ## Artifacts
 
