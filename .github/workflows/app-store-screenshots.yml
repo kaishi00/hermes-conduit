@@ -301,11 +301,13 @@ jobs:
           # Showcase clips for the README and website.
           command -v ffmpeg >/dev/null || brew install ffmpeg >/dev/null
           mkdir -p shots/clips
+          clip_failed=0
           for state in speaking approval; do
             scripts/app-store/record-clip.sh "$udid" com.milim.relay.watchkitapp "$state" "shots/clips/watch-$state.mp4" 8 \
-              || { echo "::error::Watch $state clip not recorded"; exit 1; }
+              || { echo "::error::Watch $state clip not recorded"; clip_failed=1; }
           done
           ls -l shots/watch shots/clips
+          exit "$clip_failed"
 
       - name: Stage the git ref's files
         # The publish job pushes these as refs/app-store-shots/<run id>-watch.
