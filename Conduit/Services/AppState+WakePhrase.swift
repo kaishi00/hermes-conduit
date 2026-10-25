@@ -28,6 +28,20 @@ extension AppState {
         }
     }
 
+    /// Every phrase wake listens for, in the listener's order, with
+    /// `profile`'s replaced by `phrases`: Settings checks the language cap
+    /// against what the listener will get, other profiles' phrases included.
+    func wakeListenedPhrases(replacing phrases: [String], forProfile profile: String) -> [String] {
+        guard let gatewayID = wakeGatewayID else { return phrases.filter(WakePhraseMatcher.isUsable) }
+        let key = WakeProfileKey(gatewayID: gatewayID, profileID: profile)
+        let edited = phrases.filter(WakePhraseMatcher.isUsable).map {
+            WakePhraseBinding(key: key, phrase: $0, startsFreshConversation: false)
+        }
+        return (activeWakeBindings.filter { $0.key != key } + edited)
+            .sorted { $0.id < $1.id }
+            .map(\.phrase)
+    }
+
     var wakeLifecycleSnapshot: WakeLifecycleSnapshot {
         WakeLifecycleSnapshot(
             isForegroundActive: isSceneActive,

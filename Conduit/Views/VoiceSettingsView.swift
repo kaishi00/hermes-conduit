@@ -1807,6 +1807,9 @@ struct WakePhraseSettingsModel {
     var save: (_ phrases: [String], _ startsFreshConversation: Bool) -> Void
     var setListensOnCarPlay: (Bool) -> Void
     var setListensOverOtherAudio: (Bool) -> Void
+    /// Every profile's phrases as the listener gets them, with this one's
+    /// replaced by the edited list, so the language cap matches it.
+    var listenedPhrases: ([String]) -> [String] = { $0.filter(WakePhraseMatcher.isUsable) }
 }
 
 /// Foreground wake phrase for this profile (#174). Device-local: phrases
@@ -1942,12 +1945,14 @@ private struct WakePhraseSettingsSection: View {
 
     private func updateLanguageNotes() {
         let usable = phrases.filter(WakePhraseMatcher.isUsable)
+        // The cap counts other profiles' languages too, in the listener's order.
+        let listened = model.listenedPhrases(phrases)
         // Each phrase's recognizer is looked up once.
-        let locales = Dictionary(usable.map { ($0, WakeSpeechLocale.locale(for: $0)) }, uniquingKeysWith: { first, _ in first })
-        let localeFor: (String) -> Locale? = { locales[$0] ?? nil }
+        let locales = Dictionary(listened.map { ($0, WakeSpeechLocale.locale(for: $0)) }, uniquingKeysWith: { first, _ in first })
+        let localeFor: (String) -> Locale? = { locales[$0] ?? WakeSpeechLocale.locale(for: $0) }
         var notes: [String: (text: String, isUnheard: Bool)] = [:]
         for phrase in usable {
-            notes[phrase] = WakeSpeechLocale.note(for: phrase, among: usable, localeFor: localeFor)
+            notes[phrase] = WakeSpeechLocale.note(for: phrase, among: listened, localeFor: localeFor)
         }
         languageNotes = notes
     }

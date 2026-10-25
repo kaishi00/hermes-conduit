@@ -395,7 +395,8 @@ final class AppleSpeechWakeWordService: WakeWordService {
     /// that's what is missing, as Settings says beside it.
     private func unheardReason() -> String {
         let phrases = bindings.map(\.phrase).filter(WakePhraseMatcher.isUsable)
-        if let note = phrases.lazy.compactMap({ WakeSpeechLocale.note(for: $0, among: phrases) }).first {
+        let notes = phrases.compactMap { WakeSpeechLocale.note(for: $0, among: phrases) }
+        if let note = notes.first(where: \.isUnheard) ?? notes.first {
             return note.text
         }
         let locale = Locale.current
