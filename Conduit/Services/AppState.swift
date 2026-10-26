@@ -6443,10 +6443,20 @@ final class AppState: ObservableObject {
 
     /// A tap a call kept from switching says why, over the screen and over
     /// the call's own: `errorMessage` shows only while the composer is
-    /// locked or the connection needs repair, and a call does neither.
+    /// locked or the connection needs repair, and a call does neither. Only
+    /// V2 draws the notice: the drawer shell keeps its error line.
     func showCallRefusal(_ message: String) {
-        showNotice(message, systemImage: "exclamationmark.triangle.fill")
+        if V2ShellPreference.isOn {
+            showNotice(message, systemImage: "exclamationmark.triangle.fill")
+        } else {
+            errorMessage = message
+        }
     }
+
+    /// No call, and Conduit on screen (not only launched in the background,
+    /// where a waiting tap is restored too): a tap or a retry waiting for a
+    /// call goes through then.
+    var callWaitCanEnd: Bool { !isVoiceCallInProgress && isSceneActive && sceneHasBeenActive }
 
     /// A call that failed in the car for a reason the car couldn't name
     /// ("See your iPhone"), waiting for the phone's screen to come on.
@@ -22759,7 +22769,8 @@ final class AppState: ObservableObject {
     }
 
     /// One open with no retry after it, so an `.unverified` failure says why
-    /// at once.
+    /// at once. Only a call's own open uses it: that never spares calls, so
+    /// it never gets `.afterCall`, which needs the route's wait (ConduitApp).
     func openNotificationTarget(_ target: ConduitNotificationTarget) async -> Bool {
         let outcome = await openNotificationTargetOutcome(target)
         if case .unverified(let message) = outcome { errorMessage = message }
@@ -22876,6 +22887,13 @@ final class AppState: ObservableObject {
             )
         }
         let targetProfile = notificationProfileID(target.profile)
+        // What a notification or a chat link for another profile says when a
+        // call keeps it from switching; nil for a call's own open.
+        let profileCallRefusal: String? = sparesCalls
+            ? (target.isChatLink
+                ? AppLocalization.string("End the call to open a chat in another profile.")
+                : AppLocalization.string("This notification opens in the other profile when the call ends."))
+            : nil
         if let notified = target.profile, let targetProfile,
            targetProfile != activeProfile,
            botModePhase != .gatewayUnsupported {
@@ -22917,6 +22935,13 @@ final class AppState: ObservableObject {
                 // its profile would hand it the workspace's context. Fail
                 // closed rather than guess. The roster can load on a retry
                 // (it's read again above), so nothing is adopted until then.
+                // During a call that retry waits for the call to end, as the
+                // switch would: retried now, it could run out of time first.
+                if let profileCallRefusal, isVoiceCallInProgress {
+                    traceStage = "call in progress (bot roster)"
+                    showCallRefusal(profileCallRefusal)
+                    return callOutcome
+                }
                 return .unverified(AppLocalization.string(
                     "Could not verify that workspace for this notification. Reconnect and try again."
                 ))
@@ -22940,6 +22965,12 @@ final class AppState: ObservableObject {
                 ) else { return .retry }
                 // A lookup that failed proves nothing either way: it is
                 // asked again on a retry, and nothing is adopted until then.
+                // During a call, the retry waits for the call to end.
+                if let profileCallRefusal, isVoiceCallInProgress {
+                    traceStage = "call in progress (bot chat lookup)"
+                    showCallRefusal(profileCallRefusal)
+                    return callOutcome
+                }
                 return .unverified(AppLocalization.string(
                     "Could not verify that workspace for this notification. Reconnect and try again."
                 ))
@@ -22991,21 +23022,16 @@ final class AppState: ObservableObject {
             // A call can have started (one from Hermes needs no tap) while
             // the checks above waited on the gateway; a notification or a
             // chat link never ends it with the switch.
-            let callRefusal: String? = sparesCalls
-                ? (target.isChatLink
-                    ? AppLocalization.string("End the call to open a chat in another profile.")
-                    : AppLocalization.string("This notification opens in the other profile when the call ends."))
-                : nil
-            if let callRefusal, isVoiceCallInProgress {
+            if let profileCallRefusal, isVoiceCallInProgress {
                 traceStage = "call in progress"
-                showCallRefusal(callRefusal)
+                showCallRefusal(profileCallRefusal)
                 return callOutcome
             }
             traceStage = "profile switch"
             guard await switchProfile(
                 to: targetProfile,
                 reusing: transitionGeneration,
-                refusingCallsWith: callRefusal
+                refusingCallsWith: profileCallRefusal
             ) else {
                 // A call that started during the switch refuses it the
                 // same way, and says so; anything else may pass on a retry.
@@ -29445,7 +29471,15 @@ final class AppState: ObservableObject {
                 return false
             }
             if let mintError {
-                errorMessage = AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: mintError))")
+                let message = AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: mintError))")
+                errorMessage = message
+                // The composer shows errorMessage only while it's locked, so
+                // a notice says it too, or the tap looks ignored: once while
+                // it's up, since the route retries the open for its window.
+                // Only V2 draws the notice.
+                if V2ShellPreference.isOn, pinSyncNotice?.message != message {
+                    showNotice(message, systemImage: "exclamationmark.circle")
+                }
                 return false
             }
         }

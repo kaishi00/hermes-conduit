@@ -359,7 +359,7 @@ struct ConduitApp: App {
                     // opens once there's no call and Conduit is on screen.
                     guard await PushNotificationService.waitForCallToEnd(
                         interval: Self.callEndRecheckInterval,
-                        isReady: { !appState.isVoiceCallInProgress && appState.isSceneActive }
+                        isReady: { appState.callWaitCanEnd }
                     ) else { return }
                 }
                 guard appState.isConnected else {

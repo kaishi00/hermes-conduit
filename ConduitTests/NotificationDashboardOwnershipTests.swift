@@ -287,6 +287,23 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
         XCTAssertNil(appState.errorMessage, "nothing stale for the composer to show later")
     }
 
+    /// A tap waiting for a call opens once there's no call and Conduit is on
+    /// screen: not during a launch that never reached the screen (a waiting
+    /// tap is restored at every launch, a background one too), and not
+    /// while Conduit is away.
+    func testCallWaitEndsOnlyWithNoCallAndConduitOnScreen() {
+        let saved = SavedDashboard(id: dashboardA, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [saved]))
+        XCTAssertFalse(appState.callWaitCanEnd, "launched, never on screen")
+        appState.handleScenePhase(.active)
+        XCTAssertTrue(appState.callWaitCanEnd)
+        appState.isNativeHermesCallActive = true
+        XCTAssertFalse(appState.callWaitCanEnd, "a call")
+        appState.isNativeHermesCallActive = false
+        appState.handleScenePhase(.background)
+        XCTAssertFalse(appState.callWaitCanEnd, "away")
+    }
+
     /// A call from Hermes on another saved dashboard still switches to open
     /// its own chat while its call runs: answering it leaves any other call.
     func testCallFromHermesOnAnotherDashboardStillSwitchesDuringItsCall() async {

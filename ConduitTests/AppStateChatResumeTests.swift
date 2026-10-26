@@ -3403,15 +3403,20 @@ final class AppStateChatResumeTests: XCTestCase {
         // one ringing in while its open waits on the gateway (its bot checks,
         // or the switch's own ticket, whether or not that ticket comes),
         // stops short of the profile switch, which would end the call, and
-        // says over the screen that it opens when the call ends. With no
-        // call, a ticket that fails says so and leaves the connection as it
-        // is.
+        // says over the screen that it opens when the call ends. So does one
+        // whose bot checks fail during the call: retried now, it could run
+        // out of time before the call ends. With no call, a ticket that
+        // fails says so and leaves the connection as it is, and a failed
+        // check is retried.
         enum CallStarts { case beforeTheTap, duringBotChecks, duringTicket, never }
-        let cases: [(CallStarts, Bool)] = [
-            (.beforeTheTap, false), (.duringBotChecks, false), (.duringTicket, false), (.duringTicket, true),
-            (.never, true),
+        enum CheckFails { case none, roster, lookup }
+        let cases: [(CallStarts, Bool, CheckFails)] = [
+            (.beforeTheTap, false, .none), (.duringBotChecks, false, .none), (.duringTicket, false, .none),
+            (.duringTicket, true, .none), (.never, true, .none),
+            (.beforeTheTap, false, .roster), (.duringBotChecks, false, .lookup), (.never, false, .roster),
+            (.never, false, .lookup),
         ]
-        for (callStarts, ticketFails) in cases {
+        for (callStarts, ticketFails, checkFails) in cases {
             let defaultSession = session("default-session")
             let appReference = WeakAppStateReference()
             let harness = makeHarness(
@@ -3430,9 +3435,13 @@ final class AppStateChatResumeTests: XCTestCase {
                     loadSlashCommands: {},
                     botRoster: { _ in
                         if callStarts == .duringBotChecks { appReference.value?.isNativeHermesCallActive = true }
+                        if checkFails == .roster { throw URLError(.timedOut) }
                         return BotRosterSnapshot(bots: [], supportsBotProtocol: false)
                     },
-                    findBotChat: { _, _ in [] }
+                    findBotChat: { _, _ in
+                        if checkFails == .lookup { throw URLError(.timedOut) }
+                        return []
+                    }
                 )
             )
             appReference.value = harness.appState
@@ -3452,19 +3461,34 @@ final class AppStateChatResumeTests: XCTestCase {
 
             let outcome = await harness.appState.openNotificationTargetOutcome(target)
 
-            let label = "call starts: \(callStarts), ticket fails: \(ticketFails)"
-            let expected: AppState.NotificationOpenOutcome = callStarts == .never ? .retry : .afterCall
+            let label = "call starts: \(callStarts), ticket fails: \(ticketFails), check fails: \(checkFails)"
+            let unverified = AppLocalization.string(
+                "Could not verify that workspace for this notification. Reconnect and try again."
+            )
+            let expected: AppState.NotificationOpenOutcome = callStarts != .never
+                ? .afterCall
+                : (checkFails == .none ? .retry : .unverified(unverified))
             XCTAssertEqual(outcome, expected, label)
             XCTAssertEqual(harness.appState.activeProfile, "default", label)
             XCTAssertEqual(harness.appState.activeSessionId, defaultSession.id, label)
             XCTAssertEqual(harness.appState.connection, connection, label)
-            if callStarts == .never {
-                XCTAssertEqual(
-                    harness.appState.errorMessage,
-                    AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: URLError(.timedOut)))"),
-                    label
-                )
+            if callStarts == .never, checkFails != .none {
+                // The route says why once its retries run out.
+                XCTAssertNil(harness.appState.errorMessage, label)
                 XCTAssertNil(harness.appState.pinSyncNotice, label)
+            } else if callStarts == .never {
+                // Said over the screen too: the composer shows its error line
+                // only while it's locked.
+                let failed = AppLocalization.string(
+                    "Could not switch workspace: \(UserFacingError.message(for: URLError(.timedOut)))"
+                )
+                XCTAssertEqual(harness.appState.errorMessage, failed, label)
+                XCTAssertEqual(harness.appState.pinSyncNotice?.message, failed, label)
+                // The route's retry fails the same way: said once while it's up.
+                let notice = harness.appState.pinSyncNotice?.id
+                let retried = await harness.appState.openNotificationTargetOutcome(target)
+                XCTAssertEqual(retried, .retry, label)
+                XCTAssertEqual(harness.appState.pinSyncNotice?.id, notice, label)
             } else {
                 XCTAssertEqual(
                     harness.appState.pinSyncNotice?.message,
