@@ -6183,14 +6183,18 @@ final class AppState: ObservableObject {
             ?? SavedDashboardMigrator.loadRegistry(defaults: defaults)
         self.savedDashboardRegistry = initialRegistry
         // A phone that was signed in before keeps project chats out of
-        // Chats, as it had them (#1317). The defaults also say so when a
-        // locked phone can't read the registry.
-        ProjectChatsInChats.settleDefault(
-            in: defaults,
-            existingInstall: !initialRegistry.dashboards.isEmpty
-                || defaults.string(forKey: Self.chatResumeServerIdentityKey) != nil
-                || defaults.string(forKey: "conduit.dashboardURL") != nil
-        )
+        // Chats, as it had them (#1317). The defaults also say so when the
+        // registry is empty. A locked phone that can't read the registry at
+        // all decides on a later launch.
+        if defaults.string(forKey: ProjectChatsInChats.deviceDefaultKey) == nil,
+           preloadedRegistry != nil || SavedDashboardRegistryStore.load() != nil {
+            ProjectChatsInChats.settleDefault(
+                in: defaults,
+                existingInstall: !initialRegistry.dashboards.isEmpty
+                    || defaults.string(forKey: Self.chatResumeServerIdentityKey) != nil
+                    || defaults.string(forKey: "conduit.dashboardURL") != nil
+            )
+        }
         self.profileAppearanceStore = profileAppearanceStore ?? ProfileAppearanceStore(defaults: defaults)
         self.sessionPresentationCache = sessionPresentationCache
         self.offlineChatCache = offlineChatCache ?? Self.makeDefaultOfflineChatCache()
