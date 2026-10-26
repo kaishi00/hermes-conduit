@@ -1954,7 +1954,7 @@ the framing and block messages models read, Settings captions
 - Memory guard and planner: `notifier/room_memory.py`, `notifier/room_planner.py`
 - Mailbox: `notifier/mailbox/src/server.mjs`, `notifier/mailbox/README.md` (protocol v1, self-hosting), `notifier/mailbox/deploy/compose.yaml`
 - App, today's rooms (a member from another installation has target kind peer): `Conduit/Services/GroupChatModels.swift` (GroupMember.target, members(namedBy:)), `Conduit/Views/GroupChatView.swift`, `Conduit/Services/HermesClient.swift` (groups.*)
-- App, on the `linked-rooms` branch only, so not in backticks: none yet
+- App, on the `linked-rooms` branch only, so not in backticks: none yet. The branch starts from main once this entry is there, and each of its PRs adds the paths it makes here
 - Tests: `notifier/tests/test_room_rules.py`, `notifier/tests/test_room_choices.py`, `notifier/tests/test_room_memory.py`, `notifier/mailbox/test/server.e2e.test.mjs`
 
 **Rulings**
