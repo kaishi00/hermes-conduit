@@ -3380,6 +3380,79 @@ final class AppStateChatResumeTests: XCTestCase {
         }
     }
 
+    func testCallFromHermesForAnotherProfileStillSwitchesDuringItsCall() async {
+        // A call's own open (answered, or its Talk button) runs while its
+        // CallKit call does, and switches, unlike a notification or a link.
+        let workSession = session("work-session", profile: "work")
+        let fixture = makeCrossProfileCallFixture(
+            workCatalog: { return [workSession] },
+            workMessages: []
+        )
+        defer { PushNotificationService.shared.clearPendingTarget(fixture.target) }
+        fixture.appState.isNativeHermesCallActive = true
+
+        let opened = await fixture.appState.openNotificationTarget(fixture.target)
+
+        XCTAssertTrue(opened, "A call for another profile opens its chat during its call")
+        XCTAssertEqual(fixture.appState.activeProfile, "work")
+        XCTAssertEqual(fixture.appState.activeSessionId, workSession.id)
+    }
+
+    func testNotificationStopsBeforeTheProfileSwitchDuringACall() async {
+        // A notification from another profile, tapped during a call or with
+        // one ringing in while its open waits on the gateway (its bot checks,
+        // or the switch's own ticket), stops short of the profile switch,
+        // which would end the call.
+        for duringTicket in [false, true] {
+            let defaultSession = session("default-session")
+            let appReference = WeakAppStateReference()
+            let harness = makeHarness(
+                lifecycleOperations: ChatResumeLifecycleOperations(
+                    connectClient: { _ in },
+                    loadCatalog: { _, _ in [defaultSession] },
+                    mintTicket: { _ in
+                        if duringTicket { appReference.value?.isNativeHermesCallActive = true }
+                        return "profile-ticket"
+                    },
+                    refreshContext: { _, _ in },
+                    loadProfiles: {},
+                    loadBusyInputMode: { _ in },
+                    loadProfileDisplayPreferences: {},
+                    loadSlashCommands: {},
+                    botRoster: { _ in
+                        if !duringTicket { appReference.value?.isNativeHermesCallActive = true }
+                        return BotRosterSnapshot(bots: [], supportsBotProtocol: false)
+                    },
+                    findBotChat: { _, _ in [] }
+                )
+            )
+            appReference.value = harness.appState
+            let connection = HermesConnection(baseUrl: "https://127.0.0.1:1", ticket: "saved-ticket")
+            harness.appState.connection = connection
+            harness.appState.client = HermesClient(connection: connection, profile: "default")
+            harness.appState.isConnected = true
+            harness.appState.showLogin = false
+            harness.appState.sessions = [defaultSession]
+            harness.appState.activeSessionId = defaultSession.id
+            let target = ConduitNotificationTarget(
+                profile: "work",
+                sessionId: "work-session",
+                type: "response.ready"
+            )
+
+            let outcome = await harness.appState.openNotificationTargetOutcome(target)
+
+            XCTAssertEqual(outcome, .failed, "call started during the ticket: \(duringTicket)")
+            XCTAssertEqual(harness.appState.activeProfile, "default")
+            XCTAssertEqual(harness.appState.activeSessionId, defaultSession.id)
+            XCTAssertEqual(harness.appState.connection, connection)
+            XCTAssertEqual(
+                harness.appState.errorMessage,
+                AppLocalization.string("End the call to open this notification in another profile.")
+            )
+        }
+    }
+
     /// Conduit on the default profile with a call answered for a chat on the
     /// work profile, routed the way an on-screen answer is: the pending
     /// target keeps the switch's own sync from resuming a chat.

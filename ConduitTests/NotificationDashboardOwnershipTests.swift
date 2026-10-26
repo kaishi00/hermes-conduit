@@ -263,6 +263,49 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
         XCTAssertEqual(outcome, .retry)
         XCTAssertNil(appState.errorMessage)
     }
+
+    /// A notification from another saved dashboard tapped during a call
+    /// stays on the dashboard in use: the switch would end the call, so it
+    /// says to end the call first, as a chat link does.
+    func testPushFromAnotherDashboardDuringACallSaysToEndItFirst() async {
+        let savedA = SavedDashboard(id: dashboardA, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
+        let savedB = SavedDashboard(id: dashboardB, label: "VPS", normalizedURL: "https://hermes.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
+        appState.isNativeHermesCallActive = true
+
+        let outcome = await appState.openNotificationTargetOutcome(decisionTarget(dashboardID: dashboardB))
+
+        XCTAssertEqual(outcome, .failed, "the route doesn't try it again")
+        XCTAssertEqual(appState.activeDashboardID, dashboardA)
+        XCTAssertEqual(
+            appState.errorMessage,
+            AppLocalization.string("End the call to open this notification in another workspace.")
+        )
+    }
+
+    /// A call from Hermes on another saved dashboard still switches to open
+    /// its own chat while its call runs: answering it leaves any other call.
+    func testCallFromHermesOnAnotherDashboardStillSwitchesDuringItsCall() async {
+        let savedA = SavedDashboard(id: dashboardA, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
+        let savedB = SavedDashboard(id: dashboardB, label: "VPS", normalizedURL: "https://hermes.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
+        appState.isNativeHermesCallActive = true
+        let target = ConduitNotificationTarget(
+            profile: "default",
+            sessionId: "runtime-1",
+            dashboardID: dashboardB,
+            type: HermesCallRequest.type,
+            call: HermesCallRequest(id: "", kind: .done, title: "Deploy", sessionIDs: ["runtime-1"])
+        )
+
+        _ = await appState.openNotificationTargetOutcome(target)
+
+        XCTAssertEqual(appState.activeDashboardID, dashboardB, "the switch went ahead")
+        XCTAssertEqual(
+            appState.errorMessage,
+            AppLocalization.string("Could not connect to that dashboard to open this notification.")
+        )
+    }
 }
 
 // MARK: - Relay gateway discriminator (decision routing)

@@ -22762,6 +22762,12 @@ final class AppState: ObservableObject {
         // Where an open for a call from Hermes stopped (#449).
         var traceStage = "dashboard check"
         defer { HermesCallTrace.shared.note("Chat open ended at: \(traceStage)") }
+        // Switching dashboard or profile ends a call that's running, so an
+        // open that needs a switch stops while one runs. A call from Hermes
+        // opening its own chat (answered, or its notification tapped, a
+        // missed call's included) still switches: talking to Hermes leaves
+        // the other call.
+        let sparesCalls = target.call == nil
         // Dashboard ownership gate (#148 / B3): a push from dashboard A is
         // never processed against active dashboard B, even when profile,
         // session, and request ids all collide. A push belonging to another
@@ -22784,10 +22790,13 @@ final class AppState: ObservableObject {
             }
         case .switchFirst(let dashboardID):
             traceStage = "dashboard check (switching to another saved dashboard)"
-            // A chat link routed before a call started can reach here after
-            // it did: switching dashboards would tear that call down.
-            if target.isChatLink, isVoiceCallInProgress {
-                errorMessage = AppLocalization.string("End the call to open a chat in another workspace.")
+            // A notification tapped during a call, or a chat link routed
+            // before one started, stops here: switching dashboards would
+            // tear that call down.
+            if sparesCalls, isVoiceCallInProgress {
+                errorMessage = target.isChatLink
+                    ? AppLocalization.string("End the call to open a chat in another workspace.")
+                    : AppLocalization.string("End the call to open this notification in another workspace.")
                 return .failed
             }
             await switchDashboard(to: dashboardID)
@@ -22965,22 +22974,25 @@ final class AppState: ObservableObject {
         }
         if let targetProfile, targetProfile != activeProfile {
             // A call can have started (one from Hermes needs no tap) while
-            // the checks above waited on the gateway; a chat link never ends
-            // it with the switch.
-            if target.isChatLink, isVoiceCallInProgress {
+            // the checks above waited on the gateway; a notification or a
+            // chat link never ends it with the switch.
+            let callRefusal = target.isChatLink
+                ? AppLocalization.string("End the call to open a chat in another profile.")
+                : AppLocalization.string("End the call to open this notification in another profile.")
+            if sparesCalls, isVoiceCallInProgress {
                 traceStage = "call in progress"
-                errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
+                errorMessage = callRefusal
                 return .failed
             }
             traceStage = "profile switch"
             guard await switchProfile(
                 to: targetProfile,
                 reusing: transitionGeneration,
-                sparingCalls: target.isChatLink
+                refusingCallsWith: sparesCalls ? callRefusal : nil
             ) else {
                 // A call that started during the switch refuses it the
                 // same way, and says so; anything else may pass on a retry.
-                return target.isChatLink && isVoiceCallInProgress ? .failed : .retry
+                return sparesCalls && isVoiceCallInProgress ? .failed : .retry
             }
         }
         guard notificationOpenAttemptIsCurrent(
@@ -29305,7 +29317,7 @@ final class AppState: ObservableObject {
     private func switchProfile(
         to profile: String,
         reusing viewportTransitionGeneration: UInt64?,
-        sparingCalls: Bool = false,
+        refusingCallsWith callRefusal: String? = nil,
         widgetLease: WidgetLaunchLease? = nil
     ) async -> Bool {
         let target = profile.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -29313,11 +29325,12 @@ final class AppState: ObservableObject {
             return false
         }
         guard !isProfileSwitching else { return false }
-        // A switch that spares calls (a chat link's) mints its ticket before
-        // anything changes, so nothing waits between its call check and the
-        // voice teardown below.
+        // A switch that spares calls (a notification's or a chat link's)
+        // mints its ticket before anything changes, so nothing waits between
+        // its call check and the voice teardown below; it refuses while a
+        // call runs, saying `callRefusal`.
         var sparedCallTicket: String?
-        if sparingCalls {
+        if let callRefusal {
             var mintError: Error?
             do {
                 sparedCallTicket = try await mintChatResumeTicket(for: savedConnection)
@@ -29342,7 +29355,7 @@ final class AppState: ObservableObject {
                 return false
             }
             guard !isVoiceCallInProgress else {
-                errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
+                errorMessage = callRefusal
                 return false
             }
         }

@@ -346031,6 +346031,170 @@
           }
         }
       }
+    },
+    "End the call to open this notification in another workspace." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beende den Anruf, um diese Mitteilung in einem anderen Arbeitsbereich zu öffnen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finaliza la llamada para abrir esta notificación en otro espacio de trabajo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminez l’appel pour ouvrir cette notification dans un autre espace de travail."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Akhiri panggilan untuk membuka pemberitahuan ini di ruang kerja lain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termina la chiamata per aprire questa notifica in un altro spazio di lavoro."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のワークスペースでこの通知を開くには、通話を終了してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 작업 공간에서 이 알림을 열려면 통화를 종료하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zakończ połączenie, aby otworzyć to powiadomienie w innym obszarze roboczym."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encerre a chamada para abrir esta notificação em outro espaço de trabalho."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершите звонок, чтобы открыть это уведомление в другой рабочей области."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu bildirimi başka bir çalışma alanında açmak için aramayı bitirin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先结束通话，再打开其他工作区中的这条通知。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請先結束通話，再開啟其他工作區中的這則通知。"
+          }
+        }
+      }
+    },
+    "End the call to open this notification in another profile." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beende den Anruf, um diese Mitteilung in einem anderen Profil zu öffnen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finaliza la llamada para abrir esta notificación en otro perfil."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Raccrochez pour ouvrir cette notification dans un autre profil."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Akhiri panggilan untuk membuka pemberitahuan ini di profil lain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termina la chiamata per aprire questa notifica in un altro profilo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のプロファイルでこの通知を開くには、通話を終了してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 프로필에서 이 알림을 열려면 통화를 종료하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zakończ połączenie, aby otworzyć to powiadomienie w innym profilu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encerre a chamada para abrir esta notificação em outro perfil."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершите звонок, чтобы открыть это уведомление в другом профиле."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu bildirimi başka bir profilde açmak için aramayı bitirin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先结束通话，再打开其他档案中的这条通知。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請先結束通話，再開啟其他設定檔中的這則通知。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
