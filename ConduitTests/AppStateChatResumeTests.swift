@@ -5776,6 +5776,34 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.cacheClearSpy.count, 1)
     }
 
+    func testReconnectStopsWaitingForAPredictiveFollowUp() {
+        let harness = makeHarness()
+        XCTAssertFalse(harness.appState.prepareChatResumeForConnection(to: "https://one.example"))
+        harness.appState.activeSessionId = "s1"
+        harness.appState.predictiveFollowUpTurn = ("s1", "Worth a check.", nil)
+        harness.appState.predictiveFollowUpQueued = true
+        harness.appState.predictiveFollowUpTurnsAhead = 2
+        harness.appState.predictiveFollowUpQueuedAt = Date()
+        harness.appState.predictiveFollowUpSending = true
+        harness.appState.predictiveFollowUpAheadEnded = true
+        harness.appState.predictiveFollowUpUnreadMessages = [7]
+        let send = harness.appState.predictiveFollowUpSend
+
+        XCTAssertFalse(harness.appState.prepareChatResumeForConnection(to: "https://one.example"))
+        XCTAssertNotEqual(harness.appState.predictiveFollowUpSend, send, "a send still on its way is not applied")
+        XCTAssertFalse(harness.appState.predictiveFollowUpSending)
+        XCTAssertFalse(harness.appState.predictiveFollowUpAheadEnded)
+        XCTAssertTrue(harness.appState.predictiveFollowUpUnreadMessages.isEmpty)
+        XCTAssertNil(harness.appState.predictiveFollowUpTurn)
+        XCTAssertFalse(harness.appState.predictiveFollowUpQueued)
+        XCTAssertEqual(harness.appState.predictiveFollowUpTurnsAhead, 0)
+        XCTAssertNil(harness.appState.predictiveFollowUpQueuedAt)
+
+        harness.appState.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        harness.appState.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertTrue(harness.appState.predictive.followUpReasons.isEmpty, "no reply is tagged after the reconnect")
+    }
+
     func testMissingSavedSessionDirectSyncRestoresSavedViewport() async throws {
         var requests: [String] = []
         let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(

@@ -68,6 +68,29 @@ extension AppState {
             predictiveFollowUpQueued = false
             if predictiveFollowUpSending { predictiveFollowUpAheadEnded = true }
             predictiveFollowUpTurn = (sessionId, turn.why, messages.last?.id)
+        } else if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId,
+                  let queuedAt = predictiveFollowUpQueuedAt,
+                  Self.messagesSentAhead(after: turn.after, before: queuedAt, noted: predictiveFollowUpUnreadMessages,
+                                         in: messages) > predictiveFollowUpTurnsAhead {
+            // A message someone sent before the hidden prompt was queued
+            // (another client's, ahead of it) wrote this reply, not Hermes on
+            // its own: the follow-up's turn is still to come, up to a few
+            // turns on. One sent later runs after the follow-up. `after`
+            // stays put: each such message's reply is counted off once, in
+            // whatever order its row and the replies arrived.
+            // A turn that ends in a notice counts too: it answered their
+            // message, not the hidden prompt.
+            predictiveFollowUpTurnsAhead += 1
+            if predictiveFollowUpTurnsAhead > Self.predictiveFollowUpMaximumTurnsAhead {
+                predictiveFollowUpTurn = nil
+            }
+        } else if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId,
+                  predictiveFollowUpUnreadMessages.contains(where: { row in !messages.contains { $0.rowId == row } })
+                    || turn.after.map({ id in !messages.contains { $0.id == id } }) == true {
+            // Someone sent a message elsewhere that the chat hasn't read yet,
+            // or the row the follow-up was sent after is gone (a reload):
+            // whose reply this is can't be told, so nothing is tagged.
+            predictiveFollowUpTurn = nil
         } else if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId {
             predictiveFollowUpTurn = nil
             // Only a reply the turn wrote: a [SILENT] one leaves no row, and
@@ -84,6 +107,50 @@ extension AppState {
         updatePredictiveScreen(fresh: isReply)
     }
 
+    /// Turns someone else's message can run ahead of a queued follow-up
+    /// before Conduit stops waiting for its reply.
+    static let predictiveFollowUpMaximumTurnsAhead = 3
+
+    /// Messages people sent before `queuedAt` that sit after `after`, or
+    /// that another client sent while the follow-up waited (`noted` row
+    /// ids, read in before the turn it waited behind ended): each runs
+    /// ahead of the hidden prompt, which leaves no row. A row `after` no
+    /// longer names (the chat reloaded) proves nothing.
+    static func messagesSentAhead(after id: String?, before queuedAt: Date, noted: Set<Int> = [],
+                                  in messages: [ChatMessage]) -> Int {
+        var start = 0
+        if let id {
+            start = messages.lastIndex(where: { $0.id == id }).map { $0 + 1 } ?? messages.count
+        }
+        return messages.indices.filter { index in
+            let message = messages[index]
+            guard index >= start || message.rowId.map(noted.contains) == true,
+                  message.role == .user,
+                  let sent = MessageTimestampFormatter.date(from: message.timestamp) else { return false }
+            return sent <= queuedAt
+        }.count
+    }
+
+    /// Stops watching for the follow-up's reply: nothing is tagged or held.
+    func stopWaitingForPredictiveFollowUp() {
+        predictiveFollowUpTurn = nil
+        predictiveFollowUpQueued = false
+        predictiveFollowUpSending = false
+        predictiveFollowUpAheadEnded = false
+        predictiveFollowUpTurnsAhead = 0
+        predictiveFollowUpQueuedAt = nil
+        predictiveFollowUpUnreadMessages = []
+        predictiveFollowUpSend &+= 1
+    }
+
+    /// Another client sent a message in the chat Hermes is following up
+    /// in: until its row is read, a reply ending may be its.
+    func notePredictiveFollowUpMessageElsewhere(sessionId: String, rowId: Int?) {
+        guard predictiveFollowUpTurn?.sessionID == sessionId else { return }
+        // No row id: never found, so the follow-up's tag stops for good.
+        predictiveFollowUpUnreadMessages.insert(rowId ?? -1)
+    }
+
     /// A turn failed or was interrupted: a follow-up it carried is over,
     /// with nothing to tag.
     func predictiveTurnEnded(sessionId: String) {
@@ -93,6 +160,14 @@ extension AppState {
                 predictiveFollowUpQueued = false
                 if predictiveFollowUpSending { predictiveFollowUpAheadEnded = true }
                 predictiveFollowUpTurn?.after = messages.last?.id
+            } else if let turn = predictiveFollowUpTurn, let queuedAt = predictiveFollowUpQueuedAt,
+                      Self.messagesSentAhead(after: turn.after, before: queuedAt, noted: predictiveFollowUpUnreadMessages,
+                                             in: messages) > predictiveFollowUpTurnsAhead {
+                // A message queued ahead of it failed: the follow-up still runs.
+                predictiveFollowUpTurnsAhead += 1
+                if predictiveFollowUpTurnsAhead > Self.predictiveFollowUpMaximumTurnsAhead {
+                    predictiveFollowUpTurn = nil
+                }
             } else {
                 predictiveFollowUpTurn = nil
             }
@@ -236,7 +311,10 @@ extension AppState {
             predictiveFollowUp = PredictiveFollowUpState(anchor: anchor, spentOn: spent)
         }
         guard !predictiveFollowUp.stopped, predictiveFollowUp.checks < Predictive.maximumChecks,
-              predictiveFollowUp.spentOn != predictiveUserMessageKey(anchor.sessionID) else { return }
+              predictiveFollowUp.spentOn != predictiveUserMessageKey(anchor.sessionID),
+              // A follow-up still waiting its turn here: another can't be
+              // told from it.
+              predictiveFollowUpTurn?.sessionID != anchor.sessionID else { return }
         let due = predictiveFollowUp.nextCheck
             ?? predictiveFollowUp.idleSince.addingTimeInterval(TimeInterval(Predictive.followUpDelay()))
         predictiveFollowUpTask?.cancel()
@@ -310,7 +388,9 @@ extension AppState {
     /// The hidden turn: Hermes sees it, the chat doesn't show it, and its
     /// reply wears "Hermes followed up".
     private func sendPredictiveFollowUp(_ nudge: String, why: String, sessionID: String, generation: Int) async {
-        guard predictiveGeneration == generation else { return }
+        // One follow-up waiting in this chat at a time: a second would
+        // restart the count of messages queued ahead of the first.
+        guard predictiveGeneration == generation, predictiveFollowUpTurn?.sessionID != sessionID else { return }
         // Still watched: the chat on screen, not covered, Conduit in front.
         guard let client, activeSessionId == sessionID, !isBusy, !turnState.isRunning,
               isSceneActive, !showSidebar, activeRoomSurface == nil, composerChatOnScreen == .live(sessionID),
@@ -322,6 +402,12 @@ extension AppState {
             return
         }
         predictiveFollowUpTurn = (sessionID, why, messages.last?.id)
+        predictiveFollowUpTurnsAhead = 0
+        predictiveFollowUpQueuedAt = nil
+        predictiveFollowUpUnreadMessages = []
+        predictiveFollowUpSend &+= 1
+        let send = predictiveFollowUpSend
+        let sentAt = Date()
         predictiveFollowUpSending = true
         predictiveFollowUpAheadEnded = false
         predictive.clear()
@@ -330,17 +416,21 @@ extension AppState {
         predictiveRepliesAsked = nil
         do {
             let outcome = try await client.sendPrompt(sessionID, text: nudge, hidden: true)
-            // Forgotten meanwhile (sign-out): nothing of it is kept.
-            guard predictiveGeneration == generation else { return }
+            // Forgotten meanwhile (sign-out), or stopped waiting (a
+            // reconnect) with maybe another follow-up sent since: nothing
+            // of it is kept.
+            guard predictiveGeneration == generation, predictiveFollowUpSend == send else { return }
             predictiveFollowUpSending = false
             // A turn running meanwhile took it in: there's no reply of its
             // own to mark. A queued one runs as its own next turn.
             if outcome == .steered || outcome == .redirected { predictiveFollowUpTurn = nil }
             // Queued behind a turn that already ended on the way: the next
             // turn to end is Hermes'.
-            predictiveFollowUpQueued = outcome == .queued && !predictiveFollowUpAheadEnded
+            let queued = outcome == .queued && predictiveFollowUpTurn != nil
+            predictiveFollowUpQueued = queued && !predictiveFollowUpAheadEnded
+            predictiveFollowUpQueuedAt = queued ? sentAt : nil
         } catch {
-            guard predictiveGeneration == generation else { return }
+            guard predictiveGeneration == generation, predictiveFollowUpSend == send else { return }
             predictiveFollowUpSending = false
             // Nothing reached Hermes (a gateway without hidden prompts stops
             // the checks for good): the user's message keeps its follow-up.

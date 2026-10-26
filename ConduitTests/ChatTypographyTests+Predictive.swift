@@ -199,6 +199,31 @@ extension ChatTypographyTests {
         XCTAssertNil(state.predictiveAnchor)
     }
 
+    /// While a follow-up waits its turn in a chat, no second one is
+    /// checked for there: it would restart the count of messages ahead.
+    @MainActor
+    func testNoSecondFollowUpIsCheckedWhileOneWaits() throws {
+        UserDefaults.standard.set(true, forKey: Predictive.followUpKey)
+        defer { UserDefaults.standard.removeObject(forKey: Predictive.followUpKey) }
+        let defaults = makeScratchDefaults("PredictiveSecondFollowUpTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.predictiveSender = { _ in [:] }
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        let anchor = try XCTUnwrap(state.predictiveAnchor)
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a0")
+        state.startPredictiveFollowUpClock(for: anchor)
+        XCTAssertNil(state.predictiveFollowUpTask)
+        state.predictiveFollowUpTurn = nil
+        state.startPredictiveFollowUpClock(for: anchor)
+        XCTAssertNotNil(state.predictiveFollowUpTask, "the clock runs once nothing waits")
+        state.stopPredictiveFollowUpClock()
+    }
+
     /// A turn ending while the hidden prompt is still on its way is the one
     /// ahead: it isn't tagged, and the follow-up isn't counted as queued
     /// behind another.
@@ -220,6 +245,280 @@ extension ChatTypographyTests {
         XCTAssertTrue(state.predictive.followUpReasons.isEmpty, "the turn ahead isn't Hermes following up")
         XCTAssertEqual(state.predictiveFollowUpTurn?.after, "a2")
         XCTAssertTrue(state.predictiveFollowUpAheadEnded)
+    }
+
+    /// A reply to a message someone sent, queued ahead of the hidden
+    /// prompt, isn't Hermes following up: the tag waits for the reply after.
+    @MainActor
+    func testAQueuedFollowUpTwoTurnsBehindTagsItsOwnReply() {
+        let defaults = makeScratchDefaults("PredictiveTwoAheadTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.activeSessionId = "s1"
+        let queuedAt = Date()
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Working on it.", timestamp: "now")]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.predictiveFollowUpQueued = true
+        state.predictiveFollowUpQueuedAt = queuedAt
+
+        state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "Done.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        state.messages.append(ChatMessage(id: "u1", role: .user, content: "And the other one?",
+                                          timestamp: Self.isoTimestamp(queuedAt.addingTimeInterval(-5))))
+        state.messages.append(ChatMessage(id: "a3", role: .assistant, content: "That too.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertTrue(state.predictive.followUpReasons.isEmpty, "a reply to someone's message isn't a follow-up")
+        XCTAssertEqual(state.predictiveFollowUpTurn?.after, "a2")
+        XCTAssertEqual(state.predictiveFollowUpTurnsAhead, 1)
+
+        state.messages.append(ChatMessage(id: "a4", role: .assistant, content: "One more thing.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertEqual(state.predictive.followUpReasons["a4"], "Worth a check.")
+        XCTAssertNil(state.predictiveFollowUpTurn)
+    }
+
+    /// A follow-up whose reply was never seen to end stops waiting after a
+    /// few turns of other messages.
+    @MainActor
+    func testAFollowUpStopsWaitingAfterAFewTurnsOfOtherMessages() {
+        let defaults = makeScratchDefaults("PredictiveTurnsAheadTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.activeSessionId = "s1"
+        let queuedAt = Date()
+        state.messages = [ChatMessage(id: "a0", role: .assistant, content: "Done.", timestamp: "now")]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a0")
+        state.predictiveFollowUpQueuedAt = queuedAt
+        for turn in 1...(AppState.predictiveFollowUpMaximumTurnsAhead + 1) {
+            state.messages.append(ChatMessage(id: "u\(turn)", role: .user, content: "Next?",
+                                              timestamp: Self.isoTimestamp(queuedAt.addingTimeInterval(-10))))
+            state.messages.append(ChatMessage(id: "a\(turn)", role: .assistant, content: "Sure.", timestamp: "now"))
+            state.predictiveTurnSettled(sessionId: "s1")
+        }
+        XCTAssertNil(state.predictiveFollowUpTurn)
+        XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
+    }
+
+    /// A message sent after the hidden prompt runs after it: the reply
+    /// that ends first is still Hermes following up.
+    @MainActor
+    func testAMessageSentAfterTheFollowUpDoesNotMoveItsTag() {
+        for queued in [false, true] {
+            let defaults = makeScratchDefaults("PredictiveSentAfterTests\(queued)")
+            let state = AppState(
+                defaults: defaults,
+                loadSavedConnection: false,
+                sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+            )
+            let sentAt = Date()
+            state.activeSessionId = "s1"
+            state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+            state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+            // Queued behind a turn that has since ended, or run at once.
+            state.predictiveFollowUpQueuedAt = queued ? sentAt : nil
+            state.messages.append(ChatMessage(id: "u1", role: .user, content: "Also, the list?",
+                                              timestamp: Self.isoTimestamp(sentAt.addingTimeInterval(2))))
+            state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
+            state.predictiveTurnSettled(sessionId: "s1")
+            XCTAssertEqual(state.predictive.followUpReasons["a2"], "Worth a check.", "queued: \(queued)")
+            XCTAssertNil(state.predictiveFollowUpTurn)
+        }
+    }
+
+    /// A row the follow-up was sent after that's gone from the chat (a
+    /// reload) proves nothing about who wrote the reply, so it's not tagged.
+    @MainActor
+    func testAMissingStartingRowFindsNoMessageAhead() {
+        let queuedAt = Date()
+        let messages = [
+            ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: Self.isoTimestamp(queuedAt.addingTimeInterval(-60))),
+            ChatMessage(id: "a1", role: .assistant, content: "Hello.", timestamp: "now"),
+        ]
+        XCTAssertEqual(AppState.messagesSentAhead(after: "gone", before: queuedAt, in: messages), 0)
+        XCTAssertEqual(AppState.messagesSentAhead(after: nil, before: queuedAt, in: messages), 1)
+        XCTAssertEqual(AppState.messagesSentAhead(after: "u1", before: queuedAt, in: messages), 0)
+
+        // Nor does the reply after it get the tag.
+        let defaults = makeScratchDefaults("PredictiveMissingRowTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.activeSessionId = "s1"
+        state.messages = messages
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "gone")
+        state.predictiveFollowUpQueuedAt = queuedAt
+        state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
+        XCTAssertNil(state.predictiveFollowUpTurn)
+    }
+
+    /// Two messages queued ahead whose rows land together, before either
+    /// reply: both replies are theirs, and the one after is Hermes'.
+    @MainActor
+    func testTwoMessagesQueuedAheadAreBothCountedOff() {
+        let defaults = makeScratchDefaults("PredictiveTwoRowsAheadTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let queuedAt = Date()
+        let before = Self.isoTimestamp(queuedAt.addingTimeInterval(-5))
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.predictiveFollowUpQueuedAt = queuedAt
+        state.messages.append(ChatMessage(id: "u1", role: .user, content: "First?", timestamp: before))
+        state.messages.append(ChatMessage(id: "u2", role: .user, content: "Second?", timestamp: before))
+        for reply in ["a2", "a3"] {
+            state.messages.append(ChatMessage(id: reply, role: .assistant, content: "Sure.", timestamp: "now"))
+            state.predictiveTurnSettled(sessionId: "s1")
+        }
+        XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
+        state.messages.append(ChatMessage(id: "a4", role: .assistant, content: "One more thing.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertEqual(state.predictive.followUpReasons["a4"], "Worth a check.")
+    }
+
+    /// A message another client sent that the chat hasn't read yet: the
+    /// reply ending next may be its, so nothing is tagged. Once its row is
+    /// read and runs after the follow-up, the follow-up's reply is tagged.
+    @MainActor
+    func testAMessageSentElsewhereAndNotYetReadStopsTheTag() {
+        for read in [false, true] {
+            let defaults = makeScratchDefaults("PredictiveElsewhereTests\(read)")
+            let state = AppState(
+                defaults: defaults,
+                loadSavedConnection: false,
+                sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+            )
+            let sentAt = Date()
+            state.activeSessionId = "s1"
+            state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+            state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+            state.predictiveFollowUpQueuedAt = sentAt
+            state.handleStreamEvent(.userMessage(sessionId: "s1", rowId: 42, text: "From the desktop", origin: nil))
+            if read {
+                state.messages.append(ChatMessage(id: "u1", role: .user, content: "From the desktop",
+                                                  timestamp: Self.isoTimestamp(sentAt.addingTimeInterval(2)), rowId: 42))
+            }
+            state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
+            state.predictiveTurnSettled(sessionId: "s1")
+            XCTAssertEqual(state.predictive.followUpReasons["a2"], read ? "Worth a check." : nil, "read: \(read)")
+            XCTAssertNil(state.predictiveFollowUpTurn)
+        }
+    }
+
+    /// A message another client queued ahead of the follow-up, read in
+    /// before the turn the follow-up waited behind ended: its reply still
+    /// isn't tagged, and the one after is.
+    @MainActor
+    func testAMessageReadInBeforeTheTurnAheadEndsIsStillCountedOff() {
+        let defaults = makeScratchDefaults("PredictiveReadEarlyTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let queuedAt = Date()
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Working on it.", timestamp: "now")]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.predictiveFollowUpQueued = true
+        state.predictiveFollowUpQueuedAt = queuedAt
+        state.handleStreamEvent(.userMessage(sessionId: "s1", rowId: 7, text: "And the other one?", origin: nil))
+        state.messages.append(ChatMessage(id: "u1", role: .user, content: "And the other one?",
+                                          timestamp: Self.isoTimestamp(queuedAt.addingTimeInterval(-5)), rowId: 7))
+        state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "Done.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        state.messages.append(ChatMessage(id: "a3", role: .assistant, content: "That too.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
+        state.messages.append(ChatMessage(id: "a4", role: .assistant, content: "One more thing.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertEqual(state.predictive.followUpReasons["a4"], "Worth a check.")
+    }
+
+    /// This device's own message, announced back to it, isn't someone
+    /// else's: the follow-up's reply is still tagged.
+    @MainActor
+    func testThisDevicesOwnMessageAnnouncedBackKeepsTheTag() {
+        let defaults = makeScratchDefaults("PredictiveOwnEchoTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let sentAt = Date()
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.predictiveFollowUpQueuedAt = sentAt
+        state.messages.append(ChatMessage(id: "u1", role: .user, content: "Also, the list?",
+                                          timestamp: Self.isoTimestamp(sentAt.addingTimeInterval(2))))
+        state.handleStreamEvent(.userMessage(sessionId: "s1", rowId: 42, text: "Also, the list?", origin: nil))
+        XCTAssertTrue(state.predictiveFollowUpUnreadMessages.isEmpty)
+        state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertEqual(state.predictive.followUpReasons["a2"], "Worth a check.")
+    }
+
+    /// Someone else sending the same words as this device's last message,
+    /// already stored under its own row: still someone else's.
+    @MainActor
+    func testTheSameWordsSentElsewhereAreStillSomeoneElses() {
+        let defaults = makeScratchDefaults("PredictiveSameWordsTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.activeSessionId = "s1"
+        state.messages = [
+            ChatMessage(id: "u1", role: .user, content: "Thanks!", timestamp: "now", rowId: 41),
+            ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now"),
+        ]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.predictiveFollowUpQueuedAt = Date()
+        state.handleStreamEvent(.userMessage(sessionId: "s1", rowId: 42, text: "Thanks!", origin: nil))
+        XCTAssertEqual(state.predictiveFollowUpUnreadMessages, [42])
+    }
+
+    /// A message queued ahead of the follow-up whose turn fails: the
+    /// follow-up still runs, and its reply is tagged.
+    @MainActor
+    func testAFailedTurnQueuedAheadKeepsTheFollowUp() {
+        let defaults = makeScratchDefaults("PredictiveAheadFailedTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let queuedAt = Date()
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.predictiveFollowUpQueuedAt = queuedAt
+        state.messages.append(ChatMessage(id: "u1", role: .user, content: "First?",
+                                          timestamp: Self.isoTimestamp(queuedAt.addingTimeInterval(-5))))
+        state.predictiveTurnEnded(sessionId: "s1")
+        XCTAssertNotNil(state.predictiveFollowUpTurn)
+        state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertEqual(state.predictive.followUpReasons["a2"], "Worth a check.")
+    }
+
+    private static func isoTimestamp(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
     }
 
     @MainActor

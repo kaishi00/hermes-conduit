@@ -8,7 +8,7 @@
 //  diagnostics, and slow-launch diagnostics (MXDiagnosticPayload). Kept on
 //  this device as the payloads' own JSON, newest few weeks only, so a
 //  battery or data question about a real day of use can be answered with
-//  numbers. Settings > Gateway > Diagnostics & logs shares them as one
+//  numbers. Settings > Connection > Diagnostics & logs shares them as one
 //  file; nothing is uploaded.
 //
 //  The summary is a diagnostic log, English only like the connection

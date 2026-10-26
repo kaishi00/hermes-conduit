@@ -15,7 +15,7 @@ struct GatewayDiagnosticsSheet: View {
     /// The report copied last, so "Copied" clears once a newer step lands.
     @State private var copiedTimelineReport: String?
     @State private var confirmingRestart = false
-    /// Pushed inside Settings > Gateway rather than shown as its own sheet.
+    /// Pushed inside Settings > Connection rather than shown as its own sheet.
     var embedded = false
 
     var body: some View {

@@ -2353,6 +2353,19 @@ final class AppState: ObservableObject {
     /// A turn ended while the hidden prompt was on its way: when it comes
     /// back queued, it was queued behind that one.
     var predictiveFollowUpAheadEnded = false
+    /// Turns of messages sent before the hidden prompt was queued that
+    /// ran ahead of it, so a reply Conduit never sees end is stopped
+    /// waiting for.
+    var predictiveFollowUpTurnsAhead = 0
+    /// When the hidden prompt was sent, if Hermes queued it: only a message
+    /// sent before then can run ahead of it.
+    var predictiveFollowUpQueuedAt: Date?
+    /// Row ids of messages other clients sent while the follow-up waits;
+    /// a reply ending before one is read can't be told apart.
+    var predictiveFollowUpUnreadMessages: Set<Int> = []
+    /// Bumped by each follow-up sent and each stop: a send that returns
+    /// after either leaves the follow-up waiting now as it is.
+    var predictiveFollowUpSend = 0
     /// When the last reply settled here, so a follow-up check can say how
     /// long ago without reading timestamps.
     var predictiveReplyEnded: (anchor: PredictiveStore.Anchor, at: Date)?
@@ -10168,10 +10181,7 @@ final class AppState: ObservableObject {
         predictiveRepliesAsked = nil
         predictiveDraftAsked = nil
         predictiveFollowUp = PredictiveFollowUpState()
-        predictiveFollowUpTurn = nil
-        predictiveFollowUpQueued = false
-        predictiveFollowUpSending = false
-        predictiveFollowUpAheadEnded = false
+        stopWaitingForPredictiveFollowUp()
         predictiveReplyEnded = nil
         predictiveComposerRequest = nil
         predictive.forgetAll()
@@ -10429,6 +10439,9 @@ final class AppState: ObservableObject {
             .flatMap(Self.normalizedStoredChatResumeIdentity)
             ?? initialChatResumeServerIdentity
         defaults.set(identity, forKey: Self.chatResumeServerIdentityKey)
+        // A follow-up's turn may have ended while disconnected: its reply
+        // isn't watched for across a reconnect, so none is tagged wrongly.
+        stopWaitingForPredictiveFollowUp()
         guard let previousIdentity, previousIdentity != identity else { return false }
 
         retireSpeechOperationsForServerReplacement(previousIdentity: previousIdentity, identity: identity)
@@ -17641,6 +17654,8 @@ final class AppState: ObservableObject {
               Self.uiTestFailedConnectionStub() == nil else { return }
         #endif
         guard let savedConnection = connection else { return }
+        // As on every connect: a follow-up's turn may have ended unseen.
+        stopWaitingForPredictiveFollowUp()
         // The renewal's ownership is captured BEFORE any await: the renewed
         // ticket belongs to exactly this dashboard and this switch
         // generation. After the mint (or the silent re-auth), the fences
@@ -20190,17 +20205,22 @@ final class AppState: ObservableObject {
 
     /// Hermes announced a user message in a chat (`user.message`). Every
     /// client of the chat hears it, this one's own sends included: one
-    /// arriving with a turn running here, already shown here by its row id,
-    /// or matching the latest user message here is this device's (so is
-    /// the same text resent elsewhere; its stored count still reads it).
+    /// already shown here by its row id, or matching the latest user
+    /// message here while that one has no row id yet, is this device's
+    /// (so is the same text resent elsewhere then; its stored count still
+    /// reads it).
     private func noteUserMessageElsewhere(sessionId: String, rowId: Int?, text: String) {
-        if eventBelongsToActiveSession(sessionId), !turnState.isRunning,
-           openChatSync.sessionID == activeSessionId,
-           rowId.map({ id in !messages.contains(where: { $0.rowId == id }) }) ?? true {
-            let latestHere = messages.last(where: { $0.role == .user })?.content ?? ""
-            if OpenChatSync.squashed(latestHere) != OpenChatSync.squashed(text) {
-                openChatSync.noteUserMessageElsewhere()
-            }
+        let latestHere = messages.last(where: { $0.role == .user })
+        let elsewhere = eventBelongsToActiveSession(sessionId)
+            && (rowId.map({ id in !messages.contains(where: { $0.rowId == id }) }) ?? true)
+            && (rowId != nil && latestHere?.rowId != nil
+                || OpenChatSync.squashed(latestHere?.content ?? "") != OpenChatSync.squashed(text))
+        // A follow-up waiting in this chat: whatever turn is running here.
+        if elsewhere, let activeSessionId {
+            notePredictiveFollowUpMessageElsewhere(sessionId: activeSessionId, rowId: rowId)
+        }
+        if elsewhere, !turnState.isRunning, openChatSync.sessionID == activeSessionId {
+            openChatSync.noteUserMessageElsewhere()
         }
         noteCatalogChanged()
     }
