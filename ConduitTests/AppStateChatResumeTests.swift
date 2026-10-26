@@ -3374,7 +3374,7 @@ final class AppStateChatResumeTests: XCTestCase {
             XCTAssertEqual(harness.appState.activeSessionId, defaultSession.id)
             XCTAssertEqual(harness.appState.connection, connection)
             XCTAssertEqual(
-                harness.appState.errorMessage,
+                harness.appState.pinSyncNotice?.message,
                 AppLocalization.string("End the call to open a chat in another profile.")
             )
         }
@@ -3403,8 +3403,9 @@ final class AppStateChatResumeTests: XCTestCase {
         // one ringing in while its open waits on the gateway (its bot checks,
         // or the switch's own ticket, whether or not that ticket comes),
         // stops short of the profile switch, which would end the call, and
-        // says it opens when the call ends. With no call, a ticket that
-        // fails says so and leaves the connection as it is.
+        // says over the screen that it opens when the call ends. With no
+        // call, a ticket that fails says so and leaves the connection as it
+        // is.
         enum CallStarts { case beforeTheTap, duringBotChecks, duringTicket, never }
         let cases: [(CallStarts, Bool)] = [
             (.beforeTheTap, false), (.duringBotChecks, false), (.duringTicket, false), (.duringTicket, true),
@@ -3457,13 +3458,21 @@ final class AppStateChatResumeTests: XCTestCase {
             XCTAssertEqual(harness.appState.activeProfile, "default", label)
             XCTAssertEqual(harness.appState.activeSessionId, defaultSession.id, label)
             XCTAssertEqual(harness.appState.connection, connection, label)
-            XCTAssertEqual(
-                harness.appState.errorMessage,
-                callStarts == .never
-                    ? AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: URLError(.timedOut)))")
-                    : AppLocalization.string("This notification opens in the other profile when the call ends."),
-                label
-            )
+            if callStarts == .never {
+                XCTAssertEqual(
+                    harness.appState.errorMessage,
+                    AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: URLError(.timedOut)))"),
+                    label
+                )
+                XCTAssertNil(harness.appState.pinSyncNotice, label)
+            } else {
+                XCTAssertEqual(
+                    harness.appState.pinSyncNotice?.message,
+                    AppLocalization.string("This notification opens in the other profile when the call ends."),
+                    label
+                )
+                XCTAssertNil(harness.appState.errorMessage, label)
+            }
         }
     }
 

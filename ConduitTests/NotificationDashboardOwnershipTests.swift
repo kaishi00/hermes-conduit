@@ -266,8 +266,10 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
 
     /// A notification from another saved dashboard tapped during a call
     /// stays on the dashboard in use: the switch would end the call, so the
-    /// tap waits for the call to end, and says so. A tapped notification is
-    /// gone, unlike a chat link, which says to end the call first.
+    /// tap waits for the call to end, and says so over the screen (the
+    /// composer's error line doesn't show during a call). A tapped
+    /// notification is gone, unlike a chat link, which says to end the call
+    /// first.
     func testPushFromAnotherDashboardDuringACallOpensWhenItEnds() async {
         let savedA = SavedDashboard(id: dashboardA, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
         let savedB = SavedDashboard(id: dashboardB, label: "VPS", normalizedURL: "https://hermes.example.com")
@@ -279,9 +281,10 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
         XCTAssertEqual(outcome, .afterCall, "the route opens it once the call ends")
         XCTAssertEqual(appState.activeDashboardID, dashboardA)
         XCTAssertEqual(
-            appState.errorMessage,
+            appState.pinSyncNotice?.message,
             AppLocalization.string("This notification opens in the other workspace when the call ends.")
         )
+        XCTAssertNil(appState.errorMessage, "nothing stale for the composer to show later")
     }
 
     /// A call from Hermes on another saved dashboard still switches to open

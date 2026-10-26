@@ -93,7 +93,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let routedBefore = PushNotificationService.shared.pendingTarget
         let dashboardBefore = appState.activeDashboardID
         appState.openAppLink(.session(id: "work-chat", dashboard: UUID().uuidString))
-        XCTAssertEqual(appState.errorMessage, AppLocalization.string("End the call to open a chat in another workspace."))
+        XCTAssertEqual(appState.pinSyncNotice?.message, AppLocalization.string("End the call to open a chat in another workspace."))
         XCTAssertEqual(PushNotificationService.shared.pendingTarget, routedBefore, "nothing is routed")
         XCTAssertEqual(appState.activeDashboardID, dashboardBefore)
     }
@@ -115,7 +115,7 @@ extension HermesVoiceGatewayTimeoutTests {
         ))
         XCTAssertFalse(opened)
         XCTAssertEqual(appState.activeDashboardID, current.id)
-        XCTAssertEqual(appState.errorMessage, AppLocalization.string("End the call to open a chat in another workspace."))
+        XCTAssertEqual(appState.pinSyncNotice?.message, AppLocalization.string("End the call to open a chat in another workspace."))
     }
 
     func testLinkNamingTheDashboardInUseStaysOnIt() throws {
@@ -163,7 +163,7 @@ extension HermesVoiceGatewayTimeoutTests {
         defer { clearRoutedLink() }
         appState.isNativeHermesCallActive = true
         await appState.routeLinkedSession("work-chat", toProfile: "work")
-        XCTAssertEqual(appState.errorMessage, AppLocalization.string("End the call to open a chat in another profile."))
+        XCTAssertEqual(appState.pinSyncNotice?.message, AppLocalization.string("End the call to open a chat in another profile."))
         XCTAssertNotEqual(PushNotificationService.shared.pendingTarget?.sessionId, "work-chat")
         XCTAssertEqual(appState.activeProfile, "default")
     }
@@ -174,7 +174,7 @@ extension HermesVoiceGatewayTimeoutTests {
         appState.noteBotChatSessionForTesting("work-chat", profile: "atlas")
         appState.isNativeHermesCallActive = true
         await appState.routeLinkedSession("work-chat", toProfile: "work")
-        XCTAssertNotEqual(appState.errorMessage, AppLocalization.string("End the call to open a chat in another profile."))
+        XCTAssertNotEqual(appState.pinSyncNotice?.message, AppLocalization.string("End the call to open a chat in another profile."))
         XCTAssertNotEqual(PushNotificationService.shared.pendingTarget?.sessionId, "work-chat")
         XCTAssertEqual(appState.activeProfile, "default")
     }

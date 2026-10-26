@@ -156,7 +156,7 @@ enum NotificationDashboardOwnership {
 /// plugin-minted id (`conduit-push-…`) whose answers return through the push
 /// relay rather than the gateway — the gateway's own clarify id is unreachable
 /// to plugins (see the background-arrival design docs).
-enum PendingDecisionPayload: Equatable {
+enum PendingDecisionPayload: Equatable, Codable {
     case approval(sessionKey: String, description: String, choices: [String])
     case clarify(requestId: String, question: String, choices: [String])
     /// Batch decision payload (current notifier): the full question set with
@@ -167,6 +167,21 @@ enum PendingDecisionPayload: Equatable {
     /// Request ids minted by the notifier plugin's clarify loop; answers to
     /// these route through the relay instead of `clarify.respond`.
     static let relayRequestPrefix = "conduit-push-"
+}
+
+/// A tap waiting for a call, as PushNotificationService keeps it across a
+/// relaunch: what its open needs (a notification's, so it carries no call
+/// and is no chat link), and when its wait began.
+private struct WaitingTap: Codable {
+    let profile: String?
+    let profileName: String?
+    let sessionId: String
+    let durableSessionID: String?
+    let dashboardID: UUID?
+    let relayGatewayID: String?
+    let type: String?
+    let decision: PendingDecisionPayload?
+    let waitingSince: Date
 }
 
 /// Relay + paired-plugin compatibility state (`GET /v1/meta`), rendered in
@@ -463,7 +478,7 @@ extension ConduitNotificationPreferences {
 
 @MainActor
 final class PushNotificationService: ObservableObject {
-    static let shared = PushNotificationService()
+    static let shared = PushNotificationService(keptTaps: .standard)
 
     @Published private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
     @Published private(set) var isWorking = false
@@ -476,7 +491,8 @@ final class PushNotificationService: ObservableObject {
     @Published private(set) var navigationAttempt = 0
     /// The pending tap's open stopped for a call it would have ended: it
     /// waits, however long the call lasts, and opens once it has ended,
-    /// unless a newer tap replaces it.
+    /// unless a newer tap replaces it. It's kept in `keptTaps` meanwhile,
+    /// so it waits again after a relaunch (`restoreWaitingTap`).
     @Published private(set) var pendingRouteAwaitsCall = false
     @Published var preferences = ConduitNotificationPreferences() {
         // The Notification Service Extension decides whether a decrypted
@@ -738,6 +754,15 @@ final class PushNotificationService: ObservableObject {
     private let maxRetryDelay: Duration = .seconds(8)
     private let routeRetryWindow: Duration
     private let now: () -> ContinuousClock.Instant
+    /// Where a tap waiting for a call is kept (`WaitingTap`); nil keeps it
+    /// only in memory.
+    private let keptTaps: UserDefaults?
+    private let date: () -> Date
+    static let waitingTapKey = "conduit.notifications.waitingTap"
+    /// How long after its wait began a kept tap still opens after a
+    /// relaunch: closing Conduit ends a call on the phone, and a launch
+    /// much later shouldn't switch workspace for an old tap.
+    static let waitingTapLifetime: TimeInterval = 2 * 3600
 
     var isEnabled: Bool { registration != nil && preferences.enabled }
     var statusText: String {
@@ -750,11 +775,15 @@ final class PushNotificationService: ObservableObject {
     init(
         retryDelay: Duration = .seconds(1),
         routeRetryWindow: Duration = .seconds(30),
-        now: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now }
+        now: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now },
+        keptTaps: UserDefaults? = nil,
+        date: @escaping () -> Date = Date.init
     ) {
         self.retryDelay = retryDelay
         self.routeRetryWindow = routeRetryWindow
         self.now = now
+        self.keptTaps = keptTaps
+        self.date = date
         if let data = KeychainHelper.loadPushRegistration(),
            var saved = try? JSONDecoder().decode(StoredRegistration.self, from: data) {
             // Registrations saved before the relay was recorded don't say
@@ -777,6 +806,7 @@ final class PushNotificationService: ObservableObject {
         NotificationSharedSettings.showPreviews = preferences.showPreviews
         NotificationSharedSettings.appLanguage = AppLanguage.current.rawValue
         refreshEncryptionState()
+        restoreWaitingTap()
     }
 
     // MARK: End-to-end encryption (#431)
@@ -2315,6 +2345,7 @@ final class PushNotificationService: ObservableObject {
         pendingRouteOpenStarted = false
         pendingRouteRetryFiredAt = nil
         pendingRouteAwaitsCall = false
+        forgetWaitingTap()
         navigationAttempt += 1
     }
 
@@ -2347,6 +2378,7 @@ final class PushNotificationService: ObservableObject {
         pendingRouteOpenStarted = false
         pendingRouteRetryFiredAt = nil
         pendingRouteAwaitsCall = false
+        forgetWaitingTap()
     }
 
     /// An open of `target` is starting: a retry still waiting would only
@@ -2366,6 +2398,7 @@ final class PushNotificationService: ObservableObject {
             // The call it waited for has ended: the tap opens as if just
             // made, with a window of its own.
             pendingRouteAwaitsCall = false
+            forgetWaitingTap()
             pendingRetryCount = 0
             pendingRouteDeadline = startedAt.advanced(by: routeRetryWindow)
             pendingRouteRetryFiredAt = nil
@@ -2400,6 +2433,73 @@ final class PushNotificationService: ObservableObject {
         navigationRetryTask?.cancel()
         navigationRetryTask = nil
         pendingRouteRetryFiredAt = nil
+        pendingRouteAwaitsCall = true
+        keepWaitingTap(target)
+        navigationAttempt += 1
+    }
+
+    /// Waits until two checks in a row, `interval` apart, find `isReady`
+    /// (no call, and Conduit on screen): a call changing hands isn't over,
+    /// and a switch waits for the screen. The checks run on a timer since
+    /// not every call's end changes state a view observes. False when
+    /// cancelled first.
+    static func waitForCallToEnd(
+        interval: Duration,
+        isReady: () -> Bool,
+        sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) async -> Bool {
+        var readyBefore = false
+        while true {
+            let ready = isReady()
+            if ready, readyBefore { return true }
+            readyBefore = ready
+            do { try await sleep(interval) } catch { return false }
+        }
+    }
+
+    private func keepWaitingTap(_ target: ConduitNotificationTarget) {
+        guard let keptTaps else { return }
+        let tap = WaitingTap(
+            profile: target.profile,
+            profileName: target.profileName,
+            sessionId: target.sessionId,
+            durableSessionID: target.durableSessionID,
+            dashboardID: target.dashboardID,
+            relayGatewayID: target.relayGatewayID,
+            type: target.type,
+            decision: target.decision,
+            waitingSince: date()
+        )
+        keptTaps.set(try? JSONEncoder().encode(tap), forKey: Self.waitingTapKey)
+    }
+
+    private func forgetWaitingTap() {
+        keptTaps?.removeObject(forKey: Self.waitingTapKey)
+    }
+
+    /// A tap that was waiting for a call when Conduit closed waits again:
+    /// its notification is gone, and closing Conduit ended any call on the
+    /// phone, so it opens once Conduit is on screen with no call. Not one
+    /// older than `waitingTapLifetime`.
+    private func restoreWaitingTap() {
+        guard let keptTaps, pendingTarget == nil, let data = keptTaps.data(forKey: Self.waitingTapKey) else { return }
+        guard let tap = try? JSONDecoder().decode(WaitingTap.self, from: data),
+              (0..<Self.waitingTapLifetime).contains(date().timeIntervalSince(tap.waitingSince)) else {
+            forgetWaitingTap()
+            return
+        }
+        let target = ConduitNotificationTarget(
+            profile: tap.profile,
+            profileName: tap.profileName,
+            sessionId: tap.sessionId,
+            durableSessionID: tap.durableSessionID,
+            dashboardID: tap.dashboardID,
+            relayGatewayID: tap.relayGatewayID,
+            type: tap.type,
+            decision: tap.decision
+        )
+        retainRelayGatewayID(for: target)
+        pendingTarget = target
         pendingRouteAwaitsCall = true
         navigationAttempt += 1
     }

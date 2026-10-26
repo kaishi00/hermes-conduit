@@ -803,10 +803,11 @@ final class AppState: ObservableObject {
                     ? AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
                     : widgetMessage
                 self.errorMessage = message
-                // The composer shows errorMessage; over the V2 lists (the
-                // chat covered) nothing would, and the tap looks ignored.
-                // Only V2 draws the notice.
-                if self.showSidebar, V2ShellPreference.isOn { self.showNotice(message, systemImage: "exclamationmark.circle") }
+                // The composer shows errorMessage only while it's locked,
+                // and the V2 lists or a call's screen cover it, so a notice
+                // says it too, or the tap looks ignored (a call stops a
+                // launch for another workspace). Only V2 draws the notice.
+                if V2ShellPreference.isOn { self.showNotice(message, systemImage: "exclamationmark.circle") }
             },
             pendingLinkChanged: { [weak self] link in
                 self?.widgetLaunchPendingLinkChanged(link)
@@ -6434,10 +6435,17 @@ final class AppState: ObservableObject {
         publishNotice(PinSyncNotice(error: error, pinned: pinned))
     }
 
-    /// Says something briefly over the V2 lists (`pinSyncNotice` carries
-    /// every such notice).
+    /// Says something briefly over the V2 lists and over a call's screen
+    /// (`pinSyncNotice` carries every such notice).
     func showNotice(_ message: String, systemImage: String) {
         publishNotice(PinSyncNotice(message: message, systemImage: systemImage))
+    }
+
+    /// A tap a call kept from switching says why, over the screen and over
+    /// the call's own: `errorMessage` shows only while the composer is
+    /// locked or the connection needs repair, and a call does neither.
+    func showCallRefusal(_ message: String) {
+        showNotice(message, systemImage: "exclamationmark.triangle.fill")
     }
 
     /// A call that failed in the car for a reason the car couldn't name
@@ -7663,7 +7671,7 @@ final class AppState: ObservableObject {
                 }
                 if owner != activeDashboardID {
                     guard !isVoiceCallInProgress else {
-                        errorMessage = AppLocalization.string("End the call to open a chat in another workspace.")
+                        showCallRefusal(AppLocalization.string("End the call to open a chat in another workspace."))
                         return
                     }
                     PushNotificationService.shared.routeChatLink(
@@ -7713,7 +7721,7 @@ final class AppState: ObservableObject {
             return
         }
         guard !isVoiceCallInProgress else {
-            errorMessage = AppLocalization.string("End the call to open a chat in another profile.")
+            showCallRefusal(AppLocalization.string("End the call to open a chat in another profile."))
             return
         }
         if let listed = notificationProfileID(profile), listed != "default", !profiles.contains(listed) {
@@ -22801,9 +22809,9 @@ final class AppState: ObservableObject {
             // tear that call down.
             if sparesCalls, isVoiceCallInProgress {
                 traceStage = "call in progress"
-                errorMessage = target.isChatLink
+                showCallRefusal(target.isChatLink
                     ? AppLocalization.string("End the call to open a chat in another workspace.")
-                    : AppLocalization.string("This notification opens in the other workspace when the call ends.")
+                    : AppLocalization.string("This notification opens in the other workspace when the call ends."))
                 return callOutcome
             }
             await switchDashboard(to: dashboardID)
@@ -22990,7 +22998,7 @@ final class AppState: ObservableObject {
                 : nil
             if let callRefusal, isVoiceCallInProgress {
                 traceStage = "call in progress"
-                errorMessage = callRefusal
+                showCallRefusal(callRefusal)
                 return callOutcome
             }
             traceStage = "profile switch"
@@ -23001,7 +23009,9 @@ final class AppState: ObservableObject {
             ) else {
                 // A call that started during the switch refuses it the
                 // same way, and says so; anything else may pass on a retry.
-                return sparesCalls && isVoiceCallInProgress ? callOutcome : .retry
+                guard sparesCalls, isVoiceCallInProgress else { return .retry }
+                traceStage = "call in progress (profile switch)"
+                return callOutcome
             }
         }
         guard notificationOpenAttemptIsCurrent(
@@ -29431,7 +29441,7 @@ final class AppState: ObservableObject {
             // A call that rang in meanwhile says so, whether or not the
             // ticket came: the call alone stops the switch.
             guard !isVoiceCallInProgress else {
-                errorMessage = callRefusal
+                showCallRefusal(callRefusal)
                 return false
             }
             if let mintError {

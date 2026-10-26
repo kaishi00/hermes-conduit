@@ -114,6 +114,7 @@ struct MainView: View {
     /// shell, the fallback while V2 is on its branch.
     @AppStorage(V2ShellPreference.key) private var useV2Shell = V2ShellPreference.defaultValue
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var availableWindowWidth: CGFloat = 0
     @State private var settingsPresentation: SettingsSnapshot?
     @State private var shouldPresentSettingsAfterSidebarDismissal = false
@@ -628,13 +629,22 @@ struct MainView: View {
 
     /// A call screen's top: the screenshot banner, then calendar changes
     /// Hermes asked for (under the call screen, they were hidden until the
-    /// call was minimised).
+    /// call was minimised), then a notice, such as a tapped notification
+    /// that opens when the call ends.
     private var callTopBanners: some View {
         VStack(spacing: 0) {
             voiceScreenshotBanner
             PhoneChangeOverlay(engine: appState.phoneSync)
                 .environmentObject(appState)
+            // Only V2 draws notices, as its shell does under the call.
+            if useV2Shell, let notice = appState.pinSyncNotice {
+                V2NoticeBanner(notice: notice) { appState.dismissPinSyncNotice(notice.id) }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.pinSyncNotice)
     }
 
     /// The confirmation Hermes is waiting on, answered by tap.

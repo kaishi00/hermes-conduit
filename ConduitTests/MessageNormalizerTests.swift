@@ -1232,6 +1232,82 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertFalse(service.pendingRouteAwaitsCall)
     }
 
+    /// The route opens a tap waiting for a call only once two checks in a
+    /// row find no call and Conduit on screen: a call changing hands isn't
+    /// the call's end. Cancelled, it opens nothing.
+    func testWaitForTheCallToEndNeedsTwoReadyChecksInARow() async {
+        var readiness = [false, true, false, true, true]
+        var checks = 0
+        var sleeps = 0
+        let ended = await PushNotificationService.waitForCallToEnd(
+            interval: .seconds(1),
+            isReady: {
+                checks += 1
+                return readiness.removeFirst()
+            },
+            sleep: { _ in sleeps += 1 }
+        )
+        XCTAssertTrue(ended)
+        XCTAssertEqual(checks, 5, "a lone ready check between two calls didn't open it")
+        XCTAssertEqual(sleeps, 4)
+        let cancelled = await PushNotificationService.waitForCallToEnd(
+            interval: .seconds(1),
+            isReady: { true },
+            sleep: { _ in throw CancellationError() }
+        )
+        XCTAssertFalse(cancelled)
+    }
+
+    /// A tap waiting for a call outlives a relaunch: closing Conduit ends a
+    /// call on the phone and its notification is gone, so it waits again at
+    /// the next launch, its decision card included. Opening it, or a newer
+    /// tap, lets it go, and one kept past its lifetime is dropped.
+    func testTapWaitingForACallWaitsAgainAfterARelaunch() {
+        let kept = makeScratchDefaults("WaitingTap")
+        var date = Date()
+        let first = PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date })
+        first.receiveNotificationPayload([
+            "conduit": [
+                "session_id": "runtime-1",
+                "profile": "work",
+                "dashboard_id": UUID().uuidString,
+                "type": "approval.needed",
+                "decision": [
+                    "kind": "approval",
+                    "session_key": "runtime-1",
+                    "description": "Run a dangerous shell command",
+                    "choices": ["once", "deny"],
+                ] as [String: Any],
+            ] as [String: Any],
+        ])
+        guard let target = first.pendingTarget, target.decision != nil else {
+            return XCTFail("Expected a pending target with its decision")
+        }
+        XCTAssertTrue(first.beginNotificationRoute(target))
+        XCTAssertNil(kept.data(forKey: PushNotificationService.waitingTapKey), "only a tap waiting for a call is kept")
+        first.notificationRouteAwaitsCall(target)
+
+        date = date.addingTimeInterval(3600)
+        let relaunched = PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date })
+        XCTAssertEqual(relaunched.pendingTarget, target, "the same tap, decision and all")
+        XCTAssertTrue(relaunched.pendingRouteAwaitsCall)
+        XCTAssertTrue(relaunched.beginNotificationRoute(target), "it opens once there's no call")
+        XCTAssertNil(kept.data(forKey: PushNotificationService.waitingTapKey), "opening lets it go")
+
+        relaunched.notificationRouteAwaitsCall(target)
+        relaunched.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-2", "type": "response.ready"] as [String: Any]
+        ])
+        XCTAssertNil(kept.data(forKey: PushNotificationService.waitingTapKey), "a newer tap replaces it")
+        guard let newer = relaunched.pendingTarget else { return XCTFail("Expected the newer tap") }
+        XCTAssertTrue(relaunched.beginNotificationRoute(newer))
+        relaunched.notificationRouteAwaitsCall(newer)
+        date = date.addingTimeInterval(PushNotificationService.waitingTapLifetime)
+        let late = PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date })
+        XCTAssertNil(late.pendingTarget, "too old to switch workspace for")
+        XCTAssertNil(kept.data(forKey: PushNotificationService.waitingTapKey))
+    }
+
     func testSessionNormalizationDoesNotInventOwnershipWithoutFallback() {
         let sessions = MessageNormalizer.normalizeSessions(
             .object([

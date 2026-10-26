@@ -880,8 +880,9 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertFalse(appState.showsPendingNewChat)
     }
 
-    /// A New Chat from the app that can't start says so in the app's words;
-    /// a widget's keeps the widget's, and shows its chat as its link arrives.
+    /// A New Chat from the app that can't start says so in the app's words,
+    /// in a notice over the screen too; a widget's keeps the widget's, and
+    /// shows its chat as its link arrives.
     func testNewChatThatCantStartSaysSo() async throws {
         struct CreateRefused: Error {}
         let suite = "AppStateWidgetLaunchTests.new-chat-failed.\(UUID().uuidString)"
@@ -908,6 +909,11 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertFalse(appState.showsPendingNewChat)
         XCTAssertEqual(appState.activeSessionId, openChat)
         XCTAssertEqual(appState.errorMessage, AppLocalization.string("Couldn't start a new chat. Check your connection and try again."))
+        XCTAssertEqual(
+            appState.pinSyncNotice?.message,
+            AppLocalization.string("Couldn't start a new chat. Check your connection and try again."),
+            "a notice says it over the chat too: the composer shows its error only while it's locked"
+        )
 
         appState.isConnected = false
         appState.isConnecting = true

@@ -354,19 +354,13 @@ struct ConduitApp: App {
             .task(id: notificationRouteKey) {
                 guard let target = notifications.pendingTarget else { return }
                 if notifications.pendingRouteAwaitsCall {
-                    // Waiting for the call its switch would have ended: it
-                    // opens once two checks in a row find no call and
-                    // Conduit on screen (a call changing hands isn't over,
-                    // and a switch waits for the screen). Not every call's
-                    // end changes state this view observes, so the checks
-                    // run on a short timer.
-                    var readyBefore = false
-                    while true {
-                        let ready = !appState.isVoiceCallInProgress && appState.isSceneActive
-                        if ready, readyBefore { break }
-                        readyBefore = ready
-                        do { try await Task.sleep(for: Self.callEndRecheckInterval) } catch { return }
-                    }
+                    // Waiting for the call its switch would have ended (or,
+                    // after a relaunch, the one Conduit closing ended): it
+                    // opens once there's no call and Conduit is on screen.
+                    guard await PushNotificationService.waitForCallToEnd(
+                        interval: Self.callEndRecheckInterval,
+                        isReady: { !appState.isVoiceCallInProgress && appState.isSceneActive }
+                    ) else { return }
                 }
                 guard appState.isConnected else {
                     notifications.notificationRouteAwaitsConnection(target)
