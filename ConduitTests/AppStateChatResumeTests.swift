@@ -3401,9 +3401,10 @@ final class AppStateChatResumeTests: XCTestCase {
     func testNotificationStopsBeforeTheProfileSwitchDuringACall() async {
         // A notification from another profile, tapped during a call or with
         // one ringing in while its open waits on the gateway (its bot checks,
-        // or the switch's own ticket), stops short of the profile switch,
-        // which would end the call.
-        for duringTicket in [false, true] {
+        // or the switch's own ticket, whether or not that ticket comes),
+        // stops short of the profile switch, which would end the call, and
+        // says so.
+        for (duringTicket, ticketFails) in [(false, false), (true, false), (true, true)] {
             let defaultSession = session("default-session")
             let appReference = WeakAppStateReference()
             let harness = makeHarness(
@@ -3412,6 +3413,7 @@ final class AppStateChatResumeTests: XCTestCase {
                     loadCatalog: { _, _ in [defaultSession] },
                     mintTicket: { _ in
                         if duringTicket { appReference.value?.isNativeHermesCallActive = true }
+                        if ticketFails { throw URLError(.timedOut) }
                         return "profile-ticket"
                     },
                     refreshContext: { _, _ in },
@@ -3442,7 +3444,7 @@ final class AppStateChatResumeTests: XCTestCase {
 
             let outcome = await harness.appState.openNotificationTargetOutcome(target)
 
-            XCTAssertEqual(outcome, .failed, "call started during the ticket: \(duringTicket)")
+            XCTAssertEqual(outcome, .failed, "call started during the ticket: \(duringTicket), ticket failed: \(ticketFails)")
             XCTAssertEqual(harness.appState.activeProfile, "default")
             XCTAssertEqual(harness.appState.activeSessionId, defaultSession.id)
             XCTAssertEqual(harness.appState.connection, connection)

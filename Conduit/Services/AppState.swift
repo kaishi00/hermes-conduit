@@ -22794,6 +22794,7 @@ final class AppState: ObservableObject {
             // before one started, stops here: switching dashboards would
             // tear that call down.
             if sparesCalls, isVoiceCallInProgress {
+                traceStage = "call in progress"
                 errorMessage = target.isChatLink
                     ? AppLocalization.string("End the call to open a chat in another workspace.")
                     : AppLocalization.string("End the call to open this notification in another workspace.")
@@ -22976,10 +22977,12 @@ final class AppState: ObservableObject {
             // A call can have started (one from Hermes needs no tap) while
             // the checks above waited on the gateway; a notification or a
             // chat link never ends it with the switch.
-            let callRefusal = target.isChatLink
-                ? AppLocalization.string("End the call to open a chat in another profile.")
-                : AppLocalization.string("End the call to open this notification in another profile.")
-            if sparesCalls, isVoiceCallInProgress {
+            let callRefusal: String? = sparesCalls
+                ? (target.isChatLink
+                    ? AppLocalization.string("End the call to open a chat in another profile.")
+                    : AppLocalization.string("End the call to open this notification in another profile."))
+                : nil
+            if let callRefusal, isVoiceCallInProgress {
                 traceStage = "call in progress"
                 errorMessage = callRefusal
                 return .failed
@@ -22988,7 +22991,7 @@ final class AppState: ObservableObject {
             guard await switchProfile(
                 to: targetProfile,
                 reusing: transitionGeneration,
-                refusingCallsWith: sparesCalls ? callRefusal : nil
+                refusingCallsWith: callRefusal
             ) else {
                 // A call that started during the switch refuses it the
                 // same way, and says so; anything else may pass on a retry.
@@ -29350,12 +29353,14 @@ final class AppState: ObservableObject {
                 return false
             }
             guard !isProfileSwitching, target != activeProfile, connection == savedConnection else { return false }
-            if let mintError {
-                errorMessage = AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: mintError))")
-                return false
-            }
+            // A call that rang in meanwhile says so, whether or not the
+            // ticket came: the call alone stops the switch.
             guard !isVoiceCallInProgress else {
                 errorMessage = callRefusal
+                return false
+            }
+            if let mintError {
+                errorMessage = AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: mintError))")
                 return false
             }
         }
