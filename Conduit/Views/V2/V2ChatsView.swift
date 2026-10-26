@@ -346,9 +346,15 @@ struct V2ChatsView: View, Equatable {
     }
 
     /// The projects Filter ▸ Projects leaves out, for the profile in use.
+    /// Only the ones listed now count: a deleted project's leftover id
+    /// hides nothing, and until the projects load every chat would look
+    /// like one in no project, so nothing is hidden yet.
     private var hiddenProjects: Set<String> {
-        guard filtersProjects else { return [] }
-        return HiddenChatProjects.ids(in: updates.defaults.object(forKey: HiddenChatProjects.key), profile: appState.activeProfile)
+        let projects = filterProjects
+        guard filtersProjects, !projects.isEmpty else { return [] }
+        let stored = HiddenChatProjects.ids(in: updates.defaults.object(forKey: HiddenChatProjects.key), profile: appState.activeProfile)
+        guard !stored.isEmpty else { return [] }
+        return stored.intersection(Set(projects.map(\.id)).union([HiddenChatProjects.noProject]))
     }
 
     private func setHiddenProjects(_ ids: Set<String>) {
@@ -364,13 +370,9 @@ struct V2ChatsView: View, Equatable {
         appState.projects.filter { !$0.isHome }
     }
 
-    /// How many listed choices are hidden; a deleted project's leftover
-    /// id hides nothing.
+    /// How many of the listed choices are hidden.
     private var hiddenProjectCount: Int {
-        let hidden = hiddenProjects
-        guard !hidden.isEmpty else { return 0 }
-        let choices = Set(filterProjects.map(\.id)).union([HiddenChatProjects.noProject])
-        return hidden.intersection(choices).count
+        hiddenProjects.count
     }
 
     /// Only hidden projects stand between the list and its rows.

@@ -1706,7 +1706,7 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 **Open gaps**
 - A launch whose layout differs from the last one seen still starts from the old layout, so the row can show for a frame or arrive a frame late: the iPad was rotated or profiles were added while Conduit was closed, or another iPad window in the other layout wrote the shared key last. Closing it needs the bar's choice before the first frame, which `ViewThatFits` doesn't expose.
 
-**Checked:** 2026-10-24, at #1206; the match row at #1208, carried in #1229.
+**Checked:** 2026-10-26, #1322 (the chip and filter pill also name hidden projects, "Project chats in Chats"); the match row at #1208, carried in #1229.
 
 ## Project chats in Chats
 
@@ -1736,6 +1736,7 @@ list · README.md
 - CarPlay's chat list doesn't follow either: it is a short recent list for driving, not the Chats list (2026-10-26, #1317).
 
 **Open gaps**
+- Until the profile's projects load, nothing is hidden: every chat would read as one in no project.
 - A row's project comes from the chats the project tree previews, so a project chat beyond its preview counts as in no project: it shows with the setting at Off, and hides with "Not in a project".
 
 **Checked:** 2026-10-26, #1322.
