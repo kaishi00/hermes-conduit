@@ -10,7 +10,7 @@ import SwiftUI
 /// - Renders a capped, selectable monospaced tail with the newest output at
 ///   the bottom; the full-size/truncation facts stay visible.
 struct KanbanWorkerLogScreen: View {
-    @EnvironmentObject private var store: KanbanStore
+    @Environment(KanbanStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
     let taskID: String

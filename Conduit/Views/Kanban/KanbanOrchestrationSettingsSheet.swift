@@ -14,7 +14,7 @@ import SwiftUI
 /// - Saving is ownership-safe through KanbanStore and never touches
 ///   HermesClient / session transport; upstream nudges nothing for settings.
 struct KanbanOrchestrationSettingsSheet: View {
-    @EnvironmentObject private var store: KanbanStore
+    @Environment(KanbanStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
     // Editor draft, seeded ONCE from the current server snapshot so a

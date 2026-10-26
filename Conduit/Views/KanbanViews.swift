@@ -367,17 +367,17 @@ struct KanbanView: View {
 
     init(columnsLayout: Bool = false) {
         self.columnsLayout = columnsLayout
-        _store = StateObject(wrappedValue: KanbanStore())
+        _store = State(initialValue: KanbanStore())
     }
 
     /// Tests host the real board over a store whose service they supply.
     init(columnsLayout: Bool, store: KanbanStore) {
         self.columnsLayout = columnsLayout
-        _store = StateObject(wrappedValue: store)
+        _store = State(initialValue: store)
     }
 
     @EnvironmentObject private var appState: AppState
-    @StateObject private var store: KanbanStore
+    @State private var store: KanbanStore
     @State private var selectedTask: KanbanTask?
     @State private var showNewTask = false
     @State private var newTaskStatus = "todo"
@@ -654,26 +654,26 @@ struct KanbanView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(item: $selectedTask) { task in
             KanbanTaskDetailView(task: task)
-                .environmentObject(store)
+                .environment(store)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showNewTask) {
             KanbanTaskComposerView(initialStatus: newTaskStatus, expectedContext: newTaskContext)
-                .environmentObject(store)
+                .environment(store)
                 .environmentObject(appState)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showOrchestrationSettings) {
             KanbanOrchestrationSettingsSheet()
-                .environmentObject(store)
+                .environment(store)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showProfileRouting) {
             KanbanProfileRoutingScreen()
-                .environmentObject(store)
+                .environment(store)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
@@ -683,14 +683,14 @@ struct KanbanView: View {
             // no loaded metadata exists.
             if let board = loadedBoardMetadata {
                 KanbanBoardEditorView(mode: .settings(board: board), includeArchived: includeArchived)
-                    .environmentObject(store)
+                    .environment(store)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
         }
         .sheet(isPresented: $showNewBoard) {
             KanbanBoardEditorView(mode: .create, includeArchived: includeArchived)
-                .environmentObject(store)
+                .environment(store)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
@@ -701,7 +701,7 @@ struct KanbanView: View {
                 tenantFilter: $tenantFilter,
                 groupRunningByProfile: $groupRunningByProfile
             )
-            .environmentObject(store)
+            .environment(store)
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
         }
