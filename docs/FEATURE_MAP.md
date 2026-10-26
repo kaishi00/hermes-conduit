@@ -721,8 +721,9 @@ Saved Dashboards and the Profiles sheet, and in the Watch's Settings)
 - Still English: the relay's plain copy (pairings with no key), the redacted decision text, and a clarify body with no arguments (#1158).
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
 - A registration update landing after a relay move is dropped rather than written onto the new registration (#865 follow-up, #1191); the move itself has no test seam (it registers through URLSession.shared).
+- A tap on a push from another workspace during a call switches dashboards, which ends the call, whatever the push and whatever the call: only chat links refuse (and, on the `pulse` branch, Quiet for today's retry). Found in #1286's review; see Pulse.
 
-**Checked:** 2026-10-26, #1292 (Pulse pushes' Quiet for today button, from #1285 on the `pulse` branch; see Pulse); #1281 (a Predictive follow-up holds its chat's push); 2026-10-25, #1257 (a Bot Chat's push names its bot; `profile_name` for calls, the relay's plain copy and the Live Activity; notifier #372); the morning brief's push at notifier #357, carried in #1237; 2026-10-24, at #1213 (inline rotation, the shield and the Watch's row and footer; a pairing rotates at most once per run, a Rotate tap during a rotation joins it, and a verified key the Keychain refused stays pending and is shown as such; fork CI #85); #1212 (MEDIA tags in pushes, answer cards and the call screen); keys and padlock at #1197, carried in #1217 (fork CI #82); the registration update race at #1191; its relay registration error log redacted (bare hosts) at #1219.
+**Checked:** 2026-10-26, #1292 (Pulse pushes' Quiet for today button, from #1285 on the `pulse` branch, and a push tapped during a call, found in #1286's review; see Pulse); #1281 (a Predictive follow-up holds its chat's push); 2026-10-25, #1257 (a Bot Chat's push names its bot; `profile_name` for calls, the relay's plain copy and the Live Activity; notifier #372); the morning brief's push at notifier #357, carried in #1237; 2026-10-24, at #1213 (inline rotation, the shield and the Watch's row and footer; a pairing rotates at most once per run, a Rotate tap during a rotation joins it, and a verified key the Keychain refused stays pending and is shown as such; fork CI #85); #1212 (MEDIA tags in pushes, answer cards and the call screen); keys and padlock at #1197, carried in #1217 (fork CI #82); the registration update race at #1191; its relay registration error log redacted (bare hosts) at #1219.
 
 ## Pulse
 
@@ -737,7 +738,8 @@ Undo, Do it, Quiet for today and the quiet banner) · What Pulse learned (the
 loudest each kind gets, the lessons reasons made, Undo) · Settings > Pulse (on and
 off, model, nudge, budgets, home chat, the note to Pulse, quiet times) · Pulse
 pushes (kinds pulse.noticed, pulse.brief and pulse.followup, titled per the
-Notifications rulings, opening the Pulse screen, with Quiet for today) · a call from Hermes (Pulse may call only
+Notifications rulings, opening the Pulse screen, with Quiet for today) · the Watch (Pulse pushes show there as
+on the iPhone, Quiet for today's button included; unchecked, see Open gaps) · a call from Hermes (Pulse may call only
 once the user opts in) · the hidden Pulse chat · the notifier's loop (report, brief, follow-ups,
 memory), its routes under /pulse and its capabilities · the Shortcuts inbox
 (the report and the morning brief read it, and with Pulse memory on, new
@@ -791,7 +793,7 @@ no chat · the `hermes conduit-push pulse` commands
 - Learning hasn't been tried on a phone against notifier 0.81.1, nor a report card's reasons (#1286, #385).
 - What learning decided isn't shown yet: Why? doesn't name what Pulse learned, nothing lists what it left out, and What Pulse learned shows no strengths to reset (designs/pulse-learning.md, slice 3).
 
-**Checked:** 2026-10-26, at #1292, carrying the `pulse` branch's entry: #1286 (learning, with notifier #385), #1285 (quiet times, with notifier #383), #1283 (Why? on report cards, with notifier #381), #1278 (Not now until when, with notifier #380), #1277 (the note to Pulse, with notifier #378) and #1275 (Do it's message and icon); 2026-10-25, at #1266, with #1264 on the `pulse` branch and notifier #375 (Pulse's model, ruled in #1262); the app side at #1240 on the `pulse` branch, with notifier #362 and #364, carried to main in #1241.
+**Checked:** 2026-10-26, at #1292 (the Watch joins Siblings), carrying the `pulse` branch's entry: #1286 (learning, with notifier #385), #1285 (quiet times, with notifier #383), #1283 (Why? on report cards, with notifier #381), #1278 (Not now until when, with notifier #380), #1277 (the note to Pulse, with notifier #378) and #1275 (Do it's message and icon); 2026-10-25, at #1266, with #1264 on the `pulse` branch and notifier #375 (Pulse's model, ruled in #1262); the app side at #1240 on the `pulse` branch, with notifier #362 and #364, carried to main in #1241.
 
 ## Artifacts
 
