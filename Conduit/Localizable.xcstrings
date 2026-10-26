@@ -360247,6 +360247,88 @@
           }
         }
       }
+    },
+    "End the call to quiet Pulse in another workspace." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beende den Anruf, um Pulse in einem anderen Arbeitsbereich ruhen zu lassen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finaliza la llamada para silenciar Pulse en otro espacio de trabajo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminez l’appel pour mettre Pulse en silence dans un autre espace de travail."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Akhiri panggilan untuk menenangkan Pulse di ruang kerja lain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termina la chiamata per mettere in silenzio Pulse in un altro spazio di lavoro."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のワークスペースのPulseを静かにするには、通話を終了してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 작업 공간의 Pulse를 조용히 하려면 통화를 종료하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zakończ połączenie, aby wyciszyć Pulse w innym obszarze roboczym."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encerre a chamada para silenciar o Pulse em outro espaço de trabalho."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершите звонок, чтобы включить тишину Pulse в другой рабочей области."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başka bir çalışma alanında Pulse'ı sessize almak için aramayı bitirin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先结束通话，再让其他工作区中的 Pulse 保持安静。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請先結束通話，再讓其他工作區中的 Pulse 保持安靜。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

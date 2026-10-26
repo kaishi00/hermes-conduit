@@ -124,8 +124,8 @@ extension AppState {
     /// connecting: it waits up to `wait` for a connection, then gives the
     /// request `timeoutMilliseconds`, so a background tap fits the time iOS
     /// gives it. A push from another saved dashboard switches to it only
-    /// when `switching` (Conduit is open), never during a call. Whether
-    /// Pulse said it's quiet.
+    /// when `switching` (Conduit is open), never during a call, which then
+    /// says so as a tap on the push would. Whether Pulse said it's quiet.
     func quietPulseForToday(_ target: PulseQuietTarget?, switching: Bool, wait: Duration,
                             timeoutMilliseconds: Int = 15_000) async -> Bool {
         let clock = ContinuousClock()
@@ -138,7 +138,11 @@ extension AppState {
         case .route:
             break
         case .switchFirst(let id):
-            guard switching, !isVoiceCallInProgress else { return false }
+            guard switching else { return false }
+            guard !isVoiceCallInProgress else {
+                errorMessage = AppLocalization.string("End the call to quiet Pulse in another workspace.")
+                return false
+            }
             await switchDashboard(to: id)
             // As a tap on the push: only once that dashboard is connected.
             guard isConnected, activeDashboardID == id else { return false }
