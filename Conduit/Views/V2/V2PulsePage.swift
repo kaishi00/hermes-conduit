@@ -774,6 +774,7 @@ struct V2PulsePage: View {
                 .buttonStyle(.borderless)
                 .accessibilityValue(expandedWhy.contains(card.id)
                     ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
+                .accessibilityHint(AppLocalization.string("Shows why Pulse brought this up"))
             }
         }
     }
