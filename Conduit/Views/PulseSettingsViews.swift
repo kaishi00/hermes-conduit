@@ -225,15 +225,17 @@ struct PulseSettingsPage: View {
         }
     }
 
-    /// Which profiles Pulse reads, and what it keeps from them.
     /// What the user wants from Pulse, in their own words: the plugin's
     /// reports, morning brief and follow-up checks read it before their own
-    /// rules (0.78.2). Saved on Save, so a half-typed note never goes out.
+    /// rules (0.78.2). Saved on Save, so a half-typed note never goes out;
+    /// a save that fails keeps the draft on screen, like the report times.
     private func noteSection(_ state: PulseState) -> some View {
         let shown = noteDraft ?? state.note
         let trimmed = shown.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tooLong = trimmed.count > PulseNote.limit
+        // Counted as the plugin counts it (code points), so what fits here fits there.
+        let tooLong = trimmed.unicodeScalars.count > PulseNote.limit
         let changed = noteDraft != nil && trimmed != state.note
+        let limit = AppLocalization.string("At most \(PulseNote.limit.formatted(.number)) characters.")
         return ConduitSettingsSection(title: AppLocalization.string("What you want from Pulse"), symbol: "text.quote", tint: .conduitAccent) {
             TextField(AppLocalization.string("What to always bring up, what to leave out"), text: Binding(
                 get: { shown },
@@ -244,11 +246,13 @@ struct PulseSettingsPage: View {
             .focused($noteFocused)
             .disabled(working)
             .accessibilityLabel(Text(AppLocalization.string("Note to Pulse")))
+            .accessibilityHint(Text(limit))
             .accessibilityIdentifier("settings.pulse.note")
             if tooLong {
-                Text("At most 1,500 characters.")
+                Text(verbatim: limit)
                     .font(.caption)
                     .foregroundStyle(.red)
+                    .onAppear { AccessibilityNotification.Announcement(limit).post() }
             }
             if changed {
                 HStack {
@@ -260,8 +264,7 @@ struct PulseSettingsPage: View {
                     .buttonStyle(.settings)
                     Button(AppLocalization.string("Save")) {
                         noteFocused = false
-                        noteDraft = nil
-                        change(["note": trimmed]) { $0.note = trimmed }
+                        saveNote(trimmed)
                     }
                     .buttonStyle(.settingsPrimary)
                     .disabled(working || tooLong)
@@ -754,6 +757,16 @@ struct PulseSettingsPage: View {
     }
 
     /// A settings change, shown at once and then as Pulse has it.
+    /// The note goes out as typed; the draft stays until the plugin took
+    /// it, so a refusal or a dropped connection leaves it there to fix.
+    private func saveNote(_ note: String) {
+        run { client in
+            let next = try await client.update(["note": note])
+            if noteDraft?.trimmingCharacters(in: .whitespacesAndNewlines) == note { noteDraft = nil }
+            return next
+        }
+    }
+
     private func change(_ changes: [String: Any], optimistic: ((inout PulseState) -> Void)? = nil) {
         guard !working else { return }
         if let optimistic, var shown = state {

@@ -220,15 +220,15 @@ struct PulseState: Equatable {
     var offersProfileChoice: Bool { !otherProfiles.isEmpty || reportProfiles == "this" }
 }
 
-/// A model Pulse runs on: its reports, brief and follow-ups in the Pulse chat,
-/// and its memory (Hermes' `pulse_memory` slot).
 /// The note to Pulse (0.78.2): the plugin's reports, morning brief and
 /// follow-up checks read it before their own rules.
 enum PulseNote {
-    /// The plugin's bound on its length (pulse_control.NOTE_LIMIT).
+    /// The plugin's bound on its length (pulse_control.NOTE_LIMIT), in code points.
     static let limit = 1_500
 }
 
+/// A model Pulse runs on: its reports, brief and follow-ups in the Pulse chat,
+/// and its memory (Hermes' `pulse_memory` slot).
 struct PulseModel: Equatable {
     let provider: String
     let model: String
@@ -478,8 +478,8 @@ struct PulseClient {
     }
 
     /// Any of enabled, memory, daily_report, report_profiles, report_times,
-    /// time_zone, model, nudge, memory_daily_tokens and
-    /// followup_daily_tokens; answers with the new state.
+    /// brief_time, time_zone, model, nudge, memory_daily_tokens,
+    /// followup_daily_tokens and note; answers with the new state.
     func update(_ changes: [String: Any]) async throws -> PulseState {
         let response = try await request(Self.path, "PUT", changes)
         return try Self.state(from: response)

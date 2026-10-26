@@ -4,8 +4,8 @@
 //
 //  Settings > Pulse (beta) reads the notifier plugin's Pulse routes:
 //  the state payload as the plugin's pulse_control.state() writes it, a
-//  backfill estimate, memory items, the refusal codes its 409s carry and
-//  the report times the page edits.
+//  backfill estimate, memory items, the refusal codes its 409s carry, the
+//  report times the page edits and the note to Pulse.
 //
 
 import XCTest
@@ -17,22 +17,28 @@ final class PulseSettingsTests: XCTestCase {
         try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
     }
 
+    func testStateReadsTheNoteToPulse() throws {
+        let state = try XCTUnwrap(PulseState(json: json("""
+        {"enabled": true, "note": "Never bring up the gym.\\nAlways tell me when a build finishes."}
+        """)))
+        XCTAssertEqual(state.note, "Never bring up the gym.\nAlways tell me when a build finishes.")
+        XCTAssertEqual(PulseNote.limit, 1_500)
+        // An older plugin's state has no note.
+        XCTAssertEqual(try XCTUnwrap(PulseState(json: json(#"{"enabled": true}"#))).note, "")
+    }
+
     func testStateDecodesTheNudgeLevelAndBudgets() throws {
         let state = try XCTUnwrap(PulseState(json: json("""
         {"enabled": true, "followups": true, "nudge": "eager", "followup_daily_tokens": 300000,
-         "followup_tokens_today": 4200, "followup_daily_tokens_set": false, "daily_tokens": 500000,
-         "note": "Never bring up the gym."}
+         "followup_tokens_today": 4200, "followup_daily_tokens_set": false, "daily_tokens": 500000}
         """)))
         XCTAssertEqual(state.nudge, "eager")
-        XCTAssertEqual(state.note, "Never bring up the gym.")
-        XCTAssertEqual(PulseNote.limit, 1_500)
         XCTAssertTrue(state.followups)
         XCTAssertEqual(state.followupDailyTokens, 300_000)
         XCTAssertEqual(state.followupTokensToday, 4_200)
         XCTAssertFalse(state.followupDailyTokensSet)
         // An older plugin, or a level this build doesn't know, reads as the default.
         XCTAssertEqual(try XCTUnwrap(PulseState(json: json(#"{"enabled": true}"#))).nudge, PulseNudge.defaultLevel)
-        XCTAssertEqual(try XCTUnwrap(PulseState(json: json(#"{"enabled": true}"#))).note, "")  // an older plugin
         XCTAssertEqual(try XCTUnwrap(PulseState(json: json(#"{"enabled": true, "nudge": "loud"}"#))).nudge, "balanced")
         // A budget set off the presets is offered too, in order.
         XCTAssertEqual(PulseNudge.budgets([100, 300], current: 200), [100, 200, 300])
