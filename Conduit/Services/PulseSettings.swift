@@ -147,6 +147,17 @@ struct PulseState: Equatable {
     /// The note to Pulse: what the user wants from it, in their own words
     /// (0.78.2). "" when there is none.
     var note = ""
+    /// Quiet times (0.80.2): the weekdays Pulse keeps to itself, as the
+    /// plugin numbers them (Monday 0 to Sunday 6).
+    var quietDays: [Int] = []
+    /// When the quiet spell set (a vacation, or Quiet for today) ends: the
+    /// start of the first day back. Nil when none is set.
+    var quietUntil: Date?
+    /// Why Pulse is quiet right now; nil while it isn't.
+    var quietNow: PulseQuietReason?
+    /// When Pulse speaks up again: the spell's end, past any quiet days
+    /// after it; nil while it isn't quiet, or when every day is.
+    var quietEndsAt: Date?
     /// Follow-ups on promises and to-dos are on.
     var followups = false
     var followupDailyTokens = 0
@@ -202,6 +213,10 @@ struct PulseState: Equatable {
         }
         if let level = json["nudge"] as? String, PulseNudge.levels.contains(level) { nudge = level }
         note = json["note"] as? String ?? ""
+        quietDays = PulseQuiet.days(json["quiet_days"])
+        quietUntil = PulseJSON.date(json["quiet_until"])
+        quietNow = (json["quiet_now"] as? String).flatMap(PulseQuietReason.init(rawValue:))
+        quietEndsAt = PulseJSON.date(json["quiet_ends_at"])
         followups = PulseJSON.bool(json["followups"]) ?? false
         followupDailyTokens = PulseJSON.int(json["followup_daily_tokens"]) ?? 0
         followupTokensToday = PulseJSON.int(json["followup_tokens_today"]) ?? 0
@@ -225,6 +240,78 @@ struct PulseState: Equatable {
 enum PulseNote {
     /// The plugin's bound on its length (pulse_control.NOTE_LIMIT), in code points.
     static let limit = 1_500
+}
+
+/// Why Pulse is quiet now (0.80.2): a spell set until a day (a vacation,
+/// or Quiet for today), or a quiet day of the week.
+enum PulseQuietReason: String {
+    case until
+    case day
+}
+
+/// Quiet times (0.80.2): days of the week Pulse keeps to itself, and a
+/// spell until a day. While quiet, nothing comes on its own: no report or
+/// morning brief, and follow-ups wait for the first brief after.
+enum PulseQuiet {
+    /// The plugin's weekdays (Monday 0 to Sunday 6), valid and in order.
+    static func days(_ value: Any?) -> [Int] {
+        Array(Set((value as? [Any] ?? []).compactMap { PulseJSON.int($0) }.filter { (0..<7).contains($0) })).sorted()
+    }
+
+    /// A plugin day (Monday 0) from Calendar's weekday symbol index (Sunday
+    /// 0), and back.
+    static func pluginDay(calendarIndex: Int) -> Int { (calendarIndex + 6) % 7 }
+    static func calendarIndex(pluginDay: Int) -> Int { (pluginDay + 1) % 7 }
+
+    /// The plugin's days in the order the user's week runs: Sunday first
+    /// where weeks start on Sunday, Monday first where they start on Monday.
+    static func weekOrder(calendar: Calendar = .current) -> [Int] {
+        (0..<7).map { pluginDay(calendarIndex: (calendar.firstWeekday - 1 + $0) % 7) }
+    }
+
+    /// A day as the plugin takes `quiet_until` ("YYYY-MM-DD"): Pulse is
+    /// quiet until that day starts.
+    static func dayText(_ date: Date, calendar: Calendar = .current) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    /// The days a vacation can end on: tomorrow to a year ahead, as the
+    /// plugin takes them.
+    static func returnDays(now: Date = Date(), calendar: Calendar = .current) -> ClosedRange<Date> {
+        let today = calendar.startOfDay(for: now)
+        let first = calendar.date(byAdding: .day, value: 1, to: today) ?? now
+        let last = calendar.date(byAdding: .day, value: 365, to: today) ?? first
+        return first...max(first, last)
+    }
+
+    /// The relay gateways whose Pulse pushes offer Quiet for today, once
+    /// the plugin of the host behind `gateways` has answered: with them when
+    /// it takes it, without them when not. Nil while it hasn't answered, or
+    /// before the host said which gateways are its own.
+    static func sharedGateways(_ current: Set<String>, gateways: Set<String>, plugin: NotifierPluginStatus) -> Set<String>? {
+        guard !gateways.isEmpty, case .reported = plugin.state else { return nil }
+        return plugin.reports(PulseClient.quietCapability) ? current.union(gateways) : current.subtracting(gateways)
+    }
+
+    /// A vacation's first day back when it's switched on: a week from today.
+    static func defaultReturn(now: Date = Date(), calendar: Calendar = .current) -> Date {
+        calendar.date(byAdding: .day, value: 7, to: calendar.startOfDay(for: now)) ?? now
+    }
+
+    /// When Pulse speaks up again, as the Pulse screen says it: later today,
+    /// tomorrow or a weekday this week as a card put off says it, else the date.
+    static func backText(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
+                                           to: calendar.startOfDay(for: date)).day ?? 0
+        guard days >= 7 else { return PulseRest.backText(date, now: now, calendar: calendar) }
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = AppLocalization.formattingLocale
+        formatter.setLocalizedDateFormatFromTemplate("EEEEMMMMd")
+        return AppLocalization.string("Back on \(formatter.string(from: date))")
+    }
 }
 
 /// A model Pulse runs on: its reports, brief and follow-ups in the Pulse chat,

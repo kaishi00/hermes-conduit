@@ -84,4 +84,63 @@ extension AppState {
         try await sendSessionMutation(id, body: ["pinned": true], profile: profile, bridge: bridge)
         if profilesMatch(profile, activeProfile) { await loadSessions(forceRefresh: true) }
     }
+
+    // MARK: Quiet for today (Pulse's quiet times, 0.80.2)
+
+    /// Tells the Notification Service Extension whether the host behind the
+    /// dashboard in use takes Quiet for today, by the relay gateways it
+    /// pairs this iPhone through, so it offers the button on that host's
+    /// Pulse pushes; only once its plugin has answered.
+    func sharePulseQuiet() {
+        let current = NotificationSharedSettings.pulseQuietGateways
+        guard let next = PulseQuiet.sharedGateways(current, gateways: activeDashboardRelayGatewayIDs, plugin: notifierPlugin),
+              next != current else { return }
+        NotificationSharedSettings.pulseQuietGateways = next
+    }
+
+    /// Quiet for today from a Pulse notification: Pulse keeps to itself
+    /// until midnight (a longer spell already set stays), on the dashboard
+    /// the push came from (`target`), owned as a tap on the push is
+    /// (NotificationDashboardOwnership; nil: the dashboard in use, when it's
+    /// the only one). Conduit may be waking in the background, still
+    /// connecting: it waits up to `wait` for a connection. A push from
+    /// another saved dashboard switches to it only when `switching` (Conduit
+    /// is open), never during a call. Whether Pulse said it's quiet.
+    func quietPulseForToday(_ target: PulseQuietTarget?, switching: Bool, wait: Duration) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: wait)
+        while dashboardTicketBridge == nil || activeDashboardID == nil, clock.now < deadline {
+            try? await Task.sleep(for: .seconds(1))
+        }
+        let raw = target?.dashboardID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let dashboardID = UUID(uuidString: raw)
+        switch NotificationDashboardOwnership.resolve(
+            targetDashboardID: dashboardID,
+            hasMalformedDashboardID: !raw.isEmpty && dashboardID == nil,
+            activeDashboardID: activeDashboardID,
+            savedDashboardIDs: savedDashboardRegistry.dashboards.map(\.id),
+            targetGatewayID: target?.gatewayID,
+            activeDashboardGatewayIDs: activeDashboardRelayGatewayIDs
+        ) {
+        case .route:
+            break
+        case .switchFirst(let id):
+            guard switching, !isVoiceCallInProgress else { return false }
+            await switchDashboard(to: id)
+            // As a tap on the push: only once that dashboard is connected.
+            guard isConnected, activeDashboardID == id else { return false }
+        case .failClosed:
+            return false
+        }
+        guard let active = activeDashboardID, let bridge = dashboardTicketBridge else { return false }
+        do {
+            let response = try await bridge.requestJSON(path: PulseClient.path, method: "PUT",
+                                                        body: ["quiet_until": "today"], timeoutMilliseconds: 15_000)
+            guard activeDashboardID == active else { return false }
+            // A plugin from before quiet times answers without them: nothing went quiet.
+            return (try? PulseClient.state(from: response))?.quietUntil != nil
+        } catch {
+            return false
+        }
+    }
 }

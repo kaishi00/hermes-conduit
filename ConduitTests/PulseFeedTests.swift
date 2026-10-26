@@ -572,6 +572,22 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertFalse(alone.isCaughtUp, "the summary lists what's still open")
     }
 
+    func testFeedSaysWhenPulseIsQuiet() throws {
+        let quiet = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"cards": [], "quiet_now": "day", "quiet_ends_at": 1800000000}
+        """)))
+        XCTAssertEqual(quiet.quietNow, .day)
+        XCTAssertEqual(quiet.quietEndsAt, Date(timeIntervalSince1970: 1_800_000_000))
+        // Not quiet, a plugin from before quiet times, or a reason this build doesn't know.
+        for body in [#"{"cards": [], "quiet_now": "", "quiet_ends_at": null}"#, #"{"cards": []}"#,
+                     #"{"cards": [], "quiet_now": "later", "quiet_ends_at": 5}"#] {
+            let page = try XCTUnwrap(PulseFeedPage(json: json(body)))
+            XCTAssertNil(page.quietNow)
+            XCTAssertNil(page.quietEndsAt)
+        }
+        XCTAssertEqual(PulseClient.quietCapability, "pulse_quiet")
+    }
+
     func testNotNowPostsTheCardToThePlugin() async throws {
         var calls: [(path: String, body: [String: Any]?)] = []
         let client = PulseClient { path, _, body in

@@ -102,6 +102,8 @@ struct V2PulsePage: View {
     @State private var undo: PulseUndo?
     /// The card Not now asks "until when?" about.
     @State private var restCard: PulseCard?
+    /// Quiet for today, or End quiet time, on its way to the plugin.
+    @State private var quieting = false
     /// Do it opened their chat but Pulse wasn't told; kept across refreshes
     /// until the card is done.
     @State private var untoldCards: Set<Int> = []
@@ -116,6 +118,18 @@ struct V2PulsePage: View {
         .navigationTitle(Text("Pulse"))
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
+            // Quiet for today (0.80.2); while Pulse is quiet, the banner says so instead.
+            if canQuiet, page != nil, page?.quietNow == nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        quiet(true)
+                    } label: {
+                        Label(AppLocalization.string("Quiet for today"), systemImage: "moon.zzz")
+                    }
+                    .disabled(quieting)
+                    .accessibilityIdentifier("pulse.quiet-today")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showsLearned = true
@@ -225,10 +239,23 @@ struct V2PulsePage: View {
     @ViewBuilder private var content: some View {
         if let page {
             if page.cards.isEmpty {
-                ContentUnavailableView {
-                    Label(AppLocalization.string("Nothing yet"), systemImage: "waveform.path.ecg")
-                } description: {
-                    Text("Your reports, your morning brief and the news on what Hermes promised to check land here.")
+                VStack(spacing: 12) {
+                    if page.quietNow != nil {
+                        quietBanner(page)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+                    }
+                    if let errorMessage {
+                        Text(verbatim: errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 20)
+                    }
+                    ContentUnavailableView {
+                        Label(AppLocalization.string("Nothing yet"), systemImage: "waveform.path.ecg")
+                    } description: {
+                        Text("Your reports, your morning brief and the news on what Hermes promised to check land here.")
+                    }
                 }
             } else {
                 cardList(page)
@@ -257,6 +284,7 @@ struct V2PulsePage: View {
         return ScrollViewReader { proxy in
             List {
                 Group {
+                    if page.quietNow != nil { quietBanner(page).pulseRow() }
                     summary(layout, new: fresh.count + freshInBriefs.count).pulseRow()
                     if let learnedNote {
                         Label {
@@ -376,6 +404,44 @@ struct V2PulsePage: View {
 
     private var canDismiss: Bool { appState.notifierPlugin.reports(PulseClient.dismissCapability) }
     private var canChooseRest: Bool { appState.notifierPlugin.reports(PulseClient.restCapability) }
+    private var canQuiet: Bool { appState.notifierPlugin.reports(PulseClient.quietCapability) }
+
+    /// Pulse is quiet (0.80.2): until when, and for a spell (a vacation, or
+    /// Quiet for today) End quiet time. A quiet day ends on its own.
+    private func quietBanner(_ page: PulseFeedPage) -> some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "moon.zzz.fill")
+                    .font(.title3)
+                    .foregroundStyle(Color.conduitAccent)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Pulse is quiet")
+                        .font(.subheadline.weight(.semibold))
+                    if let end = page.quietEndsAt {
+                        Text(verbatim: PulseQuiet.backText(end))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: 8)
+            if page.quietNow == .until, canQuiet {
+                Button(AppLocalization.string("End quiet time")) { quiet(false) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(quieting)
+                    .accessibilityIdentifier("pulse.quiet-end")
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.thinMaterial))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+        )
+    }
 
     // MARK: Morning brief
 
@@ -961,6 +1027,30 @@ struct V2PulsePage: View {
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
                 showError(PulseRefusal.message(for: error))
+            }
+        }
+    }
+
+    /// Quiet for today (Pulse keeps to itself until midnight; a longer
+    /// spell already set stays), or End quiet time; the page then shows it.
+    private func quiet(_ on: Bool) {
+        guard !quieting else { return }
+        quieting = true
+        Haptics.light()
+        let dashboard = appState.activeDashboardID
+        let client = self.client
+        Task {
+            defer { quieting = false }
+            do {
+                let until: Any = on ? "today" as Any : NSNull() as Any
+                _ = try await client.update(["quiet_until": until])
+                guard appState.activeDashboardID == dashboard else { return }
+                Haptics.success()
+                await load()
+            } catch {
+                guard appState.activeDashboardID == dashboard else { return }
+                errorMessage = PulseRefusal.message(for: error)
+                Haptics.error()
             }
         }
     }

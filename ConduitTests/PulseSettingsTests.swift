@@ -27,6 +27,74 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(PulseState(json: json(#"{"enabled": true}"#))).note, "")
     }
 
+    func testStateReadsQuietTimes() throws {
+        let state = try XCTUnwrap(PulseState(json: json("""
+        {"enabled": true, "quiet_days": [6, 5, 5, 9, "sat", true], "quiet_until": 1800000000,
+         "quiet_now": "until", "quiet_ends_at": 1800172800}
+        """)))
+        // Only the plugin's weekdays (Monday 0 to Sunday 6), once each, in order.
+        XCTAssertEqual(state.quietDays, [5, 6])
+        XCTAssertEqual(state.quietUntil, Date(timeIntervalSince1970: 1_800_000_000))
+        XCTAssertEqual(state.quietNow, .until)
+        XCTAssertEqual(state.quietEndsAt, Date(timeIntervalSince1970: 1_800_172_800))
+        // A plugin from before quiet times, or a reason this build doesn't know.
+        let older = try XCTUnwrap(PulseState(json: json(#"{"enabled": true, "quiet_now": "later"}"#)))
+        XCTAssertEqual(older.quietDays, [])
+        XCTAssertNil(older.quietUntil)
+        XCTAssertNil(older.quietNow)
+        XCTAssertNil(older.quietEndsAt)
+    }
+
+    func testQuietDaysRunInTheUsersWeekAndAVacationEndsOnADay() {
+        var sundayFirst = Calendar(identifier: .gregorian)
+        sundayFirst.firstWeekday = 1
+        XCTAssertEqual(PulseQuiet.weekOrder(calendar: sundayFirst), [6, 0, 1, 2, 3, 4, 5])
+        var mondayFirst = Calendar(identifier: .gregorian)
+        mondayFirst.firstWeekday = 2
+        XCTAssertEqual(PulseQuiet.weekOrder(calendar: mondayFirst), [0, 1, 2, 3, 4, 5, 6])
+        // The plugin's Monday 0 is Calendar's weekday symbol 1 (Sunday is 0), and back.
+        XCTAssertEqual((0..<7).map(PulseQuiet.calendarIndex(pluginDay:)), [1, 2, 3, 4, 5, 6, 0])
+        XCTAssertEqual((0..<7).map { PulseQuiet.pluginDay(calendarIndex: PulseQuiet.calendarIndex(pluginDay: $0)) },
+                       Array(0..<7))
+
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let tuesday = Date(timeIntervalSince1970: 1_793_095_200)  // 2026-10-27 10:00 UTC
+        XCTAssertEqual(PulseQuiet.dayText(tuesday, calendar: utc), "2026-10-27")
+        // A vacation ends from tomorrow to a year ahead, a week away when switched on.
+        let days = PulseQuiet.returnDays(now: tuesday, calendar: utc)
+        XCTAssertEqual(PulseQuiet.dayText(days.lowerBound, calendar: utc), "2026-10-28")
+        XCTAssertEqual(PulseQuiet.dayText(days.upperBound, calendar: utc), "2027-10-27")
+        XCTAssertEqual(PulseQuiet.dayText(PulseQuiet.defaultReturn(now: tuesday, calendar: utc), calendar: utc), "2026-11-03")
+        // When Pulse speaks up again, as the Pulse screen says it.
+        let midnight = utc.startOfDay(for: tuesday)
+        let day = { (count: Double) in midnight.addingTimeInterval(count * 86_400) }
+        XCTAssertEqual(PulseQuiet.backText(day(1), now: tuesday, calendar: utc), "Back tomorrow")
+        XCTAssertEqual(PulseQuiet.backText(tuesday.addingTimeInterval(3_600), now: tuesday, calendar: utc), "Back later today")
+        let weekday = PulseQuiet.backText(day(6), now: tuesday, calendar: utc)
+        XCTAssertTrue(weekday.hasPrefix("Back on "))
+        XCTAssertFalse(weekday.contains("%@"))
+        let date = PulseQuiet.backText(day(12), now: tuesday, calendar: utc)
+        XCTAssertTrue(date.hasPrefix("Back on "))
+        XCTAssertNotEqual(date, weekday)
+    }
+
+    func testQuietForTodayIsOfferedForAHostOnceItsPluginTakesIt() {
+        let gateways: Set<String> = ["gw-default", "gw-work"]
+        var plugin = NotifierPluginStatus()
+        // Not answered yet: nothing changes.
+        XCTAssertNil(PulseQuiet.sharedGateways([], gateways: gateways, plugin: plugin))
+        plugin.state = .reported(version: "0.80.2", capabilities: [PulseClient.capability, PulseClient.quietCapability])
+        XCTAssertEqual(PulseQuiet.sharedGateways(["gw-other"], gateways: gateways, plugin: plugin),
+                       ["gw-other", "gw-default", "gw-work"])
+        // Before the host said which gateways are its own: nothing changes.
+        XCTAssertNil(PulseQuiet.sharedGateways(["gw-other"], gateways: [], plugin: plugin))
+        // A plugin from before quiet times takes its host's gateways out, and only those.
+        plugin.state = .reported(version: "0.78.3", capabilities: [PulseClient.capability])
+        XCTAssertEqual(PulseQuiet.sharedGateways(["gw-other", "gw-default", "gw-work"], gateways: gateways, plugin: plugin),
+                       ["gw-other"])
+    }
+
     func testStateDecodesTheNudgeLevelAndBudgets() throws {
         let state = try XCTUnwrap(PulseState(json: json("""
         {"enabled": true, "followups": true, "nudge": "eager", "followup_daily_tokens": 300000,

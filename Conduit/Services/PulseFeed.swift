@@ -341,6 +341,10 @@ struct PulseFeedPage: Equatable {
     /// Pulse's own chat, behind the screen (0.56.0); nil from an older
     /// plugin, or before the chat is made.
     var homeChatID: String?
+    /// Why Pulse is quiet now, and when it speaks up again (0.80.2); nil
+    /// while it isn't, and from an older plugin.
+    var quietNow: PulseQuietReason?
+    var quietEndsAt: Date?
 
     init() {}
 
@@ -351,6 +355,8 @@ struct PulseFeedPage: Equatable {
         levels = PulseFeedPage.levels(json["levels"])
         let home = (json["home_chat_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         homeChatID = home?.isEmpty == false ? home : nil
+        quietNow = (json["quiet_now"] as? String).flatMap(PulseQuietReason.init(rawValue:))
+        quietEndsAt = quietNow == nil ? nil : PulseJSON.date(json["quiet_ends_at"])
     }
 
     static func levels(_ value: Any?) -> [String: PulseLevel] {
@@ -678,6 +684,9 @@ extension PulseClient {
     /// A report card's why is its reason (why now, where it came from),
     /// for Why? on the card (0.80.1).
     static let cardWhyCapability = "pulse_card_why"
+    /// Quiet times: quiet days and a vacation in Settings > Pulse, and Quiet
+    /// for today on the Pulse screen and on a Pulse notification (0.80.2).
+    static let quietCapability = "pulse_quiet"
 }
 
 /// What Not now puts a card off until, as the plugin names it.

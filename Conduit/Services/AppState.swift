@@ -12120,10 +12120,12 @@ final class AppState: ObservableObject {
         saveRelayGatewayIDs(stored)
     }
 
-    /// Settings > Notifications sorts pairings by these, so it redraws.
+    /// Settings > Notifications sorts pairings by these, so it redraws; and
+    /// Pulse pushes from a host's gateways offer Quiet for today by them.
     private func saveRelayGatewayIDs(_ stored: [String: [String: String]]) {
         objectWillChange.send()
         defaults.set(stored, forKey: Self.relayGatewayIDsByDashboardKey)
+        sharePulseQuiet()
     }
 
     private func storedRelayGatewayIDs() -> [String: [String: String]] {
@@ -24483,6 +24485,7 @@ final class AppState: ObservableObject {
             if oldValue.state != notifierPlugin.state {
                 updateChatOnScreen()
                 forgetPulseHomeIfGone()
+                sharePulseQuiet()
             }
         }
     }

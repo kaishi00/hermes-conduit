@@ -48,6 +48,7 @@ struct PulseSettingsPage: View {
                 if state.enabled {
                     let budgets = appState.notifierPlugin.reports(PulseClient.nudgeCapability)
                     speakUpSection(state, budgets: budgets)
+                    if appState.notifierPlugin.reports(PulseClient.quietCapability) { quietSection(state) }
                     if appState.notifierPlugin.reports(PulseClient.noteCapability) { noteSection(state) }
                     readsSection(state)
                     if state.memory || state.backfill.phase != .none {
@@ -222,6 +223,55 @@ struct PulseSettingsPage: View {
             }
             .font(.caption)
             .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Quiet times (0.80.2): the days of the week Pulse keeps to itself, and
+    /// a vacation until a day. Quiet for today is on the Pulse screen and on
+    /// a Pulse notification; it shows here as a vacation back tomorrow.
+    private func quietSection(_ state: PulseState) -> some View {
+        ConduitSettingsSection(title: AppLocalization.string("Quiet times"), symbol: "moon.zzz", tint: .conduitAccent) {
+            Text("Quiet days")
+                .font(.subheadline.weight(.semibold))
+            PulseQuietDaysPicker(days: Set(state.quietDays)) { days in
+                change(["quiet_days": days]) { $0.quietDays = days }
+            }
+            .disabled(working)
+            .accessibilityIdentifier("settings.pulse.quiet-days")
+            Toggle("Vacation", isOn: Binding(
+                get: { state.quietUntil != nil },
+                set: { on in
+                    if on {
+                        let back = PulseQuiet.defaultReturn()
+                        change(["quiet_until": PulseQuiet.dayText(back)]) { $0.quietUntil = back }
+                    } else {
+                        change(["quiet_until": NSNull()]) { $0.quietUntil = nil }
+                    }
+                }
+            ))
+            .disabled(working)
+            .accessibilityIdentifier("settings.pulse.vacation")
+            if let back = state.quietUntil {
+                DatePicker(
+                    AppLocalization.string("Back on"),
+                    selection: Binding(
+                        get: { back },
+                        set: { day in
+                            let text = PulseQuiet.dayText(day)
+                            guard text != PulseQuiet.dayText(back) else { return }
+                            let start = Calendar.current.startOfDay(for: day)
+                            change(["quiet_until": text]) { $0.quietUntil = start }
+                        }
+                    ),
+                    in: PulseQuiet.returnDays(),
+                    displayedComponents: .date
+                )
+                .disabled(working)
+                .accessibilityIdentifier("settings.pulse.vacation-end")
+            }
+            Text("On quiet days and on vacation, Pulse sends nothing on its own: no report and no morning brief, and follow-ups wait for the first brief after. It keeps remembering, and Do it still checks.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -816,6 +866,44 @@ struct PulseSettingsPage: View {
                 await reload()
             }
         }
+    }
+}
+
+/// Settings > Pulse's quiet days: seven toggles in the user's week order,
+/// drawn like the scheduled job editor's days. `days` are the plugin's
+/// (Monday 0 to Sunday 6).
+private struct PulseQuietDaysPicker: View {
+    let days: Set<Int>
+    let pick: ([Int]) -> Void
+
+    var body: some View {
+        // The week's order from the user's region, the names in the App Language.
+        var named = Calendar.current
+        named.locale = AppLocalization.formattingLocale
+        let symbols = named.veryShortStandaloneWeekdaySymbols
+        let names = named.standaloneWeekdaySymbols
+        return HStack(spacing: 6) {
+            ForEach(PulseQuiet.weekOrder(), id: \.self) { day in
+                let isOn = days.contains(day)
+                let index = PulseQuiet.calendarIndex(pluginDay: day)
+                Button {
+                    Haptics.selection()
+                    var next = days
+                    if isOn { next.remove(day) } else { next.insert(day) }
+                    pick(next.sorted())
+                } label: {
+                    Text(verbatim: symbols[index])
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .foregroundStyle(isOn ? Color.white : Color.primary)
+                        .background(isOn ? Color.conduitAccent : Color.primary.opacity(0.07), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(verbatim: names[index]))
+                .accessibilityAddTraits(isOn ? .isSelected : [])
+            }
+        }
+        .padding(.vertical, 2)
     }
 }
 

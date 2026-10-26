@@ -2082,6 +2082,26 @@ final class PushNotificationService: ObservableObject {
         route(target)
     }
 
+    /// Where a Pulse push's Quiet for today is for: a push that verifies,
+    /// through a relay gateway whose host's plugin takes it (as the
+    /// extension decided when it gave the push the button). Nil for
+    /// anything else, which the button never acts on.
+    func pulseQuietTarget(_ userInfo: [AnyHashable: Any]) -> PulseQuietTarget? {
+        guard case .verified(let verified) = NotificationE2E.evaluate(
+                  userInfo,
+                  records: Self.e2eKeyStore.records(),
+                  knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs,
+                  keysProvisioned: NotificationSharedSettings.keysProvisioned
+              ),
+              PulseNotifications.offersQuietToday(
+                  titleLabel: verified.content["title_label"] as? String,
+                  gatewayID: verified.record.gatewayID,
+                  quietGateways: NotificationSharedSettings.pulseQuietGateways
+              )
+        else { return nil }
+        return PulseQuietTarget(dashboardID: verified.record.dashboardID, gatewayID: verified.record.gatewayID)
+    }
+
     // MARK: Ringing calls (#449 step 2)
 
     /// What a VoIP push rings for (HermesNativeCalls).

@@ -17,8 +17,9 @@ private let backgroundPushLogger = Logger(subsystem: "com.milim.relay", category
 final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
-        // A "Hermes wants to talk" notification's Talk button (#449).
-        HermesCallNotifications.registerCategory()
+        // A "Hermes wants to talk" notification's Talk button (#449), and a
+        // Pulse push's Quiet for today.
+        NotificationCategories.register()
         // Workspace files a previous run prepared for Save to Files.
         Task.detached(priority: .utility) { _ = WorkspaceDownloads.root }
         // Set up before launch returns: a call the Apple Watch starts can
@@ -129,6 +130,38 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let request = response.notification.request
+        // Quiet for today on a Pulse push: done in the background, on the
+        // dashboard the push came from. One that couldn't reach Hermes says
+        // so, and that notification's tap tries again with Conduit open.
+        if response.actionIdentifier == PulseNotifications.quietTodayActionIdentifier {
+            let userInfo = request.content.userInfo
+            Task { @MainActor in
+                let target = PushNotificationService.shared.pulseQuietTarget(userInfo)
+                var quiet = false
+                if let target {
+                    // In the background: never switches dashboards.
+                    quiet = await AppStateRuntimeRegistry.shared.appState.quietPulseForToday(target, switching: false,
+                                                                                            wait: .seconds(10))
+                }
+                if !quiet {
+                    try? await UNUserNotificationCenter.current().add(PulseNotifications.retryRequest(target: target))
+                }
+                completionHandler()
+            }
+            return
+        }
+        if request.identifier == PulseNotifications.retryIdentifier, !(request.trigger is UNPushNotificationTrigger) {
+            let target = PulseNotifications.retryTarget(request.content.userInfo)
+            Task { @MainActor in
+                let app = AppStateRuntimeRegistry.shared.appState
+                completionHandler()
+                // Conduit is open: a push from another saved dashboard switches to it, as a tap on it would.
+                _ = await app.quietPulseForToday(target, switching: true, wait: .seconds(20))
+                // The Pulse screen shows it quiet, or offers Quiet for today again.
+                app.openPulse(card: nil)
+            }
+            return
+        }
         // "Draft ready in Conduit" from the share sheet (#812): coming to the
         // front picks the draft up; one already on screen takes it now.
         if request.identifier.hasPrefix(ShareDraftInbox.notificationIdentifierPrefix), !(request.trigger is UNPushNotificationTrigger) {
@@ -198,6 +231,12 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         }
         if notification.request.content.categoryIdentifier == HermesCallNotifications.categoryIdentifier {
             completionHandler([.banner, .list, .sound])
+            return
+        }
+        // Quiet for today that couldn't reach Hermes says so wherever the user is.
+        if notification.request.identifier == PulseNotifications.retryIdentifier,
+           !(notification.request.trigger is UNPushNotificationTrigger) {
+            completionHandler([.banner, .list])
             return
         }
         // A step's timer from a rich card rings wherever the user is.
@@ -270,7 +309,7 @@ struct ConduitApp: App {
                 appState.publishWidgetLanguage()
                 // The Notification Service Extension writes banners in it.
                 NotificationSharedSettings.appLanguage = AppLanguage.current.rawValue
-                HermesCallNotifications.registerCategory()
+                NotificationCategories.register()
             }
             .preferredColorScheme(appState.themePreference.colorScheme)
             .tint(.conduitAccent)

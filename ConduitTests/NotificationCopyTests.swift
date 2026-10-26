@@ -6,6 +6,7 @@
 //  and keeps the host's content (body, chat title, call details).
 //
 
+import UserNotifications
 import XCTest
 @testable import Conduit
 
@@ -70,6 +71,37 @@ final class NotificationCopyTests: XCTestCase {
         XCTAssertEqual(NotificationCopy.preview(["title_label": "pulse.brief", "body": "Two things waited."]).title,
                        "Your morning brief")
         XCTAssertEqual(NotificationCopy.preview(["title_label": "pulse.followup"]).title, "Pulse · Follow-up")
+    }
+
+    func testPulsePushesOfferQuietForTodayWhereTheirPluginTakesIt() {
+        let quiet: Set<String> = ["gw-home"]
+        let offers = { (label: String?, gateway: String) in
+            PulseNotifications.offersQuietToday(titleLabel: label, gatewayID: gateway, quietGateways: quiet)
+        }
+        XCTAssertTrue(offers("pulse.noticed", "gw-home"))
+        XCTAssertTrue(offers("pulse.brief", " gw-home "))
+        XCTAssertTrue(offers("pulse.followup", "gw-home"))
+        XCTAssertFalse(offers("response.ready", "gw-home"))
+        XCTAssertFalse(offers(nil, "gw-home"))
+        XCTAssertFalse(offers("pulse.followup", "gw-other"))
+        XCTAssertFalse(offers("pulse.followup", ""))
+
+        // The button works without opening Conduit, in the App Language.
+        let category = PulseNotifications.category()
+        XCTAssertEqual(category.identifier, PulseNotifications.categoryIdentifier)
+        XCTAssertEqual(category.actions.map(\.identifier), [PulseNotifications.quietTodayActionIdentifier])
+        XCTAssertEqual(category.actions.first?.title, "Quiet for today")
+        XCTAssertFalse(category.actions.first?.options.contains(.foreground) ?? true)
+        // One that couldn't reach Hermes keeps the push's dashboard and gateway to try again on.
+        let target = PulseQuietTarget(dashboardID: UUID().uuidString, gatewayID: "gw-home")
+        let retry = PulseNotifications.retryRequest(target: target)
+        XCTAssertEqual(retry.identifier, PulseNotifications.retryIdentifier)
+        XCTAssertNil(retry.trigger)
+        XCTAssertEqual(retry.content.title, "Pulse isn't quiet yet")
+        XCTAssertEqual(PulseNotifications.retryTarget(retry.content.userInfo), target)
+        let legacy = PulseQuietTarget(dashboardID: nil, gatewayID: "gw-home")
+        XCTAssertEqual(PulseNotifications.retryTarget(PulseNotifications.retryRequest(target: legacy).content.userInfo), legacy)
+        XCTAssertNil(PulseNotifications.retryTarget(PulseNotifications.retryRequest(target: nil).content.userInfo))
     }
 
     func testUnlabelledPushKeepsTheHostText() {
