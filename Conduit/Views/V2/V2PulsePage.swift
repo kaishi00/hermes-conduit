@@ -170,7 +170,7 @@ struct V2PulsePage: View {
             }
             Button(AppLocalization.string("Just thumbs down")) { rate(card, up: false, reason: nil) }
         } message: { _ in
-            Text("Pulse changes what it does with your answer. You can undo it under What Pulse learned.")
+            Text("A reason changes what Pulse does right away. You can undo it under What Pulse learned.")
         }
         .confirmationDialog(
             AppLocalization.string("Not now, until when?"),
@@ -204,6 +204,7 @@ struct V2PulsePage: View {
         .onAppear { isShown = true }
         .onDisappear {
             isShown = false
+            reasonCard = nil
             restCard = nil
             newCards = nil
             focusedCard = nil

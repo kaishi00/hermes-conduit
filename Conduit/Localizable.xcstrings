@@ -338656,88 +338656,6 @@
         }
       }
     },
-    "Pulse changes what it does with your answer. You can undo it under What Pulse learned." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pulse passt sein Verhalten an deine Antwort an. Du kannst es unter „Was Pulse gelernt hat“ rückgängig machen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pulse cambia lo que hace según tu respuesta. Puedes deshacerlo en Lo que aprendió Pulse."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pulse change ce qu’il fait selon votre réponse. Vous pouvez l’annuler dans Ce que Pulse a appris."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pulse mengubah tindakannya berdasarkan jawaban Anda. Anda bisa membatalkannya di Yang dipelajari Pulse."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pulse cambia ciò che fa in base alla tua risposta. Puoi annullarlo in Cosa ha imparato Pulse."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pulseはあなたの答えに合わせて動きを変えます。「Pulseが学んだこと」で取り消せます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pulse는 답변에 따라 동작을 바꿉니다. 'Pulse가 배운 것'에서 되돌릴 수 있습니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pulse zmienia działanie zgodnie z twoją odpowiedzią. Możesz to cofnąć w sekcji Czego nauczył się Pulse."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O Pulse muda o que faz com base na sua resposta. Você pode desfazer em O que o Pulse aprendeu."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pulse меняет поведение по вашему ответу. Это можно отменить в разделе «Чему научился Pulse»."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pulse yanıtınıza göre davranışını değiştirir. Bunu Pulse'un öğrendikleri bölümünden geri alabilirsiniz."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pulse 会根据你的回答调整做法。你可以在“Pulse 学到的”中撤销。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pulse 會根據你的回答調整做法。你可以在「Pulse 學到的」中撤銷。"
-          }
-        }
-      }
-    },
     "Looks through your chats at" : {
       "localizations" : {
         "de" : {
@@ -360326,6 +360244,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請先結束通話，再讓其他工作區中的 Pulse 保持安靜。"
+          }
+        }
+      }
+    },
+    "A reason changes what Pulse does right away. You can undo it under What Pulse learned." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Grund ändert sofort, was Pulse tut. Du kannst es unter „Was Pulse gelernt hat“ rückgängig machen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un motivo cambia al instante lo que hace Pulse. Puedes deshacerlo en Lo que aprendió Pulse."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une raison change aussitôt ce que fait Pulse. Vous pouvez l’annuler dans Ce que Pulse a appris."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alasan langsung mengubah tindakan Pulse. Anda bisa membatalkannya di Yang dipelajari Pulse."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un motivo cambia subito ciò che fa Pulse. Puoi annullarlo in Cosa ha imparato Pulse."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "理由を選ぶと、Pulseはすぐに動きを変えます。「Pulseが学んだこと」で取り消せます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이유를 고르면 Pulse가 바로 동작을 바꿉니다. 'Pulse가 배운 것'에서 되돌릴 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Powód od razu zmienia działanie Pulse. Możesz to cofnąć w sekcji Czego nauczył się Pulse."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um motivo muda na hora o que o Pulse faz. Você pode desfazer em O que o Pulse aprendeu."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Причина сразу меняет поведение Pulse. Это можно отменить в разделе «Чему научился Pulse»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir neden Pulse'un davranışını hemen değiştirir. Bunu Pulse'un öğrendikleri bölümünden geri alabilirsiniz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择原因后，Pulse 会立即调整做法。你可以在“Pulse 学到的”中撤销。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇原因後，Pulse 會立即調整做法。你可以在「Pulse 學到的」中撤銷。"
           }
         }
       }

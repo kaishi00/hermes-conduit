@@ -464,6 +464,25 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertEqual(appState.knownRelayGatewayIDs, ["gw-1"])
     }
 
+    func testPulseQuietForTodayRetryDuringACallStaysAndSaysWhy() async {
+        let savedA = SavedDashboard(id: dashboardA, label: "VPS", normalizedURL: "https://vps.tailnet.ts.net")
+        let savedB = SavedDashboard(id: dashboardB, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
+        appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
+        appState.recordRelayGatewayID("gw-2", for: dashboardB, profile: "default")
+        appState.showVoiceSheet = true
+
+        // Another saved dashboard's push, retried with Conduit open: a call keeps
+        // Conduit where it is, as a tap on the push does, and says so.
+        let quieted = await appState.quietPulseForToday(PulseQuietTarget(dashboardID: dashboardB.uuidString, gatewayID: "gw-2"),
+                                                        switching: true, wait: .zero)
+
+        XCTAssertFalse(quieted)
+        XCTAssertEqual(appState.activeDashboardID, dashboardA)
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("End the call to quiet Pulse in another workspace."))
+        XCTAssertTrue(appState.isVoiceCallInProgress)
+    }
+
     func testRelayGatewayIDsAreKeptPerDashboardAndForgottenWithIt() {
         let savedA = SavedDashboard(id: dashboardA, label: "VPS", normalizedURL: "https://vps.tailnet.ts.net")
         let savedB = SavedDashboard(id: dashboardB, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
