@@ -655,4 +655,6 @@ extension PulseClient {
     /// Done and Do it take report items Pulse found on its own, and one found
     /// in a chat points at that chat (0.77.0).
     static let foundActionsCapability = "pulse_found_actions"
+    /// Settings > Pulse takes a note to Pulse, in the user's own words (0.78.2).
+    static let noteCapability = "pulse_note"
 }

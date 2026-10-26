@@ -144,6 +144,9 @@ struct PulseState: Equatable {
     var model: PulseModel?
     /// How much Pulse nudges (0.63.0): one of PulseNudge.levels.
     var nudge = PulseNudge.defaultLevel
+    /// The note to Pulse: what the user wants from it, in their own words
+    /// (0.78.2). "" when there is none.
+    var note = ""
     /// Follow-ups on promises and to-dos are on.
     var followups = false
     var followupDailyTokens = 0
@@ -198,6 +201,7 @@ struct PulseState: Equatable {
             backfillDays = days
         }
         if let level = json["nudge"] as? String, PulseNudge.levels.contains(level) { nudge = level }
+        note = json["note"] as? String ?? ""
         followups = PulseJSON.bool(json["followups"]) ?? false
         followupDailyTokens = PulseJSON.int(json["followup_daily_tokens"]) ?? 0
         followupTokensToday = PulseJSON.int(json["followup_tokens_today"]) ?? 0
@@ -218,6 +222,13 @@ struct PulseState: Equatable {
 
 /// A model Pulse runs on: its reports, brief and follow-ups in the Pulse chat,
 /// and its memory (Hermes' `pulse_memory` slot).
+/// The note to Pulse (0.78.2): the plugin's reports, morning brief and
+/// follow-up checks read it before their own rules.
+enum PulseNote {
+    /// The plugin's bound on its length (pulse_control.NOTE_LIMIT).
+    static let limit = 1_500
+}
+
 struct PulseModel: Equatable {
     let provider: String
     let model: String

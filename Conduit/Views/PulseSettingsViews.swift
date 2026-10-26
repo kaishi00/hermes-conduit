@@ -33,6 +33,9 @@ struct PulseSettingsPage: View {
     @State private var timesSave: Task<Void, Never>?
     /// The models Hermes offers, for the Model picker.
     @State private var providers: [ProviderInfo] = []
+    /// The note to Pulse as it's being edited; nil shows the plugin's.
+    @State private var noteDraft: String?
+    @FocusState private var noteFocused: Bool
 
     private var client: PulseClient { appState.pulseClient }
     private var working: Bool { workingID != nil }
@@ -45,6 +48,7 @@ struct PulseSettingsPage: View {
                 if state.enabled {
                     let budgets = appState.notifierPlugin.reports(PulseClient.nudgeCapability)
                     speakUpSection(state, budgets: budgets)
+                    if appState.notifierPlugin.reports(PulseClient.noteCapability) { noteSection(state) }
                     readsSection(state)
                     if state.memory || state.backfill.phase != .none {
                         backfillSection(state)
@@ -95,6 +99,7 @@ struct PulseSettingsPage: View {
             seededDays = false
             estimate = nil
             draftTimes = nil
+            noteDraft = nil
             providers = []
             showsRecent = false
         }
@@ -221,6 +226,54 @@ struct PulseSettingsPage: View {
     }
 
     /// Which profiles Pulse reads, and what it keeps from them.
+    /// What the user wants from Pulse, in their own words: the plugin's
+    /// reports, morning brief and follow-up checks read it before their own
+    /// rules (0.78.2). Saved on Save, so a half-typed note never goes out.
+    private func noteSection(_ state: PulseState) -> some View {
+        let shown = noteDraft ?? state.note
+        let trimmed = shown.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tooLong = trimmed.count > PulseNote.limit
+        let changed = noteDraft != nil && trimmed != state.note
+        return ConduitSettingsSection(title: AppLocalization.string("What you want from Pulse"), symbol: "text.quote", tint: .conduitAccent) {
+            TextField(AppLocalization.string("What to always bring up, what to leave out"), text: Binding(
+                get: { shown },
+                set: { noteDraft = $0 }
+            ), axis: .vertical)
+            .textFieldStyle(.roundedBorder)
+            .lineLimit(2...8)
+            .focused($noteFocused)
+            .disabled(working)
+            .accessibilityLabel(Text(AppLocalization.string("Note to Pulse")))
+            .accessibilityIdentifier("settings.pulse.note")
+            if tooLong {
+                Text("At most 1,500 characters.")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+            if changed {
+                HStack {
+                    Spacer()
+                    Button(AppLocalization.string("Cancel")) {
+                        noteFocused = false
+                        noteDraft = nil
+                    }
+                    .buttonStyle(.settings)
+                    Button(AppLocalization.string("Save")) {
+                        noteFocused = false
+                        noteDraft = nil
+                        change(["note": trimmed]) { $0.note = trimmed }
+                    }
+                    .buttonStyle(.settingsPrimary)
+                    .disabled(working || tooLong)
+                    .accessibilityIdentifier("settings.pulse.note-save")
+                }
+            }
+            Text("Pulse reads it before every report, morning brief and reminder. Where it says what to bring up or leave out, it comes before Pulse's own rules.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private func readsSection(_ state: PulseState) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("What Pulse reads"), symbol: "brain.head.profile", tint: .conduitAccent) {
             if state.offersProfileChoice {
