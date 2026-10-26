@@ -278,6 +278,12 @@ enum PulseCardKind {
         default: return AppLocalization.string("Noticed")
         }
     }
+
+    /// What a lesson is about: a card kind's heading, else a report item's
+    /// topic, which a report card's reasons teach about (0.80.3).
+    static func name(_ kind: String) -> String {
+        ["followup", "report", "brief", "noticed"].contains(kind) ? title(kind) : topic(kind)
+    }
 }
 
 /// Something a rating taught Pulse, which the user can undo.
@@ -308,13 +314,15 @@ struct PulseLesson: Equatable, Identifiable {
         switch what {
         case "level":
             let level = PulseLevel(rawValue: value)?.title ?? value
-            return AppLocalization.string("\(PulseCardKind.title(kind)): \(level)")
+            return AppLocalization.string("\(PulseCardKind.name(kind)): \(level)")
         case "rule":
             return AppLocalization.string("No updates about “\(value)”")
         case "sooner":
-            return AppLocalization.string("Check on promises sooner")
+            return kind == "followup" ? AppLocalization.string("Check on promises sooner")
+                : AppLocalization.string("\(PulseCardKind.name(kind)): Bring up sooner")
         case "seen":
-            return AppLocalization.string("Skip news you already saw in the chat")
+            return kind == "followup" ? AppLocalization.string("Skip news you already saw in the chat")
+                : AppLocalization.string("\(PulseCardKind.name(kind)): Skip what you already know")
         default:
             return what
         }
@@ -589,6 +597,13 @@ extension AppState {
     /// plugin from before gave report and brief cards stock lines, not reasons.
     func explainsPulseCard(_ card: PulseCard) -> Bool {
         !card.why.isEmpty && (card.kind == "followup" || notifierPlugin.reports(PulseClient.cardWhyCapability))
+    }
+
+    /// A thumbs down on this card asks why: a follow-up's, or a report
+    /// card's once the plugin acts on its reasons (0.80.3). Before, a report
+    /// card's reason changed nothing, so its thumbs down was enough.
+    func asksPulseDownReason(_ card: PulseCard) -> Bool {
+        card.kind == "followup" || card.isNoticed && notifierPlugin.reports(PulseClient.learnsCapability)
     }
 
     /// Opens the chat a card came from.

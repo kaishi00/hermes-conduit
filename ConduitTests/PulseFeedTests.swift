@@ -116,11 +116,15 @@ final class PulseFeedTests: XCTestCase {
           {"id": 3, "kind": "followup", "what": "sooner", "value": "", "cause": "too late"},
           {"id": 4, "kind": "followup", "what": "seen", "value": "", "cause": "already knew"},
           {"id": 5, "kind": "followup", "what": "level", "value": "off", "cause": "set"},
-          {"id": 6, "kind": "followup"}]}
+          {"id": 6, "kind": "followup"},
+          {"id": 7, "kind": "commitment", "what": "level", "value": "brief", "cause": "too often"},
+          {"id": 8, "kind": "date", "what": "sooner", "value": "", "cause": "too late"},
+          {"id": 9, "kind": "fact", "what": "seen", "value": "", "cause": "already knew"},
+          {"id": 10, "kind": "noticed", "what": "rule", "value": "Send the deck", "cause": "not relevant"}]}
         """)))
 
         XCTAssertEqual(learned.levels, ["followup": .screen])
-        XCTAssertEqual(learned.lessons.map(\.id), [1, 2, 3, 4, 5])
+        XCTAssertEqual(learned.lessons.map(\.id), [1, 2, 3, 4, 5, 7, 8, 9, 10])
         let lessons = learned.lessons
 
         XCTAssertEqual(lessons[0].text, AppLocalization.string("\(PulseCardKind.title("followup")): \(PulseLevel.screen.title)"))
@@ -135,6 +139,15 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(lessons[3].causeText, AppLocalization.string("You said you already knew"))
         XCTAssertEqual(lessons[4].text, AppLocalization.string("\(PulseCardKind.title("followup")): \(PulseLevel.off.title)"))
         XCTAssertNil(lessons[4].causeText)
+        // A report card's reasons teach about its topic (0.80.3), and its lessons say which.
+        XCTAssertEqual(lessons[5].text, AppLocalization.string("\(PulseCardKind.topic("commitment")): \(PulseLevel.brief.title)"))
+        XCTAssertEqual(lessons[5].causeText, AppLocalization.string("You said too often"))
+        XCTAssertEqual(lessons[6].text, AppLocalization.string("\(PulseCardKind.topic("date")): Bring up sooner"))
+        XCTAssertEqual(lessons[7].text, AppLocalization.string("\(PulseCardKind.topic("fact")): Skip what you already know"))
+        XCTAssertEqual(lessons[8].text, AppLocalization.string("No updates about “\("Send the deck")”"))
+        XCTAssertEqual(PulseCardKind.name("followup"), PulseCardKind.title("followup"))
+        XCTAssertEqual(PulseCardKind.name("noticed"), PulseCardKind.title("noticed"))
+        XCTAssertEqual(PulseCardKind.name("other"), PulseCardKind.topic("other"))
 
         // Before 0.80.3 thumbs move the levels; a plugin that learns says the level is the loudest Pulse gets.
         XCTAssertEqual(PulseLearned.levelsFooter(learns: false),
@@ -315,6 +328,28 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertFalse(state.explainsPulseCard(wholeNow))
         XCTAssertTrue(state.explainsPulseCard(whole))
         XCTAssertFalse(state.explainsPulseCard(plain))
+    }
+
+    func testAReportCardsThumbsDownAsksWhyOnceThePluginActsOnIt() throws {
+        let state = try appState()
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"cards": [
+          {"id": 1, "kind": "followup", "level": "push", "news": "The deploy is still waiting."},
+          {"id": 2, "kind": "noticed", "topic": "date", "level": "screen", "news": "Dentist Friday"},
+          {"id": 3, "kind": "report", "level": "push", "news": "Pulse noticed 2 things"}
+        ]}
+        """)))
+        let followup = page.cards[0], dated = page.cards[1], whole = page.cards[2]
+        // Before 0.80.3 a report card's reason changed nothing: its thumbs down is enough.
+        state.setNotifierPluginStateForTesting(.reported(version: "0.80.2", capabilities: [PulseClient.feedCapability]))
+        XCTAssertTrue(state.asksPulseDownReason(followup))
+        XCTAssertFalse(state.asksPulseDownReason(dated) || state.asksPulseDownReason(whole))
+        // A plugin that learns acts on a report card's reason too.
+        state.setNotifierPluginStateForTesting(.reported(version: "0.80.3", capabilities: [
+            PulseClient.feedCapability, PulseClient.learnsCapability
+        ]))
+        XCTAssertTrue(state.asksPulseDownReason(followup) && state.asksPulseDownReason(dated))
+        XCTAssertFalse(state.asksPulseDownReason(whole))  // a whole report has no thumbs
     }
 
     func testDoItsMessageFitsWhatTheCardIsAbout() throws {

@@ -962,8 +962,7 @@ struct V2PulsePage: View {
         let chosen = card.rating == (up ? "up" : "down")
         return Button {
             Haptics.selection()
-            // A report item has no ladder for a reason to move: its thumbs down is enough.
-            if up || card.isNoticed { rate(card, up: up, reason: nil) } else { reasonCard = card }
+            if up || !appState.asksPulseDownReason(card) { rate(card, up: up, reason: nil) } else { reasonCard = card }
         } label: {
             Image(systemName: up ? (chosen ? "hand.thumbsup.fill" : "hand.thumbsup")
                                  : (chosen ? "hand.thumbsdown.fill" : "hand.thumbsdown"))
