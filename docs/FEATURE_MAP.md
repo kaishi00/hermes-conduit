@@ -1588,6 +1588,28 @@ Classic voice utterances
 
 **Checked:** 2026-10-24, at #1222.
 
+## Send while dictating
+
+The composer's Send, tapped while dictation is running: it ends the dictation
+and sends what was said, instead of making the person stop dictating first.
+
+**Siblings:** chat composer — chats, project chats, Bot Chat (done, `ComposerBar.submit`) · group rooms (done, `GroupRoomComposer.send`) · the full editor (done, it renders the composer's own Send) · the send choices the hold menu offers (not changed, a pick sends the words so far) · Settings captions and help text (not needed, no new setting and no new string) · the notifier and its skills (not needed, dictation is app-side)
+
+**Code**
+- Both composers: `Conduit/Views/Components/ComposerBar.swift` (submit, beginDictation), `Conduit/Views/Components/GroupRoomComposer.swift` (send, beginDictation)
+- The wait: `Conduit/Voice/ComposerDictationService.swift` (ComposerDictationSend, stop, finish)
+- Tests: `ConduitTests/DictationEngineTests.swift`
+
+**Rulings**
+- Send tapped mid-dictation sends the whole dictation: it stops the microphone and sends when the last words land, never cancelling a recording that hasn't been transcribed yet (2026-10-26, #1309).
+- A dictation that produced no words sends nothing; the draft keeps what it had.
+- The wait is dropped when the composer goes away, a voice conversation takes the microphone, dictation fails, or another send path sends.
+
+**Open gaps**
+- A waiting send has no words of its own: Send only pulses, so VoiceOver says "Send message" while the message waits.
+
+**Checked:** 2026-10-26, at #1312.
+
 ## Chats top bar and search
 
 The Chats screen's controls: the profile row, the filter, Projects,
