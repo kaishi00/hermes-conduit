@@ -1935,7 +1935,8 @@ text that describes it (none: no caption or doc mentions the motion)
 Group rooms with agents that belong to other people. Each agent runs on its
 owner's Hermes, with its owner's model and keys and its owner's rules for the
 room, and the hosts reach each other through the rooms mailbox. It's being
-built, so its app side is only on the `linked-rooms` branch.
+built: the notifier side is on its main, and the app side comes in the
+`linked-rooms` branch's PRs, so none of it is in the app yet.
 
 **Siblings:** the room screen and room info (members from other
 installations, their route status, your agents' choices for the room) · New
@@ -1950,7 +1951,7 @@ that describes it: the notifier README's "Rooms with other people's agents",
 the framing and block messages models read, Settings captions
 
 **Code**
-- Owner rules: `notifier/room_rules.py` (room_turn, tool_block, framing, scrub, filter_search), `notifier/room_choices.py` (the per-room choices, NEVER), `notifier/__init__.py` (pre_tool_call, pre_llm_call, transform_llm_output, transform_tool_result), `notifier/dashboard/plugin_api.py` (/rooms/choices, /rooms/defaults, capability room-rules), `notifier/cli.py` (rooms show, rooms set)
+- Owner rules: `notifier/room_rules.py` (room_turn, tool_block, framing, scrub, filter_search), `notifier/room_choices.py` (the per-room choices, NEVER), `notifier/__init__.py` (pre_tool_call, pre_llm_call, transform_llm_output, transform_tool_result), `notifier/dashboard/plugin_api.py` (/rooms/choices, /rooms/defaults, capability room-rules), `notifier/cli.py` (rooms show, rooms set), `notifier/README.md` (Rooms with other people's agents)
 - Memory guard and planner: `notifier/room_memory.py`, `notifier/room_planner.py`
 - Mailbox: `notifier/mailbox/src/server.mjs`, `notifier/mailbox/README.md` (protocol v1, self-hosting), `notifier/mailbox/deploy/compose.yaml`
 - App, today's rooms (a member from another installation has target kind peer): `Conduit/Services/GroupChatModels.swift` (GroupMember.target, members(namedBy:)), `Conduit/Views/GroupChatView.swift`, `Conduit/Services/HermesClient.swift` (groups.*)
@@ -1969,7 +1970,7 @@ the framing and block messages models read, Settings captions
 - An agent runs on its owner's host with its owner's model and keys, so each owner pays for their own (2026-10-22, Eric).
 
 **Open gaps**
-- Conduit doesn't show the choices yet: they're set with `hermes conduit-push rooms set` until room info has them.
+- The app shows none of it yet: the room screen and room info (with the choices, set until then with `hermes conduit-push rooms set`), New Group Chat with linked people, Settings > People and the Chats list come in the `linked-rooms` branch's PRs, with their Settings captions.
 - How an agent takes part and its turns a day are kept, not enforced, until the room bridge.
 - Use my data has no room-safe data tools yet (free/busy comes first).
 - A memory provider's automatic recall can't be skipped in a room without a Hermes change (written up for Hermes).
