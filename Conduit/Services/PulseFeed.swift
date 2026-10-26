@@ -282,7 +282,10 @@ enum PulseCardKind {
     /// What a lesson is about: a card kind's heading, else a report item's
     /// topic, which a report card's reasons teach about (0.80.3).
     static func name(_ kind: String) -> String {
-        ["followup", "report", "brief", "noticed"].contains(kind) ? title(kind) : topic(kind)
+        switch kind {
+        case "followup", "report", "brief", "noticed": return title(kind)
+        default: return topic(kind)
+        }
     }
 }
 
