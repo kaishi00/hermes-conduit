@@ -3233,7 +3233,7 @@ private struct AppearanceSettingsDetail: View {
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     @AppStorage(V2ChatListPreference.key) private var chatListBeside = V2ChatListPreference.defaultValue
     @AppStorage(ChatVoiceButtonAction.key) private var chatVoiceButton = ChatVoiceButtonAction.defaultValue.rawValue
-    @AppStorage(ProjectChatsInChats.key) private var projectChats = ProjectChatsInChats.defaultValue
+    @AppStorage(ProjectChatsInChats.key) private var projectChats = ProjectChatsInChats.deviceDefault()
     @AppStorage(ConduitAccent.storageKey) private var accentChoice = ConduitAccent.defaultValue
     @State private var selected: ThemePreference
     @State private var isChangingIcon = false

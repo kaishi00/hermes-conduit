@@ -336,7 +336,7 @@ struct V2ChatsView: View, Equatable {
     }
 
     private var projectChats: ProjectChatsInChats {
-        ProjectChatsInChats.stored(updates.defaults.string(forKey: ProjectChatsInChats.key))
+        ProjectChatsInChats.stored(in: updates.defaults)
     }
 
     /// Filter ▸ Projects: projects belong to one profile, so All lists
@@ -375,9 +375,11 @@ struct V2ChatsView: View, Equatable {
         hiddenProjects.count
     }
 
-    /// Only hidden projects stand between the list and its rows.
+    /// The list is empty because of hidden projects: with them shown, the
+    /// selection would list something. Asked only of an empty list.
     private var hidesEverything: Bool {
-        selection.isEmpty && hiddenProjectCount > 0
+        guard !isSearching, hiddenProjectCount > 0 else { return false }
+        return !uncachedFilterRows(selection, searching: false, hidingProjects: false).isEmpty
     }
 
     /// Something narrows the list: a filter, or a hidden project. The
@@ -1065,7 +1067,7 @@ struct V2ChatsView: View, Equatable {
         }
     }
 
-    private func uncachedFilterRows(_ selection: V2FilterSelection, searching: Bool) -> [SessionSummary] {
+    private func uncachedFilterRows(_ selection: V2FilterSelection, searching: Bool, hidingProjects: Bool = true) -> [SessionSummary] {
         let rows: [SessionSummary]
         if selection.isEmpty {
             // Read once, not once per row.
@@ -1085,7 +1087,7 @@ struct V2ChatsView: View, Equatable {
             )
         }
         // A search looks through every chat, a hidden project's too.
-        let hidden = hiddenProjects
+        let hidden = hidingProjects ? hiddenProjects : []
         guard !searching, !hidden.isEmpty else { return rows }
         return rows.filter { session in
             !HiddenChatProjects.hides(
@@ -1294,10 +1296,10 @@ struct V2ChatsView: View, Equatable {
                     emptyTitle: hidesEverything
                         ? AppLocalization.string("No chats to show")
                         : selection.emptyStateFilter.emptyTitle,
-                    emptyDescription: isSearching
-                        ? AppLocalization.string("Try a different search.")
-                        : hidesEverything
-                            ? AppLocalization.string("The chats here are in projects you hid. Tick them again in Filter > Projects.")
+                    emptyDescription: hidesEverything
+                        ? AppLocalization.string("The chats here are in projects you hid. Tick them again in Filter > Projects.")
+                        : isSearching
+                            ? AppLocalization.string("Try a different search.")
                             : selection.emptyStateFilter.emptyDescription,
                     retry: { Task { await appState.refreshSessionCatalog() } }
                 )

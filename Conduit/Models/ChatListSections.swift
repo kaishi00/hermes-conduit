@@ -125,25 +125,36 @@ enum ProjectChatsInChats: String, CaseIterable, Identifiable {
     static let key = "conduit.v2.projectChatsInChats"
     /// Recent since #1317; an install from before keeps Off (`settleDefault`).
     static let defaultValue = ProjectChatsInChats.recent
-    /// Set once the launch after #1317 has settled an older install's choice.
-    static let defaultSettledKey = "conduit.v2.projectChatsDefaultSettled"
+    /// This device's default, settled once by `settleDefault`. Apart from
+    /// `key`, which syncs across devices: the default isn't a choice, so it
+    /// never overwrites one made on another device.
+    static let deviceDefaultKey = "conduit.v2.projectChatsDeviceDefault"
 
     var id: String { rawValue }
 
-    static func stored(_ raw: String?) -> ProjectChatsInChats {
-        raw.flatMap(ProjectChatsInChats.init(rawValue:)) ?? defaultValue
+    static func stored(_ raw: String?, deviceDefault: String? = nil) -> ProjectChatsInChats {
+        raw.flatMap(ProjectChatsInChats.init(rawValue:))
+            ?? deviceDefault.flatMap(ProjectChatsInChats.init(rawValue:))
+            ?? defaultValue
+    }
+
+    /// The choice, or this device's default when none was made.
+    static func stored(in defaults: UserDefaults) -> ProjectChatsInChats {
+        stored(defaults.string(forKey: key), deviceDefault: defaults.string(forKey: deviceDefaultKey))
+    }
+
+    /// What Settings shows before a choice is made.
+    static func deviceDefault(in defaults: UserDefaults = .standard) -> ProjectChatsInChats {
+        stored(nil, deviceDefault: defaults.string(forKey: deviceDefaultKey))
     }
 
     /// An install from before Recent became the default saved nothing for
     /// Off, which was the default then: it keeps Off rather than change
     /// under its user. Runs once; a new install (no saved dashboards) keeps
-    /// the default, and a choice already made stays.
+    /// Recent, even after it signs in.
     static func settleDefault(in defaults: UserDefaults, existingInstall: Bool) {
-        guard !defaults.bool(forKey: defaultSettledKey) else { return }
-        if existingInstall, defaults.object(forKey: key) == nil {
-            defaults.set(ProjectChatsInChats.hidden.rawValue, forKey: key)
-        }
-        defaults.set(true, forKey: defaultSettledKey)
+        guard defaults.string(forKey: deviceDefaultKey) == nil else { return }
+        defaults.set((existingInstall ? ProjectChatsInChats.hidden : defaultValue).rawValue, forKey: deviceDefaultKey)
     }
 
     /// Whether a project's chat with this last activity is listed. A chat
