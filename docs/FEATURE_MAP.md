@@ -670,7 +670,7 @@ no chat · the `hermes conduit-push pulse` commands
 - What a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked.
 - The note to Pulse in Settings > Pulse hasn't been tried on a phone against notifier 0.78.2 (#1277).
 - Not now's later today, tomorrow and next week haven't been tried on a phone against notifier 0.78.3 (#1278, #380).
-- Why? on report cards hasn't been tried on a phone against notifier 0.79.1 (#1283, #381).
+- Why? on report cards hasn't been tried on a phone against notifier 0.80.1 (#1283, #381).
 
 **Checked:** 2026-10-26, at #1283 on the `pulse` branch (Why? on report cards, with notifier #381); before that #1278 (Not now until when, with notifier #380), #1277 (the note to Pulse, with notifier #378), #1275 (Do it's message and icon), #1264 (Pulse's model, with notifier #375; the ruling reached main in #1262) and #1240, with notifier #362 and #364.
 
