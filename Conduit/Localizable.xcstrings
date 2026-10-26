@@ -359919,6 +359919,170 @@
           }
         }
       }
+    },
+    "The loudest Pulse gets for each. Within that, your thumbs, Do it and Done teach it what to bring up and how loudly." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "So laut wird Pulse bei jedem höchstens. Darunter lernt es aus deinen Daumen, „Erledigen“ und „Fertig“, was es anspricht und wie laut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo máximo que hará Pulse con cada uno. Dentro de eso, tus pulgares, Hacerlo y Hecho le enseñan qué mencionar y con qué insistencia."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plus que Pulse fera pour chacun. En deçà, vos pouces, S'en occuper et Terminé lui apprennent quoi signaler et avec quelle insistance."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paling menonjol yang dilakukan Pulse untuk masing-masing. Di bawah itu, jempol, Kerjakan, dan Selesai mengajarinya apa yang perlu disampaikan dan seberapa menonjol."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il massimo che Pulse farà per ognuno. Entro quel limite, i tuoi pollici, Fallo e Fatto gli insegnano cosa segnalare e con quanta insistenza."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "それぞれ、Pulseが知らせるのはここまでです。その範囲内で、評価・実行・完了から、何をどのくらい目立たせて伝えるかを学びます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "각 항목에서 Pulse가 알리는 최대 수준입니다. 그 안에서 평가, 실행, 완료를 통해 무엇을 얼마나 눈에 띄게 알릴지 배웁니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Najgłośniej, jak Pulse może przy każdym z nich. W tych granicach kciuki, Zrób to i Gotowe uczą go, o czym mówić i jak głośno."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O máximo que o Pulse fará com cada um. Dentro disso, seus polegares, Fazer e Concluído ensinam o que mencionar e com que destaque."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Громче этого Pulse не будет ни для одного. В этих пределах оценки, «Сделать» и «Готово» учат его, о чём сообщать и насколько заметно."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse'un her biri için en fazla yapacağı budur. Bu sınır içinde beğenilerin, Yap ve Bitti ona neyi ne kadar belirgin söyleyeceğini öğretir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这是 Pulse 对每一类最多的提醒方式。在此范围内，你的评分、“去做”和“完成”会教它该提什么、以多显眼的方式提。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這是 Pulse 對每一類最多的提醒方式。在此範圍內，你的評分、「去做」和「完成」會教它該提什麼、以多顯眼的方式提。"
+          }
+        }
+      }
+    },
+    "Nothing yet. When you give a reason with a thumbs down, what it changes shows up here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nichts. Wenn du bei Daumen runter einen Grund angibst, erscheint hier, was er ändert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún nada. Cuando des un motivo con un pulgar abajo, lo que cambie aparecerá aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rien pour l’instant. Quand vous donnez une raison avec un pouce vers le bas, ce qu’elle change s’affiche ici."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum ada. Saat Anda memberi alasan dengan jempol ke bawah, apa yang diubahnya akan muncul di sini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ancora niente. Quando dai un motivo con un pollice in giù, ciò che cambia comparirà qui."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだありません。低評価で理由を選ぶと、それで変わったことがここに表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아직 없습니다. 싫어요를 누르며 이유를 고르면 그로 인해 바뀐 내용이 여기에 표시됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na razie nic. Gdy podasz powód przy kciuku w dół, to, co zmieni, pojawi się tutaj."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nada ainda. Quando você der um motivo com um polegar para baixo, o que ele mudar aparecerá aqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пока ничего. Когда вы укажете причину к «не нравится», здесь появится то, что она изменит."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Henüz bir şey yok. Beğenmediğinizde bir neden verirseniz, değiştirdiği şey burada görünür."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无内容。差评时给出原因后，它改变的内容会显示在这里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚無內容。負評時給出原因後，它改變的內容會顯示在這裡。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

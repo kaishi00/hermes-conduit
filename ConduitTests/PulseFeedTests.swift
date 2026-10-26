@@ -135,6 +135,17 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(lessons[3].causeText, AppLocalization.string("You said you already knew"))
         XCTAssertEqual(lessons[4].text, AppLocalization.string("\(PulseCardKind.title("followup")): \(PulseLevel.off.title)"))
         XCTAssertNil(lessons[4].causeText)
+
+        // Before 0.80.3 thumbs move the levels; a plugin that learns says the level is the loudest Pulse gets.
+        XCTAssertEqual(PulseLearned.levelsFooter(learns: false),
+                       AppLocalization.string("Thumbs move these too: two down make it quieter, two up louder."))
+        XCTAssertEqual(PulseLearned.levelsFooter(learns: true), AppLocalization.string(
+            "The loudest Pulse gets for each. Within that, your thumbs, Do it and Done teach it what to bring up and how loudly."))
+        XCTAssertEqual(PulseLearned.noLessons(learns: false),
+                       AppLocalization.string("Nothing yet. Rate Pulse's cards and what it learns shows up here."))
+        XCTAssertEqual(PulseLearned.noLessons(learns: true), AppLocalization.string(
+            "Nothing yet. When you give a reason with a thumbs down, what it changes shows up here."))
+        XCTAssertEqual(PulseClient.learnsCapability, "pulse_learns")
     }
 
     func testPulseCardsForChatFindsTheOpenChat() throws {

@@ -1173,6 +1173,8 @@ struct PulseLearnedSheet: View {
     @State private var working = false
 
     private var client: PulseClient { appState.pulseClient }
+    /// A plugin that learns from thumbs, Do it and Done (0.80.3): thumbs no longer move the levels.
+    private var learns: Bool { appState.notifierPlugin.reports(PulseClient.learnsCapability) }
 
     var body: some View {
         NavigationStack {
@@ -1193,11 +1195,11 @@ struct PulseLearnedSheet: View {
                     } header: {
                         Text("How Pulse tells you")
                     } footer: {
-                        Text("Thumbs move these too: two down make it quieter, two up louder.")
+                        Text(verbatim: PulseLearned.levelsFooter(learns: learns))
                     }
                     Section {
                         if learned.lessons.isEmpty {
-                            Text("Nothing yet. Rate Pulse's cards and what it learns shows up here.")
+                            Text(verbatim: PulseLearned.noLessons(learns: learns))
                                 .foregroundStyle(.secondary)
                         }
                         ForEach(learned.lessons) { lesson in

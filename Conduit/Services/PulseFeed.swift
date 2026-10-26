@@ -7,8 +7,10 @@
 //  plugin keeps all of it (pulse_learning.py) and serves it on
 //  /api/plugins/conduit_push/pulse/feed, /rate and /learned. A rating
 //  changes what Pulse does on the host: each kind sits on a loudness ladder
-//  (push, Pulse screen, morning brief, off) that thumbs move, and a thumbs
-//  down's reason adds a lesson the user can undo.
+//  (push, Pulse screen, morning brief, off), and a thumbs down's reason adds
+//  a lesson the user can undo. Before 0.80.3 thumbs moved a kind along the
+//  ladder; from then (`pulse_learns`) thumbs, Do it and Done teach Pulse
+//  what to bring up and how loudly, and a kind's level is the loudest it gets.
 //
 
 import Foundation
@@ -391,6 +393,24 @@ struct PulseLearned: Equatable {
         self.lessons = lessons.compactMap(PulseLesson.init(json:))
         levels = PulseFeedPage.levels(json["levels"])
     }
+
+    /// Under each kind's level in What Pulse learned: what moves it. With a
+    /// plugin that learns (`pulse_learns`) the level is the loudest Pulse
+    /// gets, and thumbs teach it within that instead of moving the level.
+    static func levelsFooter(learns: Bool) -> String {
+        learns
+            ? AppLocalization.string("The loudest Pulse gets for each. Within that, your thumbs, Do it and Done teach it what to bring up and how loudly.")
+            : AppLocalization.string("Thumbs move these too: two down make it quieter, two up louder.")
+    }
+
+    /// What Pulse learned with no lessons yet. With a plugin that learns, a
+    /// plain thumbs teaches Pulse without adding a lesson: only a thumbs
+    /// down's reason does.
+    static func noLessons(learns: Bool) -> String {
+        learns
+            ? AppLocalization.string("Nothing yet. When you give a reason with a thumbs down, what it changes shows up here.")
+            : AppLocalization.string("Nothing yet. Rate Pulse's cards and what it learns shows up here.")
+    }
 }
 
 extension PulseClient {
@@ -687,6 +707,9 @@ extension PulseClient {
     /// Quiet times: quiet days and a vacation in Settings > Pulse, and Quiet
     /// for today on the Pulse screen and on a Pulse notification (0.80.2).
     static let quietCapability = "pulse_quiet"
+    /// Pulse learns from thumbs, Do it and Done what to bring up and how
+    /// loudly, and a kind's level is the loudest it gets (0.80.3).
+    static let learnsCapability = "pulse_learns"
 }
 
 /// What Not now puts a card off until, as the plugin names it.
