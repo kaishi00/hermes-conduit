@@ -52,8 +52,10 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
     /// for every other notification.
     let call: HermesCallRequest?
     /// Opened from a chat link (`conduit://session/<id>?profile=…&dashboard=…`),
-    /// not a notification: it never switches profile or dashboard while a
-    /// call runs, because the switch would end the call.
+    /// not a notification. Neither switches profile or dashboard while a call
+    /// runs (`call == nil` decides that), since the switch would end the
+    /// call: a chat link says to end it, as it can be tapped again then, and
+    /// a notification, gone once tapped, opens when the call ends.
     let isChatLink: Bool
     var id: String { "\(dashboardID?.uuidString ?? "none"):\(relayGatewayID ?? "nogw"):\(profile ?? "default"):\(sessionId):\(type ?? "")" }
 
@@ -472,6 +474,10 @@ final class PushNotificationService: ObservableObject {
     @Published private(set) var pairingExpiry: String?
     @Published private(set) var pendingTarget: ConduitNotificationTarget?
     @Published private(set) var navigationAttempt = 0
+    /// The pending tap's open stopped for a call it would have ended: it
+    /// waits, however long the call lasts, and opens once it has ended,
+    /// unless a newer tap replaces it.
+    @Published private(set) var pendingRouteAwaitsCall = false
     @Published var preferences = ConduitNotificationPreferences() {
         // The Notification Service Extension decides whether a decrypted
         // push shows its real text; it reads this from the App Group.
@@ -2284,6 +2290,7 @@ final class PushNotificationService: ObservableObject {
         pendingRouteDeadline = now().advanced(by: routeRetryWindow)
         pendingRouteOpenStarted = false
         pendingRouteRetryFiredAt = nil
+        pendingRouteAwaitsCall = false
         navigationAttempt += 1
     }
 
@@ -2315,6 +2322,7 @@ final class PushNotificationService: ObservableObject {
         pendingRouteDeadline = nil
         pendingRouteOpenStarted = false
         pendingRouteRetryFiredAt = nil
+        pendingRouteAwaitsCall = false
     }
 
     /// An open of `target` is starting: a retry still waiting would only
@@ -2330,6 +2338,16 @@ final class PushNotificationService: ObservableObject {
         navigationRetryTask?.cancel()
         navigationRetryTask = nil
         let startedAt = now()
+        if pendingRouteAwaitsCall {
+            // The call it waited for has ended: the tap opens as if just
+            // made, with a window of its own.
+            pendingRouteAwaitsCall = false
+            pendingRetryCount = 0
+            pendingRouteDeadline = startedAt.advanced(by: routeRetryWindow)
+            pendingRouteRetryFiredAt = nil
+            pendingRouteOpenStarted = true
+            return true
+        }
         let scheduledRetry = pendingRouteRetryFiredAt.map {
             $0.duration(to: startedAt) <= scheduledRetryStartAllowance
         } ?? false
@@ -2348,6 +2366,18 @@ final class PushNotificationService: ObservableObject {
     func notificationRouteAwaitsConnection(_ target: ConduitNotificationTarget) {
         guard pendingTarget == target else { return }
         pendingRouteRetryFiredAt = nil
+    }
+
+    /// The open stopped for a call it would have ended: the tap stays
+    /// pending until the call ends, with no retry or window meanwhile. The
+    /// route runs again at once, to wait there for the call to end.
+    func notificationRouteAwaitsCall(_ target: ConduitNotificationTarget) {
+        guard pendingTarget == target else { return }
+        navigationRetryTask?.cancel()
+        navigationRetryTask = nil
+        pendingRouteRetryFiredAt = nil
+        pendingRouteAwaitsCall = true
+        navigationAttempt += 1
     }
 
     /// Schedules another open of `target` after one that can still succeed

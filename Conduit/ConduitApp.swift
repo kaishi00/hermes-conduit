@@ -353,6 +353,21 @@ struct ConduitApp: App {
             .task { SiriProfileShortcuts.refresh() }
             .task(id: notificationRouteKey) {
                 guard let target = notifications.pendingTarget else { return }
+                if notifications.pendingRouteAwaitsCall {
+                    // Waiting for the call its switch would have ended: it
+                    // opens once two checks in a row find no call and
+                    // Conduit on screen (a call changing hands isn't over,
+                    // and a switch waits for the screen). Not every call's
+                    // end changes state this view observes, so the checks
+                    // run on a short timer.
+                    var readyBefore = false
+                    while true {
+                        let ready = !appState.isVoiceCallInProgress && appState.isSceneActive
+                        if ready, readyBefore { break }
+                        readyBefore = ready
+                        do { try await Task.sleep(for: Self.callEndRecheckInterval) } catch { return }
+                    }
+                }
                 guard appState.isConnected else {
                     notifications.notificationRouteAwaitsConnection(target)
                     return
@@ -398,6 +413,10 @@ struct ConduitApp: App {
                     if target.call != nil {
                         HermesNativeCalls.shared.routedAnswerFailed(target)
                     }
+                case .afterCall:
+                    // It said it opens when the call ends; never a call's
+                    // own open, which switches during its call.
+                    notifications.notificationRouteAwaitsCall(target)
                 }
             }
             .task(id: voiceIntentRouteKey) {
@@ -423,6 +442,10 @@ struct ConduitApp: App {
 
     /// How often a screenshot waiting for Conduit to settle checks again.
     private static let settleRecheckInterval: Duration = .milliseconds(250)
+
+    /// How often a notification waiting for a call checks it again; it
+    /// opens once two checks in a row find no call, with Conduit on screen.
+    private static let callEndRecheckInterval: Duration = .seconds(1)
 
     private var parkedScreenQuestionKey: String {
         "\(appState.isConnected):\(appState.isConnecting):\(appState.isProfileSwitching):\(appState.parkedScreenQuestionRevision)"

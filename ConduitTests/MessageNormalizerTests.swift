@@ -1191,6 +1191,47 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertNil(service.pendingTarget)
     }
 
+    /// A tap whose open stopped for a call waits however long the call
+    /// lasts, with no retry meanwhile, and once it has ended opens with a
+    /// window of its own.
+    func testTapWaitingForACallOpensWithAFreshWindowOnceItEnds() async {
+        var now = ContinuousClock.now
+        let (service, pending) = makeWindowedService(now: { now })
+        guard let target = pending else { return XCTFail("Expected a pending target") }
+        XCTAssertTrue(service.beginNotificationRoute(target))
+        XCTAssertTrue(service.handleFailedNotificationRoute(target))
+        let attempt = service.navigationAttempt
+        service.notificationRouteAwaitsCall(target)
+        XCTAssertTrue(service.pendingRouteAwaitsCall)
+        XCTAssertEqual(service.navigationAttempt, attempt + 1, "the route runs again, to wait there")
+        await waitForNotificationRetry(service, after: attempt + 1, cap: .milliseconds(100))
+        XCTAssertEqual(service.navigationAttempt, attempt + 1, "the retry that was due stood down")
+
+        now = now.advanced(by: .seconds(600))
+        XCTAssertTrue(service.beginNotificationRoute(target), "a ten-minute call still opens it")
+        XCTAssertFalse(service.pendingRouteAwaitsCall)
+        XCTAssertEqual(service.pendingTarget, target)
+        now = now.advanced(by: .seconds(20))
+        XCTAssertTrue(service.handleFailedNotificationRoute(target), "inside the new window")
+        now = now.advanced(by: .seconds(11))
+        XCTAssertFalse(service.beginNotificationRoute(target), "past the new window")
+        XCTAssertNil(service.pendingTarget)
+    }
+
+    /// A newer tap replaces one waiting for a call, and routes as any tap.
+    func testNewTapReplacesOneWaitingForACall() {
+        let (service, pending) = makeWindowedService(now: { ContinuousClock.now })
+        guard let first = pending else { return XCTFail("Expected a pending target") }
+        XCTAssertTrue(service.beginNotificationRoute(first))
+        service.notificationRouteAwaitsCall(first)
+        service.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-456", "type": "response_ready"] as [String: Any]
+        ])
+        XCTAssertNotNil(service.pendingTarget)
+        XCTAssertNotEqual(service.pendingTarget, first)
+        XCTAssertFalse(service.pendingRouteAwaitsCall)
+    }
+
     func testSessionNormalizationDoesNotInventOwnershipWithoutFallback() {
         let sessions = MessageNormalizer.normalizeSessions(
             .object([

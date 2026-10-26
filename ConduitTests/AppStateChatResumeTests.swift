@@ -3398,13 +3398,19 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(fixture.appState.activeSessionId, workSession.id)
     }
 
-    func testNotificationStopsBeforeTheProfileSwitchDuringACall() async {
+    func testNotificationWaitsForTheCallBeforeTheProfileSwitch() async {
         // A notification from another profile, tapped during a call or with
         // one ringing in while its open waits on the gateway (its bot checks,
         // or the switch's own ticket, whether or not that ticket comes),
         // stops short of the profile switch, which would end the call, and
-        // says so.
-        for (duringTicket, ticketFails) in [(false, false), (true, false), (true, true)] {
+        // says it opens when the call ends. With no call, a ticket that
+        // fails says so and leaves the connection as it is.
+        enum CallStarts { case beforeTheTap, duringBotChecks, duringTicket, never }
+        let cases: [(CallStarts, Bool)] = [
+            (.beforeTheTap, false), (.duringBotChecks, false), (.duringTicket, false), (.duringTicket, true),
+            (.never, true),
+        ]
+        for (callStarts, ticketFails) in cases {
             let defaultSession = session("default-session")
             let appReference = WeakAppStateReference()
             let harness = makeHarness(
@@ -3412,7 +3418,7 @@ final class AppStateChatResumeTests: XCTestCase {
                     connectClient: { _ in },
                     loadCatalog: { _, _ in [defaultSession] },
                     mintTicket: { _ in
-                        if duringTicket { appReference.value?.isNativeHermesCallActive = true }
+                        if callStarts == .duringTicket { appReference.value?.isNativeHermesCallActive = true }
                         if ticketFails { throw URLError(.timedOut) }
                         return "profile-ticket"
                     },
@@ -3422,7 +3428,7 @@ final class AppStateChatResumeTests: XCTestCase {
                     loadProfileDisplayPreferences: {},
                     loadSlashCommands: {},
                     botRoster: { _ in
-                        if !duringTicket { appReference.value?.isNativeHermesCallActive = true }
+                        if callStarts == .duringBotChecks { appReference.value?.isNativeHermesCallActive = true }
                         return BotRosterSnapshot(bots: [], supportsBotProtocol: false)
                     },
                     findBotChat: { _, _ in [] }
@@ -3436,6 +3442,7 @@ final class AppStateChatResumeTests: XCTestCase {
             harness.appState.showLogin = false
             harness.appState.sessions = [defaultSession]
             harness.appState.activeSessionId = defaultSession.id
+            harness.appState.isNativeHermesCallActive = callStarts == .beforeTheTap
             let target = ConduitNotificationTarget(
                 profile: "work",
                 sessionId: "work-session",
@@ -3444,13 +3451,18 @@ final class AppStateChatResumeTests: XCTestCase {
 
             let outcome = await harness.appState.openNotificationTargetOutcome(target)
 
-            XCTAssertEqual(outcome, .failed, "call started during the ticket: \(duringTicket), ticket failed: \(ticketFails)")
-            XCTAssertEqual(harness.appState.activeProfile, "default")
-            XCTAssertEqual(harness.appState.activeSessionId, defaultSession.id)
-            XCTAssertEqual(harness.appState.connection, connection)
+            let label = "call starts: \(callStarts), ticket fails: \(ticketFails)"
+            let expected: AppState.NotificationOpenOutcome = callStarts == .never ? .retry : .afterCall
+            XCTAssertEqual(outcome, expected, label)
+            XCTAssertEqual(harness.appState.activeProfile, "default", label)
+            XCTAssertEqual(harness.appState.activeSessionId, defaultSession.id, label)
+            XCTAssertEqual(harness.appState.connection, connection, label)
             XCTAssertEqual(
                 harness.appState.errorMessage,
-                AppLocalization.string("End the call to open this notification in another profile.")
+                callStarts == .never
+                    ? AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: URLError(.timedOut)))")
+                    : AppLocalization.string("This notification opens in the other profile when the call ends."),
+                label
             )
         }
     }

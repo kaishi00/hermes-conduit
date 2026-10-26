@@ -265,9 +265,10 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
     }
 
     /// A notification from another saved dashboard tapped during a call
-    /// stays on the dashboard in use: the switch would end the call, so it
-    /// says to end the call first, as a chat link does.
-    func testPushFromAnotherDashboardDuringACallSaysToEndItFirst() async {
+    /// stays on the dashboard in use: the switch would end the call, so the
+    /// tap waits for the call to end, and says so. A tapped notification is
+    /// gone, unlike a chat link, which says to end the call first.
+    func testPushFromAnotherDashboardDuringACallOpensWhenItEnds() async {
         let savedA = SavedDashboard(id: dashboardA, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
         let savedB = SavedDashboard(id: dashboardB, label: "VPS", normalizedURL: "https://hermes.example.com")
         let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
@@ -275,11 +276,11 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
 
         let outcome = await appState.openNotificationTargetOutcome(decisionTarget(dashboardID: dashboardB))
 
-        XCTAssertEqual(outcome, .failed, "the route doesn't try it again")
+        XCTAssertEqual(outcome, .afterCall, "the route opens it once the call ends")
         XCTAssertEqual(appState.activeDashboardID, dashboardA)
         XCTAssertEqual(
             appState.errorMessage,
-            AppLocalization.string("End the call to open this notification in another workspace.")
+            AppLocalization.string("This notification opens in the other workspace when the call ends.")
         )
     }
 
