@@ -284,6 +284,7 @@ struct ConnectorDetailPage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let name: String
     @ObservedObject var store: CapabilitiesStore
     @State private var signInFlow: String?
@@ -341,6 +342,9 @@ struct ConnectorDetailPage: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
         }
+        // Turned on lands after the host answers, so the actions and tools
+        // it reveals animate on the value, page-wide.
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: server?.enabled)
         .navigationTitle(Text(verbatim: name))
         .task(id: name) {
             if let server, server.enabled, probe == nil, !store.probing.contains(name) {

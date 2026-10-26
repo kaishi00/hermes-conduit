@@ -1318,4 +1318,301 @@ final class ChatScrollEngineTests: XCTestCase {
         )
         XCTAssertNil(engine.rowFrame(for: "m5"))
     }
+
+    // MARK: - Long replies stop at their start (#365)
+
+    /// Session "a" at its end with the hold switched on, after a send of
+    /// m10: the user's message is laid out at stack 3500...3580 (content
+    /// 3518...3598), so the hold stops at 3598.
+    private func sendIntoHold() -> (ChatScrollEngine, FakeChatScrollSurface) {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        engine.transcriptChanged(
+            messages: Self.messages(0..<11),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        engine.explicitLatestRequested(animated: false, armsReplyHold: true)
+        surface.layOut(contentHeight: 4200)
+        engine.rowFramesChanged(["m10": ChatScrollRowFrame(minY: 3500, maxY: 3580, order: 10)])
+        XCTAssertEqual(surface.contentOffsetY, 3400)
+        XCTAssertTrue(engine.replyHoldArmed)
+        return (engine, surface)
+    }
+
+    /// The offsets the engine wrote never went up: the hold is a stop.
+    private func assertNeverMovedUp(_ surface: FakeChatScrollSurface, file: StaticString = #filePath, line: UInt = #line) {
+        let offsets = surface.sets.map(\.y)
+        XCTAssertEqual(offsets, offsets.sorted(), "an offset went up", file: file, line: line)
+    }
+
+    func testALongReplyStopsAtItsStart() {
+        let (engine, surface) = sendIntoHold()
+        surface.sets = []
+        // Still on screen: following as before.
+        surface.layOut(contentHeight: 4300)
+        XCTAssertEqual(surface.contentOffsetY, 3500)
+        // The reply reaches the top: the bottom of the user's message is at
+        // the viewport top, and following stops there.
+        surface.layOut(contentHeight: 4420)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertTrue(engine.isFollowingLatest, "within the near-bottom distance it is still following")
+        surface.layOut(contentHeight: 4700)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertEqual(engine.mode, .browsing)
+        XCTAssertTrue(engine.showsJumpToLatest)
+        XCTAssertFalse(engine.replyHoldArmed)
+        // The rest of the reply arrives below without moving the reader.
+        surface.layOut(contentHeight: 6000)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        assertNeverMovedUp(surface)
+        XCTAssertEqual(surface.sets.count, 2)
+    }
+
+    func testABigChunkStopsAtTheReplyStartWithoutGoingPastIt() {
+        let (engine, surface) = sendIntoHold()
+        surface.sets = []
+        // One layout pass carries the reply well past a screen.
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertEqual(engine.mode, .browsing)
+        assertNeverMovedUp(surface)
+    }
+
+    func testWithTheSettingOffAReplyIsFollowedToItsEnd() {
+        let (engine, surface) = sendIntoHold()
+        engine.holdsRepliesAtStart = { false }
+        surface.layOut(contentHeight: 6000)
+        XCTAssertEqual(surface.contentOffsetY, 5200)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testTheJumpToLatestGoesPastTheHoldAndFollowsTheEnd() {
+        let (engine, surface) = sendIntoHold()
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        engine.explicitLatestRequested(animated: false)
+        XCTAssertEqual(surface.contentOffsetY, 4400)
+        surface.layOut(contentHeight: 6000)
+        XCTAssertEqual(surface.contentOffsetY, 5200)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testAReaderBackAtTheEndFollowsTheRestOfTheReply() {
+        let (engine, surface) = sendIntoHold()
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        // Read down to the end while it still streams: following again,
+        // to the end this time.
+        surface.userScroll(to: 4400)
+        XCTAssertTrue(engine.isFollowingLatest)
+        surface.sets = []
+        surface.layOut(contentHeight: 6000)
+        XCTAssertEqual(surface.contentOffsetY, 5200)
+        XCTAssertTrue(engine.isFollowingLatest)
+        assertNeverMovedUp(surface)
+    }
+
+    func testATurnStartedElsewhereStopsAtItsStartToo() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        // Another device sent m10; no send here.
+        engine.transcriptChanged(
+            messages: Self.messages(0..<11),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertTrue(engine.replyHoldArmed)
+        surface.layOut(contentHeight: 4200)
+        engine.rowFramesChanged(["m10": ChatScrollRowFrame(minY: 3500, maxY: 3580, order: 10)])
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    func testOpeningAChatDoesNotArmTheHold() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        XCTAssertFalse(engine.replyHoldArmed)
+        engine.rowFramesChanged(["m8": ChatScrollRowFrame(minY: 3000, maxY: 3080, order: 8)])
+        surface.layOut(contentHeight: 5000)
+        XCTAssertEqual(surface.contentOffsetY, 4200)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testAUserMessageNotLaidOutYetFollowsAsBefore() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.transcriptChanged(
+            messages: Self.messages(0..<11),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        engine.explicitLatestRequested(animated: false, armsReplyHold: true)
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 4400)
+        // Its frame arrives with the reader already below it: no move up.
+        engine.rowFramesChanged(["m10": ChatScrollRowFrame(minY: 3500, maxY: 3580, order: 10)])
+        surface.sets = []
+        surface.layOut(contentHeight: 6000)
+        XCTAssertEqual(surface.contentOffsetY, 5200)
+        XCTAssertFalse(engine.replyHoldArmed)
+        assertNeverMovedUp(surface)
+    }
+
+    func testTheTitleTapDisarmsTheHold() {
+        let (engine, _) = sendIntoHold()
+        engine.explicitTopRequested()
+        XCTAssertFalse(engine.replyHoldArmed)
+    }
+
+    func testASessionSwitchDisarmsTheHold() {
+        let (engine, _) = sendIntoHold()
+        engine.renderedSessionChanged(
+            to: keyB,
+            identity: identity("b"),
+            viaNotification: false,
+            viewportTransitionGeneration: 2
+        )
+        XCTAssertFalse(engine.replyHoldArmed)
+    }
+
+    // MARK: - An unread chat opens at its latest reply (#365)
+
+    func testAnUnreadReplyOffScreenLandsAtItsFirstRow() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        events = []
+        engine.replyStartLandingRequested()
+        XCTAssertEqual(scheduled.count, 1)
+        scheduled.forEach { $0() }
+        XCTAssertEqual(events.last, .revealRow(id: "m9"))
+        XCTAssertEqual(engine.mode, .browsing)
+        XCTAssertTrue(engine.replyHoldArmed)
+        withExtendedLifetime(surface) {}
+    }
+
+    func testAnUnreadReplyLaidOutLandsWhereTheHoldStops() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.rowFramesChanged(["m8": ChatScrollRowFrame(minY: 2500, maxY: 2580, order: 8)])
+        engine.replyStartLandingRequested()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 2598)
+        XCTAssertEqual(engine.mode, .browsing)
+        // The notification's handoff ends after the landing: it stays.
+        engine.notificationHandoffFinished()
+        XCTAssertEqual(surface.contentOffsetY, 2598)
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    func testAShortUnreadReplyStaysAtTheEnd() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.rowFramesChanged(["m8": ChatScrollRowFrame(minY: 3600, maxY: 3680, order: 8)])
+        engine.replyStartLandingRequested()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        XCTAssertTrue(engine.isFollowingLatest)
+        XCTAssertTrue(engine.replyHoldArmed, "the reply may still be running")
+    }
+
+    func testAReaderWhoScrolledBeforeTheLandingKeepsTheirPlace() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.replyStartLandingRequested()
+        surface.userScroll(to: 1000)
+        events = []
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 1000)
+        XCTAssertFalse(events.contains { if case .revealRow = $0 { return true }; return false })
+    }
+
+    func testALandingSwitchedOffBeforeItRunsDoesNothing() {
+        let (engine, surface) = makeEngine()
+        var on = true
+        engine.holdsRepliesAtStart = { on }
+        engine.replyStartLandingRequested()
+        on = false
+        events = []
+        scheduled.forEach { $0() }
+        XCTAssertTrue(engine.isFollowingLatest)
+        XCTAssertFalse(events.contains { if case .revealRow = $0 { return true }; return false })
+        withExtendedLifetime(surface) {}
+    }
+
+    func testALeftChatForgetsItsLanding() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.rowFramesChanged(["m8": ChatScrollRowFrame(minY: 2500, maxY: 2580, order: 8)])
+        engine.replyStartLandingRequested()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 2598)
+        engine.viewDisappeared()
+        // A later notification for this chat takes it to the end again.
+        engine.notificationHandoffBegan()
+        engine.notificationHandoffFinished()
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testALeftChatKeepsAnArmedHold() {
+        let (engine, surface) = sendIntoHold()
+        engine.viewDisappeared()
+        XCTAssertTrue(engine.replyHoldArmed)
+        // Back with the reply still running: it stops at its start.
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+    }
+
+    func testALandingBeforeTheScrollViewIsFoundLandsWhenItIs() {
+        let surface = FakeChatScrollSurface()
+        let engine = ChatScrollEngine(
+            now: { [unowned self] in self.clock },
+            schedule: { [unowned self] _, body in self.scheduled.append(body) }
+        )
+        engines.append(engine)
+        engine.onEvent = { [unowned self] event in self.events.append(event) }
+        engine.holdsRepliesAtStart = { true }
+        surface.engine = engine
+        engine.renderedSessionChanged(to: keyA, identity: identity("a"), viaNotification: false, viewportTransitionGeneration: 1)
+        engine.transcriptChanged(messages: Self.messages(0..<10), transcriptRevision: 1, viewportTransitionGeneration: 1, isInitialSync: true)
+        engine.replyStartLandingRequested()
+        scheduled.forEach { $0() }
+        events = []
+        engine.attach(surface)
+        XCTAssertEqual(events.last, .revealRow(id: "m9"))
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    func testABackgroundedLandingLandsOnResume() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.setPaused(true)
+        engine.replyStartLandingRequested()
+        events = []
+        scheduled.forEach { $0() }
+        XCTAssertFalse(events.contains { if case .revealRow = $0 { return true }; return false })
+        engine.setPaused(false)
+        XCTAssertEqual(events.last, .revealRow(id: "m9"))
+        XCTAssertEqual(engine.mode, .browsing)
+        withExtendedLifetime(surface) {}
+    }
+
+    func testANotificationOpenGoesPastAnArmedHold() {
+        let (engine, surface) = sendIntoHold()
+        engine.notificationHandoffBegan()
+        XCTAssertFalse(engine.replyHoldArmed)
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 4400)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testTheLandingWaitsForTheSetting() {
+        let (engine, surface) = makeEngine()
+        engine.replyStartLandingRequested()
+        XCTAssertTrue(scheduled.isEmpty)
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+    }
 }

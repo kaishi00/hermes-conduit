@@ -1185,6 +1185,18 @@ struct ProfileDisplayPreferences: Equatable {
     var showReasoning = true
     var showToolProgress = true
     var expandToolsByDefault = false
+    /// `display.memory_notifications` isn't "off": the self-improvement
+    /// review rows draw, the ones a chat already has included.
+    var showReviews = true
+
+    /// Hermes' reading of `display.memory_notifications`: a YAML bool is
+    /// on or off, anything else but "off" (unset, "default", "verbose")
+    /// shows them.
+    static func showsReviews(_ value: Any?) -> Bool {
+        if let bool = value as? Bool { return bool }
+        guard let string = value as? String else { return true }
+        return string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "off"
+    }
 }
 
 enum DisplayPreferenceKey: CaseIterable, Identifiable {

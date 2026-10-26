@@ -111,9 +111,9 @@ enum HermesCallCopy {
     /// The name a ringing call shows, the only text CallKit gives it: the
     /// calling profile (HermesCallerName), with the job's title when the
     /// call carries one.
-    static func callerName(profile: String?, mainName: String?, title: String?) -> String {
+    static func callerName(profile: String?, mainName: String?, profileName: String? = nil, title: String?) -> String {
         HermesCallerName.line(
-            name: HermesCallerName.name(profile: profile, mainName: mainName),
+            name: HermesCallerName.name(profile: profile, mainName: mainName, profileName: profileName),
             title: HermesCallRequest.cleanedTitle(title)
         )
     }

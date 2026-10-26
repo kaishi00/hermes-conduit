@@ -226,7 +226,7 @@ final class HermesWatchCalls: NSObject {
         return update
     }
 
-    /// The calling profile and the job, when the push carries them in the
+    /// The calling bot and the job, when the push carries them in the
     /// clear; "Hermes" for a sealed one, which only the iPhone can open.
     /// The main profile goes by the name the iPhone last shared.
     private static func callerName(_ userInfo: [AnyHashable: Any]) -> String {
@@ -235,7 +235,7 @@ final class HermesWatchCalls: NSObject {
         let active = UserDefaults.standard.string(forKey: activeDashboardKey)
         let mainName = HermesCallerName.mainName(dashboardID: caller.dashboardID, in: names, activeDashboardID: active)
         return HermesCallerName.line(
-            name: HermesCallerName.name(profile: caller.profile, mainName: mainName),
+            name: HermesCallerName.name(profile: caller.profile, mainName: mainName, profileName: HermesRingPush.profileName(userInfo)),
             title: HermesRingPush.title(userInfo)
         )
     }

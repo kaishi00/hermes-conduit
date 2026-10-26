@@ -72,7 +72,8 @@ struct ContextSheet: View {
             }
             .navigationTitle("Context")
         }
-        .environment(\.settingsGlowTint, appState.profileGlowTint(appState.activeProfile))
+        // The open chat's glow: a Bot Chat's is its bot's.
+        .environment(\.settingsGlowTint, appState.profileGlowTint(appState.conversationIdentityProfile))
         .task { await loadBreakdown() }
     }
 
@@ -1673,6 +1674,7 @@ struct ChatSettingsDetail: View {
                 VStack(spacing: 24) {
                     ChatTextSizeSettings()
                     ChatFontStyleSettings()
+                    ReplyStartSettings()
                     ComposerReturnKeySettings()
                     AttachmentLimitSettings()
                     ChatTakeoverSettings()
@@ -1826,6 +1828,31 @@ private struct ComposerReturnKeySettings: View {
             Toggle("Return key sends", isOn: $returnKeySends)
                 .tint(.conduitAccent)
                 .accessibilityHint(onMac ? Text(verbatim: "") : Text("Applies to hardware keyboards only. The on-screen keyboard's Return key is unchanged."))
+        }
+    }
+}
+
+/// A reply longer than the screen stops at its start (#365), and an
+/// unread chat opens there (ChatReplyStartPreference, ChatScrollEngine).
+private struct ReplyStartSettings: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @AppStorage(ChatReplyStartPreference.key) private var stopsAtStart = ChatReplyStartPreference.defaultOn
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: AppLocalization.string("Long replies"),
+            symbol: "arrow.up.to.line",
+            tint: .conduitAura
+        ) {
+            Text("A reply longer than the screen stops at its first line, so you can read it from the top. The arrow button goes to its end.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Text("A chat with an unread reply also opens at the start of that reply.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Toggle("Stop at the start of long replies", isOn: $stopsAtStart)
+                .tint(.conduitAccent)
+                .accessibilityHint("When off, the chat follows each reply to its end as it arrives.")
         }
     }
 }
@@ -3114,6 +3141,7 @@ private struct GatewaySettingsDetail: View {
     @State private var reconnecting = false
     @State private var cloudflareEnabled: Bool
     @State private var clientID: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var clientSecret = ""
     @State private var confirmingRestart = false
 
@@ -3155,7 +3183,7 @@ private struct GatewaySettingsDetail: View {
             }
             ConduitSettingsSection(title: "Cloudflare Access", symbol: "shield.lefthalf.filled", tint: .conduitAccent) {
                 Toggle("Use service token", isOn: Binding(get: { cloudflareEnabled }, set: { enabled in
-                    cloudflareEnabled = enabled
+                    withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { cloudflareEnabled = enabled }
                     if !enabled { clientSecret = ""; removeCloudflareAccess() }
                 }))
                 if cloudflareEnabled {

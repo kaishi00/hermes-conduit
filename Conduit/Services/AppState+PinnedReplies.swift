@@ -4,9 +4,9 @@
 //
 //  Replies pinned to the top of their chat (#918): Pin reply or, for just
 //  the selected passage, Pin in a reply's long-press menu (#1147), the
-//  bar over the open chat that cycles through its pins, and the Chats
-//  list's overview of every pin, which opens a chat at the reply and
-//  labels pins. Pins stay on this device, per profile; Hermes has no
+//  bar over the open chat that cycles through its pins, and the overview
+//  of every pin, from the Chats list or from the bar on this chat's pins
+//  (#1267), which opens a chat at the reply and labels pins. Pins stay on this device, per profile; Hermes has no
 //  pinned message of its own to share them with.
 //
 

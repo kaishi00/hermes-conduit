@@ -64,6 +64,9 @@ final class FakeVoiceJobBackend {
     var cancelError: Error?
     /// When true, the next createSession parks until `releaseCreate()`.
     var parksCreate = false
+    /// When false, createSession names only the runtime, as a gateway that
+    /// learns the stored id later does.
+    var storedIDs = true
     let createParked = AwaitableCounter()
     /// Runs inside submit, so a test can deliver events mid-submission.
     var onSubmit: (@MainActor (_ sessionID: String) -> Void)?
@@ -132,7 +135,7 @@ final class FakeVoiceJobBackend {
                     }
                 }
                 self.created += 1
-                return ("rt-\(self.created)", "st-\(self.created)")
+                return ("rt-\(self.created)", self.storedIDs ? "st-\(self.created)" : nil)
             },
             setTitle: { [self] id, title in self.titles.append((id, title)) },
             submit: { [self] id, text in

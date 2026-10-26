@@ -127,6 +127,27 @@ class CheckFeatureMapTests(unittest.TestCase):
         problems = check.unchecked_edits(ENTRY, added, 1201)
         self.assertEqual([p[1].split("'")[1] for p in problems], ["Plan card"])
 
+    def test_an_entry_main_changed_comes_in_with_a_merge_of_main(self):
+        """A PR into pulse that merges main brings main's edits with their own
+        Checked lines: given main's maps where the PR and its base meet main,
+        an entry main changed between the two that matches main's copy isn't
+        the PR's edit."""
+        on_main = ENTRY.replace("only when one item waits", "only when one approval waits").replace("#1\n", "#1188\n")
+        self.assertEqual(len(check.unchecked_edits(ENTRY, on_main, 1201)), 1)
+        self.assertEqual(check.unchecked_edits(ENTRY, on_main, 1201, on_main, ENTRY), [])
+        added = ENTRY + "\n" + ENTRY.replace("Hermes is waiting on you", "Plan card")
+        self.assertEqual(check.unchecked_edits(ENTRY, added, 1201, added, ENTRY), [])
+        # The base's own copy still counts as unchanged.
+        self.assertEqual(check.unchecked_edits(ENTRY, ENTRY, 1201, on_main, ENTRY), [])
+        # Changed again on the way in, it's this PR's edit.
+        edited = on_main.replace("approval waits", "approval is waiting")
+        self.assertEqual(len(check.unchecked_edits(ENTRY, edited, 1201, on_main, ENTRY)), 1)
+        # Put back to main's copy where main didn't change it, it's this PR's
+        # edit too, and so is main's older copy of one main did change.
+        on_pulse = ENTRY.replace("one item waits", "one item waits on pulse").replace("#1\n", "#1240\n")
+        self.assertEqual(len(check.unchecked_edits(on_pulse, ENTRY, 1201, ENTRY, ENTRY)), 1)
+        self.assertEqual(len(check.unchecked_edits(on_pulse, ENTRY, 1201, on_main, ENTRY)), 1)
+
     def test_main_checks_the_pr_only_when_given_its_base(self):
         edited = ENTRY.replace("only when one item waits", "only when one approval waits")
         with tempfile.TemporaryDirectory() as scratch:
@@ -144,6 +165,25 @@ class CheckFeatureMapTests(unittest.TestCase):
         self.assertIn("Couldn't read the base's map", out)
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             check.main(["--repo-root", ROOT, "--pr", "1201"])
+
+    def test_main_reads_mains_maps_for_a_pr_that_merges_main(self):
+        on_main = ENTRY.replace("only when one item waits", "only when one approval waits").replace("#1\n", "#1188\n")
+        with tempfile.TemporaryDirectory() as scratch:
+            base, main_map = os.path.join(scratch, "base.md"), os.path.join(scratch, "main.md")
+            for path, text in ((base, ENTRY), (main_map, on_main)):
+                with open(path, "w", encoding="utf-8") as fh:
+                    fh.write(text)
+            pr = ["--pr", "1201", "--base-map", base]
+            self.assertEqual(self.run_check(on_main, extra=pr)[0], 1)
+            code, out = self.run_check(on_main, extra=pr + ["--main-map", main_map, "--main-base-map", base])
+            self.assertEqual(code, 0, out)
+            code, out = self.run_check(on_main, extra=pr + ["--main-map", main_map, "--main-base-map", "/nonexistent/main.md"])
+            self.assertEqual(code, 1)
+            self.assertIn("Couldn't read main's map /nonexistent/main.md", out)
+        for extra in (["--main-map", "main.md", "--main-base-map", "base.md"],
+                      ["--pr", "1201", "--base-map", "base.md", "--main-map", "main.md"]):
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                check.main(["--repo-root", ROOT, *extra])
 
     def test_code_names_at_least_one_path(self):
         code, out = self.run_check(ENTRY.replace("- Chat card: `Conduit/Views/ChatView.swift` (ApprovalCard)\n- Notifier: `notifier/clarify_loop.py`\n", "- Chat card: ApprovalCard\n"))

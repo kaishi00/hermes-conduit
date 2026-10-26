@@ -105,6 +105,13 @@ final class ChatScrollChrome: ObservableObject {
 /// 3. Only the user leaves following (a drag, or opening or closing a row
 ///    such as Thinking or a tool card), and only being near the bottom (or
 ///    an explicit command) returns to it.
+///
+/// One exception to 3 (#365, Settings > Chat, on by default): a reply that
+/// outgrows the screen stops at its start. Following never pins past the
+/// bottom of the user's message the reply answers; once the reply runs on
+/// past that, the reader is left browsing there. That is a stop, not a
+/// move: the offset never goes up, and nothing above the turn's start
+/// changes while it runs (its steps fold below it).
 @MainActor
 final class ChatScrollEngine: ObservableObject {
     enum Mode: Equatable {
@@ -214,6 +221,23 @@ final class ChatScrollEngine: ObservableObject {
     /// Whether rows that report no frame (the running turn's live rows, a
     /// send waiting on screen) sit below the latest row.
     var liveTailShowing: @MainActor () -> Bool = { false }
+    /// Settings > Chat's "Stop at the start of long replies" (#365).
+    var holdsRepliesAtStart: @MainActor () -> Bool = { false }
+    /// A reply below the user's latest message may still outgrow the
+    /// screen and stop at its start. Armed by a send, a turn started
+    /// elsewhere, or opening a chat with an unread reply; the jump to
+    /// latest, the other explicit commands and a session switch disarm it,
+    /// and so does a reader already below the reply's start.
+    private(set) var replyHoldArmed = false
+    /// The user message the latest turn answers, by id, so a new one (a
+    /// turn started on another device) arms the hold.
+    private var latestUserRowID: String?
+    /// An unread chat just opened: once its transcript is in, it lands at
+    /// the start of its latest reply instead of the end.
+    private var replyStartLandingPending = false
+    /// Landed there, and the reader hasn't moved since: the end of a
+    /// notification's handoff doesn't take them to the end.
+    private var landedAtReplyStart = false
     private let now: () -> TimeInterval
     private let prefersReducedMotion: @MainActor () -> Bool
     private let schedule: (TimeInterval, @escaping @MainActor () -> Void) -> Void
@@ -279,6 +303,7 @@ final class ChatScrollEngine: ObservableObject {
         self.surface = surface
         lastObservedOffsetY = nil
         surfaceLayoutChanged()
+        landAtReplyStartIfPending()
     }
 
     func detach(_ surface: ChatScrollSurface) {
@@ -380,6 +405,7 @@ final class ChatScrollEngine: ObservableObject {
         // Catch up on whatever changed while backgrounded.
         surfaceLayoutChanged()
         surfaceScrolled()
+        landAtReplyStartIfPending()
     }
 
     // MARK: - User drag
@@ -393,6 +419,8 @@ final class ChatScrollEngine: ObservableObject {
         latestAnimationUntil = nil
         prependAnchor = nil
         restoration = nil
+        replyStartLandingPending = false
+        landedAtReplyStart = false
         emit(.cancelAutomaticRestoration)
         if mode != .browsing {
             setMode(.browsing)
@@ -438,6 +466,8 @@ final class ChatScrollEngine: ObservableObject {
         guard !isPaused, !isDragging, surface?.isTracking != true else { return }
         cancelPastBottomCheck()
         latestAnimationUntil = nil
+        replyStartLandingPending = false
+        landedAtReplyStart = false
         // Both hold the viewport to something the toggle is about to change.
         prependAnchor = nil
         if restoration != nil {
@@ -502,6 +532,13 @@ final class ChatScrollEngine: ObservableObject {
         blankViewportCheckGeneration &+= 1
         topVisibleMessageID = nil
         rowFrames = [:]
+        // The new conversation's first transcript names its latest user
+        // message without arming; an open with an unread reply asks for its
+        // landing after this.
+        replyHoldArmed = false
+        latestUserRowID = nil
+        replyStartLandingPending = false
+        landedAtReplyStart = false
         refreshTrackedMessageVisibility()
         guard !isDragging else {
             mode = .browsing
@@ -530,6 +567,9 @@ final class ChatScrollEngine: ObservableObject {
         if restoration != nil {
             restoration = nil
         }
+        // A new open goes to the end: an earlier landing or hold no longer
+        // keeps it away.
+        disarmReplyHold()
         emit(.cancelAutomaticRestoration)
         guard !isDragging else { return }
         setMode(.following)
@@ -537,7 +577,9 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     func notificationHandoffFinished() {
-        guard !isDragging, restoration == nil else { return }
+        // An unread reply the open landed on (or is about to) stays put.
+        guard !isDragging, restoration == nil,
+              !replyStartLandingPending, !landedAtReplyStart else { return }
         setMode(.following)
         pinOrReveal()
     }
@@ -561,6 +603,12 @@ final class ChatScrollEngine: ObservableObject {
         mirroredViewportTransitionGeneration = viewportTransitionGeneration
         defer { renderInputsMayHaveChanged() }
         guard update != .unchanged else { return }
+        noteLatestUserRow(arming: !isInitialSync)
+        if replyStartLandingPending {
+            schedule(0) { [weak self] in
+                self?.landAtReplyStartIfPending()
+            }
+        }
 
         if let anchor = prependAnchor, anchor.landedAt == nil {
             landPrependIfNeeded(anchor, frontRowBefore: frontRowBefore)
@@ -618,12 +666,16 @@ final class ChatScrollEngine: ObservableObject {
 
     /// Send, or the jump-to-latest button. `animated` is honored only for a
     /// short distance: a long animated scroll through lazily measured rows is
-    /// what used to overshoot.
-    func explicitLatestRequested(animated: Bool) {
+    /// what used to overshoot. A send arms the reply hold for the answer to
+    /// come; the button goes to the end, past any hold.
+    func explicitLatestRequested(animated: Bool, armsReplyHold: Bool = false) {
         // A finger on the transcript wins over a command.
         if surface?.isTracking == true { return }
         restoration = nil
         prependAnchor = nil
+        replyHoldArmed = armsReplyHold
+        replyStartLandingPending = false
+        landedAtReplyStart = false
         cancelDisclosureSettle()
         emit(.cancelAutomaticRestoration)
         setMode(.following)
@@ -657,6 +709,7 @@ final class ChatScrollEngine: ObservableObject {
         restoration = nil
         prependAnchor = nil
         latestAnimationUntil = nil
+        disarmReplyHold()
         cancelPastBottomCheck()
         cancelDisclosureSettle()
         emit(.cancelAutomaticRestoration)
@@ -680,6 +733,7 @@ final class ChatScrollEngine: ObservableObject {
         restoration = nil
         prependAnchor = nil
         latestAnimationUntil = nil
+        disarmReplyHold()
         cancelPastBottomCheck()
         cancelDisclosureSettle()
         emit(.cancelAutomaticRestoration)
@@ -697,6 +751,63 @@ final class ChatScrollEngine: ObservableObject {
             // so re-evaluate following here.
             surfaceScrolled()
         }
+    }
+
+    // MARK: - Opening an unread reply
+
+    /// An unread chat was opened and its transcript is in: it lands at the
+    /// start of its latest reply instead of the end, as the reply would
+    /// have stopped there had the chat been open (#365). Runs on the next
+    /// turn, so the transcript, and the end of a notification's handoff,
+    /// reach the engine first.
+    func replyStartLandingRequested() {
+        guard holdsRepliesAtStart() else { return }
+        replyStartLandingPending = true
+        schedule(0) { [weak self] in
+            self?.landAtReplyStartIfPending()
+        }
+    }
+
+    private func landAtReplyStartIfPending() {
+        // A chat view just up may not have found its scroll view yet:
+        // attaching it lands then.
+        // A backgrounded engine, or a transcript without the user's
+        // message yet, lands once it resumes or the message arrives.
+        let targets = targetCache.targets
+        guard replyStartLandingPending, let surface, !isPaused,
+              let userIndex = targets.lastIndex(where: { $0.message.role == .user }) else { return }
+        replyStartLandingPending = false
+        // Switched off since the request.
+        guard holdsRepliesAtStart() else { return }
+        // A reader who already scrolled, or a restoration placing them,
+        // keeps their place.
+        guard mode == .following, !isUserScrolling, restoration == nil else { return }
+        latestUserRowID = targets[userIndex].id
+        replyHoldArmed = true
+        landedAtReplyStart = true
+        if let hold = replyHoldOffset(on: surface) {
+            // The user's message is laid out (the reply is short, or barely
+            // longer than the screen): the hold's own stop.
+            let target = surface.clampedOffsetY(hold)
+            if surface.maxOffsetY - target > Self.nearBottomTolerance {
+                replyHoldArmed = false
+                setMode(.browsing)
+                emit(.persistSnapshot(renderedSessionKey))
+            }
+            if abs(surface.contentOffsetY - target) > 0.5 {
+                surface.setContentOffsetY(target, animated: false)
+            }
+        } else {
+            // Not laid out: the reply's start is more than a screen up.
+            // SwiftUI scrolls its first row to the top (a short reply
+            // clamps at the end, where following picks up again).
+            let replyStart = userIndex + 1 < targets.count ? targets[userIndex + 1].id : targets[userIndex].id
+            setMode(.browsing)
+            emit(.persistSnapshot(renderedSessionKey))
+            emit(.revealRow(id: replyStart))
+        }
+        refreshTrackedMessageVisibility()
+        refreshJumpButton()
     }
 
     // MARK: - Automatic restoration
@@ -795,6 +906,10 @@ final class ChatScrollEngine: ObservableObject {
         isDragging = false
         prependAnchor = nil
         latestAnimationUntil = nil
+        // A landing belongs to the open that asked for it. The hold stays
+        // armed: the reply may still be running when the chat is back.
+        replyStartLandingPending = false
+        landedAtReplyStart = false
     }
 
     /// The last reported frame of a laid-out row, in the stack's space.
@@ -959,9 +1074,56 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     private func pin(_ surface: ChatScrollSurface) {
-        let target = surface.maxOffsetY
+        var target = surface.maxOffsetY
+        if let hold = replyHoldOffset(on: surface) {
+            if surface.contentOffsetY > hold + 0.5 {
+                // Already below the reply's start (the reader came back
+                // down to its end): following goes on to the end.
+                replyHoldArmed = false
+            } else if target > hold {
+                // The reply runs past the screen: stop at its start, where
+                // the bottom pin of an earlier pass left off or just past
+                // it, never above. Within the near-bottom distance this is
+                // still following; past it, the reader is left browsing
+                // there and later growth never moves the offset.
+                target = hold
+                if surface.maxOffsetY - hold > Self.nearBottomTolerance {
+                    replyHoldArmed = false
+                    setMode(.browsing)
+                    emit(.persistSnapshot(renderedSessionKey))
+                }
+            }
+        }
         guard abs(surface.contentOffsetY - target) > 0.5 else { return }
         surface.setContentOffsetY(target, animated: false)
+    }
+
+    /// Where following stops for the reply the hold is armed for: the
+    /// offset that puts the bottom of the user's latest message at the
+    /// viewport top. Nil while unarmed, switched off, or before that row has
+    /// a frame (following then pins the bottom, as it always did).
+    private func replyHoldOffset(on surface: ChatScrollSurface) -> CGFloat? {
+        guard replyHoldArmed, holdsRepliesAtStart(),
+              let id = latestUserRowID, let frame = rowFrames[id] else { return nil }
+        return max(surface.minOffsetY, surface.transcriptOriginY + frame.maxY - surface.insetTop)
+    }
+
+    private func disarmReplyHold() {
+        replyHoldArmed = false
+        replyStartLandingPending = false
+        landedAtReplyStart = false
+    }
+
+    /// Follows the transcript's latest user message. A new one in a live
+    /// transcript (a turn started on another device, or a send's row)
+    /// arms the hold; the first transcript of a conversation only names it.
+    private func noteLatestUserRow(arming: Bool) {
+        let latest = targetCache.targets.last(where: { $0.message.role == .user })?.id
+        guard latest != latestUserRowID else { return }
+        if arming, latestUserRowID != nil, latest != nil {
+            replyHoldArmed = true
+        }
+        latestUserRowID = latest
     }
 
     private func pinOrReveal() {
@@ -1172,5 +1334,17 @@ final class ChatScrollEngine: ObservableObject {
                 .first { $0.semanticID == semanticAnchor }?.id ?? semanticAnchor
             return .anchor(sourceAnchor)
         }
+    }
+}
+
+/// Settings > Chat: a reply longer than the screen stops at its start
+/// instead of following its end (#365). Device setting, shared through
+/// Sync across devices; on by default.
+enum ChatReplyStartPreference {
+    static let key = "conduit.chat.stopAtReplyStart"
+    static let defaultOn = true
+
+    static var isOn: Bool {
+        UserDefaults.standard.object(forKey: key) as? Bool ?? defaultOn
     }
 }

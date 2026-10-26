@@ -156,6 +156,18 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
         XCTAssertEqual(nested?.dashboardID, dashboardB)
     }
 
+    func testTheBotsNameRidesBesideTheProfileItRoutesBy() throws {
+        let named = try XCTUnwrap(PushNotificationService.parseNotificationTarget(from: ["body": ["conduit": [
+            "session_id": "runtime-1", "profile": "default", "profile_name": " Nova ",
+        ]]]))
+        XCTAssertEqual(named.profile, "default")
+        XCTAssertEqual(named.profileName, "Nova")
+        let unnamed = try XCTUnwrap(PushNotificationService.parseNotificationTarget(from: ["conduit": [
+            "session_id": "runtime-1", "profile": "default", "profile_name": "  ",
+        ]]))
+        XCTAssertNil(unnamed.profileName)
+    }
+
     // MARK: - Fail-closed integration
 
     private func makeAppState(registry: SavedDashboardRegistry) -> AppState {

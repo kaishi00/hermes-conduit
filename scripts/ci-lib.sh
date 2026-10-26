@@ -2,7 +2,7 @@
 #
 # Shared CI runner primitives for Hermes Conduit CI v2.
 #
-# Sourced by ci-build-for-testing.sh and ci-test-lane.sh. Bash 3.2 compatible
+# Sourced by ci-build-for-testing.sh and ci-prepare-smoke.sh. Bash 3.2 compatible
 # (GitHub macOS runners default to /bin/bash).
 #
 # Helpers:

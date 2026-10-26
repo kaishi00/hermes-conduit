@@ -15,7 +15,7 @@ struct ConnectLinkSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var flow = LoginFlowModel()
+    @State private var flow = LoginFlowModel()
     @State private var seeded = false
     let link: DashboardConnectLink
     /// Runs after the sheet closes on a sign-in.

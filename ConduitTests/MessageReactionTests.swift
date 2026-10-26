@@ -17,13 +17,7 @@ extension MessageNormalizerTests {
     }
 
     private func makeReactionAppState() -> AppState {
-        let suite = "MessageReactionTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock {
-            defaults.removePersistentDomain(forName: suite)
-        }
+        let defaults = makeScratchDefaults("MessageReactionTests")
         let appState = AppState(
             defaults: defaults,
             loadSavedConnection: false,

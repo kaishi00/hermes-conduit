@@ -8,6 +8,7 @@
 //  limit defaults to Hermes Desktop's 16 MB.
 //
 
+import ImageIO
 import UniformTypeIdentifiers
 import XCTest
 @testable import Conduit
@@ -106,5 +107,60 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
         let video = Attachment(id: "v", name: "clip.mov", uri: "file:///tmp/clip.mov", mimeType: "video/quicktime", kind: .video)
         let decoded = try JSONDecoder().decode(Attachment.self, from: JSONEncoder().encode(video))
         XCTAssertEqual(decoded, video)
+    }
+
+    // MARK: - Pictures sent to Hermes (#1265)
+
+    private func pngData(width: Int, height: Int, alpha: Bool = false, opaque: Bool = false) throws -> Data {
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: (alpha ? CGImageAlphaInfo.premultipliedLast : .noneSkipLast).rawValue
+        ))
+        // Noise, so the PNG is large like a photo's.
+        let pixels = try XCTUnwrap(context.data).bindMemory(to: UInt8.self, capacity: context.bytesPerRow * height)
+        var seed: UInt32 = 7
+        for i in 0..<(context.bytesPerRow * height) {
+            seed = seed &* 1_103_515_245 &+ 12_345
+            pixels[i] = UInt8(truncatingIfNeeded: seed >> 16)
+            // Premultiplied, a full alpha takes any color.
+            if alpha, opaque, i % 4 == 3 { pixels[i] = 255 }
+        }
+        let image = try XCTUnwrap(context.makeImage())
+        let output = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(output, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        return output as Data
+    }
+
+    func testALargePictureGoesToHermesResizedAsAJPEG() throws {
+        let data = try pngData(width: 2600, height: 1950)
+        let prepared = try XCTUnwrap(PictureUpload.resized(data, filename: "IMG_0001.png"))
+        XCTAssertEqual(prepared.filename, "IMG_0001.jpg")
+        XCTAssertEqual(prepared.mimeType, "image/jpeg")
+        XCTAssertLessThan(prepared.data.count, data.count)
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(prepared.data as CFData, nil))
+        let properties = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+        XCTAssertEqual(properties[kCGImagePropertyPixelWidth] as? Int, 2048)
+        XCTAssertEqual(properties[kCGImagePropertyPixelHeight] as? Int, 1536, "2600 x 1950 keeps its shape")
+    }
+
+    func testALargeTransparentPictureStaysAPNG() throws {
+        let data = try pngData(width: 2600, height: 1950, alpha: true)
+        let prepared = try XCTUnwrap(PictureUpload.resized(data, filename: "sticker.png"))
+        XCTAssertEqual(prepared.filename, "sticker.png", "A JPEG would fill in the transparency")
+        XCTAssertEqual(prepared.mimeType, "image/png")
+    }
+
+    func testAnOpaquePictureWithAnAlphaChannelStillGoesAsAJPEG() throws {
+        let data = try pngData(width: 2600, height: 1950, alpha: true, opaque: true)
+        let prepared = try XCTUnwrap(PictureUpload.resized(data, filename: "screenshot.png"))
+        XCTAssertEqual(prepared.mimeType, "image/jpeg", "Only real transparency keeps it a PNG")
+    }
+
+    func testAPictureAModelTakesGoesUnchanged() throws {
+        XCTAssertNil(PictureUpload.resized(try pngData(width: 2048, height: 1024), filename: "small.png"))
+        XCTAssertNil(PictureUpload.resized(Data("not a picture".utf8), filename: "broken.jpg"))
     }
 }

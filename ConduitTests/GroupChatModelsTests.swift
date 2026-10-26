@@ -566,6 +566,36 @@ final class GroupChatModelsTests: XCTestCase {
             current: false, userScrolling: true, distanceFromBottom: GroupRoomFollow.nearBottomTolerance))
     }
 
+    func testALandingDecidesFollowingOnlyWhenItsOver() {
+        // Its own animated scroll passing near the bottom doesn't follow.
+        XCTAssertFalse(GroupRoomFollow.following(
+            current: false, userScrolling: false, distanceFromBottom: 0, landing: true))
+        XCTAssertFalse(GroupRoomFollow.following(
+            current: false, userScrolling: false, distanceFromBottom: 900, landing: true))
+        // The user's own scroll still decides.
+        XCTAssertTrue(GroupRoomFollow.following(
+            current: false, userScrolling: true, distanceFromBottom: 0, landing: true))
+    }
+
+    func testANewMemberMessageIsWhereTheRoomLands() {
+        let log = [
+            userMessage(seq: 1, text: "Hello everyone"),
+            memberMessage(seq: 2, member: "ayaka", round: 0, text: "Hi"),
+            userMessage(seq: 3, text: "Plan the trip", id: "user:d2"),
+            memberMessage(seq: 4, member: "zhongli", round: 0, text: "A long plan"),
+            memberMessage(seq: 5, member: "ayaka", round: 0, text: "More"),
+        ]
+        // The first member message after the row that was last before.
+        XCTAssertEqual(GroupRoomFollow.replyStart(in: log, after: "dmessage:2"), "dmessage:4")
+        XCTAssertEqual(GroupRoomFollow.replyStart(in: log, after: "dmessage:4"), "dmessage:5")
+        // Only the user's own message is new, or nothing is: the bottom.
+        XCTAssertNil(GroupRoomFollow.replyStart(in: Array(log.prefix(3)), after: "dmessage:2"))
+        XCTAssertNil(GroupRoomFollow.replyStart(in: log, after: "dmessage:5"))
+        // No row from before (the room just opened, or it's gone): the bottom.
+        XCTAssertNil(GroupRoomFollow.replyStart(in: log, after: nil))
+        XCTAssertNil(GroupRoomFollow.replyStart(in: log, after: "dmessage:99"))
+    }
+
     func testSendResultAdoptionAdvancesCursorExactlyOnce() {
         // The accepted `groups.send` event rides the same engine: the poll
         // that later returns it must not duplicate it.

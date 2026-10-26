@@ -2911,12 +2911,28 @@ private final class FakeSocket: HermesWebSocket {
         }
     }
 
+    /// True holds each send's completion until `finishHeldSends()`, as a
+    /// large frame on a slow link is still being written.
+    var holdsSendCompletion = false
+    private var heldSendCompletions: [@Sendable (Error?) -> Void] = []
+
     func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping @Sendable (Error?) -> Void) {
         if case .string(let text) = message {
             sentTexts.append(text)
             onSend?()
         }
-        completionHandler(nil)
+        if holdsSendCompletion {
+            heldSendCompletions.append(completionHandler)
+        } else {
+            completionHandler(nil)
+        }
+    }
+
+    func finishHeldSends() {
+        holdsSendCompletion = false
+        let held = heldSendCompletions
+        heldSendCompletions = []
+        held.forEach { $0(nil) }
     }
 
     func receive() async throws -> URLSessionWebSocketTask.Message {
@@ -3082,7 +3098,9 @@ extension HermesClientTests {
     /// right after it is never missed.
     private func connectKeepaliveClient(
         onSend: (() -> Void)? = nil,
-        backgroundInterval: TimeInterval? = nil
+        interval: TimeInterval = 0.3,
+        backgroundInterval: TimeInterval? = nil,
+        monitorsPath: Bool = false
     ) async throws -> (client: HermesClient, socket: FakeSocket) {
         let transport = FakeTransport()
         let socket = FakeSocket()
@@ -3091,10 +3109,10 @@ extension HermesClientTests {
         let client = HermesClient(
             connection: HermesConnection(baseUrl: "https://test.example", ticket: "ticket"),
             transportFactory: { transport },
-            keepaliveInterval: 0.3,
+            keepaliveInterval: interval,
             backgroundKeepaliveInterval: backgroundInterval,
             keepalivePingTimeout: 0.3,
-            monitorsPath: false
+            monitorsPath: monitorsPath
         )
         let connectTask = Task { try? await client.connect() }
         transport.open(socket)
@@ -3146,6 +3164,96 @@ extension HermesClientTests {
         }
         XCTAssertEqual(pings(), 1, "The quiet socket is still pinged off screen")
         client.disconnect()
+    }
+
+    /// A picture still being written to a slow link (#1265): a ping queued
+    /// behind it can't be answered, so the keepalive waits instead of
+    /// closing the socket under the upload.
+    func testKeepaliveWaitsWhileAFrameIsStillBeingWritten() async throws {
+        // A longer interval, so no ping goes out before the upload does.
+        let (client, socket) = try await connectKeepaliveClient(interval: 1)
+        socket.holdsSendCompletion = true
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let picture = String(repeating: "A", count: HermesClient.largeFrameBytes)
+        let upload = Task { try await client.attachImage("s1", base64: picture, filename: "photo.jpg") }
+        try await sent.wait("the image upload to go out")
+        socket.onSend = nil
+        // Past the quiet interval and two ping budgets.
+        try await Task.sleep(for: .seconds(2.5))
+        XCTAssertFalse(socket.sentTexts.contains { $0.contains("\"ping\"") }, "No ping behind a frame still being written")
+        XCTAssertFalse(socket.cancelled, "The upload's socket stays open")
+
+        socket.finishHeldSends()
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.first { $0.contains("image.attach_bytes") }).utf8)) as? [String: Any]
+        )
+        let id = try XCTUnwrap(request["id"] as? Int)
+        try deliverReply(["jsonrpc": "2.0", "id": id, "result": ["path": "/tmp/photo.jpg"]], on: socket)
+        let path = try await awaitResult(of: upload, "the upload's reply")
+        XCTAssertEqual(path, "/tmp/photo.jpg")
+        client.disconnect()
+    }
+
+    /// A network path change during the upload doesn't probe behind it
+    /// either: two lost pings would close the working socket (#1265).
+    func testPathChangeDoesNotProbeBehindAFrameStillBeingWritten() async throws {
+        let (client, socket) = try await connectKeepaliveClient(interval: 30, monitorsPath: true)
+        socket.holdsSendCompletion = true
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let picture = String(repeating: "A", count: HermesClient.largeFrameBytes)
+        let upload = Task { try await client.attachImage("s1", base64: picture, filename: "photo.jpg") }
+        try await sent.wait("the image upload to go out")
+        socket.onSend = nil
+
+        client.networkPathChanged()
+        // Past two 0.3 s ping budgets.
+        try await Task.sleep(for: .seconds(1))
+        XCTAssertFalse(socket.sentTexts.contains { $0.contains("\"ping\"") }, "No probe behind the upload")
+        XCTAssertFalse(socket.cancelled, "The upload's socket stays open")
+        upload.cancel()
+        socket.finishHeldSends()
+        client.disconnect()
+    }
+
+    /// The foreground check doesn't ping behind a picture still going up:
+    /// its 5 s budget would run out and drop a working socket (#1265).
+    func testHealthCheckDoesNotPingBehindAFrameStillBeingWritten() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+        socket.holdsSendCompletion = true
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let picture = String(repeating: "A", count: HermesClient.largeFrameBytes)
+        let upload = Task { try await client.attachImage("s1", base64: picture, filename: "photo.jpg") }
+        try await sent.wait("the image upload to go out")
+        socket.onSend = nil
+
+        try await client.healthCheck()
+        XCTAssertFalse(socket.sentTexts.contains { $0.contains("\"ping\"") }, "No ping behind the upload")
+        upload.cancel()
+        socket.finishHeldSends()
+        client.disconnect()
+    }
+
+    /// An upload's budget grows with its size: a 4 MB photo (about 5.3 MB
+    /// as base64) on a 0.5 Mbit/s link needs more than the usual 30 s
+    /// (#1265).
+    func testUploadTimeoutGrowsWithThePayload() {
+        XCTAssertEqual(HermesClient.uploadTimeout(forPayloadCharacters: 1_000), HermesClient.minimumUploadTimeout)
+        XCTAssertGreaterThan(HermesClient.minimumUploadTimeout, HermesClient.requestTimeout)
+        XCTAssertEqual(HermesClient.uploadTimeout(forPayloadCharacters: 64_000_000), 1_000)
+        XCTAssertEqual(
+            HermesClient.uploadTimeout(forPayloadCharacters: 64_000_000),
+            TimeInterval(GroupRoomFilesClient.timeoutMilliseconds(forBodyBytes: 64_000_000)) / 1_000,
+            "The same rate a group room's upload allows (base64 is one byte a character)"
+        )
     }
 
     func testPingBudgetIsShorterThanTheOldProbe() {

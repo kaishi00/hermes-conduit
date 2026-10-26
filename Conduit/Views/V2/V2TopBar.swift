@@ -539,7 +539,7 @@ struct V2CapsuleIcon: View {
 }
 
 /// The root screens' backdrop: drifting while its tab is on screen, its warm
-/// glow in the active profile's color.
+/// glow in the active profile's color, or in `glowProfile`'s when given.
 struct V2Backdrop: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2Shell) private var shell
@@ -547,13 +547,16 @@ struct V2Backdrop: View {
     /// A tab root's backdrop (Chats, Bots): it also holds still while a chat
     /// or page is pushed over the root, which draws its own.
     var isTabRoot = false
+    /// The profile whose color the glow takes instead of the active one: the
+    /// open chat's, so a Bot Chat glows in its bot's color.
+    var glowProfile: String?
 
     var body: some View {
         // A capsule tab hidden behind the selected one holds still.
         let covered = isTabRoot && shell.isRootCovered
         ConduitBackdrop(
             drifts: drifts && shell.isTabActive && !covered,
-            glowTint: appState.profileGlowTint(appState.activeProfile)
+            glowTint: appState.profileGlowTint(glowProfile ?? appState.activeProfile)
         )
     }
 }

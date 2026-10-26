@@ -38,13 +38,7 @@ final class ClarifyBatchStateTests: XCTestCase {
     }
 
     private func makeAppState() -> (appState: AppState, cache: SessionPresentationCache) {
-        let suite = "ClarifyBatchStateTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock {
-            defaults.removePersistentDomain(forName: suite)
-        }
+        let defaults = makeScratchDefaults("ClarifyBatchStateTests")
         let cache = SessionPresentationCache(defaults: defaults)
         let appState = AppState(
             defaults: defaults,

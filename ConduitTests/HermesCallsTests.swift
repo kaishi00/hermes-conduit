@@ -806,6 +806,15 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(HermesCallCopy.callerName(profile: "Default", mainName: " ", title: nil), "Hermes")
         XCTAssertEqual(HermesCallCopy.callerName(profile: "default", mainName: nil, title: nil), "Hermes")
         XCTAssertEqual(HermesCallCopy.callerName(profile: "  ", mainName: "Ada", title: nil), "Hermes", "No profile: nothing names the caller")
+        // The bot's name in Hermes, as the Bots list shows it, when the push carries one.
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "research", mainName: "Ada", profileName: " Atlas  Prime ", title: "Deploy"), "Atlas Prime · Deploy")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "default", mainName: "Ada", profileName: "Nova", title: nil), "Ada", "A name set in Conduit still wins for the main profile")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "default", mainName: "Hermes", profileName: "Nova", title: nil), "Nova", "A main profile never named in Conduit goes by its bot's name")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "default", mainName: nil, profileName: "Nova", title: nil), "Nova")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "research", mainName: nil, profileName: " ", title: nil), "Research")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "research", mainName: nil, profileName: "research", title: nil), "Research", "A name that is only the id reads as the id does")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "default", mainName: nil, profileName: "Default", title: nil), "Hermes")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "  ", mainName: nil, profileName: "Nova", title: nil), "Hermes", "No profile: nothing names the caller")
 
         // The Watch reads the caller from a push in the clear.
         let dashboard = UUID()
@@ -813,6 +822,8 @@ extension VoiceConversationControllerTests {
         let caller = HermesRingPush.caller(clear)
         XCTAssertEqual(caller.profile, "default")
         XCTAssertEqual(caller.dashboardID, dashboard)
+        XCTAssertNil(HermesRingPush.profileName(clear))
+        XCTAssertEqual(HermesRingPush.profileName(["body": ["conduit": ["profile": "default", "profile_name": "Nova"]]]), "Nova")
         XCTAssertEqual(HermesCallerName.mainName(dashboardID: caller.dashboardID, in: [dashboard.uuidString: "Ada"]), "Ada")
         XCTAssertNil(HermesCallerName.mainName(dashboardID: UUID(), in: [dashboard.uuidString: "Ada"]))
         XCTAssertEqual(HermesCallerName.mainName(dashboardID: nil, in: [dashboard.uuidString: "Ada"], activeDashboardID: dashboard.uuidString.lowercased()), "Ada", "A push naming no dashboard: the iPhone's active one, as on the iPhone")
@@ -1099,9 +1110,7 @@ extension VoiceConversationControllerTests {
     }
 
     private func outcomeDefaults() throws -> UserDefaults {
-        let suite = "HermesCallsTests.outcomes.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("HermesCallsTests.outcomes")
         return defaults
     }
 

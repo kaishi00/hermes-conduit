@@ -188,14 +188,22 @@ jobs:
               path or gap the PR adds or moves that its entry doesn't record. A
               PR that changes a mapped feature's code without editing its
               entry, at least its Checked line, is a minor finding (CI checks
-              that an edited entry's Checked line names the PR). If no entry covers what the PR
+              that an edited entry's Checked line names the PR). On a PR into
+              `pulse` that merges main, an entry main changed since `pulse`
+              last took it that matches main's copy came in from main: it
+              keeps main's Checked line, and main's PR checked its siblings. If no entry covers what the PR
               changes but the change has siblings (ones its Siblings section
               names, or one you can name with its file), the PR must add an
               entry that lists them, and its Siblings section says for each
               whether it's done, not needed (and why) or a gap; a PR that adds
               none is a major finding. So is a PR that brings a sibling in line
               with an earlier change it missed without adding that sibling to
-              the entry.
+              the entry. A refactor that changes no behavior and no user-facing or
+              model-facing text (moving code, or changing how state is
+              stored or observed) has no siblings and needs no new entry:
+              don't ask it for one, and don't flag it for leaving an entry
+              untouched. If it moves code an entry's Code lists, that entry's
+              paths and Checked line still need updating.
 
             If you find no issues, say so explicitly. Do NOT summarize what you did
             or describe your process. Output only the review.

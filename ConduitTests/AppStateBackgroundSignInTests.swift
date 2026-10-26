@@ -317,13 +317,7 @@ extension AppStateForegroundLifecycleTests {
         registry: SavedDashboardRegistry = SavedDashboardRegistry(),
         prepare: @MainActor (UserDefaults) -> Void = { _ in }
     ) -> AppState {
-        let suite = "AppStateBackgroundSignInTests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            fatalError("Failed to create test UserDefaults suite")
-        }
-        addTeardownBlock {
-            defaults.removePersistentDomain(forName: suite)
-        }
+        let defaults = makeScratchDefaults("AppStateBackgroundSignInTests")
         prepare(defaults)
         // An unsigned simulator test host can't write the system keychain,
         // and a signed one must never hand a retry the developer's own

@@ -1,5 +1,4 @@
 """Hosted-only preparation, retry selection, and discovery regressions."""
-import collections
 import json
 import os
 import subprocess
@@ -87,47 +86,31 @@ class RetrySelectionTests(unittest.TestCase):
             self.assertEqual(doc["retry_classes"], self.selected)
 
 
-class SelfTestGroupsTests(unittest.TestCase):
-    def setUp(self):
-        self.assertTrue(os.path.isfile(os.path.join(SCRIPTS_DIR, "ci-self-test.py")))
-        self.runner = load_module("ci_self_test", "ci-self-test.py")
+class SelfTestRunnerTests(unittest.TestCase):
+    def _run(self, tests_dir):
+        return subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "ci-self-test.py"),
+                               "--tests-dir", tests_dir], capture_output=True, text=True)
 
-    def test_group_union_is_exact_discovery_inventory(self):
-        suite = unittest.defaultTestLoader.discover(os.path.join(SCRIPTS_DIR, "tests"))
-        groups = self.runner.partition_tests(suite)
-        ids = [test.id() for tests in groups.values() for test in tests]
-        self.assertEqual(collections.Counter(ids), collections.Counter(
-            test.id() for test in self.runner.flatten(suite)))
-        self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual([test.id() for test in groups["lane"]],
-                         ["test_lane_runner.LaneRunnerScriptTests.test_lane_runner_state_machine"])
-        self.assertEqual([test.id() for test in groups["local-gate"]],
-                         ["test_local_ci_gate.LocalGateScriptTests.test_local_gate_integration_suite"])
-
-    def test_newly_discovered_modules_go_to_fast_group(self):
-        case = type("NewCoverage", (unittest.TestCase,),
-                    {"__module__": "test_new_feature", "test_new": lambda self: None})
-        suite = unittest.TestSuite([case("test_new")])
-        self.assertEqual([t.id() for t in self.runner.partition_tests(suite)["fast"]],
-                         ["test_new_feature.NewCoverage.test_new"])
-
-    def test_duplicate_inventory_is_rejected(self):
-        test = unittest.FunctionTestCase(lambda: None)
-        with self.assertRaises(ValueError):
-            self.runner.partition_tests(unittest.TestSuite([test, test]))
-
-    def test_group_failure_has_nonzero_exit_and_does_not_hide_other_tests(self):
+    def test_a_failure_has_nonzero_exit_and_does_not_hide_other_tests(self):
         with tempfile.TemporaryDirectory() as tmp:
             with open(os.path.join(tmp, "test_fixture.py"), "w") as fh:
                 fh.write("import unittest\nclass Fixture(unittest.TestCase):\n"
                          " def test_red(self): self.fail('fixture assertion')\n"
                          " def test_green(self): pass\n")
-            proc = subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "ci-self-test.py"),
-                                   "--group", "fast", "--tests-dir", tmp],
-                                  capture_output=True, text=True)
+            proc = self._run(tmp)
             self.assertNotEqual(proc.returncode, 0)
             self.assertIn("Ran 2 tests", proc.stderr)
             self.assertIn("fixture assertion", proc.stderr)
+
+    def test_an_import_error_fails_instead_of_dropping_the_module(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "test_broken.py"), "w") as fh:
+                fh.write("import no_such_module_for_self_test\n")
+            self.assertNotEqual(self._run(tmp).returncode, 0)
+
+    def test_an_empty_discovery_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertNotEqual(self._run(tmp).returncode, 0)
 
 
 @unittest.skipUnless(os.name == "posix", "requires POSIX shell execution")

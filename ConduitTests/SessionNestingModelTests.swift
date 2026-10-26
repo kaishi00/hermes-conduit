@@ -447,9 +447,7 @@ final class SessionNestingModelTests: XCTestCase {
     }
 
     func testMarkingANestReadClearsWhatTheParentShows() {
-        let suite = "SessionNestingModelTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeScratchDefaults("SessionNestingModelTests")
         let appState = AppState(
             defaults: defaults,
             loadSavedConnection: false,
