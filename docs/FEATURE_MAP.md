@@ -1960,10 +1960,10 @@ the framing and block messages models read, Settings captions
 **Rulings**
 - The app side stays off main: Linked Rooms PRs target `linked-rooms`, which reaches main only once Eric has seen it all work, like `pulse`. The notifier side is on its main, hidden until Conduit shows it (2026-10-23, Eric).
 - Memory stays on in rooms. Instead, past-chat search is off unless chosen, nothing from a room turn is saved to memory, skills or a memory provider, the agent is told who's asking, and what it shares follows its owner's choice for the room. A provider's automatic recall stays on, like MEMORY.md (2026-10-22, Eric; notifier #305).
-- Each owner's rules run on their own host, whichever host the room lives on. A room's choices default to Talk only, ask first, no past-chat search, joins in and 40 turns a day. Memory and skill writes, delegation, messaging, scheduled jobs, running code and Conduit's calls and settings are never allowed, the background review's included (2026-10-25, notifier N1_PR).
-- The rules hold through Hermes' tool hooks, which see a call only when it carries the room session's id. A tool that calls other tools without it (`execute_code`) is never allowed, and a profile whose tools run outside the hooks (the Codex app-server runtime) can't take part in a room with other people's agents (2026-10-25, notifier N1_PR).
-- A room whose store can't be read gets no tools that turn. A room in no store, or a session store that can't be read, runs as Hermes alone would, with a warning in the log (2026-10-25, notifier N1_PR).
-- Rooms of only your own agents behave exactly as before: the rules apply once a room seats a member from another installation (2026-10-25, notifier N1_PR).
+- Each owner's rules run on their own host, whichever host the room lives on. A room's choices default to Talk only, ask first, no past-chat search, joins in and 40 turns a day. Memory and skill writes, delegation, messaging, scheduled jobs, running code and Conduit's calls and settings are never allowed, the background review's included (2026-10-25, notifier #379).
+- The rules hold through Hermes' tool hooks, which see a call only when it carries the room session's id. A tool that calls other tools without it (`execute_code`) is never allowed, and a profile whose tools run outside the hooks (the Codex app-server runtime) can't take part in a room with other people's agents (2026-10-25, notifier #379).
+- A room whose store can't be read gets no tools that turn. A room in no store, or a session store that can't be read, runs as Hermes alone would, with a warning in the log (2026-10-25, notifier #379).
+- Rooms of only your own agents behave exactly as before: the rules apply once a room seats a member from another installation (2026-10-25, notifier #379).
 - Every link goes through the mailbox, on one LAN too. The shared one is rooms.milim.dev, a service of its own beside push.milim.dev (2026-10-22, Eric).
 - An agent runs on its owner's host with its owner's model and keys, so each owner pays for their own (2026-10-22, Eric).
 
@@ -1977,7 +1977,7 @@ the framing and block messages models read, Settings captions
 - A profile on the Codex app-server runtime isn't refused yet: until joining refuses it, keep it out of rooms with other people's agents (the notifier README says so).
 - Agents that aren't Hermes (an A2A member) are left out.
 
-**Checked:** 2026-10-25, C0_PR, with notifier N1_PR.
+**Checked:** 2026-10-26, #1276, with notifier #379.
 
 ## Feature map rules
 
