@@ -269,11 +269,24 @@ enum PulseQuiet {
         (0..<7).map { pluginDay(calendarIndex: (calendar.firstWeekday - 1 + $0) % 7) }
     }
 
-    /// A day as the plugin takes `quiet_until` ("YYYY-MM-DD"): Pulse is
-    /// quiet until that day starts.
+    /// The phone's calendar in the plugin's time zone (`PulseState.timeZone`;
+    /// the phone's own while the plugin hasn't said one), so the day picked
+    /// for a vacation is the day the plugin keeps.
+    static func calendar(zone: String, _ base: Calendar = .current) -> Calendar {
+        var calendar = base
+        calendar.timeZone = TimeZone(identifier: zone) ?? .current
+        return calendar
+    }
+
+    /// A day as the plugin takes `quiet_until` ("YYYY-MM-DD"), in the time
+    /// zone of `calendar`: Pulse is quiet until that day starts. Gregorian
+    /// whatever the phone's calendar, or a Japanese-calendar phone would
+    /// send its era year (as PhoneDates.day).
     static func dayText(_ date: Date, calendar: Calendar = .current) -> String {
-        let parts = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        let parts = gregorian.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 2000, parts.month ?? 1, parts.day ?? 1)
     }
 
     /// The days a vacation can end on: tomorrow to a year ahead, as the
@@ -285,13 +298,20 @@ enum PulseQuiet {
         return first...max(first, last)
     }
 
-    /// The relay gateways whose Pulse pushes offer Quiet for today, once
-    /// the plugin of the host behind `gateways` has answered: with them when
-    /// it takes it, without them when not. Nil while it hasn't answered, or
-    /// before the host said which gateways are its own.
-    static func sharedGateways(_ current: Set<String>, gateways: Set<String>, plugin: NotifierPluginStatus) -> Set<String>? {
-        guard !gateways.isEmpty, case .reported = plugin.state else { return nil }
-        return plugin.reports(PulseClient.quietCapability) ? current.union(gateways) : current.subtracting(gateways)
+    /// The relay gateways whose Pulse pushes offer Quiet for today: the
+    /// gateways of the host in use (`gateways`) join once its plugin has
+    /// answered that it takes it and leave once it answered that it doesn't
+    /// (until it answers, or says which gateways are its own, they stay as
+    /// they were), and only gateways a saved dashboard's host still pairs
+    /// this iPhone through (`known`) stay, so a forgotten or re-paired
+    /// pairing doesn't keep the button.
+    static func sharedGateways(_ current: Set<String>, gateways: Set<String>, plugin: NotifierPluginStatus,
+                               known: Set<String>) -> Set<String> {
+        var shared = current
+        if !gateways.isEmpty, case .reported = plugin.state {
+            shared = plugin.reports(PulseClient.quietCapability) ? shared.union(gateways) : shared.subtracting(gateways)
+        }
+        return shared.intersection(known)
     }
 
     /// A vacation's first day back when it's switched on: a week from today.
@@ -300,7 +320,8 @@ enum PulseQuiet {
     }
 
     /// When Pulse speaks up again, as the Pulse screen says it: later today,
-    /// tomorrow or a weekday this week as a card put off says it, else the date.
+    /// tomorrow or a weekday this week as a card put off says it, else the
+    /// date, with its year when that isn't this year.
     static func backText(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
                                            to: calendar.startOfDay(for: date)).day ?? 0
@@ -309,7 +330,8 @@ enum PulseQuiet {
         formatter.calendar = calendar
         formatter.timeZone = calendar.timeZone
         formatter.locale = AppLocalization.formattingLocale
-        formatter.setLocalizedDateFormatFromTemplate("EEEEMMMMd")
+        formatter.setLocalizedDateFormatFromTemplate(
+            calendar.isDate(date, equalTo: now, toGranularity: .year) ? "EEEEMMMMd" : "EEEEMMMMdy")
         return AppLocalization.string("Back on \(formatter.string(from: date))")
     }
 }

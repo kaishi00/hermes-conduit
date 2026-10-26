@@ -92,12 +92,13 @@ final class NotificationCopyTests: XCTestCase {
         XCTAssertEqual(category.actions.map(\.identifier), [PulseNotifications.quietTodayActionIdentifier])
         XCTAssertEqual(category.actions.first?.title, "Quiet for today")
         XCTAssertFalse(category.actions.first?.options.contains(.foreground) ?? true)
-        // One that couldn't reach Hermes keeps the push's dashboard and gateway to try again on.
+        // One that couldn't be done in the background keeps the push's dashboard and gateway to try again on.
         let target = PulseQuietTarget(dashboardID: UUID().uuidString, gatewayID: "gw-home")
         let retry = PulseNotifications.retryRequest(target: target)
         XCTAssertEqual(retry.identifier, PulseNotifications.retryIdentifier)
         XCTAssertNil(retry.trigger)
         XCTAssertEqual(retry.content.title, "Pulse isn't quiet yet")
+        XCTAssertEqual(retry.content.body, "Tap to try again in Conduit.")
         XCTAssertEqual(PulseNotifications.retryTarget(retry.content.userInfo), target)
         let legacy = PulseQuietTarget(dashboardID: nil, gatewayID: "gw-home")
         XCTAssertEqual(PulseNotifications.retryTarget(PulseNotifications.retryRequest(target: legacy).content.userInfo), legacy)

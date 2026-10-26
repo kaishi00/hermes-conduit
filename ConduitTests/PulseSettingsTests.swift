@@ -66,7 +66,31 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertEqual(PulseQuiet.dayText(days.lowerBound, calendar: utc), "2026-10-28")
         XCTAssertEqual(PulseQuiet.dayText(days.upperBound, calendar: utc), "2027-10-27")
         XCTAssertEqual(PulseQuiet.dayText(PulseQuiet.defaultReturn(now: tuesday, calendar: utc), calendar: utc), "2026-11-03")
-        // When Pulse speaks up again, as the Pulse screen says it.
+        // The wire day is Gregorian whatever the phone's calendar, or a Japanese-calendar phone would send its era year.
+        var japanese = Calendar(identifier: .japanese)
+        japanese.timeZone = utc.timeZone
+        XCTAssertEqual(PulseQuiet.dayText(tuesday, calendar: japanese), "2026-10-27")
+        XCTAssertEqual(PulseQuiet.dayText(PulseQuiet.defaultReturn(now: tuesday, calendar: japanese), calendar: japanese),
+                       "2026-11-03")
+        // Days in the plugin's time zone: 11:00 UTC on Tuesday is already Wednesday at UTC+14.
+        let kiritimati = PulseQuiet.calendar(zone: "Pacific/Kiritimati", utc)
+        XCTAssertEqual(PulseQuiet.dayText(tuesday.addingTimeInterval(3_600), calendar: kiritimati), "2026-10-28")
+        XCTAssertEqual(PulseQuiet.dayText(PulseQuiet.returnDays(now: tuesday.addingTimeInterval(3_600),
+                                                                calendar: kiritimati).lowerBound, calendar: kiritimati),
+                       "2026-10-29")
+        // The phone's calendar, in the phone's zone while the plugin hasn't said one it knows.
+        XCTAssertEqual(PulseQuiet.calendar(zone: "Asia/Tokyo", japanese).identifier, .japanese)
+        XCTAssertEqual(PulseQuiet.calendar(zone: "").timeZone, TimeZone.current)
+        XCTAssertEqual(PulseQuiet.calendar(zone: "Nowhere/Atall").timeZone, TimeZone.current)
+    }
+
+    func testThePulseScreenSaysWhenPulseIsBack() {
+        // The copy is English here, whatever the test host's language.
+        UserDefaults.standard.set("en", forKey: AppLanguageStore.defaultsKey)
+        defer { UserDefaults.standard.removeObject(forKey: AppLanguageStore.defaultsKey) }
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let tuesday = Date(timeIntervalSince1970: 1_793_095_200)  // 2026-10-27 10:00 UTC
         let midnight = utc.startOfDay(for: tuesday)
         let day = { (count: Double) in midnight.addingTimeInterval(count * 86_400) }
         XCTAssertEqual(PulseQuiet.backText(day(1), now: tuesday, calendar: utc), "Back tomorrow")
@@ -75,23 +99,31 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertTrue(weekday.hasPrefix("Back on "))
         XCTAssertFalse(weekday.contains("%@"))
         let date = PulseQuiet.backText(day(12), now: tuesday, calendar: utc)
-        XCTAssertTrue(date.hasPrefix("Back on "))
-        XCTAssertNotEqual(date, weekday)
+        XCTAssertEqual(date, "Back on Sunday, November 8")
+        // A vacation can end next year: the date says which.
+        let last = PulseQuiet.returnDays(now: tuesday, calendar: utc).upperBound
+        XCTAssertEqual(PulseQuiet.backText(last, now: tuesday, calendar: utc), "Back on Wednesday, October 27, 2027")
     }
 
     func testQuietForTodayIsOfferedForAHostOnceItsPluginTakesIt() {
         let gateways: Set<String> = ["gw-default", "gw-work"]
+        let known: Set<String> = ["gw-default", "gw-work", "gw-other"]
         var plugin = NotifierPluginStatus()
         // Not answered yet: nothing changes.
-        XCTAssertNil(PulseQuiet.sharedGateways([], gateways: gateways, plugin: plugin))
+        XCTAssertEqual(PulseQuiet.sharedGateways(["gw-other"], gateways: gateways, plugin: plugin, known: known), ["gw-other"])
         plugin.state = .reported(version: "0.80.2", capabilities: [PulseClient.capability, PulseClient.quietCapability])
-        XCTAssertEqual(PulseQuiet.sharedGateways(["gw-other"], gateways: gateways, plugin: plugin),
+        XCTAssertEqual(PulseQuiet.sharedGateways(["gw-other"], gateways: gateways, plugin: plugin, known: known),
                        ["gw-other", "gw-default", "gw-work"])
         // Before the host said which gateways are its own: nothing changes.
-        XCTAssertNil(PulseQuiet.sharedGateways(["gw-other"], gateways: [], plugin: plugin))
+        XCTAssertEqual(PulseQuiet.sharedGateways(["gw-other"], gateways: [], plugin: plugin, known: known), ["gw-other"])
         // A plugin from before quiet times takes its host's gateways out, and only those.
         plugin.state = .reported(version: "0.78.3", capabilities: [PulseClient.capability])
-        XCTAssertEqual(PulseQuiet.sharedGateways(["gw-other", "gw-default", "gw-work"], gateways: gateways, plugin: plugin),
+        XCTAssertEqual(PulseQuiet.sharedGateways(["gw-other", "gw-default", "gw-work"], gateways: gateways, plugin: plugin,
+                                                 known: known),
+                       ["gw-other"])
+        // A pairing no saved dashboard has any more (forgotten, or paired again) loses the button, answered or not.
+        XCTAssertEqual(PulseQuiet.sharedGateways(["gw-other", "gw-gone"], gateways: [], plugin: NotifierPluginStatus(),
+                                                 known: known),
                        ["gw-other"])
     }
 

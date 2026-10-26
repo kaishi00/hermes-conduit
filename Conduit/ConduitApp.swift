@@ -131,7 +131,8 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
     ) {
         let request = response.notification.request
         // Quiet for today on a Pulse push: done in the background, on the
-        // dashboard the push came from. One that couldn't reach Hermes says
+        // dashboard the push came from. One that couldn't be done there (no
+        // connection in time, or the push is from another dashboard) says
         // so, and that notification's tap tries again with Conduit open.
         if response.actionIdentifier == PulseNotifications.quietTodayActionIdentifier {
             let userInfo = request.content.userInfo
@@ -139,9 +140,11 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
                 let target = PushNotificationService.shared.pulseQuietTarget(userInfo)
                 var quiet = false
                 if let target {
-                    // In the background: never switches dashboards.
-                    quiet = await AppStateRuntimeRegistry.shared.appState.quietPulseForToday(target, switching: false,
-                                                                                            wait: .seconds(10))
+                    // In the background: never switches dashboards, and the
+                    // wait and the request fit the time iOS gives a tap
+                    // with room left to post the retry.
+                    quiet = await AppStateRuntimeRegistry.shared.appState.quietPulseForToday(
+                        target, switching: false, wait: .seconds(8), timeoutMilliseconds: 8_000)
                 }
                 if !quiet {
                     try? await UNUserNotificationCenter.current().add(PulseNotifications.retryRequest(target: target))
@@ -156,9 +159,12 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
                 let app = AppStateRuntimeRegistry.shared.appState
                 completionHandler()
                 // Conduit is open: a push from another saved dashboard switches to it, as a tap on it would.
-                _ = await app.quietPulseForToday(target, switching: true, wait: .seconds(20))
-                // The Pulse screen shows it quiet, or offers Quiet for today again.
-                app.openPulse(card: nil)
+                let quiet = await app.quietPulseForToday(target, switching: true, wait: .seconds(20))
+                // The Pulse screen shows it quiet, or offers Quiet for today
+                // again; only the Pulse of the dashboard the push came from.
+                if quiet || app.pulseQuietOwnership(target) == .route {
+                    app.openPulse(card: nil)
+                }
             }
             return
         }
@@ -233,7 +239,7 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             completionHandler([.banner, .list, .sound])
             return
         }
-        // Quiet for today that couldn't reach Hermes says so wherever the user is.
+        // Quiet for today that couldn't be done in the background says so wherever the user is.
         if notification.request.identifier == PulseNotifications.retryIdentifier,
            !(notification.request.trigger is UNPushNotificationTrigger) {
             completionHandler([.banner, .list])

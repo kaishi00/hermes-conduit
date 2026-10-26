@@ -359756,88 +359756,6 @@
         }
       }
     },
-    "Conduit couldn't reach Hermes. Tap to try again." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit konnte Hermes nicht erreichen. Tippe, um es noch einmal zu versuchen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit no pudo conectar con Hermes. Toca para intentarlo de nuevo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit n'a pas pu joindre Hermes. Touchez pour réessayer."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit tidak dapat menghubungi Hermes. Ketuk untuk mencoba lagi."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit non è riuscito a raggiungere Hermes. Tocca per riprovare."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ConduitがHermesに接続できませんでした。タップしてもう一度お試しください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit이 Hermes에 연결할 수 없어요. 탭하여 다시 시도하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit nie mógł połączyć się z Hermesem. Stuknij, aby spróbować ponownie."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O Conduit não conseguiu acessar o Hermes. Toque para tentar de novo."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit не удалось связаться с Hermes. Нажмите, чтобы повторить."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit, Hermes'e ulaşamadı. Yeniden denemek için dokun."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit 无法连接 Hermes。轻点以重试。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit 無法連線到 Hermes。點一下以重試。"
-          }
-        }
-      }
-    },
     "Shows why Pulse brought this up" : {
       "localizations" : {
         "de" : {
@@ -359916,6 +359834,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示 Pulse 提到這件事的原因"
+          }
+        }
+      }
+    },
+    "Tap to try again in Conduit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tippe, um es in Conduit noch einmal zu versuchen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toca para intentarlo de nuevo en Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touchez pour réessayer dans Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ketuk untuk mencoba lagi di Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tocca per riprovare in Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タップしてConduitでもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "탭하여 Conduit에서 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stuknij, aby spróbować ponownie w Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toque para tentar de novo no Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нажмите, чтобы повторить в Conduit."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit'te yeniden denemek için dokun."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点以在 Conduit 中重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點一下以在 Conduit 中重試。"
           }
         }
       }

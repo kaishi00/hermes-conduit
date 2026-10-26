@@ -230,7 +230,9 @@ struct PulseSettingsPage: View {
     /// a vacation until a day. Quiet for today is on the Pulse screen and on
     /// a Pulse notification; it shows here as a vacation back tomorrow.
     private func quietSection(_ state: PulseState) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Quiet times"), symbol: "moon.zzz", tint: .conduitAccent) {
+        // Days as the plugin keeps them: in its time zone, Gregorian on the wire.
+        let host = PulseQuiet.calendar(zone: state.timeZone)
+        return ConduitSettingsSection(title: AppLocalization.string("Quiet times"), symbol: "moon.zzz", tint: .conduitAccent) {
             Text("Quiet days")
                 .font(.subheadline.weight(.semibold))
             PulseQuietDaysPicker(days: Set(state.quietDays)) { days in
@@ -242,8 +244,8 @@ struct PulseSettingsPage: View {
                 get: { state.quietUntil != nil },
                 set: { on in
                     if on {
-                        let back = PulseQuiet.defaultReturn()
-                        change(["quiet_until": PulseQuiet.dayText(back)]) { $0.quietUntil = back }
+                        let back = PulseQuiet.defaultReturn(calendar: host)
+                        change(["quiet_until": PulseQuiet.dayText(back, calendar: host)]) { $0.quietUntil = back }
                     } else {
                         change(["quiet_until": NSNull()]) { $0.quietUntil = nil }
                     }
@@ -257,15 +259,17 @@ struct PulseSettingsPage: View {
                     selection: Binding(
                         get: { back },
                         set: { day in
-                            let text = PulseQuiet.dayText(day)
-                            guard text != PulseQuiet.dayText(back) else { return }
-                            let start = Calendar.current.startOfDay(for: day)
+                            let text = PulseQuiet.dayText(day, calendar: host)
+                            guard text != PulseQuiet.dayText(back, calendar: host) else { return }
+                            let start = host.startOfDay(for: day)
                             change(["quiet_until": text]) { $0.quietUntil = start }
                         }
                     ),
-                    in: PulseQuiet.returnDays(),
+                    in: PulseQuiet.returnDays(calendar: host),
                     displayedComponents: .date
                 )
+                // The days in the plugin's time zone, so the one shown is the one kept.
+                .environment(\.timeZone, host.timeZone)
                 .disabled(working)
                 .accessibilityIdentifier("settings.pulse.vacation-end")
             }
@@ -894,7 +898,7 @@ private struct PulseQuietDaysPicker: View {
                 } label: {
                     Text(verbatim: symbols[index])
                         .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .foregroundStyle(isOn ? Color.white : Color.primary)
                         .background(isOn ? Color.conduitAccent : Color.primary.opacity(0.07), in: Circle())
                 }

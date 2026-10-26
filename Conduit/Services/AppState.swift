@@ -12078,6 +12078,12 @@ final class AppState: ObservableObject {
         Set(storedRelayGatewayIDs()[dashboardID.uuidString]?.values.map { $0 } ?? [])
     }
 
+    /// Every relay gateway a saved dashboard's host said it pairs this
+    /// iPhone through.
+    var knownRelayGatewayIDs: Set<String> {
+        Set(storedRelayGatewayIDs().values.flatMap(\.values))
+    }
+
     /// Nil unless every pairing of this dashboard's hosts is end-to-end
     /// encrypted with a key the host confirmed; true when every one is also
     /// quantum-safe (the details are in Settings > Notifications). Drawn on

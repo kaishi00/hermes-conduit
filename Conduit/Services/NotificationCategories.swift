@@ -19,12 +19,13 @@ extension PulseNotifications {
         return UNNotificationCategory(identifier: categoryIdentifier, actions: [quiet], intentIdentifiers: [], options: [])
     }
 
-    /// When Quiet for today couldn't reach Hermes from the background: a
+    /// When Quiet for today couldn't be done from the background (no
+    /// connection in time, or the push is from another dashboard): a
     /// notification saying so, whose tap tries again with Conduit open.
     static func retryRequest(target: PulseQuietTarget?) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = AppLocalization.string("Pulse isn't quiet yet")
-        content.body = AppLocalization.string("Conduit couldn't reach Hermes. Tap to try again.")
+        content.body = AppLocalization.string("Tap to try again in Conduit.")
         content.threadIdentifier = "pulse"
         var userInfo: [String: String] = [:]
         if let dashboard = target?.dashboardID { userInfo[retryDashboardKey] = dashboard }

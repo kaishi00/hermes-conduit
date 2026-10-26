@@ -407,7 +407,10 @@ struct V2PulsePage: View {
     private var canQuiet: Bool { appState.notifierPlugin.reports(PulseClient.quietCapability) }
 
     /// Pulse is quiet (0.80.2): until when, and for a spell (a vacation, or
-    /// Quiet for today) End quiet time. A quiet day ends on its own.
+    /// Quiet for today) End quiet time. A quiet day ends on its own. Until
+    /// when is the moment it ends (`quiet_ends_at`) in the phone's own days,
+    /// as the user will live it; Settings shows a vacation's day as the
+    /// plugin keeps it, in its time zone.
     private func quietBanner(_ page: PulseFeedPage) -> some View {
         HStack(spacing: 12) {
             HStack(spacing: 12) {
