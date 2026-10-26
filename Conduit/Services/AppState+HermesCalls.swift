@@ -657,7 +657,7 @@ extension AppState {
         // choice the words point at sends what its tap sends.
         let asked = HermesCallWaiting.Question(id: question.id, text: question.question,
                                                choices: question.choices.map { .init(label: $0.label, value: $0.value) },
-                                               multiSelect: question.multiSelect)
+                                               multiSelect: question.multiSelect, mayLeaveBlank: clarify.isForm)
         let value = HermesCallWaiting.answerValue(for: answer, question: asked)
         await respondToClarify(requestId: clarify.requestId, questionId: clarify.questions.count == 1 ? nil : question.id, answer: value)
         // The chat may have reloaded meanwhile: the same question, by its

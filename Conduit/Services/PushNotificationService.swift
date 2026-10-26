@@ -1558,13 +1558,23 @@ final class PushNotificationService: ObservableObject {
 
     /// Answers ONE question of a batch relay decision. Requires a relay +
     /// notifier pair that ships the batch decision contract; a batch card only
-    /// exists when the batch-capable plugin pushed it.
+    /// exists when the batch-capable plugin pushed it. An empty `answer`
+    /// leaves a form's question blank (`blankAnswer`).
     @discardableResult
     func respondToRelayDecisionQuestion(
         requestId: String,
         questionId: String,
         answer: String
     ) async throws -> RelayQuestionOutcome {
+        var answer = answer
+        if answer.isEmpty {
+            let sealed = relayGatewayID(forRequestID: requestId).flatMap { gatewayID in
+                NotificationE2E.currentRecord(gatewayID: gatewayID, installationID: registration?.installationID, records: Self.e2eKeyStore.records())
+            } != nil
+            // The relay may have been updated since it last said what it takes.
+            if !sealed, relayMeta?.capabilities.contains(Self.clarifySkipCapability) != true { await refreshMeta() }
+            answer = Self.blankAnswer(sealed: sealed, relayCapabilities: relayMeta?.capabilities)
+        }
         let body = Self.respondBody(
             requestID: requestId,
             answer: answer,
@@ -1580,6 +1590,20 @@ final class PushNotificationService: ObservableObject {
         case .released: return .decisionReleased
         case .noLongerActive: return .noLongerActive
         }
+    }
+
+    /// The relay takes a blank answer to one question of a batch, a form's
+    /// field left empty (relay 0.18).
+    nonisolated static let clarifySkipCapability = "clarify-skip"
+    /// What a blank goes as where the relay can't take one: Hermes reads it
+    /// as the answer.
+    nonisolated static let leftBlankAnswer = "(left blank)"
+
+    /// What a question left blank sends through the relay: empty, sealed for
+    /// an encrypted pairing (any relay takes that) or plain to a relay that
+    /// takes a blank; else `leftBlankAnswer`.
+    nonisolated static func blankAnswer(sealed: Bool, relayCapabilities: [String]?) -> String {
+        sealed || relayCapabilities?.contains(clarifySkipCapability) == true ? "" : leftBlankAnswer
     }
 
     /// The relay takes a plaintext clarify answer of at most this many

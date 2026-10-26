@@ -58,9 +58,10 @@ final class LocalLiveTurnRunner {
         var respondToApproval: @MainActor (_ approval: ApprovalActivity, _ choice: String, _ profile: String?) async -> Bool
             = { _, _, _ in false }
         /// Answers one question of the clarify the followed reply waits on
-        /// (`questionID` nil for a single question); the card as it stands
-        /// after, or nil when Hermes didn't take it.
-        var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String) async -> ClarifyActivity?
+        /// (`questionID` nil for a single question; `answer` nil leaves one
+        /// of a form blank); the card as it stands after, or nil when
+        /// Hermes didn't take it.
+        var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String?) async -> ClarifyActivity?
             = { _, _, _ in nil }
     }
 

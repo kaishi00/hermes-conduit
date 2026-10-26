@@ -4714,22 +4714,25 @@ enum MessageNormalizer {
     /// `pending_clarify` snapshot (`session.resume`): the same payload as the
     /// one-shot `clarify.request`, plus the answers locked before the client
     /// detached, keyed by `qid`. Locked answers are accepted in either wire
-    /// form — the array string the app sends, or a real JSON array echo.
+    /// form — the array string the app sends, or a real JSON array echo. A
+    /// qid locked with null or an empty answer was left blank (skipped).
     static func pendingClarifyActivity(from payload: [String: AnyCodable]) -> ClarifyActivity? {
         guard var activity = clarifyActivity(from: payload) else { return nil }
         let answers = payload["answers"]?.objectValue ?? [:]
         guard !answers.isEmpty else { return activity }
         for index in activity.questions.indices {
-            guard let raw = answers[activity.questions[index].id], raw != .null else { continue }
+            guard let raw = answers[activity.questions[index].id] else { continue }
             let answer: String?
-            if let text = raw.stringValue {
+            if raw == .null {
+                answer = ""
+            } else if let text = raw.stringValue {
                 answer = text
             } else if let values = raw.arrayValue?.compactMap(\.stringValue) {
                 answer = ClarifyQuestion.multiSelectAnswer(values)
             } else {
                 answer = nil
             }
-            guard let answer, !answer.isEmpty else { continue }
+            guard let answer else { continue }
             activity.questions[index].status = .answered
             activity.questions[index].answer = answer
         }

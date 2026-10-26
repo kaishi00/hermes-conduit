@@ -345,9 +345,10 @@ struct VoiceBackgroundJobBackend {
         throw HermesError.notConnected
     }
     /// Answers one question of the clarify a job's turn waits on (`questionID`
-    /// nil for a single question), as its card would. The card as it stands
-    /// after, or nil when Hermes no longer waits on it.
-    var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String) async throws -> ClarifyActivity? = { _, _, _ in
+    /// nil for a single question; `answer` nil leaves one of a form blank),
+    /// as its card would. The card as it stands after, or nil when Hermes no
+    /// longer waits on it.
+    var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String?) async throws -> ClarifyActivity? = { _, _, _ in
         throw HermesError.notConnected
     }
 }
@@ -683,12 +684,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     /// Answers the first open question `jobID` asks, as its card would: a
-    /// choice the words point at sends what its tap sends. A batch goes on
-    /// with its next question.
-    func answerJobQuestion(_ jobID: UUID, answer: String) async -> VoiceCallDecisionOutcome {
+    /// choice the words point at sends what its tap sends, and nil (the
+    /// card's Leave blank) or "skip" leaves one of a form blank. A batch
+    /// goes on with its next question.
+    func answerJobQuestion(_ jobID: UUID, answer: String?) async -> VoiceCallDecisionOutcome {
         guard let job = job(jobID), let clarify = job.waitingQuestion,
-              let waiting = HermesCallWaiting(clarify: clarify), let question = waiting.openQuestion else { return .nothingPending }
-        let value = HermesCallWaiting.answerValue(for: answer, question: question)
+              let waiting = HermesCallWaiting(clarify: clarify), let question = waiting.openQuestion,
+              answer != nil || question.mayLeaveBlank else { return .nothingPending }
+        let value = answer.flatMap { HermesCallWaiting.answerValue(for: $0, question: question) }
         let after: ClarifyActivity?
         do {
             after = try await backend.respondToClarify(clarify, clarify.questions.count == 1 ? nil : question.id, value)
@@ -707,7 +710,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if jobs[index].status == .needsInput { jobs[index].status = .running }
         }
         return .answered(
-            choice: HermesCallWaiting.answerLabel(for: answer, question: question),
+            choice: answer.map { HermesCallWaiting.answerLabel(for: $0, question: question) } ?? HermesCallWaiting.skippedLabel,
             next: next.map { HermesCallWaiting(item: .questions([$0])).block }
         )
     }

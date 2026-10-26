@@ -146,8 +146,9 @@ extension AppState {
 
     /// Answers one question of the clarify a voice call's job waits on:
     /// through its card when the chat is on screen, else straight to
-    /// Hermes. The card as it stands after; nil once Hermes stopped waiting.
-    func respondToClarifyByVoice(_ clarify: ClarifyActivity, questionID: String?, answer: String) async throws -> ClarifyActivity? {
+    /// Hermes; nil `answer` leaves a form's question blank. The card as it
+    /// stands after; nil once Hermes stopped waiting.
+    func respondToClarifyByVoice(_ clarify: ClarifyActivity, questionID: String?, answer: String?) async throws -> ClarifyActivity? {
         if messages.contains(where: { $0.clarify?.requestId == clarify.requestId }) {
             await respondToClarify(requestId: clarify.requestId, questionId: questionID, answer: answer)
             guard let after = messages.first(where: { $0.clarify?.requestId == clarify.requestId })?.clarify,
@@ -162,8 +163,10 @@ extension AppState {
         guard let index = questionID.flatMap({ id in clarify.questions.firstIndex { $0.id == id } })
                 ?? clarify.questions.firstIndex(where: { $0.status == .pending || $0.status == .error }) else { return nil }
         let question = clarify.questions[index]
-        // As the card sends it: a multi-select answer is always a list.
-        let wire = question.multiSelect && (try? JSONSerialization.jsonObject(with: Data(answer.utf8))) as? [String] == nil
+        // As the card sends it: a multi-select answer is always a list, and
+        // a blank is empty, which Hermes reads as skipped.
+        let answer = answer ?? ""
+        let wire = question.multiSelect && !answer.isEmpty && (try? JSONSerialization.jsonObject(with: Data(answer.utf8))) as? [String] == nil
             ? ClarifyQuestion.multiSelectAnswer([answer])
             : answer
         let outcome = try await client.respondToClarification(

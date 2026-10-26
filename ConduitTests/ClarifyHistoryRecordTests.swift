@@ -88,7 +88,7 @@ extension ClarifyBatchStateTests {
 
         XCTAssertEqual(record.questions.map(\.status), [.answered, .answered, .expired])
         XCTAssertEqual(record.questions[0].resolvedAnswer, "staging")
-        XCTAssertEqual(record.questions[1].resolvedAnswer, AppLocalization.string("Skipped"))
+        XCTAssertTrue(record.questions[1].isSkipped, "shown as Skipped, as a form's field left blank")
         XCTAssertEqual(record.status, .expired)
         XCTAssertEqual(record.error, AppLocalization.string("These questions are no longer active."))
     }

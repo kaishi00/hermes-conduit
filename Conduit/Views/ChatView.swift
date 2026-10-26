@@ -3408,15 +3408,22 @@ struct ClarifyCard: View {
     /// Acted on, not observed (`ChatRowState`).
     private var appState: AppState { rowActions.required }
     // Per-question draft state, keyed by the gateway qid: typed custom text
-    // and in-progress multi-select selections. Multi-select intentionally
-    // buffers locally — an RPC fires only on that question's confirm.
+    // and in-progress picks (a multi-select's, or any form field's). Picks
+    // intentionally buffer locally — an RPC fires only on that question's
+    // confirm, or the form's Send.
     @State private var customAnswers: [String: String] = [:]
     @State private var multiSelections: [String: Set<String>] = [:]
+    // A form's choice fields the user answers in their own words
+    // ("Something else…").
+    @State private var ownAnswerFields: Set<String> = []
 
     var body: some View {
         if let clarify = message.clarify {
             let layout = ClarifyCardLayout(questionCount: clarify.questions.count)
             let displayStatus = clarify.presentationStatus
+            // Fields filled in and sent together (`isForm`), while any of
+            // them still waits.
+            let showsForm = clarify.isForm && clarify.hasPendingDecision
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     Image(systemName: "questionmark.bubble")
@@ -3447,15 +3454,44 @@ struct ClarifyCard: View {
                     MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
                 }
 
+                if showsForm {
+                    Text("Fill in what you know, and leave the rest blank.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 ForEach(clarify.questions) { question in
                     ClarifyQuestionRow(
                         question: question,
                         showsTitle: layout.rowsShowTitles,
+                        isFormField: clarify.isForm,
                         customAnswer: bindingForCustomAnswer(question),
                         selection: bindingForSelection(question),
+                        typesOwnAnswer: bindingForOwnAnswer(question),
                         onSend: { answer in send(answer, for: question, in: clarify) },
                         onConfirmMultiSelect: { confirmMultiSelect(for: question, in: clarify) }
                     )
+                }
+
+                if showsForm {
+                    let canSend = canSendForm(clarify)
+                    Button {
+                        sendForm(clarify)
+                    } label: {
+                        HStack {
+                            Text("Send")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Image(systemName: "arrow.up")
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Color.conduitAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .foregroundStyle(.primary)
+                    }
+                    .disabled(!canSend)
+                    .opacity(canSend ? 1 : 0.45)
+                    .accessibilityHint("Fill in what you know, and leave the rest blank.")
                 }
 
                 if let error = clarify.error, !error.isEmpty {
@@ -3483,11 +3519,52 @@ struct ClarifyCard: View {
         )
     }
 
+    private func bindingForOwnAnswer(_ question: ClarifyQuestion) -> Binding<Bool> {
+        Binding(
+            get: { ownAnswerFields.contains(question.id) },
+            set: { typing in
+                if typing {
+                    ownAnswerFields.insert(question.id)
+                } else {
+                    ownAnswerFields.remove(question.id)
+                }
+            }
+        )
+    }
+
     private func send(_ answer: String, for question: ClarifyQuestion, in clarify: ClarifyActivity) {
         let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, question.isAnswerable else { return }
         // Keep the typed answer available if submission fails.
         Task { await appState.respondToClarify(requestId: clarify.requestId, questionId: question.id, answer: trimmed) }
+    }
+
+    /// What each open field of a form holds, by qid; empty when left blank.
+    private func formAnswers(for clarify: ClarifyActivity) -> [String: String] {
+        var answers: [String: String] = [:]
+        for question in clarify.questions where question.isAnswerable {
+            let typed = question.isFreeText || ownAnswerFields.contains(question.id)
+                ? customAnswers[question.id] ?? ""
+                : ""
+            answers[question.id] = question.formAnswer(picked: multiSelections[question.id] ?? [], typed: typed)
+        }
+        return answers
+    }
+
+    /// A form sends once something in it is filled in, or once Hermes
+    /// already has an answer from it (a retry where only blanks are left),
+    /// and not while it is sending.
+    private func canSendForm(_ clarify: ClarifyActivity) -> Bool {
+        guard clarify.needsAnswer, !clarify.questions.contains(where: { $0.status == .submitting }) else { return false }
+        return formAnswers(for: clarify).values.contains { !$0.isEmpty }
+            || clarify.questions.contains { $0.status == .answered && !$0.isSkipped }
+    }
+
+    private func sendForm(_ clarify: ClarifyActivity) {
+        guard canSendForm(clarify) else { return }
+        // The fields keep what was typed if a question fails to send.
+        let answers = formAnswers(for: clarify)
+        Task { await appState.respondToClarifyForm(requestId: clarify.requestId, answers: answers) }
     }
 
     private func confirmMultiSelect(for question: ClarifyQuestion, in clarify: ClarifyActivity) {
@@ -3523,13 +3600,19 @@ struct ClarifyCard: View {
 /// owns its answer/lock lifecycle — one question submitting or failing never
 /// disables its siblings, and an accepted answer renders locked. In a batch
 /// each row draws its own grouped box and title; a single-question card keeps
-/// the legacy flat layout (the card header already carries the title).
+/// the legacy flat layout (the card header already carries the title). A
+/// form's row is a field instead, sent with the card's one Send.
 struct ClarifyQuestionRow: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let question: ClarifyQuestion
     var showsTitle: Bool = true
+    /// A form's field (`ClarifyActivity.isForm`): a text box, or a menu of
+    /// the choices, with no send of its own.
+    var isFormField: Bool = false
     @Binding var customAnswer: String
     @Binding var selection: Set<String>
+    /// A form's choice field the user answers in their own words.
+    var typesOwnAnswer: Binding<Bool> = .constant(false)
     let onSend: (String) -> Void
     let onConfirmMultiSelect: () -> Void
 
@@ -3585,9 +3668,12 @@ struct ClarifyQuestionRow: View {
     private var statusIcon: some View {
         switch question.status {
         case .answered:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.caption)
-                .foregroundStyle(.green)
+            // A field left blank says Skipped below instead.
+            if !question.isSkipped {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            }
         case .error:
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.caption)
@@ -3603,7 +3689,12 @@ struct ClarifyQuestionRow: View {
 
     @ViewBuilder
     private var answeredBlock: some View {
-        if let answer = question.resolvedAnswer, !answer.isEmpty {
+        if question.isSkipped {
+            // A form's field left blank: Hermes read it as skipped.
+            Label(AppLocalization.string("Skipped"), systemImage: "forward")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+        } else if let answer = question.resolvedAnswer, !answer.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 Text("YOUR ANSWER")
                     .font(.caption2.weight(.bold))
@@ -3629,11 +3720,126 @@ struct ClarifyQuestionRow: View {
 
     @ViewBuilder
     private var controls: some View {
-        if question.multiSelect {
+        if isFormField {
+            formField
+        } else if question.multiSelect {
             multiSelectControls
         } else {
             singleChoiceControls
         }
+    }
+
+    /// A form's field: a text box for an open question, or a menu of the
+    /// choices that also takes the user's own words. Nothing here sends;
+    /// left alone, the field goes back blank.
+    @ViewBuilder
+    private var formField: some View {
+        if question.isFreeText {
+            formTextField
+        } else {
+            Menu {
+                ForEach(question.choices) { choice in
+                    Button {
+                        pick(choice.value)
+                    } label: {
+                        if selection.contains(choice.value) {
+                            Label(choice.label, systemImage: "checkmark")
+                        } else {
+                            Text(choice.label)
+                        }
+                    }
+                    // Several picks in one go.
+                    .menuActionDismissBehavior(question.multiSelect ? .disabled : .automatic)
+                }
+                Divider()
+                Button {
+                    typeOwnAnswer()
+                } label: {
+                    if typesOwnAnswer.wrappedValue {
+                        Label(AppLocalization.string("Something else…"), systemImage: "checkmark")
+                    } else {
+                        Text(AppLocalization.string("Something else…"))
+                    }
+                }
+                if hasFormPick {
+                    Button(AppLocalization.string("Leave blank")) {
+                        leaveBlank()
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(formMenuTitle)
+                        .font(.body)
+                        .foregroundStyle(hasFormPick ? Color.primary : Color.secondary)
+                        .multilineTextAlignment(.leading)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.conduitAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .disabled(!isAnswerable)
+            .accessibilityLabel(question.question)
+            .accessibilityValue(formMenuTitle)
+
+            if typesOwnAnswer.wrappedValue {
+                formTextField
+            }
+        }
+    }
+
+    private var formTextField: some View {
+        TextField(AppLocalization.string("Type your answer…"), text: $customAnswer, axis: .vertical)
+            .lineLimit(1...4)
+            .disabled(!isAnswerable)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            // Named by its question for VoiceOver, like a choice field's menu.
+            .accessibilityLabel(question.question)
+    }
+
+    /// What a form's choice field shows: the picks, or Choose while blank.
+    private var formMenuTitle: String {
+        var parts = question.choices.filter { selection.contains($0.value) }.map(\.label)
+        if typesOwnAnswer.wrappedValue {
+            parts.append(AppLocalization.string("Something else…"))
+        }
+        return parts.isEmpty ? AppLocalization.string("Choose") : parts.joined(separator: ", ")
+    }
+
+    private var hasFormPick: Bool {
+        !selection.isEmpty || typesOwnAnswer.wrappedValue
+    }
+
+    private func pick(_ value: String) {
+        guard isAnswerable else { return }
+        if question.multiSelect {
+            toggle(value)
+        } else {
+            selection = [value]
+            typesOwnAnswer.wrappedValue = false
+        }
+    }
+
+    private func typeOwnAnswer() {
+        guard isAnswerable else { return }
+        if question.multiSelect {
+            typesOwnAnswer.wrappedValue.toggle()
+        } else {
+            // One answer: the user's words take the pick's place.
+            selection = []
+            typesOwnAnswer.wrappedValue = true
+        }
+    }
+
+    private func leaveBlank() {
+        selection = []
+        typesOwnAnswer.wrappedValue = false
+        customAnswer = ""
     }
 
     @ViewBuilder

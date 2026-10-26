@@ -289,13 +289,13 @@ final class GeminiLiveToolBridge {
 
     static let answerQuestionDeclaration = GeminiLiveProtocol.FunctionDeclaration(
         name: Tool.answerQuestion.rawValue,
-        description: "Give Hermes the user's answer to the question it is waiting on: the one this call is about, or one a job of this call asks (a job update reads it out with its choices). Read the choices out with their numbers first, and say which one is marked (Recommended). Only with what the user picked or said; never answer it yourself. A question of several is answered one at a time, in order. To have Hermes explain more before they choose, send their request starting \"Before I choose:\": Hermes is paused until it gets an answer, so this is the only way to ask it. Then tell the user what it says, in a few words.",
+        description: "Give Hermes the user's answer to the question it is waiting on: the one this call is about, or one a job of this call asks (a job update reads it out with its choices). Read the choices out with their numbers first, and say which one is marked (Recommended). Only with what the user picked or said; never answer it yourself. A question of several is answered one at a time, in order; one that says they may leave it blank takes skip when they want it blank. To have Hermes explain more before they choose, send their request starting \"Before I choose:\": Hermes is paused until it gets an answer, so this is the only way to ask it. Then tell the user what it says, in a few words.",
         parameters: [
             "type": "OBJECT",
             "properties": [
                 "answer": [
                     "type": "STRING",
-                    "description": "The number of the choice the user picked (like 2, or 1, 3 when they may pick several), or, with no fitting choice, their answer in their own words.",
+                    "description": "The number of the choice the user picked (like 2, or 1, 3 when they may pick several), or, with no fitting choice, their answer in their own words; skip leaves blank a question they may leave blank.",
                 ],
             ],
             "required": ["answer"],

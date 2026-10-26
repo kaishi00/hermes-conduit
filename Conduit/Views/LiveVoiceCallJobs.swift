@@ -523,6 +523,16 @@ struct LiveVoiceJobWaitingCard: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(picked.isEmpty)
                 }
+                // One of a form's questions, as its field may be.
+                if question.mayLeaveBlank {
+                    Button {
+                        picked = []
+                        send { await jobs.answerJobQuestion(job.id, answer: nil) }
+                    } label: {
+                        Text("Leave blank")
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
         }
         .padding(14)

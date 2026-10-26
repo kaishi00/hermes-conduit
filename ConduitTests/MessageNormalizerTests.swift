@@ -1935,6 +1935,25 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(activity?.questions[1].status, .pending)
     }
 
+    func testPendingClarifyActivityRestoresAFieldLeftBlankAsSkipped() {
+        // Hermes keeps a form's blank field locked with null (or an empty
+        // answer): it restores skipped, never reopened.
+        let activity = MessageNormalizer.pendingClarifyActivity(from: [
+            "request_id": .string("req-form"),
+            "questions": .array([
+                .object(["qid": .string("from"), "question": .string("Leaving from?"), "choices": .array([])]),
+                .object(["qid": .string("budget"), "question": .string("Budget?"), "choices": .array([])]),
+                .object(["qid": .string("who"), "question": .string("Who's going?"), "choices": .array([])])
+            ]),
+            "answers": .object(["from": .null, "budget": .string("")])
+        ])
+
+        XCTAssertEqual(activity?.questions[0].status, .answered)
+        XCTAssertEqual(activity?.questions[0].isSkipped, true)
+        XCTAssertEqual(activity?.questions[1].isSkipped, true)
+        XCTAssertEqual(activity?.questions[2].status, .pending, "A qid Hermes didn't list is still open")
+    }
+
     func testPendingClarifyActivityWithoutAnswersLeavesEverythingAnswerable() {
         let activity = MessageNormalizer.pendingClarifyActivity(from: [
             "request_id": .string("req-batch"),

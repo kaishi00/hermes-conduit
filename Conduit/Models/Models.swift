@@ -201,6 +201,11 @@ struct ClarifyQuestion: Codable, Equatable, Identifiable {
     /// Whether this question can accept an answer or retry.
     var isAnswerable: Bool { status == .pending || status == .error }
 
+    /// Left blank: a form's field the user didn't fill in, which Hermes
+    /// reads as skipped. Its answer is empty, where one answered on another
+    /// device has none.
+    var isSkipped: Bool { status == .answered && answer?.isEmpty == true }
+
     init(
         id: String,
         question: String,
@@ -269,6 +274,17 @@ struct ClarifyQuestion: Codable, Equatable, Identifiable {
     static func multiSelectAnswer(_ values: [String]) -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: values) else { return "" }
         return String(decoding: data, as: UTF8.self)
+    }
+
+    /// A form field's answer from what the user filled in: the picked
+    /// choice, or the typed text; a multi-select's picks in choice order,
+    /// with any typed text after them. Empty when the field was left blank.
+    func formAnswer(picked: Set<String>, typed: String) -> String {
+        let typed = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let values = choices.map(\.value).filter { picked.contains($0) }
+        guard multiSelect else { return values.first ?? typed }
+        let all = typed.isEmpty ? values : values + [typed]
+        return all.isEmpty ? "" : Self.multiSelectAnswer(all)
     }
 }
 
@@ -375,6 +391,13 @@ struct ClarifyActivity: Codable, Equatable {
         if questions.contains(where: { $0.status == .pending }) { return .pending }
         if questions.contains(where: { $0.status == .error }) { return .error }
         return .expired
+    }
+
+    /// Several questions, at least one typed: shown as a form whose fields
+    /// are sent together, any of them left blank. A question on its own,
+    /// or a batch of choices only, keeps the card that answers each one.
+    var isForm: Bool {
+        questions.count > 1 && questions.contains(where: \.isFreeText)
     }
 
     /// Visible question text for the transcript row: the joined question

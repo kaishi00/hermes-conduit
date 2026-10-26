@@ -42,6 +42,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 - Streaming replies with Markdown, highlighted code, math, Mermaid diagrams and task lists
 - Thinking, tool calls and each turn's steps, shown live or folded away; delegated-agent progress
 - Map, place, travel, media, contact and info cards that Hermes draws in the chat
+- Answer Hermes' questions with a tap, or in a short form when it needs several details: fill in what you know and leave the rest blank
 - Attach photos, camera shots and any file; quote a message, react to it, copy it
 - Steer, queue or stop a running turn; context meter; slash commands and workspace files
 - Branch, pin, archive and delete sessions; project chats; Artifacts browser for every file and page Hermes made
