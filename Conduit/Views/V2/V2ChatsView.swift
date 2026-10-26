@@ -380,9 +380,15 @@ struct V2ChatsView: View, Equatable {
         selection.isEmpty && hiddenProjectCount > 0
     }
 
-    /// Something narrows the list: a filter, or a hidden project.
+    /// Something narrows the list: a filter, or a hidden project. The
+    /// Projects page lists every project, so hidden ones don't count there.
     private var narrowsList: Bool {
-        !selection.isEmpty || hiddenProjectCount > 0
+        !selection.isEmpty || shownHiddenProjectCount > 0
+    }
+
+    /// Hidden projects as the bar reports them: none on the Projects page.
+    private var shownHiddenProjectCount: Int {
+        showingProjects ? 0 : hiddenProjectCount
     }
 
     private var mainButtonNewChat: Bool {
@@ -1017,7 +1023,7 @@ struct V2ChatsView: View, Equatable {
 
     /// The chosen filters' names, or All, and how many projects are hidden.
     private func selectionTitles(separator: String) -> String {
-        let hiddenCount = hiddenProjectCount
+        let hiddenCount = shownHiddenProjectCount
         let names = selection.isEmpty && hiddenCount == 0
             ? [V2SessionFilter.all.title]
             : selection.ordered.map(\.title)
@@ -1692,7 +1698,7 @@ struct V2ChatsView: View, Equatable {
             if narrowsList {
                 Button {
                     // The chip names hidden projects too, so it clears them.
-                    if hiddenProjectCount > 0 { setHiddenProjects([]) }
+                    if shownHiddenProjectCount > 0 { setHiddenProjects([]) }
                     select(.empty)
                 } label: {
                     HStack(spacing: 4) {

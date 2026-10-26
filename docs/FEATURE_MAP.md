@@ -1732,6 +1732,8 @@ list · README.md
 - Recent is the default for a new install; a phone signed in before the change keeps Off, set once at launch from its saved dashboards or connection, and a choice already made stays (2026-10-26, #1317, Eric).
 - Filter ▸ Projects is a multi-select with every project ticked to start, Home's chats standing in for the ones in no project ("Not in a project" without a Home). It narrows every filter, is kept per profile, and All doesn't clear it; the gold chip names it ("2 projects hidden") and its × shows every project again (2026-10-26, #1317, Eric picked a menu over a switch on each project).
 - A pinned chat stays listed whatever is hidden, and a search looks through every chat, a hidden project's too, as it does with the setting at Off (#708).
+- The filter's amber approval dot and its spoken count still cover a hidden project's chats: a waiting approval is never hidden (2026-10-26, #1322).
+- Filter ▸ Projects is offered once the profile has a project besides Home; with Home alone it would only hide every chat. On the Projects page, which lists every project, the bar's chip and filled icon leave hidden projects out (2026-10-26, #1322).
 - Filter ▸ Projects isn't offered in All profiles, where projects belong to one profile; All lists every project's chats there (2026-10-26, #1317).
 - CarPlay's chat list doesn't follow either: it is a short recent list for driving, not the Chats list (2026-10-26, #1317).
 
