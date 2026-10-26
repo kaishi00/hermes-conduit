@@ -158,6 +158,12 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             Task { @MainActor in
                 let app = AppStateRuntimeRegistry.shared.appState
                 completionHandler()
+                // A push Conduit couldn't place: the Pulse screen, where Quiet
+                // for today is a tap away, rather than a guess at its host.
+                guard let target else {
+                    app.openPulse(card: nil)
+                    return
+                }
                 // Conduit is open: a push from another saved dashboard switches to it, as a tap on it would.
                 let quiet = await app.quietPulseForToday(target, switching: true, wait: .seconds(20))
                 // The Pulse screen shows it quiet, or offers Quiet for today

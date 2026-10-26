@@ -442,6 +442,28 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertNil(appState.errorMessage)
     }
 
+    func testPulseQuietForTodayIsOwnedAsATapOnThePushIs() {
+        let savedA = SavedDashboard(id: dashboardA, label: "VPS", normalizedURL: "https://vps.tailnet.ts.net")
+        let savedB = SavedDashboard(id: dashboardB, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
+        appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
+        appState.recordRelayGatewayID("gw-2", for: dashboardB, profile: "default")
+        // The host in use, by its gateway, whatever dashboard the pairing was bound to.
+        XCTAssertEqual(appState.pulseQuietOwnership(PulseQuietTarget(dashboardID: dashboardB.uuidString, gatewayID: "gw-1")),
+                       .route)
+        // Another saved dashboard's push switches to it first, which only a tap with Conduit open does.
+        XCTAssertEqual(appState.pulseQuietOwnership(PulseQuietTarget(dashboardID: dashboardB.uuidString, gatewayID: "gw-2")),
+                       .switchFirst(dashboardID: dashboardB))
+        // A dashboard no longer saved, or a push Conduit couldn't place with two saved: nothing goes quiet.
+        XCTAssertEqual(appState.pulseQuietOwnership(PulseQuietTarget(dashboardID: UUID().uuidString, gatewayID: "gw-9")),
+                       .failClosed(.unrecognizedDashboard))
+        XCTAssertEqual(appState.pulseQuietOwnership(nil), .failClosed(.unscopedPush))
+        // The gateways a saved dashboard still pairs through: the extension offers the button for no other.
+        XCTAssertEqual(appState.knownRelayGatewayIDs, ["gw-1", "gw-2"])
+        appState.removeDashboard(dashboardB)
+        XCTAssertEqual(appState.knownRelayGatewayIDs, ["gw-1"])
+    }
+
     func testRelayGatewayIDsAreKeptPerDashboardAndForgottenWithIt() {
         let savedA = SavedDashboard(id: dashboardA, label: "VPS", normalizedURL: "https://vps.tailnet.ts.net")
         let savedB = SavedDashboard(id: dashboardB, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
