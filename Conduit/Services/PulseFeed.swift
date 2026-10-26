@@ -8,7 +8,7 @@
 //  /api/plugins/conduit_push/pulse/feed, /rate and /learned. A rating
 //  changes what Pulse does on the host: each kind sits on a loudness ladder
 //  (push, Pulse screen, morning brief, off), and a thumbs down's reason adds
-//  a lesson the user can undo. Before 0.80.3 thumbs moved a kind along the
+//  a lesson the user can undo. Before 0.81.1 thumbs moved a kind along the
 //  ladder; from then (`pulse_learns`) thumbs, Do it and Done teach Pulse
 //  what to bring up and how loudly, and a kind's level is the loudest it gets.
 //
@@ -280,7 +280,7 @@ enum PulseCardKind {
     }
 
     /// What a lesson is about: a card kind's heading, else a report item's
-    /// topic, which a report card's reasons teach about (0.80.3).
+    /// topic, which a report card's reasons teach about (0.81.1).
     static func name(_ kind: String) -> String {
         switch kind {
         case "followup", "report", "brief", "noticed": return title(kind)
@@ -603,7 +603,7 @@ extension AppState {
     }
 
     /// A thumbs down on this card asks why: a follow-up's, or a report
-    /// card's once the plugin acts on its reasons (0.80.3). Before, a report
+    /// card's once the plugin acts on its reasons (0.81.1). Before, a report
     /// card's reason changed nothing, so its thumbs down was enough.
     func asksPulseDownReason(_ card: PulseCard) -> Bool {
         card.kind == "followup" || card.isNoticed && notifierPlugin.reports(PulseClient.learnsCapability)
@@ -726,7 +726,7 @@ extension PulseClient {
     /// for today on the Pulse screen and on a Pulse notification (0.80.2).
     static let quietCapability = "pulse_quiet"
     /// Pulse learns from thumbs, Do it and Done what to bring up and how
-    /// loudly, and a kind's level is the loudest it gets (0.80.3).
+    /// loudly, and a kind's level is the loudest it gets (0.81.1).
     static let learnsCapability = "pulse_learns"
 }
 

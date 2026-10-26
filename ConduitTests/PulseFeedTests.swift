@@ -139,7 +139,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(lessons[3].causeText, AppLocalization.string("You said you already knew"))
         XCTAssertEqual(lessons[4].text, AppLocalization.string("\(PulseCardKind.title("followup")): \(PulseLevel.off.title)"))
         XCTAssertNil(lessons[4].causeText)
-        // A report card's reasons teach about its topic (0.80.3), and its lessons say which.
+        // A report card's reasons teach about its topic (0.81.1), and its lessons say which.
         XCTAssertEqual(lessons[5].text, AppLocalization.string("\(PulseCardKind.topic("commitment")): \(PulseLevel.brief.title)"))
         XCTAssertEqual(lessons[5].causeText, AppLocalization.string("You said too often"))
         XCTAssertEqual(lessons[6].text, AppLocalization.string("\(PulseCardKind.topic("date")): Bring up sooner"))
@@ -149,7 +149,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(PulseCardKind.name("noticed"), PulseCardKind.title("noticed"))
         XCTAssertEqual(PulseCardKind.name("other"), PulseCardKind.topic("other"))
 
-        // Before 0.80.3 thumbs move the levels; a plugin that learns says the level is the loudest Pulse gets.
+        // Before 0.81.1 thumbs move the levels; a plugin that learns says the level is the loudest Pulse gets.
         XCTAssertEqual(PulseLearned.levelsFooter(learns: false),
                        AppLocalization.string("Thumbs move these too: two down make it quieter, two up louder."))
         XCTAssertEqual(PulseLearned.levelsFooter(learns: true), AppLocalization.string(
@@ -340,12 +340,12 @@ final class PulseFeedTests: XCTestCase {
         ]}
         """)))
         let followup = page.cards[0], dated = page.cards[1], whole = page.cards[2]
-        // Before 0.80.3 a report card's reason changed nothing: its thumbs down is enough.
-        state.setNotifierPluginStateForTesting(.reported(version: "0.80.2", capabilities: [PulseClient.feedCapability]))
+        // Before 0.81.1 a report card's reason changed nothing: its thumbs down is enough.
+        state.setNotifierPluginStateForTesting(.reported(version: "0.81.0", capabilities: [PulseClient.feedCapability]))
         XCTAssertTrue(state.asksPulseDownReason(followup))
         XCTAssertFalse(state.asksPulseDownReason(dated) || state.asksPulseDownReason(whole))
         // A plugin that learns acts on a report card's reason too.
-        state.setNotifierPluginStateForTesting(.reported(version: "0.80.3", capabilities: [
+        state.setNotifierPluginStateForTesting(.reported(version: "0.81.1", capabilities: [
             PulseClient.feedCapability, PulseClient.learnsCapability
         ]))
         XCTAssertTrue(state.asksPulseDownReason(followup) && state.asksPulseDownReason(dated))

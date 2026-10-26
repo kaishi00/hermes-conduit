@@ -1179,7 +1179,7 @@ struct PulseLearnedSheet: View {
     @State private var working = false
 
     private var client: PulseClient { appState.pulseClient }
-    /// A plugin that learns from thumbs, Do it and Done (0.80.3): thumbs no longer move the levels.
+    /// A plugin that learns from thumbs, Do it and Done (0.81.1): thumbs no longer move the levels.
     private var learns: Bool { appState.notifierPlugin.reports(PulseClient.learnsCapability) }
 
     var body: some View {
