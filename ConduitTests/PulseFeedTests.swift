@@ -585,11 +585,23 @@ final class PulseFeedTests: XCTestCase {
         let back = { (hours: Double) in
             PulseRest.backText(noon.addingTimeInterval(hours * 3600), now: noon, calendar: calendar)
         }
-        XCTAssertEqual(back(3), "Back later today")
-        XCTAssertEqual(back(-1), "Back later today")  // its time came; the plugin brings it back on its next pass
-        XCTAssertEqual(back(19), "Back tomorrow")
-        XCTAssertTrue(back(3 * 24).hasPrefix("Back on "))
-        XCTAssertFalse(back(3 * 24).contains("%@"))
-        XCTAssertEqual(back(7 * 24), "Back next week")
+        // In whatever language the test host's app is in.
+        XCTAssertEqual(back(3), AppLocalization.string("Back later today"))
+        XCTAssertEqual(back(-1), AppLocalization.string("Back later today"))  // its time came; the plugin brings it back on its next pass
+        XCTAssertEqual(back(19), AppLocalization.string("Back tomorrow"))
+        let weekday = back(3 * 24)
+        XCTAssertFalse(weekday.contains("%@"))
+        XCTAssertFalse([back(3), back(19), back(7 * 24)].contains(weekday))
+        XCTAssertEqual(back(7 * 24), AppLocalization.string("Back next week"))
+        // The Undo bar says the time the plugin set, not the one asked for:
+        // later today asked for at 22:40 comes back tomorrow.
+        let returning = { (hours: Double) in
+            PulseRest.returning(noon.addingTimeInterval(hours * 3600), now: noon, calendar: calendar)
+        }
+        XCTAssertEqual([returning(3), returning(19), returning(7 * 24 - 1)], [.laterToday, .tomorrow, .nextWeek])
+        // Later today isn't offered once the plugin would make it tomorrow.
+        XCTAssertEqual(PulseRest.choices(now: noon, calendar: calendar), PulseRest.allCases)
+        XCTAssertEqual(PulseRest.choices(now: noon.addingTimeInterval(10.5 * 3600), calendar: calendar), [.tomorrow, .nextWeek])
+        XCTAssertEqual(PulseRest.choices(now: noon.addingTimeInterval(10.4 * 3600), calendar: calendar), PulseRest.allCases)
     }
 }

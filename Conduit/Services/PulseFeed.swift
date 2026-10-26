@@ -695,23 +695,43 @@ enum PulseRest: String, CaseIterable, Identifiable {
         }
     }
 
+    /// What the dialog offers: later today only while it is still today's
+    /// to give. From 22:30 the plugin makes it tomorrow (three hours, by
+    /// 23:00, and never under half an hour), so it would say tomorrow twice.
+    static func choices(now: Date = Date(), calendar: Calendar = .current) -> [PulseRest] {
+        let parts = calendar.dateComponents([.hour, .minute], from: now)
+        let lateEvening = (parts.hour ?? 0) * 60 + (parts.minute ?? 0) >= 22 * 60 + 30
+        return lateEvening ? [.tomorrow, .nextWeek] : allCases
+    }
+
+    /// The choice a time the plugin set comes to, for the Undo bar: later
+    /// today, tomorrow, or next week (the brief's day a week on).
+    static func returning(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> PulseRest {
+        switch Self.days(to: date, now: now, calendar: calendar) {
+        case ...0: .laterToday
+        case 1: .tomorrow
+        default: .nextWeek
+        }
+    }
+
     /// When a card put off comes back, as its cleared row says it: later
     /// today, tomorrow, a weekday this week, or next week.
     static func backText(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
-        // Days from `now`, not from the clock: a time already past is later today.
-        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
-                                           to: calendar.startOfDay(for: date)).day ?? 0
-        if days <= 0 { return AppLocalization.string("Back later today") }
-        if days == 1 { return AppLocalization.string("Back tomorrow") }
-        if days < 7 {
-            let formatter = DateFormatter()
-            formatter.calendar = calendar
-            formatter.timeZone = calendar.timeZone
-            formatter.locale = AppLocalization.formattingLocale
-            formatter.setLocalizedDateFormatFromTemplate("EEEE")
-            return AppLocalization.string("Back on \(formatter.string(from: date))")
+        let ahead = Self.days(to: date, now: now, calendar: calendar)
+        if ahead <= 0 { return AppLocalization.string("Back later today") }
+        if ahead == 1 { return AppLocalization.string("Back tomorrow") }
+        if ahead < 7 {
+            let weekday = Date.FormatStyle(locale: AppLocalization.formattingLocale, calendar: calendar,
+                                           timeZone: calendar.timeZone).weekday(.wide)
+            return AppLocalization.string("Back on \(date.formatted(weekday))")
         }
         return AppLocalization.string("Back next week")
+    }
+
+    /// Days from `now` to `date`'s day, not from the clock: a time already
+    /// past is today.
+    static func days(to date: Date, now: Date, calendar: Calendar) -> Int {
+        calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: date)).day ?? 0
     }
 }
 

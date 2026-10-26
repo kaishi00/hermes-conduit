@@ -163,7 +163,7 @@ struct V2PulsePage: View {
             titleVisibility: .visible,
             presenting: restCard
         ) { card in
-            ForEach(PulseRest.allCases) { rest in
+            ForEach(PulseRest.choices()) { rest in
                 Button(rest.title) { dismiss(card, true, until: rest) }
             }
         } message: { _ in
@@ -189,6 +189,7 @@ struct V2PulsePage: View {
         .onAppear { isShown = true }
         .onDisappear {
             isShown = false
+            restCard = nil
             newCards = nil
             focusedCard = nil
             voiceOverCard = nil
@@ -198,6 +199,7 @@ struct V2PulsePage: View {
         }
         .onChange(of: appState.activeDashboardID) { _, _ in
             reasonCard = nil
+            restCard = nil
             errorMessage = nil
             // Another dashboard: its own cards.
             page = nil
@@ -464,11 +466,19 @@ struct V2PulsePage: View {
                     Image(systemName: card.dismissedAt != nil ? "clock" : "checkmark.circle")
                         .foregroundStyle(card.dismissedAt != nil ? Color.secondary : Color.green)
                         .accessibilityHidden(true)
-                    Text(card.formattedNews)
-                        .font(.subheadline)
-                        .strikethrough(card.doneAt != nil)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(card.formattedNews)
+                            .font(.subheadline)
+                            .strikethrough(card.doneAt != nil)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                        // Put off until a time: when it comes back, as a cleared card says it.
+                        if card.dismissedAt != nil, let back = card.restUntil {
+                            Text(verbatim: PulseRest.backText(back))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     Spacer(minLength: 0)
                     clearedUndoButton(card)
                 }
@@ -594,12 +604,15 @@ struct V2PulsePage: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func showUndo(_ action: PulseUndo.Action, card: Int, rest: PulseRest? = nil) {
+    private func showUndo(_ action: PulseUndo.Action, card: Int, back: Date? = nil) {
         // The page was left before the plugin answered: no bar comes back later.
         guard isShown else { return }
-        let message = action == .dismissed
-            ? rest?.undoMessage ?? AppLocalization.string("Moved to Done and cleared. Pulse learned nothing from it.")
-            : AppLocalization.string("Marked done")
+        var message = AppLocalization.string("Marked done")
+        if action == .dismissed {
+            message = AppLocalization.string("Moved to Done and cleared. Pulse learned nothing from it.")
+            // Put off until a time: the one the plugin set, as the cleared row says it.
+            if let back { message = PulseRest.returning(back).undoMessage }
+        }
         withAnimation(.snappy) { undo = PulseUndo(card: card, action: action, message: message) }
         AccessibilityNotification.Announcement(message).post()
     }
@@ -971,7 +984,7 @@ struct V2PulsePage: View {
                     }
                     if focusedCard == card.id, dismissed { focusedCard = nil; voiceOverCard = nil }
                 }
-                if dismissed { showUndo(.dismissed, card: card.id, rest: until) }
+                if dismissed { showUndo(.dismissed, card: card.id, back: answer.restUntil) }
                 errorMessage = nil
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
