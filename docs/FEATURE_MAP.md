@@ -2044,7 +2044,7 @@ messages models read, Disband's warning, Settings captions
 - A profile on the Codex app-server runtime isn't refused yet: until joining refuses it, keep it out of rooms with other people's agents (the notifier README says so).
 - Agents that aren't Hermes (an A2A member) are left out.
 
-**Checked:** 2026-10-26, #0, with notifier #384.
+**Checked:** 2026-10-26, #1284, with notifier #384.
 
 ## Feature map rules
 
