@@ -2002,14 +2002,14 @@ Chats list (rooms hosted by others, and deleting one that ended) · the
 notifier's owner rules for room turns (tools, the framing, the reply scrub,
 past-chat search), with their routes and the `hermes conduit-push rooms`
 commands · the room memory guard · the room planner · a member cut off by its
-host · disbanding a room (each host's hidden chats for it) and a guest's
-`rooms forget` · the rooms mailbox (rooms.milim.dev) · rooms of only your own
-agents (unchanged, except that disbanding one now ends its hidden chats) ·
-past-chat search in every chat (it no longer finds those rooms) · approvals
-for your agents in rooms hosted elsewhere · text that describes it: the
-notifier README's "Rooms with other people's agents", "A member cut off from a
-room" and "Disbanding a room ends its hidden chats", the framing and block
-messages models read, Disband's warning, Settings captions
+host · disbanding a room (the home's own agents' hidden chats for it) and a
+guest's `rooms forget` · the rooms mailbox (rooms.milim.dev) · rooms of only
+your own agents (unchanged, except that disbanding one now deletes its hidden
+chats) · past-chat search in every chat (it no longer finds those rooms) ·
+approvals for your agents in rooms hosted elsewhere · text that describes it:
+the notifier README's "Rooms with other people's agents", "A member cut off
+from a room" and "Disbanding a room ends its hidden chats", the framing and
+block messages models read, Disband's warning, Settings captions
 
 **Code**
 - Owner rules: `notifier/room_rules.py` (room_turn, tool_block, framing, scrub, filter_search), `notifier/room_choices.py` (the per-room choices, NEVER), `notifier/__init__.py` (pre_tool_call, pre_llm_call, transform_llm_output, transform_tool_result), `notifier/dashboard/plugin_api.py` (/rooms/choices, /rooms/defaults, capability room-rules), `notifier/cli.py` (rooms show, rooms set), `notifier/README.md` (Rooms with other people's agents)
@@ -2025,9 +2025,9 @@ messages models read, Disband's warning, Settings captions
 - Memory stays on in rooms. Instead, past-chat search is off unless chosen, nothing from a room turn is saved to memory, skills or a memory provider, the agent is told who's asking, and what it shares follows its owner's choice for the room. A provider's automatic recall stays on, like MEMORY.md (2026-10-22, Eric; notifier #305).
 - Each owner's rules run on their own host, whichever host the room lives on. A room's choices default to Talk only, ask first, no past-chat search, joins in and 40 turns a day. Memory and skill writes, delegation, messaging, scheduled jobs, running code and Conduit's calls and settings are never allowed, the background review's included (2026-10-25, notifier #379).
 - The rules hold through Hermes' tool hooks, which see a call only when it carries the room session's id. A tool that calls other tools without it (`execute_code`) is never allowed, and a profile whose tools run outside the hooks (the Codex app-server runtime) can't take part in a room with other people's agents (2026-10-25, notifier #379).
-- A room whose store or choices can't be read, or aren't of a shape Hermes or the plugin writes, or a room session Hermes hasn't titled yet, gets no tools that turn; a room's broken choices get Talk only, never the defaults. A session store that can't be read blocks each tool call it can't check, in any chat, until it can be read; a turn on Hermes' room platform still gets the framing and the scrub. A room in no store runs as Hermes alone would (its tools and its search hits), with a warning in the log, and a disbanded room keeps its rules (2026-10-26, notifier #379).
+- A room whose store or choices can't be read, or aren't of a shape Hermes or the plugin writes, or a room session Hermes hasn't titled yet, gets no tools that turn; a room's broken choices get Talk only, never the defaults. A session store that can't be read blocks each tool call it can't check, in any chat, until it can be read; a turn on Hermes' room platform still gets the framing and the scrub. A room in no store runs as Hermes alone would (its tools and its search hits), with a warning in the log, and a disbanded room keeps its rules (2026-10-26, notifier #379). So does a turn where the plugin can't find the Hermes home, since blocking there would block every chat, but a past-chat search there fails when it names rooms (2026-10-26, notifier #384).
 - The rules follow a room's sessions: a compaction's continuation (Hermes moves the title to it) and a delegated child keep the room, whatever title Hermes gives the child, and the memory guard follows them the same way; a branch is its own conversation; past-chat search checks every hit, whatever source Hermes gives it. Tool Search's bridge works whenever anything is allowed, since Hermes runs the hooks on the tool it reaches, and a `tool_call` the hooks see whole is checked by every tool it names (2026-10-26, notifier #379).
-- Rooms of only your own agents behave exactly as before: the rules apply once a room seats a member from another installation (2026-10-25, notifier #379).
+- Rooms of only your own agents get none of the rules: they apply once a room seats a member from another installation (2026-10-25, notifier #379). Disbanding one deletes its hidden chats, as in every room (2026-10-26, Eric; notifier #384).
 - A member whose host refuses the room (its grant revoked or run out) fails its turn once, with a reason, and the room goes on without it. It stays out until its link is saved again, with no probe, so renewing a link saves it through Hermes. A member that's only offline is Hermes' to retry (2026-10-26, notifier #384).
 - Disbanding a room deletes the home's own agents' hidden chats for it, with their earlier history and their helpers' chats, in every room, rooms of only your own agents too. Agents on other people's Hermes keep theirs, and their owners delete them later with `hermes conduit-push rooms forget` or the route the Chats list calls, which refuses a room still going on that host (2026-10-26, Eric; notifier #384).
 - Every link goes through the mailbox, on one LAN too. The shared one is rooms.milim.dev, a service of its own beside push.milim.dev (2026-10-22, Eric).
