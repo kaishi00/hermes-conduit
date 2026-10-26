@@ -7,8 +7,9 @@
 //  and, behind the folder toggle, Projects. The filters are a native
 //  pull-down menu and combine (Unread and Chat lists unread
 //  chats, Starred narrows either to starred ones); the active ones show as
-//  a gold chip in the search field. Rows keep the old drawer's swipes and
-//  context menu, plus Star.
+//  a gold chip in the search field. Filter ▸ Projects leaves the projects
+//  you untick out. Rows keep the old drawer's swipes and context menu, plus
+//  Star.
 //
 
 import SwiftUI
@@ -338,6 +339,50 @@ struct V2ChatsView: View, Equatable {
         ProjectChatsInChats.stored(updates.defaults.string(forKey: ProjectChatsInChats.key))
     }
 
+    /// Filter ▸ Projects: projects belong to one profile, so All lists
+    /// every project's chats.
+    private var filtersProjects: Bool {
+        appState.supportsProjects && !appState.isAllProfilesChatsOn
+    }
+
+    /// The projects Filter ▸ Projects leaves out, for the profile in use.
+    private var hiddenProjects: Set<String> {
+        guard filtersProjects else { return [] }
+        return HiddenChatProjects.ids(in: updates.defaults.object(forKey: HiddenChatProjects.key), profile: appState.activeProfile)
+    }
+
+    private func setHiddenProjects(_ ids: Set<String>) {
+        updates.set(
+            HiddenChatProjects.setting(ids, profile: appState.activeProfile, in: updates.defaults.object(forKey: HiddenChatProjects.key)),
+            forKey: HiddenChatProjects.key
+        )
+    }
+
+    /// The projects Filter ▸ Projects lists: Home's chats are the ones in
+    /// no project, so it stands for those.
+    private var filterProjects: [ProjectSummary] {
+        appState.projects.filter { !$0.isHome }
+    }
+
+    /// How many listed choices are hidden; a deleted project's leftover
+    /// id hides nothing.
+    private var hiddenProjectCount: Int {
+        let hidden = hiddenProjects
+        guard !hidden.isEmpty else { return 0 }
+        let choices = Set(filterProjects.map(\.id)).union([HiddenChatProjects.noProject])
+        return hidden.intersection(choices).count
+    }
+
+    /// Only hidden projects stand between the list and its rows.
+    private var hidesEverything: Bool {
+        selection.isEmpty && hiddenProjectCount > 0
+    }
+
+    /// Something narrows the list: a filter, or a hidden project.
+    private var narrowsList: Bool {
+        !selection.isEmpty || hiddenProjectCount > 0
+    }
+
     private var mainButtonNewChat: Bool {
         updates.defaults.object(forKey: V2MainButtonPreference.key) as? Bool ?? V2MainButtonPreference.defaultValue
     }
@@ -364,7 +409,7 @@ struct V2ChatsView: View, Equatable {
         self.appState = appState
         _updates = StateObject(wrappedValue: V2ShownUpdates(appState, defaultsKeys: [
             Self.presentationKey, Self.filterKey, Self.expandedNestsKey, V2MainButtonPreference.key,
-            ProjectChatsInChats.key,
+            ProjectChatsInChats.key, HiddenChatProjects.key,
         ]))
     }
 
@@ -797,7 +842,7 @@ struct V2ChatsView: View, Equatable {
 
     private func filterIcon(waitingApprovalCount: Int) -> some View {
         V2CapsuleIcon(
-            systemImage: selection.isEmpty
+            systemImage: !narrowsList
                 ? "line.3.horizontal.decrease"
                 : "line.3.horizontal.decrease.circle.fill",
             dot: waitingApprovalCount > 0 ? Color.conduitAttention : nil
@@ -830,6 +875,12 @@ struct V2ChatsView: View, Equatable {
                 Section(AppLocalization.string("Sources")) {
                     ForEach(sourceFilters, id: \.self) { option in
                         filterToggle(option)
+                    }
+                }
+
+                if filtersProjects, !filterProjects.isEmpty {
+                    Section {
+                        projectsFilterMenu
                     }
                 }
 
@@ -901,6 +952,53 @@ struct V2ChatsView: View, Equatable {
         .menuActionDismissBehavior(option == .all ? .automatic : .disabled)
     }
 
+    /// Filter ▸ Projects: every project ticked to start, one tick each, and
+    /// the menu stays open while picking. All leaves it as it is, so a
+    /// project hidden here stays hidden until it's ticked again.
+    private var projectsFilterMenu: some View {
+        let hidden = hiddenProjects
+        let home = appState.projects.first(where: \.isHome)?.title
+        return Menu {
+            Button {
+                Haptics.selection()
+                setHiddenProjects([])
+            } label: {
+                Label(AppLocalization.string("Show all projects"), systemImage: "eye")
+            }
+            .disabled(hiddenProjectCount == 0)
+
+            Section {
+                projectToggle(
+                    HiddenChatProjects.noProject,
+                    title: home ?? AppLocalization.string("Not in a project"),
+                    symbol: home == nil ? "tray" : "house",
+                    hidden: hidden
+                )
+                ForEach(filterProjects) { project in
+                    projectToggle(project.id, title: project.title, symbol: "folder", hidden: hidden)
+                }
+            }
+        } label: {
+            Label(AppLocalization.string("Projects"), systemImage: "folder")
+        }
+        .menuActionDismissBehavior(.disabled)
+    }
+
+    private func projectToggle(_ id: String, title: String, symbol: String, hidden: Set<String>) -> some View {
+        Toggle(isOn: Binding(
+            get: { !hidden.contains(id) },
+            set: { shown in
+                var changed = hiddenProjects
+                if shown { changed.remove(id) } else { changed.insert(id) }
+                Haptics.selection()
+                setHiddenProjects(changed)
+            }
+        )) {
+            Label(title, systemImage: symbol)
+        }
+        .menuActionDismissBehavior(.disabled)
+    }
+
     private var statusFilters: [V2SessionFilter] {
         V2SessionFilter.menuCases.filter { $0.isStatus && (!$0.isLive || appState.liveSessionStatusAvailable) }
     }
@@ -915,11 +1013,14 @@ struct V2ChatsView: View, Equatable {
         return fixed + others.map { V2SessionFilter.source($0) }
     }
 
-    /// The chosen filters' names, or All.
+    /// The chosen filters' names, or All, and how many projects are hidden.
     private func selectionTitles(separator: String) -> String {
-        selection.isEmpty
-            ? V2SessionFilter.all.title
-            : selection.ordered.map(\.title).joined(separator: separator)
+        let hiddenCount = hiddenProjectCount
+        let names = selection.isEmpty && hiddenCount == 0
+            ? [V2SessionFilter.all.title]
+            : selection.ordered.map(\.title)
+        return (names + (hiddenCount > 0 ? [AppLocalization.string("\(hiddenCount) projects hidden")] : []))
+            .joined(separator: separator)
     }
 
     /// The chosen filters' names as VoiceOver reads them.
@@ -957,22 +1058,34 @@ struct V2ChatsView: View, Equatable {
     }
 
     private func uncachedFilterRows(_ selection: V2FilterSelection, searching: Bool) -> [SessionSummary] {
-        guard !selection.isEmpty else {
+        let rows: [SessionSummary]
+        if selection.isEmpty {
             // Read once, not once per row.
             let projectChats = self.projectChats
-            return V2ChatsView.allRows(
+            rows = V2ChatsView.allRows(
                 sourceRows(nil),
                 searching: searching,
                 inMainList: { mainListShows($0, projectChats: projectChats) }
             )
+        } else {
+            rows = selection.rows(
+                everything: sourceRows(nil),
+                sessions: listed.sessions,
+                cronSessions: listed.cron,
+                category: category,
+                hasStatus: hasStatus
+            )
         }
-        return selection.rows(
-            everything: sourceRows(nil),
-            sessions: listed.sessions,
-            cronSessions: listed.cron,
-            category: category,
-            hasStatus: hasStatus
-        )
+        // A search looks through every chat, a hidden project's too.
+        let hidden = hiddenProjects
+        guard !searching, !hidden.isEmpty else { return rows }
+        return rows.filter { session in
+            !HiddenChatProjects.hides(
+                projectID: appState.knownProjectID(for: session),
+                pinned: appState.isSessionPinned(session),
+                hidden: hidden
+            )
+        }
     }
 
     private func hasStatus(_ filter: V2SessionFilter, _ session: SessionSummary) -> Bool {
@@ -1170,10 +1283,14 @@ struct V2ChatsView: View, Equatable {
                         isRefreshing: appState.isRefreshingSessionCatalog,
                         filteredOutRows: !listed.sessions.isEmpty || !listed.cron.isEmpty
                     ),
-                    emptyTitle: selection.emptyStateFilter.emptyTitle,
+                    emptyTitle: hidesEverything
+                        ? AppLocalization.string("No chats to show")
+                        : selection.emptyStateFilter.emptyTitle,
                     emptyDescription: isSearching
                         ? AppLocalization.string("Try a different search.")
-                        : selection.emptyStateFilter.emptyDescription,
+                        : hidesEverything
+                            ? AppLocalization.string("The chats here are in projects you hid. Tick them again in Filter > Projects.")
+                            : selection.emptyStateFilter.emptyDescription,
                     retry: { Task { await appState.refreshSessionCatalog() } }
                 )
                 .listRowBackground(Color.clear)
@@ -1570,8 +1687,10 @@ struct V2ChatsView: View, Equatable {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            if !selection.isEmpty {
+            if narrowsList {
                 Button {
+                    // The chip names hidden projects too, so it clears them.
+                    if hiddenProjectCount > 0 { setHiddenProjects([]) }
                     select(.empty)
                 } label: {
                     HStack(spacing: 4) {
@@ -1614,6 +1733,7 @@ struct V2ChatsView: View, Equatable {
         .frame(minHeight: minHeight)
         .conduitGlassSurface(cornerRadius: minHeight / 2)
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: selection)
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: hiddenProjectCount)
         .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
     }
 

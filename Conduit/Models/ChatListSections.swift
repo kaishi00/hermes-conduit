@@ -123,12 +123,27 @@ enum ProjectChatsInChats: String, CaseIterable, Identifiable {
     case all
 
     static let key = "conduit.v2.projectChatsInChats"
-    static let defaultValue = ProjectChatsInChats.hidden
+    /// Recent since #1317; an install from before keeps Off (`settleDefault`).
+    static let defaultValue = ProjectChatsInChats.recent
+    /// Set once the launch after #1317 has settled an older install's choice.
+    static let defaultSettledKey = "conduit.v2.projectChatsDefaultSettled"
 
     var id: String { rawValue }
 
     static func stored(_ raw: String?) -> ProjectChatsInChats {
         raw.flatMap(ProjectChatsInChats.init(rawValue:)) ?? defaultValue
+    }
+
+    /// An install from before Recent became the default saved nothing for
+    /// Off, which was the default then: it keeps Off rather than change
+    /// under its user. Runs once; a new install (no saved dashboards) keeps
+    /// the default, and a choice already made stays.
+    static func settleDefault(in defaults: UserDefaults, existingInstall: Bool) {
+        guard !defaults.bool(forKey: defaultSettledKey) else { return }
+        if existingInstall, defaults.object(forKey: key) == nil {
+            defaults.set(ProjectChatsInChats.hidden.rawValue, forKey: key)
+        }
+        defaults.set(true, forKey: defaultSettledKey)
     }
 
     /// Whether a project's chat with this last activity is listed. A chat
@@ -142,5 +157,31 @@ enum ProjectChatsInChats: String, CaseIterable, Identifiable {
             let section = ChatListSection.dateSection(for: lastActivity, now: now, calendar: calendar)
             return section == .today || section == .yesterday
         }
+    }
+}
+
+/// The projects whose chats Chats leaves out (Filter ▸ Projects), kept per
+/// profile since each profile has its own projects. Chats in no project
+/// (Home's) are one more choice. Saved as profile → project ids.
+enum HiddenChatProjects {
+    static let key = "conduit.v2.hiddenChatProjects"
+    /// Stands for the chats in no project.
+    static let noProject = "~no-project"
+
+    static func ids(in stored: Any?, profile: String) -> Set<String> {
+        Set((stored as? [String: [String]])?[profile] ?? [])
+    }
+
+    /// `stored` with `profile`'s choice replaced; an empty one is dropped.
+    static func setting(_ ids: Set<String>, profile: String, in stored: Any?) -> [String: [String]] {
+        var all = stored as? [String: [String]] ?? [:]
+        all[profile] = ids.isEmpty ? nil : ids.sorted()
+        return all
+    }
+
+    /// Whether a row in `projectID` (nil: in no project) is left out. A
+    /// pinned one stays, since pinning asks for it in Chats.
+    static func hides(projectID: String?, pinned: Bool, hidden: Set<String>) -> Bool {
+        !pinned && hidden.contains(projectID ?? noProject)
     }
 }

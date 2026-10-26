@@ -293232,88 +293232,6 @@
         }
       }
     },
-    "Choose whether chats inside a project also appear in Chats, with the project’s name under the title. Recent shows the ones active today or yesterday." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lege fest, ob Chats in einem Projekt auch unter Chats erscheinen, mit dem Projektnamen unter dem Titel. „Letzte“ zeigt die heute oder gestern aktiven."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Elige si los chats de un proyecto también aparecen en Chats, con el nombre del proyecto bajo el título. Recientes muestra los activos hoy o ayer."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choisissez si les discussions d’un projet apparaissent aussi dans Discussions, avec le nom du projet sous le titre. Récents affiche celles actives aujourd’hui ou hier."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pilih apakah obrolan di dalam proyek juga muncul di Obrolan, dengan nama proyek di bawah judul. Terbaru menampilkan yang aktif hari ini atau kemarin."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scegli se le chat di un progetto compaiono anche in Chat, con il nome del progetto sotto il titolo. Recenti mostra quelle attive oggi o ieri."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "プロジェクト内のチャットをチャット一覧にも表示するかを選びます。タイトルの下にプロジェクト名が表示されます。「最近」は今日または昨日にやり取りのあったものを表示します。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "프로젝트 안의 채팅을 채팅 목록에도 표시할지 선택하세요. 제목 아래에 프로젝트 이름이 표시됩니다. 최근은 오늘이나 어제 활동한 채팅을 표시합니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wybierz, czy czaty z projektu mają też pojawiać się w Czatach, z nazwą projektu pod tytułem. Ostatnie pokazuje te aktywne dziś lub wczoraj."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Escolha se os chats de um projeto também aparecem em Chats, com o nome do projeto abaixo do título. Recentes mostra os ativos hoje ou ontem."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Выберите, показывать ли чаты из проектов и в списке чатов, с названием проекта под заголовком. «Недавние» показывает активные сегодня или вчера."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bir projedeki sohbetlerin Sohbetler’de de görünüp görünmeyeceğini seçin; başlığın altında projenin adı yer alır. Son Kullanılanlar bugün veya dün etkin olanları gösterir."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择项目中的聊天是否也显示在聊天列表中，并在标题下方显示项目名称。“最近”显示今天或昨天有活动的聊天。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "選擇專案中的聊天是否也顯示在聊天列表中，並在標題下方顯示專案名稱。「最近」顯示今天或昨天有活動的聊天。"
-          }
-        }
-      }
-    },
     "The push relay's check didn't reach this iPhone in time. Check your connection and try again." : {
       "localizations" : {
         "de" : {
@@ -347586,6 +347504,690 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "機器人聊天永遠不會重設，因此改為壓縮：Hermes 會根據摘要以全新的脈絡繼續，並保留其記憶與技能。若要另開聊天，請在「聊天」中新增一個。"
+          }
+        }
+      }
+    },
+    "Choose whether chats inside a project also appear in Chats, with the project’s name under the title. Recent shows the ones active today or yesterday. To leave some projects out, untick them in Filter > Projects." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lege fest, ob Chats in einem Projekt auch unter Chats erscheinen, mit dem Projektnamen unter dem Titel. „Letzte“ zeigt die heute oder gestern aktiven. Um einzelne Projekte auszublenden, entferne ihr Häkchen unter Filter > Projekte."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige si los chats de un proyecto también aparecen en Chats, con el nombre del proyecto bajo el título. Recientes muestra los activos hoy o ayer. Para dejar fuera algunos proyectos, desmárcalos en Filtro > Proyectos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisissez si les discussions d’un projet apparaissent aussi dans Discussions, avec le nom du projet sous le titre. Récents affiche celles actives aujourd’hui ou hier. Pour exclure certains projets, décochez-les dans Filtre > Projets."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pilih apakah obrolan di dalam proyek juga muncul di Obrolan, dengan nama proyek di bawah judul. Terbaru menampilkan yang aktif hari ini atau kemarin. Untuk menyembunyikan beberapa proyek, hapus centangnya di Filter > Proyek."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scegli se le chat di un progetto compaiono anche in Chat, con il nome del progetto sotto il titolo. Recenti mostra quelle attive oggi o ieri. Per escludere alcuni progetti, togli la spunta in Filtro > Progetti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プロジェクト内のチャットをチャット一覧にも表示するかを選びます。タイトルの下にプロジェクト名が表示されます。「最近」は今日または昨日にやり取りのあったものを表示します。一部のプロジェクトを除くには、フィルタ > プロジェクトでチェックを外します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로젝트 안의 채팅을 채팅 목록에도 표시할지 선택하세요. 제목 아래에 프로젝트 이름이 표시됩니다. 최근은 오늘이나 어제 활동한 채팅을 표시합니다. 일부 프로젝트를 빼려면 필터 > 프로젝트에서 선택을 해제하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wybierz, czy czaty z projektu mają też pojawiać się w Czatach, z nazwą projektu pod tytułem. Ostatnie pokazuje te aktywne dziś lub wczoraj. Aby pominąć niektóre projekty, odznacz je w Filtr > Projekty."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha se os chats de um projeto também aparecem em Chats, com o nome do projeto abaixo do título. Recentes mostra os ativos hoje ou ontem. Para deixar alguns projetos de fora, desmarque-os em Filtro > Projetos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выберите, показывать ли чаты из проектов и в списке чатов, с названием проекта под заголовком. «Недавние» показывает активные сегодня или вчера. Чтобы скрыть отдельные проекты, снимите с них отметку в «Фильтр > Проекты»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir projedeki sohbetlerin Sohbetler’de de görünüp görünmeyeceğini seçin; başlığın altında projenin adı yer alır. Son Kullanılanlar bugün veya dün etkin olanları gösterir. Bazı projeleri dışarıda bırakmak için Filtre > Projeler’de işaretlerini kaldırın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择项目中的聊天是否也显示在聊天列表中，并在标题下方显示项目名称。“最近”显示今天或昨天有活动的聊天。要排除某些项目，请在“筛选 > 项目”中取消勾选。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇專案中的聊天是否也顯示在聊天列表中，並在標題下方顯示專案名稱。「最近」顯示今天或昨天有活動的聊天。若要排除某些專案，請在「篩選 > 專案」中取消勾選。"
+          }
+        }
+      }
+    },
+    "Show all projects" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Projekte anzeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar todos los proyectos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afficher tous les projets"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tampilkan semua proyek"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra tutti i progetti"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべてのプロジェクトを表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모든 프로젝트 보기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pokaż wszystkie projekty"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar todos os projetos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показать все проекты"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tüm projeleri göster"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示所有项目"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示所有專案"
+          }
+        }
+      }
+    },
+    "Not in a project" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In keinem Projekt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin proyecto"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hors projet"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tanpa proyek"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Senza progetto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プロジェクト外"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로젝트 없음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Poza projektem"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fora de projetos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вне проектов"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projede değil"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不在项目中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不在專案中"
+          }
+        }
+      }
+    },
+    "No chats to show" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Chats zum Anzeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay chats que mostrar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune discussion à afficher"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak ada obrolan untuk ditampilkan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessuna chat da mostrare"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "表示するチャットはありません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "표시할 채팅 없음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brak czatów do pokazania"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum chat para mostrar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет чатов для показа"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gösterilecek sohbet yok"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可显示的聊天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有可顯示的聊天"
+          }
+        }
+      }
+    },
+    "The chats here are in projects you hid. Tick them again in Filter > Projects." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Chats hier gehören zu Projekten, die du ausgeblendet hast. Setze unter Filter > Projekte wieder ein Häkchen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los chats de aquí están en proyectos que ocultaste. Vuelve a marcarlos en Filtro > Proyectos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les discussions d’ici sont dans des projets que vous avez masqués. Recochez-les dans Filtre > Projets."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrolan di sini ada di proyek yang kamu sembunyikan. Centang lagi di Filter > Proyek."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chat qui sono in progetti che hai nascosto. Rimetti la spunta in Filtro > Progetti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここのチャットは非表示にしたプロジェクトにあります。フィルタ > プロジェクトでもう一度チェックしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이곳의 채팅은 숨긴 프로젝트에 있습니다. 필터 > 프로젝트에서 다시 선택하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czaty z tego miejsca są w ukrytych projektach. Zaznacz je ponownie w Filtr > Projekty."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os chats daqui estão em projetos que você ocultou. Marque-os de novo em Filtro > Projetos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чаты здесь находятся в скрытых вами проектах. Снова отметьте их в «Фильтр > Проекты»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buradaki sohbetler gizlediğiniz projelerde. Filtre > Projeler’de yeniden işaretleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这里的聊天位于你隐藏的项目中。请在“筛选 > 项目”中重新勾选。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這裡的聊天位於你隱藏的專案中。請在「篩選 > 專案」中重新勾選。"
+          }
+        }
+      }
+    },
+    "%lld projects hidden" : {
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Projekt ausgeblendet"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Projekte ausgeblendet"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld project hidden"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld projects hidden"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld proyecto oculto"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld de proyectos ocultos"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld proyectos ocultos"
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld projet masqué"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld de projets masqués"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld projets masqués"
+                }
+              }
+            }
+          }
+        },
+        "id" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld proyek disembunyikan"
+                }
+              }
+            }
+          }
+        },
+        "it" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld progetto nascosto"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld di progetti nascosti"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld progetti nascosti"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld件のプロジェクトを非表示"
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "프로젝트 %lld개 숨김"
+                }
+              }
+            }
+          }
+        },
+        "pl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld ukryty projekt"
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld ukryte projekty"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld ukrytych projektów"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld ukrytego projektu"
+                }
+              }
+            }
+          }
+        },
+        "pt-BR" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld projeto oculto"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld de projetos ocultos"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld projetos ocultos"
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld проект скрыт"
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld проекта скрыто"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld проектов скрыто"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld проекта скрыто"
+                }
+              }
+            }
+          }
+        },
+        "tr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld proje gizli"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld proje gizli"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "已隐藏 %lld 个项目"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "已隱藏 %lld 個專案"
+                }
+              }
+            }
           }
         }
       }

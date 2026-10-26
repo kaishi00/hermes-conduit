@@ -3373,7 +3373,7 @@ private struct AppearanceSettingsDetail: View {
 
                 // A project's chats otherwise show only on its page.
                 ConduitSettingsSection(title: AppLocalization.string("Project chats"), symbol: "folder", tint: .conduitAccent) {
-                    Text("Choose whether chats inside a project also appear in Chats, with the project’s name under the title. Recent shows the ones active today or yesterday.")
+                    Text("Choose whether chats inside a project also appear in Chats, with the project’s name under the title. Recent shows the ones active today or yesterday. To leave some projects out, untick them in Filter > Projects.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     Picker("Project chats", selection: Binding(get: { projectChats }, set: {

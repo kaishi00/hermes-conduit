@@ -1708,6 +1708,38 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 
 **Checked:** 2026-10-24, at #1206; the match row at #1208, carried in #1229.
 
+## Project chats in Chats
+
+Which of a project's chats the Chats list shows: Settings > Appearance >
+Project chats (Off, Recent, All) and Filter ▸ Projects, which leaves the
+projects you untick out.
+
+**Siblings:** the Chats list with no filter · the status, Starred and source
+filters (they look through project chats too) · search and "In messages" ·
+the project's own page · pinned chats · All profiles · the iPad and Mac list
+(same view) · Sync across devices · the Settings caption · CarPlay's chat
+list · README.md
+
+**Code**
+- Setting, its default and hidden projects: `Conduit/Models/ChatListSections.swift` (ProjectChatsInChats, settleDefault, HiddenChatProjects)
+- Old installs keep Off: `Conduit/Services/AppState.swift` (init, after the dashboard registry loads)
+- List and menu: `Conduit/Views/V2/V2ChatsView.swift` (mainListShows, uncachedFilterRows, projectsFilterMenu, projectToggle, hiddenProjectCount, selectionTitles, searchCapsule)
+- Project of a row: `Conduit/Services/AppState.swift` (knownProjectID: the chats the project tree previews)
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (Project chats section)
+- Sync: `Conduit/Services/AppState+SyncedPreferences.swift` (app.project_chats, hiddenChatProjectsSlot as app.hidden_chat_projects)
+
+**Rulings**
+- Recent is the default for a new install; a phone signed in before the change keeps Off, set once at launch from its saved dashboards or connection, and a choice already made stays (2026-10-26, #1317, Eric).
+- Filter ▸ Projects is a multi-select with every project ticked to start, Home's chats standing in for the ones in no project ("Not in a project" without a Home). It narrows every filter, is kept per profile, and All doesn't clear it; the gold chip names it ("2 projects hidden") and its × shows every project again (2026-10-26, #1317, Eric picked a menu over a switch on each project).
+- A pinned chat stays listed whatever is hidden, and a search looks through every chat, a hidden project's too, as it does with the setting at Off (#708).
+- Filter ▸ Projects isn't offered in All profiles, where projects belong to one profile; All lists every project's chats there (2026-10-26, #1317).
+- CarPlay's chat list doesn't follow either: it is a short recent list for driving, not the Chats list (2026-10-26, #1317).
+
+**Open gaps**
+- A row's project comes from the chats the project tree previews, so a project chat beyond its preview counts as in no project: it shows with the setting at Off, and hides with "Not in a project".
+
+**Checked:** 2026-10-26, #PRNUM.
+
 ## Plan card
 
 The agent's plan ("Tasks", from Hermes's `todo` tool) docked above the

@@ -130,8 +130,51 @@ extension SessionNestingModelTests {
         XCTAssertFalse(shows(.recent, nil))
         XCTAssertTrue(shows(.all, at(day: 1, hour: 0)))
         XCTAssertTrue(shows(.all, nil))
-        XCTAssertEqual(ProjectChatsInChats.stored(nil), .hidden)
-        XCTAssertEqual(ProjectChatsInChats.stored("bogus"), .hidden)
-        XCTAssertEqual(ProjectChatsInChats.stored("recent"), .recent)
+        XCTAssertEqual(ProjectChatsInChats.stored(nil), .recent)
+        XCTAssertEqual(ProjectChatsInChats.stored("bogus"), .recent)
+        XCTAssertEqual(ProjectChatsInChats.stored("hidden"), .hidden)
+    }
+
+    /// Recent is the default for a new install; one signed in before
+    /// keeps the Off it had, once, and a choice already saved stays (#1317).
+    func testProjectChatsDefaultSettlesOnceAndKeepsOlderInstallsOff() {
+        let suite = "ChatListSectionsTests.projectChats.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        ProjectChatsInChats.settleDefault(in: defaults, existingInstall: true)
+        XCTAssertEqual(ProjectChatsInChats.stored(defaults.string(forKey: ProjectChatsInChats.key)), .hidden)
+
+        defaults.removePersistentDomain(forName: suite)
+        ProjectChatsInChats.settleDefault(in: defaults, existingInstall: false)
+        XCTAssertNil(defaults.object(forKey: ProjectChatsInChats.key))
+        // Signing in later doesn't make it an older install.
+        ProjectChatsInChats.settleDefault(in: defaults, existingInstall: true)
+        XCTAssertEqual(ProjectChatsInChats.stored(defaults.string(forKey: ProjectChatsInChats.key)), .recent)
+
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(ProjectChatsInChats.all.rawValue, forKey: ProjectChatsInChats.key)
+        ProjectChatsInChats.settleDefault(in: defaults, existingInstall: true)
+        XCTAssertEqual(defaults.string(forKey: ProjectChatsInChats.key), "all")
+    }
+
+    /// Filter > Projects keeps each profile's hidden projects apart, and a
+    /// pinned chat stays listed.
+    func testHiddenChatProjectsArePerProfileAndSparePinnedChats() {
+        var stored: Any? = HiddenChatProjects.setting(["work", HiddenChatProjects.noProject], profile: "default", in: nil)
+        stored = HiddenChatProjects.setting(["home-lab"], profile: "coder", in: stored)
+        XCTAssertEqual(HiddenChatProjects.ids(in: stored, profile: "default"), ["work", HiddenChatProjects.noProject])
+        XCTAssertEqual(HiddenChatProjects.ids(in: stored, profile: "coder"), ["home-lab"])
+        XCTAssertEqual(HiddenChatProjects.ids(in: stored, profile: "other"), [])
+
+        stored = HiddenChatProjects.setting([], profile: "coder", in: stored)
+        XCTAssertEqual((stored as? [String: [String]])?.keys.sorted(), ["default"])
+        XCTAssertEqual(HiddenChatProjects.ids(in: "garbage", profile: "default"), [])
+
+        let hidden: Set<String> = ["work", HiddenChatProjects.noProject]
+        XCTAssertTrue(HiddenChatProjects.hides(projectID: "work", pinned: false, hidden: hidden))
+        XCTAssertTrue(HiddenChatProjects.hides(projectID: nil, pinned: false, hidden: hidden))
+        XCTAssertFalse(HiddenChatProjects.hides(projectID: "work", pinned: true, hidden: hidden))
+        XCTAssertFalse(HiddenChatProjects.hides(projectID: "music", pinned: false, hidden: hidden))
     }
 }
