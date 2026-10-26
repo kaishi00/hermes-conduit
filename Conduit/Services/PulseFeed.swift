@@ -45,6 +45,9 @@ struct PulseCard: Equatable, Identifiable {
     let brief: String
     /// Swiped away ("Not now"): in Done and cleared, nothing learned.
     var dismissedAt: Date?
+    /// Not now until a time (later today, tomorrow, next week): when it
+    /// comes back as new (0.78.3), nil for one swiped away for good.
+    var restUntil: Date?
     /// When it was marked done: by the user on the Pulse screen, or by
     /// Pulse after Do it, once the chat showed it got done.
     var doneAt: Date?
@@ -77,6 +80,7 @@ struct PulseCard: Equatable, Identifiable {
         topic = object["topic"] as? String ?? ""
         brief = object["brief"] as? String ?? ""
         dismissedAt = PulseJSON.date(object["dismissed_at"])
+        restUntil = PulseJSON.date(object["rest_until"])
         doneAt = PulseJSON.date(object["done_at"])
         doneBy = object["done_by"] as? String ?? ""
         rating = object["rating"] as? String ?? ""
@@ -419,12 +423,16 @@ extension PulseClient {
         _ = try await request("\(Self.path)/acted", "POST", ["card": card])
     }
 
-    /// Not now: swipes a card away (nothing learned), or puts it back;
-    /// whether it changed.
+    /// Not now: swipes a card away (nothing learned) until later today,
+    /// tomorrow or next week (`until`, 0.78.3), or for good, or puts it
+    /// back; whether it changed, and when it comes back.
     @discardableResult
-    func dismiss(card: Int, dismissed: Bool) async throws -> Bool {
-        let response = try await request("\(Self.path)/dismiss", "POST", ["card": card, "dismissed": dismissed])
-        return PulseJSON.bool(response["changed"]) ?? false
+    func dismiss(card: Int, dismissed: Bool, until: PulseRest? = nil) async throws -> PulseDismissal {
+        var body: [String: Any] = ["card": card, "dismissed": dismissed]
+        if let until { body["until"] = until.rawValue }
+        let response = try await request("\(Self.path)/dismiss", "POST", body)
+        return PulseDismissal(changed: PulseJSON.bool(response["changed"]) ?? false,
+                              restUntil: PulseJSON.date(response["rest_until"]))
     }
 
     func learned() async throws -> PulseLearned {
@@ -657,4 +665,56 @@ extension PulseClient {
     static let foundActionsCapability = "pulse_found_actions"
     /// Settings > Pulse takes a note to Pulse, in the user's own words (0.78.2).
     static let noteCapability = "pulse_note"
+    /// Not now asks until when: later today, tomorrow or next week, and the
+    /// card comes back as new then (0.78.3).
+    static let restCapability = "pulse_rest"
+}
+
+/// What Not now puts a card off until, as the plugin names it.
+enum PulseRest: String, CaseIterable, Identifiable {
+    case laterToday = "later_today"
+    case tomorrow
+    case nextWeek = "next_week"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .laterToday: AppLocalization.string("Later today")
+        case .tomorrow: AppLocalization.string("Tomorrow")
+        case .nextWeek: AppLocalization.string("Next week")
+        }
+    }
+
+    /// The Undo bar's line once a card is put off.
+    var undoMessage: String {
+        switch self {
+        case .laterToday: AppLocalization.string("Put off until later today. It comes back as new then.")
+        case .tomorrow: AppLocalization.string("Put off until tomorrow. It comes back as new then.")
+        case .nextWeek: AppLocalization.string("Put off until next week. It comes back as new then.")
+        }
+    }
+
+    /// When a card put off comes back, as its cleared row says it: later
+    /// today, tomorrow, a weekday this week, or next week.
+    static func backText(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        if calendar.isDate(date, inSameDayAs: now) || date <= now { return AppLocalization.string("Back later today") }
+        if calendar.isDateInTomorrow(date) { return AppLocalization.string("Back tomorrow") }
+        if let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
+                                              to: calendar.startOfDay(for: date)).day, days < 7 {
+            let formatter = DateFormatter()
+            formatter.calendar = calendar
+            formatter.timeZone = calendar.timeZone
+            formatter.locale = AppLocalization.formattingLocale
+            formatter.setLocalizedDateFormatFromTemplate("EEEE")
+            return AppLocalization.string("Back on \(formatter.string(from: date))")
+        }
+        return AppLocalization.string("Back next week")
+    }
+}
+
+/// The plugin's answer to Not now or Put back.
+struct PulseDismissal: Equatable {
+    let changed: Bool
+    let restUntil: Date?
 }

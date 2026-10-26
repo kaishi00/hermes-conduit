@@ -100,6 +100,8 @@ struct V2PulsePage: View {
     @State private var newCards: Set<Int>?
     /// The last Done or Not now, for the Undo bar.
     @State private var undo: PulseUndo?
+    /// The card Not now asks "until when?" about.
+    @State private var restCard: PulseCard?
     /// Do it opened their chat but Pulse wasn't told; kept across refreshes
     /// until the card is done.
     @State private var untoldCards: Set<Int> = []
@@ -154,6 +156,18 @@ struct V2PulsePage: View {
             Button(AppLocalization.string("Just thumbs down")) { rate(card, up: false, reason: nil) }
         } message: { _ in
             Text("Pulse changes what it does with your answer. You can undo it under What Pulse learned.")
+        }
+        .confirmationDialog(
+            AppLocalization.string("Not now, until when?"),
+            isPresented: Binding(get: { restCard != nil }, set: { if !$0 { restCard = nil } }),
+            titleVisibility: .visible,
+            presenting: restCard
+        ) { card in
+            ForEach(PulseRest.allCases) { rest in
+                Button(rest.title) { dismiss(card, true, until: rest) }
+            }
+        } message: { _ in
+            Text("It comes back as new then, unless it got done meanwhile.")
         }
         .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID, active: isShown && scenePhase == .active,
                                   served: appState.notifierPlugin.reports(PulseClient.feedCapability))) {
@@ -338,14 +352,19 @@ struct V2PulsePage: View {
             .pulseRow()
     }
 
-    /// Not now: off the list, nothing learned. A plugin before 0.68.0 can't take it.
+    /// Not now: off the list, nothing learned. A plugin before 0.68.0 can't
+    /// take it; one from 0.78.3 asks until when, and the card comes back then.
     @ViewBuilder private func notNowButton(_ card: PulseCard) -> some View {
         if card.dismissedAt == nil, card.doneAt == nil, canDismiss {
             Button {
                 // One request per card: not while its Done is still out.
                 guard !isBusy(card) else { return }
                 Haptics.light()
-                dismiss(card, true)
+                if canChooseRest {
+                    restCard = card
+                } else {
+                    dismiss(card, true)
+                }
             } label: {
                 Label(AppLocalization.string("Not now"), systemImage: "clock")
             }
@@ -354,6 +373,7 @@ struct V2PulsePage: View {
     }
 
     private var canDismiss: Bool { appState.notifierPlugin.reports(PulseClient.dismissCapability) }
+    private var canChooseRest: Bool { appState.notifierPlugin.reports(PulseClient.restCapability) }
 
     // MARK: Morning brief
 
@@ -574,11 +594,12 @@ struct V2PulsePage: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func showUndo(_ action: PulseUndo.Action, card: Int) {
+    private func showUndo(_ action: PulseUndo.Action, card: Int, rest: PulseRest? = nil) {
         // The page was left before the plugin answered: no bar comes back later.
         guard isShown else { return }
-        let message = action == .dismissed ? AppLocalization.string("Moved to Done and cleared. Pulse learned nothing from it.")
-                                           : AppLocalization.string("Marked done")
+        let message = action == .dismissed
+            ? rest?.undoMessage ?? AppLocalization.string("Moved to Done and cleared. Pulse learned nothing from it.")
+            : AppLocalization.string("Marked done")
         withAnimation(.snappy) { undo = PulseUndo(card: card, action: action, message: message) }
         AccessibilityNotification.Announcement(message).post()
     }
@@ -742,7 +763,9 @@ struct V2PulsePage: View {
     }
 
     private func clearedLabel(_ card: PulseCard) -> some View {
-        let title = card.dismissedAt != nil ? AppLocalization.string("Not now")
+        let title = card.dismissedAt != nil
+            ? (card.restUntil.map { AppLocalization.string("Not now") + " · " + PulseRest.backText($0) }
+               ?? AppLocalization.string("Not now"))
             : card.doneBy == "pulse" ? AppLocalization.string("Done, seen in the chat") : AppLocalization.string("Done")
         return Label(title, systemImage: card.dismissedAt != nil ? "clock" : "checkmark.circle.fill")
             .font(.footnote.weight(.semibold))
@@ -931,23 +954,25 @@ struct V2PulsePage: View {
     }
 
     /// Not now (or Put back): off the list into Done and cleared, nothing
-    /// learned; the card moves at once.
-    private func dismiss(_ card: PulseCard, _ dismissed: Bool) {
+    /// learned, until later today, tomorrow or next week when asked; the
+    /// card moves at once.
+    private func dismiss(_ card: PulseCard, _ dismissed: Bool, until: PulseRest? = nil) {
         finishingCards.insert(card.id)
         let dashboard = appState.activeDashboardID
         Task {
             defer { finishingCards.remove(card.id) }
             do {
-                let changed = try await client.dismiss(card: card.id, dismissed: dismissed)
+                let answer = try await client.dismiss(card: card.id, dismissed: dismissed, until: until)
                 guard appState.activeDashboardID == dashboard else { return }
-                guard changed else { return await load() }
+                guard answer.changed else { return await load() }
                 withAnimation(.snappy) {
                     if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                         page?.cards[index].dismissedAt = dismissed ? Date() : nil
+                        page?.cards[index].restUntil = dismissed ? answer.restUntil : nil
                     }
                     if focusedCard == card.id, dismissed { focusedCard = nil; voiceOverCard = nil }
                 }
-                if dismissed { showUndo(.dismissed, card: card.id) }
+                if dismissed { showUndo(.dismissed, card: card.id, rest: until) }
                 errorMessage = nil
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }

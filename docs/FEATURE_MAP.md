@@ -619,8 +619,9 @@ Pulse remembers from the chats and how ratings change what it sends. It's a
 beta, so its app side is only on the `pulse` branch.
 
 **Siblings:** the Pulse screen (cards, New and Earlier, thumbs and the
-one-tap reason, Not now, Done and Undo, Do it) · Settings > Pulse (on and
-off, model, nudge, budgets, home chat, the note to Pulse) · Pulse pushes (kinds
+one-tap reason, Not now until later today, tomorrow or next week, Done and
+Undo, Do it) · Settings > Pulse (on and off, model, nudge, budgets, home chat,
+the note to Pulse) · Pulse pushes (kinds
 pulse.noticed, pulse.brief and pulse.followup, titled per the Notifications
 rulings, opening the Pulse screen) · a call from Hermes (Pulse may call only
 once the user opts in) · the hidden Pulse chat · the notifier's loop (report, brief, follow-ups,
@@ -648,6 +649,7 @@ no chat · the `hermes conduit-push pulse` commands
 - A report that finds nothing leaves no card (2026-10-23, notifier #324).
 - The morning brief comes every day at its time (07:00 by default, an hour before the first report) and sums up what's still open: what's due or on the calendar today, open promises and things the user said they'd do, and what the phone's automations logged. Held news still comes as its own cards under it, and a brief that brought none shows as its summary block. The next report leaves out what the brief already brought up, unless something about it changed. Settings > Pulse says the brief comes every day only to a plugin that reports `pulse_daily_brief` (2026-10-25, notifier #357, #1234, Eric's report: a 05:00 brief with nothing held never came).
 - Not now hides a card without teaching Pulse anything, and the item rests a week (2026-10-23, #1173, notifier #334); it stays neutral when Pulse learns from ratings (2026-10-24, Eric).
+- Not now asks until when: later today (three hours, by 23:00), tomorrow or next week (those two ten minutes before the morning brief, in time for it). The card leaves the list and the thing it's about rests until then; at that time it comes back as new, at the top, and one about something Pulse remembers has its chat read first, like a held card's before the brief: done meanwhile, it's marked done instead, and a card no run got to comes back unread rather than late. Nothing is learned either way. An app or a plugin from before keeps the plain Not now: the card stays away and the thing rests a week (2026-10-26, Eric asked for the five improvements; notifier #380, #APPPR2).
 - Pulse gets louder on its own only within the channels and intensity the user allowed. It never turns on a channel they turned off and never grants calling: calls need an opt-in, and adding the kinds that may call asks first (2026-10-24, Eric).
 - Tone stays out of what Pulse learns, and a reason given on a thumbs-down applies at once (2026-10-24, Eric).
 - Pulse pushes follow the Notifications rulings: App Language from title_label, titled with the session title (2026-10-23, notifier #334).
