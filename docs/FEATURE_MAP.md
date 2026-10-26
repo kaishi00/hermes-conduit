@@ -1738,7 +1738,7 @@ list · README.md
 **Open gaps**
 - A row's project comes from the chats the project tree previews, so a project chat beyond its preview counts as in no project: it shows with the setting at Off, and hides with "Not in a project".
 
-**Checked:** 2026-10-26, #PRNUM.
+**Checked:** 2026-10-26, #1322.
 
 ## Plan card
 
