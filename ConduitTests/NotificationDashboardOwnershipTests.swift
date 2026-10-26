@@ -473,7 +473,7 @@ extension NotificationDashboardOwnershipTests {
         appState.showVoiceSheet = true
 
         // Another saved dashboard's push, retried with Conduit open: a call keeps
-        // Conduit where it is, as a tap on the push does, and says so.
+        // Conduit where it is, and it says to end the call first.
         let quieted = await appState.quietPulseForToday(PulseQuietTarget(dashboardID: dashboardB.uuidString, gatewayID: "gw-2"),
                                                         switching: true, wait: .zero)
 

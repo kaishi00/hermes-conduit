@@ -360248,84 +360248,84 @@
         }
       }
     },
-    "A reason changes what Pulse does right away. You can undo it under What Pulse learned." : {
+    "A reason changes what Pulse does right away, and you can undo it under What Pulse learned. Just thumbs down only teaches Pulse." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ein Grund ändert sofort, was Pulse tut. Du kannst es unter „Was Pulse gelernt hat“ rückgängig machen."
+            "value" : "Ein Grund ändert sofort, was Pulse tut, und du kannst es unter „Was Pulse gelernt hat“ rückgängig machen. „Nur Daumen runter“ bringt Pulse nur etwas bei."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un motivo cambia al instante lo que hace Pulse. Puedes deshacerlo en Lo que aprendió Pulse."
+            "value" : "Un motivo cambia al instante lo que hace Pulse, y puedes deshacerlo en Lo que aprendió Pulse. «Solo pulgar abajo» únicamente le enseña a Pulse."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Une raison change aussitôt ce que fait Pulse. Vous pouvez l’annuler dans Ce que Pulse a appris."
+            "value" : "Une raison change aussitôt ce que fait Pulse, et vous pouvez l’annuler dans Ce que Pulse a appris. « Juste un pouce vers le bas » ne fait qu’apprendre quelque chose à Pulse."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alasan langsung mengubah tindakan Pulse. Anda bisa membatalkannya di Yang dipelajari Pulse."
+            "value" : "Alasan langsung mengubah tindakan Pulse, dan Anda bisa membatalkannya di Yang dipelajari Pulse. “Hanya jempol ke bawah” sekadar mengajari Pulse."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un motivo cambia subito ciò che fa Pulse. Puoi annullarlo in Cosa ha imparato Pulse."
+            "value" : "Un motivo cambia subito ciò che fa Pulse, e puoi annullarlo in Cosa ha imparato Pulse. «Solo pollice in giù» insegna soltanto qualcosa a Pulse."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "理由を選ぶと、Pulseはすぐに動きを変えます。「Pulseが学んだこと」で取り消せます。"
+            "value" : "理由を選ぶと、Pulseはすぐに動きを変えます。「Pulseが学んだこと」で取り消せます。「低評価だけ」はPulseに学ばせるだけです。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이유를 고르면 Pulse가 바로 동작을 바꿉니다. 'Pulse가 배운 것'에서 되돌릴 수 있습니다."
+            "value" : "이유를 고르면 Pulse가 바로 동작을 바꾸며, 'Pulse가 배운 것'에서 되돌릴 수 있습니다. '싫어요만'은 Pulse에게 배우게만 합니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Powód od razu zmienia działanie Pulse. Możesz to cofnąć w sekcji Czego nauczył się Pulse."
+            "value" : "Powód od razu zmienia działanie Pulse, a możesz to cofnąć w sekcji Czego nauczył się Pulse. „Tylko kciuk w dół” jedynie uczy Pulse."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Um motivo muda na hora o que o Pulse faz. Você pode desfazer em O que o Pulse aprendeu."
+            "value" : "Um motivo muda na hora o que o Pulse faz, e você pode desfazer em O que o Pulse aprendeu. “Só polegar para baixo” apenas ensina o Pulse."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Причина сразу меняет поведение Pulse. Это можно отменить в разделе «Чему научился Pulse»."
+            "value" : "Причина сразу меняет поведение Pulse, и это можно отменить в разделе «Чему научился Pulse». Вариант «Просто „не нравится“» лишь обучает Pulse."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bir neden Pulse'un davranışını hemen değiştirir. Bunu Pulse'un öğrendikleri bölümünden geri alabilirsiniz."
+            "value" : "Bir neden Pulse'un davranışını hemen değiştirir ve bunu Pulse'un öğrendikleri bölümünden geri alabilirsiniz. “Sadece beğenmedim” yalnızca Pulse'a öğretir."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择原因后，Pulse 会立即调整做法。你可以在“Pulse 学到的”中撤销。"
+            "value" : "选择原因后，Pulse 会立即调整做法，你可以在“Pulse 学到的”中撤销。“仅差评”只会让 Pulse 学习。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "選擇原因後，Pulse 會立即調整做法。你可以在「Pulse 學到的」中撤銷。"
+            "value" : "選擇原因後，Pulse 會立即調整做法，你可以在「Pulse 學到的」中撤銷。「僅負評」只會讓 Pulse 學習。"
           }
         }
       }

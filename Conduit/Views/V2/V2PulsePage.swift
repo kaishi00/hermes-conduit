@@ -170,7 +170,7 @@ struct V2PulsePage: View {
             }
             Button(AppLocalization.string("Just thumbs down")) { rate(card, up: false, reason: nil) }
         } message: { _ in
-            Text("A reason changes what Pulse does right away. You can undo it under What Pulse learned.")
+            Text("A reason changes what Pulse does right away, and you can undo it under What Pulse learned. Just thumbs down only teaches Pulse.")
         }
         .confirmationDialog(
             AppLocalization.string("Not now, until when?"),
