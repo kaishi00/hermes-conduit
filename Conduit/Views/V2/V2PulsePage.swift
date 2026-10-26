@@ -696,7 +696,7 @@ struct V2PulsePage: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            if !card.why.isEmpty, !card.isNoticed {
+            if appState.explainsPulseCard(card) {
                 Button {
                     withAnimation {
                         if expandedWhy.contains(card.id) { expandedWhy.remove(card.id) } else { expandedWhy.insert(card.id) }
@@ -715,7 +715,7 @@ struct V2PulsePage: View {
     /// The chat it came from, a tap away.
     /// Why Pulse brought the card up, once "Why?" is tapped.
     @ViewBuilder private func whyNote(_ card: PulseCard) -> some View {
-        if expandedWhy.contains(card.id), !card.why.isEmpty {
+        if expandedWhy.contains(card.id), appState.explainsPulseCard(card) {
             Text(verbatim: card.why)
                 .font(.footnote)
                 .foregroundStyle(.secondary)

@@ -267,6 +267,30 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(PulseCardKind.topic("something new"), PulseCardKind.topic(""))  // unknown topics read "Noticed"
     }
 
+    func testWhyShowsOnAReportCardOnceThePluginGivesItsReason() throws {
+        let state = try appState()
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"cards": [
+          {"id": 1, "kind": "followup", "level": "push", "news": "The deploy is still waiting.",
+           "why": "You said you would check it."},
+          {"id": 2, "kind": "noticed", "topic": "date", "level": "screen", "news": "Dentist Friday",
+           "why": "Your calendar has it for Friday."},
+          {"id": 3, "kind": "noticed", "topic": "fact", "level": "screen", "news": "Ana is in town", "why": ""}
+        ]}
+        """)))
+        let followup = page.cards[0], dated = page.cards[1], plain = page.cards[2]
+        // A plugin from before gave every report card the same stock line: no reason to show.
+        state.setNotifierPluginStateForTesting(.reported(version: "0.78.3", capabilities: [PulseClient.feedCapability]))
+        XCTAssertTrue(state.explainsPulseCard(followup))
+        XCTAssertFalse(state.explainsPulseCard(dated) || state.explainsPulseCard(plain))
+        // One that gives each report card its candidate's reason (0.78.4): Why? where there is one.
+        state.setNotifierPluginStateForTesting(.reported(version: "0.78.4", capabilities: [
+            PulseClient.feedCapability, PulseClient.cardWhyCapability
+        ]))
+        XCTAssertTrue(state.explainsPulseCard(followup) && state.explainsPulseCard(dated))
+        XCTAssertFalse(state.explainsPulseCard(plain))
+    }
+
     func testDoItsMessageFitsWhatTheCardIsAbout() throws {
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
         {"cards": [

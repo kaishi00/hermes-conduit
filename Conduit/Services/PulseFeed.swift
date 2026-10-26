@@ -558,6 +558,13 @@ extension AppState {
             || card.isFound && card.hasReminder && notifierPlugin.reports(PulseClient.foundActionsCapability)
     }
 
+    /// Why? on this card: a follow-up's reason, or a report item's once the
+    /// plugin gives each its candidate's reason (0.78.4). A plugin from
+    /// before gave every report card the same stock line, not a reason.
+    func explainsPulseCard(_ card: PulseCard) -> Bool {
+        !card.why.isEmpty && (!card.isNoticed || notifierPlugin.reports(PulseClient.cardWhyCapability))
+    }
+
     /// Opens the chat a card came from.
     /// It opens at the message the card came from, as an artifact's Show
     /// in chat does, whatever the chat would otherwise land on.
@@ -668,6 +675,9 @@ extension PulseClient {
     /// Not now asks until when: later today, tomorrow or next week, and the
     /// card comes back as new then (0.78.3).
     static let restCapability = "pulse_rest"
+    /// A report card's why is its reason (why now, where it came from),
+    /// for Why? on the card (0.78.4).
+    static let cardWhyCapability = "pulse_card_why"
 }
 
 /// What Not now puts a card off until, as the plugin names it.
