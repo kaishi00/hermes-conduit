@@ -44,6 +44,9 @@ struct GroupRoomComposer: View {
     @State private var dictationPrefix = ""
     /// The draft as dictation last wrote it, to tell its writes from typing.
     @State private var dictatedDraft: String?
+    /// Send was tapped while dictating: it goes out when the words land
+    /// (#1309). One tap sends the whole message, no stop first.
+    @State private var pendingSend = ComposerDictationSend()
     @AppStorage(AttachmentSizeLimit.preferenceKey) private var attachmentLimitMegabytes = AttachmentSizeLimit.defaultMegabytes
 
     private let controlSize = ComposerBar.controlSize
@@ -181,12 +184,16 @@ struct GroupRoomComposer: View {
             appState.saveActiveRoomAttachments(files)
         }
         .onChange(of: appState.isVoiceInUse) { _, inUse in
-            // Voice took the microphone: dictation steps aside.
-            if inUse { dictation.cancel() }
+            // Voice took the microphone: dictation steps aside, and a send
+            // waiting on its words goes with it.
+            guard inUse else { return }
+            pendingSend.cancel()
+            dictation.cancel()
         }
         .onDisappear {
             // A send whose files were still going up stops here; they stay
             // in the room's draft for the next visit.
+            pendingSend.cancel()
             dictation.cancel()
             uploadTask?.cancel()
         }
@@ -457,6 +464,8 @@ struct GroupRoomComposer: View {
                 } else {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 14, weight: .semibold))
+                        // A send waiting on dictation's last words shows it.
+                        .symbolEffect(.pulse, isActive: pendingSend.isWaiting && !reduceMotion)
                 }
             }
             .foregroundStyle(canSend || isUploading ? Color.white : Color.secondary.opacity(0.48))
@@ -480,6 +489,24 @@ struct GroupRoomComposer: View {
     // MARK: - Sending
 
     private func send() {
+        // Send tapped while dictating: stop it and send once the last words
+        // land, so one tap sends what was said (#1309).
+        switch pendingSend.tapped(
+            isCapturing: dictation.isCapturing,
+            isStarting: dictation.isStarting,
+            isTranscribing: dictation.isTranscribing
+        ) {
+        case .stopThenSend:
+            dictation.stop()
+            return
+        case .sendNowCallingOffStart:
+            dictation.cancel()
+        case .waitThenSend:
+            return
+        case .sendNow:
+            break
+        }
+        pendingSend.cancel()
         guard canSend else { return }
         let typed = draft
         let reply = replyReference
@@ -723,6 +750,7 @@ struct GroupRoomComposer: View {
         composerError = nil
         dictationPrefix = draft
         dictatedDraft = nil
+        pendingSend.cancel()
         Haptics.medium()
         dictation.onTranscript = { transcript in
             let prefix: String
@@ -741,8 +769,16 @@ struct GroupRoomComposer: View {
             dictatedDraft = next
             draft = next
         }
-        dictation.onFinish = { _ in Haptics.light() }
-        dictation.onFailure = { message in composerError = message }
+        dictation.onFinish = { _ in
+            Haptics.light()
+            // Send tapped mid-dictation: its last words are in the draft now.
+            if pendingSend.settled() { send() }
+        }
+        dictation.onFailure = { message in
+            // A send waiting on these words doesn't go: there are none.
+            pendingSend.cancel()
+            composerError = message
+        }
         Task {
             do {
                 try await dictation.start(token: token, hermesGateway: { appState.makeVoiceGateway() })

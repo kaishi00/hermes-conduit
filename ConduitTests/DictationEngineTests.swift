@@ -66,4 +66,67 @@ extension ComposerFullEditorTests {
             .start
         )
     }
+
+    /// #1309: Send must send, not wait for the person to stop dictating.
+    func testASendWhileDictatingStopsItAndSendsWhenTheWordsLand() {
+        var send = ComposerDictationSend()
+        XCTAssertEqual(
+            send.tapped(isCapturing: true, isStarting: false, isTranscribing: false),
+            .stopThenSend
+        )
+        XCTAssertTrue(send.isWaiting, "the message waits for the last words")
+        XCTAssertTrue(send.settled(), "dictation's finish sends it")
+        XCTAssertFalse(send.isWaiting)
+        XCTAssertFalse(send.settled(), "the next dictation's finish sends nothing")
+    }
+
+    func testASendWhileItsWordsAreOnTheirWayWaitsRatherThanCancelling() {
+        var send = ComposerDictationSend()
+        XCTAssertEqual(
+            send.tapped(isCapturing: false, isStarting: false, isTranscribing: true),
+            .waitThenSend
+        )
+        XCTAssertTrue(send.isWaiting)
+        XCTAssertTrue(send.settled())
+    }
+
+    func testASendWhileTheMicrophoneComesUpSendsAtOnce() {
+        var send = ComposerDictationSend()
+        XCTAssertEqual(
+            send.tapped(isCapturing: false, isStarting: true, isTranscribing: false),
+            .sendNowCallingOffStart,
+            "nothing was said yet, so nothing holds the send back"
+        )
+        XCTAssertFalse(send.isWaiting)
+    }
+
+    func testASendWithNoDictationSendsAtOnceAndDropsAnyWait() {
+        var send = ComposerDictationSend()
+        _ = send.tapped(isCapturing: false, isStarting: false, isTranscribing: true)
+        XCTAssertTrue(send.isWaiting)
+        XCTAssertEqual(
+            send.tapped(isCapturing: false, isStarting: false, isTranscribing: false),
+            .sendNow
+        )
+        XCTAssertFalse(send.isWaiting, "a send that goes now leaves nothing waiting")
+    }
+
+    func testASecondSendTapKeepsWaitingAndSendsOnce() {
+        var send = ComposerDictationSend()
+        _ = send.tapped(isCapturing: false, isStarting: false, isTranscribing: true)
+        XCTAssertEqual(
+            send.tapped(isCapturing: false, isStarting: false, isTranscribing: true),
+            .waitThenSend,
+            "a second tap while the words come doesn't send twice"
+        )
+        XCTAssertTrue(send.settled())
+        XCTAssertFalse(send.settled())
+    }
+
+    func testAFailedDictationDropsTheWaitingSend() {
+        var send = ComposerDictationSend()
+        _ = send.tapped(isCapturing: true, isStarting: false, isTranscribing: false)
+        send.cancel()
+        XCTAssertFalse(send.settled(), "nothing was transcribed, so nothing is sent")
+    }
 }

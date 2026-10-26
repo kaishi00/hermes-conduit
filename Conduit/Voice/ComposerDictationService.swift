@@ -406,6 +406,55 @@ enum ComposerDictation {
     }
 }
 
+/// A Send tapped while the composer is dictating (#1309): the message waits
+/// for the last words, so one tap sends everything that was said. Dictation
+/// would otherwise be cancelled, dropping the words it had not written yet.
+struct ComposerDictationSend: Equatable {
+    /// What a Send tap does while dictation runs.
+    enum Step: Equatable {
+        /// Listening: stop it, then send once its words land.
+        case stopThenSend
+        /// Still coming up, so nothing is captured: call it off and send.
+        case sendNowCallingOffStart
+        /// Its words are on their way: send once they land.
+        case waitThenSend
+        /// Not dictating: send now.
+        case sendNow
+    }
+
+    /// A send is waiting for the words.
+    private(set) var isWaiting = false
+
+    mutating func tapped(isCapturing: Bool, isStarting: Bool, isTranscribing: Bool) -> Step {
+        if isCapturing {
+            isWaiting = true
+            return .stopThenSend
+        }
+        if isStarting {
+            isWaiting = false
+            return .sendNowCallingOffStart
+        }
+        if isTranscribing {
+            isWaiting = true
+            return .waitThenSend
+        }
+        isWaiting = false
+        return .sendNow
+    }
+
+    /// Dictation finished: whether this send goes now. Spent either way, so
+    /// the next dictation's finish sends nothing.
+    mutating func settled() -> Bool {
+        defer { isWaiting = false }
+        return isWaiting
+    }
+
+    /// Another path sent, or the composer went away: the wait is dropped.
+    mutating func cancel() {
+        isWaiting = false
+    }
+}
+
 /// The whole of one dictation. After a pause the recognizer can start its
 /// next utterance from empty, so each result is either the current
 /// utterance growing or a new one; the finished ones are kept (#333).

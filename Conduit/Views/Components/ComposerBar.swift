@@ -84,6 +84,9 @@ struct ComposerBar: View, Equatable {
     /// The draft as dictation last wrote it, so the full editor, which
     /// reports every change the same way, can tell it from typing.
     @State private var dictatedDraft: String?
+    /// Send was tapped while dictating: it goes out when the words land
+    /// (#1309). One tap sends the whole message, no stop first.
+    @State private var pendingSend = ComposerDictationSend()
     /// The full-screen editor for long drafts (#335).
     @State private var isShowingFullEditor = false
     /// V2's conversation: rest as a slim bar until the composer is used.
@@ -537,11 +540,14 @@ struct ComposerBar: View, Equatable {
             applyComposerRestoreRequests()
         }
         .onChange(of: updates.inputs.isVoiceInUse) { _, inUse in
-            // Voice took the microphone: dictation steps aside.
+            // Voice took the microphone: dictation steps aside. A send
+            // waiting on its words goes with it.
             guard inUse else { return }
+            pendingSend.cancel()
             dictation.cancel()
         }
         .onDisappear {
+            pendingSend.cancel()
             dictation.cancel()
             if voiceMessages.isActive, !voiceMessages.isSending { voiceMessages.cancel() }
             collapseTask?.cancel()
@@ -1356,6 +1362,8 @@ struct ComposerBar: View, Equatable {
             Image(systemName: actionSymbol)
                 .font(.system(size: stopOnly ? 12 : 14, weight: .semibold))
                 .contentTransition(.symbolEffect(.replace))
+                // A send waiting on dictation's last words shows it.
+                .symbolEffect(.pulse, isActive: pendingSend.isWaiting && !reduceMotion)
             if let actionTitle {
                 Text(actionTitle)
                     .font(.caption.weight(.semibold))
@@ -1502,6 +1510,28 @@ struct ComposerBar: View, Equatable {
     /// `choice` is a long-press pick for this message only; nil keeps the
     /// action the button shows.
     private func submit(_ choice: ComposerSendChoice? = nil) {
+        // Send tapped while dictating: stop it and send once the last words
+        // land, so one tap sends what was said (#1309). A pick from the hold
+        // menu is a send choice and takes the path below.
+        if choice == nil {
+            switch pendingSend.tapped(
+                isCapturing: dictation.isCapturing,
+                isStarting: dictation.isStarting,
+                isTranscribing: dictation.isTranscribing
+            ) {
+            case .stopThenSend:
+                dictation.stop()
+                return
+            case .sendNowCallingOffStart:
+                dictation.cancel()
+            case .waitThenSend:
+                return
+            case .sendNow:
+                break
+            }
+        }
+        // This send takes the words now; a wait it was holding is spent.
+        pendingSend.cancel()
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty || pendingScreenshot != nil else { return }
         if appState.composerWaitsForChat {
@@ -1509,12 +1539,9 @@ struct ComposerBar: View, Equatable {
             return
         }
 
-        // Send is beside the dictate button, so it can be tapped mid-dictation:
-        // the words so far go out, and late results must not refill the
-        // emptied field.
-        // The send haptic stands for both.
-        // A Hermes dictation still transcribing keeps going instead: none
-        // of its words were sent, and they land in the emptied field.
+        // A pick from the hold menu can land mid-dictation too: it sends the
+        // words so far, and late results must not refill the emptied field.
+        // The tap path returned above, holding the send until they land.
         if !dictation.isTranscribing {
             dictation.onFinish = nil
             dictation.cancel()
@@ -1592,6 +1619,7 @@ struct ComposerBar: View, Equatable {
             dictation.onFinish = nil
             dictation.cancel()
         }
+        pendingSend.cancel()
         isShowingFullEditor = false
         collapseSubmittedDraft(clearingReply: submittedReply != nil)
         draftStore.removeDraft(for: submittedDraftKey)
@@ -1812,6 +1840,7 @@ struct ComposerBar: View, Equatable {
         guard let token = dictation.reserveStart() else { return }
         dictationPrefix = text
         dictatedDraft = nil
+        pendingSend.cancel()
         Haptics.medium()
         dictation.onTranscript = { transcript in
             // Typed or replaced since dictation last wrote it: the sheet
@@ -1839,8 +1868,12 @@ struct ComposerBar: View, Equatable {
         }
         dictation.onFinish = { _ in
             Haptics.light()
+            // Send tapped mid-dictation: its last words are in the draft now.
+            if pendingSend.settled() { submit() }
         }
         dictation.onFailure = { message in
+            // A send waiting on these words doesn't go: there are none.
+            pendingSend.cancel()
             composerErrorMessage = message
         }
         Task {
