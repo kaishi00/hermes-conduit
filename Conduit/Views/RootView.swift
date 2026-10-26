@@ -480,13 +480,18 @@ struct MainView: View {
         NavigationStack {
             ZStack {
                 ConduitBackdrop(drifts: true)
-                if appState.activeRoomSurface != nil {
-                    // Keyed by room: another room starts with its own draft.
-                    GroupChatView()
-                        .id(appState.activeRoomSurface?.room.roomID)
-                } else {
-                    ChatView()
+                Group {
+                    if appState.activeRoomSurface != nil {
+                        // Keyed by room: another room starts with its own draft.
+                        GroupChatView()
+                            .id(appState.activeRoomSurface?.room.roomID)
+                    } else {
+                        ChatView()
+                    }
                 }
+                // The same readable column as V2's chat on a wide window;
+                // the backdrop still fills it.
+                .readableContentWidth(scaling: ReadableWidth.chat(available:))
             }
             .overlay(alignment: .leading) {
                 if !isPersistentSidebarActive {

@@ -692,9 +692,12 @@ struct V2ChatsView: View, Equatable {
             }
 
             // The gold button beside the tabs makes new chats instead
-            // (Settings > Appearance): voice takes New chat's place here.
+            // (Settings > Appearance): voice takes New chat's place here,
+            // unless a chat beside the list shows its own.
             if mainButtonNewChat {
-                V2VoiceButton(context: .home, style: .capsule)
+                if !shell.hasChatVoiceBeside {
+                    V2VoiceButton(context: .home, style: .capsule)
+                }
             } else if appState.isAllProfilesChatsOn && appState.allProfilesIncluded.count > 1 {
                 newChatInProfileMenu
             } else {

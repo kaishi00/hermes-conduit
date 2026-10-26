@@ -326,7 +326,7 @@ README and docs (none today: nothing describes the wording)
 Every way a call starts, and which chat it joins.
 
 **Siblings:** the chat's voice button (chats, project chats, Bot Chat) · the
-top bar's call button · Home's main button · the sidebar's New voice call ·
+top bar's call button · Home's main button (its own entry, Voice beside the tabs) · the sidebar's New voice call ·
 Siri, Shortcuts and the Action button · the wake phrase · widgets · CarPlay ·
 the Apple Watch · Resume Call · group rooms · a call from Hermes (its own
 entry)
@@ -357,7 +357,36 @@ entry)
 - Group rooms have no voice button setting, and the Watch and CarPlay don't follow it (#1134).
 - When a Classic call can't take over its chat, it shows a generic error (#1066).
 
-**Checked:** 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-26, at #1319 (Home's main button points to its own entry); 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
+
+## Voice beside the tabs
+
+The gold button beside the tab bar, and where voice goes when it is swapped
+for New chat, on a phone and on a split iPad or Mac window.
+
+**Siblings:** the round button (Voice, or New chat by Settings > Appearance >
+Main button) · voice in the Chats top bar and a project page's toolbar when
+swapped · the chat's own voice button (Starting a call) · a minimised call's
+way back · the iPad split layout, with the list shown or hidden (#1164) ·
+Tasks and Settings on a wide window · Bots and Bot Chat · group rooms · the
+Main button caption
+
+**Code**
+- Round button and bar: `Conduit/Views/V2/V2Shell.swift` (voiceButton, tabs, splitColumns' hostsSettings, V2SplitLayout.hasChatVoiceBeside, V2SplitLayout.tabBarUnderList, V2SplitLayout.settingsBesideList, V2MainButtonPreference)
+- Swapped voice: `Conduit/Views/V2/V2ChatsView.swift` (trailingControls), `Conduit/Views/V2/V2ProjectPage.swift` (toolbar)
+- Caption: `Conduit/Views/AuxiliaryViews.swift` (Main button)
+- Tests: `ConduitTests/V2SplitLayoutTests.swift`
+
+**Rulings**
+- Swapped, the round button starts a new chat and voice moves to the top bar; a minimised call turns it back into voice (2026-10-17, #707).
+- Split, a chat beside the list that shows its own voice button takes voice: the round voice button, and the swapped top bar and project page voice, step aside while it shows; New chat stays. A group room has none, so the list keeps its voice beside one (Eric, 2026-10-26, #1319).
+- The round button's touch-and-hold Recent menu goes with it while a chat is beside the list; the chat's own button offers a call or dictation, not Recent, so closing the chat brings the menu back (2026-10-26, #1319).
+- Split, Settings opens in the chat's column with the Chats list kept beside it, and the bar stays under the list; a chat tapped there opens in Chats. Tasks and a list shown alone have no list column and center the bar under the screen, at the list column's width (Eric, 2026-10-26, #1319; replaces #1169's bar kept at the leading edge).
+
+**Open gaps**
+- Recent isn't reachable beside a chat on a split window (see Rulings).
+
+**Checked:** 2026-10-26, at #1319.
 
 ## Chat open elsewhere
 
@@ -1706,7 +1735,7 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 **Open gaps**
 - A launch whose layout differs from the last one seen still starts from the old layout, so the row can show for a frame or arrive a frame late: the iPad was rotated or profiles were added while Conduit was closed, or another iPad window in the other layout wrote the shared key last. Closing it needs the bar's choice before the first frame, which `ViewThatFits` doesn't expose.
 
-**Checked:** 2026-10-26, #1322 (the chip and filter pill also name hidden projects, "Project chats in Chats"); the match row at #1208, carried in #1229.
+**Checked:** 2026-10-26, #1322 (the chip and filter pill also name hidden projects, "Project chats in Chats"); at #1319 (trailingControls' swapped voice steps aside beside a chat, see Voice beside the tabs); the match row at #1208, carried in #1229.
 
 ## Project chats in Chats
 
@@ -2319,25 +2348,28 @@ planner and the room driver's wakeups · a member cut off by its host ·
 disbanding a room (the home's own agents' hidden chats for it) and a guest's
 `rooms forget` · the rooms mailbox (rooms.milim.dev) · Links between
 installations (invites, the four words, unlinking), with their routes and the
-`hermes conduit-push links` commands · rooms of only your own agents
-(unchanged, except that disbanding one now deletes its hidden chats) ·
-past-chat search in every chat (it no longer finds those rooms) · approvals
-for your agents in rooms hosted elsewhere · text that describes it: the
-notifier README's "Rooms with other people's agents", "A member cut off from a
-room", "Disbanding a room ends its hidden chats", "Linking with someone" and
-"Group rooms between turns", the framing and block messages models read,
-Disband's warning, Group Info and the choices page's captions, Settings
-captions
+`hermes conduit-push links` commands · getting a Hermes ready for rooms
+(its API server and the tools rooms may use), with its route and
+`hermes conduit-push rooms setup` · rooms of only your own agents (unchanged,
+except that disbanding one now deletes its hidden chats) · past-chat search
+in every chat (it no longer finds those rooms) · approvals for your agents in
+rooms hosted elsewhere · text that describes it: the notifier README's "Rooms
+with other people's agents", "A member cut off from a room", "Disbanding a
+room ends its hidden chats", "Linking with someone", "Setting this Hermes up
+for rooms" and "Group rooms between turns", the framing and block messages
+models read, Disband's warning, Group Info and the choices page's captions,
+Settings captions
 
 **Code**
 - Owner rules: `notifier/room_rules.py` (room_turn, tool_block, framing, scrub, filter_search), `notifier/room_choices.py` (the per-room choices, NEVER), `notifier/__init__.py` (pre_tool_call, pre_llm_call, transform_llm_output, transform_tool_result), `notifier/dashboard/plugin_api.py` (/rooms/choices, /rooms/defaults, capability room-rules), `notifier/cli.py` (rooms show, rooms set), `notifier/README.md` (Rooms with other people's agents)
 - Memory guard, planner and wakeups: `notifier/room_memory.py`, `notifier/room_planner.py`, `notifier/room_wakeups.py` (a room's pass that ends doesn't keep every room's pass going), `notifier/README.md` (Group rooms between turns)
 - Cut-off members and disband cleanup: `notifier/room_cutoff.py` (MemberCutOff, read before Hermes sets a turn up), `notifier/room_cleanup.py` (the disband guard, the load sweep, forget_room), `notifier/dashboard/plugin_api.py` (DELETE /rooms/sessions, capability room-forget; it installs both guards where the dashboard drives rooms), `notifier/cli.py` (rooms forget), `notifier/README.md` (A member cut off from a room, Disbanding a room ends its hidden chats)
 - Mailbox: `notifier/mailbox/src/server.mjs`, `notifier/mailbox/README.md` (protocol v1, self-hosting), `notifier/mailbox/deploy/compose.yaml`
-- Links: `notifier/room_links.py` (invites, the accept and its confirm, unlinking, the inbox loop, links.json), `notifier/room_identity.py` (an installation's keys and its four words), `notifier/bip39_english.txt`, `notifier/room_envelope.py` (sealed, signed envelopes), `notifier/room_mailbox.py` (the mailbox client), `notifier/dashboard/plugin_api.py` (/rooms/identity, /rooms/links, capability room-links), `notifier/cli.py` (links invite, preview, accept, list, remove, cancel), `notifier/README.md` (Linking with someone)
+- Links: `notifier/room_links.py` (invites, the accept and its confirm, unlinking, the inbox loop, links.json), `notifier/room_identity.py` (an installation's keys and its four words), `notifier/bip39_english.txt`, `notifier/room_envelope.py` (sealed, signed envelopes), `notifier/room_mailbox.py` (the mailbox client, which looks a peer mailbox's name up), `notifier/dashboard/plugin_api.py` (/rooms/identity, /rooms/links, capability room-links), `notifier/cli.py` (links invite, preview, accept, list, remove, cancel), `notifier/README.md` (Linking with someone)
+- Host setup: `notifier/room_setup.py` (what a profile needs, the setup and its gateway restart), `notifier/dashboard/plugin_api.py` (/rooms/setup, capability room-setup), `notifier/cli.py` (rooms setup), `notifier/README.md` (Setting this Hermes up for rooms)
 - App, today's rooms (a member from another installation has target kind peer): `Conduit/Services/GroupChatModels.swift` (GroupMember.target, members(namedBy:)), `Conduit/Services/AppState.swift` (activeRoomResponder, groupMemberBot), `Conduit/Views/GroupChatView.swift` (and Disband's warning), `Conduit/Views/V2/V2ConversationScreen.swift` (Disband's warning in V2), `Conduit/Services/HermesClient.swift` (groups.*)
 - App, on the `linked-rooms` branch only, so not in backticks: Conduit/Services/RoomChoices.swift (RoomChoices, RoomChoicesClient, canSetRoomChoices), Conduit/Views/GroupRoomInfoView.swift (GroupRoomInfoSheet, RoomAgentChoicesView), ConduitTests/GroupChatModelsTests+LinkedRooms.swift; in the files above, GroupPeerRoute, GroupMemberActivity, responderState, liveMember, rosterBot and GroupRoomDisband (GroupChatModels.swift), roomResponderCache and activeRoomResponderState (AppState.swift), and Group Info in both room menus. Each of the branch's PRs names here the app paths it adds
-- Tests: `notifier/tests/test_room_rules.py`, `notifier/tests/test_room_choices.py`, `notifier/tests/test_room_memory.py`, `notifier/tests/test_room_cutoff.py`, `notifier/tests/test_room_cleanup.py`, `notifier/tests/test_room_identity.py`, `notifier/tests/test_room_envelope.py`, `notifier/tests/test_room_mailbox.py`, `notifier/tests/test_room_links.py`, `notifier/tests/test_room_wakeups.py`, `notifier/mailbox/test/server.e2e.test.mjs`
+- Tests: `notifier/tests/test_room_rules.py`, `notifier/tests/test_room_choices.py`, `notifier/tests/test_room_memory.py`, `notifier/tests/test_room_cutoff.py`, `notifier/tests/test_room_cleanup.py`, `notifier/tests/test_room_identity.py`, `notifier/tests/test_room_envelope.py`, `notifier/tests/test_room_mailbox.py`, `notifier/tests/test_room_links.py`, `notifier/tests/test_room_wakeups.py`, `notifier/tests/test_room_setup.py`, `notifier/mailbox/test/server.e2e.test.mjs`
 
 **Rulings**
 - The app side stays off main: Linked Rooms PRs target `linked-rooms`, which reaches main only once Eric has seen it all work, like `pulse`. The notifier side is on its main, hidden until Conduit shows it (2026-10-23, Eric).
@@ -2352,14 +2384,15 @@ captions
 - Disbanding a room deletes the home's own agents' hidden chats for it, with their earlier history and their helpers' chats, in every room, rooms of only your own agents too. Agents on other people's Hermes keep theirs, and their owners delete them later with `hermes conduit-push rooms forget` or the route the Chats list calls, which refuses a room still going on that host (2026-10-26, Eric; notifier #384).
 - Every link goes through the mailbox, on one LAN too. The shared one is rooms.milim.dev, a service of its own beside push.milim.dev (2026-10-22, Eric).
 - An agent runs on its owner's host with its owner's model and keys, so each owner pays for their own (2026-10-22, Eric).
-- Links are an installation's, not a profile's: each Hermes home has one identity, whose four words the other person compares, and the links routes take no profile. An invite (a link, or its QR code) is good for one accept within 24 hours. The inviter's Hermes confirms it, and the acceptor's then uses the mailbox that signed confirm names, not the invite's. Unlinking ends a Link at once on that side, and on the other when it next reads its mailbox. A Hermes keeps up to 50 Links and 10 waiting invites, each invite holding a place for its Link (2026-10-26, notifier #390).
+- Links are an installation's, not a profile's: each Hermes home has one identity, whose four words the other person compares, and the links routes take no profile. An invite (a link, or its QR code) is good for one accept within 24 hours. The inviter's Hermes confirms it, and the acceptor's then uses the mailbox that signed confirm names, not the invite's. Unlinking ends a Link at once on that side, and on the other when it next reads its mailbox. A Hermes keeps up to 50 Links and 10 waiting invites, each invite holding a place for its Link (2026-10-26, notifier #390). A peer's mailbox named by a host name is looked up before anything is sent to it, and refused (`bad_url`) when any address it has is on this computer or a private network (2026-10-26, notifier #397).
+- Getting a Hermes ready for rooms is one setup, from `hermes conduit-push rooms setup` or the route Settings > People calls, for one profile. It turns on the installation's API server (with a key made on the host that never leaves it, and a named profile's own key), saves the profile's room ceiling exactly, with MCP servers and toolsets added later kept out until they're added there, turns approvals that are off to manual, and restarts the gateway only when the API server isn't running. What it can't fix (YOLO mode, a managed install, a profile the host gateway doesn't serve, no free port) stops it before anything is written. A room pins its members' ceilings when it starts, so a changed ceiling stops that agent answering in rooms already started, and changing one the setup saved says so before it saves (2026-10-26, notifier #398).
 - Who's live in a room: the gateway's live turns where it reports them (`member_activity`, Hermes c73cbcc4), a running or stopping turn before a queued one, as Hermes Desktop reads them, and a status this build doesn't know is skipped; else the log, as before. A live member on another Hermes whose route says its Hermes refused the room reads "<name> is cut off", and one whose Hermes couldn't be reached reads "<name> can't be reached", in the header and where its reply would land, until its turn runs, whether the turn names it by member id or, having none, by profile. Hermes keeps routes in memory, so one not tried since its room service started reads as responding (2026-10-26, #1289).
 - Disband's warning in a room with a member from another installation says the room ends for everyone, your agents' sessions for it are deleted, and agents on other people's Hermes keep theirs. Rooms of only your own agents keep the old text, which holds since notifier #384 (2026-10-26, #1289).
 - Group Info, from the room menu in both shells, lists each member as your agent or on another Hermes, with its route's trouble. In a room with a member from another installation, each of your agents opens its choices for the room when the plugin reports room-rules, which stays out of usedCapabilities, so an older plugin gets no update notice. The choices page offers Talk only and Look things up, and shows Use my data or Custom, with its tools, only while one is the choice; how an agent takes part and its turns a day stay off it until the room bridge holds agents to them. Each change sends only that choice, one at a time from the tap, so an older answer can't land over a newer change; the page shows what the plugin answers, refuses an answer that isn't ok or names another room, and requests stay with the dashboard they were made for. The note's footer says it holds up to 1,000 characters, where typing stops (2026-10-26, #1289).
 - A member on another Hermes never takes one of your bots' names, pictures or colors, whatever its profile is called there (2026-10-26, #1289).
 
 **Open gaps**
-- On main the app shows none of it. The `linked-rooms` branch has the room screen and Group Info with your agents' choices; New Group Chat with linked people, Settings > People and the Chats list come in its later PRs, with their Settings captions. Until Settings > People, Links are made with `hermes conduit-push links`. Choices for a room hosted elsewhere are set with `hermes conduit-push rooms set` until the room shows in the app.
+- On main the app shows none of it. The `linked-rooms` branch has the room screen and Group Info with your agents' choices; New Group Chat with linked people, Settings > People and the Chats list come in its later PRs, with their Settings captions. Until Settings > People, Links are made with `hermes conduit-push links`, and a Hermes is set up for rooms with `hermes conduit-push rooms setup`. Choices for a room hosted elsewhere are set with `hermes conduit-push rooms set` until the room shows in the app.
 - How an agent takes part and its turns a day are kept, not enforced, until the room bridge, and the choices page leaves them out until then.
 - Use my data has no room-safe data tools yet (free/busy comes first).
 - A memory provider's automatic recall can't be skipped in a room without a Hermes change (written up for Hermes).
@@ -2370,7 +2403,7 @@ captions
 - Agents that aren't Hermes (an A2A member) are left out.
 - An acceptor's Hermes that stays off for more than 7 days while its confirm waits at the mailbox leaves the inviter's side linked until its owner unlinks it (the notifier README says so).
 
-**Checked:** 2026-10-26, #1314, with notifier #387, #390 and #396.
+**Checked:** 2026-10-26, #1321, with notifier #387, #390, #396, #397 and #398.
 
 ## Kanban workers' transcripts
 
@@ -2413,6 +2446,39 @@ Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 - A worker's transcript (its messages, not the log) can't be read in Conduit. Hermes would serve it read-only over `GET /api/sessions/{id}/messages`; a read-only view is the maintainer's call.
 
 **Checked:** 2026-10-26, #1305 (with the Share extension's picker).
+
+## Readable width on wide windows
+
+How wide a screen's content runs on an iPad, a Mac or a landscape phone,
+where a phone layout would otherwise run the whole window.
+
+**Siblings:** chat surfaces (chats, project chats, Bot Chat and group rooms
+share the chat screen, so its column) · the chat beside the list and with the
+list hidden · the drawer shell's chat (Appearance, V2 off, with or without
+the persistent sidebar) · Settings' pages · a Chats or Bots list shown alone ·
+the call screens (Classic, live calls, live voice consent) · the sign-in
+screens (their own column) · cards and pictures whose kept heights depend on
+the column's width (see Cards drawn in web pages) · text: no Settings caption
+or doc gives a width
+
+**Code**
+- Widths and the modifier: `Conduit/Views/Components/ReadableContentWidth.swift` (ReadableWidth.chat(available:), chatMax, chatShare)
+- Chat column: `Conduit/Views/V2/V2ConversationScreen.swift` (readableContentWidth(scaling:)), and the drawer shell's in `Conduit/Views/RootView.swift` (chatNavigationContent)
+- List shown alone: `Conduit/Views/V2/V2Shell.swift` (ReadableWidth.list)
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (ReadableWidth.settings)
+- Calls: `Conduit/Views/VoiceConversationSheet.swift`, `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/LiveVoiceConsentViews.swift` (ReadableWidth.call)
+- Sign-in: `Conduit/Views/Login/LoginScreens.swift` (LoginReadableWidth, 560 pt scaled with the text size)
+- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testChatColumnWidensWithTheWindowUpToItsCap)
+
+**Rulings**
+- Widths follow the window, not the device (2026-10-19, #949).
+- A chat's column is 760 pt until the chat's width passes about 1056 pt, then takes 72% of it, up to 1040 pt: an iPad beside the list keeps 760 pt, a maximized Mac or iPad window gets a wider column, with the list shown or hidden, in V2 and the drawer shell alike (2026-10-26, #1320, Eric: the column was too narrow on a maximized window). This replaces the 2026-10-23 ruling (#1169) that kept 760 pt with the list hidden.
+- Settings (720 pt), a list shown alone (720 pt) and calls (640 pt) keep fixed widths: rows, cards and captions don't read better wider. The sign-in screens keep their own 560 pt column, which follows the text size (2026-10-26, #1320).
+
+**Open gaps**
+- Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
+
+**Checked:** 2026-10-26, #1320.
 
 ## Feature map rules
 

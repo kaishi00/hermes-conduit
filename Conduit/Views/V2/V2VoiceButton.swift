@@ -3,7 +3,7 @@
 //  Conduit
 //
 //  V2's voice button: a gold circle beside the tab bar on every tab and
-//  project page. A tap starts voice where the user is (a new call, or a
+//  project page, except split beside a chat that shows its own. A tap starts voice where the user is (a new call, or a
 //  new chat in the open project's folder); touch and hold on a tab lists
 //  the three most recent conversations to talk in instead. While a call is
 //  minimised the button brings it back, its bars moving. Beside a chat's

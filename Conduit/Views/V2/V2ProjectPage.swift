@@ -14,6 +14,7 @@ struct V2ProjectPage: View {
     @EnvironmentObject private var appState: AppState
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.v2Shell) private var shell
     let project: ProjectSummary
     @State private var detail: ProjectSessionDetail?
     @State private var isLoading = true
@@ -108,9 +109,12 @@ struct V2ProjectPage: View {
         .toolbar {
             if mainButtonNewChat {
                 // The gold button beside the tabs makes this project's new
-                // chats instead (Settings > Appearance): voice sits here.
-                ToolbarItem(placement: .topBarTrailing) {
-                    V2VoiceButton(context: .project(project), style: .toolbar)
+                // chats instead (Settings > Appearance): voice sits here,
+                // unless a chat beside the list shows its own.
+                if !shell.hasChatVoiceBeside {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        V2VoiceButton(context: .project(project), style: .toolbar)
+                    }
                 }
             } else if canStartConversation {
                 ToolbarItem(placement: .topBarTrailing) {
