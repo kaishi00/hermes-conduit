@@ -933,6 +933,8 @@ final class AppState: ObservableObject {
     /// A pin change that stayed on this phone because Hermes didn't take
     /// it, shown for a moment with Hermes' reason (#555).
     @Published private(set) var pinSyncNotice: PinSyncNotice?
+    /// The refusal `showCallRefusal` left on the drawer shell's error line (V2 off).
+    private var callRefusalOnErrorLine: String?
     /// What the user has and hasn't seen, per conversation (#454).
     @Published private(set) var chatReadState = ChatReadState()
     /// The latest `session.active_list` snapshot and the profile it belongs
@@ -6444,13 +6446,23 @@ final class AppState: ObservableObject {
     /// A tap a call kept from switching says why, over the screen and over
     /// the call's own: `errorMessage` shows only while the composer is
     /// locked or the connection needs repair, and a call does neither. Only
-    /// V2 draws the notice: the drawer shell keeps its error line.
-    func showCallRefusal(_ message: String) {
-        if V2ShellPreference.isOn {
+    /// V2 draws the notice: the drawer shell keeps its error line, as
+    /// before, which says nothing during the call (`clearCallRefusal`).
+    func showCallRefusal(_ message: String, drawsNotices: Bool = V2ShellPreference.isOn) {
+        if drawsNotices {
             showNotice(message, systemImage: "exclamationmark.triangle.fill")
         } else {
             errorMessage = message
+            callRefusalOnErrorLine = message
         }
+    }
+
+    /// The call a tap waited for is over: the drawer shell's error line
+    /// drops the refusal it still has, or the line would say the tap waits
+    /// just as the tap's own switch locks the composer and shows it.
+    func clearCallRefusal() {
+        if let refusal = callRefusalOnErrorLine, errorMessage == refusal { errorMessage = nil }
+        callRefusalOnErrorLine = nil
     }
 
     /// No call, and Conduit on screen (not only launched in the background,

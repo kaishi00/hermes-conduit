@@ -304,6 +304,35 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
         XCTAssertFalse(appState.callWaitCanEnd, "away")
     }
 
+    /// With V2 off the drawer shell draws no notice: a refusal is on its
+    /// error line, as before, and goes once the call is over, so the tap's
+    /// switch, which locks the composer and shows the line, doesn't say it.
+    func testWithoutV2ARefusalLeavesTheErrorLineOnceTheCallIsOver() {
+        let saved = SavedDashboard(id: dashboardA, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [saved]))
+        let refusal = AppLocalization.string("End the call to open a chat in another profile.")
+
+        appState.showCallRefusal(refusal, drawsNotices: false)
+        XCTAssertEqual(appState.errorMessage, refusal)
+        XCTAssertNil(appState.pinSyncNotice)
+        appState.clearCallRefusal()
+        XCTAssertNil(appState.errorMessage)
+
+        // An error said since stays.
+        appState.showCallRefusal(refusal, drawsNotices: false)
+        appState.errorMessage = "Something else"
+        appState.clearCallRefusal()
+        XCTAssertEqual(appState.errorMessage, "Something else")
+
+        // V2 says it in the notice and leaves the error line alone.
+        appState.errorMessage = nil
+        appState.showCallRefusal(refusal, drawsNotices: true)
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertEqual(appState.pinSyncNotice?.message, refusal)
+        appState.clearCallRefusal()
+        XCTAssertEqual(appState.pinSyncNotice?.message, refusal)
+    }
+
     /// A call from Hermes on another saved dashboard still switches to open
     /// its own chat while its call runs: answering it leaves any other call.
     func testCallFromHermesOnAnotherDashboardStillSwitchesDuringItsCall() async {

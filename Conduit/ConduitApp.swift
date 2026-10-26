@@ -361,6 +361,7 @@ struct ConduitApp: App {
                         interval: Self.callEndRecheckInterval,
                         isReady: { appState.callWaitCanEnd }
                     ) else { return }
+                    appState.clearCallRefusal()
                 }
                 guard appState.isConnected else {
                     notifications.notificationRouteAwaitsConnection(target)
