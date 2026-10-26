@@ -416,7 +416,9 @@ struct GroupRoomComposer: View {
             ) {
             case .start: beginDictation()
             case .stop: dictation.stop()
-            case .cancelStart: dictation.cancel()
+            case .cancelStart:
+                pendingSend.cancel()
+                dictation.cancel()
             case .nothing: break
             }
         } label: {
@@ -762,6 +764,8 @@ struct GroupRoomComposer: View {
                 prefix = draft
                 dictationPrefix = draft
             } else {
+                // The send they tapped stands: it goes with what is in the
+                // field now, not the words dictation never wrote.
                 dictation.cancel()
                 return
             }

@@ -1615,11 +1615,11 @@ struct ComposerBar: View, Equatable {
             Haptics.error()
             return
         }
+        pendingSend.cancel()
         if !dictation.isTranscribing {
             dictation.onFinish = nil
             dictation.cancel()
         }
-        pendingSend.cancel()
         isShowingFullEditor = false
         collapseSubmittedDraft(clearingReply: submittedReply != nil)
         draftStore.removeDraft(for: submittedDraftKey)
@@ -1768,7 +1768,9 @@ struct ComposerBar: View, Equatable {
             case .start: beginDictation()
             case .stop: dictation.stop()
             // Tapped again before the microphone came up.
-            case .cancelStart: dictation.cancel()
+            case .cancelStart:
+                pendingSend.cancel()
+                dictation.cancel()
             case .nothing: break
             }
         } label: {
@@ -1857,6 +1859,8 @@ struct ComposerBar: View, Equatable {
                 prefix = text
                 dictationPrefix = text
             } else {
+                // The send they tapped stands: it goes with what is in the
+                // field now, not the words dictation never wrote.
                 dictation.cancel()
                 return
             }
@@ -1977,7 +1981,9 @@ struct ComposerBar: View, Equatable {
         case .start: beginDictation()
         // Already dictating: the button's second tap stops it.
         case .stop: dictation.stop()
-        case .cancelStart: dictation.cancel()
+        case .cancelStart:
+            pendingSend.cancel()
+            dictation.cancel()
         case .nothing: break
         }
     }
@@ -2233,7 +2239,9 @@ struct ComposerBar: View, Equatable {
             return
         }
         // Dictated words belong to the draft they started in, and the full
-        // editor to the chat it was opened in.
+        // editor to the chat it was opened in. A send waiting on those words
+        // belongs there too, so it doesn't go out of the chat opened now.
+        pendingSend.cancel()
         dictation.cancel()
         isShowingFullEditor = false
         if let loadedDraftKey = keptKey {
