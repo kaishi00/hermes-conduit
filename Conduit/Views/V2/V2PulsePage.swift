@@ -431,11 +431,17 @@ struct V2PulsePage: View {
             .accessibilityElement(children: .combine)
             Spacer(minLength: 8)
             if page.quietNow == .until, canQuiet {
-                Button(AppLocalization.string("End quiet time")) { quiet(false) }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(quieting)
-                    .accessibilityIdentifier("pulse.quiet-end")
+                Button {
+                    quiet(false)
+                } label: {
+                    Text(verbatim: AppLocalization.string("End quiet time"))
+                        .font(.footnote.weight(.semibold))
+                        .frame(minHeight: 44)  // a full 44 pt to tap
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(quieting)
+                .accessibilityIdentifier("pulse.quiet-end")
             }
         }
         .padding(14)
