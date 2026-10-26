@@ -356,13 +356,17 @@ struct ConduitApp: App {
                 if notifications.pendingRouteAwaitsCall {
                     // Waiting for the call its switch would have ended (or,
                     // after a relaunch, the one Conduit closing ended): it
-                    // opens once there's no call and Conduit is on screen.
+                    // opens once there's no call and Conduit is on screen,
+                    // unless a newer tap replaced it meanwhile.
                     guard await PushNotificationService.waitForCallToEnd(
                         interval: Self.callEndRecheckInterval,
                         isReady: { appState.callWaitCanEnd }
-                    ) else { return }
-                    appState.clearCallRefusal()
+                    ), !Task.isCancelled, notifications.pendingTarget == target else { return }
                 }
+                // A refusal an earlier run left on the drawer shell's error
+                // line is done with: the call it waited for ended, or this
+                // tap replaced the one it was about.
+                appState.clearCallRefusal()
                 guard appState.isConnected else {
                     notifications.notificationRouteAwaitsConnection(target)
                     return

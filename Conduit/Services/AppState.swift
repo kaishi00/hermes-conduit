@@ -6470,9 +6470,10 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// The call a tap waited for is over: the drawer shell's error line
-    /// drops the refusal it still has, or the line would say the tap waits
-    /// just as the tap's own switch locks the composer and shows it.
+    /// The call a tap waited for is over, or a newer tap replaced it: the
+    /// drawer shell's error line drops the refusal it still has, or the line
+    /// would say a tap waits just as the next switch locks the composer and
+    /// shows it.
     func clearCallRefusal() {
         if let refusal = callRefusalOnErrorLine, errorMessage == refusal { errorMessage = nil }
         callRefusalOnErrorLine = nil
