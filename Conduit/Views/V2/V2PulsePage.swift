@@ -6,10 +6,11 @@
 //  brought up, as cards. A morning brief comes first with the cards it
 //  brought, then what's new and what's still open, then Done and cleared,
 //  folded. Each card links back to the chat it came from and takes a thumbs
-//  up or down; a follow-up's thumbs down asks why, and each answer changes
+//  up or down; a follow-up's thumbs down asks why, and a report card's too
+//  once the plugin learns (asksPulseDownReason), and each answer changes
 //  what Pulse does on the host (PulseFeed.swift). Swiping a card away is
 //  Not now: off the list, nothing learned, with Undo. What Pulse learned is
-//  listed, with each kind's loudness, and every lesson can be undone.
+//  listed, with the loudest each kind gets, and every lesson can be undone.
 //  Pulse's own chat, where its hidden turns run, isn't shown: the cards are
 //  the way to answer it.
 //
@@ -1187,7 +1188,7 @@ struct PulseLearnedSheet: View {
                 if let learned {
                     Section {
                         ForEach(learned.levels.keys.sorted(), id: \.self) { kind in
-                            Picker(PulseCardKind.title(kind), selection: Binding(
+                            Picker(PulseCardKind.name(kind), selection: Binding(
                                 get: { learned.levels[kind] ?? .push },
                                 set: { level in setLevel(level, for: kind) }
                             )) {
