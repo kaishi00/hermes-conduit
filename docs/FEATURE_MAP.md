@@ -652,7 +652,7 @@ Conduit, and telling the user when it's done.
 plugin (same status rows, Update and Cancel) · the Settings and Chats notice
 that opens it · Finish setting up's plugin row · the host-run update on the
 notifier (`/self/update`) and its push when it ends · the phone-run steps for
-a plugin without it · Pulse's loop, which runs in the dashboard · the plugin's CHANGELOG.md (What's New) · what the
+a plugin without it · Pulse's loop, which runs in the dashboard (`notifier/pulse.py`, its lease in `notifier/pulse_store.py`) · the plugin's CHANGELOG.md (What's New) · what the
 confirmation and README say about restarts
 
 **Code**
