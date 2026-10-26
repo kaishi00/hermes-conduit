@@ -698,10 +698,12 @@ enum PulseRest: String, CaseIterable, Identifiable {
     /// When a card put off comes back, as its cleared row says it: later
     /// today, tomorrow, a weekday this week, or next week.
     static func backText(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
-        if calendar.isDate(date, inSameDayAs: now) || date <= now { return AppLocalization.string("Back later today") }
-        if calendar.isDateInTomorrow(date) { return AppLocalization.string("Back tomorrow") }
-        if let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
-                                              to: calendar.startOfDay(for: date)).day, days < 7 {
+        // Days from `now`, not from the clock: a time already past is later today.
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
+                                           to: calendar.startOfDay(for: date)).day ?? 0
+        if days <= 0 { return AppLocalization.string("Back later today") }
+        if days == 1 { return AppLocalization.string("Back tomorrow") }
+        if days < 7 {
             let formatter = DateFormatter()
             formatter.calendar = calendar
             formatter.timeZone = calendar.timeZone

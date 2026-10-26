@@ -581,7 +581,7 @@ final class PulseFeedTests: XCTestCase {
     func testTheClearedRowSaysWhenAPutOffCardComesBack() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
-        let noon = Date(timeIntervalSince1970: 1_800_000_000 - 1_800_000_000 % 86_400 + 12 * 3600)
+        let noon = Date(timeIntervalSince1970: 1_800_014_400)  // 2027-01-15 12:00 UTC
         let back = { (hours: Double) in
             PulseRest.backText(noon.addingTimeInterval(hours * 3600), now: noon, calendar: calendar)
         }

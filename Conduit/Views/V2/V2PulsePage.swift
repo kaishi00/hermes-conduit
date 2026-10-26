@@ -763,10 +763,9 @@ struct V2PulsePage: View {
     }
 
     private func clearedLabel(_ card: PulseCard) -> some View {
-        let title = card.dismissedAt != nil
-            ? (card.restUntil.map { AppLocalization.string("Not now") + " · " + PulseRest.backText($0) }
-               ?? AppLocalization.string("Not now"))
+        var title = card.dismissedAt != nil ? AppLocalization.string("Not now")
             : card.doneBy == "pulse" ? AppLocalization.string("Done, seen in the chat") : AppLocalization.string("Done")
+        if card.dismissedAt != nil, let back = card.restUntil { title += " · " + PulseRest.backText(back) }
         return Label(title, systemImage: card.dismissedAt != nil ? "clock" : "checkmark.circle.fill")
             .font(.footnote.weight(.semibold))
             .foregroundStyle(card.dismissedAt != nil ? Color.secondary : Color.green)
