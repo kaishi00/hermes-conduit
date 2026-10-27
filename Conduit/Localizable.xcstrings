@@ -313124,88 +313124,6 @@
         }
       }
     },
-    "Your iPhone and iPad share Conduit's preferences through the Conduit plugin on your Hermes host: appearance, chat and voice settings, CarPlay, and your other saved dashboards (their addresses only)." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dein iPhone und iPad teilen die Einstellungen von Conduit über das Conduit-Plugin auf deinem Hermes-Host: Darstellung, Chat- und Spracheinstellungen, CarPlay und deine anderen gespeicherten Dashboards (nur ihre Adressen)."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tu iPhone y tu iPad comparten las preferencias de Conduit a través del plugin de Conduit en tu host de Hermes: apariencia, ajustes de chat y voz, CarPlay y tus otros paneles guardados (solo sus direcciones)."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Votre iPhone et votre iPad partagent les préférences de Conduit via le plugin Conduit sur votre hôte Hermes : apparence, réglages de chat et de voix, CarPlay et vos autres tableaux de bord enregistrés (leurs adresses uniquement)."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhone dan iPad-mu berbagi preferensi Conduit melalui plugin Conduit di host Hermes-mu: tampilan, pengaturan chat dan suara, CarPlay, dan dasbor tersimpan lainnya (hanya alamatnya)."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhone e iPad condividono le preferenze di Conduit tramite il plugin Conduit sul tuo host Hermes: aspetto, impostazioni di chat e voce, CarPlay e le altre dashboard salvate (solo gli indirizzi)."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhone と iPad は、Hermes ホストの Conduit プラグインを通じて Conduit の設定を共有します：外観、チャットと音声の設定、CarPlay、保存済みの他のダッシュボード（アドレスのみ）。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhone과 iPad는 Hermes 호스트의 Conduit 플러그인을 통해 Conduit 환경설정을 공유합니다: 화면 모양, 채팅 및 음성 설정, CarPlay, 저장된 다른 대시보드(주소만)."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Twój iPhone i iPad dzielą preferencje Conduit przez wtyczkę Conduit na hoście Hermes: wygląd, ustawienia czatu i głosu, CarPlay oraz inne zapisane panele (tylko ich adresy)."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seu iPhone e iPad compartilham as preferências do Conduit pelo plugin do Conduit no seu host Hermes: aparência, ajustes de chat e voz, CarPlay e seus outros painéis salvos (só os endereços)."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ваши iPhone и iPad делят настройки Conduit через плагин Conduit на хосте Hermes: оформление, настройки чата и голоса, CarPlay и другие сохранённые панели (только их адреса)."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhone ve iPad’in, Hermes ana makinendeki Conduit eklentisi üzerinden Conduit tercihlerini paylaşır: görünüm, sohbet ve ses ayarları, CarPlay ve kayıtlı diğer panoların (yalnızca adresleri)."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你的 iPhone 和 iPad 通过 Hermes 主机上的 Conduit 插件共享 Conduit 偏好设置：外观、聊天和语音设置、CarPlay，以及你保存的其他仪表板（仅地址）。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你的 iPhone 和 iPad 透過 Hermes 主機上的 Conduit 外掛共享 Conduit 偏好設定：外觀、聊天和語音設定、CarPlay，以及你儲存的其他儀表板（僅位址）。"
-          }
-        }
-      }
-    },
     "Your other devices on this host take these settings when they next connect." : {
       "localizations" : {
         "de" : {
@@ -348856,6 +348774,252 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的 Watch 無法為通話建立網路連線。請讓 iPhone 在附近並開啟藍牙，或讓 Watch 連接 Wi-Fi，然後再試一次。"
+          }
+        }
+      }
+    },
+    "Reorder pinned chats" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Angeheftete Chats neu anordnen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reordenar chats fijados"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réorganiser les chats épinglés"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atur ulang urutan chat yang disematkan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riordina chat fissate"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ピンで固定したチャットを並べ替え"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "고정한 채팅 순서 변경"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zmień kolejność przypiętych czatów"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reordenar conversas fixadas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Изменить порядок закреплённых чатов"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sabitlenen sohbetleri yeniden sırala"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "调整置顶聊天顺序"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新排序釘選的聊天"
+          }
+        }
+      }
+    },
+    "Drag chats into the order you want. A chat you pin next goes on top." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zieh die Chats in die gewünschte Reihenfolge. Ein Chat, den du als Nächstes anheftest, kommt nach oben."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrastra los chats al orden que quieras. El próximo chat que fijes irá arriba."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faites glisser les chats dans l’ordre voulu. Le prochain chat que vous épinglez passe en haut."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seret chat ke urutan yang kamu mau. Chat yang kamu sematkan berikutnya akan ada di paling atas."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trascina le chat nell’ordine che preferisci. La prossima chat che fissi va in cima."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャットをドラッグして好きな順に並べます。次にピンで固定したチャットは一番上に入ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "원하는 순서로 채팅을 드래그하세요. 다음에 고정하는 채팅은 맨 위에 놓입니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przeciągnij czaty w wybranej kolejności. Następny przypięty czat trafi na górę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arraste as conversas para a ordem que quiser. A próxima conversa que você fixar vai para o topo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перетащите чаты в нужном порядке. Следующий закреплённый чат окажется сверху."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sohbetleri istediğin sıraya sürükle. Bundan sonra sabitlediğin sohbet en üste gelir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拖动聊天，排成你想要的顺序。之后置顶的聊天会排在最上面。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拖移聊天，排成你想要的順序。之後釘選的聊天會排在最上方。"
+          }
+        }
+      }
+    },
+    "Your iPhone and iPad share Conduit's preferences through the Conduit plugin on your Hermes host: appearance, chat and voice settings, the order of your pinned chats, CarPlay, and your other saved dashboards (their addresses only)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein iPhone und iPad teilen die Einstellungen von Conduit über das Conduit-Plugin auf deinem Hermes-Host: Darstellung, Chat- und Spracheinstellungen, die Reihenfolge deiner angehefteten Chats, CarPlay und deine anderen gespeicherten Dashboards (nur ihre Adressen)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu iPhone y tu iPad comparten las preferencias de Conduit a través del plugin de Conduit en tu host de Hermes: apariencia, ajustes de chat y voz, el orden de tus chats fijados, CarPlay y tus otros paneles guardados (solo sus direcciones)."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre iPhone et votre iPad partagent les préférences de Conduit via le plugin Conduit sur votre hôte Hermes : apparence, réglages de chat et de voix, l’ordre de vos chats épinglés, CarPlay et vos autres tableaux de bord enregistrés (leurs adresses uniquement)."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone dan iPad-mu berbagi preferensi Conduit melalui plugin Conduit di host Hermes-mu: tampilan, pengaturan chat dan suara, urutan chat yang disematkan, CarPlay, dan dasbor tersimpan lainnya (hanya alamatnya)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone e iPad condividono le preferenze di Conduit tramite il plugin Conduit sul tuo host Hermes: aspetto, impostazioni di chat e voce, l’ordine delle chat fissate, CarPlay e le altre dashboard salvate (solo gli indirizzi)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone と iPad は、Hermes ホストの Conduit プラグインを通じて Conduit の設定を共有します：外観、チャットと音声の設定、ピンで固定したチャットの順番、CarPlay、保存済みの他のダッシュボード（アドレスのみ）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone과 iPad는 Hermes 호스트의 Conduit 플러그인을 통해 Conduit 환경설정을 공유합니다: 화면 모양, 채팅 및 음성 설정, 고정한 채팅의 순서, CarPlay, 저장된 다른 대시보드(주소만)."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój iPhone i iPad dzielą preferencje Conduit przez wtyczkę Conduit na hoście Hermes: wygląd, ustawienia czatu i głosu, kolejność przypiętych czatów, CarPlay oraz inne zapisane panele (tylko ich adresy)."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu iPhone e iPad compartilham as preferências do Conduit pelo plugin do Conduit no seu host Hermes: aparência, ajustes de chat e voz, a ordem das suas conversas fixadas, CarPlay e seus outros painéis salvos (só os endereços)."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваши iPhone и iPad делят настройки Conduit через плагин Conduit на хосте Hermes: оформление, настройки чата и голоса, порядок закреплённых чатов, CarPlay и другие сохранённые панели (только их адреса)."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone ve iPad’in, Hermes ana makinendeki Conduit eklentisi üzerinden Conduit tercihlerini paylaşır: görünüm, sohbet ve ses ayarları, sabitlenen sohbetlerinin sırası, CarPlay ve kayıtlı diğer panoların (yalnızca adresleri)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 iPhone 和 iPad 通过 Hermes 主机上的 Conduit 插件共享 Conduit 偏好设置：外观、聊天和语音设置、置顶聊天的顺序、CarPlay，以及你保存的其他仪表板（仅地址）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 iPhone 和 iPad 透過 Hermes 主機上的 Conduit 外掛共享 Conduit 偏好設定：外觀、聊天和語音設定、釘選聊天的順序、CarPlay，以及你儲存的其他儀表板（僅位址）。"
           }
         }
       }

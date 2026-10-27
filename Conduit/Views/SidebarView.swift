@@ -181,6 +181,8 @@ struct SessionList: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var searchText = ""
     @State private var showFilterOrder = false
+    /// Reorder pinned chats, from a pinned row's menu (issue 1354).
+    @State private var pinnedOrderTarget: PinnedChatsOrderTarget?
     @State private var showArchivedSessions = false
     /// Every pinned reply of the profile (#918).
     @State private var showPinnedReplies = false
@@ -377,10 +379,12 @@ struct SessionList: View {
                     // without leaving the folder view (#338).
                     let pinned = projectsViewPinnedSessions
                     if !pinned.isEmpty {
-                        Section("Pinned") {
+                        Section {
                             ForEach(pinned) { session in
                                 sessionRow(session)
                             }
+                        } header: {
+                            pinnedHeader(count: pinned.count)
                         }
                     }
                     projectContent(hasPinnedSessions: !pinned.isEmpty)
@@ -414,10 +418,12 @@ struct SessionList: View {
 
                 let sections = nestedSessionSections
                 if layout.liveSections && !sections.pinned.isEmpty {
-                    Section("Pinned") {
+                    Section {
                         ForEach(sections.pinned) { node in
                             sessionNestRow(node, depth: 0)
                         }
+                    } header: {
+                        pinnedHeader(count: sections.pinned.count)
                     }
                 }
 
@@ -458,6 +464,10 @@ struct SessionList: View {
             SessionFilterOrderSheet()
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
+                .environmentObject(appState)
+        }
+        .sheet(item: $pinnedOrderTarget) { target in
+            PinnedChatsOrderSheet(profile: target.profile)
                 .environmentObject(appState)
         }
         .sheet(isPresented: $showArchivedSessions) {
@@ -589,16 +599,25 @@ struct SessionList: View {
     /// The Projects view hides the source filters, so its Pinned section
     /// ignores them and lists pinned chats from every project.
     private var projectsViewPinnedSessions: [SessionSummary] {
-        SidebarPinnedSessions.forProjectsView(
+        appState.arrangePinned(SidebarPinnedSessions.forProjectsView(
             sourceRows(nil),
             query: searchText,
             isPinned: appState.isSessionPinned,
             matches: sessionMatches
-        )
+        ), session: { $0 })
     }
 
     private var isSearching: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// The Pinned header, whose touch-and-hold menu reorders the profile in
+    /// use's pinned chats (issue 1354).
+    private func pinnedHeader(count: Int) -> some View {
+        Text(AppLocalization.string("Pinned"))
+            .reorderPinnedChatsMenu(isOn: count > 1) {
+                pinnedOrderTarget = PinnedChatsOrderTarget(profile: appState.activeProfile)
+            }
     }
 
     /// A search that only matches pinned chats shows them without a "No
@@ -698,13 +717,14 @@ struct SessionList: View {
     /// A search or a status filter is a lookup, not a browse: it flattens
     /// the list to the matching rows.
     private var nestedSessionSections: (pinned: [SessionNesting.Node], recent: [SessionNesting.Node]) {
-        SessionNesting.sections(
+        let sections = SessionNesting.sections(
             displayedSessions,
             query: searchText,
             statusFilterActive: statusFilter != nil,
             isPinned: appState.isSessionPinned,
             parentKeyOf: appState.sessionNestingParentKey
         )
+        return (appState.arrangePinnedNodes(sections.pinned), sections.recent)
     }
 
     private var sourceFilters: some View {
@@ -873,7 +893,8 @@ struct SessionList: View {
                         session: session,
                         nest: nest,
                         onRename: { sessionPendingRename = session },
-                        onDelete: { sessionPendingDeletion = session }
+                        onDelete: { sessionPendingDeletion = session },
+                        onReorderPinned: { pinnedOrderTarget = PinnedChatsOrderTarget(profile: appState.rowProfile(session)) }
                     )
                 }
             }
@@ -1335,6 +1356,9 @@ struct SessionActionMenuItems: View {
     let onDelete: () -> Void
     /// Runs after a mutation that changes which list the row belongs in.
     var onChanged: () -> Void = {}
+    /// Opens Reorder pinned chats for a pinned row (issue 1354); nil where
+    /// the row isn't in a Pinned section (a chat's title, a project page).
+    var onReorderPinned: (() -> Void)? = nil
 
     var body: some View {
         Button {
@@ -1352,6 +1376,16 @@ struct SessionActionMenuItems: View {
             appState.toggleSessionPinned(session)
         } label: {
             Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
+        }
+
+        if let onReorderPinned, appState.isSessionPinned(session) {
+            Button {
+                Haptics.selection()
+                // Next turn, as Rename: the sheet waits for the menu to close.
+                DispatchQueue.main.async { onReorderPinned() }
+            } label: {
+                Label(AppLocalization.string("Reorder pinned chats"), systemImage: "arrow.up.arrow.down")
+            }
         }
 
         // Only V2's Chats list has the Starred filter that lists them (#757).

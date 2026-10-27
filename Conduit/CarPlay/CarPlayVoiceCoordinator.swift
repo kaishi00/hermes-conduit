@@ -1160,6 +1160,7 @@ final class CarPlayVoiceCoordinator {
         chatsObservation = Publishers.MergeMany(
             appState.$sessions.map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.$pinnedSessionIDs.map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            appState.$pinnedChatOrder.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.$isConnected.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.$activeSessionId.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             // Which chats are this agent's, and which are bots'.
@@ -1183,7 +1184,8 @@ final class CarPlayVoiceCoordinator {
     private static func chatList(in appState: AppState) -> CarPlayChatList {
         CarPlayBrowse.chatList(
             from: appState.activeProfileSessions,
-            isPinned: { appState.isSessionPinned($0) }
+            isPinned: { appState.isSessionPinned($0) },
+            arrangePinned: { appState.arrangePinned($0, session: { $0 }) }
         )
     }
 

@@ -185,7 +185,7 @@ the outcome text each model is told
 | Gemini, Qwen, Grok, Local Live agent | `interrupt_job` with kind add: `session.steer` | kind change, or none: `session.redirect` |
 | GPT-Live | "Add to job N:": steer | "Job N:": redirect |
 | Local Live, Hermes turns | none | a correction redirects the running reply |
-| Classic | speech while Hermes thinks steers it | talking over the reply starts a new turn |
+| Classic | speech while Hermes thinks, or over its acknowledgement, steers it | talking over the reply starts a new turn |
 | Watch | the relay's `interrupt_job` carries the kind; GPT-Live reads "Add to job N:" | as on the phone |
 
 **Code**
@@ -208,7 +208,7 @@ the outcome text each model is told
 **Open gaps**
 - After a steer the model is still told Hermes "changes course now": steer and redirect both end as `.interrupted`, and the text has four copies, in `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`, `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift`, `Shared/WatchVoice/WatchJobRelay.swift` and `Shared/WatchVoice/WatchBridgeDelegation.swift` (#1157).
 
-**Checked:** 2026-10-25, at #1252, for a call that took its first request's chat; Qwen in the siblings and the table, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-27, #1390 (Classic: speech over Hermes' acknowledgement steers); 2026-10-25, at #1252, for a call that took its first request's chat; Qwen in the siblings and the table, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
 
 ## Job results during calls
 
@@ -294,14 +294,15 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 ## Acknowledging work handed to Hermes
 
 What a live model says when it hands a request to Hermes, so the user knows
-it heard without hearing the same line every time.
+it heard without hearing the same line every time; also Classic's delivery
+of Hermes' own acknowledgements while its turn runs.
 
 **Siblings:** Gemini Live · Qwen Live · Grok Live · GPT-Live · Local Live agent ·
 Watch calls · CarPlay · calls from Hermes · the web lookup heads-up · the
-instructions preview in Voice settings · Classic (not needed: Hermes speaks
-for itself) · Local Live, Hermes turns (not needed: Hermes' reply is the
-turn) · the notifier (no acknowledgement text there) · Settings captions,
-README and docs (none today: nothing describes the wording)
+instructions preview in Voice settings · Classic (Hermes speaks for itself:
+its `message.interim` notes are said as they arrive) · Local Live, Hermes turns (not needed: Hermes' reply is the
+turn) · the notifier (no acknowledgement text there; it already sends `message.interim`) · Settings captions and
+README (none: nothing describes the wording) · docs/VOICE_SETTINGS.md (Classic's acknowledgement and cutting it short)
 
 **Code**
 - The shared rule: `Shared/GeminiLive/LiveVoiceAcknowledgement.swift`; Grok and Local Live's job-claim rule (no acknowledgement text): `Shared/GrokLive/GrokLiveProtocol.swift` (jobClaimInstructions)
@@ -312,6 +313,7 @@ README and docs (none today: nothing describes the wording)
 - Local Live agent: `Shared/LocalLive/LocalLiveProtocol.swift` (agentInstructions)
 - Conduit's own tools need none: `Conduit/Voice/VoiceHostTools.swift`
 - Web lookups: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (lookupAnswerNote)
+- Classic, phone and CarPlay: `Conduit/Services/AppState.swift` (notifyVoiceAssistant), `Conduit/Voice/VoiceTypes.swift` (VoiceAssistantEvent), `Conduit/Voice/VoiceConversationController.swift` (receiveAssistantEvent, drainSpeechQueue, isAcknowledgementSteerable); tests in `ConduitTests/AppStateReasoningStreamTests.swift` and `ConduitTests/VoiceConversationControllerTests.swift`
 
 **Rulings**
 - Each handoff gets a word or a few, in the model's own words and different each time; Hermes is named at most once on a call, or when the user asks who's doing it; telling the user what it's about to do counts as the acknowledgement (2026-10-25, #1251).
@@ -319,11 +321,12 @@ README and docs (none today: nothing describes the wording)
 - GPT-Live's send-claim fallback counts a turn that is only an acknowledgement ("On it.", "One moment, checking.") as well as one naming Hermes, so fewer mentions don't let an undelegated request drop; "Sure." or "Okay." alone never counts. A bare "On it." with no delegation is taken as a send on purpose: the model only says it for work (2026-10-25, #1251).
 - A web lookup's heads-up is said once, varied, and the answer opens without it (2026-10-05, #404).
 - Conduit's own tools answer fast and need no acknowledgement (on main by 2026-10-22, b41f56c).
+- Classic says Hermes' own acknowledgement (`message.interim`) as it arrives, then goes back to thinking: it is not the end of the turn and opens no listening window. Commentary already streamed is said once, and a final reply that only repeats the acknowledgement isn't said again. Cutting the acknowledgement short (talking over it, Interrupt, CarPlay's Stop, a push to talk press) steers the turn instead of cancelling it (Eric 2026-10-27, from #1384, carried in #1390).
 
 **Open gaps**
 - GPT-Live's send-claim fallback reads English phrases only: an acknowledgement in other words or another language, with no delegation, can still go unsent until the user asks again; and a short reply made only of acknowledgement words ("Let me look.") counts as a send even when the model meant to answer itself (#1251).
 
-**Checked:** 2026-10-25, at #1251.
+**Checked:** 2026-10-27, #1390 (Classic says Hermes' acknowledgements, carried from #1384); 2026-10-25, at #1251.
 
 ## Starting a call
 
@@ -712,20 +715,20 @@ docs/OWN_VOICE_SERVER.md · the notifier's README (read-back)
 
 | Mode | On a headset | On the speaker or in the car |
 |---|---|---|
-| Classic | talk-over starts a new turn; speech while Hermes thinks steers | the same, with "Talk over it on the speaker" on |
+| Classic | talk-over starts a new turn; speech while Hermes thinks, or over its acknowledgement, steers | the same, with "Talk over it on the speaker" on |
 | Gemini, Qwen, Grok, Local Live | barge-in | barge-in with "Talk over it on the speaker" on |
 | GPT-Live | barge-in (WebRTC cancels the echo) | barge-in |
 
 **Code**
 - Routes: `Conduit/Voice/VoiceBargeInRoutePolicy.swift`
-- Classic: `Conduit/Voice/VoiceConversationController.swift` (isTalkOverAvailable, isSteerAvailable, beginPushToTalk), `Conduit/Voice/VoiceSpeechDetector.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`
+- Classic: `Conduit/Voice/VoiceConversationController.swift` (isTalkOverAvailable, isSteerAvailable, isAcknowledgementSteerable, beginPushToTalk), `Conduit/Voice/VoiceSpeechDetector.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`
 - Live modes: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift`, `Conduit/Voice/GeminiLive/LiveVoiceEchoCancellingAudio.swift`, `Conduit/Voice/GPTLive/GPTLiveConversationController.swift`
 - Interrupt: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (interruptSpeaking), `Shared/GeminiLive/GeminiLiveSessionControlling.swift` (cancelResponse), `Shared/LocalLive/LocalLiveSession.swift` (cancelResponse), `Shared/LocalLive/LocalLiveProtocol.swift` (responseCancel), `ConduitWatch/WatchDirectCallModel.swift` (tapOrb), `notifier/dashboard/plugin_api.py` (_LocalLiveReadBack.from_client, _stop; the phone's socket and the Watch's bridge both run it)
 - Push to talk surfaces: `Conduit/Services/AppState.swift` (pushToTalkSurfaceAvailable)
 - Settings: `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/GrokLiveViews.swift`
 
 **Rulings**
-- In Classic, talking over a spoken reply stops it and starts a new turn; speech while Hermes thinks steers it (2026-10-04, #391).
+- In Classic, talking over a spoken reply stops it and starts a new turn; speech while Hermes thinks steers it (2026-10-04, #391). Hermes' acknowledgement while it works isn't the reply: talking over it, Interrupt, CarPlay's Stop or a push to talk press stops it and steers the running turn (2026-10-27, #1390).
 - Talking over on the speaker is opt-in, "Talk over it on the speaker", off by default, one setting shared by Qwen, Gemini, Grok and Classic, which each mode's caption says (2026-10-03, #351; Classic 2026-10-04, #393; Qwen 2026-10-25, #1182).
 - Push to talk is per profile and off by default. While held no silence timer runs; a press while Hermes speaks interrupts, while it thinks steers. CarPlay and calls from Hermes stay hands-free (2026-10-22, #1106).
 - Interrupt (CarPlay's Stop and the Watch orb too) stops what plays on the device. In Local Live (the phone's Interrupt, CarPlay's Stop and the Watch orb) it also sends the speech server `response.cancel`, which the read-back relay passes on even when no sentence is in progress, so a server that shuts its own microphone while its reply plays listens again; nothing is guessed from the audio, and background jobs go on. Gemini, Grok and Qwen stop only what plays here: their servers hear the user over the reply and keep no gate (2026-10-27, #1331, notifier #404, from #1325).
@@ -734,7 +737,7 @@ docs/OWN_VOICE_SERVER.md · the notifier's README (read-back)
 **Open gaps**
 - Push to talk is Classic only: not the live modes, the Watch, or the Action, headset and CarPlay buttons (#1106).
 
-**Checked:** 2026-10-27, #1378 (CarPlay's Stop on Local Live tells the server too); 2026-10-27, #1331 (Interrupt tells a Local Live server, #1325); 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-27, #1390 (Classic: cutting Hermes' acknowledgement short steers); 2026-10-27, #1378 (CarPlay's Stop on Local Live tells the server too); 2026-10-27, #1331 (Interrupt tells a Local Live server, #1325); 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
 
 ## Qwen direct voice
 
@@ -1675,21 +1678,23 @@ and its commentary between tool calls (`message.interim`).
 
 **Siblings:** the compaction spinner's release · the Live Activity's writing
 state · a call's background jobs (follow-up, status, session) · Local Live's
-writing-again · the writing haptic
+writing-again · the writing haptic · Classic speech (phone, CarPlay and calls
+from Hermes: commentary is said, see Acknowledging work handed to Hermes)
 
 **Code**
 - Events: `Conduit/Services/StreamEventParser.swift`, `Conduit/Services/AppState.swift` (handleStreamEvent, the compaction release)
 - Live Activity: `Conduit/Services/LiveTurnActivities.swift`
 - Calls: `Conduit/Voice/VoiceBackgroundJobs.swift`, `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift`
 - Haptics: `Conduit/Services/Haptics.swift` (signal)
+- Classic: `Conduit/Voice/VoiceTypes.swift` (VoiceAssistantEvent), `Conduit/Services/AppState.swift` (interim/completion voice notifications), `Conduit/Voice/VoiceConversationController.swift` (speech-segment boundaries)
 
 **Rulings**
-- Commentary between tool calls is the agent writing, wherever its text is: it releases a compaction claim, shows as writing and moves a call's job along, but isn't spoken (#912 follow-up, #1191).
+- Commentary between tool calls is the agent writing, wherever its text is: it releases a compaction claim, shows as writing and moves a call's job along (#912 follow-up, #1191). Classic says it aloud, as Hermes' acknowledgement; nothing else speaks it (Eric 2026-10-27, #1390).
 
 **Open gaps**
 - `Haptics.signal` still plays the writing haptic only for `message.delta`.
 
-**Checked:** 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
+**Checked:** 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
 
 ## Live Activity for a running turn
 
@@ -2135,6 +2140,44 @@ Recent menu) · the Archived sheet · README.md
 
 **Checked:** 2026-10-26, #1328.
 
+## Pinned chats order
+
+The Pinned section in the order the person sets (issue 1354): a pinned chat
+dragged in place in the Chats list, or moved in Reorder pinned chats.
+
+**Siblings:** the Chats list's Pinned section · the Projects view's Pinned
+section · All profiles (a section per profile, and the mixed Pinned section)
+· the iPad and Mac list (same view) · the classic drawer · Reorder pinned
+chats (from a pinned row's touch-and-hold menu and the Pinned header's) · the
+row's swipes and touch-and-hold menu, which a drag must not take over ·
+VoiceOver · pin sync with Hermes (#555) · Sync across devices and its
+Settings caption · CarPlay's chat list · the chat pickers (the Home Screen
+widget's and the Share extension's) · README.md
+
+**Code**
+- Order: `Conduit/Models/PinnedChatOrder.swift` (arrange, orders, movableOffsets), `Conduit/Services/AppState+PinnedChatOrder.swift` (arrangePinned, movePinnedChats, pinnedChatsForOrdering, pinnedChatOrderSlot), `Conduit/Services/AppState.swift` (pinnedChatOrder, setPinnedChatOrder, dropFromPinnedChatOrder from storePins and removePinnedState)
+- Chats list: `Conduit/Views/V2/V2ChatsView.swift` (nestedSections, listRows' movesPinned, dragsPinned, pinnedHeader, projectsList, V2SessionActions' onReorderPinned)
+- Sheet and menu: `Conduit/Views/PinnedChatsOrderSheet.swift` (reorderPinnedChatsMenu for the Pinned headers), `Conduit/Views/SidebarView.swift` (SessionActionMenuItems' onReorderPinned; the classic drawer's nestedSessionSections, projectsViewPinnedSessions and pinnedHeader)
+- CarPlay: `Conduit/CarPlay/CarPlayBrowseTemplates.swift` (chatList's arrangePinned), `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (chatList, chatsObservation)
+- Sync: `Conduit/Services/AppState+SyncedPreferences.swift` (chats.pinned_order), `Conduit/Views/SyncedPreferencesViews.swift` (the caption)
+- Docs: `README.md` (Features)
+- Tests: `ConduitTests/PinnedChatOrderTests.swift`, `ConduitTests/CarPlayVoiceTests.swift` (testChatListPinnedChatsFollowThePhonesOrder)
+
+**Rulings**
+- Drag in place plus Reorder pinned chats, together: a hold that moves lifts a pinned row, a hold that stays still opens the menu as before, and a swipe starts before either; the sheet is the way with VoiceOver and in the classic drawer (Eric, 2026-10-27, issue 1354).
+- Only pinned chats move, and only within their own profile's pins: a drop past the last pinned chat lands at the end of Pinned, never among recent chats, and moving never pins or unpins. A nest's "3 jobs" line and its open children stay put and follow their parent.
+- Rows move by dragging while the list shows every pinned chat: not during a search or under a filter, whose rows are a lookup. The Pinned header reorders the profile in use's pins, and in All grouped by profile each profile's header reorders that profile's; a row's menu reorders its own profile's.
+- Until a profile's pins are reordered they follow recent activity, as before. Once ordered, a chat pinned since (here, on another device or in Hermes Desktop) goes on top, and an unpinned chat leaves the order, so pinning it again puts it on top too.
+- The order is kept per profile under each chat's pin id (its lineage root), so a compacted chat keeps its place. Hermes keeps only whether a chat is pinned, so the order goes to other devices through Sync across devices (`chats.pinned_order`, the profile in use's), not through Hermes. In All, each profile's pinned rows keep the places they held among the others'.
+- CarPlay's pinned chats follow the order. The widget's and Share extension's pickers don't: they pick a chat from every chat, pinned ones first by recent activity.
+
+**Open gaps**
+- Hermes Desktop keeps its own pin order, and Hermes has no field for one, so the two never match.
+- The classic drawer reorders only from the sheet: its nested rows are one block each, which a List drag can't move cleanly.
+- Not yet tried on a device: whether the system's lift from a held row and the touch-and-hold menu share the hold as planned.
+
+**Checked:** 2026-10-27, #1373.
+
 ## Deleting from a list row
 
 A row's swipe Delete in the lists that ask before deleting: the chat, the
@@ -2441,6 +2484,30 @@ workflow table
 - A reply inside a review thread doesn't flip the label, since a fork's review events get a read-only token; the docs tell contributors to comment on the PR or push.
 
 **Checked:** 2026-10-24, at #1216.
+
+## Connection setup guide
+
+How to make the dashboard reachable from the phone (Tailscale Serve, the
+home network, your own domain) and what to tell Hermes to set it up.
+
+**Siblings:** README.md (Connecting: the ask-Hermes prompt, Docker or a NAS,
+by hand) · the website's setup page (setup/index.html, written by
+scripts/build_site.py in hermes-conduit-website) · the sign-in screen's Need
+help connecting? assistant and the prompts it hands out ·
+docs/OWN_VOICE_SERVER.md (names Tailscale only as a way to reach the speech
+server, never Tailscale SSH)
+
+**Code**
+- Assistant: `Conduit/Services/ConnectionSetupFlow.swift`, `Conduit/Views/ConnectionSetupView.swift`, `Conduit/Views/ConnectionSetupForm.swift`, `Conduit/Views/Login/LoginScreens.swift`
+- Docs: `README.md`
+
+**Rulings**
+- Remote access goes through Tailscale Serve, never Tailscale SSH or a port opened to the internet. The README and the setup page say Conduit doesn't need Tailscale SSH and to keep Tailscale updated (Eric, 2026-10-27, #1377, from issue #1366).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-27, at #1377.
 
 ## Review bots
 

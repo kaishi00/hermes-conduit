@@ -911,6 +911,8 @@ final class AppState: ObservableObject {
     @Published private(set) var pinnedSessionIDs: [String] = []
     /// Starred chats, per profile, on this phone only (#757).
     @Published private(set) var sessionStars = SessionStars()
+    /// The Pinned section's order, per profile (issue 1354).
+    @Published private(set) var pinnedChatOrder = PinnedChatOrder()
     /// Replies pinned to the top of their chat, per profile (#918). Kept on
     /// this device only (AppState+PinnedReplies).
     @Published var pinnedRepliesByProfile: [String: [PinnedReply]] = [:]
@@ -6315,6 +6317,7 @@ final class AppState: ObservableObject {
             pinnedSessionIDsByProfile = stored
         }
         sessionStars = SessionStars(defaults: defaults)
+        pinnedChatOrder = PinnedChatOrder(defaults: defaults)
         allProfilesChatsSettings = AllProfilesChatsSettings(defaults: defaults)
         if let data = defaults.data(forKey: pinnedRepliesByProfileKey),
            let stored = try? JSONDecoder().decode([String: [PinnedReply]].self, from: data) {
@@ -6659,6 +6662,8 @@ final class AppState: ObservableObject {
     }
 
     private func storePins(_ pins: [String], profile: String) {
+        let unpinned = Set(pinnedSessionIDsByProfile[profile] ?? []).subtracting(pins)
+        if !unpinned.isEmpty { dropFromPinnedChatOrder(unpinned, profile: profile) }
         pinnedSessionIDsByProfile[profile] = pins
         if profile == activeProfile { pinnedSessionIDs = pins }
         persistPinnedSessions()
@@ -9095,6 +9100,25 @@ final class AppState: ObservableObject {
         publishWidgetSnapshot()
     }
 
+    /// Saves a profile's Pinned order (issue 1354): the chats' pin ids,
+    /// top first.
+    func setPinnedChatOrder(_ ids: [String], profile: String) {
+        var order = pinnedChatOrder
+        order.set(ids, profile: profile)
+        guard order != pinnedChatOrder else { return }
+        pinnedChatOrder = order
+        order.save(to: defaults)
+    }
+
+    /// An unpinned chat leaves the order, so pinning it again puts it on top.
+    private func dropFromPinnedChatOrder(_ ids: Set<String>, profile: String) {
+        var order = pinnedChatOrder
+        order.drop(ids, profile: profile)
+        guard order != pinnedChatOrder else { return }
+        pinnedChatOrder = order
+        order.save(to: defaults)
+    }
+
     // MARK: - Stars (#757)
 
     func isSessionStarred(_ session: SessionSummary) -> Bool {
@@ -9452,6 +9476,7 @@ final class AppState: ObservableObject {
         pinnedSessionIDs.removeAll { ids.contains($0) }
         pinnedSessionIDsByProfile[profile] = pinnedSessionIDs
         persistPinnedSessions()
+        dropFromPinnedChatOrder(ids, profile: profile)
         let pinID = pinID(for: session)
         if !unpinOnHost, sessionPinSync.clearPhoneOnly(pinID: pinID, profile: profile) {
             // Deleted: nothing left for the mark to protect.
@@ -10570,6 +10595,8 @@ final class AppState: ObservableObject {
         resetHostPins()
         sessionStars = SessionStars()
         defaults.removeObject(forKey: SessionStars.storageKey)
+        pinnedChatOrder = PinnedChatOrder()
+        defaults.removeObject(forKey: PinnedChatOrder.storageKey)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()
@@ -13247,6 +13274,8 @@ final class AppState: ObservableObject {
         resetHostPins()
         sessionStars = SessionStars()
         defaults.removeObject(forKey: SessionStars.storageKey)
+        pinnedChatOrder = PinnedChatOrder()
+        defaults.removeObject(forKey: PinnedChatOrder.storageKey)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()
@@ -30074,6 +30103,8 @@ final class AppState: ObservableObject {
         persistHostPinSyncState()
         sessionStars.forget(profile: activeProfile)
         sessionStars.save(to: defaults)
+        pinnedChatOrder.forget(profile: activeProfile)
+        pinnedChatOrder.save(to: defaults)
         voiceJobSessionIDsByProfile.removeValue(forKey: activeProfile)
         forgetPinnedReplies(profile: activeProfile)
         persistActiveSessionTitles()
@@ -32353,6 +32384,7 @@ final class AppState: ObservableObject {
             resetReasoningSegment()
             sealInterimCommentary(text, alreadyStreamed: alreadyStreamed)
             setRunning(true)
+            notifyVoiceAssistant(.interim(sessionID: streamSessionId, text: text, alreadyStreamed: alreadyStreamed))
 
         case .reasoningDelta(_, let text):
             finalizePendingStreamingCompletion()
@@ -32368,7 +32400,7 @@ final class AppState: ObservableObject {
                 reasoning: reasoning,
                 alreadyShown: alreadyShown
             )
-            notifyVoiceAssistant(.completed(sessionID: streamSessionId, content: content))
+            notifyVoiceAssistant(.completed(sessionID: streamSessionId, content: content, alreadyShown: alreadyShown))
 
         case .messageReaction(_, let rowId, let reactions, let role):
             applyAgentReaction(rowId: rowId, reactions: reactions, role: role)

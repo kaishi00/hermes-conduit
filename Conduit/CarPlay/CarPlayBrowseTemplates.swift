@@ -70,14 +70,15 @@ enum CarPlayBrowse {
     static let maximumChats = 11
 
     /// Pinned chats first, then the most recent others, together at most
-    /// `maximumChats`. Pinned chats are newest first too.
+    /// `maximumChats`. Pinned chats are newest first too, until
+    /// `arrangePinned` puts them in the order set on the phone (issue 1354).
     static func chatList(
         from sessions: [SessionSummary],
-        isPinned: (SessionSummary) -> Bool
+        isPinned: (SessionSummary) -> Bool,
+        arrangePinned: ([SessionSummary]) -> [SessionSummary] = { $0 }
     ) -> CarPlayChatList {
-        let pinnedSessions = sessions.filter(isPinned)
-        let pinned = recentChats(from: pinnedSessions).map { row in
-            var pinnedRow = row
+        let pinned = Array(arrangePinned(newestFirst(sessions.filter(isPinned))).prefix(maximumChats)).map { session in
+            var pinnedRow = row(for: session)
             pinnedRow.symbol = pinSymbol
             return pinnedRow
         }
@@ -89,6 +90,10 @@ enum CarPlayBrowse {
     /// The most recent unarchived chats, newest first. Rows without an
     /// activity time keep their listed order after the dated ones.
     static func recentChats(from sessions: [SessionSummary]) -> [CarPlayChatRow] {
+        newestFirst(sessions).prefix(maximumChats).map(row(for:))
+    }
+
+    private static func newestFirst(_ sessions: [SessionSummary]) -> [SessionSummary] {
         sessions.enumerated()
             .filter { !$0.element.isArchived }
             .sorted { lhs, rhs in
@@ -99,17 +104,18 @@ enum CarPlayBrowse {
                 default: return lhs.offset < rhs.offset
                 }
             }
-            .prefix(maximumChats)
-            .map { _, session in
-                let title = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                return CarPlayChatRow(
-                    sessionID: session.id,
-                    storedSessionID: session.storedSessionId,
-                    title: title.isEmpty ? AppLocalization.string("New Chat") : title,
-                    detail: session.updatedLabel,
-                    symbol: chatSymbol(for: session.source)
-                )
-            }
+            .map(\.element)
+    }
+
+    private static func row(for session: SessionSummary) -> CarPlayChatRow {
+        let title = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return CarPlayChatRow(
+            sessionID: session.id,
+            storedSessionID: session.storedSessionId,
+            title: title.isEmpty ? AppLocalization.string("New Chat") : title,
+            detail: session.updatedLabel,
+            symbol: chatSymbol(for: session.source)
+        )
     }
 
     static let chatSymbol = "bubble.left.fill"

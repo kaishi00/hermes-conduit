@@ -22,7 +22,7 @@ struct SyncedPreferencesSettingsDetail: View {
     var body: some View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Sync across devices"), symbol: "arrow.triangle.2.circlepath", tint: .conduitAccent) {
-                Text("Your iPhone and iPad share Conduit's preferences through the Conduit plugin on your Hermes host: appearance, chat and voice settings, CarPlay, and your other saved dashboards (their addresses only).")
+                Text("Your iPhone and iPad share Conduit's preferences through the Conduit plugin on your Hermes host: appearance, chat and voice settings, the order of your pinned chats, CarPlay, and your other saved dashboards (their addresses only).")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Toggle(AppLocalization.string("Sync with this Hermes"), isOn: Binding(

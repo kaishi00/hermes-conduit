@@ -375,6 +375,20 @@ extension CarPlayVoiceTemplateFactoryTests {
         XCTAssertEqual(list.pinned.count + list.recent.count, CarPlayBrowse.maximumChats)
     }
 
+    func testChatListPinnedChatsFollowThePhonesOrder() {
+        let sessions = (0..<5).map { session("s\($0)", activity: TimeInterval($0)) }
+        let pinnedIDs: Set<String> = ["s1", "s2", "s4"]
+        let list = CarPlayBrowse.chatList(
+            from: sessions,
+            isPinned: { pinnedIDs.contains($0.id) },
+            arrangePinned: { rows in
+                PinnedChatOrder.arrange(rows, profile: { _ in "default" }, ids: { [$0.id] }, order: { _ in ["s1", "s4"] })
+            }
+        )
+        XCTAssertEqual(list.pinned.map(\.sessionID), ["s2", "s1", "s4"], "issue 1354: a chat the order doesn't name leads")
+        XCTAssertEqual(list.recent.map(\.sessionID), ["s3", "s0"])
+    }
+
     func testChatListOpensWithNewVoiceChat() throws {
         var newChats = 0
         var opened: [String] = []
