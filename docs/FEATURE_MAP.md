@@ -1163,6 +1163,7 @@ README.md
 - Tree, search, viewing and changes: `Conduit/Services/WorkspaceExplorer.swift`
 - Screens: `Conduit/Views/V2/V2WorkspaceViews.swift` (WorkspaceFolderView, WorkspaceFileSheet, WorkspaceMoveSheet), `Conduit/Views/V2/V2ArtifactsViews.swift` (ChatArtifactsContent, the page's tabs), `Conduit/Views/V2/V2ConversationScreen.swift` (ChatSidePanel, openArtifacts), `Conduit/Views/ChatSupportSheets.swift` (WorkspaceSheet), `Conduit/Views/RootView.swift`, `Conduit/Views/Components/ComposerBar.swift` (+ › Workspace)
 - Links: `Conduit/Views/Components/SelectableTextView.swift` (bridge), `Conduit/Services/ConduitAppLink.swift` (file)
+- State: `Conduit/Models/Models.swift` (WorkspaceEntry, WorkspaceFilePreview), `Conduit/Services/AppState.swift` (workspaceReveal, workspaceChanges, showWorkspaceSheet, openWorkspace)
 - Tests: `ConduitTests/WorkspaceFilesTests.swift`, `ConduitTests/AppStateMultiDashboardTests.swift` (workspace listing and file pick)
 - Host: `notifier/workspace_files.py`, `notifier/dashboard/plugin_api.py` (/workspace/list, search, recent and the POST actions; capability workspace-files)
 
@@ -1171,7 +1172,7 @@ README.md
 - The full explorer: previews, search, Recently Changed, new folder and file, rename, move, duplicate, delete with a confirmation, upload, and text editing that refuses a save over a file changed since it was opened (Replace It or Keep Editing) (2026-10-27, #1399, Eric picked it).
 - The tree starts at the chat's folder and switches to a project's folder, never above them; the plugin keeps every path inside the root it's given and leaves out files holding keys or passwords. Hermes' own file routes already reach the home folder, so this scopes the view rather than guarding the host (2026-10-27, #1399).
 - Without the plugin's workspace routes the Folder still browses and opens files through Hermes' own listing; search, Recently Changed and changes ask for a plugin update.
-- A path in a reply is a link when inline code names one, or when plain text names a path with a folder and a known file type; a relative path is in the chat's folder. It opens in the Folder, at the file.
+- A path in a reply is a link when inline code names one, or when plain text names a path with a folder and a known file type; a relative path is in the chat's folder. It opens in the Folder, at the file, switching to the chat's or a project's folder that holds it. A file in none of them opens to read only, outside the tree, as Hermes' own file routes would show it (2026-10-27, #1399).
 - A tool that writes, moves or deletes files, or runs commands, refreshes an open Folder when it completes; nothing polls.
 - An answer for another dashboard, profile or folder is dropped, its failure too, and only the latest file picked shows.
 
@@ -1309,6 +1310,7 @@ reply's elements) · long-press Open Link · file paths, linked to the Folder
 
 **Code**
 - Drawn until touched, mounted on touch: `Conduit/Views/Components/SelectableTextView.swift` (drawsUntilTouched, SelectableTextViewHostView.hitTest and accessibilityElements, mountTextViewForTouch)
+- File paths: `Conduit/Views/Components/SelectableTextView.swift` (bridge), `Conduit/Services/WorkspaceFiles.swift` (WorkspacePathLinks), `Conduit/Services/ConduitAppLink.swift` (file), `Conduit/Services/AppState+Workspace.swift` (absoluteWorkspacePath, revealWorkspaceFile)
 - Test: `ConduitTests/DrawnTextLinkTapTests.swift`
 - Surfaces that draw until touched: `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift` (selectableTextDrawsUntilTouched)
 

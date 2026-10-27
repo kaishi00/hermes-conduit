@@ -233,10 +233,10 @@ enum WorkspacePathLinks {
 
     /// Ranges of plain text that name a path, with each one's link.
     static func links(inText text: String) -> [(range: NSRange, url: URL)] {
-        guard text.contains("/"), text.contains(".") else { return [] }
+        guard text.contains("/"), text.contains("."), let pattern = tokenPattern else { return [] }
         let string = text as NSString
         var found: [(NSRange, URL)] = []
-        for match in tokenPattern.matches(in: text, range: NSRange(location: 0, length: string.length)) {
+        for match in pattern.matches(in: text, range: NSRange(location: 0, length: string.length)) {
             var range = match.range
             var token = string.substring(with: range)
             // A sentence's last word keeps its period out of the path.
@@ -271,7 +271,8 @@ enum WorkspacePathLinks {
             || text.split(separator: "/").count >= 2 && text.range(of: #"^[\w.~-]+(/[\w.@+-]+)+/?$"#, options: .regularExpression) != nil
     }
 
-    private static let tokenPattern = try! NSRegularExpression(
+    /// Nil only if the pattern were mistyped: plain text then links nothing.
+    private static let tokenPattern = try? NSRegularExpression(
         pattern: #"(?<![\w/@:.~-])(?:~/|\.{1,2}/|/)?[\w@+.-]+(?:/[\w@+.-]+)+\.[A-Za-z0-9]{1,8}[.,;:!?)]*"#
     )
 

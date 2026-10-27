@@ -155,7 +155,9 @@ struct V2ConversationScreen: View {
             sidePanelIDs = ids
             sidePanelTab = tab
             sidePanelOpen = true
-        } else if artifactSessionIDs == nil {
+        } else if artifactSessionIDs?.tab != tab || tab == .made {
+            // An open sheet on the other tab comes back on this one, where
+            // its Folder takes the tapped path.
             artifactSessionIDs = ArtifactSheetIDs(ids: ids, tab: tab)
         }
     }

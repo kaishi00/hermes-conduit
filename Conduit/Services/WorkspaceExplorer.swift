@@ -17,6 +17,8 @@ final class WorkspaceExplorer: ObservableObject {
     @Published private(set) var entries: [String: [WorkspaceEntry]] = [:]
     @Published private(set) var expanded: Set<String> = []
     @Published private(set) var loading: Set<String> = []
+    /// Folders holding more than the host lists.
+    @Published private(set) var truncated: Set<String> = []
     /// A folder that couldn't be read, or an action that failed.
     @Published var error: String?
     @Published private(set) var recent: [WorkspaceEntry] = []
@@ -56,6 +58,7 @@ final class WorkspaceExplorer: ObservableObject {
         entries = [:]
         expanded = []
         loading = []
+        truncated = []
         error = nil
         recent = []
         search = nil
@@ -73,6 +76,7 @@ final class WorkspaceExplorer: ObservableObject {
         entries = [:]
         expanded = []
         loading = []
+        truncated = []
         error = nil
         recent = []
         search = nil
@@ -147,9 +151,12 @@ final class WorkspaceExplorer: ObservableObject {
         defer { if ticket == generation { loading.remove(folder) } }
         do {
             let listed: [WorkspaceEntry]
+            var cut = false
             if appState.supportsWorkspaceFiles {
-                listed = try await appState.workspaceFilesClient(profile: scope.profile)
-                    .list(root: scope.root, path: folder).entries
+                let listing = try await appState.workspaceFilesClient(profile: scope.profile)
+                    .list(root: scope.root, path: folder)
+                listed = listing.entries
+                cut = listing.truncated
             } else {
                 listed = try await appState.workspaceDirectoryEntries(at: folder, profile: scope.profile)
             }
@@ -158,6 +165,7 @@ final class WorkspaceExplorer: ObservableObject {
             // this resumption, so no other dashboard's listing merges in.
             guard isCurrent(ticket, owner, scope.profile) else { return false }
             entries[folder] = listed
+            if cut { truncated.insert(folder) } else { truncated.remove(folder) }
             return true
         } catch {
             // A switch invalidates the bridge, so a listing still in flight

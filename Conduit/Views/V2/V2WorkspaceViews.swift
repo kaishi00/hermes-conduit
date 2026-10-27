@@ -72,6 +72,11 @@ struct WorkspaceFolderView: View {
     @State private var uploadFolder: String?
     @State private var showsImporter = false
     @State private var failure: String?
+    /// The latest open; one that lands after another, or after the folder,
+    /// profile or server changed, is dropped.
+    @State private var openToken: UUID?
+    /// The tool count this tab last refreshed for.
+    @State private var seenChanges: Int?
 
     private struct OpenPage: Identifiable {
         let id = UUID()
@@ -124,6 +129,8 @@ struct WorkspaceFolderView: View {
         .task { explorer.attach(appState) }
         .task(id: key) {
             explorer.attach(appState)
+            openToken = nil
+            opening = nil
             guard let root = key.root else {
                 explorer.close()
                 return
@@ -138,8 +145,11 @@ struct WorkspaceFolderView: View {
             }
             await explorer.runSearch(query)
         }
-        .onChange(of: appState.workspaceChanges) { _, _ in
-            Task { await explorer.refresh() }
+        // Tied to the view: a refresh ends with it.
+        .task(id: appState.workspaceChanges) {
+            defer { seenChanges = appState.workspaceChanges }
+            guard let seen = seenChanges, seen != appState.workspaceChanges else { return }
+            await explorer.refresh()
         }
         .task(id: handlesReveals ? appState.workspaceReveal?.id : nil) {
             guard handlesReveals, let reveal = appState.workspaceReveal else { return }
@@ -356,6 +366,12 @@ struct WorkspaceFolderView: View {
                         treeRow(row.entry, depth: row.depth)
                     }
                 }
+                if !explorer.truncated.isEmpty {
+                    Text("Some folders here hold more than Conduit lists. Search finds the rest.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 12)
+                }
             }
         }
     }
@@ -399,7 +415,10 @@ struct WorkspaceFolderView: View {
     @ViewBuilder
     private var searchResults: some View {
         if let result = explorer.search {
-            if result.names.isEmpty, result.matches.isEmpty {
+            if result.names.isEmpty, result.matches.isEmpty, let error = explorer.error {
+                unavailable(title: Text("Couldn't search this folder"), detail: Text(verbatim: error),
+                            symbol: "exclamationmark.triangle")
+            } else if result.names.isEmpty, result.matches.isEmpty {
                 unavailable(title: Text("No Results"), detail: Text("Nothing in this folder matches."),
                             symbol: "magnifyingglass")
             } else {
@@ -459,8 +478,10 @@ struct WorkspaceFolderView: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .frame(width: 12)
+                            .accessibilityHidden(true)
                         Image(systemName: "folder.fill")
                             .foregroundStyle(Color.conduitAccent)
+                            .accessibilityHidden(true)
                         Text(verbatim: entry.name)
                             .font(.body)
                             .foregroundStyle(.primary)
@@ -479,6 +500,7 @@ struct WorkspaceFolderView: View {
                 }
                 .buttonStyle(.plain)
                 .contextMenu { menu(entry) }
+                .accessibilityElement(children: .combine)
                 .accessibilityValue(explorer.expanded.contains(entry.path)
                                     ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
             } else {
@@ -670,11 +692,12 @@ struct WorkspaceFolderView: View {
             viewing = entry
             Task { await explorer.view(entry, line: line) }
         case .page:
-            opening = entry.path
+            let token = startOpening(entry)
+            let resolver = resolver
             Task {
-                defer { opening = nil }
-                guard let dataURL = await resolver.dataURL(for: entry.path),
-                      let html = HTMLPreviewPage.decodedDocument(fromDataURL: dataURL) else {
+                let dataURL = await resolver.dataURL(for: entry.path)
+                guard finishOpening(token) else { return }
+                guard let dataURL, let html = HTMLPreviewPage.decodedDocument(fromDataURL: dataURL) else {
                     failure = AppLocalization.string("This file couldn't be opened.")
                     return
                 }
@@ -692,25 +715,51 @@ struct WorkspaceFolderView: View {
     /// Quick Look, which also offers Share and Save to Files.
     private func quickLook(_ entry: WorkspaceEntry) {
         guard opening == nil else { return }
-        opening = entry.path
+        let token = startOpening(entry)
         let resolver = resolver
         Task {
-            defer { opening = nil }
             switch await resolver.file(for: entry.path) {
             case .downloaded(let download):
-                if MediaPreviewPresenter.shared.present(downloaded: download) { return }
+                guard openToken == token else {
+                    MediaPreviewPresenter.removeDirectory(download.directory)
+                    return
+                }
+                // It removes the copy itself when it can't show it.
+                if MediaPreviewPresenter.shared.present(downloaded: download) {
+                    _ = finishOpening(token)
+                    return
+                }
             case .tooLarge:
+                guard finishOpening(token) else { return }
                 failure = AppLocalization.string("Too large to open on this phone")
                 return
             case .unavailable:
                 break
             }
-            guard let dataURL = await resolver.dataURL(for: entry.path),
-                  await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: entry.name) else {
+            guard openToken == token else { return }
+            let dataURL = await resolver.dataURL(for: entry.path)
+            guard finishOpening(token) else { return }
+            guard let dataURL, await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: entry.name) else {
                 failure = AppLocalization.string("This file couldn't be opened.")
                 return
             }
         }
+    }
+
+    private func startOpening(_ entry: WorkspaceEntry) -> UUID {
+        let token = UUID()
+        openToken = token
+        opening = entry.path
+        return token
+    }
+
+    /// Whether the open `token` started is still the one to show; it ends
+    /// the spinner when it is.
+    private func finishOpening(_ token: UUID) -> Bool {
+        guard openToken == token else { return false }
+        openToken = nil
+        opening = nil
+        return true
     }
 
     private var resolver: GatewayMediaDataURLResolver {
@@ -720,12 +769,11 @@ struct WorkspaceFolderView: View {
     /// A path a reply named: the chat's own folder when it's there, and the
     /// file opens, at its line for a search match.
     private func show(_ reveal: WorkspaceReveal) async {
-        if let chat = roots.first(where: { $0.kind == .chat }),
-           reveal.path.hasPrefix(AppState.normalizedWorkspacePath(chat.path)), root?.path != chat.path {
-            rootPath = chat.path
-            if let root = root?.path {
-                await explorer.open(root: root, profile: appState.workspaceProfile)
-            }
+        // The folder holding it, the chat's first: a file in none of them
+        // opens to read, outside the tree, with nothing to change.
+        if let holder = roots.first(where: { Self.path(reveal.path, isIn: $0.path) }), root?.path != holder.path {
+            rootPath = holder.path
+            await explorer.open(root: holder.path, profile: appState.workspaceProfile)
         }
         query = ""
         let entry = await explorer.reveal(reveal.path, line: reveal.line)
@@ -733,6 +781,11 @@ struct WorkspaceFolderView: View {
     }
 
     // MARK: - Changing
+
+    static func path(_ path: String, isIn folder: String) -> Bool {
+        let base = AppState.normalizedWorkspacePath(folder)
+        return path == base || path.hasPrefix(base.hasSuffix("/") ? base : base + "/")
+    }
 
     private func ask(_ kind: NamePrompt.Kind, in folder: String) {
         promptText = ""
@@ -1023,6 +1076,7 @@ struct WorkspaceCodeText: View {
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.tertiary)
                             .frame(minWidth: 30, alignment: .trailing)
+                            .accessibilityHidden(true)
                         Text(verbatim: line.isEmpty ? " " : line)
                             .font(.caption.monospaced())
                             .fixedSize(horizontal: true, vertical: false)
@@ -1114,12 +1168,18 @@ struct WorkspaceMoveSheet: View {
         failure = nil
         defer { loading = false }
         let asked = current
+        let scope = explorer.scope
+        let owner = appState.currentDashboardRuntimeOwner()
+        // Another folder asked for since, or another server or profile.
+        let isCurrent = {
+            asked == current && scope == explorer.scope && (owner.map(appState.ownsDashboardRuntime) ?? true)
+        }
         do {
             let listing = try await appState.workspaceFilesClient(profile: profile).list(root: root, path: asked)
-            guard asked == current else { return }
+            guard isCurrent() else { return }
             folders = listing.entries.filter(\.isDirectory)
         } catch {
-            guard asked == current else { return }
+            guard isCurrent() else { return }
             folders = []
             failure = UserFacingError.message(for: error)
         }

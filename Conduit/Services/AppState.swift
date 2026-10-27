@@ -33642,10 +33642,7 @@ final class AppState: ObservableObject {
     /// The drawer shell's + › Workspace (V2 off), which has no Artifacts:
     /// the Folder tab on its own.
     func openWorkspace() {
-        guard chatWorkspaceFolder != nil else {
-            errorMessage = AppLocalization.string("Workspace unavailable: Hermes has not reported a working directory for this session yet.")
-            return
-        }
+        // Without the chat's folder it still offers the projects'.
         showWorkspaceSheet = true
     }
 
