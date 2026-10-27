@@ -219,6 +219,17 @@ final class CarPlayVoiceCoordinator {
     var isObservingChats: Bool { chatsObservation != nil }
     /// Test seam over loading the chat list.
     var chatCatalogLoader: @MainActor (AppState) async -> Void = { await $0.loadSessions() }
+    /// Test seam over opening a picked chat on the phone.
+    var chatOpener: @MainActor (AppState, String) async -> AppState.SessionOpenOutcome = {
+        await $0.openSessionOutcome($1)
+    }
+    /// How long a live call picked from the chat list waits for the phone
+    /// to show its chat. The call is attached to the chat whether or not
+    /// the phone shows it, and the open can take a resume's 30 s timeout
+    /// on a connection that only looks open, all with the car on Ready:
+    /// the pick looked like it did nothing (#1362). Past this the call
+    /// starts and the phone goes on opening the chat.
+    var liveChatOpenWait: Duration = .seconds(3)
     /// The profiles the open Voice list offered, in row order.
     private var listedAgentProfiles: [String] = []
     /// The chat the driver picked from the chat list. A live call started
@@ -1327,15 +1338,17 @@ final class CarPlayVoiceCoordinator {
         if let liveMode = CarPlayLiveVoiceMode(mode) {
             endConversation()
             guard await waitForHermes(appState: appState, generation: generation), isWanted() else { return }
+            // The car shows the pick is under way while the phone opens it.
+            forward(.processing)
             // The phone shows the chat the call is attached to, as when the
-            // call starts from that chat there.
-            let opened = await appState.openSessionOutcome(row.sessionID)
+            // call starts from that chat there, unless it's slow to (#1362).
+            let opened = await openChatOnPhone(row.sessionID, in: appState, within: liveChatOpenWait)
             guard isWanted() else { return }
             if opened != .opened {
                 // The phone not showing it doesn't change which chat the
                 // driver picked: the call is still attached to it, so its
                 // requests land there and not in new chats (#378).
-                carPlayLogger.notice("picked chat did not open on the phone; the call still attaches to it")
+                carPlayLogger.notice("picked chat not open on the phone yet; the call still attaches to it")
             }
             await establishLiveVoice(liveMode, appState: appState, generation: generation, attachingTo: row.thread)
             return
@@ -1344,11 +1357,14 @@ final class CarPlayVoiceCoordinator {
             appState.closeVoiceConversation()
         }
         guard await waitForHermes(appState: appState, generation: generation), isWanted() else { return }
-        var opened = await appState.openSessionOutcome(row.sessionID)
+        // Classic Voice talks in the open chat, so it waits for the open,
+        // with the car showing the pick is under way (#1362).
+        forward(.processing)
+        var opened = await chatOpener(appState, row.sessionID)
         // Something on the phone (the automatic resume after reconnecting)
         // can take the chat view from the pick; the driver's pick wins.
         if opened == .superseded, isWanted() {
-            opened = await appState.openSessionOutcome(row.sessionID)
+            opened = await chatOpener(appState, row.sessionID)
         }
         guard isWanted() else { return }
         guard opened == .opened else {
@@ -1366,10 +1382,40 @@ final class CarPlayVoiceCoordinator {
     /// A chat open that did not land: only a failed one shows Error. A
     /// superseded one (another chat was opened meanwhile) is navigation, and
     /// the navigation that won publishes the car's next state, so nothing is
-    /// shown over it.
+    /// shown over it, though the car leaves the open's Thinking for Ready
+    /// when no conversation came of it.
     private func settleUnopenedChat(_ outcome: AppState.SessionOpenOutcome) {
-        guard outcome == .failed else { return }
-        handleControllerState(.failed(""))
+        switch outcome {
+        case .failed:
+            handleControllerState(.failed(""))
+        case .superseded:
+            if shownState == .processing, !hasOpenConversation(in: lastBoundAppState ?? appStateProvider()) {
+                forward(.ready)
+            }
+        case .opened:
+            break
+        }
+    }
+
+    /// Opens a chat on the phone, waiting at most `limit` for it: nil when
+    /// the open is still going, which it goes on doing.
+    private func openChatOnPhone(
+        _ sessionID: String,
+        in appState: AppState,
+        within limit: Duration
+    ) async -> AppState.SessionOpenOutcome? {
+        let opener = chatOpener
+        let race = FirstAnswer<AppState.SessionOpenOutcome?>()
+        return await withCheckedContinuation { continuation in
+            race.continuation = continuation
+            race.timer = Task { @MainActor in
+                try? await Task.sleep(for: limit)
+                race.answer(nil)
+            }
+            Task { @MainActor in
+                race.answer(await opener(appState, sessionID))
+            }
+        }
     }
 
     /// A settled Voice Job: its outcome is spoken again in the conversation
@@ -1877,6 +1923,13 @@ final class CarPlayVoiceCoordinator {
                 appState.releaseCarPlayGrokLive()
             }
         }
+        // A start that never began (Hermes dropped just before it) leaves
+        // the car on the Thinking shown while it waited.
+        if isCurrent(generation), isConnected, voiceStartRequest == startRequest,
+           CarPlayVoiceMode.current(in: appState) == mode.voiceMode,
+           Self.liveCallIsIdle(mode, in: appState) {
+            forward(appState.isConnected ? .ready : .error)
+        }
         // End tapped while the call was starting: the call it closed may
         // not have been running yet, so close whatever started after it,
         // unless a driver start (Listen, a picked chat) came after the
@@ -1886,6 +1939,16 @@ final class CarPlayVoiceCoordinator {
            driverStartRequest == driverStartRequestAtLastEnd {
             endConversation()
             forward(.ready)
+        }
+    }
+
+    /// The live mode's call is neither running nor failed: nothing started.
+    private static func liveCallIsIdle(_ mode: CarPlayLiveVoiceMode, in appState: AppState) -> Bool {
+        switch mode {
+        case .geminiLive: return appState.geminiLiveController.phase == .idle
+        case .qwenLive: return appState.qwenLiveController.phase == .idle
+        case .gptLive: return appState.gptLiveController.phase == .idle
+        case .grokLive: return appState.grokLiveController.phase == .idle
         }
     }
 
@@ -2066,6 +2129,21 @@ final class CarPlayVoiceCoordinator {
 
     private func isCurrent(_ generation: UInt64) -> Bool {
         connectionGeneration == generation
+    }
+}
+
+/// Resumes a continuation with the first of several answers.
+@MainActor
+private final class FirstAnswer<Value> {
+    var continuation: CheckedContinuation<Value, Never>?
+    var timer: Task<Void, Never>?
+
+    func answer(_ value: Value) {
+        guard let continuation else { return }
+        self.continuation = nil
+        timer?.cancel()
+        timer = nil
+        continuation.resume(returning: value)
     }
 }
 

@@ -3362,4 +3362,68 @@ extension CarPlayVoiceCoordinatorTests {
         XCTAssertEqual(harness.activations.last, .error)
         XCTAssertEqual(harness.appState.pinSyncNotice?.message, message)
     }
+
+    /// A live call picked from the chat list doesn't wait on the phone
+    /// showing its chat: a slow open left the car on Ready, and the pick
+    /// looked like it did nothing (#1362).
+    func testALiveCallPickedFromTheChatListStartsWhileThePhoneIsSlowToOpenIt() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        harness.appState.gptLiveController = GPTLiveConversationController(
+            makeSession: { FakeGPTLiveSessionControl() },
+            availability: { try await FakeGPTLiveClient().availability() },
+            briefing: { "[rules]" },
+            supervisor: harness.appState.voiceBackgroundJobSupervisor,
+            requestPermission: { true }
+        )
+        harness.coordinator.selectVoiceMode(.gptLive)
+        await harness.coordinator.waitForPresentation()
+        var held: CheckedContinuation<AppState.SessionOpenOutcome, Never>?
+        harness.coordinator.chatOpener = { _, _ in
+            await withCheckedContinuation { held = $0 }
+        }
+        harness.coordinator.liveChatOpenWait = .milliseconds(20)
+        let row = CarPlayChatRow(sessionID: "slow", storedSessionID: nil, title: "Slow", detail: "")
+
+        await harness.coordinator.performOpenChat(row, generation: harness.coordinator.connectionGeneration)
+
+        XCTAssertNotNil(held, "the phone is still opening the chat")
+        XCTAssertTrue(harness.appState.gptLiveController.isActive, "the call started anyway")
+        XCTAssertTrue(harness.activations.contains(.processing), "\(harness.activations)")
+        held?.resume(returning: .opened)
+        harness.appState.closeGPTLiveConversation()
+        harness.coordinator.handleDisconnect()
+    }
+
+    /// Classic Voice talks in the open chat, so it waits for the open, with
+    /// the car on Thinking meanwhile; an open another navigation took over
+    /// leaves the car on Ready, not Thinking (#1362).
+    func testAClassicChatPickShowsThinkingWhileTheChatOpens() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        var held: CheckedContinuation<AppState.SessionOpenOutcome, Never>?
+        var opens = 0
+        harness.coordinator.chatOpener = { _, _ in
+            opens += 1
+            return await withCheckedContinuation { held = $0 }
+        }
+        let row = CarPlayChatRow(sessionID: "picked", storedSessionID: nil, title: "Picked", detail: "")
+
+        let pick = Task { @MainActor in
+            await harness.coordinator.performOpenChat(row, generation: harness.coordinator.connectionGeneration)
+        }
+        for _ in 0..<500 where held == nil { await Task.yield() }
+        XCTAssertEqual(harness.activations.last, .processing, "\(harness.activations)")
+
+        held?.resume(returning: .superseded)
+        held = nil
+        for _ in 0..<500 where opens < 2 || held == nil { await Task.yield() }
+        held?.resume(returning: .superseded)
+        await pick.value
+
+        XCTAssertEqual(opens, 2, "the driver's pick is tried once more")
+        XCTAssertEqual(harness.activations.last, .ready, "\(harness.activations)")
+    }
 }
