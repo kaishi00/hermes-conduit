@@ -696,7 +696,8 @@ struct WorkspaceFolderView: View {
     // MARK: - Opening
 
     private func open(_ entry: WorkspaceEntry, line: Int? = nil) {
-        guard opening == nil else { return }
+        // One file at a time: a viewer still coming up refuses another.
+        guard opening == nil, viewing == nil else { return }
         Haptics.light()
         switch WorkspaceFileKind(name: entry.name) {
         case .text, .markdown:
@@ -782,8 +783,10 @@ struct WorkspaceFolderView: View {
     private func show(_ reveal: WorkspaceReveal) async {
         // The folder holding it, the chat's first: a file in none of them
         // opens to read, outside the tree, with nothing to change.
-        if let holder = roots.first(where: { Self.path(reveal.path, isIn: $0.path) }), root?.path != holder.path {
-            rootPath = holder.path
+        if let holder = roots.first(where: { Self.path(reveal.path, isIn: $0.path) }) {
+            if root?.path != holder.path { rootPath = holder.path }
+            // Also when the picker already names it but the explorer hasn't
+            // opened it yet (the first appearance); opening it again is free.
             await explorer.open(root: holder.path, profile: appState.workspaceProfile)
         }
         query = ""

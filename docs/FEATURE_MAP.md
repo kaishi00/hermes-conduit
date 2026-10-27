@@ -1154,7 +1154,8 @@ the chat on a wide window · the Chats bar's Artifacts page (projects' folders
 only) · + › Workspace in the drawer shell (V2 off, which has no Artifacts) ·
 file paths in replies (Links in messages) · group rooms (a tapped path opens
 the Folder on its own) · Bot Chats (the bot's profile) · the notifier's
-workspace routes · the project folder picker (same Hermes listing) ·
+workspace routes · the project folder picker (same Hermes listing) · Files
+prepared for preview (how the Folder opens pages and Quick Look) ·
 README.md
 
 **Code**
