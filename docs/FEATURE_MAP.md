@@ -1165,7 +1165,7 @@ README.md
 - Links: `Conduit/Views/Components/SelectableTextView.swift` (bridge), `Conduit/Services/ConduitAppLink.swift` (file)
 - State: `Conduit/Models/Models.swift` (WorkspaceEntry, WorkspaceFilePreview), `Conduit/Services/AppState.swift` (workspaceReveal, workspaceChanges, showWorkspaceSheet, openWorkspace)
 - Tests: `ConduitTests/WorkspaceFilesTests.swift`, `ConduitTests/AppStateMultiDashboardTests.swift` (workspace listing and file pick)
-- Host: `notifier/workspace_files.py`, `notifier/dashboard/plugin_api.py` (/workspace/list, search, recent and the POST actions; capability workspace-files)
+- Host: workspace_files.py (notifier #431), `notifier/dashboard/plugin_api.py` (/workspace/list, search, recent and the POST actions; capability workspace-files)
 
 **Rulings**
 - The Folder lives in Artifacts, not behind the composer's +: a tab in the chat's ⋯ › Artifacts sheet, beside the chat on a wide window, and on the Chats bar's Artifacts page. + › Workspace stays only in the drawer shell, which has no Artifacts (2026-10-27, #1399, Eric: "+" hurt visibility).
