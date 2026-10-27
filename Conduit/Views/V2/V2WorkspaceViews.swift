@@ -137,6 +137,12 @@ struct WorkspaceFolderView: View {
             }
             await explorer.open(root: root, profile: key.profile)
         }
+        // Gone from screen: a file still downloading never opens over
+        // whatever the user moved on to.
+        .onDisappear {
+            openToken = nil
+            opening = nil
+        }
         .task(id: query) {
             // Typing settles before the host is asked.
             if !query.isEmpty {
@@ -416,7 +422,7 @@ struct WorkspaceFolderView: View {
     @ViewBuilder
     private var searchResults: some View {
         if let result = explorer.search {
-            if result.names.isEmpty, result.matches.isEmpty, let error = explorer.error {
+            if result.names.isEmpty, result.matches.isEmpty, let error = explorer.searchError {
                 unavailable(title: Text("Couldn't search this folder"), detail: Text(verbatim: error),
                             symbol: "exclamationmark.triangle")
             } else if result.names.isEmpty, result.matches.isEmpty {
@@ -472,7 +478,9 @@ struct WorkspaceFolderView: View {
             if entry.isDirectory {
                 Button {
                     Haptics.selection()
-                    Task { await explorer.toggle(entry) }
+                    Task {
+                        if let message = await explorer.toggle(entry) { failure = message }
+                    }
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: explorer.expanded.contains(entry.path) ? "chevron.down" : "chevron.right")
@@ -587,7 +595,7 @@ struct WorkspaceFolderView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(AppLocalization.string("Line \(line.number): \(line.text)"))
+                .accessibilityLabel(AppLocalization.string("Line \(String(line.number)): \(line.text)"))
             }
         }
         .padding(10)
@@ -825,10 +833,17 @@ struct WorkspaceFolderView: View {
             let accessing = url.startAccessingSecurityScopedResource()
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            guard size <= WorkspaceFolderView.maxUploadBytes,
-                  let data = try? await Task.detached(priority: .userInitiated, operation: { try Data(contentsOf: url) }).value,
-                  data.count <= WorkspaceFolderView.maxUploadBytes else {
-                failure = AppLocalization.string("\(url.lastPathComponent) is too large to upload. Files up to 25 MB can be uploaded.")
+            let tooLarge = AppLocalization.string("\(url.lastPathComponent) is too large to upload. Files up to 25 MB can be uploaded.")
+            guard size <= WorkspaceFolderView.maxUploadBytes else {
+                failure = tooLarge
+                continue
+            }
+            guard let data = try? await Task.detached(priority: .userInitiated, operation: { try Data(contentsOf: url) }).value else {
+                failure = AppLocalization.string("This file couldn't be opened.")
+                continue
+            }
+            guard data.count <= WorkspaceFolderView.maxUploadBytes else {
+                failure = tooLarge
                 continue
             }
             await perform { client, root in

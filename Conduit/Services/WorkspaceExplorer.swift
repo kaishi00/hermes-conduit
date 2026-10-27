@@ -23,6 +23,8 @@ final class WorkspaceExplorer: ObservableObject {
     @Published var error: String?
     @Published private(set) var recent: [WorkspaceEntry] = []
     @Published private(set) var search: WorkspaceSearchResult?
+    /// Why the latest search failed; a folder's failure is `error`.
+    @Published private(set) var searchError: String?
     @Published private(set) var searching = false
 
     // The file being viewed.
@@ -62,6 +64,7 @@ final class WorkspaceExplorer: ObservableObject {
         error = nil
         recent = []
         search = nil
+        searchError = nil
         searching = false
         closeFile()
         await load(root)
@@ -80,6 +83,7 @@ final class WorkspaceExplorer: ObservableObject {
         error = nil
         recent = []
         search = nil
+        searchError = nil
         closeFile()
     }
 
@@ -88,7 +92,7 @@ final class WorkspaceExplorer: ObservableObject {
     func refresh() async {
         guard let scope else { return }
         let folders = [scope.root] + expanded.sorted()
-        for folder in folders where folder == scope.root || expanded.contains(folder) {
+        for folder in folders {
             await load(folder)
         }
         await loadRecent()
@@ -97,17 +101,22 @@ final class WorkspaceExplorer: ObservableObject {
         }
     }
 
-    func toggle(_ folder: WorkspaceEntry) async {
-        guard folder.isDirectory else { return }
+    /// Opens or closes `folder`. Returns why it couldn't open, for the
+    /// screen to say: the tree above it still shows, so `error` doesn't.
+    @discardableResult
+    func toggle(_ folder: WorkspaceEntry) async -> String? {
+        guard folder.isDirectory else { return nil }
         if expanded.contains(folder.path) {
             expanded.remove(folder.path)
-            return
+            return nil
         }
         expanded.insert(folder.path)
-        guard entries[folder.path] == nil else { return }
-        if !(await load(folder.path)) {
-            expanded.remove(folder.path)
-        }
+        guard entries[folder.path] == nil else { return nil }
+        guard !(await load(folder.path)) else { return nil }
+        expanded.remove(folder.path)
+        guard let message = error, let root = scope?.root, entries[root] != nil else { return nil }
+        error = nil
+        return message
     }
 
     /// The tree as rows: each folder's entries under it while it's expanded.
@@ -198,6 +207,7 @@ final class WorkspaceExplorer: ObservableObject {
         guard let appState, let scope, appState.supportsWorkspaceFiles, !words.isEmpty else {
             searchRequest = nil
             search = nil
+            searchError = nil
             searching = false
             return
         }
@@ -211,12 +221,13 @@ final class WorkspaceExplorer: ObservableObject {
             let found = try await appState.workspaceFilesClient(profile: scope.profile).search(root: scope.root, query: words)
             guard searchRequest == request, isCurrent(ticket, owner, scope.profile) else { return }
             search = found
+            searchError = nil
         } catch is CancellationError {
             return
         } catch {
             guard searchRequest == request, isCurrent(ticket, owner, scope.profile) else { return }
             search = WorkspaceSearchResult(query: words, names: [], matches: [], truncated: false)
-            self.error = UserFacingError.message(for: error)
+            searchError = UserFacingError.message(for: error)
         }
     }
 
