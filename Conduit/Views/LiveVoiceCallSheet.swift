@@ -753,13 +753,15 @@ extension LiveVoiceCallButtonFace where Icon == LiveVoiceCallButtonIcon {
 struct LiveVoiceCallModeMenuButton: View {
     let modeSwitch: VoiceModeSwitch
 
+    private static let symbol = "arrow.triangle.swap"
+
     var body: some View {
         let title = AppLocalization.string("Switch voice")
         LiveVoiceCallButtonFace(
-            symbol: "arrow.triangle.swap",
+            symbol: Self.symbol,
             title: title,
             icon: VoiceModeMenu(modeSwitch: modeSwitch) {
-                LiveVoiceCallButtonIcon(symbol: "arrow.triangle.swap")
+                LiveVoiceCallButtonIcon(symbol: Self.symbol)
                     .contentShape(Circle())
             }
             .accessibilityLabel(Text(verbatim: title)),
