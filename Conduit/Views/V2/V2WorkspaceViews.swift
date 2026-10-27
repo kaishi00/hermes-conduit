@@ -131,6 +131,9 @@ struct WorkspaceFolderView: View {
             explorer.attach(appState)
             openToken = nil
             opening = nil
+            // Another dashboard, profile or folder: the old one's file goes.
+            viewing = nil
+            page = nil
             guard let root = key.root else {
                 explorer.close()
                 return
@@ -163,7 +166,7 @@ struct WorkspaceFolderView: View {
             await show(reveal)
         }
         .sheet(item: $viewing, onDismiss: { explorer.closeFile() }) { entry in
-            WorkspaceFileSheet(explorer: explorer, entry: entry, root: root)
+            WorkspaceFileSheet(explorer: explorer, entry: entry)
                 .environmentObject(appState)
         }
         .sheet(item: $page) { page in
@@ -791,6 +794,8 @@ struct WorkspaceFolderView: View {
         }
         query = ""
         let entry = await explorer.reveal(reveal.path, line: reveal.line)
+        // A later tap replaced this one: that one opens.
+        guard !Task.isCancelled else { return }
         open(entry, line: reveal.line)
     }
 
@@ -905,13 +910,13 @@ struct WorkspaceFileSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var explorer: WorkspaceExplorer
     let entry: WorkspaceEntry
-    let root: WorkspaceRoot?
 
     @State private var showsSource = false
     @State private var editing = false
     @State private var draft = ""
     @State private var saving = false
     @State private var conflict = false
+    @State private var discarding = false
     @State private var failure: String?
 
     private var shown: WorkspaceEntry { explorer.viewed ?? entry }
@@ -946,6 +951,10 @@ struct WorkspaceFileSheet: View {
         } message: {
             Text("It changed after you opened it. Replace it with your version, or keep editing and copy what you need.")
         }
+        .alert(AppLocalization.string("Discard unsaved changes?"), isPresented: $discarding) {
+            Button(AppLocalization.string("Discard Draft"), role: .destructive) { editing = false }
+            Button(AppLocalization.string("Keep Editing"), role: .cancel) {}
+        }
         .alert(AppLocalization.string("Couldn't save"), isPresented: Binding(
             get: { failure != nil }, set: { if !$0 { failure = nil } }
         )) {
@@ -959,7 +968,10 @@ struct WorkspaceFileSheet: View {
     private var fileToolbar: some ToolbarContent {
         if editing {
             ToolbarItem(placement: .cancellationAction) {
-                Button(AppLocalization.string("Cancel")) { editing = false }
+                // Asks first, as the swipe does, when the draft has changes.
+                Button(AppLocalization.string("Cancel")) {
+                    if draft != explorer.preview?.text { discarding = true } else { editing = false }
+                }
             }
             ToolbarItem(placement: .confirmationAction) {
                 if saving {

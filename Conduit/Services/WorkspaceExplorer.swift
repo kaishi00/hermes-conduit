@@ -93,8 +93,11 @@ final class WorkspaceExplorer: ObservableObject {
         guard let scope else { return }
         let folders = [scope.root] + expanded.sorted()
         for folder in folders {
+            // Another folder opened meanwhile: the rest belongs to the old one.
+            guard self.scope == scope else { return }
             await load(folder)
         }
+        guard self.scope == scope else { return }
         await loadRecent()
         if let query = search?.query, !query.isEmpty {
             await runSearch(query)
