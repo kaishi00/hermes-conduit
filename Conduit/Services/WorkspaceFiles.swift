@@ -244,8 +244,8 @@ enum WorkspacePathLinks {
                 token.removeLast()
                 range.length -= (String(last) as NSString).length
             }
-            guard isPathShaped(token, needsFolder: true), let url = ConduitAppLink.file(path: token).url else { continue }
-            found.append((range, url))
+            guard isPathShaped(token, needsFolder: true) else { continue }
+            found.append((range, ConduitAppLink.file(path: token).url))
         }
         return found
     }

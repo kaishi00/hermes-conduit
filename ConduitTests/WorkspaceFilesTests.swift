@@ -113,7 +113,7 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testFileLinksOpenOnlyInsideTheApp() throws {
-        let url = try XCTUnwrap(ConduitAppLink.file(path: "/w/a b+c.md").url)
+        let url = ConduitAppLink.file(path: "/w/a b+c.md").url
         XCTAssertEqual(ConduitAppLink(url: url), .file(path: "/w/a b+c.md"))
         XCTAssertNil(ConduitAppLink(externalURL: url))
         XCTAssertNil(ConduitAppLink(url: try XCTUnwrap(URL(string: "conduit://file?path=%20"))))

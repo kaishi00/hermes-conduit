@@ -299,6 +299,7 @@ struct WorkspaceFolderView: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             TextField(AppLocalization.string("Search names and inside files"), text: $query)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -520,6 +521,7 @@ struct WorkspaceFolderView: View {
                 Image(systemName: entry.isDirectory ? "folder.fill" : WorkspaceFileKind(name: entry.name).symbol)
                     .foregroundStyle(entry.isDirectory ? Color.conduitAccent : Color.secondary)
                     .frame(width: 20)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: entry.name)
                         .font(.body)
@@ -555,6 +557,7 @@ struct WorkspaceFolderView: View {
             HStack(spacing: 8) {
                 Image(systemName: WorkspaceFileKind(name: match.name).symbol)
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 Text(verbatim: match.name)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
@@ -677,7 +680,7 @@ struct WorkspaceFolderView: View {
     private func relativeLocation(path: String) -> String {
         guard let root = root?.path else { return path }
         let base = AppState.normalizedWorkspacePath(root)
-        guard path.hasPrefix(base) else { return path }
+        guard Self.path(path, isIn: base) else { return path }
         let rest = path.dropFirst(base.count).drop { $0 == "/" }
         return rest.isEmpty ? (base as NSString).lastPathComponent : String(rest)
     }

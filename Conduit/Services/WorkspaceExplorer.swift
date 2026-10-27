@@ -167,6 +167,9 @@ final class WorkspaceExplorer: ObservableObject {
             entries[folder] = listed
             if cut { truncated.insert(folder) } else { truncated.remove(folder) }
             return true
+        } catch is CancellationError {
+            // A refresh replaced by the next one: that one reports.
+            return false
         } catch {
             // A switch invalidates the bridge, so a listing still in flight
             // fails; that failure belongs to the dashboard switched away
@@ -239,6 +242,8 @@ final class WorkspaceExplorer: ObservableObject {
             guard previewRequest == request, ticket == generation,
                   owner.map(appState.ownsDashboardRuntime) ?? true else { return }
             preview = text
+        } catch is CancellationError {
+            return
         } catch {
             guard previewRequest == request, ticket == generation,
                   owner.map(appState.ownsDashboardRuntime) ?? true else { return }
