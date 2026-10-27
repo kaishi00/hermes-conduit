@@ -1223,11 +1223,15 @@ struct ComposerBar: View, Equatable {
             } label: {
                 Label("Document", systemImage: "doc")
             }
-            Button {
-                Haptics.selection()
-                Task { await appState.openWorkspace() }
-            } label: {
-                Label("Workspace", systemImage: "folder")
+            // V2 keeps the chat's folder in ⋯ › Artifacts (#1389); the
+            // drawer shell has no Artifacts, so it stays here.
+            if !V2ShellPreference.isOn {
+                Button {
+                    Haptics.selection()
+                    appState.openWorkspace()
+                } label: {
+                    Label("Workspace", systemImage: "folder")
+                }
             }
             // The other bots, for a tag without typing `@` (the same tag
             // the @ list inserts; the chat's own bot is left out).

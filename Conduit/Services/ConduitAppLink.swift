@@ -29,6 +29,10 @@
 //  `conduit://settings/location` opens Location sharing. Only inside the
 //  app, like a bot link.
 //
+//  `conduit://file?path=<path>` is a file path a reply named: Conduit makes
+//  paths in replies tappable with it, and it opens the file in the Folder
+//  tab (#1389). Only inside the app: from outside it opens nothing.
+//
 //  `conduit://connect?url=…` is a dashboard sign-in code, read by
 //  DashboardConnectLink before these, inside the app and from outside.
 //
@@ -46,6 +50,9 @@ enum ConduitAppLink: Equatable {
     case bot(profile: String)
     /// A Settings page.
     case settings(SettingsLink)
+    /// A file on the Hermes host, by the path a reply named: absolute, or
+    /// relative to the open chat's working folder.
+    case file(path: String)
 
     enum SettingsLink: String, Equatable {
         /// Calls from Hermes.
@@ -68,6 +75,12 @@ enum ConduitAppLink: Equatable {
     init?(url: URL) {
         guard url.scheme?.lowercased() == Self.scheme,
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        if components.host?.lowercased() == "file" {
+            guard let path = components.queryItems?.first(where: { $0.name == "path" })?.value,
+                  !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            self = .file(path: path)
+            return
+        }
         let id = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard !id.isEmpty, !id.contains("/") else { return nil }
         switch components.host?.lowercased() {
@@ -131,6 +144,9 @@ enum ConduitAppLink: Equatable {
         case .settings(let page):
             components.host = "settings"
             components.path = "/" + page.rawValue
+        case .file(let path):
+            components.host = "file"
+            components.queryItems = [URLQueryItem(name: "path", value: path)]
         }
         // A session id or profile name is a plain token; a URL that can't
         // be built is a programming error, never user input.

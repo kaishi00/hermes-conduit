@@ -786,10 +786,14 @@ struct MessageReaction: Codable, Equatable, Hashable {
     }
 }
 
-struct WorkspaceEntry: Identifiable, Equatable {
+struct WorkspaceEntry: Identifiable, Equatable, Hashable {
     var name: String
     var path: String
     var isDirectory: Bool
+    /// A file's size; nil for a folder, and where the listing has none
+    /// (Hermes' own folder listing).
+    var size: Int64? = nil
+    var modified: Date? = nil
 
     var id: String { path }
 }

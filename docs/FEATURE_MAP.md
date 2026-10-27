@@ -1109,9 +1109,10 @@ pick at its moment, goes time-sensitive; see Notifications) · the Watch
 
 The files, pages and links Hermes made, listed for every chat (the Chats
 bar's Artifacts page) or for one chat (its … menu), opened in the chat's own
-viewers, with Show in Chat.
+viewers, with Show in Chat. Beside the list, the Folder tab (Workspace files).
 
-**Siblings:** the Artifacts page · a chat's own Artifacts sheet · Bot Chats
+**Siblings:** the Artifacts page · a chat's own Artifacts sheet · the panel
+beside the chat on a wide window · Bot Chats
 (kept in the bot's own profile) · All (every included profile's chats) ·
 group rooms (no Artifacts list) · the notifier's artifacts route · README.md
 
@@ -1130,13 +1131,51 @@ group rooms (no Artifacts list) · the notifier's artifacts route · README.md
 - A Bot Chat has no row in the workspace's chat list, so its ⋯ menu finds its ids from the chat itself (with the durable id Hermes confirmed under the bot's profile, so a relaunch or a reopened runtime still finds it) and the roster's registry id and lineage tip (2026-10-24, #1218, Eric's report: the item was greyed out).
 - A picture image generation made is listed: the host reads `image_generate`'s result, a saved file as a written image and a hosted one as an image link (2026-10-24, #1218 with notifier #353, plugin 0.71.1, Eric's report: a bot's generated pictures were missing).
 - A Bot Chat is listed though Hermes keeps it hidden: the host reads a chat asked for by id whether hidden or not, and a profile's whole list takes its hidden "Bot Chat" session and the sessions continuing it, while other hidden chats (a group room member's turns) stay out (2026-10-25, #1272 with notifier #376, plugin 0.78.1, Eric's report: a bot's pictures were still missing from both lists).
+- On a window with room for the chat and the panel, ⋯ › Artifacts opens beside the chat instead of in a sheet, with its own search field; a phone keeps the sheet (2026-10-27, #TBD).
 - One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
 - A file still opening is dropped when the list moves to another server or profile, and only the latest open clears the spinner. Every reload, including one on a dashboard without artifacts, outdates the request before it (2026-10-24, from #895's review, #1191).
 
 **Open gaps**
 - Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
 
-**Checked:** 2026-10-25, #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
+**Checked:** 2026-10-27, #TBD (the panel and the Folder tab); #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
+
+## Workspace files
+
+The Folder beside Artifacts: the open chat's working folder or a project's,
+browsed as a tree, searched, previewed, edited and changed, and a file path a
+reply names opened there (#1389).
+
+**Siblings:** a chat's ⋯ › Artifacts sheet (Folder tab) · the panel beside
+the chat on a wide window · the Chats bar's Artifacts page (projects' folders
+only) · + › Workspace in the drawer shell (V2 off, which has no Artifacts) ·
+file paths in replies (Links in messages) · group rooms (a tapped path opens
+the Folder on its own) · Bot Chats (the bot's profile) · the notifier's
+workspace routes · the project folder picker (same Hermes listing) ·
+README.md
+
+**Code**
+- Client and path links: `Conduit/Services/WorkspaceFiles.swift` (WorkspaceFilesClient, WorkspacePathLinks, WorkspaceRoot, WorkspaceReveal)
+- Roots, profile, reveal and refresh: `Conduit/Services/AppState+Workspace.swift` (workspaceRoots, workspaceProfile, absoluteWorkspacePath, revealWorkspaceFile, noteWorkspaceToolCompleted, readWorkspaceText, workspaceDirectoryEntries)
+- Tree, search, viewing and changes: `Conduit/Services/WorkspaceExplorer.swift`
+- Screens: `Conduit/Views/V2/V2WorkspaceViews.swift` (WorkspaceFolderView, WorkspaceFileSheet, WorkspaceMoveSheet), `Conduit/Views/V2/V2ArtifactsViews.swift` (ChatArtifactsContent, the page's tabs), `Conduit/Views/V2/V2ConversationScreen.swift` (ChatSidePanel, openArtifacts), `Conduit/Views/ChatSupportSheets.swift` (WorkspaceSheet), `Conduit/Views/RootView.swift`, `Conduit/Views/Components/ComposerBar.swift` (+ › Workspace)
+- Links: `Conduit/Views/Components/SelectableTextView.swift` (bridge), `Conduit/Services/ConduitAppLink.swift` (file)
+- Tests: `ConduitTests/WorkspaceFilesTests.swift`, `ConduitTests/AppStateMultiDashboardTests.swift` (workspace listing and file pick)
+- Host: `notifier/workspace_files.py`, `notifier/dashboard/plugin_api.py` (/workspace/list, search, recent and the POST actions; capability workspace-files)
+
+**Rulings**
+- The Folder lives in Artifacts, not behind the composer's +: a tab in the chat's ⋯ › Artifacts sheet, beside the chat on a wide window, and on the Chats bar's Artifacts page. + › Workspace stays only in the drawer shell, which has no Artifacts (2026-10-27, #TBD, Eric: "+" hurt visibility).
+- The full explorer: previews, search, Recently Changed, new folder and file, rename, move, duplicate, delete with a confirmation, upload, and text editing that refuses a save over a file changed since it was opened (Replace It or Keep Editing) (2026-10-27, #TBD, Eric picked it).
+- The tree starts at the chat's folder and switches to a project's folder, never above them; the plugin keeps every path inside the root it's given and leaves out files holding keys or passwords. Hermes' own file routes already reach the home folder, so this scopes the view rather than guarding the host (2026-10-27, #TBD).
+- Without the plugin's workspace routes the Folder still browses and opens files through Hermes' own listing; search, Recently Changed and changes ask for a plugin update.
+- A path in a reply is a link when inline code names one, or when plain text names a path with a folder and a known file type; a relative path is in the chat's folder. It opens in the Folder, at the file.
+- A tool that writes, moves or deletes files, or runs commands, refreshes an open Folder when it completes; nothing polls.
+- An answer for another dashboard, profile or folder is dropped, its failure too, and only the latest file picked shows.
+
+**Open gaps**
+- Group rooms have no Artifacts: a path tapped in a room opens the Folder on its own, at the projects' folders.
+
+**Checked:** 2026-10-27, #TBD with notifier #431.
 
 ## Bots: create and edit
 
@@ -1262,7 +1301,8 @@ drawn until a touch mounts its text view.
 **Siblings:** chats, project chats and Bot Chat (one chat view) · group rooms ·
 VoiceOver and Switch Control (text view always mounted) · Voice Control and Full
 Keyboard Access (the text view mounts and lays out when they ask for the
-reply's elements) · long-press Open Link
+reply's elements) · long-press Open Link · file paths, linked to the Folder
+(Workspace files)
 
 **Code**
 - Drawn until touched, mounted on touch: `Conduit/Views/Components/SelectableTextView.swift` (drawsUntilTouched, SelectableTextViewHostView.hitTest and accessibilityElements, mountTextViewForTouch)
@@ -1271,11 +1311,12 @@ reply's elements) · long-press Open Link
 
 **Rulings**
 - The touch that mounts a reply's text view is routed to it laid out, so it finds the link under the finger; a link never needs a second tap (2026-10-26, #1303, carried in #1311).
+- A file path in a reply is a `conduit://file` link, drawn as a link, that opens the Folder at that file; only inside the app (2026-10-27, #TBD).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-26, #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
+**Checked:** 2026-10-27, #TBD (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
 
 ## Markdown lists in messages
 
@@ -2362,20 +2403,21 @@ Gateway files Conduit downloads to show or hand to the share sheet: where the
 copy goes and when it is removed.
 
 **Siblings:** a chat's media and file previews · the Artifacts page's opener ·
-the gateway media resolver · the workspace browser's Save to Files
+the gateway media resolver · the Folder's Quick Look and Share or Save
 
 **Code**
 - Media previews: `Conduit/Views/Components/MediaPreviewPresenter.swift` (stage, stagingRoot, removeDirectory), `Conduit/Views/Components/MarkdownText.swift`, `Conduit/Views/Components/GatewayMediaDataURLResolver.swift`, `Conduit/Views/V2/V2ArtifactsViews.swift`
-- Workspace: `Conduit/Services/WorkspaceDownloads.swift`, `Conduit/Services/AppState.swift` (workspaceDownload), `Conduit/Views/ChatSupportSheets.swift` (WorkspaceFilePreviewSheet), swept at launch from `Conduit/ConduitApp.swift`
+- Folder: `Conduit/Views/V2/V2WorkspaceViews.swift` (quickLook), through the media preview presenter
 - Tests: `ConduitTests/MarkdownLargeDocumentTests+MediaPreview.swift`
 
 **Rulings**
 - Each download goes in a folder of its own, removed when the preview or share sheet that asked for it closes, or when it is dismissed or switched to another file while still downloading; a previous run's leftovers are swept at launch (2026-10-24, #1220, from #1002).
+- The Folder opens files through the media preview presenter, so its copies follow the same rule; the workspace browser's own download folder is gone (2026-10-27, #TBD).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-24, at #1220.
+**Checked:** 2026-10-27, #TBD; #1220.
 
 ## Review labels
 

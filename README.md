@@ -44,8 +44,9 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 - Map, place, travel, media, contact and info cards that Hermes draws in the chat
 - Answer Hermes' questions with a tap, or in a short form when it needs several details: fill in what you know and leave the rest blank
 - Attach photos, camera shots and any file; quote a message, react to it, copy it
-- Steer, queue or stop a running turn; context meter; slash commands and workspace files
+- Steer, queue or stop a running turn; context meter; slash commands
 - Branch, pin, archive and delete sessions; project chats; Artifacts browser for every file and page Hermes made
+- Browse the chat's folder and your projects' folders beside Artifacts: preview and edit files, search names and contents, make, rename, move and delete files, upload from the phone, and tap a file path in a reply to open it (the folder's search and changes need the plugin)
 - Saved chats open instantly, and you can type while Conduit reconnects
 
 **Voice**

@@ -752,6 +752,21 @@ struct SelectableTextView: UIViewRepresentable {
                 }
                 bridged.addAttribute(.link, value: link, range: range)
                 bridged.addAttribute(.foregroundColor, value: linkColor, range: range)
+            } else {
+                // A file path a reply names opens in the Folder tab (#1389).
+                let text = String(value[run.range].characters)
+                if run.inlinePresentationIntent?.contains(.code) == true {
+                    if let url = WorkspacePathLinks.url(forCode: text) {
+                        bridged.addAttribute(.link, value: url, range: range)
+                        bridged.addAttribute(.foregroundColor, value: linkColor, range: range)
+                    }
+                } else {
+                    for found in WorkspacePathLinks.links(inText: text) {
+                        let linked = NSRange(location: range.location + found.range.location, length: found.range.length)
+                        bridged.addAttribute(.link, value: found.url, range: linked)
+                        bridged.addAttribute(.foregroundColor, value: linkColor, range: linked)
+                    }
+                }
             }
         }
         return bridged

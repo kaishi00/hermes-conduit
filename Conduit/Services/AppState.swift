@@ -2048,15 +2048,12 @@ final class AppState: ObservableObject {
     /// A card with an event this recent may belong to an agent the gateway
     /// roster hasn't registered yet, so the roster check leaves it alone.
     static let delegateAgentRosterGrace: TimeInterval = 30
-    @Published private(set) var workspaceRoot = ""
-    @Published private(set) var workspaceEntries: [String: [WorkspaceEntry]] = [:]
-    @Published private(set) var expandedWorkspacePaths: Set<String> = []
-    @Published private(set) var workspaceLoadingPath: String?
-    @Published private(set) var workspaceError: String?
-    @Published private(set) var workspacePreview: WorkspaceFilePreview?
-    @Published private(set) var workspaceSelectedFile: WorkspaceEntry?
-    @Published private(set) var workspaceFileError: String?
-    @Published private(set) var workspaceFileLoading = false
+    /// A file path tapped in a reply, for the open chat's Folder tab to
+    /// show (AppState+Workspace.swift).
+    @Published var workspaceReveal: WorkspaceReveal?
+    /// Counts the tools Hermes finished that may have changed files, so an
+    /// open Folder tab reads its folders again.
+    @Published var workspaceChanges = 0
     @Published private(set) var gatewayDiagnostics: GatewayDiagnostics?
     @Published private(set) var gatewayDiagnosticsLoading = false
     /// Restart Gateway's progress and outcome, and the dashboard it belongs
@@ -7824,6 +7821,8 @@ final class AppState: ObservableObject {
             openLinkedBotChat(profile)
         case .settings(let page):
             settingsLinkRequest = page
+        case .file(let path):
+            revealWorkspaceFile(path)
         }
     }
 
@@ -30664,33 +30663,14 @@ final class AppState: ObservableObject {
     /// browser uses. Folder paths are selected from Hermes' filesystem listing,
     /// not entered as arbitrary strings by the phone.
     var projectFolderPickerRoot: String {
-        !runtime.cwd.isEmpty ? runtime.cwd : workspaceRoot
+        runtime.cwd
     }
 
     func workspaceDirectoryEntries(at path: String) async throws -> [WorkspaceEntry] {
-        guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         let profile = activeProfile
-        guard let encodedPath = DashboardPath.encodedQueryComponent(path) else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The workspace path could not be encoded."))
-        }
-        let result = try await dashboardTicketBridge.requestJSON(
-            path: DashboardPath.withProfile("/api/fs/list?path=\(encodedPath)", profile: profile)
-        )
+        let entries = try await workspaceDirectoryEntries(at: path, profile: profile)
         guard profile == activeProfile else { return [] }
-        if let error = result["error"] as? String, !error.isEmpty {
-            throw DashboardTicketBridgeError.requestFailed(error)
-        }
-        return ((result["entries"] as? [[String: Any]]) ?? []).compactMap { item in
-            guard let name = item["name"] as? String,
-                  let entryPath = item["path"] as? String,
-                  !name.isEmpty,
-                  !entryPath.isEmpty else { return nil }
-            return WorkspaceEntry(name: name, path: entryPath, isDirectory: item["isDirectory"] as? Bool ?? false)
-        }.sorted {
-            $0.isDirectory != $1.isDirectory
-                ? $0.isDirectory
-                : $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }
+        return entries
     }
 
     private func writeProjectIdea(_ idea: String, in folder: String, profile: String) async {
@@ -32504,6 +32484,8 @@ final class AppState: ObservableObject {
 
         case .toolComplete(_, let name, let output, let eventToolID):
             if name.lowercased() == "clarify" { break }
+            // Hermes may have changed files an open Folder tab shows.
+            noteWorkspaceToolCompleted(name)
             // Hermes just read or asked to change Conduit's settings.
             if name.lowercased() == "conduit_settings" { Task { await syncAgentSettings() } }
             // A confirmation Hermes just asked for shows without waiting on the push.
@@ -33625,107 +33607,14 @@ final class AppState: ObservableObject {
 
     // MARK: - Chat support surfaces
 
-    func openWorkspace() async {
-        guard !runtime.cwd.isEmpty else {
+    /// The drawer shell's + › Workspace (V2 off), which has no Artifacts:
+    /// the Folder tab on its own.
+    func openWorkspace() {
+        guard chatWorkspaceFolder != nil else {
             errorMessage = AppLocalization.string("Workspace unavailable: Hermes has not reported a working directory for this session yet.")
             return
         }
-        workspaceRoot = runtime.cwd
-        workspaceEntries = [:]
-        expandedWorkspacePaths = []
-        workspaceError = nil
-        workspaceSelectedFile = nil
-        workspacePreview = nil
-        workspaceFileError = nil
-        workspacePreviewRequest = nil
-        workspaceFileLoading = false
         showWorkspaceSheet = true
-        await loadWorkspace(path: runtime.cwd)
-    }
-
-    func refreshWorkspace() async {
-        guard !workspaceRoot.isEmpty else { return }
-        workspaceEntries = [:]
-        expandedWorkspacePaths = []
-        await loadWorkspace(path: workspaceRoot)
-    }
-
-    func toggleWorkspaceFolder(_ entry: WorkspaceEntry) async {
-        guard entry.isDirectory else { return }
-        if expandedWorkspacePaths.contains(entry.path) {
-            expandedWorkspacePaths.remove(entry.path)
-            return
-        }
-        expandedWorkspacePaths.insert(entry.path)
-        guard workspaceEntries[entry.path] == nil else { return }
-        if !(await loadWorkspace(path: entry.path)) {
-            expandedWorkspacePaths.remove(entry.path)
-        }
-    }
-
-    /// The latest file pick: only its read answers, whichever lands last.
-    private var workspacePreviewRequest: UUID?
-
-    func previewWorkspaceFile(_ entry: WorkspaceEntry) async {
-        guard let owner = currentDashboardRuntimeOwner() else { return }
-        let profile = activeProfile
-        let request = UUID()
-        workspacePreviewRequest = request
-        workspaceSelectedFile = entry
-        workspacePreview = nil
-        workspaceFileError = nil
-        workspaceFileLoading = true
-        defer { if workspacePreviewRequest == request { workspaceFileLoading = false } }
-        let isCurrent = { [self] in
-            workspacePreviewRequest == request && profile == activeProfile && ownsDashboardRuntime(owner)
-        }
-        do {
-            guard let path = DashboardPath.encodedQueryComponent(entry.path) else {
-                throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The workspace path could not be encoded."))
-            }
-            let result = try await owner.bridge.requestJSON(
-                path: DashboardPath.withProfile("/api/fs/read-text?path=\(path)", profile: profile)
-            )
-            guard isCurrent() else { return }
-            workspacePreview = WorkspaceFilePreview(
-                binary: result["binary"] as? Bool ?? false,
-                byteSize: result["byteSize"] as? Int ?? 0,
-                language: result["language"] as? String ?? "text",
-                mimeType: result["mimeType"] as? String ?? "text/plain",
-                text: result["text"] as? String ?? "",
-                truncated: result["truncated"] as? Bool ?? false
-            )
-        } catch {
-            guard isCurrent() else { return }
-            workspaceFileError = UserFacingError.message(for: error)
-        }
-    }
-
-    /// The file staged for Save to Files; the caller removes it with
-    /// `WorkspaceDownloads.remove` once it is done with it.
-    func workspaceDownload(for entry: WorkspaceEntry) async -> WorkspaceDownload? {
-        guard let owner = currentDashboardRuntimeOwner() else { return nil }
-        let dashboardTicketBridge = owner.bridge
-        let profile = activeProfile
-        do {
-            guard let path = DashboardPath.encodedQueryComponent(entry.path) else {
-                throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The workspace path could not be encoded."))
-            }
-            let result = try await dashboardTicketBridge.requestJSON(
-                path: DashboardPath.withProfile("/api/fs/read-data-url?path=\(path)", profile: profile),
-                maxResponseBytes: DataURLLimits.maxJSONResponseBytes
-            )
-            guard profile == activeProfile, ownsDashboardRuntime(owner) else { return nil }
-            guard let dataURL = result["dataUrl"] as? String,
-                  let data = DataURLLimits.decodeBase64DataURL(dataURL) else {
-                throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The gateway returned an invalid file payload."))
-            }
-            return try WorkspaceDownloads.stage(data, name: entry.name)
-        } catch {
-            guard profile == activeProfile, ownsDashboardRuntime(owner) else { return nil }
-            workspaceFileError = UserFacingError.message(for: error)
-            return nil
-        }
     }
 
     /// Hermes messages can refer to generated media as `MEDIA:
@@ -33894,36 +33783,6 @@ final class AppState: ObservableObject {
             logs: (logs?["lines"] as? [Any] ?? []).map { String(describing: $0) },
             error: status == nil ? AppLocalization.string("Could not refresh dashboard status.") : nil
         )
-    }
-
-    @discardableResult
-    private func loadWorkspace(path: String) async -> Bool {
-        let owner = currentDashboardRuntimeOwner()
-        let profile = activeProfile
-        workspaceLoadingPath = path
-        workspaceError = nil
-        defer { if workspaceLoadingPath == path { workspaceLoadingPath = nil } }
-        do {
-            let entries = try await workspaceDirectoryEntries(at: path)
-            // The bridge's invalidation makes a late answer throw; this
-            // re-check also covers a switch landing between that answer and
-            // this resumption, so no other dashboard's listing merges in.
-            if let owner {
-                guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
-            }
-            workspaceEntries[path] = entries
-            return true
-        } catch {
-            // A dashboard switch invalidates the bridge, so a listing still in
-            // flight fails rather than answering; that failure belongs to the
-            // dashboard switched away from and isn't reported over the next.
-            // (No bridge at all is still this dashboard's error.)
-            if let owner {
-                guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
-            }
-            workspaceError = UserFacingError.message(for: error)
-            return false
-        }
     }
 
     private func setRunning(_ running: Bool) {
