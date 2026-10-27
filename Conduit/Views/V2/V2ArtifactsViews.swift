@@ -104,10 +104,13 @@ struct ChatArtifactsSheet: View {
     /// Read once: the open chat's ids when the sheet opened.
     let sessionIDs: [String]
     @State var tab: ArtifactsTab
+    /// The tab now showing, so a later open knows whether to switch.
+    var onTabChange: (ArtifactsTab) -> Void = { _ in }
 
-    init(sessionIDs: [String], tab: ArtifactsTab = .made) {
+    init(sessionIDs: [String], tab: ArtifactsTab = .made, onTabChange: @escaping (ArtifactsTab) -> Void = { _ in }) {
         self.sessionIDs = sessionIDs
         _tab = State(initialValue: tab)
+        self.onTabChange = onTabChange
     }
 
     var body: some View {
@@ -126,6 +129,7 @@ struct ChatArtifactsSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .onChange(of: tab) { _, now in onTabChange(now) }
     }
 }
 

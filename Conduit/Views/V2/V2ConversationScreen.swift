@@ -136,7 +136,7 @@ struct V2ConversationScreen: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
         .sheet(item: $artifactSessionIDs) { sheet in
-            ChatArtifactsSheet(sessionIDs: sheet.ids, tab: sheet.tab)
+            ChatArtifactsSheet(sessionIDs: sheet.ids, tab: sheet.tab) { artifactSessionIDs?.tab = $0 }
                 .environmentObject(appState)
         }
         .modifier(ConversationDialogs(

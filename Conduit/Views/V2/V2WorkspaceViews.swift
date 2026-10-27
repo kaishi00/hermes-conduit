@@ -701,6 +701,17 @@ struct WorkspaceFolderView: View {
     private func open(_ entry: WorkspaceEntry, line: Int? = nil) {
         // One file at a time: a viewer still coming up refuses another.
         guard opening == nil, viewing == nil else { return }
+        if entry.isDirectory {
+            // A folder from search or Recently Changed: shown open in the tree.
+            query = ""
+            Task {
+                _ = await explorer.reveal(entry.path)
+                if !explorer.expanded.contains(entry.path), let message = await explorer.toggle(entry) {
+                    failure = message
+                }
+            }
+            return
+        }
         Haptics.light()
         switch WorkspaceFileKind(name: entry.name) {
         case .text, .markdown:
