@@ -2950,6 +2950,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Hermes' reply in the attached chat, for the live model. Written for
     /// the model, not shown as UI copy, so not localized.
     static func threadReplyPrompt(result: String) -> String {
+        // Named before the clip, so a tag is never cut in half.
+        let result = GatewayMediaTags.namingFiles(in: result)
         let clipped = result.count > maximumResultCharacters
             ? String(result.prefix(maximumResultCharacters)) + "\n[…]"
             : result

@@ -842,6 +842,10 @@ extension VoiceConversationControllerTests {
         splitter.dropSpeech()
         XCTAssertEqual(splitter.fileMarkdown, "MEDIA:/r.pdf")
         XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/r.pdf")
+        // An image of Hermes' own on its line is a file as well.
+        splitter.reset()
+        _ = splitter.feed("![chart](MEDIA:/tmp/a.png)\nDone.") + splitter.finish()
+        XCTAssertEqual(splitter.fileMarkdown, "![chart](MEDIA:/tmp/a.png)")
     }
 
     func testLocalLiveTurnSaysAWholeReplyThatCameWithoutDeltas() async {

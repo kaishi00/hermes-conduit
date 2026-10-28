@@ -625,6 +625,9 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(attached.instructionBlock(delegation: false).contains("MEDIA:"))
         XCTAssertTrue(attached.instructionBlock(delegation: false).contains("(a file in the chat: tts_1.mp3)"))
         XCTAssertFalse(attached.spokenBrief.contains("MEDIA:"))
+        // A tag the clip would cut in half goes with its line.
+        let long = String(repeating: "a", count: HermesCallOpening.maximumResultCharacters - 10) + "\nMEDIA:/opt/data/cache/audio/tts_1.mp3"
+        XCTAssertFalse(HermesCallOpening(kind: .done, title: "Briefing", result: long).result?.contains("MEDIA") ?? true)
         XCTAssertTrue(approval.watchOpeningTurn.hasPrefix("[" + HermesCallOpening.speakFirst))
         XCTAssertFalse(approval.spokenBrief.contains("Earlier reply"))
 
