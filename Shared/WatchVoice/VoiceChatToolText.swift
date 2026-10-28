@@ -155,7 +155,7 @@ enum VoiceChatToolText {
     }
 
     static func delegatedRead(chat: String) -> String {
-        "[\(chat)\n\(readNote)]"
+        "[\(GatewayMediaTags.namingFiles(in: chat))\n\(readNote)]"
     }
 
     static func delegatedEmptyChat(title: String) -> String {

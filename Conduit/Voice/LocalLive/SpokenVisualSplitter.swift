@@ -19,6 +19,9 @@ import Foundation
 struct SpokenVisualSplitter {
     /// The Markdown collected for the screen so far.
     private(set) var visual: [String] = []
+    /// The files a reply's tags attached, also in `visual`: they go on the
+    /// screen even when the model showed its own card.
+    private(set) var files: [String] = []
 
     /// The current line's text not released yet.
     private var pending = ""
@@ -34,11 +37,11 @@ struct SpokenVisualSplitter {
 
     private enum Block { case code, table, image, link, file }
 
-    /// Whether anything was collected for the screen.
-    var hasVisual: Bool { !visual.isEmpty }
-
     /// The collected Markdown.
     var visualMarkdown: String { visual.joined(separator: "\n") }
+
+    /// The attached files' Markdown alone.
+    var fileMarkdown: String { files.joined(separator: "\n") }
 
     mutating func reset() {
         self = SpokenVisualSplitter()
@@ -81,6 +84,7 @@ struct SpokenVisualSplitter {
             if lastBlock != nil, lastBlock != .file { visual.append("") }
             lastBlock = .file
             visual.append(contentsOf: files)
+            self.files += files
         }
         return spoken
     }

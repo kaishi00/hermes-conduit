@@ -797,14 +797,16 @@ heard · chat bubbles (the file card)
 - Streaming speech: `Conduit/Voice/SpokenMediaTagFilter.swift`, used by `Conduit/Voice/SpokenTextFilter.swift` (Classic, Read Aloud's Now Playing) and `Conduit/Voice/LocalLive/SpokenVisualSplitter.swift` (Local Live, which puts the files on the call's screen)
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift` (toggle)
 - Live read-back: `Conduit/Voice/VoiceReadBack.swift` (plainSpeech)
-- What live models are handed: `Conduit/Voice/VoiceBackgroundJobs.swift` (completionPrompt, replyBlock), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (a job's tool response), `Shared/WatchVoice/WatchJobRelay.swift` (completionPrompt), `Shared/WatchVoice/VoiceChatToolText.swift` (readResult)
+- What live models are handed: `Conduit/Voice/VoiceBackgroundJobs.swift` (completionPrompt, replyBlock), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (a job's tool response, read_chat), `Shared/WatchVoice/WatchJobRelay.swift` (completionPrompt), `Shared/WatchVoice/VoiceChatToolText.swift` (readResult, and delegatedRead for GPT-Live's "Read chat:" in `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` and the Watch's `Shared/WatchVoice/WatchToolRelay.swift`)
+- A Hermes call's result: `Conduit/Voice/HermesCalls.swift` (plainSpeech)
+- Local Live's screen: `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift` (finish)
 - What the model reads: `notifier/turn_surface.py` (SPOKEN_HINT)
 - Tests: `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift` (testSpokenVisualSplitterLeavesFileTagsUnsaid), `ConduitTests/GeminiLiveVoiceTests.swift` (testSpokenMediaTagFilter…, testSpokenTextFilterLeavesFileTagsUnsaid), `ConduitTests/VoiceBackgroundJobTests.swift` (testLiveModelsAreToldOfAFileNotItsPath, plainSpeech), `notifier/tests/test_turn_surface.py`
 
 **Rulings**
 - A tag is never said, and a line that was only a tag says nothing; the words around it, and a link's label, are said as written (2026-10-28, #1434, after a Local voice call on the farm read "MEDIA:/opt/data/cache/audio/tts_….mp3" out and its microphone heard "media." back).
-- Streaming voices hold from where a tag may begin (with its emphasis or `[label](`) to the end of its line, and only while it can still be one: `MEDIA:` with a path after it, or a directive. Prose such as "social media: we shipped" is said as it comes. A reply is said the same however it is split (#1449).
-- Local Live puts a tagged file on the call's screen, as the chat shows it; a tag written as a link is listed with the links (#1449).
+- Streaming voices hold from where a tag may begin (with its emphasis or `[label](`) to the end of its line, and only while it can still be one: `MEDIA:` with a path after it, or a directive. Prose such as "social media: we shipped", or a `[` with no `]` within 80 characters, is said as it comes. A reply is said the same however it is split (#1449).
+- Local Live puts a tagged file on the call's screen, as the chat shows it, even when the model showed its own card; a tag written as a link is listed with the links (#1449).
 - A live model is told of a file by name ("(a file in the chat: report.pdf)"), never its path: a job's result, a chat reply and a chat read into the call alike (#1449).
 - A spoken message's line tells the model its answer is heard: say it in words, not with text_to_speech or a sound file of its own; a file the user asks for is still fine. Hermes' own spoken-reply note isn't on every Hermes (2026-10-28, #1434, notifier #444, 0.115.1).
 

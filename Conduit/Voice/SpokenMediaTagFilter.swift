@@ -151,7 +151,8 @@ struct SpokenMediaTagFilter {
     private static let tagOpeners: Set<Character> = ["`", "\"", "'", "*", "_"]
 
     /// `[label`, `[label]` or `[label](` at the end, which a tag may follow.
-    private static let openLink = try! NSRegularExpression(pattern: #"!?\[[^\[\]]*(?:\](?:\([^\S\n]*)?)?$"#)
+    /// A longer `[` run is prose ("arr[0 and more"), said as it comes.
+    private static let openLink = try! NSRegularExpression(pattern: #"!?\[[^\[\]]{0,80}(?:\](?:\([^\S\n]*)?)?$"#)
     /// `[label](` just before a tag, which the tag's file takes.
     private static let linkBefore = try! NSRegularExpression(pattern: #"!?\[[^\[\]]*\]\([^\S\n]*$"#)
 

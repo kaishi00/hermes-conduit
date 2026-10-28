@@ -2692,7 +2692,8 @@ extension VoiceConversationControllerTests {
         for prompt in [VoiceBackgroundJobSupervisor.completionPrompt(title: "Briefing", result: reply),
                        VoiceBackgroundJobSupervisor.threadReplyPrompt(result: reply),
                        WatchJobRelay.completionPrompt(title: "Briefing", result: reply),
-                       VoiceChatToolText.readResult(chat: reply)["chat"] ?? ""] {
+                       VoiceChatToolText.readResult(chat: reply)["chat"] ?? "",
+                       VoiceChatToolText.delegatedRead(chat: reply)] {
             XCTAssertFalse(prompt.contains("MEDIA:"), prompt)
             XCTAssertTrue(prompt.contains("(a file in the chat: q3.pdf)"), prompt)
         }

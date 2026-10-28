@@ -2770,6 +2770,8 @@ extension HermesVoiceGatewayTimeoutTests {
         var filter = SpokenMediaTagFilter()
         XCTAssertEqual(filter.feed("Post it on social media: we shipped. Next."), "Post it on social media: we shipped. Next.")
         XCTAssertEqual(filter.feed(" Wiki [[Page]] link, then more."), " Wiki [[Page]] link, then more.")
+        let bracket = " Use arr[0 for the first item, then the rest of this sentence, which keeps going on for a while."
+        XCTAssertEqual(filter.feed(bracket), bracket, "a long [ run is prose")
         XCTAssertEqual(filter.finish(), "")
         // A tag ending a line keeps the line's end, and its file is kept
         // for the call's screen.

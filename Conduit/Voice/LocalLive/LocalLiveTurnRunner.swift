@@ -403,7 +403,10 @@ final class LocalLiveTurnRunner {
             endedLine = rest.hasSuffix("\n")
             onDelta?(turnID, rest)
         }
-        if splitter.hasVisual, !showedCard, onVisual?(splitter.visualMarkdown) == true {
+        // A card the model showed stands for the reply's tables and links;
+        // the files it attached still go on the screen.
+        let visual = showedCard ? splitter.fileMarkdown : splitter.visualMarkdown
+        if !visual.isEmpty, onVisual?(visual) == true {
             onDelta?(turnID, (endedLine ? "" : "\n") + Self.onScreenLine)
         }
         splitter.reset()
