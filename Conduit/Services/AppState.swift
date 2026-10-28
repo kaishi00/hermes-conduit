@@ -5696,6 +5696,47 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// The chat a profile switched to opens on: the outgoing profile's
+    /// transcript and any reply still streaming into it leave with it (it
+    /// showed under the new chat's title for the whole switch, #1442). Its saved copy shows while Hermes sends it,
+    /// or nothing does. A chat opened in that profile (All chats, a
+    /// notification, a link) replaces it with its own as it opens.
+    private func presentRestoredChatAfterProfileChange() {
+        messages = []
+        clearStreamingText()
+        resetReasoningTurn()
+        dismissOfflineChatPresentation()
+        guard let sessionID = activeSessionId else { return }
+        if let bot = botConversationProfile(for: sessionID) {
+            presentKeptBotChatCopy(bot: bot, openedAs: sessionID, title: activeSessionTitle)
+            return
+        }
+        // Copies are saved under the chat's stored id, and the restored
+        // reference can hold its runtime id: the saved list's row maps one
+        // to the other. A row that owns the id wins over one that only
+        // borrows it, and an alias two rows borrow maps to neither.
+        let rows = savedChatListForActiveScope?.list.sessions ?? []
+        let aliasRows = rows.filter { $0.nestingIDs.contains(sessionID) }
+        let row = rows.first { $0.id == sessionID || $0.storedSessionId == sessionID }
+            ?? (aliasRows.count == 1 ? aliasRows.first : nil)
+        let durableID = row.map { $0.storedSessionId ?? $0.id } ?? sessionID
+        guard let dashboardID = activeDashboardID,
+              let saved = offlineChatCache.loadTranscript(durableID, dashboardID: dashboardID, profile: activeProfile) else {
+            return
+        }
+        offlineChatPresentation = OfflineChatPresentation(
+            dashboardID: dashboardID,
+            profile: activeProfile,
+            snapshot: OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: []),
+            displayedTranscript: saved,
+            picked: OfflineChatPresentation.PickedChat(
+                title: activeSessionTitle,
+                sessionIDs: Set([sessionID] + (row?.nestingIDs ?? [])),
+                durableSessionID: durableID
+            )
+        )
+    }
+
     /// A Bot Chat has no row of its own, so it keeps no copy on the phone:
     /// the one on screen is kept in memory when it's left, by dashboard and
     /// bot, to show while it opens again (#1352).
@@ -30492,6 +30533,11 @@ final class AppState: ObservableObject {
         // then on a superseded switch still finishes or rolls back.
         var adoptedTarget = false
         var previousClient: HermesClient?
+        // The outgoing transcript as the profile changes over, for a switch
+        // that fails after it.
+        var previousMessages: [ChatMessage] = []
+        var previousOfflineChatPresentation: OfflineChatPresentation?
+        var previousTranscriptDashboardID: UUID?
 
         do {
             let ticket: String
@@ -30521,6 +30567,9 @@ final class AppState: ObservableObject {
             let freshConnection = HermesConnection(baseUrl: savedConnection.baseUrl, ticket: ticket)
             previousClient = client
             let nextClient = makeClient(connection: freshConnection, profile: target)
+            previousMessages = messages
+            previousOfflineChatPresentation = offlineChatPresentation
+            previousTranscriptDashboardID = activeDashboardID
 
             markChatViewportReplacement()
             adoptedTarget = true
@@ -30570,6 +30619,7 @@ final class AppState: ObservableObject {
             if let dashboardID = activeDashboardID {
                 presentSavedChatListIfAvailable(dashboardID: dashboardID)
             }
+            presentRestoredChatAfterProfileChange()
             try await connectChatResumeClient(nextClient)
             // The new profile is connected and already active: an expired
             // widget launch or a newer navigation still finishes the switch
@@ -30633,7 +30683,9 @@ final class AppState: ObservableObject {
             // Superseded before anything changed over: only the approval
             // state was neutralized. Once the target was installed, its
             // failed client is rolled back even when a newer navigation owns
-            // the chat; only the chat and the error are left to that one.
+            // the chat; only the error is left to that one, and the outgoing
+            // chat and its transcript come back over it until the reconnect
+            // resolves it.
             guard ownsChat || adoptedTarget else {
                 restorePreviousApprovalState()
                 return false
@@ -30663,6 +30715,14 @@ final class AppState: ObservableObject {
             // flush scheduled under the failed target during the aborted
             // attempt stale.
             setActiveProfile(previousProfile)
+            // The previous profile's transcript left with it: it comes back
+            // as it was, with its chat (restored above), over any newer
+            // navigation's, which the reconnect then resolves. Never onto
+            // another dashboard a switch moved to meanwhile.
+            if adoptedTarget, activeDashboardID == previousTranscriptDashboardID {
+                messages = previousMessages
+                offlineChatPresentation = previousOfflineChatPresentation
+            }
             connection = savedConnection
             previousClient?.disconnect()
             client?.disconnect()
