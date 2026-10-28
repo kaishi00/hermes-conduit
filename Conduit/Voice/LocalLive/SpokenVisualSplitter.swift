@@ -130,14 +130,17 @@ struct SpokenVisualSplitter {
             if let marker = open.first, trimmed.hasPrefix(open), trimmed.allSatisfy({ $0 == marker }) { fence = nil }
             return ""
         }
-        if !lineIsProse, let kind = Self.blockKind(line.trimmingCharacters(in: .whitespaces)) {
+        if !lineIsProse, let kind = Self.blockKind(line.trimmingCharacters(in: .whitespaces)),
+           // An image of Hermes' own with words after it is said: the tag
+           // filter puts its file on the screen.
+           !(kind == .image && GatewayMediaTags.soleMediaPath(line) == nil
+             && line.range(of: "MEDIA:", options: .caseInsensitive) != nil) {
             if lastBlock != nil, lastBlock != kind || kind == .code { visual.append("") }
             lastBlock = kind
             // A bare address is listed like the links said in a sentence.
             visual.append(kind == .link ? "- " + line.trimmingCharacters(in: .whitespaces) : line)
             // An image of Hermes' own (`![x](MEDIA:…)`) is an attached file too.
-            if kind == .image, GatewayMediaTags.segments(in: line.trimmingCharacters(in: .whitespaces))?
-                .contains(where: { if case .media = $0 { return true } else { return false } }) == true { files.append(line.trimmingCharacters(in: .whitespaces)) }
+            if kind == .image, GatewayMediaTags.soleMediaPath(line) != nil { files.append(line.trimmingCharacters(in: .whitespaces)) }
             if kind == .code {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 fence = String(trimmed.prefix { $0 == "`" || $0 == "~" })

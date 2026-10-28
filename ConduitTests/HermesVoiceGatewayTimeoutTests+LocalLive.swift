@@ -736,7 +736,15 @@ extension VoiceConversationControllerTests {
         runner.observe(.messageComplete(sessionId: "rt-1", messageId: "m3", content: "Now.\n| b |", reasoning: nil))
         XCTAssertEqual(Array(script.spoken.suffix(2)), ["t3:Now.\n", "t3:" + LocalLiveTurnRunner.onScreenLine],
                        "a line already ended: no extra pause")
-        XCTAssertEqual(script.done, ["t1", "t2", "t3"])
+
+        // A card stands for the tables, but a file the reply attached still shows.
+        runner.start(turnID: "t4", text: "And the report?")
+        await localLiveSettle(until: { script.submitted.count == 4 })
+        runner.observe(.toolStart(sessionId: "rt-1", toolName: PresentedCard.toolName, toolInput: nil))
+        runner.observe(.messageComplete(sessionId: "rt-1", messageId: "m4", content: "It's up.\nMEDIA:/r.pdf\n| c |", reasoning: nil))
+        XCTAssertEqual(script.shown.last, "MEDIA:/r.pdf")
+        XCTAssertEqual(Array(script.spoken.suffix(2)), ["t4:It's up.\n", "t4:" + LocalLiveTurnRunner.onScreenLine])
+        XCTAssertEqual(script.done, ["t1", "t2", "t3", "t4"])
     }
 
     func testSpokenVisualSplitterGivesTheSameResultHoweverTheReplyIsSplit() {
@@ -846,6 +854,10 @@ extension VoiceConversationControllerTests {
         splitter.reset()
         _ = splitter.feed("![chart](MEDIA:/tmp/a.png)\nDone.") + splitter.finish()
         XCTAssertEqual(splitter.fileMarkdown, "![chart](MEDIA:/tmp/a.png)")
+        // One with words after it is said, and its file shown.
+        splitter.reset()
+        XCTAssertEqual(splitter.feed("![chart](MEDIA:/tmp/a.png) Here it is.\n") + splitter.finish(), "chart Here it is.\n")
+        XCTAssertEqual(splitter.fileMarkdown, "MEDIA:/tmp/a.png")
         // Windows line ends read as lines, however they arrive.
         let crlf = "Here you go.\r\nMEDIA:/r.pdf\r\nDone."
         let scalars = Array(crlf.unicodeScalars)
