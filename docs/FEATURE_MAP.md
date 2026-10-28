@@ -3013,7 +3013,7 @@ profiles line)
 - A gateway without bot looks (`botModePhase == .gatewayUnsupported`) has nowhere to keep another profile's name, so the name stays on the device per dashboard, as photos there do, and comes first until the roster says the gateway keeps bot looks (at launch and offline too); from then its title and display name name the profile, and a roster that answers drops the device names, so they don't come back offline (2026-10-28, #1413).
 
 **Open gaps**
-- Bots and Bot Chats name a profile Desktop's way (`displayLabel`): one with neither title nor display name shows its id as typed there ("atlas"), and capitalized everywhere else ("Atlas"). Left for Eric to decide (2026-10-28, #1413).
+- Bots, Bot Chats, group rooms, the widget's Bot Chat rows and Artifacts name a profile Desktop's way (`displayLabel`): one with neither title nor display name shows its id as typed there ("atlas"), and capitalized everywhere else ("Atlas"). Left for Eric to decide (2026-10-28, #1413).
 
 **Checked:** 2026-10-28, #1413.
 
