@@ -30247,8 +30247,6 @@ final class AppState: ObservableObject {
         let previousProjects = projects
         let previousSupportsProjects = supportsProjects
         let previousTurnState = turnState
-        let previousMessages = messages
-        let previousOfflineChatPresentation = offlineChatPresentation
         isProfileSwitching = true
         defer { isProfileSwitching = false }
         invalidateReconciliation()
@@ -30269,6 +30267,10 @@ final class AppState: ObservableObject {
         // then on a superseded switch still finishes or rolls back.
         var adoptedTarget = false
         var previousClient: HermesClient?
+        // The outgoing transcript as the profile changes over, for a switch
+        // that fails after it.
+        var previousMessages: [ChatMessage] = []
+        var previousOfflineChatPresentation: OfflineChatPresentation?
 
         do {
             let ticket: String
@@ -30298,6 +30300,8 @@ final class AppState: ObservableObject {
             let freshConnection = HermesConnection(baseUrl: savedConnection.baseUrl, ticket: ticket)
             previousClient = client
             let nextClient = makeClient(connection: freshConnection, profile: target)
+            previousMessages = messages
+            previousOfflineChatPresentation = offlineChatPresentation
 
             markChatViewportReplacement()
             adoptedTarget = true
@@ -30442,8 +30446,8 @@ final class AppState: ObservableObject {
             // attempt stale.
             setActiveProfile(previousProfile)
             // The previous profile's transcript left with it: it comes back
-            // as it was, with its chat (restored above). A newer navigation
-            // replaces both with its own as it opens.
+            // as it was, with its chat (restored above), over any newer
+            // navigation's, which the reconnect then resolves.
             if adoptedTarget {
                 messages = previousMessages
                 offlineChatPresentation = previousOfflineChatPresentation
