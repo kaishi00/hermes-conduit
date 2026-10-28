@@ -72,6 +72,21 @@ final class NotificationE2ETests: XCTestCase {
         XCTAssertEqual(answer, "08c9b2cf01c5f94ed56658fc2a8b90d25b0361ab943f9efa4a857f3c44409b27")
     }
 
+    func testTheRoutingPayloadCarriesNoDisplayText() {
+        guard case .verified(let opened) = NotificationE2E.evaluate(delivered(), records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now) else {
+            return XCTFail("the plugin's envelope should verify")
+        }
+        var content = opened.content
+        content.merge(["title_label": "response.ready", "session_title": "Deploy", "headline": "Report finished"]) { $1 }
+        let routing = NotificationE2E.Verified(record: opened.record, envelope: opened.envelope, type: "response.ready", content: content).routingPayload
+        for banner in ["title", "body", "title_label", "session_title", "headline"] {
+            XCTAssertNil(routing[banner], banner)
+        }
+        XCTAssertEqual(routing["type"] as? String, "response.ready")
+        XCTAssertEqual(routing["gateway_id"] as? String, Self.gatewayID)
+        XCTAssertEqual(routing["session_id"] as? String, "sess-1")
+    }
+
     func testPluginSealedPushOpensAndRoutesFromVerifiedDataOnly() throws {
         guard case .verified(let verified) = NotificationE2E.evaluate(delivered(), records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now) else {
             return XCTFail("the plugin's envelope should verify")

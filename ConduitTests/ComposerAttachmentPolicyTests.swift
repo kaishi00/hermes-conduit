@@ -194,6 +194,26 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
         XCTAssertFalse(AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.url.identifier], suggestedName: "Example"))
     }
 
+    func testADroppedFolderIsTakenSoTheComposerCanSayWhy() {
+        let folder = [UTType.folder.identifier, UTType.fileURL.identifier]
+        XCTAssertTrue(AttachmentDrop.isFolder(registeredTypeIdentifiers: folder))
+        XCTAssertFalse(AttachmentDrop.isFile(registeredTypeIdentifiers: folder, suggestedName: "Photos"))
+        XCTAssertTrue(AttachmentDrop.takes(registeredTypeIdentifiers: folder, suggestedName: "Photos"))
+        XCTAssertFalse(AttachmentDrop.isFolder(registeredTypeIdentifiers: [UTType.pdf.identifier]))
+        XCTAssertFalse(AttachmentDrop.isFolder(registeredTypeIdentifiers: [UTType.url.identifier]))
+        XCTAssertTrue(
+            AttachmentDrop.stagesAsFiles(registeredTypeIdentifiers: [folder], suggestedNames: ["Photos"]),
+            "A folder on the field goes to the composer, which says it wasn't attached"
+        )
+    }
+
+    func testTheFolderNoticeNamesTheFolders() {
+        XCTAssertTrue(AttachmentDrop.folderMessage(names: ["Photos"]).contains("Photos"))
+        let several = AttachmentDrop.folderMessage(names: ["Photos", "Scans"])
+        XCTAssertTrue(several.contains("Photos, Scans"))
+        XCTAssertFalse(AttachmentDrop.folderMessage(names: []).isEmpty)
+    }
+
     func testOnlyALoneImageKeepsTheImagePasteOnTheTextField() {
         let png = [UTType.png.identifier]
         let pdf = [UTType.pdf.identifier]

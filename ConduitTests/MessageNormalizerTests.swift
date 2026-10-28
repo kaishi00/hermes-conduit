@@ -462,6 +462,28 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertFalse(decoded.decisionCards)
     }
 
+    func testNotificationDetailMapsToTheRelayFlags() throws {
+        var preferences = ConduitNotificationPreferences()
+        XCTAssertEqual(preferences.detail, .generic, "Notifications stay generic by default")
+
+        preferences.detail = .chatNames
+        XCTAssertFalse(preferences.showPreviews)
+        XCTAssertTrue(preferences.showChatNames)
+        let data = try JSONEncoder().encode(preferences)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertEqual(object?["show_chat_names"] as? Bool, true, "The relay expects the snake_case show_chat_names key")
+        XCTAssertEqual(try JSONDecoder().decode(ConduitNotificationPreferences.self, from: data).detail, .chatNames)
+
+        preferences.detail = .previews
+        XCTAssertTrue(preferences.showPreviews)
+        XCTAssertTrue(preferences.showChatNames, "Full previews names the chat too")
+        preferences.detail = .generic
+        XCTAssertFalse(preferences.showPreviews || preferences.showChatNames)
+
+        let legacy = try JSONDecoder().decode(ConduitNotificationPreferences.self, from: Data(#"{"show_previews": true}"#.utf8))
+        XCTAssertEqual(legacy.detail, .previews, "Show previews on before #1415 is Full previews")
+    }
+
     func testNotificationPreferencesRoundTripAttentionSoundKey() throws {
         var preferences = ConduitNotificationPreferences()
         XCTAssertTrue(preferences.attentionSound, "Approval and input sounds default on")

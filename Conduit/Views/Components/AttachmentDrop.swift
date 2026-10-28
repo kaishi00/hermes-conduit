@@ -35,15 +35,58 @@ enum AttachmentDrop {
         isFile(registeredTypeIdentifiers: provider.registeredTypeIdentifiers, suggestedName: provider.suggestedName)
     }
 
+    /// Whether a dropped item is a folder (from Finder or Files). A folder
+    /// isn't attached, but the drop is taken so the composer can say why.
+    static func isFolder(registeredTypeIdentifiers identifiers: [String]) -> Bool {
+        fileType(registeredTypeIdentifiers: identifiers) == nil
+            && identifiers.contains { UTType($0)?.conforms(to: .directory) == true }
+    }
+
+    static func isFolder(_ provider: NSItemProvider) -> Bool {
+        isFolder(registeredTypeIdentifiers: provider.registeredTypeIdentifiers)
+    }
+
+    /// Whether a drop takes the item: a file to attach, or a folder to
+    /// name in the composer's notice.
+    static func takes(registeredTypeIdentifiers identifiers: [String], suggestedName: String?) -> Bool {
+        isFile(registeredTypeIdentifiers: identifiers, suggestedName: suggestedName)
+            || isFolder(registeredTypeIdentifiers: identifiers)
+    }
+
+    static func takes(_ provider: NSItemProvider) -> Bool {
+        takes(registeredTypeIdentifiers: provider.registeredTypeIdentifiers, suggestedName: provider.suggestedName)
+    }
+
+    /// The files and folders in a drop; words and links are left out.
     static func files(in providers: [NSItemProvider]) -> [NSItemProvider] {
-        providers.filter(isFile)
+        providers.filter(takes)
+    }
+
+    /// The names of the folders in a drop, for the composer's notice.
+    static func folderNames(in providers: [NSItemProvider]) -> [String] {
+        providers.filter(isFolder).compactMap { provider in
+            let name = (provider.suggestedName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return name.isEmpty ? nil : name
+        }
+    }
+
+    /// Why a dropped folder wasn't attached, and what to do instead.
+    static func folderMessage(names: [String]) -> String {
+        if names.count == 1, let name = names.first {
+            return AppLocalization.string("\(name) is a folder, so it wasn't attached. Drop the files inside it instead.")
+        }
+        if names.isEmpty {
+            return AppLocalization.string("Folders can't be attached. Drop the files inside them instead.")
+        }
+        let list = names.joined(separator: ", ")
+        return AppLocalization.string("These folders weren't attached: \(list). Drop the files inside them instead.")
     }
 
     /// Whether a drop or paste on the composer's text field is staged as
     /// files. One image alone keeps the image paste it always had; several
     /// items, or a file that isn't an image, go the way a picked file does.
     static func stagesAsFiles(registeredTypeIdentifiers: [[String]], suggestedNames: [String?]) -> Bool {
-        let files = zip(registeredTypeIdentifiers, suggestedNames).filter { isFile(registeredTypeIdentifiers: $0, suggestedName: $1) }
+        let files = zip(registeredTypeIdentifiers, suggestedNames).filter { takes(registeredTypeIdentifiers: $0, suggestedName: $1) }
         guard let first = files.first else { return false }
         if files.count > 1 || registeredTypeIdentifiers.count > 1 { return true }
         return fileType(registeredTypeIdentifiers: first.0)?.conforms(to: .image) != true

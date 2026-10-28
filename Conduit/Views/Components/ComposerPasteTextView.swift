@@ -527,7 +527,7 @@ final class ImagePasteTextView: ReturnKeyTextView {
         if let onDroppedFiles, AttachmentDrop.stagesAsFiles(itemProviders) {
             let files = AttachmentDrop.files(in: itemProviders)
             DispatchQueue.main.async { onDroppedFiles(files) }
-            let words = itemProviders.filter { !AttachmentDrop.isFile($0) }
+            let words = itemProviders.filter { !AttachmentDrop.takes($0) }
             if !words.isEmpty { super.paste(itemProviders: words) }
             return
         }

@@ -942,7 +942,8 @@ struct GroupRoomComposer: View {
     /// Files dropped on the room (#1408), staged like picked documents,
     /// even while a send's files go up: a send takes only its own files
     /// out of the draft. A plugin that can't store a room's files says
-    /// what fixes it, as the Attach menu does.
+    /// what fixes it, as the Attach menu does. A folder isn't attached;
+    /// the notice names it and says to drop the files inside.
     private func importDroppedFiles(_ providers: [NSItemProvider]) {
         // A disbanded room sends nothing, whichever target took the drop.
         guard !providers.isEmpty, surface?.room.isDisbanded == false else { return }
@@ -953,9 +954,11 @@ struct GroupRoomComposer: View {
         }
         let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
         let roomID = surface?.room.roomID
+        let files = providers.filter { !AttachmentDrop.isFolder($0) }
+        let folders = files.count < providers.count ? AttachmentDrop.folderNames(in: providers) : nil
         Task {
-            let outcomes = await AttachmentDrop.stage(providers, limitMegabytes: limit)
-            finishImport(outcomes, roomID: roomID)
+            let outcomes = await AttachmentDrop.stage(files, limitMegabytes: limit)
+            finishImport(outcomes, roomID: roomID, folders: folders)
         }
     }
 
@@ -972,7 +975,7 @@ struct GroupRoomComposer: View {
 
     /// One cue per selection: the error and its message when anything was
     /// left out, otherwise a light tap.
-    private func finishImport(_ outcomes: [AttachmentStaging.StagedImport], roomID: String?) {
+    private func finishImport(_ outcomes: [AttachmentStaging.StagedImport], roomID: String?, folders: [String]? = nil) {
         // Left the room while the files were staged: this composer is gone,
         // so their local copies are dropped.
         guard appState.activeRoomSurface?.room.roomID == roomID else {
@@ -997,6 +1000,9 @@ struct GroupRoomComposer: View {
         if !failed.isEmpty {
             let list = failed.joined(separator: ", ")
             messages.append(AppLocalization.string("Could not prepare \(list) for upload."))
+        }
+        if let folders {
+            messages.append(AttachmentDrop.folderMessage(names: folders))
         }
         if messages.isEmpty {
             if !outcomes.isEmpty { Haptics.light() }

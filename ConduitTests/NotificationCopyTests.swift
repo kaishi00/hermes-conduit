@@ -96,4 +96,62 @@ final class NotificationCopyTests: XCTestCase {
         XCTAssertEqual(NotificationCopy.preview(["title_label": "call.requested"]).title,
                        "Hermes wants to talk")
     }
+
+    // #1415: which profile a push came from, and Chat names.
+
+    func testSubtitleNamesTheProfile() {
+        XCTAssertEqual(NotificationCopy.preview([
+            "title_label": "response.ready", "session_title": "Skills research",
+            "profile": "segundo-cerebro", "profile_name": "Segundo Cérebro", "body": "Found five repos.",
+        ]).subtitle, "Segundo Cérebro", "the bot's name over the id")
+        XCTAssertEqual(NotificationCopy.preview([
+            "title_label": "response.ready", "session_title": "Skills research", "profile": "work",
+        ]).subtitle, "work", "an unnamed profile shows its id")
+        XCTAssertNil(NotificationCopy.preview([
+            "title_label": "response.ready", "session_title": "Skills research", "profile": "default",
+        ]).subtitle, "an unnamed default profile says nothing")
+        XCTAssertNil(NotificationCopy.preview([
+            "title_label": "response.ready", "profile": " Default ",
+        ]).subtitle, "as routing reads it, trimmed and in any case")
+        XCTAssertNil(NotificationCopy.preview([
+            "title_label": "response.ready", "session_title": "Ada", "profile": "ada", "profile_name": "Ada",
+        ]).subtitle, "a Bot Chat's title already names its bot")
+        XCTAssertNil(NotificationCopy.preview([
+            "title_label": "approval.needed", "session_title": "Ada", "profile_name": "Ada",
+        ]).subtitle, "nor when the bot ends a joined title")
+    }
+
+    func testChatNamesKeepHermesWordsOut() {
+        let names = NotificationCopy.chatNames([
+            "title_label": "response.ready", "session_title": "Skills research",
+            "profile": "segundo-cerebro", "profile_name": "Segundo Cérebro", "body": "Found five repos.",
+        ])
+        XCTAssertEqual(names.title, "Skills research")
+        XCTAssertEqual(names.subtitle, "Segundo Cérebro")
+        XCTAssertEqual(NotificationCopy.chatNames([
+            "title_label": "approval.needed", "session_title": "Deploy",
+        ]).title, "Approval needed · Deploy")
+        XCTAssertNil(NotificationCopy.chatNames(["title": "Head to the airport", "profile": "work"]).title,
+                     "an unlabelled host title may be content, so the generic title stays")
+        XCTAssertEqual(NotificationCopy.chatNames(["title": "Head to the airport", "profile": "work"]).subtitle, "work")
+    }
+
+    func testWrittenHeadlineIsOnlyInThePreviewCopy() {
+        let content: [String: Any] = [
+            "title_label": "response.ready", "session_title": "Planning ", "headline": "Report finished",
+            "profile": "segundo-cerebro", "profile_name": "Segundo Cérebro", "body": "All 150 products analysed.",
+        ]
+        let preview = NotificationCopy.preview(content)
+        XCTAssertEqual(preview.title, "Report finished")
+        XCTAssertEqual(preview.subtitle, "Planning · Segundo Cérebro")
+        XCTAssertEqual(preview.body, "All 150 products analysed.")
+        XCTAssertEqual(NotificationCopy.chatNames(content).title, "Planning ", "Chat names never shows Hermes' words")
+        XCTAssertNil(NotificationCopy.preview(["title_label": "response.ready", "headline": "Done"]).subtitle)
+    }
+
+    func testBotChatSuffixIgnoresCase() {
+        XCTAssertNil(NotificationCopy.preview([
+            "title_label": "response.ready", "session_title": "ada ", "profile_name": "Ada",
+        ]).subtitle)
+    }
 }

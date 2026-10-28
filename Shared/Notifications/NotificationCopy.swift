@@ -33,32 +33,68 @@ enum NotificationCopy {
         }
     }
 
-    /// What a verified push shows with Show previews on: nil for a part the
-    /// generic copy keeps.
+    /// What a verified push shows with Show in notifications on Full
+    /// previews: nil for a part the generic copy keeps.
     ///
     /// A push whose decrypted content names a `title_label` gets that
     /// label's title, joined with the chat's title when the host sent one;
     /// a call composes its line from the call's outcome. Any other title or
     /// body is the host's own text (an older plugin, a tool's prompt title).
-    static func preview(_ content: [String: Any]) -> (title: String?, body: String?) {
+    /// The subtitle names the profile (`profileLine`). A reply whose
+    /// notification Hermes wrote shows its `headline` as the title.
+    static func preview(_ content: [String: Any]) -> (title: String?, subtitle: String?, body: String?) {
         let hostTitle = nonEmpty(content["title"])
         let hostBody = nonEmpty(content["body"])
-        guard let label = nonEmpty(content["title_label"]) else { return (hostTitle, hostBody) }
-        let sessionTitle = nonEmpty(content["session_title"])
-        let title: String?
-        if label == "response.ready" {
-            title = sessionTitle ?? AppLocalization.string("Response ready")
-        } else if let heading = heading(for: label) {
-            title = sessionTitle.map { "\(heading) · \($0)" } ?? heading
-        } else if let phoneTitle = phoneTitle(for: label) {
-            title = phoneTitle
-        } else {
-            title = hostTitle
+        guard let label = nonEmpty(content["title_label"]) else {
+            return (hostTitle, profileLine(content, title: hostTitle), hostBody)
         }
+        // A reply whose notification Hermes wrote (conduit_notify, #1415):
+        // its heading is the title, and the subtitle says which chat.
+        if label == "response.ready", let headline = nonEmpty(content["headline"]) {
+            let chat = nonEmpty(content["session_title"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let subtitle = [chat, profileLine(content, title: chat)].compactMap { $0 }.joined(separator: " · ")
+            return (headline, subtitle.isEmpty ? nil : subtitle, hostBody)
+        }
+        let title = labelTitle(label, content: content) ?? hostTitle
+        let subtitle = profileLine(content, title: title)
         if label == "call.requested", let call = content["call"] as? [String: Any], let line = callLine(call) {
-            return (title, line)
+            return (title, subtitle, line)
         }
-        return (title, hostBody)
+        return (title, subtitle, hostBody)
+    }
+
+    /// What a verified push shows with Chat names (#1415): the chat's title
+    /// and the profile, and none of Hermes' words, so the body stays the
+    /// generic one. Only a title Conduit writes from the `title_label`
+    /// counts, never the host's own title, which may quote a tool's prompt.
+    static func chatNames(_ content: [String: Any]) -> (title: String?, subtitle: String?) {
+        let title = nonEmpty(content["title_label"]).flatMap { labelTitle($0, content: content) }
+        return (title, profileLine(content, title: title))
+    }
+
+    /// The title a `title_label` gives, with the chat's title when the host
+    /// sent one: nil for a label Conduit doesn't know.
+    private static func labelTitle(_ label: String, content: [String: Any]) -> String? {
+        let sessionTitle = nonEmpty(content["session_title"])
+        if label == "response.ready" {
+            return sessionTitle ?? AppLocalization.string("Response ready")
+        } else if let heading = heading(for: label) {
+            return sessionTitle.map { "\(heading) · \($0)" } ?? heading
+        }
+        return phoneTitle(for: label)
+    }
+
+    /// Which profile the push came from (#1415): its bot's name
+    /// (`profile_name`), else its id, left out for an unnamed default
+    /// profile and when the title already ends with it (a Bot Chat's).
+    static func profileLine(_ content: [String: Any], title: String?) -> String? {
+        // Routing reads a profile id trimmed and lowercased, so "Default" is the default too.
+        let profile = nonEmpty(content["profile"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let name = nonEmpty(content["profile_name"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? profile.flatMap({ $0.lowercased() == "default" ? nil : $0 }) else { return nil }
+        if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           title == name.lowercased() || title.hasSuffix(" · \(name.lowercased())") { return nil }
+        return name
     }
 
     private static func heading(for label: String) -> String? {

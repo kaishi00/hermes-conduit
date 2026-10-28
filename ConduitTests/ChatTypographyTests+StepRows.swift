@@ -18,6 +18,7 @@ extension ChatTypographyTests {
         XCTAssertEqual(health.category, .phone)
         XCTAssertEqual(calendar.symbol, "calendar")
         XCTAssertEqual(health.symbol, "heart")
+        XCTAssertEqual(ChatStepStyle(toolName: "conduit_notify").symbol, "bell")
         XCTAssertEqual(ChatStepStyle(toolName: "conduit_unknown").symbol, "iphone")
     }
 

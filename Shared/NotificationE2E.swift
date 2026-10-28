@@ -166,7 +166,7 @@ enum NotificationE2E {
         /// provisioned for (never the relay's routing stub).
         var routingPayload: [String: Any] {
             var payload = content
-            for banner in ["title", "body", "title_label", "session_title"] { payload.removeValue(forKey: banner) }
+            for banner in ["title", "body", "title_label", "session_title", "headline"] { payload.removeValue(forKey: banner) }
             payload["type"] = type
             payload["gateway_id"] = record.gatewayID
             if let dashboardID = record.dashboardID { payload["dashboard_id"] = dashboardID }
@@ -546,6 +546,14 @@ enum NotificationSharedSettings {
     static var showPreviews: Bool {
         get { defaults?.bool(forKey: showPreviewsKey) ?? false }
         set { defaults?.set(newValue, forKey: showPreviewsKey) }
+    }
+
+    private static let showChatNamesKey = "conduit.notifications.showChatNames"
+
+    /// Show previews off but the chat's title and the profile shown (#1415).
+    static var showChatNames: Bool {
+        get { defaults?.bool(forKey: showChatNamesKey) ?? false }
+        set { defaults?.set(newValue, forKey: showChatNamesKey) }
     }
 
     private static let appLanguageKey = "conduit.notifications.appLanguage"

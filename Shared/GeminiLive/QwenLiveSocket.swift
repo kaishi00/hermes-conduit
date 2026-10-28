@@ -11,10 +11,16 @@ final class QwenLiveSocket: GeminiLiveSocket {
     private var pendingTools: Set<String> = []
     private var toolNames: [String: String] = [:]
     private var deliveredTools: Set<String> = []
+    /// Privacy-safe steps for the call's trace: the turn detection Qwen
+    /// applied and when it heard the user start and stop, with microphone
+    /// levels (#1418), never what anyone said.
+    private let onTrace: (@MainActor (String) -> Void)?
+    private var turnTrace = LiveTurnTrace()
 
-    init(upstream: GeminiLiveSocket, voice: String = "Tina") {
+    init(upstream: GeminiLiveSocket, voice: String = "Tina", onTrace: (@MainActor (String) -> Void)? = nil) {
         self.upstream = upstream
         self.voice = voice
+        self.onTrace = onTrace
     }
 
     static func request(token: GeminiLiveToken) throws -> URLRequest {
@@ -56,6 +62,7 @@ final class QwenLiveSocket: GeminiLiveSocket {
         } else if let input = frame["realtimeInput"] as? [String: Any] {
             if let audio = input["audio"] as? [String: Any], let bytes = audio["data"] as? String {
                 try await emit(["type": "input_audio_buffer.append", "audio": bytes])
+                if let onTrace, let pcm16 = Data(base64Encoded: bytes), let step = turnTrace.add(pcm16) { onTrace(step) }
             }
             if input["audioStreamEnd"] as? Bool == true {
                 // End a muted utterance through VAD, without a second commit.
@@ -122,8 +129,12 @@ final class QwenLiveSocket: GeminiLiveSocket {
                   let type = event["type"] as? String else { continue }
             var mapped: [String: Any]?
             switch type {
-            case "session.updated": mapped = ["setupComplete": [:]]
-            case "response.created": activeResponse = true
+            case "session.updated":
+                onTrace?("Turn detection: \(GrokLiveProtocol.turnDetectionSummary((event["session"] as? [String: Any])?["turn_detection"]))")
+                mapped = ["setupComplete": [:]]
+            case "response.created":
+                onTrace?("Reply started")
+                activeResponse = true
             case "response.audio.delta":
                 if let audio = event["delta"] as? String {
                     mapped = ["serverContent": ["modelTurn": ["parts": [["inlineData": [
@@ -139,8 +150,11 @@ final class QwenLiveSocket: GeminiLiveSocket {
                     mapped = ["serverContent": ["inputTranscription": ["text": transcript]]]
                 }
             case "input_audio_buffer.speech_started":
+                if let onTrace { onTrace(turnTrace.speechStarted()) }
                 wantsResponse = false
                 mapped = ["serverContent": ["interrupted": true]]
+            case "input_audio_buffer.speech_stopped":
+                if let onTrace { onTrace(turnTrace.speechStopped()) }
             case "response.output_item.added":
                 if let item = event["item"] as? [String: Any], item["type"] as? String == "function_call",
                    let id = item["call_id"] as? String, let name = item["name"] as? String {

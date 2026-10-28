@@ -2481,6 +2481,7 @@ struct ComposerBar: View, Equatable {
         var stagedAny = false
         var oversized: [String] = []
         var failed: [String] = []
+        var folders: [String]?
     }
 
     private func record(_ outcome: StagedImport, in tally: inout ImportTally) {
@@ -2498,11 +2499,16 @@ struct ComposerBar: View, Equatable {
     /// One cue per selection: the error haptic and message when anything
     /// was left out, otherwise a light tap if something was staged.
     private func finishImport(_ tally: ImportTally, limitMegabytes: Int) {
-        if tally.oversized.isEmpty && tally.failed.isEmpty {
+        if tally.oversized.isEmpty && tally.failed.isEmpty && tally.folders == nil {
             if tally.stagedAny { Haptics.light() }
             return
         }
-        reportImportProblems(oversized: tally.oversized, failed: tally.failed, limitMegabytes: limitMegabytes)
+        reportImportProblems(
+            oversized: tally.oversized,
+            failed: tally.failed,
+            folders: tally.folders,
+            limitMegabytes: limitMegabytes
+        )
     }
 
     /// Copies one picked item into the staging folder under its real name
@@ -2536,7 +2542,7 @@ struct ComposerBar: View, Equatable {
         try? FileManager.default.removeItem(at: url)
     }
 
-    private func reportImportProblems(oversized: [String], failed: [String], limitMegabytes: Int) {
+    private func reportImportProblems(oversized: [String], failed: [String], folders: [String]? = nil, limitMegabytes: Int) {
         var messages: [String] = []
         if !oversized.isEmpty {
             messages.append(AttachmentSizeLimit.tooLargeMessage(names: oversized, megabytes: limitMegabytes))
@@ -2544,6 +2550,9 @@ struct ComposerBar: View, Equatable {
         if !failed.isEmpty {
             let list = failed.joined(separator: ", ")
             messages.append(AppLocalization.string("Could not prepare \(list) for upload."))
+        }
+        if let folders {
+            messages.append(AttachmentDrop.folderMessage(names: folders))
         }
         guard !messages.isEmpty else { return }
         composerErrorMessage = messages.joined(separator: "\n")
@@ -2603,15 +2612,20 @@ struct ComposerBar: View, Equatable {
 
     /// Files dropped on the chat or its text field (#1408), staged one by
     /// one like picked documents. A locked composer takes none, as its
-    /// Attach menu is off then.
+    /// Attach menu is off then. A folder isn't attached; the notice names
+    /// it and says to drop the files inside.
     private func handleDroppedFiles(_ providers: [NSItemProvider]) {
         guard appState.composerIsEnabled, !providers.isEmpty else { return }
         composerErrorMessage = nil
         let origin = asyncAttachmentContext
         let limitMegabytes = attachmentLimitMegabytes
+        let files = providers.filter { !AttachmentDrop.isFolder($0) }
+        let hasFolders = files.count < providers.count
+        let folderNames = AttachmentDrop.folderNames(in: providers)
         Task {
             var tally = ImportTally()
-            for (index, provider) in providers.enumerated() {
+            if hasFolders { tally.folders = folderNames }
+            for (index, provider) in files.enumerated() {
                 guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else { break }
                 let outcome = await AttachmentDrop.stage(provider, ordinal: index + 1, limitMegabytes: limitMegabytes)
                 guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else {

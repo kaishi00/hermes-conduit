@@ -53,6 +53,7 @@ struct ChatStepStyle: Equatable {
         "conduit_phone": ("iphone", .secondary),
         "conduit_call_user": ("phone", .conduitSuccess),
         "conduit_call_watch": ("applewatch", .conduitSuccess),
+        "conduit_notify": ("bell", .conduitAccent),
         "conduit_present": ("checkmark.bubble", .conduitAccent),
         "conduit_settings": ("gearshape", .secondary),
     ]
