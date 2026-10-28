@@ -63,7 +63,9 @@ extension AppState {
         }
         if let lastReference,
            lastReference.kind == .bot,
-           !choices.contains(where: { $0.reference == Self.widgetReference(from: lastReference) }) {
+           // By chat, not label: a label saved earlier (the main bot's
+           // "Default" before #1457) mustn't list the same chat twice.
+           !choices.contains(where: { $0.reference.kind == .bot && $0.reference.sessionID == lastReference.sessionID }) {
             choices.append(WidgetConversationChoice(
                 reference: Self.widgetReference(from: lastReference),
                 title: Self.botConversationTitle(for: lastReference, mainName: profileDisplayName("default")),

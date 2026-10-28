@@ -3113,7 +3113,7 @@ profiles line)
 - Spoken jobs: `Conduit/Services/AppState.swift` (voiceJobProfileTarget, watchJobProfileNames: a profile is matched by the name Conduit shows too)
 - Siri and Shortcuts: `Conduit/Intents/StartVoiceConversationIntent.swift` (ConduitProfileEntityQuery), fed by AppState's persistSiriProfileNames
 - Pushes: `notifier/session_titles.py` (bot_name, _bot_name), `Shared/Notifications/NotificationCopy.swift` (named), `ConduitNotificationService/NotificationService.swift`, `Shared/NotificationE2E.swift` (NotificationSharedSettings.mainProfileNames, activeDashboardID), `Conduit/Services/AppState+HermesCalls.swift` (shareMainProfileNamesWithNotifications)
-- Bot Chat labels: `Conduit/Services/AppState.swift` (botConversationTitle, isIDOnlyBotLabel, renameCapturedBotChatLabels), `Conduit/Services/AppState+Widgets.swift` (widgetReference)
+- Bot Chat labels: `Conduit/Services/AppState.swift` (botConversationTitle, isIDOnlyBotLabel, renameCapturedBotChatLabels), `Conduit/Services/AppState+Widgets.swift` (widgetReference, publishWidgetSnapshot)
 - Tests: `ConduitTests/BotModeTests.swift` (testABotTitleNamesItsProfileEverywhere, testAnUnnamedMainBotIsHermes, testADeviceNameNamesAProfileOnlyWithoutBotLooks), `ConduitTests/NotificationCopyTests.swift` (testTheMainBotGoesByItsConduitName), `ConduitTests/ProfileDiscoveryTests.swift` (display names, device names)
 
 **Rulings**
@@ -3392,7 +3392,7 @@ Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 - A project card's count is Hermes' `session_count`, which may include workers in the project's folders; only the fallback (counting previews) leaves them out.
 - A worker's transcript (its messages, not the log) can't be read in Conduit. Hermes would serve it read-only over `GET /api/sessions/{id}/messages`; a read-only view is the maintainer's call.
 
-**Checked:** 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
+**Checked:** 2026-10-28, #1457 (the main bot's last chat takes its Conduit name and is listed once by its chat, see Profile names); 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
 
 ## Bars lists scroll under
 
