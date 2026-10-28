@@ -467,7 +467,11 @@ Bot Chat.
 **Siblings:** the composer's offer and automatic takeover · a call's request
 in the open chat (Classic, Local Live, the live modes) · a call's request off
 screen (CarPlay and Watch calls too) · chats, project chats and Bot Chat ·
-Pulse's own takeover · the plugin's takeover route · the idle claim release ·
+Pulse's own takeover · the plugin's takeover route · the idle claim release
+(a profile switch keeps Conduit's socket, see Chats top bar and search, so the
+outgoing profile's idle chats are let go by this release after 60 s, as a chat
+left for another in the same profile is, where the socket's close used to let
+them go at the switch; a running turn keeps its claim either way, #1452) ·
 Settings > Chat > Take over automatically and its caption · the plugin's
 update notice
 
@@ -481,7 +485,6 @@ update notice
 - Only another process's claim is dropped, never while it runs a turn; this dashboard's own claims answer same_host (2026-10-02, #304; notifier #33, #101).
 - A call always takes over, whatever the setting, and Take over automatically is on by default (2026-10-21, #1066).
 - A Bot Chat's takeover asks the bot's profile, where its claims and ledger live (2026-10-25, #1261).
-- A profile switch keeps Conduit's socket (see Chats top bar and search), so the outgoing profile's chats stay attached to it as a chat left for another in the same profile does: an idle one's claim is let go by the idle release after 60 s, where the socket's close used to let it go at the switch. A running turn keeps its claim either way (2026-10-28, #1452).
 - While the gateway's ledger holds the chat, nothing is dropped: the route answers busy, surface `bot` for another bot's message, and Conduit says the bot is answering another bot and sends once it finishes. Other queued work answers surface `gateway`, which reads as another Hermes window (it's a platform message or a job Hermes runs there), and is waited for the same way (2026-10-25, #1261; notifier #374).
 
 **Open gaps**
@@ -2051,7 +2054,7 @@ Hermes' own RPC)
 **Code**
 - The send: `Conduit/Services/AppState.swift` (sendMessage: image.attach_bytes, file.attach when Hermes refuses the image, file.attach for every other file)
 - Resizing a picture: `Conduit/Services/PictureUpload.swift`, `Conduit/Services/AppState.swift` (AttachmentHelper.pictureForHermes)
-- Budgets and the socket: `Conduit/Services/HermesClient.swift` (uploadTimeout, attachImage, attachFile, requestsBeingWritten, keepaliveQuietTimeLeft, probe, healthCheck)
+- Budgets and the socket: `Conduit/Services/HermesClient.swift` (uploadTimeout, attachImage, attachFile, requestsBeingWritten, keepaliveQuietTimeLeft, probe, healthCheck; canHandOffSocket, which keeps a profile switch from handing on a socket mid-write, #1452)
 - Group rooms: `Conduit/Services/GroupRoomFiles.swift` (timeoutMilliseconds)
 - Tests: `ConduitTests/HermesClientTests.swift`, `ConduitTests/ComposerAttachmentPolicyTests.swift`
 
@@ -2064,7 +2067,7 @@ Hermes' own RPC)
 - Files go up one after another as base64 over the chat socket; nothing shows how far an upload has got.
 - The foreground check skipped behind an upload counts as passed, so a chat resumed then finds a dead socket only when that upload's budget ends or its write fails.
 
-**Checked:** 2026-10-25, at #1268.
+**Checked:** 2026-10-28, #1452 (a profile switch's socket hand-off waits out a large write too); 2026-10-25, at #1268.
 
 ## Phone change errors
 

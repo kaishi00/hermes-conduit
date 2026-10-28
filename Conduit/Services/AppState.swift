@@ -30638,6 +30638,10 @@ final class AppState: ObservableObject {
                 presentSavedChatListIfAvailable(dashboardID: dashboardID)
             }
             presentRestoredChatAfterProfileChange()
+            // handOffSocket checks what socketToKeepForProfileSwitch did,
+            // plus that nextClient is new, so with nothing awaited between
+            // them it can't refuse here; the fallback below is for a switch
+            // that kept no socket and so holds a fresh ticket.
             if let keptSocketClient, keptSocketClient.handOffSocket(to: nextClient) {
                 noteConnectionStep("Socket kept for the switch")
             } else {

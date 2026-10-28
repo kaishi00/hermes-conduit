@@ -3611,6 +3611,56 @@ extension HermesClientTests {
         outgoing.disconnect()
     }
 
+    func testASocketWaitingOnItsCapabilitiesReplyIsNotHandedOn() async throws {
+        // The reply settles the advertisement on the client that asked; a
+        // successor would never hear it and never advertise again.
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        try deliverReply([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "gateway.ready", "payload": [String: Any]()]
+        ], on: socket)
+        try await sent.wait("client.capabilities to be sent after gateway.ready")
+        socket.onSend = nil
+        let request = try lastRequest(on: socket)
+        XCTAssertEqual(request["method"] as? String, "client.capabilities")
+
+        XCTAssertFalse(outgoing.canHandOffSocket)
+        let incoming = makeClient(transport: transport, profile: "work")
+        XCTAssertFalse(outgoing.handOffSocket(to: incoming))
+        XCTAssertTrue(outgoing.isConnected)
+        XCTAssertFalse(incoming.isConnected)
+
+        try deliverReply([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(request["id"] as? Int), "result": ["server_requests": true]
+        ], on: socket)
+        await flushMainActor()
+        XCTAssertTrue(outgoing.canHandOffSocket, "Once the reply lands the socket can be handed on")
+        outgoing.disconnect()
+    }
+
+    func testAClientWithNoOpenSocketHandsNothingOn() async throws {
+        let transport = FakeTransport()
+        let outgoing = makeClient(transport: transport)
+        let incoming = makeClient(transport: transport, profile: "work")
+        XCTAssertFalse(outgoing.canHandOffSocket)
+        XCTAssertFalse(outgoing.handOffSocket(to: incoming))
+        XCTAssertFalse(incoming.isConnected)
+        XCTAssertTrue(transport.socketsMade.isEmpty)
+    }
+
+    func testASocketIsNotHandedOnToAClientThatHasOne() async throws {
+        let (outgoing, socket, _) = try await connectedForHandOff()
+        let (incoming, incomingSocket, _) = try await connectedForHandOff(profile: "work")
+        XCTAssertFalse(outgoing.handOffSocket(to: incoming))
+        XCTAssertTrue(outgoing.isConnected)
+        outgoing.disconnect()
+        incoming.disconnect()
+        XCTAssertTrue(socket.cancelled)
+        XCTAssertTrue(incomingSocket.cancelled)
+    }
+
     func testASocketIsNotHandedOnToAnotherDashboard() async throws {
         let (outgoing, socket, transport) = try await connectedForHandOff()
         let elsewhere = HermesClient(
