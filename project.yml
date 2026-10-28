@@ -16,8 +16,8 @@ settings:
     ENABLE_BITCODE: NO
     DEVELOPMENT_TEAM: U2TH557QA8
     CODE_SIGN_STYLE: Manual
-    MARKETING_VERSION: "0.1.15"
-    CURRENT_PROJECT_VERSION: "162"
+    MARKETING_VERSION: "2.2.1"
+    CURRENT_PROJECT_VERSION: 240
     # The push relay used when Settings is blank (Info.plist
     # ConduitDefaultRelayURL). Empty means https://push.milim.dev; a build
     # signed for its own relay sets an https URL, e.g.
@@ -131,9 +131,9 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "4"
         SKIP_INSTALL: YES
-        CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_IDENTITY: "Apple Development"
-        PROVISIONING_PROFILE_SPECIFIER: ""
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        PROVISIONING_PROFILE_SPECIFIER: "ConduitWatch App Store"
         # Push Notifications, for the PushKit token calls from Hermes ring
         # on (designs/hermes-calls-watch.md). Automatic signing adds the
         # capability to the App ID. Production, as the iPhone's: the relay
@@ -167,9 +167,9 @@ targets:
         TARGETED_DEVICE_FAMILY: "4"
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
-        CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_IDENTITY: "Apple Development"
-        PROVISIONING_PROFILE_SPECIFIER: ""
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        PROVISIONING_PROFILE_SPECIFIER: "ConduitWatch Widgets App Store"
   ConduitNotificationService:
     # Decrypts end-to-end encrypted notifications before iOS shows them
     # (#431). APNs still targets com.milim.relay; this App ID has no Push
