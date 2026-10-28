@@ -271,6 +271,8 @@ final class ChatScrollEngine: ObservableObject {
     /// Moving a browsing reader up to the bottom a shrinking bar left them
     /// past: not their scroll back to it.
     private var closingBarGap = false
+    /// Whether the reader was following when the current drag began.
+    private var followingAtDragStart = false
     private var lastObservedOffsetY: CGFloat?
     private var pastBottomCheckScheduled = false
     /// Bumped when the reader or a command takes over, so a pending
@@ -430,8 +432,9 @@ final class ChatScrollEngine: ObservableObject {
     /// bar the transcript scrolls under, so only the scroll view's bottom
     /// inset changes: no KVO reports that, and the transcript need not lay
     /// out again, so a following reader was left with the reply's end under
-    /// the bar (the chips over its actions). Checked now, then on the next
-    /// turns of the main queue (`bottomBarCheckDelays`) in case the inset
+    /// the bar (the chips over its actions). Checked now, then on later
+    /// turns of the main queue (`bottomBarCheckDelays`, each after the one
+    /// before, so the last ends about 0.3 s after the change) in case the inset
     /// lands after the bar's own layout; one chain of checks runs at a time,
     /// and a check does work only when the inset moved since the last
     /// layout check saw it. A finger or momentum on the chat leaves the
@@ -448,7 +451,8 @@ final class ChatScrollEngine: ObservableObject {
         scheduleBottomBarCheck()
     }
 
-    static let bottomBarCheckDelays: [TimeInterval] = [0, 0.1, 0.3]
+    /// The wait before each bar check, after the one before it.
+    static let bottomBarCheckDelays: [TimeInterval] = [0, 0.1, 0.2]
 
     private func scheduleBottomBarCheck() {
         guard bottomBarChecksLeft > 0 else { return }
@@ -596,6 +600,7 @@ final class ChatScrollEngine: ObservableObject {
         replyStartLandingPending = false
         landedAtReplyStart = false
         emit(.cancelAutomaticRestoration)
+        followingAtDragStart = mode == .following
         if mode != .browsing {
             setMode(.browsing)
             emit(.persistSnapshot(renderedSessionKey))
@@ -614,6 +619,11 @@ final class ChatScrollEngine: ObservableObject {
            let surface,
            !surface.isDecelerating,
            surface.distanceFromBottom <= Self.nearBottomTolerance {
+            setMode(.following)
+        }
+        // One who was following when the finger came down follows again,
+        // pinned above the bar, rather than being left where it moved them.
+        if barMoved, followingAtDragStart, mode == .browsing, surface?.isDecelerating == false {
             setMode(.following)
         }
         if surface?.isDecelerating == false {

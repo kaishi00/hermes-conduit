@@ -617,6 +617,17 @@ extension ChatTypographyTests {
         XCTAssertLessThanOrEqual(long.width, 250)
         XCTAssertGreaterThan(long.height, short.height * 1.5, "the long guess takes a second line")
 
+        // The real chip, in the row's scroll view (no width offered): its
+        // text wraps at 250 pt inside the chip's padding and arrow.
+        func chip(_ text: String) -> CGSize {
+            let host = UIHostingController(rootView: PredictiveReplyChip(text: text, isFirst: true, send: { _ in }, edit: { _ in }).fixedSize())
+            return host.sizeThatFits(in: CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude))
+        }
+        let shortChip = chip("Oui")
+        let longChip = chip("Vérifie s'il reste des billets pour le Can Can de 6 PM samedi soir")
+        XCTAssertLessThan(longChip.width, 320, "250 pt of text plus padding and the arrow")
+        XCTAssertGreaterThan(longChip.height, shortChip.height + 10, "the long chip takes a second line")
+
         // Offered less than 250 pt, it wraps at what it's offered.
         let narrowHost = UIHostingController(rootView: WrapsPastWidth(maxWidth: 250) {
             Text("Vérifie s'il reste des billets pour le Can Can de 6 PM samedi soir")
