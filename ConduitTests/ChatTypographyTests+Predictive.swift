@@ -616,5 +616,13 @@ extension ChatTypographyTests {
         XCTAssertLessThan(short.width, 100)
         XCTAssertLessThanOrEqual(long.width, 250)
         XCTAssertGreaterThan(long.height, short.height * 1.5, "the long guess takes a second line")
+
+        // Offered less than 250 pt, it wraps at what it's offered.
+        let narrowHost = UIHostingController(rootView: WrapsPastWidth(maxWidth: 250) {
+            Text("Vérifie s'il reste des billets pour le Can Can de 6 PM samedi soir")
+        })
+        let narrow = narrowHost.sizeThatFits(in: CGSize(width: 120, height: CGFloat.greatestFiniteMagnitude))
+        XCTAssertLessThanOrEqual(narrow.width, 120)
+        XCTAssertGreaterThan(narrow.height, long.height, "narrower takes more lines")
     }
 }

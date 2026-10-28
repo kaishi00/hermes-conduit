@@ -459,6 +459,11 @@ final class ChatScrollEngine: ObservableObject {
             guard let self else { return }
             self.bottomBarCheckScheduled = false
             self.checkBottomBarInset()
+            // A fling can outlast the turns, and its last scroll callback
+            // may still say it is moving: the chain waits it out.
+            if self.isDragging || self.surface?.isTracking == true || self.surface?.isDecelerating == true {
+                self.bottomBarChecksLeft = max(self.bottomBarChecksLeft, 1)
+            }
             self.scheduleBottomBarCheck()
         }
     }

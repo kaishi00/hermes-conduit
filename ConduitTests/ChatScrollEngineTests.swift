@@ -489,6 +489,24 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertTrue(engine.isFollowingLatest)
     }
 
+    /// Chips appearing during a fling that outlasts the retries: the checks
+    /// go on until it stops, then the missed inset is taken.
+    func testABottomBarChangeDuringAFlingPinsOnceItStops() {
+        let (engine, surface) = makeEngine()
+        scheduled.removeAll()
+        surface.isDecelerating = true
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        for _ in 0..<5 {
+            XCTAssertEqual(scheduled.count, 1, "a check still waits while the fling moves")
+            scheduled.removeFirst()()
+        }
+        XCTAssertEqual(surface.contentOffsetY, 3200, "momentum owns the offset")
+        surface.isDecelerating = false
+        scheduled.removeFirst()()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+    }
+
     /// The inset can land after the bar's layout: the checks go on for a few
     /// main-queue turns, one waiting at a time.
     func testBottomBarChecksRetryAFewTurns() {
