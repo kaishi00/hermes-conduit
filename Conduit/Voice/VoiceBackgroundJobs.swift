@@ -2530,6 +2530,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The note a live model gets for a typed exchange. Quiet by design:
     /// someone who typed may not want it read out (#363).
     static func chatContextPrompt(typed: String?, reply: String) -> String {
+        // Named before the clip, so a clip never cuts a path in two.
+        let reply = GatewayMediaTags.namingFiles(in: reply)
         let clippedReply = reply.count > maximumChatContextReplyCharacters
             ? String(reply.prefix(maximumChatContextReplyCharacters)) + "\n[…]"
             : reply

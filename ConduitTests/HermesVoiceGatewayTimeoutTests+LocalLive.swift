@@ -844,6 +844,9 @@ extension VoiceConversationControllerTests {
         splitter.reset()
         XCTAssertEqual(splitter.feed("See [the report](MEDIA:/r.pdf) now.\n") + splitter.finish(), "See the report now.\n")
         XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/r.pdf")
+        splitter.reset()
+        XCTAssertEqual(splitter.feed("See [the report](media:/r.pdf) now.\n") + splitter.finish(), "See the report now.\n")
+        XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/r.pdf")
         // A reply the call cuts off for its own line keeps its files.
         splitter.reset()
         _ = splitter.feed("Here you go.\nMEDIA:/r.pdf\nAnd then")

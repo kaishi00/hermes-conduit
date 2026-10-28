@@ -2693,12 +2693,17 @@ extension VoiceConversationControllerTests {
                        VoiceBackgroundJobSupervisor.threadReplyPrompt(result: reply),
                        WatchJobRelay.completionPrompt(title: "Briefing", result: reply),
                        VoiceChatToolText.readResult(chat: reply)["chat"] ?? "",
-                       VoiceChatToolText.delegatedRead(chat: reply)] {
+                       VoiceChatToolText.delegatedRead(chat: reply),
+                       VoiceBackgroundJobSupervisor.chatContextPrompt(typed: nil, reply: reply)] {
             XCTAssertFalse(prompt.contains("MEDIA:"), prompt)
             XCTAssertTrue(prompt.contains("(a file in the chat: q3.pdf)"), prompt)
         }
         XCTAssertEqual(WatchJobRelay.completionPrompt(title: "Briefing", result: reply),
                        VoiceBackgroundJobSupervisor.completionPrompt(title: "Briefing", result: reply))
+        // A clip never cuts a path in two.
+        let long = String(repeating: "a", count: VoiceBackgroundJobSupervisor.maximumChatContextReplyCharacters - 10)
+            + "\nMEDIA:/opt/data/cache/audio/tts_1.mp3"
+        XCTAssertFalse(VoiceBackgroundJobSupervisor.chatContextPrompt(typed: nil, reply: long).contains("MEDIA:"))
     }
 
     func testReadBackIsPlainSpeech() {

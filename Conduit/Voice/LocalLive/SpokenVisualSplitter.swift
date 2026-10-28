@@ -200,7 +200,7 @@ struct SpokenVisualSplitter {
     /// `text` with its links said by their titles and its images and bare
     /// addresses taken out, and what was taken, in order.
     /// A `MEDIA:` target is a file, which the tag filter puts on the screen.
-    private static let link = try? NSRegularExpression(pattern: #"(!?)\[([^\]]*)\]\((?![^\S\n]*MEDIA:)([^)\s]+)\)"#, options: [])
+    private static let link = try? NSRegularExpression(pattern: #"(!?)\[([^\]]*)\]\((?![^\S\n]*(?i:MEDIA):)([^)\s]+)\)"#, options: [])
     // An address's closing full stop or comma is the sentence's.
     private static let bareAddress = try? NSRegularExpression(pattern: #"https?://[^\s)]*[^\s).,;:!?]"#)
 
