@@ -18594,6 +18594,15 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The connected client whose socket a profile switch on
+    /// `savedConnection` hands to the new profile's client, or nil when the
+    /// switch opens its own (no socket open, or another dashboard's).
+    private func socketToKeepForProfileSwitch(within savedConnection: HermesConnection) -> HermesClient? {
+        guard let client, client.isConnected,
+              client.connection.baseUrl == savedConnection.baseUrl else { return nil }
+        return client
+    }
+
     private func connectChatResumeClient(_ client: HermesClient) async throws {
         if let connectClient = chatResumeLifecycleOperations.connectClient {
             try await connectClient(client)
@@ -30540,8 +30549,16 @@ final class AppState: ObservableObject {
         var previousTranscriptDashboardID: UUID?
 
         do {
+            // The open socket isn't tied to a profile, so the new profile's
+            // client takes it over instead of a new ticket and socket, about
+            // two seconds on a slow path (#1442). Nothing awaits between
+            // here and the hand-off, so the socket checked here is the one
+            // handed on.
+            let keptSocketClient = socketToKeepForProfileSwitch(within: savedConnection)
             let ticket: String
-            if let sparedCallTicket {
+            if keptSocketClient != nil {
+                ticket = savedConnection.ticket
+            } else if let sparedCallTicket {
                 ticket = sparedCallTicket
             } else {
                 ticket = try await mintChatResumeTicket(for: savedConnection)
@@ -30620,7 +30637,11 @@ final class AppState: ObservableObject {
                 presentSavedChatListIfAvailable(dashboardID: dashboardID)
             }
             presentRestoredChatAfterProfileChange()
-            try await connectChatResumeClient(nextClient)
+            if let keptSocketClient, keptSocketClient.handOffSocket(to: nextClient) {
+                noteConnectionStep("Socket kept for the switch")
+            } else {
+                try await connectChatResumeClient(nextClient)
+            }
             // The new profile is connected and already active: an expired
             // widget launch or a newer navigation still finishes the switch
             // (only the chat is theirs), or the old socket and a

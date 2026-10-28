@@ -2385,13 +2385,16 @@ row) · iPad and Mac (same view) · searching messages ("In messages") ·
 the profile strip on Tasks and Settings (same chips) · CarPlay's agent
 list (picks a profile too) · the profile picker sheet (same switch) ·
 Settings' busy-mode picker and display settings (show the new profile's
-at the switch)
+at the switch) · the chat socket (the new profile's client takes over the
+open one) · the notifier's release of an idle chat's claim (#1123)
 
 **Code**
 - Bar layout: `Conduit/Views/V2/V2TopBar.swift` (ViewThatFits: one row, else stacked with lowerLeading under the profiles)
 - Profile chips (on Chats, Tasks and Settings): `Conduit/Views/V2/V2TopBar.swift` (V2ProfileStrip), `Conduit/Views/V2/V2Shell.swift` (pickProfile, V2QueuedProfilePick, fadeContentBackIn, the activeProfile and isProfileSwitching handlers)
 - CarPlay's agent list: `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (selectAgent, queueAgent)
 - The switch itself: `Conduit/Services/AppState.swift` (switchProfile; the activeProfile didSet's restoreDisplayPreferences and restoreBusyInputMode; loadBusyInputMode, loadChatResumeProfileDisplayPreferences)
+- The socket kept across the switch: `Conduit/Services/AppState.swift` (socketToKeepForProfileSwitch), `Conduit/Services/HermesClient.swift` (handOffSocket, adoptSocket, receiveHandedOn, receiveFailedHandedOn, the receive loop's hand-on)
+- Tests: `ConduitTests/HermesClientTests.swift` (testAHandedOnSocketCarriesTheNextProfilesRequestsAndEvents, testALateAnswerToTheOutgoingProfilesRequestNeverSettlesTheNextOnes, testASocketHandedOnTwiceStillReachesTheLatestClient, testAHandedOnSocketThatDropsReportsTheDropToTheClientHoldingIt, testASocketIsNotHandedOnToAnotherDashboard), `ConduitTests/CrossProfilePresentationCacheTests.swift` (testAProfileSwitchKeepsTheOpenSocket)
 - Controls and search: `Conduit/Views/V2/V2ChatsView.swift` (trailingControls, stackedLeading, barUnstacked, setBarStacked, filterPill, barSearchField, searchField, searchCapsule)
 - Message match row ("In messages"): `Conduit/Views/V2/V2SessionRow.swift` (V2ContentMatchRow: two lines of matching text, four at accessibility text sizes)
 
@@ -2401,12 +2404,14 @@ at the switch)
 - Going from the stacked bar to the one-row bar carries a query over to the list's field and closes an empty open field (2026-10-24, #1199).
 - A profile chip tapped while a switch is still running (its fade-out included) is kept, with its haptic at once (the highlighted chip too, rather than opening Profiles), and the last one tapped is switched to when that switch ends, with no second haptic (none when it's where the switch landed). The chips stay tappable meanwhile: a switch takes a couple of seconds on a real dashboard, and taps in it used to do nothing (2026-10-28, #1435). The profile picker sheet still disables its rows during a switch, as it closes on the one picked. An agent picked in CarPlay's Voice list during a switch is kept the same way and switched to once it ends (#1435). A tap in the fade-out, before the switch starts, changes its target, and one back on the profile showing cancels it; a tap on All drops a kept pick. A kept pick is dropped if the dashboard changed meanwhile, and the content stays out until a pick kept from the strip lands rather than flickering in between (one kept in CarPlay doesn't hold the phone's content: it comes back at the profile change and switches again when the CarPlay pick lands).
 - A switch picked from the strip shows the new profile's chats as soon as the profile changes over (its saved list until the live one lands), not once the whole switch is over; the profile's busy mode and display settings show what it last said at once and are read again in the background, so neither the switch nor a chat opened in another profile (from All chats, a notification, a link, a widget or a Shortcut) waits on them (2026-10-28, #1443, Eric, from issue #1442).
+- A switch on the same dashboard keeps the open socket: the new profile's client takes it over, with no new ticket or socket. Hermes' dashboard socket may address any profile it serves (every request names its own), and opening one cost five to seven round trips, 1.2 to 2.1 s on Eric's path, on top of the ticket's. The outgoing client's waiting requests fail, a late answer to one of them matches nothing (request ids carry on), and the frame its last receive brings goes to the client holding the socket. A switch with no open socket opens its own as before (2026-10-28, #PRNUM, from Eric's trace on issue #1442).
+- The outgoing profile's chats stay attached to the kept socket as a chat left for another one in the same profile does, so an idle one's claim is let go by the notifier's 60 s idle release (#1123) rather than when the socket closed.
 - The list's search row follows the bar's layout, starting from the last layout seen (`barStackedKey`). Before any layout is known (first launch) the row stays out until the one-row bar appears; a change of layout (rotation, a profile added) animates it in or out (2026-10-24, #1206: implementation of #1199's open gap).
 
 **Open gaps**
 - A launch whose layout differs from the last one seen still starts from the old layout, so the row can show for a frame or arrive a frame late: the iPad was rotated or profiles were added while Conduit was closed, or another iPad window in the other layout wrote the shared key last. Closing it needs the bar's choice before the first frame, which `ViewThatFits` doesn't expose.
 
-**Checked:** 2026-10-28, #1447 (a switch takes the outgoing transcript off as the profile changes over, see A chat while it opens); 2026-10-28, #1443 (the strip shows the new profile's chats as soon as it's active); 2026-10-28, #1435 (profile chips and CarPlay's agent list keep a pick made during a switch); 2026-10-26, #1328 (the chip names Home apart from hidden projects); #1322 (the chip and filter pill also name hidden projects, "Project chats in Chats"); at #1319 (trailingControls' swapped voice steps aside beside a chat, see Voice beside the tabs); the match row at #1208, carried in #1229.
+**Checked:** 2026-10-28, #PRNUM (a switch keeps the open socket); 2026-10-28, #1447 (a switch takes the outgoing transcript off as the profile changes over, see A chat while it opens); 2026-10-28, #1443 (the strip shows the new profile's chats as soon as it's active); 2026-10-28, #1435 (profile chips and CarPlay's agent list keep a pick made during a switch); 2026-10-26, #1328 (the chip names Home apart from hidden projects); #1322 (the chip and filter pill also name hidden projects, "Project chats in Chats"); at #1319 (trailingControls' swapped voice steps aside beside a chat, see Voice beside the tabs); the match row at #1208, carried in #1229.
 
 ## Project chats in Chats
 
