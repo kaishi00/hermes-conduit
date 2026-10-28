@@ -681,6 +681,7 @@ final class AppState: ObservableObject {
             if oldValue != activeProfile {
                 composerNotice = nil
                 restoreDisplayPreferences()
+                restoreBusyInputMode()
                 dismissChatTakeover()
                 agentSettings.leave(scope: agentSettingsScope)
                 presentedScreens.leave()
@@ -32242,7 +32243,7 @@ final class AppState: ObservableObject {
     private func loadBusyInputMode(using client: HermesClient) async {
         let key = busyInputModeCacheKey
         // Shown while Hermes answers, and kept if it can't.
-        busyInputMode = defaults.string(forKey: key).flatMap(BusyInputMode.init(rawValue:)) ?? .interrupt
+        restoreBusyInputMode()
         do {
             let mode = try await client.busyInputMode()
             // A switch away while this was out reads its own.
@@ -32250,6 +32251,12 @@ final class AppState: ObservableObject {
             busyInputMode = mode
             defaults.set(mode.rawValue, forKey: key)
         } catch {}
+    }
+
+    /// Another profile: the busy mode it last had here, until Hermes
+    /// answers for it.
+    private func restoreBusyInputMode() {
+        busyInputMode = defaults.string(forKey: busyInputModeCacheKey).flatMap(BusyInputMode.init(rawValue:)) ?? .interrupt
     }
 
     /// The busy mode last read from or saved to Hermes, per server and profile.
