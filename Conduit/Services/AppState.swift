@@ -9934,9 +9934,10 @@ final class AppState: ObservableObject {
     /// bot they are looking at.
     static func botConversationTitle(for reference: SessionReference) -> String {
         let label = reference.botLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !label.isEmpty { return label }
         let name = (reference.botName ?? reference.scopeProfile)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        // A label that is only the id (saved before #1448) names it as the id does.
+        if !label.isEmpty, label != name { return label }
         return name.isEmpty
             ? AppLocalization.string("New conversation")
             : String(name.prefix(1)).uppercased() + String(name.dropFirst())

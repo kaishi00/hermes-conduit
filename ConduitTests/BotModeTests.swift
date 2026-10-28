@@ -75,6 +75,9 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(makeBot(name: "atlas").displayLabel, "Atlas", "unnamed, or named only by its id: capitalized, as everywhere in Conduit")
         XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: nil, sessionID: "s1")), "Atlas",
                        "a restored Bot Chat without a label names its bot as displayLabel does")
+        XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: "atlas", sessionID: "s1")), "Atlas",
+                       "and so does one saved with the id as its label")
+        XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: "Scout", sessionID: "s1")), "Scout")
     }
 
     func testRosterDecodeRejectsNonProfilesEnvelope() {
