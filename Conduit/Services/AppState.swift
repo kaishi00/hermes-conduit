@@ -30442,8 +30442,8 @@ final class AppState: ObservableObject {
             // attempt stale.
             setActiveProfile(previousProfile)
             // The previous profile's transcript left with it: it comes back
-            // as it was.
-            if adoptedTarget {
+            // as it was, unless a newer navigation's chat is up meanwhile.
+            if adoptedTarget, ownsChat {
                 messages = previousMessages
                 offlineChatPresentation = previousOfflineChatPresentation
             }
