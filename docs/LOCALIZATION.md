@@ -128,9 +128,10 @@ mirrors its App Language into the notifications App Group for it. The
 phone writes the chrome and the host sends the content: the title comes
 from the event type, or from the `title_label` the notifier plugin sends,
 joined with the chat's `session_title`, and the subtitle names the
-profile; the body is the host's own text when Show in notifications is on
-Full previews, else the generic copy for the type. With Generic the title
-is the generic one too. A plaintext
+profile. How much of that shows is Show in notifications: Generic keeps
+the generic title and body for the type; Chat names shows the title
+Conduit writes and the profile over the generic body; Full previews adds
+the host's own text as the body. A plaintext
 push from a pairing without encryption still shows the relay's English
 copy.
 
