@@ -1434,7 +1434,7 @@ Watch and CarPlay (not needed: neither shows a transcript)
 **Rulings**
 - What shows while a chat opens is presentation only: it never enters the live transcript, so approvals, paging and resume never read it, and the live transcript replaces it wholesale (2026-10-27, #1404, Eric picked this over seeding the live transcript or keeping chat views alive).
 - Copies are kept per dashboard and profile (Bot Chat: per bot), so another profile's history never shows (2026-10-27, #1404).
-- A Bot Chat's copy is kept for the bot its chat is open as (the registry's owner of the open id), never for a bot one of its other ids names: those ids are left out, so reopening one bot never shows another's chat (2026-10-28, #PRNUM).
+- A Bot Chat's copy is kept for the bot its chat is open as (the registry's owner of the open id), never for a bot one of its other ids names: those ids are left out, so reopening one bot never shows another's chat (2026-10-28, #1432).
 
 **Open gaps**
 - A chat whose live transcript lands somewhere other than its newest row (an unread reply, a restored reading place) moves there at the handover.
@@ -1443,7 +1443,7 @@ Watch and CarPlay (not needed: neither shows a transcript)
 - The first open of a chat after launch reads its file on the main thread (repeat opens come from memory); kept as is unless it shows in profiling (#1404).
 - While the copy is up, VoiceOver reads its rows with no "opening" announcement; the header and composer say Conduit is connecting, as for a chat picked in the saved list (#1404).
 
-**Checked:** 2026-10-28, #PRNUM.
+**Checked:** 2026-10-28, #1432.
 
 ## Composer drafts
 
