@@ -667,7 +667,7 @@ log of where a call rang)
 - On a profile set to Local Live in agent mode, a call from Hermes opens Local Live, and its fast model says why Hermes called; on Classic's hands-free option it opens Classic, which says it. Since #1194 the call asked for Local Live but the voice start still turned it into Classic (2026-10-27, #1378, from #1376).
 - A call from a cron job rings like one from a chat. Hermes runs a restart-safe cron job in a worker process that exits right after the turn, so the turn's end waits for the call request to reach the relay, up to 3 seconds (the failed turn's alert call and held calls swept then too, all in one wait), and the worker's exit then waits up to 10 more for its retries, and up to 3 after that for the usual push they fall back to (2026-10-26, notifier #389, issue #388).
 
-- After a move to a new iPhone the Watch's ring follows the pairing: the old iPhone's registration still holds the Watch's PushKit token, which the new one can't simply take (notifier #146), so the host that pairs a profile with the new iPhone names it when it revokes the old pairing and the token moves there, if the new iPhone asked for it; an old iPhone a re-pair leaves with no pairing lets it go, and an unpair keeps it. Until then Hermes call settings say the Watch still rings for the other iPhone, and the Pair button says what it did. The host logs where each call rang (2026-10-28, user report, #1441, notifier #440).
+- After a move to a new iPhone the Watch's ring follows the pairing: the old iPhone's registration still holds the Watch's PushKit token, which the new one can't simply take (notifier #146), so the host that pairs a profile with the new iPhone names it when it revokes the old pairing and the token moves there, if the new iPhone asked for it; an old iPhone a re-pair leaves with no pairing lets it go, and an unpair keeps it. Until then Hermes call settings say the Watch still rings for the other iPhone, and the Pair button says what it did. The host logs where each call rang (the design in #1441 and notifier #440, 2026-10-28, from a user's report).
 
 **Open gaps**
 - A ring for another iPhone still reaches the Watch, which can't tell it apart, and its answer goes to that iPhone: an old iPhone still paired with some profile keeps the Watch's token until that profile is paired here too (notifier #440).
@@ -3081,6 +3081,7 @@ mode picker shows a mode's section only once that mode is picked)
 
 **Code**
 - Motion: `Conduit/Theme.swift` (ConduitMotion.ease)
+- Enable voice on this device shows the saved switch, not the live state that reads off while reconnecting: `Conduit/Services/AppState.swift` (activeProfileVoiceSwitch), `Conduit/Views/AuxiliaryViews.swift` (VoiceSettingsRoute)
 - A switch that sets state at once animates its own setter: `Conduit/Views/HermesCallSettingsViews.swift` (change), `Conduit/Views/HealthSettingsViews.swift` (categoryBinding), `Conduit/Views/PhoneSettingsViews.swift` (binding), `Conduit/Views/VoiceSettingsView.swift` (setVoice, localHandsFreeSection, WakePhraseSettingsSection.save), `Conduit/Views/LiveVoiceStyleViews.swift`, `Conduit/Views/AuxiliaryViews.swift` (GatewaySettingsDetail, Cloudflare Access)
 - A switch whose state lands later (a consent sheet, the host's answer) animates on the value, page-wide: `Conduit/Views/LocationSettingsViews.swift` (LocationSettingsPage), `Conduit/Views/SyncedPreferencesViews.swift` (also the switch easing back after a failed host check), `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift` (ConnectorDetailPage), `Conduit/Views/PredictiveSettingsView.swift` (PredictiveSettingsPage), `Conduit/Views/HealthSettingsViews.swift` and `Conduit/Views/PhoneSettingsViews.swift` (sharing turned on from the consent sheet)
 
@@ -3090,7 +3091,7 @@ mode picker shows a mode's section only once that mode is picked)
 **Open gaps**
 - A row revealed by something other than a switch (a picker or a host answer) isn't covered here.
 
-**Checked:** 2026-10-26, at #1281 (carrying #1242): Predictive's switches reveal their pickers on the page-wide ease. Earlier 2026-10-25, at #1274: Health and Phone's consent-sheet turn-on animate; the live voice Use switches are not needed (never shown). Earlier at #1246 (fork CI #92): Eric's review added Enable voice and Hands-free; a connector's Turned on and Sync's failed check added from the bot reviews.
+**Checked:** 2026-10-28, #1441: Enable voice on this device shows the saved switch while Conduit reconnects, so its rows stay. Earlier 2026-10-26, at #1281 (carrying #1242): Predictive's switches reveal their pickers on the page-wide ease. Earlier 2026-10-25, at #1274: Health and Phone's consent-sheet turn-on animate; the live voice Use switches are not needed (never shown). Earlier at #1246 (fork CI #92): Eric's review added Enable voice and Hands-free; a connector's Turned on and Sync's failed check added from the bot reviews.
 
 ## Predictions
 

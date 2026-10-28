@@ -292,6 +292,11 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
 
         _ = await appState.setVoiceEnabled(false)
         XCTAssertFalse(appState.activeProfileVoiceSwitch)
+
+        // No server to read the saved switch for: it reads as isVoiceEnabled,
+        // never the default of an unwritten key.
+        appState.connection = nil
+        XCTAssertEqual(appState.activeProfileVoiceSwitch, appState.isVoiceEnabled)
     }
 
     /// Switching away from a voice-enabled profile must not leak its state
