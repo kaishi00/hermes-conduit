@@ -68,9 +68,12 @@ struct PredictiveRow: View {
     /// A whole message: tap sends it, long-press puts it in the composer.
     private func replyChip(_ guess: Predictive.Guess, isFirst: Bool) -> some View {
         HStack(spacing: 6) {
-            Text(guess.text)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
+            // A tap sends it, so it shows all of it: never cut short with
+            // an ellipsis, it wraps instead.
+            WrapsPastWidth(maxWidth: 250) {
+                Text(guess.text)
+                    .multilineTextAlignment(.leading)
+            }
             Image(systemName: "arrow.up")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Color.conduitAura)
@@ -80,9 +83,11 @@ struct PredictiveRow: View {
         .foregroundStyle(.primary)
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .frame(maxWidth: 300, alignment: .leading)
-        .background(Capsule().fill(Color.conduitAura.opacity(isFirst ? 0.2 : 0.1)))
-        .overlay(Capsule().strokeBorder(Color.conduitAura.opacity(isFirst ? 0.6 : 0.35), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.conduitAura.opacity(isFirst ? 0.2 : 0.1)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.conduitAura.opacity(isFirst ? 0.6 : 0.35), lineWidth: 1)
+        )
         // A 44 pt target around the smaller capsule.
         .frame(minHeight: 44)
         .contentShape(Rectangle())
@@ -205,5 +210,28 @@ struct PredictiveFollowUpTag: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Its content at its natural width up to `maxWidth`, and past that wrapped
+/// to `maxWidth` at whatever height that takes. A horizontal scroll view
+/// offers no width at all, so a plain `frame(maxWidth:)` there sizes text
+/// for one line and then cuts it short.
+private struct WrapsPastWidth: Layout {
+    let maxWidth: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let content = subviews.first else { return .zero }
+        return content.sizeThatFits(contentProposal(content))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let content = subviews.first else { return }
+        content.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
+    }
+
+    private func contentProposal(_ content: LayoutSubview) -> ProposedViewSize {
+        let ideal = content.sizeThatFits(.unspecified).width
+        return ProposedViewSize(width: min(ideal, maxWidth), height: nil)
     }
 }
