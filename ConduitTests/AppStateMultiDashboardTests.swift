@@ -86,6 +86,24 @@ final class AppStateMultiDashboardTests: XCTestCase {
         SavedDashboard(id: UUID(), label: label, normalizedURL: url)
     }
 
+    // MARK: - Busy mode on a profile switch
+
+    /// A profile switched to shows the busy mode it last had on this
+    /// dashboard at once, before Hermes is asked again (#1443), and Hermes'
+    /// own default when it never had one here.
+    func testAProfileSwitchedToShowsItsLastBusyModeAtOnce() {
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        defaults.set("server-a", forKey: AppState.chatResumeServerIdentityKey)
+        defaults.set(BusyInputMode.queue.rawValue, forKey: "\(AppState.busyInputModeCachePrefix)server-a|work")
+        defaults.set(BusyInputMode.steer.rawValue, forKey: "\(AppState.busyInputModeCachePrefix)server-b|home")
+
+        appState.setActiveProfileForTesting("work")
+        XCTAssertEqual(appState.busyInputMode, .queue)
+
+        appState.setActiveProfileForTesting("home")
+        XCTAssertEqual(appState.busyInputMode, .interrupt, "another server's cache is not this one's")
+    }
+
     // MARK: - Agent settings scope
 
     func testAgentSettingsScopeTellsApartDashboardsWhosePathsDifferInCase() {

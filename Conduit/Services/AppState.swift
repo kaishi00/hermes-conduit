@@ -681,6 +681,7 @@ final class AppState: ObservableObject {
             if oldValue != activeProfile {
                 composerNotice = nil
                 restoreDisplayPreferences()
+                restoreBusyInputMode()
                 dismissChatTakeover()
                 agentSettings.leave(scope: agentSettingsScope)
                 presentedScreens.leave()
@@ -30337,6 +30338,17 @@ final class AppState: ObservableObject {
                 KeychainHelper.saveConnection(freshConnection, dashboardID: dashboardID)
             }
             persistActiveProfile(target)
+            // The profile's busy mode and display settings are read in the
+            // background: both already show what this profile last said
+            // (restoreDisplayPreferences, the busy mode's cache), and the
+            // display read alone took over two seconds on a real dashboard,
+            // which the switch and a chat opened in the other profile waited
+            // on (#1442).
+            Task {
+                await loadChatResumeBusyInputMode(using: nextClient)
+                guard self.client === nextClient else { return }
+                await loadChatResumeProfileDisplayPreferences()
+            }
             // A newer navigation opens and syncs its own chat.
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
                 return false
@@ -30358,14 +30370,6 @@ final class AppState: ObservableObject {
                 finishChatViewportTransitionIfNoTranscriptReplacement(
                     generation: transitionGeneration
                 )
-            }
-            await loadChatResumeBusyInputMode(using: nextClient)
-            guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
-                return false
-            }
-            await loadChatResumeProfileDisplayPreferences()
-            guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
-                return false
             }
             Task { await loadChatResumeSlashCommands() }
             return true
@@ -32199,6 +32203,8 @@ final class AppState: ObservableObject {
             displayPreferences = previous
             return false
         }
+        // A read still out (a switch's, in the background) predates this.
+        displayPreferencesWriteRevision &+= 1
 
         do {
             try await updateProfileConfig(profile: profile) { config in
@@ -32239,12 +32245,26 @@ final class AppState: ObservableObject {
     private func loadBusyInputMode(using client: HermesClient) async {
         let key = busyInputModeCacheKey
         // Shown while Hermes answers, and kept if it can't.
-        busyInputMode = defaults.string(forKey: key).flatMap(BusyInputMode.init(rawValue:)) ?? .interrupt
+        restoreBusyInputMode()
+        let revision = busyInputModeWriteRevision
         do {
             let mode = try await client.busyInputMode()
+            // A switch away while this was out reads its own, and a mode
+            // picked meanwhile is newer.
+            guard self.client === client, revision == busyInputModeWriteRevision else { return }
             busyInputMode = mode
             defaults.set(mode.rawValue, forKey: key)
         } catch {}
+    }
+
+    /// Bumped by each busy mode picked, so a read that was already out
+    /// doesn't put the old one back.
+    private var busyInputModeWriteRevision = 0
+
+    /// Another profile: the busy mode it last had here, until Hermes
+    /// answers for it.
+    private func restoreBusyInputMode() {
+        busyInputMode = defaults.string(forKey: busyInputModeCacheKey).flatMap(BusyInputMode.init(rawValue:)) ?? .interrupt
     }
 
     /// The busy mode last read from or saved to Hermes, per server and profile.
@@ -32261,6 +32281,7 @@ final class AppState: ObservableObject {
         // The profile that takes the write, captured before it.
         let key = busyInputModeCacheKey
         busyInputMode = mode
+        busyInputModeWriteRevision &+= 1
         do {
             if let setBusyInputMode = chatResumeLifecycleOperations.setBusyInputMode {
                 try await setBusyInputMode(client, mode)

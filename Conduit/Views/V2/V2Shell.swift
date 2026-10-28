@@ -115,7 +115,7 @@ struct V2ShellContext: Equatable {
         /// so the list column leaves voice to it.
         var hasChatVoiceBeside = false
         /// A switch picked from the profile strip is under way, from the
-        /// first tap's fade-out until its content comes back.
+        /// first tap's fade-out until the switch is over.
         var isPickingProfile = false
     }
 
@@ -412,9 +412,12 @@ struct V2Shell: View {
     @State private var profileSwitchToken = 0
     /// A profile tapped while a switch runs, switched to once it ends.
     @State private var queuedProfilePick = V2QueuedProfilePick()
-    /// A switch picked from the strip is running and will bring the
-    /// content back in when it (and any tap kept during it) lands.
+    /// A switch picked from the strip is running, from the first tap's
+    /// fade-out until the switch is over.
     @State private var isPickingProfile = false
+    /// A strip pick is still fading out and hasn't started its switch: a
+    /// switch started elsewhere meanwhile doesn't bring the content back.
+    @State private var isFadingOutForPick = false
     /// A tab the shell switched to itself, which skips the selection click.
     @State private var programmaticTab: V2Tab?
     /// A settings link waiting for the Settings tab to open its page.
@@ -549,12 +552,12 @@ struct V2Shell: View {
                 }
             }
             .onChange(of: appState.activeProfile) { _, _ in
-                // A switch picked here brings the content back itself, after
-                // any tap kept during it has gone too, so it doesn't flicker
-                // in and out between the two.
-                // A strip pick waiting behind a switch started elsewhere keeps
-                // it out too, until that pick lands.
-                guard !isPickingProfile, queuedProfilePick.profile == nil else { return }
+                // The new profile's chats show as soon as it's active (its
+                // saved list, until the live one lands), not once the whole
+                // switch is over. A tap kept for after this switch keeps the
+                // content out instead, so it doesn't flicker in and out
+                // between the two.
+                guard queuedProfilePick.profile == nil, !isFadingOutForPick else { return }
                 fadeContentBackIn()
             }
             .onChange(of: appState.isProfileSwitching) { _, switching in
@@ -903,6 +906,9 @@ struct V2Shell: View {
         if appState.isProfileSwitching || isPickingProfile {
             queuedProfilePick.tap(profile, dashboardID: appState.activeDashboardID)
             if haptic { Haptics.medium() }
+            // The profile showing is on its way out: its chats leave now
+            // rather than stay tappable until the kept pick goes.
+            withAnimation(ConduitMotion.fadeOut) { contentFaded = true }
             return
         }
         // This tap is the newest: a pick still kept from a switch that
@@ -911,6 +917,7 @@ struct V2Shell: View {
         guard profile != appState.activeProfile else { return }
         if haptic { Haptics.medium() }
         isPickingProfile = true
+        isFadingOutForPick = true
         profileSwitchToken &+= 1
         let token = profileSwitchToken
         let distance = reduceMotion ? 0 : Self.profileSwitchDistance * profileSwitchDirection(to: profile)
@@ -923,6 +930,7 @@ struct V2Shell: View {
             // Only a newer strip pick moves the token, and it owns
             // isPickingProfile from then on.
             guard token == profileSwitchToken else { return }
+            isFadingOutForPick = false
             // Out of sight, content moves to the side it arrives from.
             withTransaction(Transaction(animation: nil)) { contentShift = distance }
             var target = profile
