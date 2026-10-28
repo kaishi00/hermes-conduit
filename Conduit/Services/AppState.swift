@@ -5696,28 +5696,20 @@ final class AppState: ObservableObject {
         "\(dashboardID.uuidString)|\(bot.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
     }
 
-    /// The bot a Bot Chat's copy is kept for, and the ids it is kept under.
-    /// The bot is the one owning the id the chat is open as; the scroll
+    /// The bot a Bot Chat's copy is kept for, and the ids it is kept under:
+    /// the bot owning the id the chat is open as, or none. The scroll
     /// identity's aliases can still name the chat it replaced, which may be
-    /// another bot's, so they only decide when the open id names no bot,
-    /// and only when they name one bot. Another bot's ids are left out, so
-    /// opening that bot never shows this chat (#1352).
+    /// another bot's, so they never decide the bot (an ordinary chat left
+    /// after a Bot Chat keeps no copy for it), and another bot's ids are
+    /// left out, so opening that bot never shows this chat (#1352).
     static func botChatCopyOwner(
         of identities: Set<String>,
         openAs sessionID: String,
         owner: (String) -> String?,
         sameBot: (String, String) -> Bool
     ) -> (bot: String, sessionIDs: Set<String>)? {
-        let owners = identities.compactMap { id in owner(id).map { (id: id, bot: $0) } }
-        let bot: String
-        if let openOwner = owner(sessionID) {
-            bot = openOwner
-        } else {
-            guard let only = owners.first?.bot,
-                  owners.allSatisfy({ sameBot($0.bot, only) }) else { return nil }
-            bot = only
-        }
-        let foreign = Set(owners.filter { !sameBot($0.bot, bot) }.map(\.id))
+        guard let bot = owner(sessionID) else { return nil }
+        let foreign = identities.filter { id in owner(id).map { !sameBot($0, bot) } ?? false }
         return (bot, identities.subtracting(foreign).union([sessionID]))
     }
 

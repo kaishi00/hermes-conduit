@@ -1590,15 +1590,9 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(kept?.bot, "atlas")
         XCTAssertEqual(kept?.sessionIDs, ["atlas-runtime", "plain"], "Another bot's id is left out")
 
-        let byAlias = AppState.botChatCopyOwner(
-            of: ["unknown", "shared"], openAs: "unknown", owner: { owners[$0] }, sameBot: { $0 == $1 }
-        )
-        XCTAssertEqual(byAlias?.bot, "scout", "With the open id unknown, aliases naming one bot decide")
-
-        let ambiguous = AppState.botChatCopyOwner(
-            of: ["unknown", "shared", "atlas-runtime"], openAs: "unknown", owner: { owners[$0] }, sameBot: { $0 == $1 }
-        )
-        XCTAssertNil(ambiguous, "Aliases naming two bots keep no copy")
+        XCTAssertNil(AppState.botChatCopyOwner(
+            of: ["plain", "shared"], openAs: "plain", owner: { owners[$0] }, sameBot: { $0 == $1 }
+        ), "An ordinary chat whose aliases still name a Bot Chat it replaced keeps no copy for that bot")
 
         XCTAssertNil(AppState.botChatCopyOwner(
             of: ["plain"], openAs: "plain", owner: { owners[$0] }, sameBot: { $0 == $1 }
