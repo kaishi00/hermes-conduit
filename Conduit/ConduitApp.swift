@@ -20,8 +20,6 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         // A "Hermes wants to talk" notification's Talk button (#449), and a
         // Pulse push's Quiet for today.
         NotificationCategories.register()
-        // Workspace files a previous run prepared for Save to Files.
-        Task.detached(priority: .utility) { _ = WorkspaceDownloads.root }
         // Set up before launch returns: a call the Apple Watch starts can
         // launch Conduit in the background, and its message waits on this.
         MainActor.assumeIsolated {
