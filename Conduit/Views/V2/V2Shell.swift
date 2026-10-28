@@ -612,6 +612,7 @@ struct V2Shell: View {
     /// under it rather than sitting alone in the corner.
     private func tabs(split: Bool, canSplit: Bool) -> some View {
         let settingsBeside = V2SplitLayout.settingsBesideList(split: split)
+        let underList = V2SplitLayout.tabBarUnderList(split: split, tab: selectedTab)
         return ZStack {
             ForEach(V2Tab.destinations) { tab in
                 // The selected tab shows from the tap's own frame; it joins
@@ -662,16 +663,19 @@ struct V2Shell: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 6)
                     .frame(width: canSplit ? V2SplitLayout.listWidth : nil)
-                    .frame(maxWidth: .infinity, alignment: V2SplitLayout.tabBarUnderList(split: split, tab: selectedTab) ? .leading : .center)
+                    // Lists fade out under the bar, as a chat does under its
+                    // composer: iOS 26 draws that edge itself, under the
+                    // clearance (`tabBarClearance`). Under the list column
+                    // the fade stays as wide as the list: across the window
+                    // it covered the composer of the chat beside it (#1439).
+                    .modifier(V2LegacyTabBarEdge(isOn: underList))
+                    .frame(maxWidth: .infinity, alignment: underList ? .leading : .center)
+                    .modifier(V2LegacyTabBarEdge(isOn: !underList))
                     .onGeometryChange(for: CGFloat.self) { proxy in
                         proxy.size.height
                     } action: { height in
                         if abs(height - tabBarHeight) > 0.5 { tabBarHeight = height }
                     }
-                    // Lists fade out under the bar, as a chat does under its
-                    // composer: iOS 26 draws that edge itself, under the
-                    // clearance (`tabBarClearance`).
-                    .modifier(V2LegacyTabBarEdge())
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -1406,9 +1410,13 @@ private struct V2TabBarClearance: ViewModifier {
 /// material the lists scroll under, reaching a little above the bar.
 /// iOS 26 draws a soft edge under the bar's clearance instead.
 private struct V2LegacyTabBarEdge: ViewModifier {
+    var isOn = true
+
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *), V2SystemScrollEdge.isUsed {
+            content
+        } else if !isOn {
             content
         } else {
             content.background { V2ScrollEdgeBackground(edge: .bottom).padding(.top, -14) }
