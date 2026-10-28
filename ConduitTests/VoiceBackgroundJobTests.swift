@@ -2682,6 +2682,32 @@ extension VoiceConversationControllerTests {
 
 @MainActor
 extension VoiceConversationControllerTests {
+    func testLiveModelsAreToldOfAFileNotItsPath() {
+        // A live model says a job's result in its own words, so it gets the
+        // file's name, never the path to read out.
+        let reply = "Done.\nMEDIA:/opt/data/cache/audio/tts_1.mp3\nSee [the report](MEDIA:/r/q3.pdf) now [[as_document]]"
+        XCTAssertEqual(GatewayMediaTags.namingFiles(in: reply),
+                       "Done.\n(a file in the chat: tts_1.mp3)\nSee the report (a file in the chat: q3.pdf) now")
+        XCTAssertEqual(GatewayMediaTags.namingFiles(in: "Social media: fine"), "Social media: fine")
+        let read: String = VoiceChatToolText.readResult(chat: reply)["chat"] ?? ""
+        var prompts: [String] = [VoiceBackgroundJobSupervisor.completionPrompt(title: "Briefing", result: reply)]
+        prompts.append(VoiceBackgroundJobSupervisor.threadReplyPrompt(result: reply))
+        prompts.append(WatchJobAnswer.completionPrompt(title: "Briefing", result: reply))
+        prompts.append(read)
+        prompts.append(VoiceChatToolText.delegatedRead(chat: reply))
+        prompts.append(VoiceBackgroundJobSupervisor.chatContextPrompt(typed: nil, reply: reply))
+        for prompt in prompts {
+            XCTAssertFalse(prompt.contains("MEDIA:"), prompt)
+            XCTAssertTrue(prompt.contains("(a file in the chat: q3.pdf)"), prompt)
+        }
+        XCTAssertEqual(WatchJobAnswer.completionPrompt(title: "Briefing", result: reply),
+                       VoiceBackgroundJobSupervisor.completionPrompt(title: "Briefing", result: reply))
+        // A clip never cuts a path in two.
+        let filler = String(repeating: "a", count: VoiceBackgroundJobSupervisor.maximumChatContextReplyCharacters - 10)
+        let long = filler + "\nMEDIA:/opt/data/cache/audio/tts_1.mp3"
+        XCTAssertFalse(VoiceBackgroundJobSupervisor.chatContextPrompt(typed: nil, reply: long).contains("MEDIA:"))
+    }
+
     func testReadBackIsPlainSpeech() {
         let markdown = [
             "## Plan for **Friday**",
@@ -2717,6 +2743,8 @@ extension VoiceConversationControllerTests {
         ].joined(separator: "\n")
         XCTAssertEqual(VoiceReadBack.plainSpeech(markdown), expected)
         XCTAssertEqual(VoiceReadBack.plainSpeech("Already plain."), "Already plain.")
+        XCTAssertEqual(VoiceReadBack.plainSpeech("# Done\nMEDIA:/opt/data/cache/audio/tts_1.mp3\n- Here it is: MEDIA:/tmp/a.mp3 enjoy"),
+                       "Done.\nHere it is: enjoy.", "an attached file's tag isn't read")
         XCTAssertEqual(VoiceReadBack.plainSpeech("*sets down the gavel* Order.\n- Fine, *really*: 5 * 3"), "Order.\nFine, really: 5 * 3.",
                        "a narrated action is left out; emphasis and a spaced * are read")
         XCTAssertEqual(VoiceReadBack.plainSpeech("Use `*three word pattern*` here *nods very slowly* ok"), "Use three word pattern here ok",

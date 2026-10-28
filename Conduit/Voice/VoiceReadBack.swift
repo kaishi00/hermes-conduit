@@ -22,6 +22,8 @@ enum VoiceReadBack {
         let note = codeBlockNote
         var lines: [String] = []
         var fence: (mark: Character, length: Int)?
+        // A file Hermes attached (a `MEDIA:` tag) is in the chat, not words.
+        let markdown = GatewayMediaTags.removingTags(from: markdown)
         for rawLine in markdown.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if let open = fence {

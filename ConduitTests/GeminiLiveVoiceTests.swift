@@ -2720,6 +2720,83 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(SpokenTextFilter.filter("Done 👍🏽 ✨❤️ 🇨🇦 👨‍👩‍👧"), "Done ")
     }
 
+    func testSpokenTextFilterLeavesFileTagsUnsaid() {
+        // Classic voice reads the reply as it streams: a text_to_speech
+        // file tag in it is a path, not words.
+        XCTAssertEqual(SpokenTextFilter.filter("Done.\nMEDIA:/opt/data/cache/audio/tts_1.mp3\nAnything else?"),
+                       "Done.\nAnything else?")
+        XCTAssertEqual(SpokenTextFilter.filter("Here it is: MEDIA:/tmp/a.mp3 enjoy"), "Here it is: enjoy")
+        var filter = SpokenTextFilter()
+        var spoken = ""
+        for piece in ["Here it is: ME", "DIA:/tmp/a", ".mp3 enjoy"] { spoken += filter.feed(piece) }
+        spoken += filter.finish()
+        XCTAssertEqual(spoken, "Here it is: enjoy")
+    }
+
+    func testSpokenMediaTagFilterGivesTheSameSpeechHoweverTheReplyIsSplit() {
+        // The same words, whatever the split; a space said before a tag
+        // that came later may stay.
+        func words(_ text: String) -> String {
+            text.components(separatedBy: "\n").map { $0.split(separator: " ").joined(separator: " ") }.joined(separator: "\n")
+        }
+        let replies: [(reply: String, said: String)] = [
+            ("Here you go MEDIA:/x.png\nAnything else?", "Here you go\nAnything else?"),
+            ("![Screenshot](MEDIA:/tmp/My Shot.png)\nThat is it.", "Screenshot\nThat is it."),
+            ("See [the report](MEDIA:/r.pdf) here, or [the site](https://x.com).", "See the report here, or [the site](https://x.com)."),
+            ("- MEDIA:/x.mp3\n- Done.", "- Done."),
+            ("**MEDIA:/a/b.pdf** is the file.", "is the file."),
+            ("xMEDIA:/a.mp3 words", "x words"),
+            ("[[audio_as_voice]]\nMEDIA:/a.ogg\nHi.", "Hi."),
+            ("Wiki [[Page]] and MEDIA:'/Users/me/My Files/r.pdf' end", "Wiki [[Page]] and end"),
+            ("Done.\r\nMEDIA:/a.mp3\r\nBye.", "Done.\nBye."),
+        ]
+        for (reply, said) in replies {
+            XCTAssertEqual(SpokenMediaTagFilter.filter(reply), said, reply)
+            for size in 1...9 {
+                var filter = SpokenMediaTagFilter()
+                var spoken = ""
+                var index = reply.startIndex
+                while index < reply.endIndex {
+                    let end = reply.index(index, offsetBy: size, limitedBy: reply.endIndex) ?? reply.endIndex
+                    spoken += filter.feed(String(reply[index..<end]))
+                    index = end
+                }
+                XCTAssertEqual(words(spoken + filter.finish()), said, "\(reply) split every \(size)")
+            }
+        }
+        // A bulleted tag leaves no stray marker for the action filter.
+        var actions = SpokenTextFilter()
+        XCTAssertEqual(["* ", "MEDIA:/x.mp3\n", "Done."].map { actions.feed($0) }.joined() + actions.finish(), "Done.")
+    }
+
+    func testSpokenMediaTagFilterReleasesProseThatIsNoTag() {
+        // Only a path makes a tag, so prose is said as it comes, not held
+        // to the end of its line.
+        var filter = SpokenMediaTagFilter()
+        XCTAssertEqual(filter.feed("Post it on social media: we shipped. Next."), "Post it on social media: we shipped. Next.")
+        XCTAssertEqual(filter.feed(" Wiki [[Page]] link, then more."), " Wiki [[Page]] link, then more.")
+        let bracket = " Use arr[0 for the first item, then the rest of this sentence, which keeps going on for a while."
+        XCTAssertEqual(filter.feed(bracket), bracket, "a long [ run is prose")
+        XCTAssertEqual(filter.finish(), "")
+        // A tag ending a line keeps the line's end, and its file is kept
+        // for the call's screen.
+        XCTAssertEqual(["Here you go ", "MEDIA:/x.png\n", "Anything else?"].map { filter.feed($0) }.joined() + filter.finish(),
+                       "Here you go \nAnything else?")
+        XCTAssertEqual(filter.takeFiles(), ["MEDIA:/x.png"])
+        XCTAssertEqual(filter.takeFiles(), [])
+        // Quoted words after "media:" are words, not a file; a quoted path is a file.
+        let quote = "Post it to social media: \"We're live!\" and tag us."
+        XCTAssertEqual(SpokenMediaTagFilter.filter(quote), quote)
+        XCTAssertEqual(GatewayMediaTags.namingFiles(in: quote), quote)
+        XCTAssertEqual(GatewayMediaTags.soleMediaPath("MEDIA:\"/Users/me/My Files/r.pdf\""), "/Users/me/My Files/r.pdf")
+        XCTAssertEqual(GatewayMediaTags.soleMediaPath("MEDIA:`out report.pdf`"), "out report.pdf")
+        // A tag and a link on one line: both read, every word said.
+        XCTAssertEqual(SpokenMediaTagFilter.filter("[the report](MEDIA:/r.pdf) and [the site](https://x.com)"),
+                       "the report and [the site](https://x.com)")
+        XCTAssertEqual(SpokenMediaTagFilter.filter("![chart](MEDIA:/tmp/a.png) (large)"), "chart (large)")
+        XCTAssertEqual(GatewayMediaTags.namingFiles(in: "![chart](MEDIA:/tmp/a.png) (large)"), "chart (a file in the chat: a.png) (large)")
+    }
+
     func testSpokenTextFilterKeepsSpacedAsterisksAndUnderscores() {
         XCTAssertEqual(SpokenTextFilter.filter("Revenue is price * units sold per month * 12."),
                        "Revenue is price * units sold per month * 12.",
