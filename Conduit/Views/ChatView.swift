@@ -356,6 +356,8 @@ struct ChatView: View {
                     PendingNewChatView()
                 } else if showsOfflineCopy, let offline = appState.offlineChatPresentation {
                     OfflineChatTranscriptView(presentation: offline)
+                        // Its own scroll view: the chat's jump can't reach it.
+                        .environment(\.quotedReplyJump, nil)
                 }
             }
 
@@ -1653,7 +1655,7 @@ struct UserMessageMoreMenu: View {
                     if later {
                         confirmsEdit = true
                     } else {
-                        editAndResend()
+                        editAndResend(confirmedLaterTurns: false)
                     }
                 } label: {
                     Label(AppLocalization.string("Edit and resend"), systemImage: "pencil")
@@ -1678,16 +1680,16 @@ struct UserMessageMoreMenu: View {
             titleVisibility: .visible
         ) {
             Button(AppLocalization.string("Edit and resend"), role: .destructive) {
-                editAndResend()
+                editAndResend(confirmedLaterTurns: true)
             }
         } message: {
             Text(AppLocalization.string("Your later messages and the replies to them leave the chat, and this one goes back in the composer to change and send again."))
         }
     }
 
-    private func editAndResend() {
+    private func editAndResend(confirmedLaterTurns: Bool) {
         Haptics.medium()
-        Task { await appState.editAndResend(message) }
+        Task { await appState.editAndResend(message, confirmedLaterTurns: confirmedLaterTurns) }
     }
 }
 

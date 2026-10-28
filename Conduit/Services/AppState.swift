@@ -27395,7 +27395,9 @@ final class AppState: ObservableObject {
     /// A sent message's Edit and resend (issue 1420): takes it back, with
     /// everything after it, and puts its words back in the composer ahead
     /// of whatever is typed there, its "Replying to" chip too.
-    func editAndResend(_ message: ChatMessage) async {
+    /// `confirmedLaterTurns`: the user agreed to lose the messages after it;
+    /// without that, Hermes' history having any (another device's) stops it.
+    func editAndResend(_ message: ChatMessage, confirmedLaterTurns: Bool) async {
         let context = composerSubmissionContext()
         guard message.role == .user, isCurrentComposerSubmission(context),
               let client, let sessionID = activeSessionId else { return }
@@ -27404,6 +27406,7 @@ final class AppState: ObservableObject {
             retry: false,
             argument: "",
             editing: message,
+            editingConfirmsLaterTurns: confirmedLaterTurns,
             client: client,
             sessionID: sessionID,
             context: context
@@ -27452,6 +27455,7 @@ final class AppState: ObservableObject {
         retry: Bool,
         argument: String,
         editing: ChatMessage? = nil,
+        editingConfirmsLaterTurns: Bool = false,
         client: HermesClient,
         sessionID: String,
         context: ComposerSubmissionContext
@@ -27505,6 +27509,15 @@ final class AppState: ObservableObject {
                 }
                 target = turn
                 takesLaterTurns = turn != snapshot.turns.last
+                // Messages after it that the user wasn't asked about (sent
+                // from another device since): nothing is taken back.
+                if takesLaterTurns, !editingConfirmsLaterTurns {
+                    appendSlashOutput(
+                        AppLocalization.string("This chat has newer messages. Try Edit and resend again to see what it takes back."),
+                        context: context
+                    )
+                    return true
+                }
             } else {
                 guard snapshot.turns.count >= turnCount else {
                     appendSlashOutput(nothingToRewind, context: context)

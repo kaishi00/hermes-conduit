@@ -356187,6 +356187,88 @@
           }
         }
       }
+    },
+    "This chat has newer messages. Try Edit and resend again to see what it takes back." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Chat hat neuere Nachrichten. Tippe erneut auf „Bearbeiten und neu senden“, um zu sehen, was zurückgenommen wird."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este chat tiene mensajes más recientes. Vuelve a tocar Editar y reenviar para ver qué se deshace."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce chat contient des messages plus récents. Touchez de nouveau Modifier et renvoyer pour voir ce qui sera annulé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat ini punya pesan yang lebih baru. Coba Edit dan kirim ulang lagi untuk melihat apa yang akan ditarik kembali."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa chat ha messaggi più recenti. Riprova Modifica e reinvia per vedere cosa verrà ritirato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このチャットには新しいメッセージがあります。もう一度「編集して再送信」を使うと、取り消される内容を確認できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 채팅에 더 최근 메시지가 있습니다. 편집 후 다시 보내기를 다시 시도하면 무엇이 되돌려지는지 볼 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten czat ma nowsze wiadomości. Spróbuj ponownie Edytuj i wyślij ponownie, aby zobaczyć, co zostanie cofnięte."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este chat tem mensagens mais recentes. Use Editar e reenviar de novo para ver o que será desfeito."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В этом чате есть более новые сообщения. Снова выберите «Изменить и отправить заново», чтобы увидеть, что будет отозвано."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sohbette daha yeni mesajlar var. Neyin geri alınacağını görmek için Düzenle ve yeniden gönder'i tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此聊天有更新的消息。请再次使用“编辑并重新发送”，查看会撤回哪些内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此聊天有較新的訊息。請再次使用「編輯並重新傳送」，查看會收回哪些內容。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

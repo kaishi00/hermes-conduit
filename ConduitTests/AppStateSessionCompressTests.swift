@@ -1926,7 +1926,7 @@ final class AppStateSessionCompressTests: XCTestCase {
             ChatMessage(id: "u3", role: .user, content: "latest ask", timestamp: "", rowId: 17)
         ]
 
-        await harness.appState.editAndResend(earlier)
+        await harness.appState.editAndResend(earlier, confirmedLaterTurns: true)
 
         XCTAssertEqual(rewinds, [11], "Edit and resend takes back that message and everything after it")
         XCTAssertEqual(harness.appState.composerPrefillText, "first ask")
@@ -1940,7 +1940,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         harness.appState.messages = [earlier]
         let key = harness.appState.durableComposerDraftKeyOnScreen
 
-        await harness.appState.editAndResend(earlier)
+        await harness.appState.editAndResend(earlier, confirmedLaterTurns: true)
 
         XCTAssertEqual(rewinds, [11])
         let request = try XCTUnwrap(harness.appState.composerRestoreRequests.last)
@@ -1949,6 +1949,23 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(request.draft.text, "first ask")
         XCTAssertEqual(request.draft.replyReference?.text, "Earlier answer")
         XCTAssertEqual(harness.appState.composerPrefillText, "", "Not as a prefill, which would replace what's typed")
+    }
+
+    func testEditAndResendTakesNothingBackWhenHermesHasLaterMessagesNobodyConfirmed() async throws {
+        var rewinds: [Int] = []
+        let harness = rewindHarness { target, _ in rewinds.append(target) }
+        // The transcript here ends at this message; Hermes' history has two
+        // more turns, sent from another device.
+        let earlier = ChatMessage(id: "u1", role: .user, content: "first ask", timestamp: "", rowId: 11)
+        harness.appState.messages = [earlier]
+
+        await harness.appState.editAndResend(earlier, confirmedLaterTurns: false)
+
+        XCTAssertEqual(rewinds, [])
+        XCTAssertEqual(
+            harness.appState.messages.last?.content,
+            "This chat has newer messages. Try Edit and resend again to see what it takes back."
+        )
     }
 
     func testEditAndResendRefusalNamesNoSlashCommand() {
@@ -1968,7 +1985,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         let unknown = ChatMessage(id: "u9", role: .user, content: "never saved", timestamp: "")
         harness.appState.messages = [unknown]
 
-        await harness.appState.editAndResend(unknown)
+        await harness.appState.editAndResend(unknown, confirmedLaterTurns: true)
 
         XCTAssertEqual(rewinds, [])
         XCTAssertEqual(
