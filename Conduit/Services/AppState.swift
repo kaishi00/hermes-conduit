@@ -6266,6 +6266,37 @@ final class AppState: ObservableObject {
         voiceCallChatLinks.link(markerID: markerID)
     }
 
+    /// Whether a listed chat has a call kept with it or started from it,
+    /// for the Voice filter: one look at the links per filter pass.
+    func voiceCallChatFilter() -> (SessionSummary) -> Bool {
+        let ids = voiceCallChatLinks.chatIDs(profile: activeProfile)
+        guard !ids.isEmpty else { return { _ in false } }
+        return { session in session.nestingIDs.contains { ids.contains($0) } }
+    }
+
+    /// The calls the host keeps with this profile's chats, from every
+    /// device: their chats get the call cards and are listed under Voice
+    /// here too (a call's link used to live only on the device that made it).
+    private func adoptHostChatCalls(_ calls: [VoiceHostChatCall], profile: String) {
+        let listed = profile == activeProfile ? sessions : []
+        let adopted = voiceCallChatLinks.adopt(calls, profile: profile) { chatID in
+            listed.first { $0.nestingIDs.contains(chatID) }?.title
+        }
+        guard adopted else { return }
+        voiceCallChatLinks.store(in: defaults)
+        voiceCallChatLinksRevision &+= 1
+        showVoiceCallMarkersInOpenChat(profile: profile)
+    }
+
+    /// The open chat's history with any call cards it lacks, at once.
+    private func showVoiceCallMarkersInOpenChat(profile: String) {
+        guard profile == activeProfile, let sessionID = activeSessionId else { return }
+        let merged = mergeVoiceCallMarkers(into: messages, sessionId: sessionID)
+        guard merged.count != messages.count else { return }
+        messages = merged
+        cacheMessagePresentation()
+    }
+
     /// A call attached to a chat was saved: the chat gets its marker, at
     /// once when it's on screen.
     /// `callSessionID` is empty for a call kept with its chat, `chatID`
@@ -6289,11 +6320,7 @@ final class AppState: ObservableObject {
         voiceCallChatLinks.add(link)
         voiceCallChatLinks.store(in: defaults)
         voiceCallChatLinksRevision &+= 1
-        guard profile == activeProfile, let sessionID = activeSessionId else { return }
-        let merged = mergeVoiceCallMarkers(into: messages, sessionId: sessionID)
-        guard merged.count != messages.count else { return }
-        messages = merged
-        cacheMessagePresentation()
+        showVoiceCallMarkersInOpenChat(profile: profile)
     }
 
     /// An unattached call took its first job's chat as its own (#1250): the
@@ -7346,13 +7373,14 @@ final class AppState: ObservableObject {
         voiceTagRefreshTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let tags = try await self.voiceHistoryClient.tags(profile: profile)
+                let answer = try await self.voiceHistoryClient.tags(profile: profile)
                 // Tags this device just wrote may not have reached the host's
                 // listing yet; the host's own win where both exist, except
                 // that a local parent link beats a host tag still lacking it.
-                self.voiceSessionTagsByKey[key] = (self.voiceSessionTagsByKey[key] ?? [:]).merging(tags) { local, host in
+                self.voiceSessionTagsByKey[key] = (self.voiceSessionTagsByKey[key] ?? [:]).merging(answer.tags) { local, host in
                     host.parentID == nil && local.parentID != nil && host.kind == local.kind ? local : host
                 }
+                self.adoptHostChatCalls(answer.chatCalls, profile: profile)
             } catch {
                 // An older plugin has no tags: rows stay under their source.
                 Self.voiceHistoryLog.debug("Voice tags unavailable: \(LogRedaction.describing(error), privacy: .public)")
@@ -30183,15 +30211,16 @@ final class AppState: ObservableObject {
     /// What a saved call row ends with: the plugin ends the rows it writes.
     nonisolated static let voiceCallEndReason = "conduit_voice"
 
-    /// A call row, or a chat a Classic voice call started, that was archived
-    /// when the call ended (#1124): Hermes Desktop's list leaves it out,
+    /// A call row, a chat a Classic voice call started, or a voice job's
+    /// chat, archived by the plugin when the call ended or once Hermes
+    /// answered the job (#1124): Hermes Desktop's list leaves it out,
     /// Conduit keeps listing it with its calls. One the user archived, or
     /// one used since, isn't one.
     nonisolated static func isArchivedVoiceChat(_ session: SessionSummary, tags: [String: VoiceSessionTag]) -> Bool {
         guard session.isArchived, session.isAutoArchived == true else { return false }
         if session.endReason == voiceCallEndReason { return true }
         let ids = [session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds
-        return ids.contains { tags[$0]?.kind == .classic }
+        return ids.contains { id in tags[id].map { $0.kind == .classic || $0.kind == .job } ?? false }
     }
 
     /// The archived pages' voice chats, as deep as the live list reads,

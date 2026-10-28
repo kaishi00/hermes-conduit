@@ -1626,9 +1626,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             return .joined(title: job.title)
         }
         let generation = generation
-        // Marked in the chat like the call's other turns there; a background
-        // job's own prompt carries no such mark.
-        let text = job.isThreadTurn ? Self.threadTurnText(for: words) : words
+        // Marked as voice's like the call's turns in its chat, so a job's
+        // chat that only voice used still leaves Desktop's list once
+        // answered (the plugin's voice_archive).
+        let text = Self.threadTurnText(for: words)
         var attempts = 0
         var waits = 0
         while true {

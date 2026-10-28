@@ -218,6 +218,7 @@ struct V2FilterSelection: Equatable {
         sessions: [SessionSummary],
         cronSessions: [SessionSummary],
         category: (SessionSummary) -> SessionSource,
+        hasVoiceCalls: (SessionSummary) -> Bool = { _ in false },
         hasStatus: (V2SessionFilter, SessionSummary) -> Bool
     ) -> [SessionSummary] {
         let kinds = Set(sources.compactMap(\.sessionSource))
@@ -236,7 +237,9 @@ struct V2FilterSelection: Equatable {
             let chats = sessions.filter { session in
                 guard !session.isArchived else { return false }
                 let source = category(session)
-                return source != .cron && kinds.contains(source)
+                // A chat a call was kept with, or started from, is under
+                // Voice too, so every call is listed there.
+                return source != .cron && (kinds.contains(source) || (kinds.contains(.voice) && hasVoiceCalls(session)))
             }
             listed = kinds.contains(.cron)
                 ? Self.mergedByRecency(chats, cronSessions.filter { !$0.isArchived })
@@ -1079,7 +1082,8 @@ struct V2ChatsView: View, Equatable {
                 cronSessions: listed.cron,
                 source: source,
                 category: category,
-                isPinned: appState.isSessionPinned
+                isPinned: appState.isSessionPinned,
+                hasVoiceCalls: hasVoiceCalls
             )
         }
     }
@@ -1088,6 +1092,13 @@ struct V2ChatsView: View, Equatable {
     /// the voice tags and voice jobs by every id the row answers to.
     private func category(_ session: SessionSummary) -> SessionSource {
         renderMemo.category(session.nestingIDs.joined(separator: "\u{1F}")) { appState.sessionCategory(for: session) }
+    }
+
+    /// A chat with calls, listed under Voice; the calls' chats are worked
+    /// out once per render.
+    private func hasVoiceCalls(_ session: SessionSummary) -> Bool {
+        let filter = renderMemo.voiceCallChats { appState.voiceCallChatFilter() }
+        return filter(session)
     }
 
     private func filterRows(_ selection: V2FilterSelection, searching: Bool) -> [SessionSummary] {
@@ -1112,6 +1123,7 @@ struct V2ChatsView: View, Equatable {
                 sessions: listed.sessions,
                 cronSessions: listed.cron,
                 category: category,
+                hasVoiceCalls: hasVoiceCalls,
                 hasStatus: hasStatus
             )
         }
@@ -2548,9 +2560,11 @@ final class V2ChatsRenderMemo {
     private var categories: [String: SessionSource] = [:]
     private var filtered: [String: [SessionSummary]] = [:]
     private var listed: (sessions: [SessionSummary], cron: [SessionSummary])?
+    private var voiceCallChats: ((SessionSummary) -> Bool)?
 
     func reset() {
         listed = nil
+        voiceCallChats = nil
         sources.removeAll(keepingCapacity: true)
         categories.removeAll(keepingCapacity: true)
         filtered.removeAll(keepingCapacity: true)
@@ -2567,6 +2581,13 @@ final class V2ChatsRenderMemo {
         if let listed { return listed }
         let made = make()
         listed = made
+        return made
+    }
+
+    func voiceCallChats(_ make: () -> (SessionSummary) -> Bool) -> (SessionSummary) -> Bool {
+        if let voiceCallChats { return voiceCallChats }
+        let made = make()
+        voiceCallChats = made
         return made
     }
 

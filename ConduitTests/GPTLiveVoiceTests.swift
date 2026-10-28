@@ -1905,7 +1905,7 @@ extension VoiceConversationControllerTests {
             return XCTFail("\(followUp)")
         }
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.first?.1, "wait, make it for Alex instead", "Hermes gets the user's own words")
+        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it for Alex instead", "Hermes gets the user's own words")
         XCTAssertEqual(fake.created, 1, "a follow-up is never a new job")
 
         // The job's result still answers its own delegation.
@@ -1931,12 +1931,12 @@ extension VoiceConversationControllerTests {
 
         _ = await bridge.handleDelegation(id: "del_2", request: "Add to job 1: also ask for a quiet table", userWords: "also ask for a quiet table")
         XCTAssertEqual(fake.steers.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.steers.map(\.1), ["also ask for a quiet table"])
+        XCTAssertEqual(fake.steers.map(\.1), ["(voice) also ask for a quiet table"])
         XCTAssertTrue(fake.redirects.isEmpty)
 
         _ = await bridge.handleDelegation(id: "del_3", request: "Job 1: make it Alex", userWords: "make it Alex")
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.map(\.1), ["make it Alex"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) make it Alex"])
         XCTAssertEqual(supervisor.jobs.count, 1)
     }
 
@@ -1955,7 +1955,7 @@ extension VoiceConversationControllerTests {
             id: "del_2",
             request: "Job 1: make it Milan" + GPTLiveConversationController.delegationContextMarker + "User: weather?\n"
         )
-        XCTAssertEqual(fake.redirects.map(\.1), ["make it Milan"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) make it Milan"])
         XCTAssertEqual(fake.created, 1)
     }
 
@@ -2005,7 +2005,7 @@ extension VoiceConversationControllerTests {
         await waitForFollowUpState { !fake.redirects.isEmpty }
 
         XCTAssertEqual(fake.created, 1, "a follow-up is never a new job")
-        XCTAssertEqual(fake.redirects.map(\.1), ["Wait, make it for Alex."])
+        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) Wait, make it for Alex."])
         controller.stop()
     }
 }
@@ -2918,7 +2918,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 1, "the user already said where it goes")
 
         _ = await bridge.handleDelegation(id: "del_2", request: "Job 1: make it Alex", userWords: "wait, make it Alex")
-        XCTAssertEqual(fake.redirects.map(\.1), ["wait, make it Alex"], "a correction goes in at once")
+        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) wait, make it Alex"], "a correction goes in at once")
         XCTAssertEqual(fake.created, 1)
     }
 
@@ -3579,7 +3579,7 @@ extension VoiceConversationControllerTests {
         }
         XCTAssertTrue(text.contains("\"New job:\""), text)
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.map(\.1), ["cancel that"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) cancel that"])
         XCTAssertEqual(fake.created, 1, "never a second job")
         // A bare "send it to Hermes" with nothing held sends nothing and
         // never changes the job.
@@ -3616,7 +3616,7 @@ extension VoiceConversationControllerTests {
 
         let sent = await bridge.handleDelegation(id: "del_3", request: "Send:", userWords: "yes")
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.map(\.1), ["cancel that"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) cancel that"])
         XCTAssertEqual(fake.created, 1, "into the job, not a second one")
         guard case .delegationReply("del_3", let sentText, .speakable)? = sent.first else { return XCTFail("\(sent)") }
         XCTAssertTrue(sentText.hasPrefix(GPTLiveDelegationBridge.sentPrefix), sentText)
