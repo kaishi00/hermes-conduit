@@ -406,6 +406,33 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 3500)
     }
 
+    /// Predictive's chips appearing over the composer grow only the bottom
+    /// inset (iOS 26's safe-area bar), with no layout pass the surface sees.
+    func testFollowingPinsWhenTheBottomBarGrows() {
+        let (engine, surface) = makeEngine()
+        scheduled.removeAll()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3252, "the reply's end stays above the chips")
+
+        // The inset lands after the bar's own layout: the later check pins it.
+        surface.insetBottom = 104
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 3304)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testABottomBarGrowingLeavesABrowsingReaderAlone() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 1000)
+        scheduled.removeAll()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 1000)
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
     func testFollowingRepairsAnOvershootWhenContentShrinks() {
         let (_, surface) = makeEngine()
         surface.layOut(contentHeight: 3700)

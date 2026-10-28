@@ -286,6 +286,11 @@ struct ChatView: View {
             // shows, not for every redraw of this view.
             ComposerBar(appState: appState).equatable()
         }
+        // The transcript's bottom inset follows this bar; a following chat
+        // keeps its end above it when chips or the dock come and go.
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
+            scrollEngine.bottomBarResized()
+        }
     }
 
     private var renderedScrollScope: ChatRenderedScrollScope? {

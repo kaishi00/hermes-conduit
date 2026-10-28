@@ -406,6 +406,18 @@ final class ChatScrollEngine: ObservableObject {
         scheduleBlankViewportCheckDuringLiveTurn()
     }
 
+    /// The bar under the transcript (the composer, Predictive's chips, the
+    /// plan dock, a call's bar) changed height. On iOS 26 it is a safe-area
+    /// bar the transcript scrolls under, so only the scroll view's bottom
+    /// inset changes: no KVO reports that, and the transcript need not lay
+    /// out again, so a following reader was left with the reply's end under
+    /// the bar (the chips over its actions). Checked now, and once more after
+    /// the change has landed.
+    func bottomBarResized() {
+        surfaceLayoutChanged()
+        schedule(0) { [weak self] in self?.surfaceLayoutChanged() }
+    }
+
     /// The offset changed (user scroll, deceleration, or one of ours).
     func surfaceScrolled() {
         surfaceCallbackDepth += 1
