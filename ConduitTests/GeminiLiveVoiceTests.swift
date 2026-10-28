@@ -2785,6 +2785,9 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(GatewayMediaTags.namingFiles(in: quote), quote)
         XCTAssertEqual(GatewayMediaTags.soleMediaPath("MEDIA:\"/Users/me/My Files/r.pdf\""), "/Users/me/My Files/r.pdf")
         XCTAssertEqual(GatewayMediaTags.soleMediaPath("MEDIA:`out report.pdf`"), "out report.pdf")
+        // A tag and a link on one line: both read, every word said.
+        XCTAssertEqual(SpokenMediaTagFilter.filter("[the report](MEDIA:/r.pdf) and [the site](https://x.com)"),
+                       "the report and [the site](https://x.com)")
     }
 
     func testSpokenTextFilterKeepsSpacedAsterisksAndUnderscores() {

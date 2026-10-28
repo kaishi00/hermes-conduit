@@ -107,8 +107,9 @@ enum GatewayMediaTags {
         let nsLine = trimmed as NSString
         if let image = markdownImageExpression.firstMatch(in: trimmed, range: NSRange(location: 0, length: nsLine.length)),
            let path = normalizedPath(nsLine.substring(with: image.range(at: 2))),
-           // Two tags on the line: each is read on its own below.
-           path.range(of: "MEDIA:", options: .caseInsensitive) == nil {
+           // Two tags, or a tag and a link, on the line: each is read on
+           // its own below.
+           path.range(of: "MEDIA:", options: .caseInsensitive) == nil, !path.contains("](") {
             let alt = nsLine.substring(with: image.range(at: 1)).trimmingCharacters(in: .whitespaces)
             return [.media(path, alt: alt.isEmpty ? nil : alt)]
         }
