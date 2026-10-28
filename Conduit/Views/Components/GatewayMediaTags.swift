@@ -50,8 +50,13 @@ enum GatewayMediaTags {
         // Longest first, so "tar" never wins over "tar.gz"'s "gz" or "m4a"
         // over a longer name.
         let alternation = knownExtensions.sorted { $0.count > $1.count }.joined(separator: "|")
+        // A quoted path starts at a root or ends in a known extension, so
+        // quoted prose ("social media: \"we're live!\"") stays words.
+        func quoted(_ q: String) -> String {
+            q + #"(?:(?:~/|/|[A-Za-z]:[/\\])[^"# + q + #"\n]+?|[^"# + q + #"\n]+?\.(?:"# + alternation + "))" + q
+        }
         let pattern = #"[`"'*_]{0,3}MEDIA:[^\S\n]*"#
-            + #"(`[^`\n]+?`|"[^"\n]+?"|'[^'\n]+?'|"#
+            + "(" + quoted("`") + "|" + quoted("\"") + "|" + quoted("'") + "|"
             + #"(?:~/|/|[A-Za-z]:[/\\])\S+?(?:[^\S\n]+\S+?)*?\.(?:"# + alternation + #"))"#
             + #"(?=[\s`"'*_,;:)\]}\["# + cjkTerminators + #"]|MEDIA:|\.(?:\s|$)|$)[`"'*_]{0,3}\.?"#
         // The pattern is a compile-time constant; a failure here is a

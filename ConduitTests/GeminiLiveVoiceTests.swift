@@ -2779,6 +2779,12 @@ extension HermesVoiceGatewayTimeoutTests {
                        "Here you go\nAnything else?")
         XCTAssertEqual(filter.takeFiles(), ["MEDIA:/x.png"])
         XCTAssertEqual(filter.takeFiles(), [])
+        // Quoted words after "media:" are words, not a file; a quoted path is a file.
+        let quote = "Post it to social media: \"We're live!\" and tag us."
+        XCTAssertEqual(SpokenMediaTagFilter.filter(quote), quote)
+        XCTAssertEqual(GatewayMediaTags.namingFiles(in: quote), quote)
+        XCTAssertEqual(GatewayMediaTags.soleMediaPath("MEDIA:\"/Users/me/My Files/r.pdf\""), "/Users/me/My Files/r.pdf")
+        XCTAssertEqual(GatewayMediaTags.soleMediaPath("MEDIA:`out report.pdf`"), "out report.pdf")
     }
 
     func testSpokenTextFilterKeepsSpacedAsterisksAndUnderscores() {
