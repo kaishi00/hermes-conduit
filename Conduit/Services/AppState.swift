@@ -5107,7 +5107,15 @@ final class AppState: ObservableObject {
     /// cuts short, and a count of catalog reads that changed the list.
     private(set) var chatListPollPacer = ChatListPollPacer()
     private let chatListPollSleep = WakeableSleep()
-    private var chatListCatalogGeneration = 0
+    /// Published so a project's page beside the open chat reads its own
+    /// list again when the catalog changes (issue 1454).
+    @Published private(set) var chatListCatalogGeneration = 0
+    /// The chat New Chat (or a project's new chat) just made here. Hermes
+    /// lists a chat only once its first message is stored, so until then
+    /// every catalog read would drop the row the create put in, and a list
+    /// beside the open chat wouldn't show it (issue 1454). The lists keep
+    /// it while it is the open chat and the catalog doesn't list it.
+    @Published private(set) var newChatAwaitingListing: NewChatAwaitingListing?
     private var projectsRequestGeneration = 0
     /// Fences optional approval-queue reads across re-entrant MainActor
     /// awaits. A late response must not populate a replacement conversation.
@@ -15083,8 +15091,9 @@ final class AppState: ObservableObject {
                 }
             }
             let loadedSessions = catalogLoad.sessions
+            let awaitingListing = newChatRowAwaitingListing(loaded: loadedSessions)
             let allSessions = uniqueSessions(
-                [retainedActiveTurn].compactMap { $0 } + loadedSessions
+                [retainedActiveTurn, awaitingListing].compactMap { $0 } + loadedSessions
             )
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
@@ -16978,7 +16987,8 @@ final class AppState: ObservableObject {
         automaticSyncOperationID: UUID? = nil,
         requiredViewportTransitionGeneration: UInt64? = nil,
         cwd: String? = nil,
-        widgetLease: WidgetLaunchLease? = nil
+        widgetLease: WidgetLaunchLease? = nil,
+        listsBeforeHermes: Bool = false
     ) async -> String? {
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
@@ -17109,6 +17119,15 @@ final class AppState: ObservableObject {
                 var updated = existing
                 updated.isActive = false
                 return updated
+            }
+            // A chat someone started is listed at once; one a sync starts
+            // because there was nothing to resume waits for Hermes.
+            if listsBeforeHermes {
+                newChatAwaitingListing = NewChatAwaitingListing(
+                    ids: Self.chatListIDs(of: [summary]),
+                    profile: activeProfile,
+                    cwd: cwd
+                )
             }
             if resumePurpose == .automaticReturn {
                 _ = selectChatResumeTarget(
@@ -20449,8 +20468,9 @@ final class AppState: ObservableObject {
             // older answer is no news, and the list it would put back is
             // older than the one shown.
             guard claimSessionListListing(readTicket) else { return true }
+            let awaitingListing = newChatRowAwaitingListing(loaded: loadedSessions)
             let allSessions = uniqueSessions(
-                [retainedActiveTurn].compactMap { $0 } + loadedSessions
+                [retainedActiveTurn, awaitingListing].compactMap { $0 } + loadedSessions
             )
             let listedSessions = allSessions.filter { $0.source != .cron }
             let listedCron = allSessions.filter { $0.source == .cron }
@@ -20514,6 +20534,30 @@ final class AppState: ObservableObject {
             )
             return false
         }
+    }
+
+    /// The open chat made here, kept in a list Hermes doesn't list it in
+    /// yet. The wait ends once the catalog lists it or another chat opens:
+    /// an empty chat left behind is gone, as Hermes has no row for it.
+    private func newChatRowAwaitingListing(loaded: [SessionSummary]) -> SessionSummary? {
+        guard let awaiting = newChatAwaitingListing else { return nil }
+        guard awaiting.profile == activeProfile,
+              let activeSessionId, awaiting.ids.contains(activeSessionId),
+              !loaded.contains(where: awaiting.matches),
+              let row = sessions.first(where: awaiting.matches) else {
+            newChatAwaitingListing = nil
+            return nil
+        }
+        return row
+    }
+
+    /// The open chat made here in `project`'s folder (or, for Home, in no
+    /// folder) that Hermes doesn't list yet, for the project's page.
+    func newChatAwaitingListing(in project: ProjectSummary) -> SessionSummary? {
+        guard let awaiting = newChatAwaitingListing, awaiting.profile == activeProfile,
+              let activeSessionId, awaiting.ids.contains(activeSessionId),
+              awaiting.isIn(project) else { return nil }
+        return sessions.first(where: awaiting.matches)
     }
 
     private func takeSessionListReadTicket() -> UInt64 {
@@ -20668,7 +20712,10 @@ final class AppState: ObservableObject {
     /// Every id the catalog's chats go by, shown or hidden: a live chat
     /// with none of these reads the catalog again.
     private func chatListListedIDs() -> Set<String> {
+        // A new chat made here is listed only until Hermes lists it: the
+        // registry still reads the catalog in for it, its title included.
         Self.chatListIDs(of: sessions + cronSessions + archivedSessions)
+            .subtracting(newChatAwaitingListing?.ids ?? [])
     }
 
     /// Every id the chats the list shows go by: the profile's own, without
@@ -24226,7 +24273,8 @@ final class AppState: ObservableObject {
             profile: profile,
             token: token,
             cwd: cwd,
-            widgetLease: widgetLease
+            widgetLease: widgetLease,
+            listsBeforeHermes: true
         )
         // An expired widget launch adopts nothing: the chat still open gets
         // its own turn state back unless something newer took it over.
@@ -31502,6 +31550,11 @@ final class AppState: ObservableObject {
     /// best-effort hint for hiding the no-op "move here" target; nil means
     /// unknown, not "in no project".
     func knownProjectID(for session: SessionSummary) -> String? {
+        // A new chat Hermes doesn't list yet belongs to the project it was
+        // started in, so the Chats list sorts it as it will once listed.
+        if let awaiting = newChatAwaitingListing, awaiting.matches(session) {
+            return projects.first { !$0.isHome && awaiting.isIn($0) }?.id
+        }
         let index = projectPositionsIndex()
         guard !index.isEmpty else { return nil }
         // The first listed project holding any id the conversation answers to.

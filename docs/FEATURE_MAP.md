@@ -459,6 +459,41 @@ no Settings caption or doc describes it
 
 **Checked:** 2026-10-27, added at #1371.
 
+## A new chat in the list
+
+A chat started here shows in the list at once, though Hermes lists a chat
+only once its first message is stored (issue 1454: on a Mac the new chat
+stayed out of the list beside it until the user went away and back).
+
+**Siblings:** the Chats list beside the open chat (iPad, Mac) and on a phone
+after Back · All profiles (the profile in use's rows are its own list) · a
+project's page beside the chat, and Home's page for a plain chat · the
+Projects view's and the main list's project sorting (Project chats in Chats)
+· the drawer shell's persistent sidebar (V2 off; reads the same list) ·
+every way a chat is made: New Chat, a project's new conversation, the empty
+canvas's send, a widget's or Shortcut's New Chat, /new, a Classic call's
+fresh chat · not needed: a branch (stored with its parent's messages, so
+Hermes lists it, and its own create waits for that read), CarPlay's chat
+list and the widget's pickers (they pick a chat to talk to, and the open one
+is already open), the Watch (no list) · text: no Settings caption or doc
+describes it
+
+**Code**
+- Keeping the row: `Conduit/Services/AppState.swift` (newChatAwaitingListing, set in createAndReconcileSession for createNewSession; newChatRowAwaitingListing, read by loadSessions and syncSession's catalog; chatListListedIDs; knownProjectID), `Conduit/Services/ChatSync.swift` (NewChatAwaitingListing)
+- Project page: `Conduit/Views/V2/V2ProjectPage.swift` (lanes, the task keyed on chatListCatalogGeneration)
+- Tests: `ConduitTests/SessionRenameTests.swift` (testANewChatStaysListedWhileOpenUntilHermesListsIt, testANewChatLeftEmptyLeavesTheList, testANewChatBelongsToTheProjectItStartedIn)
+
+**Rulings**
+- The row the create puts in stays through every catalog read while it is the open chat, until Hermes lists it; then Hermes' row, with its title, takes over. Opening another chat ends the wait, so an empty chat left behind leaves the list, as Hermes keeps no row for it (2026-10-28, issue 1454, #PRNUM).
+- Only a chat someone started (createNewSession): one a sync starts because there was nothing to resume waits for Hermes, as before.
+- It still counts as unlisted for the registry poll, so the poll reads the catalog in for it as for a chat started on another device.
+- A project's page shows it on top of the project's own folder lane (a new lane, Recent, when the page has none), and Home's page shows a plain chat. The page reads Hermes' list again whenever the chats list's catalog changes, so it follows while it stays beside the chat (2026-10-28, #PRNUM).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-28, added at #PRNUM.
+
 ## Chat open elsewhere
 
 What Conduit does when Hermes refuses a send because something else holds the

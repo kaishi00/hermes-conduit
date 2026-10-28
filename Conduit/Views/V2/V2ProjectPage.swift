@@ -49,7 +49,22 @@ struct V2ProjectPage: View {
     }
 
     private var allSessions: [SessionSummary] {
-        detail?.lanes.flatMap(\.sessions) ?? []
+        lanes.flatMap(\.sessions)
+    }
+
+    /// Hermes' lanes, with the chat just started here on top of its folder's
+    /// until Hermes lists it: Hermes stores a chat with its first message,
+    /// and the page beside the open chat would miss it (issue 1454).
+    private var lanes: [ProjectSessionLane] {
+        var lanes = detail?.lanes ?? []
+        guard let created = appState.newChatAwaitingListing(in: project),
+              !lanes.contains(where: { $0.sessions.contains { $0.id == created.id } }) else { return lanes }
+        if let index = lanes.firstIndex(where: { lanePath($0) == nil }) ?? lanes.indices.first {
+            lanes[index].sessions.insert(created, at: 0)
+        } else {
+            lanes = [ProjectSessionLane(id: "\(project.id)-new", title: AppLocalization.string("Recent"), sessions: [created])]
+        }
+        return lanes
     }
 
     var body: some View {
@@ -66,7 +81,7 @@ struct V2ProjectPage: View {
                         .frame(maxWidth: .infinity, minHeight: 140)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                } else if let detail, detail.lanes.allSatisfy({ $0.sessions.isEmpty }) {
+                } else if detail != nil, lanes.allSatisfy({ $0.sessions.isEmpty }) {
                     ContentUnavailableView {
                         Label("No Conversations", systemImage: "tray")
                     } description: {
@@ -80,8 +95,8 @@ struct V2ProjectPage: View {
                     }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                } else if let detail {
-                    ForEach(detail.lanes) { lane in
+                } else if detail != nil {
+                    ForEach(lanes) { lane in
                         laneRows(lane)
                     }
                 } else {
@@ -131,7 +146,9 @@ struct V2ProjectPage: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()
         }
-        .task(id: project.id) { await reload() }
+        // Read again when the chats list's catalog changes: beside the open
+        // chat on a wide window the page stays on screen (issue 1454).
+        .task(id: "\(project.id)|\(appState.chatListCatalogGeneration)") { await reload() }
         .onChange(of: appState.isConnected) { _, isConnected in
             guard isConnected, detail == nil else { return }
             Task { await reload() }

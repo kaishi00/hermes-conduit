@@ -72,6 +72,35 @@ struct ChatListCatalogFreshness {
     }
 }
 
+/// A chat made here that Hermes doesn't list yet: Hermes stores a chat
+/// with its first message (`AppState.newChatAwaitingListing`, issue 1454).
+struct NewChatAwaitingListing: Equatable {
+    /// Every id the chat goes by: its stored id and the runtime's.
+    let ids: Set<String>
+    let profile: String
+    /// The folder it started in; nil for a plain chat, which lands in Home.
+    let cwd: String?
+
+    func matches(_ session: SessionSummary) -> Bool {
+        ids.contains(session.id)
+            || session.storedSessionId.map(ids.contains) == true
+            || session.alternateIds.contains(where: ids.contains)
+    }
+
+    /// Whether the chat belongs on `project`'s page: started in its folder,
+    /// or, for Home, in none.
+    func isIn(_ project: ProjectSummary) -> Bool {
+        guard let folder = Self.folder(cwd) else { return project.isHome }
+        return Self.folder(project.primaryPath) == folder
+    }
+
+    private static func folder(_ path: String?) -> String? {
+        var trimmed = path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        while trimmed.count > 1, trimmed.hasSuffix("/") { trimmed.removeLast() }
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
 /// Hermes' `sessions.changed`: a stored session row moved, whichever
 /// process wrote it. A turn run in the TUI on the gateway's computer, or
 /// through another gateway on the same Hermes home, shows only here and in

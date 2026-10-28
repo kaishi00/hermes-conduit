@@ -571,7 +571,57 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertNotEqual(appState.errorMessage, AppLocalization.string("Connect to Hermes to start a conversation."))
     }
 
+    // MARK: - A new chat in the list (issue 1454)
+
+    func testANewChatStaysListedWhileOpenUntilHermesListsIt() async {
+        let other = makeSession(id: "other-stored", alternateIDs: [], title: "Older chat")
+        var catalog = [other]
+        let appState = makeConnectedAppState(catalog: { catalog }) { _, _ in }
+
+        let created = await appState.createNewSession()
+        XCTAssertEqual(created, "created-runtime")
+        // Hermes lists a chat once its first message is stored: a read
+        // before then keeps the open chat's row instead of dropping it.
+        await appState.loadSessions()
+        XCTAssertEqual(appState.sessions.map(\.id), ["created-stored", "other-stored"])
+
+        // Listed by Hermes: its own row, title and all, takes over.
+        catalog = [makeSession(id: "created-stored", alternateIDs: [], title: "Trip plans"), other]
+        await appState.loadSessions()
+        XCTAssertEqual(appState.sessions.map(\.title), ["Trip plans", "Older chat"])
+        XCTAssertNil(appState.newChatAwaitingListing)
+    }
+
+    func testANewChatLeftEmptyLeavesTheList() async {
+        let other = makeSession(id: "other-stored", alternateIDs: [], title: "Older chat")
+        let appState = makeConnectedAppState(catalog: { [other] }) { _, _ in }
+
+        await appState.createNewSession()
+        appState.activeSessionId = other.id
+        await appState.loadSessions()
+
+        XCTAssertEqual(appState.sessions.map(\.id), ["other-stored"], "Hermes has no row for a chat left empty")
+        XCTAssertNil(appState.newChatAwaitingListing)
+    }
+
+    func testANewChatBelongsToTheProjectItStartedIn() {
+        let awaiting = NewChatAwaitingListing(ids: ["rt", "st"], profile: "default", cwd: "/repo/app/")
+        let project = ProjectSummary(id: "p", title: "App", primaryPath: "/repo/app", isHome: false, sessionCount: 0, previewSessions: [])
+        let other = ProjectSummary(id: "q", title: "Web", primaryPath: "/repo/web", isHome: false, sessionCount: 0, previewSessions: [])
+        let home = ProjectSummary(id: "home", title: "Home", primaryPath: nil, isHome: true, sessionCount: 0, previewSessions: [])
+        XCTAssertTrue(awaiting.isIn(project))
+        XCTAssertFalse(awaiting.isIn(other))
+        XCTAssertFalse(awaiting.isIn(home))
+        let plain = NewChatAwaitingListing(ids: ["rt"], profile: "default", cwd: nil)
+        XCTAssertTrue(plain.isIn(home), "a plain chat lands in Home")
+        XCTAssertFalse(plain.isIn(project))
+        XCTAssertTrue(awaiting.matches(makeSession(id: "st", alternateIDs: [])))
+        XCTAssertTrue(awaiting.matches(makeSession(id: "lineage-tip", alternateIDs: ["rt"])))
+        XCTAssertFalse(awaiting.matches(makeSession(id: "other", alternateIDs: [])))
+    }
+
     private func makeConnectedAppState(
+        catalog: @escaping @MainActor () -> [SessionSummary] = { [] },
         onPrompt: @escaping @MainActor (String, String) -> Void
     ) -> AppState {
         let defaults = makeScratchDefaults("ArchiveThenSendTests")
@@ -579,7 +629,7 @@ final class SessionRenameTests: XCTestCase {
             defaults: defaults,
             loadSavedConnection: false,
             chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
-                loadCatalog: { _, _ in [] },
+                loadCatalog: { _, _ in catalog() },
                 openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,
