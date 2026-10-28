@@ -521,9 +521,9 @@ extension ConduitNotificationPreferences {
 
 extension NotificationSharedSettings {
     /// What the Notification Service Extension reads to decide how much a
-    /// decrypted push shows. Chat names goes first: with Show previews on it
-    /// changes nothing, so a push read between the two writes gets the old
-    /// level or the new one, never more than either.
+    /// decrypted push shows. Chat names goes first, so a push read between
+    /// the two writes never shows more than the level it leaves when going
+    /// down, nor more than the level it goes to when going up.
     static func mirror(_ preferences: ConduitNotificationPreferences) {
         showChatNames = preferences.showChatNames
         showPreviews = preferences.showPreviews
