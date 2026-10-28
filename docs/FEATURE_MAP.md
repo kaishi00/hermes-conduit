@@ -1290,7 +1290,7 @@ same stored-id open)
 **Open gaps**
 - The new-bot fix (#1300) was read from Conduit's and Hermes' code, not reproduced on a device; a tester confirms it on the next build.
 
-**Checked:** 2026-10-26, #1300.
+**Checked:** 2026-10-28, #1448 (a restored Bot Chat names an unnamed bot by its id capitalized, also when saved with the id as its label); 2026-10-26, #1300.
 
 ## Bot mentions and teammate messages
 
@@ -3292,7 +3292,7 @@ captions, Settings captions, the invite's share message
 - Changing the tools rooms may use says the agent stops answering in rooms already started, but not in which.
 - An invite opened from another app while a sheet is already up (classic Settings, say) can't show over it, as a sign-in code link can't: open it again once the sheet is closed.
 
-**Checked:** 2026-10-28, #1410 (copies of rooms hosted elsewhere), with notifier #434; 2026-10-27, #1381 (the invite push and quiet room turns), with notifier #425; #1360 (new drafts and the setup on a profile the dashboard didn't start with), with notifier #387, #390, #396, #397, #398, #401, #406, #409, #411, #416 and #419.
+**Checked:** 2026-10-28, #1448 (a member known only by name matches a bot's own name before an unnamed bot's id capitalized); 2026-10-28, #1410 (copies of rooms hosted elsewhere), with notifier #434; 2026-10-27, #1381 (the invite push and quiet room turns), with notifier #425; #1360 (new drafts and the setup on a profile the dashboard didn't start with), with notifier #387, #390, #396, #397, #398, #401, #406, #409, #411, #416 and #419.
 
 ## Kanban workers' transcripts
 
@@ -3334,7 +3334,7 @@ Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 - A project card's count is Hermes' `session_count`, which may include workers in the project's folders; only the fallback (counting previews) leaves them out.
 - A worker's transcript (its messages, not the log) can't be read in Conduit. Hermes would serve it read-only over `GET /api/sessions/{id}/messages`; a read-only view is the maintainer's call.
 
-**Checked:** 2026-10-26, #1305 (with the Share extension's picker).
+**Checked:** 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
 
 ## Bars lists scroll under
 

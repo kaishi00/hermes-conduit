@@ -2169,6 +2169,24 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(harness.store.lastSession(for: "default")?.kind, SessionReference.Kind.bot)
     }
 
+    /// A room member known only by name ("Atlas") is the bot titled Atlas,
+    /// not an unnamed bot whose id capitalizes to it; its id still finds it.
+    func testRoomMemberNameMatchesABotsOwnNameBeforeAnIdCapitalized() async {
+        let unnamed = makeBot(name: "atlas")
+        let titled = makeBot(name: "atlas-2", botTitle: "Atlas")
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            refreshContext: { _, _ in },
+            botRoster: { _ in BotRosterSnapshot(bots: [unnamed, titled], supportsBotProtocol: true) }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.groupMemberBot(nil, name: "Atlas")?.name, "atlas-2")
+        XCTAssertEqual(harness.appState.groupMemberBot(nil, name: "atlas")?.name, "atlas")
+    }
+
     /// A Bot Chat saved before #1448 with its bot's id as its label: the
     /// relaunch names the bot by its id capitalized, in the header and on its
     /// replies, as the Bots list does.
