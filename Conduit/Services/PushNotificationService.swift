@@ -768,10 +768,7 @@ final class PushNotificationService: ObservableObject {
     }
 
     private var registration: StoredRegistration? {
-        didSet {
-            relayHasLocationToken = registration?.locationToken != nil
-            if registration == nil { watchRingsForAnotherIPhone = false }
-        }
+        didSet { relayHasLocationToken = registration?.locationToken != nil }
     }
     /// The relay has the Apple Watch's PushKit token on another iPhone's
     /// registration (the Watch moved here from it), so calls ring the Watch
@@ -1886,6 +1883,7 @@ final class PushNotificationService: ObservableObject {
             removeEncryptionKeys(installationID: registration.installationID)
         }
         registration = nil
+        watchRingsForAnotherIPhone = false
         KeychainHelper.clearPushRegistration()
     }
 
