@@ -1373,7 +1373,7 @@ Read Aloud and live voice read-back · chat list previews and quotes
 - A single list item too big for one long-reply chunk is split into paragraphs that each repeat its number.
 - A long reply's continuation chunks draw list items as paragraphs with the number baked in, so they lose the list's styled marker column.
 
-**Checked:** 2026-10-23, at #1175.
+**Checked:** 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
 
 ## Attaching files
 
