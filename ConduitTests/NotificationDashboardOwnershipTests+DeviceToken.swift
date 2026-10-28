@@ -265,6 +265,10 @@ extension NotificationDashboardOwnershipTests {
         try await waitUntil { service.watchRingsForAnotherIPhone }
         XCTAssertEqual(bodies.first?["watch_voip_token"] as? String, "4567")
         XCTAssertNil(savedWatchToken())
+
+        // Watch calls turned off there: it rings nowhere, so the notice goes.
+        service.updateWatchVoIPToken(nil, engine: nil)
+        XCTAssertFalse(service.watchRingsForAnotherIPhone)
     }
 
     private func savedWatchToken() -> String? {

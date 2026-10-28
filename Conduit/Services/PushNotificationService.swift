@@ -2313,6 +2313,9 @@ final class PushNotificationService: ObservableObject {
         watchEngine = engine
         UserDefaults.standard.set(token, forKey: Self.watchVoIPTokenKey)
         UserDefaults.standard.set(engine, forKey: Self.watchEngineKey)
+        // A Watch with no token rings nowhere, so not for another iPhone
+        // either, and a registration that holds none sends nothing to say so.
+        if token == nil { watchRingsForAnotherIPhone = false }
         queueRegistrationUpdate(resendWatchToken: token != nil)
     }
 
