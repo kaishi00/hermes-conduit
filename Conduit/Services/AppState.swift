@@ -12353,7 +12353,7 @@ final class AppState: ObservableObject {
 
     /// Names the roster's main bot by its Conduit name, so Bots, rooms, the
     /// widget and Artifacts call it what the rest of Conduit does (Eric
-    /// 2026-10-28). The roster's observer runs again and finds it stamped.
+    /// 2026-10-28). Guarded, so a roster already stamped isn't written again.
     private func stampMainBotConduitName() {
         guard let index = botRoster.firstIndex(where: { BotManagement.isDefaultProfile($0.name) }) else { return }
         let name = profileDisplayName("default")
@@ -12474,8 +12474,9 @@ final class AppState: ObservableObject {
 
     func saveDefaultProfileName(_ name: String) {
         defaultProfileName = profileAppearanceStore.saveDefaultName(name, dashboardID: activeDashboardID)
-        // The main bot's open Bot Chats go by it too (#1457).
-        renameCapturedBotChatLabels(for: "default", to: profileDisplayName("default"))
+        // The main bot's open Bot Chats go by it too (#1457); a name cleared
+        // hands them back to the roster's label.
+        renameCapturedBotChatLabels(for: "default", to: defaultProfileName == ProfileAppearanceStore.defaultName ? "" : defaultProfileName)
         publishWidgetSnapshot()
         // A call ringing on the Watch shows it.
         shareWatchCallVoices()
