@@ -2325,7 +2325,7 @@ private struct V2ChatsRow: View {
     /// the open chat, whatever its id.
     private func selection(_ session: SessionSummary, faintAlone: Bool = true) -> V2RowSelection {
         .chat(
-            isActive: session.id == appState.activeSessionId && !appState.isOtherProfileRow(session),
+            isActive: appState.isOpenChatRow(session) && !appState.isOtherProfileRow(session),
             beside: openBeside,
             faintAlone: faintAlone
         )

@@ -584,12 +584,15 @@ final class SessionRenameTests: XCTestCase {
         // before then keeps the open chat's row instead of dropping it.
         await appState.loadSessions()
         XCTAssertEqual(appState.sessions.map(\.id), ["created-stored", "other-stored"])
+        XCTAssertTrue(appState.isOpenChatRow(appState.sessions[0]), "marked open beside the chat, though open by its runtime id")
+        XCTAssertFalse(appState.isOpenChatRow(other))
 
         // Listed by Hermes: its own row, title and all, takes over.
         catalog = [makeSession(id: "created-stored", alternateIDs: [], title: "Trip plans"), other]
         await appState.loadSessions()
         XCTAssertEqual(appState.sessions.map(\.title), ["Trip plans", "Older chat"])
         XCTAssertNil(appState.newChatAwaitingListing)
+        XCTAssertTrue(appState.isOpenChatRow(appState.sessions[0]), "Hermes' row, under the stored id the create confirmed")
     }
 
     func testANewChatLeftEmptyLeavesTheList() async {

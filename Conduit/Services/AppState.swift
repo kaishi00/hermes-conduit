@@ -15138,6 +15138,7 @@ final class AppState: ObservableObject {
                 if listedSessions != sessions || listedCron != cronSessions { chatListCatalogGeneration &+= 1 }
                 sessions = listedSessions
                 cronSessions = listedCron
+                settleNewChatAwaitingListing(loaded: loadedSessions)
                 savedChatListReplacedByLiveList(
                     newestPageOnly: catalogLoad.olderPagesDeferred,
                     dashboardID: dashboardID
@@ -20482,6 +20483,7 @@ final class AppState: ObservableObject {
             if listedSessions != sessions || listedCron != cronSessions { chatListCatalogGeneration &+= 1 }
             sessions = listedSessions
             cronSessions = listedCron
+            settleNewChatAwaitingListing(loaded: loadedSessions)
             chatListCatalogFreshness.noteLoaded(at: chatSyncNow())
             observeOpenChatCatalog()
             savedChatListReplacedByLiveList(newestPageOnly: false, dashboardID: dashboardID)
@@ -20541,17 +20543,45 @@ final class AppState: ObservableObject {
     }
 
     /// The open chat made here, kept in a list Hermes doesn't list it in
-    /// yet. The wait ends once the catalog lists it or another chat opens:
-    /// an empty chat left behind is gone, as Hermes has no row for it.
+    /// yet. Only looks: the list that is published settles the wait
+    /// (`settleNewChatAwaitingListing`).
     private func newChatRowAwaitingListing(loaded: [SessionSummary]) -> SessionSummary? {
-        guard newChatAwaitingListing != nil else { return nil }
         guard let awaiting = openNewChatAwaitingListing,
-              !loaded.contains(where: awaiting.matches),
-              let row = sessions.first(where: awaiting.matches) else {
+              !loaded.contains(where: awaiting.matches) else { return nil }
+        return sessions.first(where: awaiting.matches)
+    }
+
+    /// Ends the wait once a published list has Hermes' row for the chat, or
+    /// the chat is no longer open: an empty chat left behind is gone, as
+    /// Hermes has no row for it. Hermes' row may lose to the open turn's own
+    /// row in the list, so a listing always moves the generation a
+    /// project's page follows, which then shows Hermes' row in its place.
+    private func settleNewChatAwaitingListing(loaded: [SessionSummary]) {
+        guard newChatAwaitingListing != nil else { return }
+        guard let awaiting = openNewChatAwaitingListing,
+              sessions.contains(where: awaiting.matches) else {
             newChatAwaitingListing = nil
-            return nil
+            return
         }
-        return row
+        if loaded.contains(where: awaiting.matches) {
+            newChatAwaitingListing = nil
+            chatListCatalogGeneration &+= 1
+        }
+    }
+
+    /// Whether `session` is the chat open now, by any id it goes by: a
+    /// chat New Chat made is open under its runtime id and listed under its
+    /// stored one (issue 1454). Not for another profile's row in All.
+    func isOpenChatRow(_ session: SessionSummary) -> Bool {
+        guard let activeSessionId else { return false }
+        if session.id == activeSessionId
+            || session.storedSessionId == activeSessionId
+            || session.alternateIds.contains(activeSessionId) { return true }
+        // Hermes' own row knows only the stored id the create confirmed.
+        guard let durable = conversationIdentityIndex.durableID(forRuntime: activeSessionId, profile: activeProfile) else {
+            return false
+        }
+        return session.id == durable || session.storedSessionId == durable
     }
 
     /// The open chat made here in `project`'s folder (or, for Home, in no
@@ -31422,6 +31452,9 @@ final class AppState: ObservableObject {
             return detail
         } catch {
             guard profile == activeProfile, self.client === client else { return nil }
+            // A page's read cancelled by a newer one (the list changed) or
+            // by leaving the page didn't fail.
+            if error is CancellationError || Task.isCancelled { return nil }
             if isProjectsUnavailable(error) {
                 projects = []
                 supportsProjects = false

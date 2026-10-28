@@ -446,18 +446,20 @@ no Settings caption or doc describes it
 - What shows beside the list: `Conduit/Views/V2/V2Shell.swift` (V2OpenBeside, the v2OpenBeside environment set in tabs(), V2SplitLayout.openBeside, V2RowSelection, V2OpenRowHighlight, v2RowSelection, v2SelectedTrait)
 - Rows: `Conduit/Views/V2/V2SessionRow.swift` (V2SessionRow, V2ContentMatchRow), `Conduit/Views/V2/V2ChatsView.swift` (V2ChatsRow's selection, contentSearchRow), `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/BotRosterView.swift` (BotRosterRow, GroupRosterRow, rosterListRow)
 - Drawer shell: `Conduit/Views/SidebarView.swift` (SessionRow's isSelected)
-- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testV2SplitListMarksWhatShowsBesideIt)
+- Which row is open: `Conduit/Services/AppState.swift` (isOpenChatRow)
+- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testV2SplitListMarksWhatShowsBesideIt), `ConduitTests/SessionRenameTests.swift` (testANewChatStaysListedWhileOpenUntilHermesListsIt)
 
 **Rulings**
 - Split, the row of what shows beside the list gets a rounded accent tint with a fine accent edge, as the persistent sidebar marks its open chat, and VoiceOver says Selected. A shape behind the row, so it reads apart from the gold unread dot and the Running spinner on it (2026-10-27, #1371).
 - Only on a split window: a phone and a wide window with the list hidden keep their one-column look, the Chats and project rows' faint shade included (Eric, 2026-10-27, #1371: for larger screens with the sidebar).
 - A group room takes the chat's place without changing the open chat, so beside a room only the room's row is marked; with Settings or the placeholder in the chat's column nothing is (2026-10-27, #1371).
 - Another profile's row in All is never the open chat, whatever its id (2026-10-27, #1371).
+- A row is the open chat by any id it goes by (its stored id, its aliases), or by the stored id Hermes confirmed for the runtime id the chat is open under: a chat New Chat made is open by its runtime id and listed by its stored one (2026-10-28, issue 1454, #1456).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-27, added at #1371.
+**Checked:** 2026-10-28, #1456 (rows match the open chat by its aliases); 2026-10-27, added at #1371.
 
 ## A new chat in the list
 
@@ -472,21 +474,24 @@ Projects view's and the main list's project sorting (Project chats in Chats)
 · the drawer shell's persistent sidebar (V2 off; reads the same list) ·
 every way a chat is made: New Chat, a project's new conversation, the empty
 canvas's send, a widget's or Shortcut's New Chat, /new, a Classic call's
-fresh chat · not needed: a branch (stored with its parent's messages, so
+fresh chat · not needed: a Shortcut's send to a new chat and a voice
+job's chat (made in the background and sent to at once, never opened, so the
+registry poll lists them as it does a chat from another device), a branch (stored with its parent's messages, so
 Hermes lists it, and its own create waits for that read), CarPlay's chat
 list and the widget's pickers (they pick a chat to talk to, and the open one
 is already open), the Watch (no list) · text: no Settings caption or doc
 describes it
 
 **Code**
-- Keeping the row: `Conduit/Services/AppState.swift` (newChatAwaitingListing, set in createAndReconcileSession for createNewSession; newChatRowAwaitingListing, read by loadSessions and syncSession's catalog; chatListListedIDs; knownProjectID), `Conduit/Services/ChatSync.swift` (NewChatAwaitingListing)
+- Keeping the row: `Conduit/Services/AppState.swift` (newChatAwaitingListing, set in createAndReconcileSession for createNewSession; newChatRowAwaitingListing and settleNewChatAwaitingListing, in loadSessions and syncSession's catalog; chatListListedIDs; knownProjectID; loadProjectSessions, quiet when a newer read cancels it), `Conduit/Services/ChatSync.swift` (NewChatAwaitingListing)
 - Project page: `Conduit/Views/V2/V2ProjectPage.swift` (lanes, the task keyed on chatListCatalogGeneration)
 - Tests: `ConduitTests/SessionRenameTests.swift` (testANewChatStaysListedWhileOpenUntilHermesListsIt, testANewChatLeftEmptyLeavesTheList, testANewChatBelongsToTheProjectItStartedIn, testANewChatGoesOnTopOfItsFoldersLaneOnAProjectPage)
 
 **Rulings**
 - The row the create puts in stays through every catalog read while it is the open chat, until Hermes lists it; then Hermes' row, with its title, takes over. Opening another chat ends the wait (the registry poll and project sorting stop counting it at once, the list drops it at the next read), so an empty chat left behind leaves the list, as Hermes keeps no row for it (2026-10-28, issue 1454, #1456).
 - Only a chat someone started (createNewSession): one a sync starts because there was nothing to resume waits for Hermes, as before.
-- It still counts as unlisted for the registry poll, so the poll reads the catalog in for it as for a chat started on another device.
+- It still counts as unlisted for the registry poll, so the poll reads the catalog in for it as for a chat started on another device. A first turn that compressed lists it under a new tip, matched by its lineage root.
+- It is marked as the open chat beside the list, though it is open by its runtime id: the row by any of its ids, Hermes' row by the stored id the create confirmed (The open chat in the list beside it).
 - A project's page shows it on top of the lane of the folder it started in (Hermes names that folder in the lane's path, or in its label when the two are one), else in a new Recent lane on top; Home's page shows a plain chat in a Recent lane. The page reads Hermes' list again whenever the chats list changes, from a list read or a chat sync. It follows while it stays beside the chat (2026-10-28, #1456).
 
 **Open gaps**

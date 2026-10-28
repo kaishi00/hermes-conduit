@@ -858,7 +858,7 @@ struct SessionList: View {
         } label: {
             SessionRow(
                 session: session,
-                isSelected: session.id == appState.activeSessionId,
+                isSelected: appState.isOpenChatRow(session),
                 isPinned: appState.isSessionPinned(session),
                 isUnread: nest?.isUnread ?? appState.isSessionUnread(session),
                 liveStatus: nest?.liveStatus ?? appState.sessionLiveStatus(session),
@@ -1644,7 +1644,7 @@ private struct ProjectSessionsSheet: View {
                                     } label: {
                                         SessionRow(
                                             session: session,
-                                            isSelected: session.id == appState.activeSessionId,
+                                            isSelected: appState.isOpenChatRow(session),
                                             isPinned: appState.isSessionPinned(session),
                                             isUnread: appState.isSessionUnread(session),
                                             liveStatus: appState.sessionLiveStatus(session),
@@ -2073,7 +2073,7 @@ struct CronList: View {
                             appState.dismissSidebarDrawer()
                             appState.requestOpenSession(session.id)
                         } label: {
-                            SessionRow(session: session, isSelected: session.id == appState.activeSessionId, isPinned: isPinned).contentShape(Rectangle())
+                            SessionRow(session: session, isSelected: appState.isOpenChatRow(session), isPinned: isPinned).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint("Swipe or touch and hold for conversation actions.")

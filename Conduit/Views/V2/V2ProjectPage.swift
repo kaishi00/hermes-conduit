@@ -303,14 +303,14 @@ struct V2ProjectPage: View {
                     isUnread: appState.isSessionUnread(session),
                     isPinned: appState.isSessionPinned(session),
                     isStarred: appState.isSessionStarred(session),
-                    selection: .chat(isActive: session.id == appState.activeSessionId, beside: openBeside),
+                    selection: .chat(isActive: appState.isOpenChatRow(session), beside: openBeside),
                     leadingGlyph: true
                 )
             }
         }
         .buttonStyle(.plain)
         .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
-        .v2SelectedTrait(.chat(isActive: session.id == appState.activeSessionId, beside: openBeside))
+        .v2SelectedTrait(.chat(isActive: appState.isOpenChatRow(session), beside: openBeside))
     }
 
     // MARK: - Actions

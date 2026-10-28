@@ -85,6 +85,8 @@ struct NewChatAwaitingListing: Equatable {
         ids.contains(session.id)
             || session.storedSessionId.map(ids.contains) == true
             || session.alternateIds.contains(where: ids.contains)
+            // A first turn that compressed lists the chat under a new tip.
+            || session.lineageRootId.map(ids.contains) == true
     }
 
     /// Whether the chat belongs on `project`'s page: started in its folder,
