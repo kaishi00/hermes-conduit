@@ -759,14 +759,14 @@ bubbles (the file card)
 - Tests: `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift`, `ConduitTests/GeminiLiveVoiceTests.swift`, `ConduitTests/VoiceBackgroundJobTests.swift`, `notifier/tests/test_turn_surface.py`
 
 **Rulings**
-- A tag is never said, and a line that was only a tag says nothing; the words around it are said as written. Streaming voices hold from where a tag may begin to the end of its line, so a tag split across deltas is caught the same (2026-10-28, #PENDING, after a Local voice call on the farm read "MEDIA:/opt/data/cache/audio/tts_….mp3" out and its microphone heard "media." back).
-- A spoken message's line tells the model its answer is heard and to reply in words, never with text_to_speech or a MEDIA: file, since Hermes' own spoken-reply note isn't on every Hermes (2026-10-28, #PENDING, notifier 0.112.1).
+- A tag is never said, and a line that was only a tag says nothing; the words around it are said as written. Streaming voices hold from where a tag may begin to the end of its line, so a tag split across deltas is caught the same (2026-10-28, #1434, after a Local voice call on the farm read "MEDIA:/opt/data/cache/audio/tts_….mp3" out and its microphone heard "media." back).
+- A spoken message's line tells the model its answer is heard and to reply in words, never with text_to_speech or a MEDIA: file, since Hermes' own spoken-reply note isn't on every Hermes (2026-10-28, #1434, notifier 0.112.1).
 
 **Open gaps**
 - A tagged file isn't put on the call's screen: Local Live shows tables, code and links there, not attachments, which stay in the chat.
 - Gemini, Qwen, Grok and GPT-Live get a job's result as text and may still say a path in their own words.
 
-**Checked:** 2026-10-28, #PENDING.
+**Checked:** 2026-10-28, #1434.
 
 ## Qwen direct voice
 
