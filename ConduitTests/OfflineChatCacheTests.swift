@@ -1524,6 +1524,87 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.messages.map(\.id), ["atlas-reply-3"])
     }
 
+    /// Each bot's copy is kept for the bot its chat was open for, even when
+    /// another id the chat answers to names a different bot (a profile
+    /// copied with its chats keeps their ids): reopening one bot never shows
+    /// the other's chat.
+    func testABotChatCopyIsKeptForTheBotItWasOpenFor() async throws {
+        useInMemoryKeychain()
+        var opens = 0
+        var gate: ControlledSuspension?
+        let (appState, _, _) = makeAppState(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [] },
+            openSessionWithProfile: { _, _, _, profile in
+                opens += 1
+                if let gate { await gate.suspend() }
+                let bot = profile ?? "default"
+                return SessionResumeResult(
+                    sessionId: "\(bot)-runtime-\(opens)",
+                    // Sorts ahead of either runtime id.
+                    storedSessionId: "aa-shared-chat",
+                    messages: [ChatMessage(id: "\(bot)-reply-\(opens)", role: .assistant, content: "Hi", timestamp: "1")],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, _ in
+                [BotChatLookupRow(id: "aa-shared-chat", title: "Bot Chat")]
+            }
+        ))
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        appState.showLogin = false
+        addTeardownBlock { appState.client?.disconnect() }
+        let atlas = botProfile("atlas")
+        let scout = botProfile("scout")
+
+        let openedAtlas = await appState.openBotChat(for: atlas)
+        let openedScout = await appState.openBotChat(for: scout)
+        XCTAssertTrue(openedAtlas)
+        XCTAssertTrue(openedScout)
+
+        let suspension = ControlledSuspension()
+        gate = suspension
+        let reopening = Task { @MainActor in await appState.openBotChat(for: atlas) }
+        await suspension.waitUntilSuspended()
+        XCTAssertEqual(appState.offlineChatPresentation?.displayedMessages.map(\.id), ["atlas-reply-1"],
+                       "Atlas shows its own chat while it opens, never Scout's")
+
+        gate = nil
+        suspension.resume()
+        let reopened = await reopening.value
+        XCTAssertTrue(reopened)
+        XCTAssertEqual(appState.messages.map(\.id), ["atlas-reply-3"])
+    }
+
+    func testABotChatCopyOwnerIsTheBotTheChatIsOpenAs() {
+        let owners = ["atlas-runtime": "atlas", "shared": "scout", "other-runtime": "scout"]
+        let kept = AppState.botChatCopyOwner(
+            of: ["atlas-runtime", "shared", "plain"],
+            openAs: "atlas-runtime",
+            owner: { owners[$0] },
+            sameBot: { $0 == $1 }
+        )
+        XCTAssertEqual(kept?.bot, "atlas")
+        XCTAssertEqual(kept?.sessionIDs, ["atlas-runtime", "plain"], "Another bot's id is left out")
+
+        let byAlias = AppState.botChatCopyOwner(
+            of: ["unknown", "shared"], openAs: "unknown", owner: { owners[$0] }, sameBot: { $0 == $1 }
+        )
+        XCTAssertEqual(byAlias?.bot, "scout", "With the open id unknown, aliases naming one bot decide")
+
+        let ambiguous = AppState.botChatCopyOwner(
+            of: ["unknown", "shared", "atlas-runtime"], openAs: "unknown", owner: { owners[$0] }, sameBot: { $0 == $1 }
+        )
+        XCTAssertNil(ambiguous, "Aliases naming two bots keep no copy")
+
+        XCTAssertNil(AppState.botChatCopyOwner(
+            of: ["plain"], openAs: "plain", owner: { owners[$0] }, sameBot: { $0 == $1 }
+        ), "An ordinary chat is no Bot Chat")
+    }
+
     /// A chat with no saved copy opens as it always has.
     func testAChatWithNoSavedCopyOpensWithoutOne() async throws {
         useInMemoryKeychain()

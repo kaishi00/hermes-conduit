@@ -5692,7 +5692,33 @@ final class AppState: ObservableObject {
     }
 
     private static func keptBotChatCopyKey(dashboardID: UUID, bot: String) -> String {
-        "\(dashboardID.uuidString)|\(bot)"
+        // One spelling, whichever lookup named the bot.
+        "\(dashboardID.uuidString)|\(bot.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
+    }
+
+    /// The bot a Bot Chat's copy is kept for, and the ids it is kept under.
+    /// The bot is the one owning the id the chat is open as; the scroll
+    /// identity's aliases can still name the chat it replaced, which may be
+    /// another bot's, so they only decide when the open id names no bot,
+    /// and only when they name one bot. Another bot's ids are left out, so
+    /// opening that bot never shows this chat (#1352).
+    static func botChatCopyOwner(
+        of identities: Set<String>,
+        openAs sessionID: String,
+        owner: (String) -> String?,
+        sameBot: (String, String) -> Bool
+    ) -> (bot: String, sessionIDs: Set<String>)? {
+        let owners = identities.compactMap { id in owner(id).map { (id: id, bot: $0) } }
+        let bot: String
+        if let openOwner = owner(sessionID) {
+            bot = openOwner
+        } else {
+            guard let only = owners.first?.bot,
+                  owners.allSatisfy({ sameBot($0.bot, only) }) else { return nil }
+            bot = only
+        }
+        let foreign = Set(owners.filter { !sameBot($0.bot, bot) }.map(\.id))
+        return (bot, identities.subtracting(foreign).union([sessionID]))
     }
 
     /// Keeps the Bot Chat on screen, as `recordOfflineChatCopy` saves any
@@ -5704,12 +5730,19 @@ final class AppState: ObservableObject {
               let dashboardID = activeDashboardID,
               let sessionID = activeSessionId,
               let identities = offlineChatIdentities(),
-              let bot = botStoreProfile(forSessionIDs: Array(identities.union([sessionID]))) else { return }
+              let kept = Self.botChatCopyOwner(
+                  of: identities.union([sessionID]),
+                  openAs: sessionID,
+                  // The registry first: it names the bot each open was for, and
+                  // knows the runtime id the chat is open as.
+                  owner: { self.botConversationProfile(for: $0) ?? self.botStoreProfile(forSessionIDs: [$0]) },
+                  sameBot: { Self.profilesMatch($0, $1) }
+              ) else { return }
         let rows = messages.compactMap(OfflineCachedMessage.init)
             .suffix(OfflineChatCacheStore.maxMessagesPerTranscript)
         guard !rows.isEmpty else { return }
-        keptBotChatCopies[Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: bot)] = KeptBotChatCopy(
-            sessionIDs: identities.union([sessionID]),
+        keptBotChatCopies[Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: kept.bot)] = KeptBotChatCopy(
+            sessionIDs: kept.sessionIDs,
             transcript: OfflineCachedTranscript(
                 sessionID: sessionID,
                 title: activeSessionTitle,
