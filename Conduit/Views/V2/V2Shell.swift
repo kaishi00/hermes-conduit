@@ -115,7 +115,7 @@ struct V2ShellContext: Equatable {
         /// so the list column leaves voice to it.
         var hasChatVoiceBeside = false
         /// A switch picked from the profile strip is under way, from the
-        /// first tap's fade-out until its content comes back.
+        /// first tap's fade-out until the switch is over.
         var isPickingProfile = false
     }
 
@@ -412,8 +412,8 @@ struct V2Shell: View {
     @State private var profileSwitchToken = 0
     /// A profile tapped while a switch runs, switched to once it ends.
     @State private var queuedProfilePick = V2QueuedProfilePick()
-    /// A switch picked from the strip is running and will bring the
-    /// content back in when it (and any tap kept during it) lands.
+    /// A switch picked from the strip is running, from the first tap's
+    /// fade-out until the switch is over.
     @State private var isPickingProfile = false
     /// A tab the shell switched to itself, which skips the selection click.
     @State private var programmaticTab: V2Tab?
@@ -549,12 +549,12 @@ struct V2Shell: View {
                 }
             }
             .onChange(of: appState.activeProfile) { _, _ in
-                // A switch picked here brings the content back itself, after
-                // any tap kept during it has gone too, so it doesn't flicker
-                // in and out between the two.
-                // A strip pick waiting behind a switch started elsewhere keeps
-                // it out too, until that pick lands.
-                guard !isPickingProfile, queuedProfilePick.profile == nil else { return }
+                // The new profile's chats show as soon as it's active (its
+                // saved list, until the live one lands), not once the whole
+                // switch is over. A tap kept for after this switch keeps the
+                // content out instead, so it doesn't flicker in and out
+                // between the two.
+                guard queuedProfilePick.profile == nil else { return }
                 fadeContentBackIn()
             }
             .onChange(of: appState.isProfileSwitching) { _, switching in

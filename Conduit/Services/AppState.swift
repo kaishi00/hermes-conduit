@@ -30342,6 +30342,11 @@ final class AppState: ObservableObject {
                 return false
             }
 
+            // The profile's busy mode and display settings are read while
+            // its chats load rather than one after another behind them: each
+            // is a round trip the switch (and the strip's next tap) waited on.
+            async let busyInputModeLoad: Void = loadChatResumeBusyInputMode(using: nextClient)
+            async let displayPreferencesLoad: Void = loadChatResumeProfileDisplayPreferences()
             await syncSession(
                 purpose: .preserveCurrent,
                 using: nil,
@@ -30359,11 +30364,7 @@ final class AppState: ObservableObject {
                     generation: transitionGeneration
                 )
             }
-            await loadChatResumeBusyInputMode(using: nextClient)
-            guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
-                return false
-            }
-            await loadChatResumeProfileDisplayPreferences()
+            _ = await (busyInputModeLoad, displayPreferencesLoad)
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
                 return false
             }
