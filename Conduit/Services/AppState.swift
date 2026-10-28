@@ -5706,8 +5706,13 @@ final class AppState: ObservableObject {
             presentKeptBotChatCopy(bot: bot, openedAs: sessionID, title: activeSessionTitle)
             return
         }
+        // Copies are saved under the chat's stored id, and the restored
+        // reference can hold its runtime id: the saved list's row maps one
+        // to the other.
+        let row = savedChatListForActiveScope?.list.sessions.first { $0.nestingIDs.contains(sessionID) }
+        let durableID = row.map { $0.storedSessionId ?? $0.id } ?? sessionID
         guard let dashboardID = activeDashboardID,
-              let saved = offlineChatCache.loadTranscript(sessionID, dashboardID: dashboardID, profile: activeProfile) else {
+              let saved = offlineChatCache.loadTranscript(durableID, dashboardID: dashboardID, profile: activeProfile) else {
             return
         }
         offlineChatPresentation = OfflineChatPresentation(
@@ -5717,8 +5722,8 @@ final class AppState: ObservableObject {
             displayedTranscript: saved,
             picked: OfflineChatPresentation.PickedChat(
                 title: activeSessionTitle,
-                sessionIDs: [sessionID],
-                durableSessionID: sessionID
+                sessionIDs: Set([sessionID] + (row?.nestingIDs ?? [])),
+                durableSessionID: durableID
             )
         )
     }
@@ -30346,12 +30351,12 @@ final class AppState: ObservableObject {
             slashCommands = Self.builtInSlashCommands
             slashSubcommands = [:]
             restoreActiveSessionState(for: target)
-            presentRestoredChatAfterProfileChange()
             restorePinnedSessions(for: target)
             // The target's list as it showed last time, until its own lands.
             if let dashboardID = activeDashboardID {
                 presentSavedChatListIfAvailable(dashboardID: dashboardID)
             }
+            presentRestoredChatAfterProfileChange()
             try await connectChatResumeClient(nextClient)
             // The new profile is connected and already active: an expired
             // widget launch or a newer navigation still finishes the switch
