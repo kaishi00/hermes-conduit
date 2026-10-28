@@ -3395,7 +3395,7 @@ Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 - A project card's count is Hermes' `session_count`, which may include workers in the project's folders; only the fallback (counting previews) leaves them out.
 - A worker's transcript (its messages, not the log) can't be read in Conduit. Hermes would serve it read-only over `GET /api/sessions/{id}/messages`; a read-only view is the maintainer's call.
 - Search "In messages" and voice's find chat can still match a legacy worker (the `work kanban task` rows): search results carry no preview to tell one by. Hermes resumes those, so one opens as a chat.
-- The Watch's find chat (notifier `CHAT_SEARCH_EXCLUDED_SOURCES`) still leaves out only `kanban`; `tool` and `oneshot` follow once the notifier's `plugin_api.py` split lands (#1459).
+- The Watch's find chat (notifier `CHAT_SEARCH_EXCLUDED_SOURCES`) still leaves out only `kanban`; `tool` and `oneshot` follow once the notifier's `notifier/dashboard/plugin_api.py` split lands (#1459).
 
 **Checked:** 2026-10-28, #1461 (`tool` and `oneshot` sessions and legacy workers left out, issue #1459); 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
 
