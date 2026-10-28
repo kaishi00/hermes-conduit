@@ -2176,6 +2176,23 @@ final class AppState: ObservableObject {
         settingsDismissRequest &+= 1
     }
     @Published var errorMessage: String?
+    /// The open chat's sync error, raised while a room covers the chat. A
+    /// room's banner shows `errorMessage`, so a chat that fails to resume
+    /// behind it (a return to the app) would put its error in the room
+    /// (#1459); it waits here and shows when the room closes back to the chat.
+    private var chatErrorBehindRoom: String?
+    /// Where a chat sync puts its error: `errorMessage`, or
+    /// `chatErrorBehindRoom` while a room is on screen.
+    private var chatSyncErrorMessage: String? {
+        get { activeRoomSurface == nil ? errorMessage : chatErrorBehindRoom }
+        set {
+            if activeRoomSurface == nil {
+                errorMessage = newValue
+            } else {
+                chatErrorBehindRoom = newValue
+            }
+        }
+    }
     /// A reasoning write is in flight, from the composer chip or the Model
     /// sheet; both wait for it so picks land in order.
     @Published private(set) var isWritingReasoningEffort = false
@@ -11539,6 +11556,7 @@ final class AppState: ObservableObject {
         groupRoomPollTask?.cancel()
         groupRoomPollTask = nil
         activeRoomSurface = nil
+        chatErrorBehindRoom = nil
         activeRoomReplay = GroupRoomReplay(roomID: "")
         activeRoomDriverStatus = nil
         roomApprovalAnswers = [:]
@@ -12029,7 +12047,12 @@ final class AppState: ObservableObject {
     /// Leave the room view WITHOUT touching session state — the next session
     /// open, or this call's inverse, owns the viewport transition.
     func closeGroupRoom() {
+        let chatError = chatErrorBehindRoom
         closeRoomSurface()
+        // The chat under the room is back on screen, with what its sync said.
+        if let chatError {
+            errorMessage = chatError
+        }
         Task { await self.refreshGroupRooms() }
     }
 
@@ -15440,7 +15463,7 @@ final class AppState: ObservableObject {
                     guard chatResumeCoordinator.lastSessionID(for: profile) == missingSavedSessionID else {
                         return .superseded
                     }
-                    let handledMissingSessionError = errorMessage
+                    let handledMissingSessionError = chatSyncErrorMessage
                     // Clears whatever kind the reference recorded for this
                     // workspace: the conversation's authoritative absence is
                     // not evidence about which surface it belonged to.
@@ -15495,8 +15518,8 @@ final class AppState: ObservableObject {
                                 historySourceUnavailable: historySourceUnavailable
                             )
                         }
-                        if fallbackSucceeded, errorMessage == handledMissingSessionError {
-                            errorMessage = nil
+                        if fallbackSucceeded, chatSyncErrorMessage == handledMissingSessionError {
+                            chatSyncErrorMessage = nil
                         }
                         if !fallbackSucceeded,
                            reconciliationSessionWasNotFound,
@@ -15635,7 +15658,7 @@ final class AppState: ObservableObject {
             let wasCancelled = error is CancellationError
                 || (error as? URLError)?.code == .cancelled || Task.isCancelled
             if !catalogFailureIsSuperseded, !wasCancelled {
-                errorMessage = AppLocalization.string("Failed to load gateway sessions: \(UserFacingError.message(for: error))")
+                chatSyncErrorMessage = AppLocalization.string("Failed to load gateway sessions: \(UserFacingError.message(for: error))")
                 sessionCatalogLoadState.markFailed(
                     UserFacingError.message(for: error),
                     owner: SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
@@ -15702,7 +15725,7 @@ final class AppState: ObservableObject {
         let deadRowKey = Self.deadResumeRowKey(dashboardID: dashboardID, profile: profile)
         var dead = deadIDs
         deadResumeRowIDs[deadRowKey, default: []].formUnion(dead)
-        let handledError = errorMessage
+        let handledError = chatSyncErrorMessage
         if let saved = chatResumeCoordinator.lastSessionID(for: profile), dead.contains(saved) {
             // Clears whatever kind the reference recorded: the
             // conversation's authoritative absence is not evidence about
@@ -15775,7 +15798,7 @@ final class AppState: ObservableObject {
                 )
             }
             if fallbackSucceeded {
-                if errorMessage == handledError { errorMessage = nil }
+                if chatSyncErrorMessage == handledError { chatSyncErrorMessage = nil }
                 return .completed
             }
             if reconciliationSessionWasNotFound {
@@ -15866,7 +15889,7 @@ final class AppState: ObservableObject {
                 automaticSyncOperationID: automaticSyncOperationID,
                 requiredViewportTransitionGeneration: requiredViewportTransitionGeneration
               ) else { return false }
-        let handledError = errorMessage
+        let handledError = chatSyncErrorMessage
         let succeeded = await reconcile(
             sessionId: storedID,
             using: client,
@@ -15880,7 +15903,7 @@ final class AppState: ObservableObject {
         )
         // The runtime id's "Failed to restore this conversation" was handled
         // by this resume; the conversation is on screen.
-        if succeeded, errorMessage == handledError { errorMessage = nil }
+        if succeeded, chatSyncErrorMessage == handledError { chatSyncErrorMessage = nil }
         return succeeded
     }
 
@@ -16370,7 +16393,7 @@ final class AppState: ObservableObject {
                 if turnState == .synchronizing {
                     turnState = .idle
                 }
-                errorMessage = AppLocalization.string("Hermes returned a different conversation while resuming this one. Try reopening it.")
+                chatSyncErrorMessage = AppLocalization.string("Hermes returned a different conversation while resuming this one. Try reopening it.")
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 chatResumeCoordinator.abandonPendingAutomaticSync()
                 return false
@@ -16778,15 +16801,15 @@ final class AppState: ObservableObject {
                 // attempting the whole transcript, neutral copy for a
                 // bounded current-Hermes page with one enormous row (which
                 // must not claim the backend lacks pagination).
-                errorMessage = UserFacingError.message(for: error)
+                chatSyncErrorMessage = UserFacingError.message(for: error)
             case let rpcError as RpcError where rpcError.code == 4132:
                 // A Kanban worker's transcript: Hermes lets only the board
                 // run it. Lists leave these out; a link can still reach one.
                 reconciliationWasKanbanWorker = true
                 reconciliationSessionWasNotFound = true
-                errorMessage = AppLocalization.string("This chat is a Kanban task's worker, so only the board can run it. Open the task on the Kanban board and check its Worker Log.")
+                chatSyncErrorMessage = AppLocalization.string("This chat is a Kanban task's worker, so only the board can run it. Open the task on the Kanban board and check its Worker Log.")
             default:
-                errorMessage = AppLocalization.string("Failed to restore this conversation: \(UserFacingError.message(for: error))")
+                chatSyncErrorMessage = AppLocalization.string("Failed to restore this conversation: \(UserFacingError.message(for: error))")
             }
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
             chatResumeCoordinator.abandonPendingAutomaticSync()

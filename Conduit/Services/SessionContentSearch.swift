@@ -221,10 +221,10 @@ enum SessionContentSearch {
 
     static func path(query: String, profile: String) -> String {
         let encoded = DashboardPath.encodedQueryComponent(query) ?? ""
-        // Kanban workers' transcripts can't open as chats (see
-        // SessionSource.hermesKanbanSource), so they aren't results.
+        // Kanban workers, tool integrations and one-shot runs aren't chats
+        // (see SessionSource.hermesInternalSources), so they aren't results.
         return DashboardPath.withProfile(
-            "\(path)?q=\(encoded)&limit=\(resultLimit)&exclude_sources=\(SessionSource.hermesKanbanSource)",
+            "\(path)?q=\(encoded)&limit=\(resultLimit)&exclude_sources=\(SessionSource.nonChatExcludedSources)",
             profile: profile
         )
     }

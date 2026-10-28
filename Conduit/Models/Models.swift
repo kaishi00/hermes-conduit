@@ -89,10 +89,39 @@ extension SessionSource {
     /// the task's Worker Log shows it.
     static let hermesKanbanSource = "kanban"
 
+    /// Sessions that aren't conversations, which every Hermes picker hides
+    /// (Hermes' `INTERNAL_LISTING_SOURCES`): Kanban workers, third-party
+    /// tool integrations (`hermes chat --source tool`) and finite one-shot
+    /// runs (`chat -q`, `-z`). Lowercased, as Hermes stores them.
+    static let hermesInternalSources: Set<String> = [hermesKanbanSource, "tool", "oneshot"]
+
+    /// `exclude_sources` for search: the sessions that aren't conversations.
+    static let nonChatExcludedSources = hermesInternalSources.sorted().joined(separator: ",")
+
     /// `exclude_sources` for the chat lists: cron runs have a list of their
-    /// own, and Kanban workers stay on the board, as Hermes Desktop's sidebar
-    /// leaves them out.
-    static let chatListExcludedSources = "cron,\(hermesKanbanSource)"
+    /// own, and the sessions that aren't conversations stay out, as Hermes
+    /// Desktop's sidebar leaves them out.
+    static let chatListExcludedSources = "cron,\(nonChatExcludedSources)"
+
+    /// Whether a Hermes session row's `source` is one that isn't a chat.
+    static func isHermesInternalSource(_ source: String?) -> Bool {
+        guard let source else { return false }
+        return hermesInternalSources.contains(source.lowercased())
+    }
+
+    /// Whether a session row is a Kanban worker that Hermes stored before it
+    /// tagged workers `kanban`. Those ran as `cli` sessions on the
+    /// dispatcher's one-line prompt, which is the row's preview; Hermes only
+    /// retags the ones whose folder is under the board's workspaces, so the
+    /// rest still list as chats (#1459).
+    static func isLegacyKanbanWorker(preview: String?) -> Bool {
+        guard let preview = preview?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              preview.hasPrefix(legacyKanbanWorkerPrompt) else { return false }
+        let taskID = preview.dropFirst(legacyKanbanWorkerPrompt.count)
+        return !taskID.isEmpty && !taskID.contains(where: \.isWhitespace)
+    }
+
+    private static let legacyKanbanWorkerPrompt = "work kanban task "
 }
 
 struct Attachment: Codable, Identifiable, Equatable {
