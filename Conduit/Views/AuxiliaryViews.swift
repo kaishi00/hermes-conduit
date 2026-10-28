@@ -1613,6 +1613,8 @@ private struct ProfileSettingsDetail: View {
                 Text("Display name").font(.subheadline.weight(.semibold))
                 TextField("Hermes", text: $name)
                     .textInputAutocapitalization(.words)
+                    // What's typed mid-save would be replaced by the saved name.
+                    .disabled(isSaving)
                     .padding(10)
                     .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 Text(BotManagement.isDefaultProfile(profile)

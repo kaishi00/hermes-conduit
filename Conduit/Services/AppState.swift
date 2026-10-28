@@ -6849,6 +6849,9 @@ final class AppState: ObservableObject {
             match = profile
         } else if profilesMatch(name, defaultProfileName) {
             match = "default"
+        } else if let profile = profiles.first(where: { profilesMatch(profileDisplayName($0), name) }) {
+            // The name Conduit shows, a device-kept one included.
+            match = profile
         } else if let bot = botRoster.first(where: { bot in
             profilesMatch(bot.displayLabel, name) || profilesMatch(bot.name, name)
                 || bot.previousNames.contains { profilesMatch($0, name) }
@@ -6876,6 +6879,7 @@ final class AppState: ObservableObject {
         }
         let entries = profiles.map { entry($0, [$0]) }
             + [entry("default", [defaultProfileName])]
+            + profiles.map { entry($0, [profileDisplayName($0)]) }
             + botRoster.map { entry($0.name, [$0.displayLabel, $0.name] + $0.previousNames) }
         var result: [WatchVoiceWire.JobProfileName] = []
         var bytes = 0

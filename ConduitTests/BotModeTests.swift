@@ -260,6 +260,9 @@ final class BotModeTests: XCTestCase {
         let renamed = await harness.appState.renameProfile("atlas", to: "Atlas Local")
         XCTAssertNil(renamed)
         XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Local")
+        harness.appState.profiles = ["default", "atlas"]
+        XCTAssertEqual(harness.appState.voiceJobProfileTarget(named: "atlas local"), .other("atlas"), "A spoken job reaches a profile by its device name")
+        XCTAssertTrue(harness.appState.watchJobProfileNames().contains { $0.profile == "atlas" && $0.names == ["Atlas Local"] })
 
         unsupported = false
         await harness.appState.refreshBotRoster()
