@@ -1419,10 +1419,14 @@ private struct V2LegacyTabBarEdge: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *), V2SystemScrollEdge.isUsed {
             content
-        } else if !isOn {
-            content
         } else {
-            content.background { V2ScrollEdgeBackground(edge: .bottom).padding(.top, -14) }
+            // Only the fade comes and goes: the bar keeps its identity (and
+            // its voice button's state) when `isOn` flips.
+            content.background {
+                if isOn {
+                    V2ScrollEdgeBackground(edge: .bottom).padding(.top, -14)
+                }
+            }
         }
     }
 }
