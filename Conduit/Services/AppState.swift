@@ -5694,12 +5694,14 @@ final class AppState: ObservableObject {
     }
 
     /// The chat a profile switched to opens on: the outgoing profile's
-    /// transcript leaves with it (it showed under the new chat's title for
-    /// the whole switch, #1442). Its saved copy shows while Hermes sends it,
+    /// transcript and any reply still streaming into it leave with it (it
+    /// showed under the new chat's title for the whole switch, #1442). Its saved copy shows while Hermes sends it,
     /// or nothing does. A chat opened in that profile (All chats, a
     /// notification, a link) replaces it with its own as it opens.
     private func presentRestoredChatAfterProfileChange() {
         messages = []
+        clearStreamingText()
+        resetReasoningTurn()
         dismissOfflineChatPresentation()
         guard let sessionID = activeSessionId else { return }
         if let bot = botConversationProfile(for: sessionID) {
@@ -30276,6 +30278,7 @@ final class AppState: ObservableObject {
         // that fails after it.
         var previousMessages: [ChatMessage] = []
         var previousOfflineChatPresentation: OfflineChatPresentation?
+        var previousTranscriptDashboardID: UUID?
 
         do {
             let ticket: String
@@ -30307,6 +30310,7 @@ final class AppState: ObservableObject {
             let nextClient = makeClient(connection: freshConnection, profile: target)
             previousMessages = messages
             previousOfflineChatPresentation = offlineChatPresentation
+            previousTranscriptDashboardID = activeDashboardID
 
             markChatViewportReplacement()
             adoptedTarget = true
@@ -30454,8 +30458,9 @@ final class AppState: ObservableObject {
             setActiveProfile(previousProfile)
             // The previous profile's transcript left with it: it comes back
             // as it was, with its chat (restored above), over any newer
-            // navigation's, which the reconnect then resolves.
-            if adoptedTarget {
+            // navigation's, which the reconnect then resolves. Never onto
+            // another dashboard a switch moved to meanwhile.
+            if adoptedTarget, activeDashboardID == previousTranscriptDashboardID {
                 messages = previousMessages
                 offlineChatPresentation = previousOfflineChatPresentation
             }
