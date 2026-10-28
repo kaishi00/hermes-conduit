@@ -680,6 +680,21 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(script.done, ["t1"])
     }
 
+    func testLocalLiveSaysHeldWordsBeforeTheCallsOwnLine() async {
+        let script = LocalLiveTurnScript()
+        let runner = script.makeRunner()
+        runner.start(turnID: "t1", text: "Clear the old logs")
+        await localLiveSettle(until: { !script.submitted.isEmpty })
+        runner.observe(.messageDelta(sessionId: "rt-1", text: "Let me check *the calendar for"))
+        let approval = ApprovalActivity(sessionId: "rt-1", requestId: "req-1", command: "rm -rf logs/old",
+                                        description: "Delete the old logs", choices: nil, allowPermanent: false,
+                                        smartDenied: false, status: .pending, choice: nil, error: nil)
+        runner.observe(.approval(sessionId: "rt-1", activity: approval))
+        let said = script.spoken.map { $0.replacingOccurrences(of: "t1:", with: "") }.joined()
+        XCTAssertTrue(said.hasPrefix("Let me check *the calendar for\n"), "an unclosed marker's words are said, not dropped")
+        XCTAssertTrue(said.contains("Delete the old logs"))
+    }
+
     func testLocalLiveTurnShowsWhatsToBeSeenAndSaysTheRest() async {
         let script = LocalLiveTurnScript()
         let runner = script.makeRunner()

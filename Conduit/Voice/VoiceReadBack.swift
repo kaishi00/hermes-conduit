@@ -4,9 +4,10 @@
 //
 //  A reply the user asked to hear again or in full (#451), as the live
 //  model reads it: Markdown flattened into plain speech, so nothing is
-//  skipped or read out as symbols. Headings, list items and table rows
-//  become sentences, links keep their words, a bare link becomes its site,
-//  and code stays in the chat.
+//  read out as symbols. Headings, list items and table rows become
+//  sentences, links keep their words, a bare link becomes its site, and
+//  code stays in the chat. A persona's narrated actions are left out, as in
+//  Classic voice and Read Aloud.
 //
 
 import Foundation

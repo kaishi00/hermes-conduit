@@ -716,6 +716,8 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(ReadAloudNowPlaying.title(for: "  * First item\nMore"), "First item")
         XCTAssertEqual(ReadAloudNowPlaying.title(for: "> * Quoted item"), "Quoted item")
         XCTAssertEqual(ReadAloudNowPlaying.title(for: "- * Nested item"), "Nested item")
+        XCTAssertEqual(ReadAloudNowPlaying.title(for: "1. * Nested item"), "1. Nested item")
+        XCTAssertEqual(ReadAloudNowPlaying.title(for: "5 * 3 is fifteen"), "5 * 3 is fifteen")
     }
 
     func testGatewayReplacementCancelsActivePlayback() async {
