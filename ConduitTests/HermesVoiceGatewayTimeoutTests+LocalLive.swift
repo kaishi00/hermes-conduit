@@ -744,6 +744,33 @@ extension VoiceConversationControllerTests {
         }
     }
 
+    func testSpokenVisualSplitterLeavesFileTagsUnsaid() {
+        // Ernest's Local voice call on the farm (2026-10-28): his reply was
+        // a text_to_speech file tag, which the speech server read out.
+        let reply = "Here's your briefing.\nMEDIA:/opt/data/cache/audio/tts_20261028_111922_603221.mp3\nSocial media: fine, and MEDIA:/tmp/b.pdf too [[audio_as_voice]]"
+        func split(every size: Int) -> String {
+            var splitter = SpokenVisualSplitter()
+            var said = ""
+            var index = reply.startIndex
+            while index < reply.endIndex {
+                let end = reply.index(index, offsetBy: size, limitedBy: reply.endIndex) ?? reply.endIndex
+                said += splitter.feed(String(reply[index..<end]))
+                index = end
+            }
+            return said + splitter.finish()
+        }
+        let whole = split(every: reply.count)
+        XCTAssertFalse(whole.contains("MEDIA"), whole)
+        XCTAssertFalse(whole.contains("/opt/"), whole)
+        XCTAssertFalse(whole.contains("[["), whole)
+        XCTAssertTrue(whole.hasPrefix("Here's your briefing.\nSocial media: fine, and"), whole)
+        for size in 1...9 {
+            XCTAssertEqual(split(every: size), whole, "split every \(size)")
+        }
+        XCTAssertEqual(SpokenMediaTagFilter.filter("MEDIA:/opt/data/cache/audio/tts_1.mp3"), "", "only a tag: nothing said")
+        XCTAssertEqual(SpokenMediaTagFilter.filter("Call me Medina, not media."), "Call me Medina, not media.")
+    }
+
     func testLocalLiveTurnSaysAWholeReplyThatCameWithoutDeltas() async {
         let script = LocalLiveTurnScript()
         let runner = script.makeRunner()

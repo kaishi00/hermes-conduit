@@ -6,8 +6,8 @@
 //  table, code, an image, links) without showing it with `conduit_show`:
 //  those parts are kept out of what the speech server says and collected
 //  for the call's screen instead. A link is said by its title and listed on
-//  the screen; a bare address isn't said at all. The chat keeps the whole
-//  reply.
+//  the screen; a bare address isn't said at all, nor is a `MEDIA:` file
+//  tag (SpokenMediaTagFilter). The chat keeps the whole reply.
 //
 
 import Foundation
@@ -28,6 +28,8 @@ struct SpokenVisualSplitter {
     /// The kind of block the last collected line belongs to, so blocks of
     /// different kinds are kept apart on screen.
     private var lastBlock: Block?
+    /// What's said, without file tags.
+    private var mediaTags = SpokenMediaTagFilter()
 
     private enum Block { case code, table, image, link }
 
@@ -52,7 +54,7 @@ struct SpokenVisualSplitter {
             lineIsProse = false
         }
         spoken += releaseProse()
-        return spoken
+        return mediaTags.feed(spoken)
     }
 
     /// Everything still held, at the end of the reply.
@@ -68,7 +70,7 @@ struct SpokenVisualSplitter {
             visual.append(open)
             fence = nil
         }
-        return spoken
+        return mediaTags.feed(spoken) + mediaTags.finish()
     }
 
     /// The start of the line in progress, released when it can't open a

@@ -2720,6 +2720,19 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(SpokenTextFilter.filter("Done 👍🏽 ✨❤️ 🇨🇦 👨‍👩‍👧"), "Done ")
     }
 
+    func testSpokenTextFilterLeavesFileTagsUnsaid() {
+        // Classic voice reads the reply as it streams: a text_to_speech
+        // file tag in it is a path, not words.
+        XCTAssertEqual(SpokenTextFilter.filter("Done.\nMEDIA:/opt/data/cache/audio/tts_1.mp3\nAnything else?"),
+                       "Done.\nAnything else?")
+        XCTAssertEqual(SpokenTextFilter.filter("Here it is: MEDIA:/tmp/a.mp3 enjoy"), "Here it is: enjoy")
+        var filter = SpokenTextFilter()
+        var spoken = ""
+        for piece in ["Here it is: ME", "DIA:/tmp/a", ".mp3 enjoy"] { spoken += filter.feed(piece) }
+        spoken += filter.finish()
+        XCTAssertEqual(spoken, "Here it is: enjoy")
+    }
+
     func testSpokenTextFilterGivesTheSameSpeechHoweverTheReplyIsSplit() {
         let reply = "Order! *bangs the gavel twice* The court finds snake_case_var and **bold words here** and _whispers very quietly now_ fine. 🎉 2*3 and *really* done_"
         let whole = SpokenTextFilter.filter(reply)

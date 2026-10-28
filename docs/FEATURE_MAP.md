@@ -739,6 +739,35 @@ docs/OWN_VOICE_SERVER.md · the notifier's README (read-back)
 
 **Checked:** 2026-10-27, #1390 (Classic: cutting Hermes' acknowledgement short steers); 2026-10-27, #1378 (CarPlay's Stop on Local Live tells the server too); 2026-10-27, #1331 (Interrupt tells a Local Live server, #1325); 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
 
+## Files Hermes attaches, in what voices say
+
+A reply can attach a file with Hermes' `MEDIA:<path>` tag (text_to_speech
+answers with one) or carry a delivery directive (`[[audio_as_voice]]`). The
+chat shows the file; nothing that speaks the reply reads the tag out.
+
+**Siblings:** Read Aloud · Classic voice's spoken reply · Local Live's spoken
+and shown split · live read-back of a reply asked for again · the notifier's
+line for a spoken turn, which tells the model its answer is heard · chat
+bubbles (the file card)
+
+**Code**
+- The tag grammar: `Conduit/Views/Components/GatewayMediaTags.swift` (removingTags)
+- Streaming speech: `Conduit/Voice/SpokenMediaTagFilter.swift`, used by `Conduit/Voice/SpokenTextFilter.swift` (Classic, Read Aloud's Now Playing) and `Conduit/Voice/LocalLive/SpokenVisualSplitter.swift` (Local Live)
+- Read Aloud: `Conduit/Voice/MessageReadAloudController.swift` (toggle)
+- Live read-back: `Conduit/Voice/VoiceReadBack.swift` (plainSpeech)
+- What the model reads: `notifier/turn_surface.py` (SPOKEN_HINT)
+- Tests: `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift`, `ConduitTests/GeminiLiveVoiceTests.swift`, `ConduitTests/VoiceBackgroundJobTests.swift`, `notifier/tests/test_turn_surface.py`
+
+**Rulings**
+- A tag is never said, and a line that was only a tag says nothing; the words around it are said as written. Streaming voices hold from where a tag may begin to the end of its line, so a tag split across deltas is caught the same (2026-10-28, #PENDING, after a Local voice call on the farm read "MEDIA:/opt/data/cache/audio/tts_….mp3" out and its microphone heard "media." back).
+- A spoken message's line tells the model its answer is heard and to reply in words, never with text_to_speech or a MEDIA: file, since Hermes' own spoken-reply note isn't on every Hermes (2026-10-28, #PENDING, notifier 0.112.1).
+
+**Open gaps**
+- A tagged file isn't put on the call's screen: Local Live shows tables, code and links there, not attachments, which stay in the chat.
+- Gemini, Qwen, Grok and GPT-Live get a job's result as text and may still say a path in their own words.
+
+**Checked:** 2026-10-28, #PENDING.
+
 ## Qwen direct voice
 
 A live call on Alibaba Cloud's Qwen realtime model, from the phone or the
