@@ -205,6 +205,8 @@ extension NotificationDashboardOwnershipTests {
             "preferences": try JSONSerialization.jsonObject(with: JSONEncoder().encode(ConduitNotificationPreferences())),
         ]
         KeychainHelper.savePushRegistration(try JSONSerialization.data(withJSONObject: stored))
+        // The Watch reported it at an earlier launch.
+        UserDefaults.standard.set("4567", forKey: PushNotificationService.watchVoIPTokenKey)
         let service = PushNotificationService(retryDelay: .zero)
         var bodies: [[String: Any]] = []
         service.sendRegistrationUpdate = { request in
@@ -218,7 +220,6 @@ extension NotificationDashboardOwnershipTests {
         }
 
         service.updateVoIPToken("0123")
-        service.updateWatchVoIPToken("4567", engine: nil)
         // A new push token: the Watch's is left out as held, and the answer
         // says the relay doesn't have it, so it isn't recorded as held.
         service.didReceiveDeviceToken(Data([0x12, 0x34]))
@@ -229,6 +230,41 @@ extension NotificationDashboardOwnershipTests {
         // The next update sends it again.
         service.updateLocationToken(nil)
         try await waitUntil { bodies.last?["watch_voip_token"] as? String == "4567" }
+    }
+
+    func testAWatchBackWithThisIPhoneSendsItsTokenThoughTheRegistrationHoldsIt() async throws {
+        // This registration last held the Watch's token; the relay moved it
+        // to another iPhone since, with no update here to hear of it.
+        let stored: [String: Any] = [
+            "credential": "credential-1",
+            "installationID": "installation-1",
+            "relayURL": "https://relay.example.com",
+            "deviceToken": "abcd",
+            "voipToken": "0123",
+            "watchVoipToken": "4567",
+            "preferences": try JSONSerialization.jsonObject(with: JSONEncoder().encode(ConduitNotificationPreferences())),
+        ]
+        KeychainHelper.savePushRegistration(try JSONSerialization.data(withJSONObject: stored))
+        UserDefaults.standard.set("4567", forKey: PushNotificationService.watchVoIPTokenKey)
+        let service = PushNotificationService(retryDelay: .zero)
+        var bodies: [[String: Any]] = []
+        service.sendRegistrationUpdate = { request in
+            bodies.append(try XCTUnwrap(JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]))
+            let response = try XCTUnwrap(HTTPURLResponse(url: try XCTUnwrap(request.url), statusCode: 200, httpVersion: nil, headerFields: nil))
+            return (Data(#"{"installation":{"voip":true,"watch_voip":false,"watch_voip_elsewhere":true}}"#.utf8), response)
+        }
+        defer {
+            service.sendRegistrationUpdate = { _ in throw URLError(.cancelled) }
+            service.updateWatchVoIPToken(nil, engine: nil)
+        }
+
+        service.updateVoIPToken("0123")
+        // The Watch reports the same token at its launch: it goes anyway,
+        // and the answer says another iPhone holds it.
+        service.updateWatchVoIPToken("4567", engine: nil)
+        try await waitUntil { service.watchRingsForAnotherIPhone }
+        XCTAssertEqual(bodies.first?["watch_voip_token"] as? String, "4567")
+        XCTAssertNil(savedWatchToken())
     }
 
     private func savedWatchToken() -> String? {

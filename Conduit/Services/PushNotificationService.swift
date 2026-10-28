@@ -2304,13 +2304,16 @@ final class PushNotificationService: ObservableObject {
     static let watchCallVoicesKey = "hermesCalls.watchCallVoices"
 
     /// The Watch app has a new PushKit token, or none any more, or another
-    /// voice.
+    /// voice. It reports once a launch, to the iPhone it is with, so a token
+    /// it reports goes to the relay even when this registration already
+    /// holds it: the relay may have moved it to another iPhone since (a
+    /// re-pair there), and the answer says so.
     func updateWatchVoIPToken(_ token: String?, engine: String?) {
         watchVoIPToken = token
         watchEngine = engine
         UserDefaults.standard.set(token, forKey: Self.watchVoIPTokenKey)
         UserDefaults.standard.set(engine, forKey: Self.watchEngineKey)
-        queueRegistrationUpdate()
+        queueRegistrationUpdate(resendWatchToken: token != nil)
     }
 
     func updateWatchCallVoices(_ voices: WatchCallVoices) {
@@ -2377,7 +2380,7 @@ final class PushNotificationService: ObservableObject {
     /// anything new is decided when its turn comes; a device token the
     /// relay hasn't accepted yet always counts as new.
     @discardableResult
-    private func queueRegistrationUpdate(deviceToken: String? = nil) -> Task<Void, Error>? {
+    private func queueRegistrationUpdate(deviceToken: String? = nil, resendWatchToken: Bool = false) -> Task<Void, Error>? {
         guard registration != nil else { return nil }
         let previous = registrationUpdate
         let update = Task {
@@ -2387,10 +2390,11 @@ final class PushNotificationService: ObservableObject {
             // so one that failed at launch goes again (a relay meta refresh
             // queues one); the same token twice sends once.
             let tokenChanged = (deviceToken ?? self.deviceToken).map { $0 != registration.deviceToken } ?? false
-            guard tokenChanged || registration.preferences != preferences
+            let resendsWatchToken = resendWatchToken && ringingWatchVoIPToken != nil
+            guard tokenChanged || resendsWatchToken || registration.preferences != preferences
                     || registration.voipToken != voipToken || registration.watchVoipToken != ringingWatchVoIPToken
                     || locationTokenChange(registered: registration.locationToken) != .keep else { return }
-            try await updateRegistration(deviceToken: deviceToken)
+            try await updateRegistration(deviceToken: deviceToken, resendWatchToken: resendsWatchToken)
         }
         registrationUpdate = update
         return update
@@ -2906,12 +2910,13 @@ final class PushNotificationService: ObservableObject {
         }
     }
 
-    private func updateRegistration(deviceToken: String? = nil) async throws {
+    private func updateRegistration(deviceToken: String? = nil, resendWatchToken: Bool = false) async throws {
         guard let registration else { return }
         let voipToken = self.voipToken
         let voipChange: VoIPTokenChange = registration.voipToken == voipToken ? .keep : (voipToken.map(VoIPTokenChange.set) ?? .clear)
         let watchToken = ringingWatchVoIPToken
-        let watchChange: VoIPTokenChange = registration.watchVoipToken == watchToken ? .keep : (watchToken.map(VoIPTokenChange.set) ?? .clear)
+        let watchChange: VoIPTokenChange = registration.watchVoipToken == watchToken && !resendWatchToken
+            ? .keep : (watchToken.map(VoIPTokenChange.set) ?? .clear)
         let locationToken = relayLocationToken
         let locationChange = locationTokenChange(registered: registration.locationToken)
         // What the relay keeps once this lands, rather than whatever the
