@@ -401,6 +401,9 @@ struct V2Shell: View {
     @State private var profileSwitchToken = 0
     /// A profile tapped while a switch runs, switched to once it ends.
     @State private var queuedProfilePick = V2QueuedProfilePick()
+    /// A switch picked from the strip is running and will bring the
+    /// content back in when it (and any tap kept during it) lands.
+    @State private var isPickingProfile = false
     /// A tab the shell switched to itself, which skips the selection click.
     @State private var programmaticTab: V2Tab?
     /// A settings link waiting for the Settings tab to open its page.
@@ -535,13 +538,24 @@ struct V2Shell: View {
                 }
             }
             .onChange(of: appState.activeProfile) { _, _ in
+                // A switch picked here brings the content back itself, after
+                // any tap kept during it has gone too, so it doesn't flicker
+                // in and out between the two.
+                guard !isPickingProfile else { return }
                 fadeContentBackIn()
             }
             .onChange(of: appState.isProfileSwitching) { _, switching in
                 guard !switching,
                       let next = queuedProfilePick.take(landedOn: appState.activeProfile) else { return }
+                let token = profileSwitchToken
                 // Its haptic came with the tap.
                 pickProfile(next, haptic: false)
+                // A strip switch whose kept tap was queued again behind
+                // another switch, and came to nothing, still comes back in.
+                if token == profileSwitchToken, isPickingProfile {
+                    isPickingProfile = false
+                    fadeContentBackIn()
+                }
             }
             .onChange(of: appState.settingsLinkRequest) { _, page in
                 guard let page else { return }
@@ -871,11 +885,12 @@ struct V2Shell: View {
         // kept rather than dropped, and the last one goes once it ends.
         if appState.isProfileSwitching {
             queuedProfilePick.tap(profile)
-            Haptics.medium()
+            if haptic { Haptics.medium() }
             return
         }
         guard profile != appState.activeProfile else { return }
         if haptic { Haptics.medium() }
+        isPickingProfile = true
         profileSwitchToken &+= 1
         let token = profileSwitchToken
         let distance = reduceMotion ? 0 : Self.profileSwitchDistance * profileSwitchDirection(to: profile)
@@ -890,6 +905,14 @@ struct V2Shell: View {
             withTransaction(Transaction(animation: nil)) { contentShift = distance }
             await appState.switchProfile(to: profile)
             guard token == profileSwitchToken else { return }
+            // A tap kept during this switch goes now, with the content
+            // still out of sight.
+            if let next = queuedProfilePick.take(landedOn: appState.activeProfile) {
+                pickProfile(next, haptic: false)
+                // It started its own switch, which brings the content back.
+                guard token == profileSwitchToken else { return }
+            }
+            isPickingProfile = false
             fadeContentBackIn()
         }
     }
