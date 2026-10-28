@@ -1493,7 +1493,7 @@ final class GPTLiveDelegationBridge {
         switch job.status {
         case .finished:
             if let text = job.result?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
-                return VoiceBackgroundJobSupervisor.outcomePrompt(for: job, result: GeminiLiveToolBridge.clipped(text))
+                return VoiceBackgroundJobSupervisor.outcomePrompt(for: job, result: GeminiLiveToolBridge.clipped(GatewayMediaTags.namingFiles(in: text)))
             }
             return relay(VoiceBackgroundJobSupervisor.finishedNotice(job.title))
         case .failed(let message):

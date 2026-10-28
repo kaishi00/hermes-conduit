@@ -63,7 +63,9 @@ struct SpokenVisualSplitter {
     mutating func feed(_ text: String) -> String {
         pending += text
         var spoken = ""
-        while let newline = pending.firstIndex(of: "\n") {
+        while let newline = pending.firstIndex(where: \.isNewline) {
+            // A "\r" may be the start of a "\r\n" still to come.
+            if pending[newline] == "\r", pending.index(after: newline) == pending.endIndex { break }
             let line = String(pending[..<newline])
             pending = String(pending[pending.index(after: newline)...])
             spoken += take(line, ended: true)
@@ -134,7 +136,8 @@ struct SpokenVisualSplitter {
             // A bare address is listed like the links said in a sentence.
             visual.append(kind == .link ? "- " + line.trimmingCharacters(in: .whitespaces) : line)
             // An image of Hermes' own (`![x](MEDIA:…)`) is an attached file too.
-            if kind == .image, GatewayMediaTags.soleMediaPath(line) != nil { files.append(line.trimmingCharacters(in: .whitespaces)) }
+            if kind == .image, GatewayMediaTags.segments(in: line.trimmingCharacters(in: .whitespaces))?
+                .contains(where: { if case .media = $0 { return true } else { return false } }) == true { files.append(line.trimmingCharacters(in: .whitespaces)) }
             if kind == .code {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 fence = String(trimmed.prefix { $0 == "`" || $0 == "~" })

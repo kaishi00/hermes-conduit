@@ -846,6 +846,20 @@ extension VoiceConversationControllerTests {
         splitter.reset()
         _ = splitter.feed("![chart](MEDIA:/tmp/a.png)\nDone.") + splitter.finish()
         XCTAssertEqual(splitter.fileMarkdown, "![chart](MEDIA:/tmp/a.png)")
+        // Windows line ends read as lines, however they arrive.
+        let crlf = "Here you go.\r\nMEDIA:/r.pdf\r\nDone."
+        let scalars = Array(crlf.unicodeScalars)
+        for size in [1, 2, scalars.count] {
+            splitter.reset()
+            var said = ""
+            for start in stride(from: 0, to: scalars.count, by: size) {
+                var piece = String.UnicodeScalarView()
+                piece.append(contentsOf: scalars[start..<min(start + size, scalars.count)])
+                said += splitter.feed(String(piece))
+            }
+            XCTAssertEqual(said + splitter.finish(), "Here you go.\nDone.", "split every \(size)")
+            XCTAssertEqual(splitter.fileMarkdown, "MEDIA:/r.pdf")
+        }
     }
 
     func testLocalLiveTurnSaysAWholeReplyThatCameWithoutDeltas() async {
