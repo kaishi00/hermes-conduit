@@ -3671,6 +3671,16 @@ extension HermesClientTests {
         outgoing.disconnect()
     }
 
+    func testASocketTheServerHasClosedIsNotHandedOn() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        socket.closeCode = .goingAway
+        let incoming = makeClient(transport: transport, profile: "work")
+        XCTAssertFalse(outgoing.canHandOffSocket)
+        XCTAssertFalse(outgoing.handOffSocket(to: incoming))
+        XCTAssertFalse(incoming.isConnected)
+        outgoing.disconnect()
+    }
+
     func testAClientWithNoOpenSocketHandsNothingOn() async throws {
         let transport = FakeTransport()
         let outgoing = makeClient(transport: transport)

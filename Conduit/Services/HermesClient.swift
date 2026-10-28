@@ -1279,8 +1279,10 @@ final class HermesClient: ObservableObject {
     /// behind it and close the socket, #1265), and the gateway has answered
     /// this socket's `client.capabilities` (its reply would come to a
     /// client that never asked, and the successor wouldn't advertise again).
+    /// A socket whose close frame has come in, before its receive fails,
+    /// isn't open.
     var canHandOffSocket: Bool {
-        socket != nil && isConnected && socketHasOpened && !closedIntentionally
+        socket?.closeCode == .invalid && isConnected && socketHasOpened && !closedIntentionally
             && requestsBeingWritten.isEmpty && !capabilityReplyPending
     }
 
