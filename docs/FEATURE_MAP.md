@@ -2111,7 +2111,7 @@ transcript (never filtered)
 
 **Rulings**
 - An action is three or more words between a single `*` or `_` pair on one line; emphasis ("*really*"), bold and snake_case are spoken (2026-09-28, 223fca85).
-- As in Markdown, a marker followed by a space opens nothing and one after a space closes nothing, so "price * units sold * 12" is spoken; one after a space with a word right after it opens again (2026-10-28, #1429).
+- As in Markdown, a marker followed by a space opens nothing and one after a space closes nothing, so "price * units sold * 12" is spoken; one after a space with a word right after it opens again (2026-10-28, #1429). The Now Playing title strips emphasis markers but keeps a spaced `*` too.
 
 **Open gaps**
 - None known.

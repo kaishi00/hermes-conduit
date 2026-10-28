@@ -710,6 +710,11 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertTrue(title.hasSuffix("…"))
     }
 
+    func testNowPlayingTitleKeepsASpacedAsteriskButDropsEmphasis() {
+        XCTAssertEqual(ReadAloudNowPlaying.title(for: "Total: 5 * 3 is **fifteen**, *really*"), "Total: 5 * 3 is fifteen, really")
+        XCTAssertEqual(ReadAloudNowPlaying.title(for: "* First item\nMore"), "First item")
+    }
+
     func testGatewayReplacementCancelsActivePlayback() async {
         let playback = MockReadAloudPlayback()
         let gateway = MockReadAloudGateway(emitsPCM: true)
