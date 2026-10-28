@@ -1575,7 +1575,10 @@ final class AppState: ObservableObject {
     /// capability call: a gateway old enough to lack the method has no
     /// Bot Mode, and the UI degrades to "requires a newer Hermes gateway"
     /// without blocking Sessions or anything else.
-    @Published private(set) var botModePhase: BotModePhase = .idle
+    @Published private(set) var botModePhase: BotModePhase = .idle {
+        // Device names count only until the gateway shows bot looks.
+        didSet { if oldValue != botModePhase { persistSiriProfileNames() } }
+    }
     /// The read-only roster. Hermes remains authoritative; nothing bot-related
     /// is durably persisted client-side.
     @Published private(set) var botRoster: [BotProfile] = [] {
@@ -12339,6 +12342,7 @@ final class AppState: ObservableObject {
                 profileAppearanceStore.saveDeviceName(nil, for: current.name, dashboardID: activeDashboardID)
                 profileDeviceNames = profileAppearanceStore.loadDeviceNames(dashboardID: activeDashboardID)
             }
+            renameCapturedBotChatLabels(for: current.name, to: title)
             publishWidgetSnapshot()
         }
         await refreshBotRosterAfterWrite()
@@ -22056,8 +22060,11 @@ final class AppState: ObservableObject {
         }
         // The main profile goes by its Conduit name, so a rename here is
         // that name too.
-        if metaPersisted, patch.keys.contains("title"), BotManagement.isDefaultProfile(bot.name) {
-            saveDefaultProfileName(title)
+        if metaPersisted, patch.keys.contains("title"), botOpenFenceIsCurrent(epoch: epoch, client: client) {
+            if BotManagement.isDefaultProfile(bot.name) {
+                saveDefaultProfileName(title)
+            }
+            renameCapturedBotChatLabels(for: bot.name, to: title)
         }
         if removing, metaPersisted {
             do {
@@ -22869,6 +22876,20 @@ final class AppState: ObservableObject {
         errorMessage = AppLocalization.string(
             "Could not confirm \(bot.displayLabel)'s Bot Chat — not starting a new chat."
         )
+    }
+
+    /// A rename names the profile's open Bot Chats too: the label each
+    /// captured when it opened is the old name. An empty name lets the
+    /// roster's label name them again.
+    private func renameCapturedBotChatLabels(for profile: String, to name: String) {
+        guard let scope = ChatResumeStore.rpcProfileName(profile) else { return }
+        let label = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        for (sessionID, owner) in botChatSessionProfiles where owner == scope {
+            botChatSessionLabels[sessionID] = label.isEmpty ? nil : label
+        }
+        if let open = activeBotChatProfile, ChatResumeStore.rpcProfileName(open) == scope {
+            activeSessionTitle = label.isEmpty ? profileDisplayName(profile) : label
+        }
     }
 
     private func noteBotChatSession(

@@ -2988,7 +2988,7 @@ profile through `profileDisplayName` (sidebar, profile switcher and chips,
 All profiles, chat placeholders, call screens, voice settings, widgets) ·
 Siri and Shortcuts' profile picker (`conduit.knownProfileNames.v1`) ·
 spoken "for <name>, …" jobs on the phone and the Watch (`voiceJobProfileTarget`, `watchJobProfileNames`) ·
-the Bots list and Bot Chats (`displayLabel`) · pushes and calls from Hermes,
+the Bots list and Bot Chats (`displayLabel`; a rename replaces the label an open Bot Chat captured) · pushes and calls from Hermes,
 named by the notifier's `bot_name` in the same order · the Watch's caller
 name (`mainProfileNamesByDashboard`) · the text that describes them (the
 rename sheet's message, the Profiles row caption in Settings, README.md's
