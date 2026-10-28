@@ -101,9 +101,9 @@ enum NotificationCopy {
         let profile = nonEmpty(content["profile"])?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard profile == "default" else { return content }
         // "Default" or "Hermes" names it no more than an unnamed main bot.
-        let given = nonEmpty(content["profile_name"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let given = (nonEmpty(content["profile_name"])?.trimmingCharacters(in: .whitespacesAndNewlines))
             .flatMap { ["default", mainBotName.lowercased()].contains($0.lowercased()) ? nil : $0 }
-        let renamed = mainName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let renamed = (mainName?.trimmingCharacters(in: .whitespacesAndNewlines))
             .flatMap { $0.isEmpty || $0 == mainBotName ? nil : $0 }
         let name = renamed ?? given ?? mainBotName
         // An older plugin titles an unnamed main bot's chat "Default".

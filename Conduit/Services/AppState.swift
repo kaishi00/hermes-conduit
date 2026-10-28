@@ -22287,10 +22287,12 @@ final class AppState: ObservableObject {
         // The main profile goes by its Conduit name, so a rename here is
         // that name too.
         if metaPersisted, patch.keys.contains("title"), botOpenFenceIsCurrent(epoch: epoch, client: client) {
+            // saveDefaultProfileName renames the main bot's Bot Chats itself.
             if BotManagement.isDefaultProfile(bot.name) {
                 saveDefaultProfileName(title)
+            } else {
+                renameCapturedBotChatLabels(for: bot.name, to: title)
             }
-            renameCapturedBotChatLabels(for: bot.name, to: title)
         }
         if removing, metaPersisted {
             do {
