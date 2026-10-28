@@ -1149,7 +1149,7 @@ enum V2SplitLayout {
     static func showsChatRows(split: Bool, path: [V2Route]) -> Bool {
         switch (split ? listRoutes(path) : path).last {
         case nil, .project?: return true
-        case .conversation?, .artifacts?: return false
+        case .conversation?, .artifacts?, .pulse?: return false
         }
     }
 
