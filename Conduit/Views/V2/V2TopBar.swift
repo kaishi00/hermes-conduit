@@ -389,8 +389,9 @@ struct V2ProfileStrip: View {
             .frame(minWidth: 44, minHeight: 44)
             .contentShape(Rectangle())
         }
+        // Tappable while a switch runs: the shell keeps the tap for when
+        // it ends (`V2QueuedProfilePick`).
         .buttonStyle(PressableButtonStyle())
-        .disabled(!isSelected && appState.isProfileSwitching)
         .modifier(DashboardSwitchMenu(enabled: profile == appState.activeProfile))
         .accessibilityIdentifier(isSelected ? "sidebar.workspace" : "v2.profile.\(profile)")
         .accessibilityLabel(AppLocalization.string("\(name) profile"))

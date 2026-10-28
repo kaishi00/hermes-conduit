@@ -191,4 +191,19 @@ extension SidebarLayoutTests {
         // Without given traits, transcript fonts resolve at the column's size.
         XCTAssertEqual(ChatTypography.font(for: .body, appearance: stepped).pointSize, expected.pointSize, accuracy: 0.001)
     }
+
+    /// Profiles tapped while a switch runs: the last tap goes once it ends,
+    /// and a tap on where it landed (or no tap) starts nothing.
+    func testV2ProfileTappedDuringASwitchGoesOnceItEnds() {
+        var pick = V2QueuedProfilePick()
+        XCTAssertNil(pick.take(landedOn: "work"), "No tap, no further switch.")
+
+        pick.tap("home")
+        pick.tap("lab")
+        XCTAssertEqual(pick.take(landedOn: "work"), "lab", "The last tap wins.")
+        XCTAssertNil(pick.take(landedOn: "lab"), "Taken once.")
+
+        pick.tap("work")
+        XCTAssertNil(pick.take(landedOn: "work"), "A tap on where the switch lands starts nothing.")
+    }
 }

@@ -2298,6 +2298,7 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 
 **Code**
 - Bar layout: `Conduit/Views/V2/V2TopBar.swift` (ViewThatFits: one row, else stacked with lowerLeading under the profiles)
+- Profile chips (on Chats, Tasks and Settings): `Conduit/Views/V2/V2TopBar.swift` (V2ProfileStrip), `Conduit/Views/V2/V2Shell.swift` (pickProfile, V2QueuedProfilePick)
 - Controls and search: `Conduit/Views/V2/V2ChatsView.swift` (trailingControls, stackedLeading, barUnstacked, setBarStacked, filterPill, barSearchField, searchField, searchCapsule)
 - Message match row ("In messages"): `Conduit/Views/V2/V2SessionRow.swift` (V2ContentMatchRow: two lines of matching text, four at accessibility text sizes)
 
@@ -2305,6 +2306,7 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 - The profiles get their own row when they don't fit beside the controls, and the filter becomes a labeled pill under them (2026-10-22, #1117, Eric).
 - In the stacked bar, search is a magnifier leading the controls. Tapping it turns the whole second row (filter and controls) into the field with Cancel until the search is cancelled, the list has no search row, and the filter pill fills the row up to the controls. The one-row bar keeps the field as the list's first row (2026-10-24, #1199, Eric).
 - Going from the stacked bar to the one-row bar carries a query over to the list's field and closes an empty open field (2026-10-24, #1199).
+- A profile chip tapped while a switch is still running is kept, with its haptic at once, and the last one tapped is switched to when that switch ends (none when it's where the switch landed). The chips stay tappable meanwhile: a switch takes a couple of seconds on a real dashboard, and taps in it used to do nothing (2026-10-28, #PRNUM, Eric). The profile picker sheet still disables its rows during a switch, as it closes on the one picked.
 - The list's search row follows the bar's layout, starting from the last layout seen (`barStackedKey`). Before any layout is known (first launch) the row stays out until the one-row bar appears; a change of layout (rotation, a profile added) animates it in or out (2026-10-24, #1206: implementation of #1199's open gap).
 
 **Open gaps**

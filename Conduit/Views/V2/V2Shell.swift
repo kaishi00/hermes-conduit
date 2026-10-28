@@ -399,6 +399,8 @@ struct V2Shell: View {
     @State private var contentFaded = false
     @State private var contentShift: CGFloat = 0
     @State private var profileSwitchToken = 0
+    /// A profile tapped while a switch runs, switched to once it ends.
+    @State private var queuedProfilePick = V2QueuedProfilePick()
     /// A tab the shell switched to itself, which skips the selection click.
     @State private var programmaticTab: V2Tab?
     /// A settings link waiting for the Settings tab to open its page.
@@ -534,6 +536,11 @@ struct V2Shell: View {
             }
             .onChange(of: appState.activeProfile) { _, _ in
                 fadeContentBackIn()
+            }
+            .onChange(of: appState.isProfileSwitching) { _, switching in
+                guard !switching,
+                      let next = queuedProfilePick.take(landedOn: appState.activeProfile) else { return }
+                pickProfile(next)
             }
             .onChange(of: appState.settingsLinkRequest) { _, page in
                 guard let page else { return }
@@ -859,7 +866,14 @@ struct V2Shell: View {
     /// from the other side (with the backdrop glow in its color). Under
     /// Reduce Motion it only fades.
     private func pickProfile(_ profile: String) {
-        guard profile != appState.activeProfile, !appState.isProfileSwitching else { return }
+        // A switch takes a moment on a real dashboard: a tap meanwhile is
+        // kept rather than dropped, and the last one goes once it ends.
+        if appState.isProfileSwitching {
+            queuedProfilePick.tap(profile)
+            Haptics.medium()
+            return
+        }
+        guard profile != appState.activeProfile else { return }
         Haptics.medium()
         profileSwitchToken &+= 1
         let token = profileSwitchToken
@@ -929,6 +943,23 @@ extension View {
 /// so a narrow iPad window, or an unfolded iPhone Duo, keeps the phone's
 /// one column. The user can hide the list on a wide window too
 /// (`V2ChatListPreference`).
+/// The profile tapped in the strip while a switch is running. Only the
+/// last tap counts; once the switch ends, it goes there, unless that's
+/// where the switch landed.
+struct V2QueuedProfilePick: Equatable {
+    private(set) var profile: String?
+
+    mutating func tap(_ profile: String) {
+        self.profile = profile
+    }
+
+    /// The profile to switch to now that the switch ended on `landed`.
+    mutating func take(landedOn landed: String) -> String? {
+        defer { profile = nil }
+        return profile == landed ? nil : profile
+    }
+}
+
 enum V2SplitLayout {
     /// The list column: the narrowest iPhone's width, which every V2 list
     /// screen already fits.
