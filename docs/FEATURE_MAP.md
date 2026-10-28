@@ -789,7 +789,8 @@ Local Live's spoken and shown split (the call's screen shows the file) ·
 live read-back of a reply asked for again, and the result a Hermes call
 reads out · job results, chat replies (a job's thread reply, and the open
 chat's latest reply in a chat call's instructions) and read_chat as Gemini, Qwen, Grok,
-GPT-Live and Local Live get them, on the phone and the Watch · the
+GPT-Live and Local Live get them, on the phone and the Watch, and a
+Hermes call's reply in its instructions · the
 notifier's line for a spoken turn, which tells the model its answer is
 heard · chat bubbles (the file card)
 
@@ -1895,7 +1896,7 @@ from Hermes: commentary is said, see Acknowledging work handed to Hermes)
 **Open gaps**
 - `Haptics.signal` still plays the writing haptic only for `message.delta`.
 
-**Checked:** 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
+**Checked:** 2026-10-28, #1449 (Local Live's screen shows a reply's attached files, even beside a card); 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
 
 ## Live Activity for a running turn
 

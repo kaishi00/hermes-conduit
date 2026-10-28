@@ -856,7 +856,7 @@ extension VoiceConversationControllerTests {
         // An image of Hermes' own on its line is a file as well.
         splitter.reset()
         _ = splitter.feed("![chart](MEDIA:/tmp/a.png)\nDone.") + splitter.finish()
-        XCTAssertEqual(splitter.fileMarkdown, "![chart](MEDIA:/tmp/a.png)")
+        XCTAssertEqual(splitter.fileMarkdown, "MEDIA:/tmp/a.png")
         // One with words after it is said, and its file shown.
         splitter.reset()
         XCTAssertEqual(splitter.feed("![chart](MEDIA:/tmp/a.png) Here it is.\n") + splitter.finish(), "chart Here it is.\n")

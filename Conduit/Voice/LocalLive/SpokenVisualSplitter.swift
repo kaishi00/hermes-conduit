@@ -140,7 +140,9 @@ struct SpokenVisualSplitter {
             // A bare address is listed like the links said in a sentence.
             visual.append(kind == .link ? "- " + line.trimmingCharacters(in: .whitespaces) : line)
             // An image of Hermes' own (`![x](MEDIA:…)`) is an attached file too.
-            if kind == .image, GatewayMediaTags.soleMediaPath(line) != nil { files.append(line.trimmingCharacters(in: .whitespaces)) }
+            if kind == .image, let path = GatewayMediaTags.soleMediaPath(line) {
+                files.append(path.contains(where: \.isWhitespace) ? "MEDIA:`\(path)`" : "MEDIA:\(path)")
+            }
             if kind == .code {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 fence = String(trimmed.prefix { $0 == "`" || $0 == "~" })
