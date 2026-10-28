@@ -1127,6 +1127,10 @@ final class AppState: ObservableObject {
     private var chatPickedFromSavedList: SavedChatListPick?
     /// The Bot Chats left this run, by dashboard and bot (`keepBotChatCopy`).
     private var keptBotChatCopies: [String: KeptBotChatCopy] = [:]
+    /// The bot the chat on screen was open for, taken before a bot open
+    /// notes its destination's ids (`noteBotChatOpen`): the destination can
+    /// share the id the chat on screen is open as.
+    private var outgoingBotChatCopyOwner: (sessionID: String, bot: String?)?
     /// The scope whose list in memory came from Hermes after the saved files
     /// were last wiped, and so may be saved.
     private var savableChatListScope: WidgetWorkspaceID?
@@ -5294,6 +5298,7 @@ final class AppState: ObservableObject {
         cacheMessagePresentation(for: sessionIDs)
         recordOfflineChatCopy()
         keepBotChatCopy()
+        outgoingBotChatCopyOwner = nil
     }
 
     // MARK: - Offline chat cache (#99)
@@ -5709,8 +5714,7 @@ final class AppState: ObservableObject {
               // the scroll identity's aliases can still name the chat it
               // replaced, another bot's, or a Bot Chat an ordinary chat
               // replaced (#1352).
-              let bot = botConversationProfile(for: sessionID)
-                  ?? botStoreProfile(forSessionIDs: [sessionID]) else { return }
+              let bot = botChatCopyOwner(openAs: sessionID) else { return }
         let rows = messages.compactMap(OfflineCachedMessage.init)
             .suffix(OfflineChatCacheStore.maxMessagesPerTranscript)
         guard !rows.isEmpty else { return }
@@ -5723,6 +5727,28 @@ final class AppState: ObservableObject {
                 messages: Array(rows)
             )
         )
+    }
+
+    /// The bot whose copy the chat open as `sessionID` is, as it was before
+    /// any bot open since noted its destination over that id.
+    private func botChatCopyOwner(openAs sessionID: String) -> String? {
+        if let outgoing = outgoingBotChatCopyOwner, outgoing.sessionID == sessionID {
+            return outgoing.bot
+        }
+        return botConversationProfile(for: sessionID)
+            ?? botStoreProfile(forSessionIDs: [sessionID])
+    }
+
+    /// Notes the ids a bot open is for, after taking the owner of the chat
+    /// on screen: the open keeps that chat's copy when it flushes, and a
+    /// destination sharing its id must not take it.
+    private func noteBotChatOpen(_ sessionIDs: [String?], bot: BotProfile) {
+        if let active = activeSessionId, outgoingBotChatCopyOwner?.sessionID != active {
+            outgoingBotChatCopyOwner = (active, botChatCopyOwner(openAs: active))
+        }
+        for sessionID in sessionIDs {
+            noteBotChatSession(sessionID, profile: bot.name, label: bot.displayLabel)
+        }
     }
 
     /// `presentSavedCopyWhileOpening` for a Bot Chat: its kept copy, when
@@ -22518,8 +22544,7 @@ final class AppState: ObservableObject {
                 finishChatViewportTransition(generation: transition)
                 return .deferred
             }
-            noteBotChatSession(resumeID, profile: bot.name, label: bot.displayLabel)
-            noteBotChatSession(registryID, profile: bot.name, label: bot.displayLabel)
+            noteBotChatOpen([resumeID, registryID], bot: bot)
             let outcome = await performSessionOpen(
                 resumeID,
                 reusing: transition,
@@ -22687,8 +22712,7 @@ final class AppState: ObservableObject {
         presentationMigrationSessionIDs: Set<String> = [],
         viewportTransitionGeneration: UInt64? = nil
     ) async -> Bool {
-        noteBotChatSession(resumeID, profile: bot.name, label: bot.displayLabel)
-        noteBotChatSession(registryID, profile: bot.name, label: bot.displayLabel)
+        noteBotChatOpen([resumeID, registryID], bot: bot)
         let outcome = await performSessionOpen(
             resumeID,
             reusing: viewportTransitionGeneration,
@@ -22773,7 +22797,7 @@ final class AppState: ObservableObject {
             return failBotChatOpen(bot, error: error, stage: .title)
         }
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
-        noteBotChatSession(created.sessionId, profile: bot.name, label: bot.displayLabel)
+        noteBotChatOpen([created.sessionId], bot: bot)
         // The open resumes the STORED id, as Desktop's does: Hermes finds a
         // chat by its stored key (the live session it just made, or the row
         // the title wrote) and answers 4007 for a runtime id. Opening the

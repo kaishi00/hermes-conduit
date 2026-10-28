@@ -1525,9 +1525,9 @@ final class OfflineChatCacheTests: XCTestCase {
     }
 
     /// Each bot's copy is kept for the bot its chat was open for, even when
-    /// another id the chat answers to names a different bot (a profile
-    /// copied with its chats keeps their ids): reopening one bot never shows
-    /// the other's chat.
+    /// its stored id names a different bot too (a profile copied with its
+    /// chats keeps their ids): reopening one bot never shows the other's
+    /// chat.
     func testABotChatCopyIsKeptForTheBotItWasOpenFor() async throws {
         useInMemoryKeychain()
         var opens = 0
@@ -1574,6 +1574,67 @@ final class OfflineChatCacheTests: XCTestCase {
 
         gate = nil
         suspension.resume()
+        let reopened = await reopening.value
+        XCTAssertTrue(reopened)
+        XCTAssertEqual(appState.messages.map(\.id), ["atlas-reply-3"])
+    }
+
+    /// A bot opening as the id the chat on screen is open as notes that id
+    /// as its own before the chat being left is kept: the copy still goes
+    /// to the bot it was open for, and the bot opening shows none of it.
+    func testABotChatCopyIsKeptForItsBotWhenTheNextBotOpensAsTheSameID() async throws {
+        useInMemoryKeychain()
+        var opens = 0
+        var gate: ControlledSuspension?
+        let (appState, _, _) = makeAppState(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [] },
+            openSessionWithProfile: { _, _, _, profile in
+                opens += 1
+                if let gate { await gate.suspend() }
+                let bot = profile ?? "default"
+                return SessionResumeResult(
+                    sessionId: "shared-chat",
+                    storedSessionId: "shared-chat",
+                    messages: [ChatMessage(id: "\(bot)-reply-\(opens)", role: .assistant, content: "Hi", timestamp: "1")],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, _ in
+                [BotChatLookupRow(id: "shared-chat", title: "Bot Chat")]
+            }
+        ))
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        appState.showLogin = false
+        addTeardownBlock { appState.client?.disconnect() }
+        let atlas = botProfile("atlas")
+        let scout = botProfile("scout")
+
+        let openedAtlas = await appState.openBotChat(for: atlas)
+        XCTAssertTrue(openedAtlas)
+        XCTAssertEqual(appState.activeSessionId, "shared-chat")
+
+        let scoutGate = ControlledSuspension()
+        gate = scoutGate
+        let openingScout = Task { @MainActor in await appState.openBotChat(for: scout) }
+        await scoutGate.waitUntilSuspended()
+        XCTAssertNil(appState.offlineChatPresentation, "Scout has no copy, and never shows Atlas's")
+        gate = nil
+        scoutGate.resume()
+        let openedScout = await openingScout.value
+        XCTAssertTrue(openedScout)
+
+        let atlasGate = ControlledSuspension()
+        gate = atlasGate
+        let reopening = Task { @MainActor in await appState.openBotChat(for: atlas) }
+        await atlasGate.waitUntilSuspended()
+        XCTAssertEqual(appState.offlineChatPresentation?.displayedMessages.map(\.id), ["atlas-reply-1"],
+                       "Atlas's copy was kept for Atlas, not for Scout opening as its id")
+        gate = nil
+        atlasGate.resume()
         let reopened = await reopening.value
         XCTAssertTrue(reopened)
         XCTAssertEqual(appState.messages.map(\.id), ["atlas-reply-3"])
