@@ -158,15 +158,29 @@ enum GatewayMediaTags {
     /// `text` with every tag and directive removed, for places that read a
     /// reply rather than render it (Read Aloud).
     static func removingTags(from text: String) -> String {
+        // A link's label is words the reader wrote; the path is not.
+        rewritingTags(in: text) { _, alt in alt }
+    }
+
+    /// `text` with each tag written as the file it attaches, for a voice
+    /// model that tells the user about a reply: it can say a file came
+    /// without reading its path out. Directives are removed.
+    static func namingFiles(in text: String) -> String {
+        rewritingTags(in: text) { path, alt in
+            let name = path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
+            return (alt.map { $0 + " " } ?? "") + "(a file in the chat: \(name))"
+        }
+    }
+
+    private static func rewritingTags(in text: String, media: (_ path: String, _ alt: String?) -> String?) -> String {
         guard text.range(of: "MEDIA:", options: .caseInsensitive) != nil
                 || directives.contains(where: { text.contains($0) }) else { return text }
         return text.components(separatedBy: "\n").compactMap { line -> String? in
             guard let segments = segments(in: line) else { return line }
-            // A link's label is words the reader wrote; the path is not.
             let kept = segments.compactMap { segment -> String? in
                 switch segment {
                 case .text(let value): return value
-                case .media(_, let alt): return alt
+                case .media(let path, let alt): return media(path, alt)
                 }
             }
             return kept.isEmpty ? nil : kept.joined(separator: " ")

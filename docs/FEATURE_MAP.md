@@ -781,30 +781,37 @@ docs/OWN_VOICE_SERVER.md · the notifier's README (read-back)
 
 A reply can attach a file with Hermes' `MEDIA:<path>` tag (text_to_speech
 answers with one) or carry a delivery directive (`[[audio_as_voice]]`). The
-chat shows the file; nothing that speaks the reply reads the tag out.
+chat shows the file; nothing that speaks the reply reads the tag out, and
+no live model is handed the path to read out either.
 
-**Siblings:** Read Aloud · Classic voice's spoken reply · Local Live's spoken
-and shown split · live read-back of a reply asked for again · the notifier's
-line for a spoken turn, which tells the model its answer is heard · chat
-bubbles (the file card)
+**Siblings:** Read Aloud · Classic voice's spoken reply (phone, CarPlay) ·
+Local Live's spoken and shown split (the call's screen shows the file) ·
+live read-back of a reply asked for again, and the result a Hermes call
+reads out · job results, chat replies and read_chat as Gemini, Qwen, Grok,
+GPT-Live and Local Live get them, on the phone and the Watch · the
+notifier's line for a spoken turn, which tells the model its answer is
+heard · chat bubbles (the file card)
 
 **Code**
-- The tag grammar: `Conduit/Views/Components/GatewayMediaTags.swift` (removingTags)
-- Streaming speech: `Conduit/Voice/SpokenMediaTagFilter.swift`, used by `Conduit/Voice/SpokenTextFilter.swift` (Classic, Read Aloud's Now Playing) and `Conduit/Voice/LocalLive/SpokenVisualSplitter.swift` (Local Live)
+- The tag grammar: `Conduit/Views/Components/GatewayMediaTags.swift` (removingTags, namingFiles; also built into the Watch app, `project.yml`)
+- Streaming speech: `Conduit/Voice/SpokenMediaTagFilter.swift`, used by `Conduit/Voice/SpokenTextFilter.swift` (Classic, Read Aloud's Now Playing) and `Conduit/Voice/LocalLive/SpokenVisualSplitter.swift` (Local Live, which puts the files on the call's screen)
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift` (toggle)
 - Live read-back: `Conduit/Voice/VoiceReadBack.swift` (plainSpeech)
+- What live models are handed: `Conduit/Voice/VoiceBackgroundJobs.swift` (completionPrompt, replyBlock), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (a job's tool response), `Shared/WatchVoice/WatchJobRelay.swift` (completionPrompt), `Shared/WatchVoice/VoiceChatToolText.swift` (readResult)
 - What the model reads: `notifier/turn_surface.py` (SPOKEN_HINT)
-- Tests: `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift`, `ConduitTests/GeminiLiveVoiceTests.swift`, `ConduitTests/VoiceBackgroundJobTests.swift`, `notifier/tests/test_turn_surface.py`
+- Tests: `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift` (testSpokenVisualSplitterLeavesFileTagsUnsaid), `ConduitTests/GeminiLiveVoiceTests.swift` (testSpokenMediaTagFilter…, testSpokenTextFilterLeavesFileTagsUnsaid), `ConduitTests/VoiceBackgroundJobTests.swift` (testLiveModelsAreToldOfAFileNotItsPath, plainSpeech), `notifier/tests/test_turn_surface.py`
 
 **Rulings**
-- A tag is never said, and a line that was only a tag says nothing; the words around it are said as written. Streaming voices hold from where a tag may begin to the end of its line, so a tag split across deltas is caught the same (2026-10-28, #1434, after a Local voice call on the farm read "MEDIA:/opt/data/cache/audio/tts_….mp3" out and its microphone heard "media." back).
-- A spoken message's line tells the model its answer is heard and to reply in words, never with text_to_speech or a MEDIA: file, since Hermes' own spoken-reply note isn't on every Hermes (2026-10-28, #1434, notifier 0.112.1).
+- A tag is never said, and a line that was only a tag says nothing; the words around it, and a link's label, are said as written (2026-10-28, #1434, after a Local voice call on the farm read "MEDIA:/opt/data/cache/audio/tts_….mp3" out and its microphone heard "media." back).
+- Streaming voices hold from where a tag may begin (with its emphasis or `[label](`) to the end of its line, and only while it can still be one: `MEDIA:` with a path after it, or a directive. Prose such as "social media: we shipped" is said as it comes. A reply is said the same however it is split (#CARRY).
+- Local Live puts a tagged file on the call's screen, as the chat shows it; a tag written as a link is listed with the links (#CARRY).
+- A live model is told of a file by name ("(a file in the chat: report.pdf)"), never its path: a job's result, a chat reply and a chat read into the call alike (#CARRY).
+- A spoken message's line tells the model its answer is heard: say it in words, not with text_to_speech or a sound file of its own; a file the user asks for is still fine. Hermes' own spoken-reply note isn't on every Hermes (2026-10-28, #1434, notifier #444, 0.114.1).
 
 **Open gaps**
-- A tagged file isn't put on the call's screen: Local Live shows tables, code and links there, not attachments, which stay in the chat.
-- Gemini, Qwen, Grok and GPT-Live get a job's result as text and may still say a path in their own words.
+- None known.
 
-**Checked:** 2026-10-28, #1434.
+**Checked:** 2026-10-28, #1434, carried in #CARRY.
 
 ## Qwen direct voice
 
@@ -1455,7 +1462,7 @@ Read Aloud and live voice read-back · chat list previews and quotes
 - A single list item too big for one long-reply chunk is split into paragraphs that each repeat its number.
 - A long reply's continuation chunks draw list items as paragraphs with the number baked in, so they lose the list's styled marker column.
 
-**Checked:** 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
+**Checked:** 2026-10-28, #CARRY (speech leaves Hermes' file tags out, see Files Hermes attaches); 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
 
 ## Attaching files
 
@@ -2177,7 +2184,8 @@ calls (no trace) · docs/VOICE_SETTINGS.md
 ## Narrated actions left out of speech
 
 What a spoken reply leaves out that the chat keeps: a persona's narrated
-actions in single asterisks or underscores, and emoji.
+actions in single asterisks or underscores, and emoji. Hermes' file tags
+have their own entry, Files Hermes attaches, in what voices say.
 
 **Siblings:** Classic voice (phone, CarPlay; streamed) · Read Aloud and its
 Now Playing title · live read-back of a reply ("read me the last reply", in
@@ -2203,7 +2211,7 @@ transcript (never filtered)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1429, carried in #1430.
+**Checked:** 2026-10-28, #CARRY (Hermes' file tags are left out too, with their own entry, Files Hermes attaches); #1429, carried in #1430.
 
 ## Speech stream failures
 
@@ -2773,7 +2781,7 @@ split · Read Aloud and live read-back · chat list previews and quotes
 - Previews and quotes only drop fence lines and track no block, so they need no closing rule (not a gap, noted so nobody adds one).
 - A ```` block holding a ``` line in a Bot Chat can route a mention after that line, as Hermes does; changing it starts in Hermes.
 
-**Checked:** 2026-10-28, #1430 (read-back's action filter runs only on lines outside a code block); 2026-10-24, at #1220.
+**Checked:** 2026-10-28, #CARRY (Local Live's split leaves file tags unsaid and shows their files); 2026-10-28, #1430 (read-back's action filter runs only on lines outside a code block); 2026-10-24, at #1220.
 
 ## Files prepared for preview and Save to Files
 

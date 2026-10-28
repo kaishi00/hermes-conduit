@@ -2963,12 +2963,15 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A chat reply handed to the live model, fenced as data: the chat's
     /// text can't close the block and pass as instructions.
     static func replyBlock(_ reply: String) -> String {
-        let fenced = reply.replacingOccurrences(of: "</latest_reply>", with: "</ latest_reply>", options: .caseInsensitive)
+        // An attached file is named, not given by its path, which the model
+        // would read out.
+        let fenced = GatewayMediaTags.namingFiles(in: reply).replacingOccurrences(of: "</latest_reply>", with: "</ latest_reply>", options: .caseInsensitive)
         return "<latest_reply>\n\(fenced)\n</latest_reply>"
     }
 
     /// The hand-back submitted to the voice conversation's own session.
     static func completionPrompt(title: String, result: String) -> String {
+        let result = GatewayMediaTags.namingFiles(in: result)
         let clipped: String
         if result.count > maximumResultCharacters {
             clipped = String(result.prefix(maximumResultCharacters)) + "\n[…]"

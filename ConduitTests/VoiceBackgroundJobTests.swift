@@ -2682,6 +2682,24 @@ extension VoiceConversationControllerTests {
 
 @MainActor
 extension VoiceConversationControllerTests {
+    func testLiveModelsAreToldOfAFileNotItsPath() {
+        // A live model says a job's result in its own words, so it gets the
+        // file's name, never the path to read out.
+        let reply = "Done.\nMEDIA:/opt/data/cache/audio/tts_1.mp3\nSee [the report](MEDIA:/r/q3.pdf) now [[as_document]]"
+        XCTAssertEqual(GatewayMediaTags.namingFiles(in: reply),
+                       "Done.\n(a file in the chat: tts_1.mp3)\nSee the report (a file in the chat: q3.pdf) now")
+        XCTAssertEqual(GatewayMediaTags.namingFiles(in: "Social media: fine"), "Social media: fine")
+        for prompt in [VoiceBackgroundJobSupervisor.completionPrompt(title: "Briefing", result: reply),
+                       VoiceBackgroundJobSupervisor.threadReplyPrompt(result: reply),
+                       WatchJobRelay.completionPrompt(title: "Briefing", result: reply),
+                       VoiceChatToolText.readResult(chat: reply)["chat"] ?? ""] {
+            XCTAssertFalse(prompt.contains("MEDIA:"), prompt)
+            XCTAssertTrue(prompt.contains("(a file in the chat: q3.pdf)"), prompt)
+        }
+        XCTAssertEqual(WatchJobRelay.completionPrompt(title: "Briefing", result: reply),
+                       VoiceBackgroundJobSupervisor.completionPrompt(title: "Briefing", result: reply))
+    }
+
     func testReadBackIsPlainSpeech() {
         let markdown = [
             "## Plan for **Friday**",
