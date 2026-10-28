@@ -143,12 +143,7 @@ extension GroupRoomInfoSheet {
         Task { @MainActor in
             let result = await appState.takeOut(member)
             working = false
-            if case .refused(let message) = result {
-                Haptics.error()
-                refusal = (AppLocalization.string("Could not take this agent out"), message)
-            } else {
-                Haptics.success()
-            }
+            show(result, refusedTitle: AppLocalization.string("Could not take this agent out"))
         }
     }
 
@@ -157,12 +152,19 @@ extension GroupRoomInfoSheet {
         Task { @MainActor in
             let result = await appState.leaveActiveRoom()
             working = false
-            if case .refused(let message) = result {
-                Haptics.error()
-                refusal = (AppLocalization.string("Could not leave this room"), message)
-            } else {
-                Haptics.success()
-            }
+            show(result, refusedTitle: AppLocalization.string("Could not leave this room"))
+        }
+    }
+
+    private func show(_ result: RoomLeaveResult, refusedTitle: String) {
+        switch result {
+        case .done:
+            Haptics.success()
+        case .refused(let message):
+            Haptics.error()
+            refusal = (refusedTitle, message)
+        case .sending(let message):
+            refusal = (RoomLeaveText.stillSendingTitle, message)
         }
     }
 }

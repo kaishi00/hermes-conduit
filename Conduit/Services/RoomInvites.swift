@@ -21,6 +21,10 @@ struct RoomInvite: Identifiable, Equatable {
     struct Agent: Equatable {
         let profile: String
         let displayName: String
+        /// Its handle in the room, and how it went (`left`, `removed`,
+        /// `ended`): for `gone` only.
+        var handle: String? = nil
+        var reason: String? = nil
     }
 
     /// The Link and the room, as the plugin keys an invite: the same room
@@ -277,8 +281,16 @@ struct RoomInvitesClient {
             joined: agents(object["joined"]),
             profiles: profiles,
             choices: choices,
-            gone: agents(object["gone"])
+            gone: goneAgents(object["gone"])
         )
+    }
+
+    private static func goneAgents(_ value: Any?) -> [RoomInvite.Agent] {
+        (value as? [[String: Any]] ?? []).compactMap { agent in
+            guard let profile = agent["profile"] as? String, let name = agent["display_name"] as? String else { return nil }
+            return RoomInvite.Agent(profile: profile, displayName: name,
+                                    handle: agent["handle"] as? String, reason: agent["reason"] as? String)
+        }
     }
 
     private static func agents(_ value: Any?) -> [RoomInvite.Agent] {

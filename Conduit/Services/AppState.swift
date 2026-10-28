@@ -10730,10 +10730,19 @@ final class AppState: ObservableObject {
     /// owner and whether it's out. Read when the room opens, when Group
     /// Info does, and after taking one out.
     @Published private(set) var activeRoomPeople: [String: RoomPerson] = [:]
+    /// The latest people read started: an older one that answers later is
+    /// dropped.
+    private var activeRoomPeopleRead = 0
 
-    /// The open room's members, with their owners and who's out.
+    /// The open room's members, with their owners and who's out. In a copy,
+    /// your agents that are out are yours from its invite until the people
+    /// read says so.
     var activeRoomMembers: [GroupMember] {
-        GroupRoomTurns.members(activeRoomSurface?.room.members ?? [], people: activeRoomPeople)
+        var members = activeRoomSurface?.room.members ?? []
+        if let copy = activeRoomSurface?.copy, let invite = linkedRoomInvite(copy.id), !invite.gone.isEmpty {
+            members = GroupRoomTurns.members(members, gone: invite.gone)
+        }
+        return GroupRoomTurns.members(members, people: activeRoomPeople)
     }
 
     /// Where the user's answer to each of the open room's pending approvals
@@ -11635,8 +11644,11 @@ final class AppState: ObservableObject {
         guard canInviteLinkedPeople, let surface = activeRoomSurface,
               let room = DashboardPath.encodedQueryComponent(surface.room.roomID) else { return }
         let dashboard = activeDashboardID
+        activeRoomPeopleRead &+= 1
+        let read = activeRoomPeopleRead
         guard let response = try? await roomRouteJSON(
             path: "\(RoomPeople.path)?room_id=\(room)", method: "GET", body: nil, timeoutMilliseconds: nil),
+              read == activeRoomPeopleRead,
               response["ok"] as? Bool == true, groupRoomEpoch == epoch, activeDashboardID == dashboard,
               activeRoomSurface?.room.roomID == surface.room.roomID else { return }
         let people = RoomPeople.people(response)

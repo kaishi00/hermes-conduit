@@ -32,6 +32,8 @@ enum RoomLeaveResult: Equatable {
     case done
     /// The plugin's words.
     case refused(String)
+    /// Your Hermes is still telling the others (a 504): what it says.
+    case sending(String)
 }
 
 enum RoomLeaveText {
@@ -81,6 +83,18 @@ enum RoomLeaveText {
 
     static func leaveRefusal(for error: Error) -> String {
         AppLocalization.string("Could not leave this room: \(RoomLinksClient.message(for: error))")
+    }
+
+    static var stillSendingTitle: String { AppLocalization.string("Still on its way") }
+
+    static var stillSending: String {
+        AppLocalization.string("Your Hermes is still sending this. The room shows it once it has.")
+    }
+
+    /// A 504: the mailbox hasn't answered yet, and the change may be made.
+    static func isStillSending(_ error: Error) -> Bool {
+        if case DashboardTicketBridgeError.http(504, _) = error { return true }
+        return false
     }
 }
 
@@ -189,7 +203,7 @@ extension AppState {
                 try await client.remove(roomID: surface.room.roomID, memberID: memberID)
             }
         } catch {
-            return .refused(RoomLeaveText.takeOutRefusal(for: error))
+            return await refused(error, in: surface, saying: RoomLeaveText.takeOutRefusal(for: error))
         }
         await afterTakingOut(surface)
         return .done
@@ -206,10 +220,19 @@ extension AppState {
             let invite = try await client.leave(link: copy.link, roomID: copy.roomID, profiles: nil)
             adoptLinkedRoomInvite(invite, from: client.dashboardID)
         } catch {
-            return .refused(RoomLeaveText.leaveRefusal(for: error))
+            return await refused(error, in: surface, saying: RoomLeaveText.leaveRefusal(for: error))
         }
         await afterTakingOut(surface)
         return .done
+    }
+
+    /// A refusal's words; for a 504, which may have been made, the room is
+    /// read again (with its invite, for a copy) and says it's still going.
+    private func refused(_ error: Error, in surface: GroupRoomSurface, saying words: String) async -> RoomLeaveResult {
+        guard RoomLeaveText.isStillSending(error) else { return .refused(words) }
+        if surface.copy != nil { await refreshLinkedRoomInvites() }
+        await afterTakingOut(surface)
+        return .sending(RoomLeaveText.stillSending)
     }
 
     /// Who's in, read again for the room still open; for a copy, the copy

@@ -202,6 +202,68 @@ extension GroupChatModelsTests {
     }
 
     @MainActor
+    func testALeaveStillOnItsWayReadsTheRoomAgain() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy()])
+        routes.refusesLeaving = "The mailbox didn't answer"
+        routes.leavingStatus = 504
+        routes.invites = [["room_id": "conduit-9", "link": "lk1a2b3c4d5e6f", "name": "Zoo trip", "status": "started",
+                           "from": "Furina", "joined": [["profile": "research", "handle": "kuro", "display_name": "Kuro"]]]]
+        let appState = try await leaveAppState(routes)
+        let copy = try XCTUnwrap(appState.linkedRoomCopyRows.first)
+        await appState.openRoomCopy(copy)
+
+        // Your Hermes took them out; telling the home is what waits.
+        routes.copies = [copiesCopy(status: "left", yours: [])]
+        routes.invites = [routes.leftInvite]
+        let result = await appState.leaveActiveRoom()
+        XCTAssertEqual(result, .sending(AppLocalization.string("Your Hermes is still sending this. The room shows it once it has.")))
+        XCTAssertEqual(appState.activeRoomSurface?.copy?.status, "left", "the copy is read again")
+        XCTAssertEqual(appState.linkedRoomInvite(copy.id)?.status, "left", "and its invite")
+        XCTAssertFalse(appState.canLeaveActiveRoom)
+    }
+
+    @MainActor
+    func testYourAgentsThatLeftAreYoursFromTheInviteBeforeThePeopleRead() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(status: "left", yours: [])])
+        routes.invites = [routes.leftInvite]
+        let appState = try await leaveAppState(routes)
+        await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
+        XCTAssertEqual(appState.activeRoomPeople, [:], "the people read failed")
+
+        let kuro = try XCTUnwrap(appState.activeRoomMembers.first { $0.memberID == "m-kuro" })
+        XCTAssertTrue(kuro.isYours)
+        XCTAssertEqual(kuro.out, .left)
+        let yours = AppLocalization.string("Your agent")
+        let left = AppLocalization.string("Left the room")
+        XCTAssertEqual(GroupRoomTurns.ownerLine(of: kuro), AppLocalization.string("\(yours) · \(left)"))
+        XCTAssertEqual(GroupRoomTurns.ownedName("Kuro", of: kuro), "Kuro", "not the host's name for you")
+        let laifu = try XCTUnwrap(appState.activeRoomMembers.first { $0.memberID == "m-laifu" })
+        XCTAssertFalse(laifu.isYours)
+        XCTAssertNil(laifu.out)
+    }
+
+    @MainActor
+    func testAnOlderPeopleReadAnsweringLaterIsDropped() async throws {
+        let routes = CopiesRoutes(copies: [])
+        routes.people = leaveOwnPeople(laifu: "in")
+        routes.peopleDelays = [.milliseconds(400)]
+        let appState = try await leaveAppState(routes, room: leaveOwnRoom)
+        await appState.openGroupRoom(leaveOwnRoom)
+        // The opening read is asked and waits, with Laifu still in.
+        await copiesWait("the opening read asked", until: { routes.peopleReads.count == 1 })
+
+        routes.people = leaveOwnPeople(laifu: "removed")
+        let laifu = try XCTUnwrap(appState.activeRoomMembers.first { $0.memberID == "m-laifu" })
+        let result = await appState.takeOut(laifu)
+        XCTAssertEqual(result, .done)
+        XCTAssertEqual(appState.activeRoomPeople["m-laifu"]?.out, .removed)
+
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(appState.activeRoomPeople["m-laifu"]?.out, .removed, "the older read doesn't put it back in")
+        appState.closeGroupRoom()
+    }
+
+    @MainActor
     func testNothingIsTakenOutOfARoomThatsOverOrOnAnOlderPlugin() async throws {
         let older = CopiesRoutes(copies: [copiesCopy()])
         let olderState = try await leaveAppState(older, report: copiesPluginReport)

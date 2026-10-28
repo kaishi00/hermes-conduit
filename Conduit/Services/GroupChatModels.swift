@@ -1089,6 +1089,24 @@ enum GroupRoomTurns {
         }
     }
 
+    /// A copy's members with your agents that are out, as its invite's
+    /// `gone` names them by handle: yours, and how they went. Once yours
+    /// leave, the copy lists them as another's, as the host names you.
+    static func members(_ members: [GroupMember], gone: [RoomInvite.Agent]) -> [GroupMember] {
+        let handles = Dictionary(
+            gone.compactMap { agent in agent.handle.map { ($0.lowercased(), agent.reason) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+        guard !handles.isEmpty else { return members }
+        return members.map { member in
+            guard member.isPeer, let handle = member.handle?.lowercased(), let reason = handles[handle] else { return member }
+            var known = member
+            known.isYours = true
+            known.out = reason.flatMap(RoomMemberOut.init(rawValue:))
+            return known
+        }
+    }
+
     /// A bubble's name for another person's agent: "Laifu · Mona's".
     static func ownedName(_ name: String, of member: GroupMember?) -> String {
         guard let member, member.isPeer, !member.isYours,

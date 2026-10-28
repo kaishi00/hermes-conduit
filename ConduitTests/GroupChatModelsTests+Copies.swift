@@ -545,8 +545,12 @@ final class CopiesRoutes {
     /// POST /rooms/leave's and /rooms/drafts/remove's bodies.
     private(set) var leaves: [[String: Any]] = []
     private(set) var removes: [[String: Any]] = []
-    /// Leaving and taking out are refused with this.
+    /// Leaving and taking out are refused with this, at this status.
     var refusesLeaving: String?
+    var leavingStatus = 409
+    /// The next people reads each wait this long, answering what the people
+    /// were when they were asked.
+    var peopleDelays: [Duration] = []
     /// The invite a leave answers.
     var leftInvite: [String: Any] = [
         "room_id": "conduit-9", "link": "lk1a2b3c4d5e6f", "name": "Zoo trip", "status": "left", "from": "Furina",
@@ -585,7 +589,11 @@ final class CopiesRoutes {
         }
         if path.hasPrefix(RoomPeople.path) {
             peopleReads.append(path)
-            return people
+            let answer = people
+            if !peopleDelays.isEmpty {
+                try await Task.sleep(for: peopleDelays.removeFirst())
+            }
+            return answer
         }
         switch (path, method) {
         case (RoomCopiesClient.path, "GET"):
@@ -601,11 +609,11 @@ final class CopiesRoutes {
             return ["ok": true, "approvals": approvals]
         case (RoomLeaveClient.leavePath, "POST"):
             leaves.append(body ?? [:])
-            if let refusesLeaving { throw DashboardTicketBridgeError.http(status: 409, detail: refusesLeaving) }
+            if let refusesLeaving { throw DashboardTicketBridgeError.http(status: leavingStatus, detail: refusesLeaving) }
             return ["ok": true, "invite": leftInvite]
         case (RoomLeaveClient.removePath, "POST"):
             removes.append(body ?? [:])
-            if let refusesLeaving { throw DashboardTicketBridgeError.http(status: 409, detail: refusesLeaving) }
+            if let refusesLeaving { throw DashboardTicketBridgeError.http(status: leavingStatus, detail: refusesLeaving) }
             return ["ok": true, "draft": ["room_id": body?["room_id"] ?? ""]]
         case ("\(RoomApprovalsClient.path)/answer", "POST"):
             // Taken, though the list still has it for a read.
