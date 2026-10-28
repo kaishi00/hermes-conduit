@@ -2068,6 +2068,7 @@ Hermes' own RPC)
 **Open gaps**
 - Files go up one after another as base64 over the chat socket; nothing shows how far an upload has got.
 - The foreground check skipped behind an upload counts as passed, so a chat resumed then finds a dead socket only when that upload's budget ends or its write fails.
+- An upload whose budget ends while its frame is still going out stops counting as written then, not when the socket finishes the write: the keepalive pings again, and a profile switch can hand the socket on behind it (#1452).
 
 **Checked:** 2026-10-28, #1452 (a profile switch's socket hand-off waits out a large write too); 2026-10-25, at #1268.
 

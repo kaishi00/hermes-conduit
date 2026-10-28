@@ -30447,14 +30447,17 @@ final class AppState: ObservableObject {
         // A switch that spares calls (a notification's or a chat link's)
         // mints its ticket before anything changes, so nothing waits between
         // its call check and the voice teardown below; it refuses while a
-        // call runs, saying `callRefusal`.
+        // call runs, saying `callRefusal`. One that will keep the open
+        // socket needs no ticket, so it neither waits nor fails on one.
         var sparedCallTicket: String?
         if let callRefusal {
             var mintError: Error?
-            do {
-                sparedCallTicket = try await mintChatResumeTicket(for: savedConnection)
-            } catch {
-                mintError = error
+            if socketToKeepForProfileSwitch(within: savedConnection) == nil {
+                do {
+                    sparedCallTicket = try await mintChatResumeTicket(for: savedConnection)
+                } catch {
+                    mintError = error
+                }
             }
             // A newer navigation or switch that started meanwhile owns the
             // screen now.
