@@ -20,6 +20,13 @@ import XCTest
 
 @MainActor
 final class ComposerReturnKeyTests: XCTestCase {
+
+    func testTheComposerFieldsTurnOffInlinePredictionOnlyOnAMac() {
+        XCTAssertEqual(ReturnKeyTextView.inlinePredictionType(onMac: true), .no)
+        XCTAssertEqual(ReturnKeyTextView.inlinePredictionType(onMac: false), .default)
+        XCTAssertEqual(ImagePasteTextView(frame: .zero, textContainer: nil).inlinePredictionType, .default)
+        XCTAssertEqual(ReturnKeyTextView().inlinePredictionType, .default)
+    }
     override func setUp() {
         super.setUp()
         UserDefaults.standard.removeObject(forKey: ComposerReturnKey.preferenceKey)
