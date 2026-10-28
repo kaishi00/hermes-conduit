@@ -406,6 +406,242 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 3500)
     }
 
+    /// Predictive's chips appearing over the composer grow only the bottom
+    /// inset (iOS 26's safe-area bar), with no layout pass the surface sees.
+    func testFollowingPinsWhenTheBottomBarGrows() {
+        let (engine, surface) = makeEngine()
+        scheduled.removeAll()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3252, "the reply's end stays above the chips")
+
+        // The inset lands after the bar's own layout: the later check pins it.
+        surface.insetBottom = 104
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 3304)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testABottomBarGrowingLeavesABrowsingReaderAlone() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 1000)
+        scheduled.removeAll()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 1000)
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    func testFollowingPinsWhenTheBottomBarShrinks() {
+        let (engine, surface) = makeEngine()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+        surface.insetBottom = 0
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3200, "no empty space left where the chips were")
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    /// A reader just above the bottom, browsing, when the bar shrinks under
+    /// them: past the new bottom, but they didn't scroll there.
+    func testABottomBarShrinkingLeavesABrowsingReaderBrowsing() {
+        let surface = FakeChatScrollSurface()
+        surface.insetBottom = 120
+        let (engine, _) = makeEngine(surface: surface)
+        XCTAssertEqual(surface.contentOffsetY, 3320)
+        surface.userScroll(to: 3250)
+        XCTAssertEqual(engine.mode, .browsing)
+        surface.insetBottom = 0
+        engine.bottomBarResized()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 3200, "moved up to the new bottom: no empty space under the last message")
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    /// The same shrink reaching the engine first through a layout pass (the
+    /// locator laid out with the new inset) still leaves the reader browsing.
+    func testABottomBarShrinkingInALayoutPassLeavesABrowsingReaderBrowsing() {
+        let surface = FakeChatScrollSurface()
+        surface.insetBottom = 120
+        let (engine, _) = makeEngine(surface: surface)
+        surface.userScroll(to: 3250)
+        XCTAssertEqual(engine.mode, .browsing)
+        surface.insetBottom = 0
+        engine.surfaceLayoutChanged()
+        XCTAssertEqual(surface.contentOffsetY, 3200, "moved up to the new bottom")
+        XCTAssertEqual(engine.mode, .browsing)
+        engine.bottomBarResized()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    /// A browsing reader 70 pt above the bottom drags while the bar shrinks
+    /// 120 pt: letting go past the new bottom is the bar's doing, so they
+    /// are moved up to it and stay browsing.
+    func testABottomBarShrinkingUnderADragLeavesTheReaderBrowsing() {
+        let surface = FakeChatScrollSurface()
+        surface.insetBottom = 120
+        let (engine, _) = makeEngine(surface: surface)
+        surface.userScroll(to: 3250)
+        XCTAssertEqual(engine.mode, .browsing)
+        surface.isTracking = true
+        engine.userDragBegan()
+        surface.insetBottom = 0
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3250, "a finger owns the offset")
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    /// A following reader nudges the chat a little while the chips appear:
+    /// letting go, they follow again, pinned above the chips.
+    func testAFollowingReaderDraggingWhileTheBarGrowsFollowsAgain() {
+        let (engine, surface) = makeEngine()
+        XCTAssertTrue(engine.isFollowingLatest)
+        surface.isTracking = true
+        engine.userDragBegan()
+        surface.contentOffsetY = 3190
+        engine.surfaceScrolled()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3190, "a finger owns the offset")
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertTrue(engine.isFollowingLatest)
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+    }
+
+    /// A following reader who scrolls well away while the chips appear stays
+    /// where they went.
+    func testAFollowingReaderScrollingAwayWhileTheBarGrowsStaysBrowsing() {
+        let (engine, surface) = makeEngine()
+        surface.isTracking = true
+        engine.userDragBegan()
+        surface.contentOffsetY = 1000
+        engine.surfaceScrolled()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertEqual(engine.mode, .browsing)
+        XCTAssertEqual(surface.contentOffsetY, 1000)
+    }
+
+    /// Just past the near-bottom distance once the chips are counted, but
+    /// within it as the chat was when the finger came down: follows again.
+    func testAFollowingReaderIsMeasuredAgainstTheBarAtDragStart() {
+        let (engine, surface) = makeEngine()
+        surface.isTracking = true
+        engine.userDragBegan()
+        surface.contentOffsetY = 3170
+        engine.surfaceScrolled()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertTrue(engine.isFollowingLatest, "30 pt from the bottom it had; 82 pt from the new one")
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+    }
+
+    /// A browsing reader who drags back near the bottom while the chips
+    /// appear follows again, the same as with no bar change.
+    func testABrowsingReaderDraggingBackNearTheBottomWhileTheBarGrowsFollows() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 1000)
+        XCTAssertEqual(engine.mode, .browsing)
+        surface.isTracking = true
+        engine.userDragBegan()
+        surface.contentOffsetY = 3180
+        engine.surfaceScrolled()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertTrue(engine.isFollowingLatest, "20 pt from the bottom it had")
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+    }
+
+    /// The inset went back to a value a bar check saw before, by an
+    /// ordinary layout in between: the next bar change is still taken.
+    func testABottomBarBackAtAnEarlierInsetStillPins() {
+        let (engine, surface) = makeEngine()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+        surface.insetBottom = 0
+        surface.layOut(contentHeight: 4000)
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+    }
+
+    /// A finger resting on the chat (no scroll) when the chips appear: the
+    /// pin waits, and the lift takes it.
+    func testABottomBarChangeUnderAFingerPinsWhenItLifts() {
+        let (engine, surface) = makeEngine()
+        surface.isTracking = true
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3200, "a finger owns the offset")
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    /// Chips appearing during a fling that outlasts the retries: the checks
+    /// go on until it stops, then the missed inset is taken.
+    func testABottomBarChangeDuringAFlingPinsOnceItStops() {
+        let (engine, surface) = makeEngine()
+        scheduled.removeAll()
+        surface.isDecelerating = true
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        for _ in 0..<5 {
+            XCTAssertEqual(scheduled.count, 1, "a check still waits while the fling moves")
+            scheduled.removeFirst()()
+        }
+        XCTAssertEqual(surface.contentOffsetY, 3200, "momentum owns the offset")
+        surface.isDecelerating = false
+        scheduled.removeFirst()()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+    }
+
+    /// The inset can land after the bar's layout: the checks go on for a few
+    /// main-queue turns, one waiting at a time.
+    func testBottomBarChecksRetryAFewTurns() {
+        let (engine, surface) = makeEngine()
+        scheduled.removeAll()
+        engine.bottomBarResized()
+        var turns = 0
+        while !scheduled.isEmpty, turns < 10 {
+            let next = scheduled.removeFirst()
+            turns += 1
+            if turns == 3 { surface.insetBottom = 52 }
+            next()
+        }
+        XCTAssertEqual(turns, ChatScrollEngine.bottomBarCheckDelays.count)
+        XCTAssertEqual(surface.contentOffsetY, 3252, "the inset that landed on the last turn is taken")
+    }
+
+    func testBottomBarChangesWaitOnOneLaterCheck() {
+        let (engine, surface) = makeEngine()
+        scheduled.removeAll()
+        for inset in [20, 40, 60] as [CGFloat] {
+            surface.insetBottom = inset
+            engine.bottomBarResized()
+        }
+        XCTAssertEqual(scheduled.count, 1)
+        scheduled.removeAll()
+        engine.bottomBarResized()
+        XCTAssertEqual(scheduled.count, 0, "the chain still waits until its check has run")
+    }
+
     func testFollowingRepairsAnOvershootWhenContentShrinks() {
         let (_, surface) = makeEngine()
         surface.layOut(contentHeight: 3700)
@@ -2423,6 +2659,20 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 3598)
         assertNeverMovedUp(surface)
         XCTAssertEqual(surface.sets.count, 2)
+    }
+
+    /// Chips appearing under a reply that just fits push the bottom past
+    /// the stop: following stops there, as for the reply's own growth.
+    func testABottomBarGrowingPastTheStopStopsThere() {
+        let (engine, surface) = sendIntoHold()
+        surface.layOut(contentHeight: 4380)
+        XCTAssertEqual(surface.contentOffsetY, 3580)
+        surface.sets = []
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertTrue(engine.isFollowingLatest, "within the near-bottom distance it is still following")
+        assertNeverMovedUp(surface)
     }
 
     /// Nightly 2026-10-26 (hosted): a newly appended row's estimate put the

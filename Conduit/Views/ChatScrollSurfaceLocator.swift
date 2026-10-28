@@ -64,7 +64,10 @@ final class ChatScrollSurfaceLocatorView: UIView {
         // The superview chain can be completed after the move to a window.
         connectIfNeeded()
         // adjustedContentInset (safe area) is not KVO-observable; a change
-        // to it re-lays out the content, which lands here.
+        // that re-lays out the content lands here. A bar the transcript
+        // scrolls under can change it without that (iOS 26's safe-area bar
+        // growing for Predictive's chips), so ChatView reports the bar's
+        // height itself (ChatScrollEngine.bottomBarResized).
         surface?.checkAdjustedInsets()
     }
 

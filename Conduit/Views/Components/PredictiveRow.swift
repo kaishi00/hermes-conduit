@@ -67,32 +67,7 @@ struct PredictiveRow: View {
 
     /// A whole message: tap sends it, long-press puts it in the composer.
     private func replyChip(_ guess: Predictive.Guess, isFirst: Bool) -> some View {
-        HStack(spacing: 6) {
-            Text(guess.text)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-            Image(systemName: "arrow.up")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(Color.conduitAura)
-                .accessibilityHidden(true)
-        }
-        .font(.subheadline)
-        .foregroundStyle(.primary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .frame(maxWidth: 300, alignment: .leading)
-        .background(Capsule().fill(Color.conduitAura.opacity(isFirst ? 0.2 : 0.1)))
-        .overlay(Capsule().strokeBorder(Color.conduitAura.opacity(isFirst ? 0.6 : 0.35), lineWidth: 1))
-        // A 44 pt target around the smaller capsule.
-        .frame(minHeight: 44)
-        .contentShape(Rectangle())
-        .onTapGesture { send(guess.text) }
-        .onLongPressGesture(minimumDuration: 0.4) { edit(guess.text) }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityHint(Text("Sends this message. Use the Edit action to change it first."))
-        .accessibilityAction { send(guess.text) }
-        .accessibilityAction(named: Text("Edit")) { edit(guess.text) }
+        PredictiveReplyChip(text: guess.text, isFirst: isFirst, send: send, edit: edit)
     }
 
     /// The next words of the draft: tap puts them after it.
@@ -205,5 +180,73 @@ struct PredictiveFollowUpTag: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A whole message as a chip in the row (PredictiveRow): tap sends it,
+/// long-press puts it in the composer.
+struct PredictiveReplyChip: View {
+    let text: String
+    let isFirst: Bool
+    let send: (String) -> Void
+    let edit: (String) -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            // A tap sends it, so it shows all of it: never cut short with
+            // an ellipsis, it wraps instead.
+            WrapsPastWidth(maxWidth: 250) {
+                Text(text)
+                    .multilineTextAlignment(.leading)
+            }
+            Image(systemName: "arrow.up")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.conduitAura)
+                .accessibilityHidden(true)
+        }
+        .font(.subheadline)
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        // Rounded, not a capsule: a chip that wraps keeps its corners.
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.conduitAura.opacity(isFirst ? 0.2 : 0.1)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.conduitAura.opacity(isFirst ? 0.6 : 0.35), lineWidth: 1)
+        )
+        // A 44 pt target around the smaller chip.
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .onTapGesture { send(text) }
+        .onLongPressGesture(minimumDuration: 0.4) { edit(text) }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(Text("Sends this message. Use the Edit action to change it first."))
+        .accessibilityAction { send(text) }
+        .accessibilityAction(named: Text("Edit")) { edit(text) }
+    }
+}
+
+/// Its content at its natural width up to `maxWidth` (or the width offered,
+/// when narrower), and past that wrapped at whatever height that takes. A
+/// horizontal scroll view offers no width at all, so a plain
+/// `frame(maxWidth:)` there sizes text for one line and then cuts it short.
+struct WrapsPastWidth: Layout {
+    let maxWidth: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let content = subviews.first else { return .zero }
+        return content.sizeThatFits(contentProposal(proposal, content: content))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let content = subviews.first else { return }
+        content.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
+    }
+
+    private func contentProposal(_ proposal: ProposedViewSize, content: LayoutSubview) -> ProposedViewSize {
+        var width = min(content.sizeThatFits(.unspecified).width, maxWidth)
+        if let offered = proposal.width, offered.isFinite { width = min(width, offered) }
+        return ProposedViewSize(width: width, height: nil)
     }
 }

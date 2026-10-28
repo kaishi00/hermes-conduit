@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import Conduit
 
 /// Settings > Chat > Predictive (Predictive.swift): what Conduit asks the
@@ -42,6 +43,8 @@ extension ChatTypographyTests {
             ["text": "Raise the quota", "p": 0.7],
             ["text": "   ", "p": 0.9],
             ["p": 0.5],
+            // Too long for a chip: dropped, never cut short.
+            ["text": String(repeating: "a", count: Predictive.maxGuessLength + 1), "p": 0.95],
         ])
         XCTAssertEqual(guesses.map(\.text), ["Raise the quota", "Remind me tonight"])
         XCTAssertEqual(Predictive.guesses(nil), [])
@@ -597,5 +600,41 @@ extension ChatTypographyTests {
         store.showReplies([.init(text: "Thanks!", p: 0.8)], for: anchor)
         XCTAssertTrue(store.tapIsGuarded())
         XCTAssertFalse(store.tapIsGuarded(now: Date().addingTimeInterval(Predictive.tapGuard + 0.1)))
+    }
+
+    /// A reply chip sends its whole text, so in the row's horizontal scroll
+    /// view (no width offered) a long guess wraps at 250 pt instead of being
+    /// cut to one line, and a short one keeps its own width.
+    @MainActor
+    func testAReplyChipWrapsItsWholeTextPastItsWidth() {
+        func size(_ text: String) -> CGSize {
+            let host = UIHostingController(rootView: WrapsPastWidth(maxWidth: 250) { Text(text) }.fixedSize())
+            return host.sizeThatFits(in: CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude))
+        }
+        let short = size("Oui")
+        let long = size("Vérifie s'il reste des billets pour le Can Can de 6 PM samedi soir")
+        XCTAssertLessThan(short.width, 100)
+        XCTAssertLessThanOrEqual(long.width, 250)
+        XCTAssertGreaterThan(long.height, short.height * 1.5, "the long guess takes a second line")
+
+        // The real chip, in the row's scroll view (no width offered): its
+        // text wraps at 250 pt inside the chip's padding and arrow.
+        func chip(_ text: String) -> CGSize {
+            let host = UIHostingController(rootView: PredictiveReplyChip(text: text, isFirst: true, send: { _ in }, edit: { _ in }).fixedSize())
+            return host.sizeThatFits(in: CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude))
+        }
+        // On one line this guess runs past 400 pt; with no line limit and its
+        // ideal height, a chip this narrow holds it on more lines.
+        let longChip = chip("Vérifie s'il reste des billets pour le Can Can de 6 PM samedi soir")
+        XCTAssertLessThan(longChip.width, 320, "250 pt of text plus padding and the arrow")
+        XCTAssertGreaterThan(longChip.height, 44, "taller than the one-line chip's 44 pt target")
+
+        // Offered less than 250 pt, it wraps at what it's offered.
+        let narrowHost = UIHostingController(rootView: WrapsPastWidth(maxWidth: 250) {
+            Text("Vérifie s'il reste des billets pour le Can Can de 6 PM samedi soir")
+        })
+        let narrow = narrowHost.sizeThatFits(in: CGSize(width: 120, height: CGFloat.greatestFiniteMagnitude))
+        XCTAssertLessThanOrEqual(narrow.width, 120)
+        XCTAssertGreaterThan(narrow.height, long.height, "narrower takes more lines")
     }
 }
