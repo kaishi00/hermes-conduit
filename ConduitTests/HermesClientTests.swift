@@ -3611,6 +3611,37 @@ extension HermesClientTests {
         outgoing.disconnect()
     }
 
+    func testAnApprovalOpenedBeforeTheHandOffIsStillWithdrawnAfterIt() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        try deliverReply([
+            "jsonrpc": "2.0", "id": "srq-a1a1a1a1a1a1", "method": "approval",
+            "params": ["session_id": "runtime-1", "request_id": "queue-1", "command": "rm -rf scratch"]
+        ], on: socket)
+        await flushMainActor()
+
+        let incoming = makeClient(transport: transport, profile: "work")
+        var events: [StreamEvent] = []
+        incoming.onEvent = { events.append($0) }
+        XCTAssertTrue(outgoing.handOffSocket(to: incoming))
+        outgoing.disconnect()
+        try deliverReply([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "request.cancel", "session_id": "runtime-1",
+                "payload": ["id": "srq-a1a1a1a1a1a1", "method": "approval", "reason": "timeout"]
+            ]
+        ], on: socket)
+        await flushMainActor()
+
+        let withdrawn = events.compactMap { event -> String? in
+            guard case .approvalWithdrawn(_, let requestId, _) = event else { return nil }
+            return requestId
+        }
+        XCTAssertEqual(withdrawn, ["queue-1"])
+        XCTAssertTrue(incoming.isConnected)
+        incoming.disconnect()
+    }
+
     func testASocketWaitingOnItsCapabilitiesReplyIsNotHandedOn() async throws {
         // The reply settles the advertisement on the client that asked; a
         // successor would never hear it and never advertise again.

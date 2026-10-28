@@ -1268,6 +1268,9 @@ final class HermesClient: ObservableObject {
         socketSuccessor = successor
         successor.adoptSocket(socket, transport: transport, from: self)
         transport = nil
+        // Not cancelled: the receive it runs brings the socket's next frame
+        // to the successor, and a later disconnect() must not end it as a drop.
+        receiveTask = nil
         return true
     }
 
@@ -1295,6 +1298,11 @@ final class HermesClient: ObservableObject {
         // The gateway already has this socket's capabilities.
         advertisedSocket = predecessor.advertisedSocket
         backendCountsDeclines = predecessor.backendCountsDeclines
+        // Server requests still open on the socket come here, so a later
+        // request.cancel still withdraws their cards.
+        openServerRequestIDs.formUnion(predecessor.openServerRequestIDs)
+        approvalQueueIDs.merge(predecessor.approvalQueueIDs) { mine, _ in mine }
+        clarifySessions.merge(predecessor.clarifySessions) { mine, _ in mine }
         isConnected = true
         startKeepalive(for: socket)
         // A receive already waiting on the socket (URLSession's can't be

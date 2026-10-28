@@ -1745,7 +1745,7 @@ background · a failed sync's retry · the backoff itself
 **Open gaps**
 - `recoverTransportForCarPlayIfNeeded(immediately:)` still reconnects at once without a path check (CarPlay connecting only).
 
-**Checked:** 2026-10-27, #1382 (a call's request off screen checks a quiet socket first); 2026-10-25, at #1268; 2026-10-24, at #1191.
+**Checked:** 2026-10-28, #1452 (a drop on a socket handed on at a profile switch reaches the client holding it); 2026-10-27, #1382 (a call's request off screen checks a quiet socket first); 2026-10-25, at #1268; 2026-10-24, at #1191.
 
 ## Native sign-in browser
 
