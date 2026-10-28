@@ -584,6 +584,7 @@ struct V2Shell: View {
                 }
                 // Its haptic came with the tap.
                 pickProfile(next, haptic: false)
+            }
             .onChange(of: appState.showsPulseScreen) { _, shows in
                 // No Pulse here any more (another dashboard, an older plugin): no badge or marks.
                 guard !shows else { return }
