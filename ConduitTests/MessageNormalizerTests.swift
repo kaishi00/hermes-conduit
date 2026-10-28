@@ -207,15 +207,18 @@ final class MessageNormalizerTests: XCTestCase {
                              "title": .string("SeaBag 1.7.9 Release"), "preview": .string("work kanban task t_04fbcc18")]),
                     .object(["id": .string("untitled"), "source": .string("local"),
                              "preview": .string("Work kanban task t_9a1b2c3d ")]),
-                    // A person's message that only starts the same way stays.
+                    // A person's message that only starts the same way stays,
+                    // and so does a chat from elsewhere that reads the same.
                     .object(["id": .string("chat"), "source": .string("cli"),
-                             "preview": .string("work kanban task t_1 again, it failed")])
+                             "preview": .string("work kanban task t_1 again, it failed")]),
+                    .object(["id": .string("telegram"), "source": .string("telegram"),
+                             "preview": .string("work kanban task t_2")])
                 ])
             ]),
             profile: "default"
         )
 
-        XCTAssertEqual(sessions.map(\.id), ["chat"])
+        XCTAssertEqual(sessions.map(\.id), ["chat", "telegram"])
     }
 
     func testSessionNormalizationPreservesExplicitProfileOwnership() {

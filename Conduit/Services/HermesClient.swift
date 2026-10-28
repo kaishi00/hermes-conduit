@@ -4018,8 +4018,9 @@ enum MessageNormalizer {
         // lanes and previews included).
         let chats = records.filter {
             let obj = $0.objectValue
-            return !SessionSource.isHermesInternalSource(obj?["source"]?.stringValue)
-                && !SessionSource.isLegacyKanbanWorker(preview: obj?["preview"]?.stringValue)
+            let source = obj?["source"]?.stringValue
+            return !SessionSource.isHermesInternalSource(source)
+                && !SessionSource.isLegacyKanbanWorker(source: source, preview: obj?["preview"]?.stringValue)
         }
         return chats.enumerated().map { index, item in
             let obj = item.objectValue ?? [:]

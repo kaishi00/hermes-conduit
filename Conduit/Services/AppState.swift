@@ -5996,6 +5996,8 @@ final class AppState: ObservableObject {
     private func setActiveProfile(_ newValue: String) {
         guard newValue != activeProfile else { return }
         activeProfile = newValue
+        // A chat error waiting behind a room was the outgoing profile's chat's.
+        chatErrorBehindRoom = nil
         widgetSettledCatalogOwner = nil
         keepDelegateAgents(of: [])
         publishWidgetCurrentWorkspace(dashboardID: activeDashboardID, profile: newValue)
@@ -16763,6 +16765,11 @@ final class AppState: ObservableObject {
                 automaticWorkToken: automaticWorkToken,
                 automaticSyncOperationID: automaticSyncOperationID
             )
+            // The chat resumed: an earlier failure waiting behind a room is
+            // no longer news when the room closes.
+            if settled {
+                chatErrorBehindRoom = nil
+            }
             if settled, reconcileExplicitYolo {
                 // Re-assert only after the ownership guard above (token,
                 // profile, client) re-validated this reconciliation and after
@@ -17178,7 +17185,7 @@ final class AppState: ObservableObject {
                 return nil
             }
             turnState = .idle
-            errorMessage = AppLocalization.string("Failed to create session: \(UserFacingError.message(for: error))")
+            chatSyncErrorMessage = AppLocalization.string("Failed to create session: \(UserFacingError.message(for: error))")
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
             chatResumeCoordinator.abandonPendingAutomaticSync()
             if resumePurpose == .automaticReturn {
@@ -18530,6 +18537,7 @@ final class AppState: ObservableObject {
             // from: a successful reconnect makes any previous failure stale,
             // so a LATER unrelated failure must route repair from itself.
             errorMessage = nil
+            chatErrorBehindRoom = nil
             lastConnectionFailure = nil
             reconnectAttempts = 0
             connectedAt = Date()

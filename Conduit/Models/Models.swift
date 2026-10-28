@@ -114,14 +114,18 @@ extension SessionSource {
     /// dispatcher's one-line prompt, which is the row's preview; Hermes only
     /// retags the ones whose folder is under the board's workspaces, so the
     /// rest still list as chats (#1459).
-    static func isLegacyKanbanWorker(preview: String?) -> Bool {
-        guard let preview = preview?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+    static func isLegacyKanbanWorker(source: String?, preview: String?) -> Bool {
+        guard legacyKanbanWorkerSources.contains(source?.lowercased() ?? ""),
+              let preview = preview?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               preview.hasPrefix(legacyKanbanWorkerPrompt) else { return false }
         let taskID = preview.dropFirst(legacyKanbanWorkerPrompt.count)
         return !taskID.isEmpty && !taskID.contains(where: \.isWhitespace)
     }
 
     private static let legacyKanbanWorkerPrompt = "work kanban task "
+    /// Where Hermes kept those workers: `cli`, which a peer refresh rewrites
+    /// to `local`. A Telegram or cron row that only reads the same is a chat.
+    private static let legacyKanbanWorkerSources: Set<String> = ["cli", "local"]
 }
 
 struct Attachment: Codable, Identifiable, Equatable {
