@@ -43,8 +43,8 @@ jobs:
         include:
           - reviewer: Claude Haiku 5.5
             model: anthropic/claude-haiku-5-5
-          - reviewer: GLM-5.3-Flash
-            model: zai-custom/glm-5.3-flash
+          - reviewer: GLM-5.3
+            model: zai-custom/glm-5.3
     # No id-token: opencode uses the run's token (USE_GITHUB_TOKEN), not OIDC.
     permissions:
       contents: read

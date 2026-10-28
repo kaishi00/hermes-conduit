@@ -2872,14 +2872,14 @@ notifier's copies of both
 - Notifier: `notifier/.github/workflows/opencode-review.yml`, `notifier/opencode.json`
 
 **Rulings**
-- Two reviewers gate merges, and both repos run the same pair: GLM-5.3-Flash on Z.ai at reasoning effort max, and Claude Haiku 5.5 on the Anthropic API at effort high, set in opencode.json (2026-10-28, #1421, Eric; Muse Spark 1.3 on Command Code before that, #1335).
+- Two reviewers gate merges, and both repos run the same pair: GLM-5.3 on Z.ai at reasoning effort max (2026-10-28, #1458, Eric: the full model is faster than Flash; GLM-5.3-Flash before that), and Claude Haiku 5.5 on the Anthropic API at effort high, set in opencode.json (2026-10-28, #1421, Eric; Muse Spark 1.3 on Command Code before that, #1335).
 - Both repos give the reviewers the same prompt apart from their focus areas: bugs the PR introduces first, a concrete failure for each finding, the four severities defined, and REQUEST_CHANGES on any critical or major finding (2026-10-28, #1421, Eric asked for a review of the prompt).
 - A provider whose id is in the models.dev catalog (`anthropic` is, as `commandcode` was) whitelists the one model it reviews with. Otherwise opencode titles each session with the newest small model in that catalog, which was Gemini 3.8 Flash, a call Eric didn't want (2026-10-27, #1391 and notifier #428, Eric asked why Gemini Flash was being called).
 
 **Open gaps**
 - The workflow runs main's config, so a change to either file is first exercised by the review after it merges.
 
-**Checked:** 2026-10-28, #1421.
+**Checked:** 2026-10-28, #1458.
 
 ## Settings connection page
 
