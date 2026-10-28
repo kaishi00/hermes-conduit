@@ -1254,6 +1254,34 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertNil(service.pendingTarget)
     }
 
+    /// Quiet for today's retry waiting for a call replaces a tap that waits
+    /// too, never one opening (a call's own included); a tap that starts
+    /// waiting replaces the retry, and so does a newer tap. Whichever
+    /// started waiting last owns the call's end, so only one takes the
+    /// screen when it comes.
+    func testQuietRetryWaitingForACallAndTapsReplaceEachOther() {
+        let (service, pending) = makeWindowedService(now: { ContinuousClock.now })
+        guard let opening = pending else { return XCTFail("Expected a pending target") }
+        let quiet = PulseQuietTarget(dashboardID: UUID().uuidString, gatewayID: "gw-2")
+        service.pulseQuietAwaitsCall(quiet)
+        XCTAssertEqual(service.pendingTarget, opening, "a tap opening stays")
+        XCTAssertEqual(service.pendingPulseQuiet, quiet)
+
+        let waiting = service.pulseQuietAttempt
+        service.notificationRouteAwaitsCall(opening)
+        XCTAssertNil(service.pendingPulseQuiet, "the tap's open came back waiting: it replaces the retry")
+        XCTAssertGreaterThan(service.pulseQuietAttempt, waiting, "and ends the wait it left running")
+
+        service.pulseQuietAwaitsCall(quiet)
+        XCTAssertNil(service.pendingTarget, "the newer retry replaces a tap that waits")
+
+        service.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-456", "type": "response_ready"] as [String: Any]
+        ])
+        XCTAssertNotNil(service.pendingTarget)
+        XCTAssertNil(service.pendingPulseQuiet, "a newer tap replaces the retry")
+    }
+
     /// A newer tap replaces one waiting for a call, and routes as any tap.
     func testNewTapReplacesOneWaitingForACall() {
         let (service, pending) = makeWindowedService(now: { ContinuousClock.now })
@@ -1342,6 +1370,76 @@ final class MessageNormalizerTests: XCTestCase {
         let late = PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date })
         XCTAssertNil(late.pendingTarget, "too old to switch workspace for")
         XCTAssertNil(kept.data(forKey: PushNotificationService.waitingTapKey))
+    }
+
+    /// Quiet for today's retry waiting for a call waits again after a
+    /// relaunch, as a tap does, but only on the day it was pressed: it was
+    /// Quiet for that day, so a call or a relaunch past midnight drops it.
+    func testQuietRetryWaitingForACallWaitsAgainAfterARelaunchThatDay() {
+        let kept = makeScratchDefaults("WaitingPulseQuiet")
+        guard let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Date()),
+              let lateEvening = Calendar.current.date(bySettingHour: 23, minute: 30, second: 0, of: noon) else {
+            return XCTFail("Expected today's noon and late evening")
+        }
+        var date = noon
+        let first = PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date })
+        let quiet = PulseQuietTarget(dashboardID: UUID().uuidString, gatewayID: "gw-2")
+        first.pulseQuietAwaitsCall(quiet)
+
+        date = noon.addingTimeInterval(3600)
+        let relaunched = PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date })
+        XCTAssertEqual(relaunched.pendingPulseQuiet, quiet)
+        XCTAssertEqual(relaunched.pulseQuietAttempt, 1, "its wait starts again")
+        XCTAssertTrue(relaunched.takePendingPulseQuiet(quiet), "it goes through that day")
+        XCTAssertNil(kept.data(forKey: PushNotificationService.waitingPulseQuietKey), "going through lets it go")
+
+        relaunched.pulseQuietAwaitsCall(quiet)
+        let waiting = relaunched.pulseQuietAttempt
+        relaunched.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-2", "type": "response.ready"] as [String: Any]
+        ])
+        XCTAssertNil(relaunched.pendingPulseQuiet)
+        XCTAssertNil(kept.data(forKey: PushNotificationService.waitingPulseQuietKey), "a newer tap replaces it")
+        XCTAssertGreaterThan(relaunched.pulseQuietAttempt, waiting, "and ends the wait it left running")
+
+        relaunched.pulseQuietAwaitsCall(quiet)
+        date = date.addingTimeInterval(PushNotificationService.waitingTapLifetime)
+        XCTAssertNil(PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date }).pendingPulseQuiet,
+                     "too old, as a tap would be")
+        XCTAssertNil(kept.data(forKey: PushNotificationService.waitingPulseQuietKey))
+
+        date = lateEvening
+        relaunched.pulseQuietAwaitsCall(quiet)
+        date = lateEvening.addingTimeInterval(3600)
+        XCTAssertNil(PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date }).pendingPulseQuiet,
+                     "pressed yesterday: the day it was for has ended")
+        XCTAssertNil(kept.data(forKey: PushNotificationService.waitingPulseQuietKey))
+        XCTAssertFalse(relaunched.takePendingPulseQuiet(quiet), "nor does a call past midnight carry it over")
+        XCTAssertNil(relaunched.pendingPulseQuiet)
+    }
+
+    /// Closed between keeping a tap that starts waiting and dropping the
+    /// retry it replaces, Conduit finds both kept: only the tap, the newer,
+    /// waits again, so the two don't both take the screen when the call ends.
+    func testARelaunchKeepsOnlyTheNewerOfAWaitingTapAndRetry() {
+        let kept = makeScratchDefaults("WaitingTapAndPulseQuiet")
+        let date = Date()
+        let first = PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date })
+        first.pulseQuietAwaitsCall(PulseQuietTarget(dashboardID: UUID().uuidString, gatewayID: "gw-2"))
+        let keptQuiet = kept.data(forKey: PushNotificationService.waitingPulseQuietKey)
+        XCTAssertNotNil(keptQuiet)
+        first.receiveNotificationPayload([
+            "conduit": ["session_id": "runtime-1", "type": "response.ready"] as [String: Any]
+        ])
+        guard let tap = first.pendingTarget else { return XCTFail("Expected the newer tap") }
+        XCTAssertTrue(first.beginNotificationRoute(tap))
+        first.notificationRouteAwaitsCall(tap)
+        kept.set(keptQuiet, forKey: PushNotificationService.waitingPulseQuietKey)
+
+        let relaunched = PushNotificationService(retryDelay: .zero, keptTaps: kept, date: { date })
+        XCTAssertEqual(relaunched.pendingTarget, tap)
+        XCTAssertNil(relaunched.pendingPulseQuiet, "the older retry stays dropped")
+        XCTAssertNil(kept.data(forKey: PushNotificationService.waitingPulseQuietKey))
     }
 
     func testSessionNormalizationDoesNotInventOwnershipWithoutFallback() {

@@ -61,6 +61,14 @@ final class NotificationService: UNNotificationServiceExtension {
                 if let title = names.title { content.title = title }
                 if let subtitle = names.subtitle { content.subtitle = subtitle }
             }
+            // Quiet for today on a Pulse push, where its plugin takes it.
+            if PulseNotifications.offersQuietToday(
+                titleLabel: verified.content["title_label"] as? String,
+                gatewayID: verified.record.gatewayID,
+                quietGateways: NotificationSharedSettings.pulseQuietGateways
+            ) {
+                content.categoryIdentifier = PulseNotifications.categoryIdentifier
+            }
             deliver(content)
         }
     }
