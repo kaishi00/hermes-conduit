@@ -806,7 +806,7 @@ heard · chat bubbles (the file card)
 - Streaming voices hold from where a tag may begin (with its emphasis or `[label](`) to the end of its line, and only while it can still be one: `MEDIA:` with a path after it, or a directive. Prose such as "social media: we shipped" is said as it comes. A reply is said the same however it is split (#1449).
 - Local Live puts a tagged file on the call's screen, as the chat shows it; a tag written as a link is listed with the links (#1449).
 - A live model is told of a file by name ("(a file in the chat: report.pdf)"), never its path: a job's result, a chat reply and a chat read into the call alike (#1449).
-- A spoken message's line tells the model its answer is heard: say it in words, not with text_to_speech or a sound file of its own; a file the user asks for is still fine. Hermes' own spoken-reply note isn't on every Hermes (2026-10-28, #1434, notifier #444, 0.114.1).
+- A spoken message's line tells the model its answer is heard: say it in words, not with text_to_speech or a sound file of its own; a file the user asks for is still fine. Hermes' own spoken-reply note isn't on every Hermes (2026-10-28, #1434, notifier #444, 0.115.1).
 
 **Open gaps**
 - None known.
