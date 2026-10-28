@@ -58,7 +58,8 @@ struct SpokenTextFilter {
             let marker = remaining[open]
             output.append(contentsOf: remaining[..<open])
             let afterOpen = remaining[(open + 1)...]
-            if let close = Self.closingMarker(marker, in: afterOpen, final: final) {
+            switch Self.closingMarker(marker, in: afterOpen, final: final) {
+            case .close(let close):
                 if Self.isAction(afterOpen[..<close]) {
                     output.append(" ")
                 } else {
@@ -66,6 +67,14 @@ struct SpokenTextFilter {
                 }
                 remaining = afterOpen[(close + 1)...]
                 continue
+            case .reopen(let reopen):
+                // A later marker opens again before this one closes: this
+                // one is text, and scanning goes on from that one.
+                output.append(contentsOf: remaining[open..<reopen])
+                remaining = remaining[reopen...]
+                continue
+            case .none:
+                break
             }
             let held = remaining[open...]
             if final || held.count > Self.maximumHeldCharacters || held.contains(where: \.isNewline) {
@@ -98,7 +107,9 @@ struct SpokenTextFilter {
     }
 
     /// A single `*` or `_` that can open an action: not part of a doubled
-    /// run (bold), and an underscore only at a word start (never snake_case).
+    /// run (bold), not followed by a space (as in Markdown, "price * units"
+    /// is a multiplication, not an opened action), and an underscore only
+    /// at a word start (never snake_case).
     private static func firstActionMarker(in text: ArraySlice<Character>, before: Character?) -> Int? {
         var index = text.startIndex
         while index < text.endIndex {
@@ -113,6 +124,10 @@ struct SpokenTextFilter {
                 while index < text.endIndex, text[index] == character { index += 1 }
                 continue
             }
+            if index + 1 < text.endIndex, text[index + 1].isWhitespace {
+                index += 1
+                continue
+            }
             let wordStart = previous.map { !isWordCharacter($0) } ?? true
             if character == "*" || wordStart { return index }
             index += 1
@@ -120,12 +135,18 @@ struct SpokenTextFilter {
         return nil
     }
 
-    private static func closingMarker(_ marker: Character, in text: ArraySlice<Character>, final: Bool) -> Int? {
+    private enum Closing {
+        case close(Int)
+        case reopen(Int)
+        case none
+    }
+
+    private static func closingMarker(_ marker: Character, in text: ArraySlice<Character>, final: Bool) -> Closing {
         var index = text.startIndex
         let limit = min(text.endIndex, text.startIndex + maximumHeldCharacters - 1)
         while index < limit {
             let character = text[index]
-            if character.isNewline { return nil }
+            if character.isNewline { return .none }
             guard character == marker else {
                 index += 1
                 continue
@@ -135,18 +156,25 @@ struct SpokenTextFilter {
                 index = next + 1
                 continue
             }
+            // After a space it closes nothing ("width * height"), but it
+            // opens again when a word follows it.
+            if index > text.startIndex, text[index - 1].isWhitespace {
+                if next < text.endIndex, !text[next].isWhitespace { return .reopen(index) }
+                index = next
+                continue
+            }
             if marker == "_" {
                 // Whether "_" ends a word is only known once the next
                 // character arrives.
-                if next >= text.endIndex, !final { return nil }
+                if next >= text.endIndex, !final { return .none }
                 if next < text.endIndex, isWordCharacter(text[next]) {
                     index = next
                     continue
                 }
             }
-            return index
+            return .close(index)
         }
-        return nil
+        return .none
     }
 
     private static func isWordCharacter(_ character: Character) -> Bool {
