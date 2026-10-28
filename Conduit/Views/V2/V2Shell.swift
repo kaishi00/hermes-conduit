@@ -120,6 +120,9 @@ struct V2ShellContext: Equatable {
     }
 
     var pickProfile: (String) -> Void = { _ in }
+    /// Drops a profile tap kept for after the running switch: a later tap
+    /// on All decides instead.
+    var dropQueuedProfilePick: () -> Void = {}
     /// Opens Chats filtered to Scheduled, where cron runs are listed.
     var showScheduledRuns: () -> Void = {}
     var values = Values()
@@ -475,7 +478,7 @@ struct V2Shell: View {
             let canSplit = V2SplitLayout.isSplit(width: proxy.size.width)
             let split = V2SplitLayout.isSplit(width: proxy.size.width, showsList: chatListBeside)
             tabs(split: split, canSplit: canSplit)
-                .environment(\.v2Shell, V2ShellContext(pickProfile: { pickProfile($0) }, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit, isPickingProfile: isPickingProfile)))
+                .environment(\.v2Shell, V2ShellContext(pickProfile: { pickProfile($0) }, dropQueuedProfilePick: { queuedProfilePick = V2QueuedProfilePick() }, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit, isPickingProfile: isPickingProfile)))
         }
     }
 
@@ -915,17 +918,32 @@ struct V2Shell: View {
             guard token == profileSwitchToken else { return }
             // Out of sight, content moves to the side it arrives from.
             withTransaction(Transaction(animation: nil)) { contentShift = distance }
+            var target = profile
+            // A tap in the fade-out is the latest word: back on the profile
+            // already showing means no switch at all, another one replaces
+            // this target.
+            if queuedProfilePick.profile != nil {
+                guard let next = queuedProfilePick.take(
+                    landedOn: appState.activeProfile,
+                    dashboardID: appState.activeDashboardID
+                ) else {
+                    isPickingProfile = false
+                    fadeContentBackIn()
+                    return
+                }
+                target = next
+            }
             // A switch started elsewhere (CarPlay) in the fade-out would
             // refuse this one: it waits behind it, unless a later tap
             // already does.
             if appState.isProfileSwitching {
                 if queuedProfilePick.profile == nil {
-                    queuedProfilePick.tap(profile, dashboardID: appState.activeDashboardID)
+                    queuedProfilePick.tap(target, dashboardID: appState.activeDashboardID)
                 }
                 isPickingProfile = false
                 return
             }
-            await appState.switchProfile(to: profile)
+            await appState.switchProfile(to: target)
             guard token == profileSwitchToken else { return }
             isPickingProfile = false
             // A tap kept during this switch goes now, with the content

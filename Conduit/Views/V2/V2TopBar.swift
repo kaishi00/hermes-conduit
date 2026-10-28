@@ -411,6 +411,9 @@ struct V2ProfileStrip: View {
         let shown = Array(appState.allProfilesIncluded.prefix(3))
         return Button {
             Haptics.selection()
+            // The last tap wins: a profile kept for after a running switch
+            // no longer goes.
+            shell.dropQueuedProfilePick()
             if isSelected {
                 onChooseAll()
             } else {
