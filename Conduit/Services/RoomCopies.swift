@@ -299,23 +299,10 @@ struct RoomCopiesClient {
     }
 }
 
-/// Who's who in a room over Links: each member's owner, by member id
-/// (`GET /rooms/people`).
+/// Who's who in a room over Links, by member id (`GET /rooms/people`);
+/// read by `RoomPeople.people` (RoomLeave.swift).
 enum RoomPeople {
     static let path = "/api/plugins/conduit_push/rooms/people"
-
-    /// Owners by member id; your own agents have none.
-    static func owners(_ response: [String: Any]) -> [String: String] {
-        guard response["ok"] as? Bool == true else { return [:] }
-        var owners: [String: String] = [:]
-        for member in response["members"] as? [[String: Any]] ?? [] {
-            guard let id = member["member_id"] as? String, !id.isEmpty,
-                  let owner = (member["owner"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !owner.isEmpty else { continue }
-            owners[id] = owner
-        }
-        return owners
-    }
 }
 
 extension AppState {
@@ -401,9 +388,9 @@ extension AppState {
         guard canDeleteRoomCopies else { return .refused(RoomCopyText.deleteRefusal(for: HermesError.invalidResponse)) }
         let client = roomCopiesClient
         let inviteID = copy.id
-        // Your agents that left are only on its invite: without it read,
-        // their chats would stay behind.
-        if linkedRoomInvite(inviteID) == nil, !(await readLinkedRoomInvites()), copy.yours.isEmpty {
+        // Your agents that left are only on its invite, whatever `yours`
+        // still lists: without it read now, their chats would stay behind.
+        guard await readLinkedRoomInvites() else {
             return .refused(RoomCopyText.deleteRefusal(for: HermesError.invalidResponse))
         }
         let invite = linkedRoomInvite(inviteID)

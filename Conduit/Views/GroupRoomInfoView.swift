@@ -12,8 +12,15 @@ private let roomChoicesLogger = Logger(subsystem: "com.milim.relay", category: "
 struct GroupRoomInfoSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    /// The room the sheet opened on: another room closes it.
+    /// The room the sheet opened on (a copy by its Link and room, since
+    /// room ids are only unique per host): another room closes it.
     @State private var roomID: String?
+    /// The member a Take Out asks about.
+    @State private var takingOut: GroupMember?
+    @State private var confirmingLeave = false
+    @State private var working = false
+    /// A refusal's title and the plugin's words.
+    @State private var refusal: (title: String, message: String)?
 
     var body: some View {
         NavigationStack {
@@ -24,6 +31,47 @@ struct GroupRoomInfoSheet: View {
                 if let room = appState.activeRoomSurface?.room {
                     memberSection(room)
                 }
+                if appState.canLeaveActiveRoom {
+                    Section {
+                        Button(role: .destructive) {
+                            confirmingLeave = true
+                        } label: {
+                            Label(AppLocalization.string("Leave Room"), systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                        .disabled(working)
+                    }
+                }
+            }
+            .confirmationDialog(
+                takingOut.map { RoomLeaveText.takeOutTitle(GroupRoomTurns.displayName(of: $0)) } ?? "",
+                isPresented: Binding(get: { takingOut != nil }, set: { if !$0 { takingOut = nil } }),
+                titleVisibility: .visible,
+                presenting: takingOut
+            ) { member in
+                Button(AppLocalization.string("Take Out"), role: .destructive) {
+                    takeOut(member)
+                }
+                Button(AppLocalization.string("Cancel"), role: .cancel) {}
+            } message: { member in
+                Text(verbatim: takeOutMessage(member))
+            }
+            .confirmationDialog(RoomLeaveText.leaveTitle, isPresented: $confirmingLeave, titleVisibility: .visible) {
+                Button(AppLocalization.string("Leave Room"), role: .destructive) {
+                    leave()
+                }
+                Button(AppLocalization.string("Cancel"), role: .cancel) {}
+            } message: {
+                if let copy = appState.activeRoomSurface?.copy {
+                    Text(verbatim: RoomLeaveText.leaveMessage(copy))
+                }
+            }
+            .alert(
+                refusal?.title ?? "",
+                isPresented: Binding(get: { refusal != nil }, set: { if !$0 { refusal = nil } })
+            ) {
+                Button(AppLocalization.string("OK"), role: .cancel) { refusal = nil }
+            } message: {
+                Text(verbatim: refusal?.message ?? "")
             }
             .navigationTitle(appState.activeRoomSurface?.room.name ?? AppLocalization.string("Group Info"))
             .navigationBarTitleDisplayMode(.inline)
@@ -33,8 +81,10 @@ struct GroupRoomInfoSheet: View {
                 }
             }
         }
-        .onAppear { roomID = appState.activeRoomSurface?.room.roomID }
-        .onChange(of: appState.activeRoomSurface?.room.roomID) { _, id in
+        .onAppear { roomID = openRoomKey }
+        // Who left or was taken out since the room opened.
+        .task { await appState.refreshActiveRoomPeople() }
+        .onChange(of: openRoomKey) { _, id in
             if id != roomID { dismiss() }
         }
     }
@@ -47,7 +97,7 @@ struct GroupRoomInfoSheet: View {
         let offersChoices = appState.canSetRoomChoices && members.contains(where: \.isPeer)
         Section {
             ForEach(members, id: \.identityKey) { member in
-                if offersChoices, !member.isPeer, let profile = member.profile, !profile.isEmpty {
+                if offersChoices, !member.isPeer, member.out == nil, let profile = member.profile, !profile.isEmpty {
                     NavigationLink {
                         RoomAgentChoicesView(
                             roomID: room.roomID,
@@ -57,11 +107,17 @@ struct GroupRoomInfoSheet: View {
                     } label: {
                         GroupRoomMemberRow(member: member, route: nil)
                     }
+                    .modifier(TakeOutActions(enabled: appState.canTakeOut(member) && !working) {
+                        takingOut = member
+                    })
                 } else {
                     GroupRoomMemberRow(
                         member: member,
-                        route: appState.activeRoomDriverStatus?.routeStatus(for: member)
+                        route: member.out == nil ? appState.activeRoomDriverStatus?.routeStatus(for: member) : nil
                     )
+                    .modifier(TakeOutActions(enabled: appState.canTakeOut(member) && !working) {
+                        takingOut = member
+                    })
                 }
             }
         } header: {
@@ -71,6 +127,72 @@ struct GroupRoomInfoSheet: View {
                 Text(AppLocalization.string("Tap one of your agents to choose what it may do and share here."))
             }
         }
+    }
+}
+
+extension GroupRoomInfoSheet {
+    private var openRoomKey: String? {
+        appState.activeRoomSurface.map { $0.copy?.id ?? $0.room.roomID }
+    }
+
+    private func takeOutMessage(_ member: GroupMember) -> String {
+        let name = GroupRoomTurns.displayName(of: member)
+        if let copy = appState.activeRoomSurface?.copy {
+            return RoomLeaveText.takeOutMessage(name, in: copy)
+        }
+        return RoomLeaveText.takeOutMessage(name, owner: member.owner)
+    }
+
+    private func takeOut(_ member: GroupMember) {
+        working = true
+        Task { @MainActor in
+            let result = await appState.takeOut(member)
+            working = false
+            show(result, refusedTitle: AppLocalization.string("Could not take this agent out"))
+        }
+    }
+
+    private func leave() {
+        working = true
+        Task { @MainActor in
+            let result = await appState.leaveActiveRoom()
+            working = false
+            show(result, refusedTitle: AppLocalization.string("Could not leave this room"))
+        }
+    }
+
+    private func show(_ result: RoomLeaveResult, refusedTitle: String) {
+        switch result {
+        case .done:
+            Haptics.success()
+        case .refused(let message):
+            Haptics.error()
+            refusal = (refusedTitle, message)
+        case .sending(let message):
+            refusal = (RoomLeaveText.stillSendingTitle, message)
+        }
+    }
+}
+
+/// Take Out on a member's row, by swipe and context menu.
+private struct TakeOutActions: ViewModifier {
+    let enabled: Bool
+    let action: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                if enabled {
+                    Button(AppLocalization.string("Take Out"), role: .destructive, action: action)
+                }
+            }
+            .contextMenu {
+                if enabled {
+                    Button(role: .destructive, action: action) {
+                        Label(AppLocalization.string("Take Out"), systemImage: "person.badge.minus")
+                    }
+                }
+            }
     }
 }
 

@@ -9,7 +9,7 @@ import XCTest
 /// new class to plan.
 extension GroupChatModelsTests {
     /// A copy as `GET /rooms/copies` shows it (room_copies._shown).
-    private func copiesCopy(
+    func copiesCopy(
         room: String = "conduit-9",
         link: String = "lk1a2b3c4d5e6f",
         status: String = "started",
@@ -47,7 +47,7 @@ extension GroupChatModelsTests {
     }
 
     /// An event of a copy's log, in groups.log's shape.
-    private func copiesEvent(_ seq: Int, room: String = "conduit-9", kind: String = "message.member",
+    func copiesEvent(_ seq: Int, room: String = "conduit-9", kind: String = "message.member",
                              actor: [String: Any] = ["kind": "member", "id": "m-laifu"],
                              text: String = "hi") -> [String: Any] {
         ["room_id": room, "seq": seq, "event_id": "ev-\(seq)", "kind": kind, "actor": actor,
@@ -321,7 +321,9 @@ extension GroupChatModelsTests {
         appState.applyNotifierPluginReport(copiesPluginReport)
         await appState.refreshGroupChatSupport()
         await appState.openGroupRoom(room)
-        await copiesWait("the owners read", until: { appState.activeRoomOwners == ["m-laifu": "Mona"] })
+        await copiesWait("the owners read", until: {
+            appState.activeRoomPeople["m-laifu"] == RoomPerson(owner: "Mona", isYours: false, out: nil)
+        })
         XCTAssertEqual(routes.peopleReads, ["/api/plugins/conduit_push/rooms/people?room_id=conduit-5"])
         XCTAssertEqual(appState.activeRoomMembers.map(\.owner), [nil, "Mona"])
         XCTAssertEqual(appState.activeRoomMembers.map(GroupRoomTurns.ownerLine(of:)),
@@ -329,7 +331,7 @@ extension GroupChatModelsTests {
 
         // A room of only your own agents reads nobody.
         appState.closeGroupRoom()
-        XCTAssertEqual(appState.activeRoomOwners, [:])
+        XCTAssertEqual(appState.activeRoomPeople, [:])
     }
 
     func testAnotherPersonsAgentIsNamedWithItsOwner() throws {
@@ -456,7 +458,7 @@ extension GroupChatModelsTests {
     /// hosts Group Chats with `room`, whose plugin's rooms routes are
     /// `routes`.
     @MainActor
-    private func copiesAppState(_ routes: CopiesRoutes, room: GroupRoom? = nil) throws -> AppState {
+    func copiesAppState(_ routes: CopiesRoutes, room: GroupRoom? = nil) throws -> AppState {
         let suite = "GroupChatModelsTests.copies.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
@@ -487,7 +489,7 @@ extension GroupChatModelsTests {
     }
 
     @MainActor
-    private func copiesConnect(_ appState: AppState, url: String = "https://groups.example") {
+    func copiesConnect(_ appState: AppState, url: String = "https://groups.example") {
         appState.client = HermesClient(
             connection: HermesConnection(baseUrl: url, ticket: "groups-test"),
             profile: "default"
@@ -497,7 +499,7 @@ extension GroupChatModelsTests {
     }
 
     /// The plugin's answer once it keeps copies and forgets room chats.
-    private var copiesPluginReport: [String: Any] {
+    var copiesPluginReport: [String: Any] {
         ["ok": true, "version": "0.110.0", "capabilities": [
             RoomInvitesClient.capability, RoomApprovalsClient.capability,
             RoomCopiesClient.capability, RoomCopiesClient.forgetCapability,
@@ -506,7 +508,7 @@ extension GroupChatModelsTests {
 
     /// Waits until `condition` holds, failing after a few seconds.
     @MainActor
-    private func copiesWait(
+    func copiesWait(
         _ what: String, until condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line
     ) async {
         let deadline = ContinuousClock.now + .seconds(10)
@@ -518,10 +520,10 @@ extension GroupChatModelsTests {
 }
 
 /// The plugin's rooms routes behind an AppState for the copies: the copies,
-/// their log, the invites, approvals and people, and the deletes, kept in
-/// order.
+/// their log, the invites, approvals and people, and the deletes, leaves
+/// and removes, kept in order.
 @MainActor
-private final class CopiesRoutes {
+final class CopiesRoutes {
     static let going = "This room is still going here; leave it first"
 
     var copies: [[String: Any]]
@@ -540,6 +542,20 @@ private final class CopiesRoutes {
     private(set) var logReads: [(since: Int, limit: Int)] = []
     private(set) var peopleReads: [String] = []
     private(set) var deletes: [String] = []
+    /// POST /rooms/leave's and /rooms/drafts/remove's bodies.
+    private(set) var leaves: [[String: Any]] = []
+    private(set) var removes: [[String: Any]] = []
+    /// Leaving and taking out are refused with this, at this status.
+    var refusesLeaving: String?
+    var leavingStatus = 409
+    /// The next people reads each wait this long, answering what the people
+    /// were when they were asked.
+    var peopleDelays: [Duration] = []
+    /// The invite a leave answers.
+    var leftInvite: [String: Any] = [
+        "room_id": "conduit-9", "link": "lk1a2b3c4d5e6f", "name": "Zoo trip", "status": "left", "from": "Furina",
+        "gone": [["profile": "research", "handle": "kuro", "display_name": "Kuro", "reason": "left"]],
+    ]
 
     init(copies: [[String: Any]]) {
         self.copies = copies
@@ -573,7 +589,11 @@ private final class CopiesRoutes {
         }
         if path.hasPrefix(RoomPeople.path) {
             peopleReads.append(path)
-            return people
+            let answer = people
+            if !peopleDelays.isEmpty {
+                try await Task.sleep(for: peopleDelays.removeFirst())
+            }
+            return answer
         }
         switch (path, method) {
         case (RoomCopiesClient.path, "GET"):
@@ -587,6 +607,14 @@ private final class CopiesRoutes {
             return ["ok": true, "invites": invites]
         case (RoomApprovalsClient.path, "GET"):
             return ["ok": true, "approvals": approvals]
+        case (RoomLeaveClient.leavePath, "POST"):
+            leaves.append(body ?? [:])
+            if let refusesLeaving { throw DashboardTicketBridgeError.http(status: leavingStatus, detail: refusesLeaving) }
+            return ["ok": true, "invite": leftInvite]
+        case (RoomLeaveClient.removePath, "POST"):
+            removes.append(body ?? [:])
+            if let refusesLeaving { throw DashboardTicketBridgeError.http(status: leavingStatus, detail: refusesLeaving) }
+            return ["ok": true, "draft": ["room_id": body?["room_id"] ?? ""]]
         case ("\(RoomApprovalsClient.path)/answer", "POST"):
             // Taken, though the list still has it for a read.
             return ["ok": true, "approval": body ?? [:]]

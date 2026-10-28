@@ -10726,13 +10726,23 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "")
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
-    /// In your own room over Links, each other person's agent's owner by
-    /// member id (`GET /rooms/people`), read when it opens.
-    @Published private(set) var activeRoomOwners: [String: String] = [:]
+    /// In a room over Links, each member by id (`GET /rooms/people`): its
+    /// owner and whether it's out. Read when the room opens, when Group
+    /// Info does, and after taking one out.
+    @Published private(set) var activeRoomPeople: [String: RoomPerson] = [:]
+    /// The latest people read started: an older one that answers later is
+    /// dropped.
+    private var activeRoomPeopleRead = 0
 
-    /// The open room's members, with their owners.
+    /// The open room's members, with their owners and who's out. In a copy,
+    /// your agents that are out are yours from its invite until the people
+    /// read says so.
     var activeRoomMembers: [GroupMember] {
-        GroupRoomTurns.members(activeRoomSurface?.room.members ?? [], ownedBy: activeRoomOwners)
+        var members = activeRoomSurface?.room.members ?? []
+        if let copy = activeRoomSurface?.copy, let invite = linkedRoomInvite(copy.id), !invite.gone.isEmpty {
+            members = GroupRoomTurns.members(members, gone: invite.gone)
+        }
+        return GroupRoomTurns.members(members, people: activeRoomPeople)
     }
 
     /// Where the user's answer to each of the open room's pending approvals
@@ -11118,7 +11128,7 @@ final class AppState: ObservableObject {
         activeRoomSurface = nil
         activeRoomReplay = GroupRoomReplay(roomID: "")
         activeRoomDriverStatus = nil
-        activeRoomOwners = [:]
+        activeRoomPeople = [:]
         roomApprovalAnswers = [:]
         activeRoomSendInFlight = false
         groupRoomOutbox.discard()
@@ -11229,7 +11239,7 @@ final class AppState: ObservableObject {
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: room)
         activeRoomReplay = GroupRoomReplay(roomID: room.roomID)
         activeRoomDriverStatus = nil
-        activeRoomOwners = [:]
+        activeRoomPeople = [:]
         roomApprovalAnswers = [:]
         // A send parked when this room was left comes back with its retry
         // key; the tail below settles it if it landed meanwhile.
@@ -11255,7 +11265,7 @@ final class AppState: ObservableObject {
             activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: state)
             activeRoomDriverStatus = driver
             if state.members.contains(where: \.isPeer) {
-                Task { await self.readActiveRoomOwners(epoch: epoch) }
+                Task { await self.readActiveRoomPeople(epoch: epoch) }
             }
             let latest = state.latestSeq ?? 0
             let start = max(0, latest - window)
@@ -11626,18 +11636,33 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// The owners of the other people's agents in the open room, your own
-    /// over Links. A read that fails leaves them unnamed ("On another
-    /// Hermes"); one another room overtook is dropped.
-    private func readActiveRoomOwners(epoch: Int) async {
-        guard canInviteLinkedPeople, let surface = activeRoomSurface, surface.copy == nil,
+    /// Who's who in the open room over Links: the other people's agents'
+    /// owners, and who left or was taken out. A read that fails keeps the
+    /// last (unnamed at first: "On another Hermes"); one another room
+    /// overtook is dropped.
+    private func readActiveRoomPeople(epoch: Int) async {
+        guard canInviteLinkedPeople, let surface = activeRoomSurface,
               let room = DashboardPath.encodedQueryComponent(surface.room.roomID) else { return }
         let dashboard = activeDashboardID
+        // One for a room already left mustn't drop the open room's read.
+        guard groupRoomEpoch == epoch else { return }
+        activeRoomPeopleRead &+= 1
+        let read = activeRoomPeopleRead
         guard let response = try? await roomRouteJSON(
             path: "\(RoomPeople.path)?room_id=\(room)", method: "GET", body: nil, timeoutMilliseconds: nil),
-              groupRoomEpoch == epoch, activeDashboardID == dashboard,
+              read == activeRoomPeopleRead,
+              response["ok"] as? Bool == true, groupRoomEpoch == epoch, activeDashboardID == dashboard,
               activeRoomSurface?.room.roomID == surface.room.roomID else { return }
-        activeRoomOwners = RoomPeople.owners(response)
+        let people = RoomPeople.people(response)
+        if people != activeRoomPeople { activeRoomPeople = people }
+    }
+
+    /// Who's who in the open room, read now (Group Info, and after taking
+    /// one out).
+    func refreshActiveRoomPeople() async {
+        guard let surface = activeRoomSurface, surface.copy != nil || surface.room.members.contains(where: \.isPeer)
+        else { return }
+        await readActiveRoomPeople(epoch: groupRoomEpoch)
     }
 
     /// Open a room someone else hosts, from your Hermes' copy of it: the
@@ -11661,7 +11686,7 @@ final class AppState: ObservableObject {
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: copy.room, copy: copy)
         activeRoomReplay = GroupRoomReplay(roomID: copy.roomID)
         activeRoomDriverStatus = copy.state
-        activeRoomOwners = [:]
+        activeRoomPeople = [:]
         activeRoomCopyNeedsTail = false
         roomApprovalAnswers = [:]
         groupRoomOutbox = GroupRoomOutbox()
@@ -11686,7 +11711,9 @@ final class AppState: ObservableObject {
             errorMessage = AppLocalization.string("Could not load this group chat: \(UserFacingError.message(for: error))")
             activeRoomCopyNeedsTail = true
         }
-        if !copy.isOver { startRoomPolling() }
+        Task { await self.readActiveRoomPeople(epoch: epoch) }
+        // One whose opening read failed is polled until its tail comes.
+        if !copy.isOver || activeRoomCopyNeedsTail { startRoomPolling() }
     }
 
     /// One tick of a copy's room screen: the log after the cursor, then,
@@ -11709,6 +11736,8 @@ final class AppState: ObservableObject {
                 activeRoomReplay = replay
                 activeRoomCopyNeedsTail = false
                 errorMessage = nil
+                // As it stands now: it may have ended, or been left, since.
+                if activeRoomSurface?.copy?.isOver == true { stopRoomCopyPolling() }
                 return
             }
             let page = try await client.log(
@@ -11727,24 +11756,7 @@ final class AppState: ObservableObject {
                 activeRoomReplay.adopt(page: page)
             }
             if fresh.isEmpty || activeRoomReplay.cursor >= page.latestSeq {
-                if let copies = await readLinkedRoomCopies() {
-                    guard groupRoomEpoch == epoch, let open = activeRoomSurface, open.copy?.id == copy.id
-                    else { return }
-                    guard let latest = copies.first(where: { $0.id == copy.id }) else {
-                        // Deleted elsewhere: it can't be read any more.
-                        closeGoneRoomSurface()
-                        return
-                    }
-                    // A quiet tick leaves the room screen as it is.
-                    if latest != open.copy {
-                        activeRoomSurface = GroupRoomSurface(dashboardID: open.dashboardID, room: latest.room, copy: latest)
-                    }
-                    if latest.state != activeRoomDriverStatus { activeRoomDriverStatus = latest.state }
-                    if latest.isOver {
-                        groupRoomPollTask?.cancel()
-                        groupRoomPollTask = nil
-                    }
-                }
+                guard await refreshActiveRoomCopy(epoch: epoch) else { return }
             }
             await refreshLinkedRoomApprovals()
         } catch is CancellationError {
@@ -11757,6 +11769,35 @@ final class AppState: ObservableObject {
             }
             // Otherwise a transient failure: the next tick tries again.
         }
+    }
+
+    /// The open copy read again: what the room is doing and how it stands.
+    /// One deleted elsewhere closes the room, and one that's over stops the
+    /// polling. False when the room closed or another took its place.
+    @discardableResult
+    func refreshActiveRoomCopy(epoch: Int? = nil) async -> Bool {
+        let epoch = epoch ?? groupRoomEpoch
+        guard let copy = activeRoomSurface?.copy, groupRoomEpoch == epoch else { return false }
+        guard let copies = await readLinkedRoomCopies() else { return true }
+        guard groupRoomEpoch == epoch, let open = activeRoomSurface, open.copy?.id == copy.id else { return false }
+        guard let latest = copies.first(where: { $0.id == copy.id }) else {
+            // Deleted elsewhere: it can't be read any more.
+            closeGoneRoomSurface()
+            return false
+        }
+        // A quiet tick leaves the room screen as it is.
+        if latest != open.copy {
+            activeRoomSurface = GroupRoomSurface(dashboardID: open.dashboardID, room: latest.room, copy: latest)
+        }
+        if latest.state != activeRoomDriverStatus { activeRoomDriverStatus = latest.state }
+        // One whose opening read failed is polled until its tail comes.
+        if latest.isOver, !activeRoomCopyNeedsTail { stopRoomCopyPolling() }
+        return true
+    }
+
+    private func stopRoomCopyPolling() {
+        groupRoomPollTask?.cancel()
+        groupRoomPollTask = nil
     }
 
     /// One poll of the open room now, as the poller's tick runs it (tests,
