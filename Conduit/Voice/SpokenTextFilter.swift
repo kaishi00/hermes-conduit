@@ -108,8 +108,8 @@ struct SpokenTextFilter {
 
     /// A single `*` or `_` that can open an action: not part of a doubled
     /// run (bold), not followed by a space (as in Markdown, "price * units"
-    /// is a multiplication, not an opened action), and an underscore only
-    /// at a word start (never snake_case).
+    /// is a multiplication, not an opened action), and only at a word start
+    /// (never snake_case or "2*3").
     private static func firstActionMarker(in text: ArraySlice<Character>, before: Character?) -> Int? {
         var index = text.startIndex
         while index < text.endIndex {
@@ -129,7 +129,7 @@ struct SpokenTextFilter {
                 continue
             }
             let wordStart = previous.map { !isWordCharacter($0) } ?? true
-            if character == "*" || wordStart { return index }
+            if wordStart { return index }
             index += 1
         }
         return nil
@@ -163,10 +163,10 @@ struct SpokenTextFilter {
                 index = next
                 continue
             }
-            // Whether it closes ("**" doesn't, nor "_" inside a word) is
-            // only known once the next character arrives.
+            // Whether it closes ("**" doesn't, nor one inside a word like
+            // "4*5") is only known once the next character arrives.
             if next >= text.endIndex, !final { return .none }
-            if marker == "_", next < text.endIndex, isWordCharacter(text[next]) {
+            if next < text.endIndex, isWordCharacter(text[next]) {
                 index = next
                 continue
             }

@@ -713,6 +713,8 @@ final class MessageReadAloudControllerTests: XCTestCase {
     func testNowPlayingTitleKeepsASpacedAsteriskButDropsEmphasis() {
         XCTAssertEqual(ReadAloudNowPlaying.title(for: "Total: 5 * 3 is **fifteen**, *really*"), "Total: 5 * 3 is fifteen, really")
         XCTAssertEqual(ReadAloudNowPlaying.title(for: "* First item\nMore"), "First item")
+        XCTAssertEqual(ReadAloudNowPlaying.title(for: "  * First item\nMore"), "First item")
+        XCTAssertEqual(ReadAloudNowPlaying.title(for: "> * Quoted item"), "Quoted item")
     }
 
     func testGatewayReplacementCancelsActivePlayback() async {

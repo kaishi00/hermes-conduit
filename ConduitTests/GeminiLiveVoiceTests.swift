@@ -2725,6 +2725,8 @@ extension HermesVoiceGatewayTimeoutTests {
                        "Revenue is price * units sold per month * 12.",
                        "a marker followed by a space opens nothing")
         XCTAssertEqual(SpokenTextFilter.filter("Total: 5 * 3 apples plus 2 * 4 pears"), "Total: 5 * 3 apples plus 2 * 4 pears")
+        XCTAssertEqual(SpokenTextFilter.filter("Total: 2*3 apples plus 4*5 pears"), "Total: 2*3 apples plus 4*5 pears",
+                       "a marker inside a word opens and closes nothing")
         XCTAssertEqual(SpokenTextFilter.filter("Fill blanks _ like this one _ please"), "Fill blanks _ like this one _ please")
         XCTAssertEqual(SpokenTextFilter.filter("Then *walks over to the window * and more words"),
                        "Then *walks over to the window * and more words",
