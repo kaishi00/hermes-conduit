@@ -944,9 +944,9 @@ extension View {
 /// so a narrow iPad window, or an unfolded iPhone Duo, keeps the phone's
 /// one column. The user can hide the list on a wide window too
 /// (`V2ChatListPreference`).
-/// The profile tapped in the strip while a switch is running. Only the
-/// last tap counts; once the switch ends, it goes there, unless that's
-/// where the switch landed.
+/// The profile tapped in the strip (or picked in CarPlay's agent list)
+/// while a switch is running. Only the last tap counts; once the switch
+/// ends, it goes there, unless that's where the switch landed.
 struct V2QueuedProfilePick: Equatable {
     private(set) var profile: String?
 
