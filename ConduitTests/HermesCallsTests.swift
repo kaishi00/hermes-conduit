@@ -620,6 +620,11 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(done.watchOpeningTurn.hasPrefix("[" + HermesCallOpening.speakFirst))
         XCTAssertTrue(done.openingTurn.contains("what they want to do next"), "#544: the opening ends asking what's next")
         XCTAssertTrue(done.instructionBlock(delegation: true).contains("what they want to do next"))
+        // A live model is told of an attached file by name, never its path.
+        let attached = HermesCallOpening(kind: .done, title: "Briefing", result: "Here it is.\nMEDIA:/opt/data/cache/audio/tts_1.mp3")
+        XCTAssertFalse(attached.instructionBlock(delegation: false).contains("MEDIA:"))
+        XCTAssertTrue(attached.instructionBlock(delegation: false).contains("(a file in the chat: tts_1.mp3)"))
+        XCTAssertFalse(attached.spokenBrief.contains("MEDIA:"))
         XCTAssertTrue(approval.watchOpeningTurn.hasPrefix("[" + HermesCallOpening.speakFirst))
         XCTAssertFalse(approval.spokenBrief.contains("Earlier reply"))
 

@@ -831,11 +831,17 @@ extension VoiceConversationControllerTests {
         var splitter = SpokenVisualSplitter()
         _ = splitter.feed(reply) + splitter.finish()
         XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/opt/data/cache/audio/tts_20261028_111922_603221.mp3\nMEDIA:/tmp/b.pdf")
-        // A tag written as a link is said by its label and listed with the
-        // links, not twice.
+        // A tag written as a link is said by its label, and its file goes on
+        // the screen as a file, not as a link.
         splitter.reset()
         XCTAssertEqual(splitter.feed("See [the report](MEDIA:/r.pdf) now.\n") + splitter.finish(), "See the report now.\n")
-        XCTAssertEqual(splitter.visualMarkdown, "- [the report](MEDIA:/r.pdf)")
+        XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/r.pdf")
+        // A reply the call cuts off for its own line keeps its files.
+        splitter.reset()
+        _ = splitter.feed("Here you go.\nMEDIA:/r.pdf\nAnd then")
+        splitter.dropSpeech()
+        XCTAssertEqual(splitter.fileMarkdown, "MEDIA:/r.pdf")
+        XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/r.pdf")
     }
 
     func testLocalLiveTurnSaysAWholeReplyThatCameWithoutDeltas() async {

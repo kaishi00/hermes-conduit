@@ -384,7 +384,7 @@ final class LocalLiveTurnRunner {
         // What the reply still held ends with it: nothing of it follows the
         // call's line. Words the action filter held back for a marker that
         // never closed were said, so they go first.
-        splitter.reset()
+        splitter.dropSpeech()
         let held = actions.finish()
         if !held.isEmpty { onDelta?(turnID, held + (held.hasSuffix("\n") ? "" : "\n")) }
         onDelta?(turnID, text)

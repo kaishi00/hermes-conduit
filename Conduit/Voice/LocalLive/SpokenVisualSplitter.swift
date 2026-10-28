@@ -47,6 +47,18 @@ struct SpokenVisualSplitter {
         self = SpokenVisualSplitter()
     }
 
+    /// Drops what the reply still had to say, when the call says its own
+    /// line instead; the files it attached still go on the screen.
+    mutating func dropSpeech() {
+        _ = finish()
+        let files = self.files
+        self = SpokenVisualSplitter()
+        guard !files.isEmpty else { return }
+        visual = files
+        self.files = files
+        lastBlock = .file
+    }
+
     /// Speakable text that can be released now.
     mutating func feed(_ text: String) -> String {
         pending += text
@@ -179,7 +191,8 @@ struct SpokenVisualSplitter {
 
     /// `text` with its links said by their titles and its images and bare
     /// addresses taken out, and what was taken, in order.
-    private static let link = try? NSRegularExpression(pattern: #"(!?)\[([^\]]*)\]\(([^)\s]+)\)"#)
+    /// A `MEDIA:` target is a file, which the tag filter puts on the screen.
+    private static let link = try? NSRegularExpression(pattern: #"(!?)\[([^\]]*)\]\((?![^\S\n]*MEDIA:)([^)\s]+)\)"#, options: [])
     // An address's closing full stop or comma is the sentence's.
     private static let bareAddress = try? NSRegularExpression(pattern: #"https?://[^\s)]*[^\s).,;:!?]"#)
 
