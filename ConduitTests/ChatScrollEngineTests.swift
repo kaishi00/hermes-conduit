@@ -433,6 +433,46 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(engine.mode, .browsing)
     }
 
+    func testFollowingPinsWhenTheBottomBarShrinks() {
+        let (engine, surface) = makeEngine()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+        surface.insetBottom = 0
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3200, "no empty space left where the chips were")
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    /// A reader just above the bottom, browsing, when the bar shrinks under
+    /// them: past the new bottom, but they didn't scroll there.
+    func testABottomBarShrinkingLeavesABrowsingReaderBrowsing() {
+        let surface = FakeChatScrollSurface()
+        surface.insetBottom = 120
+        let (engine, _) = makeEngine(surface: surface)
+        XCTAssertEqual(surface.contentOffsetY, 3320)
+        surface.userScroll(to: 3250)
+        XCTAssertEqual(engine.mode, .browsing)
+        surface.insetBottom = 0
+        engine.bottomBarResized()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 3250)
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    func testBottomBarChangesWaitOnOneLaterCheck() {
+        let (engine, surface) = makeEngine()
+        scheduled.removeAll()
+        for inset in [20, 40, 60] as [CGFloat] {
+            surface.insetBottom = inset
+            engine.bottomBarResized()
+        }
+        XCTAssertEqual(scheduled.count, 1)
+        scheduled.removeAll()
+        engine.bottomBarResized()
+        XCTAssertEqual(scheduled.count, 0, "the check still waits until it has run")
+    }
+
     func testFollowingRepairsAnOvershootWhenContentShrinks() {
         let (_, surface) = makeEngine()
         surface.layOut(contentHeight: 3700)
@@ -2450,6 +2490,20 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 3598)
         assertNeverMovedUp(surface)
         XCTAssertEqual(surface.sets.count, 2)
+    }
+
+    /// Chips appearing under a reply that just fits push the bottom past
+    /// the stop: following stops there, as for the reply's own growth.
+    func testABottomBarGrowingPastTheStopStopsThere() {
+        let (engine, surface) = sendIntoHold()
+        surface.layOut(contentHeight: 4380)
+        XCTAssertEqual(surface.contentOffsetY, 3580)
+        surface.sets = []
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertTrue(engine.isFollowingLatest, "within the near-bottom distance it is still following")
+        assertNeverMovedUp(surface)
     }
 
     /// Nightly 2026-10-26 (hosted): a newly appended row's estimate put the

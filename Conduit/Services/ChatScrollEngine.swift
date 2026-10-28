@@ -263,6 +263,8 @@ final class ChatScrollEngine: ObservableObject {
     private var isVisibilityTrackedMessageOffscreen = false
     private(set) weak var surface: ChatScrollSurface?
     private var surfaceCallbackDepth = 0
+    /// A bottom bar check waits for the next turn of the main queue.
+    private var bottomBarCheckScheduled = false
     private var lastObservedOffsetY: CGFloat?
     private var pastBottomCheckScheduled = false
     /// Bumped when the reader or a command takes over, so a pending
@@ -391,13 +393,19 @@ final class ChatScrollEngine: ObservableObject {
     /// Content size, viewport size or insets changed. Runs inside the layout
     /// pass that changed them.
     func surfaceLayoutChanged() {
+        layoutChanged(relatches: true)
+    }
+
+    private func layoutChanged(relatches: Bool) {
         TranscriptPerf.note(.layoutMetricsChanged)
         surfaceCallbackDepth += 1
         defer { surfaceCallbackDepth -= 1 }
         guard let surface, !isPaused else { return }
         takeCardShifts(on: surface)
         holdPrependAnchor(on: surface)
-        relatchIfPastTheBottom(surface)
+        if relatches {
+            relatchIfPastTheBottom(surface)
+        }
         if canPinWhileFollowing(surface) {
             pin(surface)
         }
@@ -411,11 +419,20 @@ final class ChatScrollEngine: ObservableObject {
     /// bar the transcript scrolls under, so only the scroll view's bottom
     /// inset changes: no KVO reports that, and the transcript need not lay
     /// out again, so a following reader was left with the reply's end under
-    /// the bar (the chips over its actions). Checked now, and once more after
-    /// the change has landed.
+    /// the bar (the chips over its actions). Checked now, and once more on
+    /// the next turn of the main queue, in case the inset lands after the
+    /// bar's own layout; one check waits at a time. A reader browsing is
+    /// left browsing: a bar shrinking under them is not their scroll back
+    /// to the bottom.
     func bottomBarResized() {
-        surfaceLayoutChanged()
-        schedule(0) { [weak self] in self?.surfaceLayoutChanged() }
+        layoutChanged(relatches: false)
+        guard !bottomBarCheckScheduled else { return }
+        bottomBarCheckScheduled = true
+        schedule(0) { [weak self] in
+            guard let self else { return }
+            self.bottomBarCheckScheduled = false
+            self.layoutChanged(relatches: false)
+        }
     }
 
     /// The offset changed (user scroll, deceleration, or one of ours).
