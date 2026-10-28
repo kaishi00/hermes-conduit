@@ -1496,7 +1496,7 @@ Watch and CarPlay (not needed: neither shows a transcript)
 - What shows while a chat opens is presentation only: it never enters the live transcript, so approvals, paging and resume never read it, and the live transcript replaces it wholesale (2026-10-27, #1404, Eric picked this over seeding the live transcript or keeping chat views alive).
 - Copies are kept per dashboard and profile (Bot Chat: per bot), so another profile's history never shows (2026-10-27, #1404).
 - A profile switch takes the outgoing profile's transcript, and any reply still streaming into it, off the screen as the profile changes over: the chat the new profile opens on shows its saved copy (a Bot Chat, its kept copy), or nothing, until Hermes sends it, and a chat opened in that profile replaces it as it opens. It used to stay up under the new chat's title for the whole switch, several seconds on a real dashboard. A switch that fails puts the outgoing chat and its transcript back as they were, over a chat opened during the switch (the transcript never onto another dashboard), until the reconnect resolves it (2026-10-28, #1447, Eric asked for it, from issue #1442).
-- A group room on screen shows only its own errors. The chat under it can still sync (a return to the app), and its error used to land in the room's banner, read as the room failing (issue #1459). A chat sync's error raised while a room is on screen waits and shows when the room is closed back to that chat; opening another chat or a new one drops it (2026-10-28, #PRNUM).
+- A group room on screen shows only its own errors. The chat under it can still sync (a return to the app), and its error used to land in the room's banner, read as the room failing (issue #1459). A chat sync's error raised while a room is on screen waits and shows when the room is closed back to that chat; opening another chat or a new one drops it (2026-10-28, #1461).
 - A Bot Chat's copy is kept only for the bot owning the id the chat is open as (the registry first, then the roster and the saved last-chat reference). The chat's other ids never decide the bot: the scroll identity's aliases can name the chat it replaced, another bot's, so an ordinary chat left after a Bot Chat keeps no copy for it, and reopening one bot never shows another's chat. The owner is taken before a bot open notes its own ids, so a bot opening as the same id never takes the copy of the chat being left (2026-10-28, #1432).
 
 **Open gaps**
@@ -1506,7 +1506,7 @@ Watch and CarPlay (not needed: neither shows a transcript)
 - The first open of a chat after launch reads its file on the main thread (repeat opens come from memory); kept as is unless it shows in profiling (#1404).
 - While the copy is up, VoiceOver reads its rows with no "opening" announcement; the header and composer say Conduit is connecting, as for a chat picked in the saved list (#1404).
 
-**Checked:** 2026-10-28, #PRNUM (a chat's sync error stays out of a room on screen); 2026-10-28, #1447 (a profile switch shows the new profile's chat, not the outgoing transcript); 2026-10-28, #1432.
+**Checked:** 2026-10-28, #1461 (a chat's sync error stays out of a room on screen); 2026-10-28, #1447 (a profile switch shows the new profile's chat, not the outgoing transcript); 2026-10-28, #1432.
 
 ## Composer drafts
 
@@ -3388,8 +3388,8 @@ Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 - A 4132 counts as "not found" everywhere a missing chat is handled: a worker saved as the last conversation is retired on the next return (the newest chat opens instead, and its stored id isn't tried, since Hermes refuses a worker under any id) and a notification for one isn't retried; only the message differs (2026-10-26, #1305 review).
 - A launcher widget still holding a worker (picked or saved before this change) says the conversation is unavailable, since the worker isn't in the chats list any more; it doesn't try the resume that would show the board message. A share sent to a worker from a snapshot written before this change goes the same way: the draft lands in the chat on screen with "Conduit couldn't open the chat you picked". The next snapshot, written once the app reads its chats list, has no workers (2026-10-26, #1305 review).
 - Rows saved before this change stay in the saved chat list until a full, non-empty read replaces them: a saved `SessionSummary` keeps no raw Hermes source (a worker is `.other`), and storing one for that window isn't worth the code (2026-10-26, #1305 review).
-- Conduit hides what Hermes' own pickers hide: `tool` (third-party integrations, `hermes chat --source tool`) and `oneshot` (`chat -q`, `-z`) sessions as well as `kanban`, in the lists, search and voice (2026-10-28, #PRNUM, issue #1459).
-- A worker Hermes stored before it tagged workers `kanban` is a `cli` (or `local`) row whose preview is the dispatcher's one-line prompt, `work kanban task <task id>`. Hermes retags only those whose folder is under the board's workspaces, and resumes the rest, so they listed as chats (Eric's own list, 2026-10-28). The lists leave out a row whose preview is exactly that prompt; one where a person wrote more after it stays (2026-10-28, #PRNUM, issue #1459).
+- Conduit hides what Hermes' own pickers hide: `tool` (third-party integrations, `hermes chat --source tool`) and `oneshot` (`chat -q`, `-z`) sessions as well as `kanban`, in the lists, search and voice (2026-10-28, #1461, issue #1459).
+- A worker Hermes stored before it tagged workers `kanban` is a `cli` (or `local`) row whose preview is the dispatcher's one-line prompt, `work kanban task <task id>`. Hermes retags only those whose folder is under the board's workspaces, and resumes the rest, so they listed as chats (Eric's own list, 2026-10-28). The lists leave out a row whose preview is exactly that prompt; one where a person wrote more after it stays (2026-10-28, #1461, issue #1459).
 
 **Open gaps**
 - A project card's count is Hermes' `session_count`, which may include workers in the project's folders; only the fallback (counting previews) leaves them out.
@@ -3397,7 +3397,7 @@ Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 - Search "In messages" and voice's find chat can still match a legacy worker (the `work kanban task` rows): search results carry no preview to tell one by. Hermes resumes those, so one opens as a chat.
 - The Watch's find chat (notifier `CHAT_SEARCH_EXCLUDED_SOURCES`) still leaves out only `kanban`; `tool` and `oneshot` follow once the notifier's `plugin_api.py` split lands (#1459).
 
-**Checked:** 2026-10-28, #PRNUM (`tool` and `oneshot` sessions and legacy workers left out, issue #1459); 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
+**Checked:** 2026-10-28, #1461 (`tool` and `oneshot` sessions and legacy workers left out, issue #1459); 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
 
 ## Bars lists scroll under
 
