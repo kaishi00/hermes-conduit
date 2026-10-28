@@ -143,6 +143,7 @@ struct HermesCallSettingsSection: View {
     @FocusState private var rulesFocused: Bool
     /// This iPhone's own setting, not the host's.
     @AppStorage(HermesNativeCalls.ringsKey) private var ringsLikeCall = true
+    @ObservedObject private var notifications = PushNotificationService.shared
     @State private var loadFailed = false
     @State private var saveTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -226,6 +227,12 @@ struct HermesCallSettingsSection: View {
                         Text("On this iPhone and your Apple Watch. Off, a “Hermes wants to talk” notification comes instead: tap Talk to answer.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if ringsLikeCall, notifications.watchRingsForAnotherIPhone {
+                            Label(AppLocalization.string("Your Apple Watch rings for Conduit on another iPhone, so a call you answer on the Watch goes there. If the Watch is with this iPhone now, pair each of your profiles with this iPhone in Settings > Notifications to move it here."), systemImage: "applewatch.slash")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .accessibilityIdentifier("hermesCalls.watchElsewhere")
+                        }
                     }
                     Toggle("Call when I ask", isOn: binding(\.whenAsked))
                     Text("Say “call me when it's done” during a live call, or ask Hermes in a chat to call you. Hermes calls about that job once the call has ended; if it finishes while you're still talking, you hear about it in the call instead.")
