@@ -2788,6 +2788,8 @@ extension HermesVoiceGatewayTimeoutTests {
         // A tag and a link on one line: both read, every word said.
         XCTAssertEqual(SpokenMediaTagFilter.filter("[the report](MEDIA:/r.pdf) and [the site](https://x.com)"),
                        "the report and [the site](https://x.com)")
+        XCTAssertEqual(SpokenMediaTagFilter.filter("![chart](MEDIA:/tmp/a.png) (large)"), "chart (large)")
+        XCTAssertEqual(GatewayMediaTags.namingFiles(in: "![chart](MEDIA:/tmp/a.png) (large)"), "chart (a file in the chat: a.png) (large)")
     }
 
     func testSpokenTextFilterKeepsSpacedAsterisksAndUnderscores() {
