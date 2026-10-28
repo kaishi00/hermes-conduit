@@ -2738,7 +2738,7 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testSpokenTextFilterGivesTheSameSpeechHoweverTheReplyIsSplit() {
-        let reply = "Order! *bangs the gavel twice* The court finds snake_case_var and **bold words here** and _whispers very quietly now_ fine. 🎉 2*3 and *really* done_"
+        let reply = "Order! *bangs the gavel twice* The court finds snake_case_var and **bold words here** and _whispers very quietly now_ fine. 🎉 2*3 and *really* done_ *not an action here** either"
         let whole = SpokenTextFilter.filter(reply)
         for size in 1...9 {
             var filter = SpokenTextFilter()
@@ -2755,6 +2755,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(whole.contains("gavel"))
         XCTAssertFalse(whole.contains("whispers"))
         XCTAssertTrue(whole.contains("snake_case_var"))
+        XCTAssertTrue(whole.contains("not an action here"), "\"**\" closes nothing, even when a delta ends between its two markers")
     }
 
     func testGeminiLivePersonalityClientAndInstructions() async throws {

@@ -2097,7 +2097,8 @@ What a spoken reply leaves out that the chat keeps: a persona's narrated
 actions in single asterisks or underscores, and emoji.
 
 **Siblings:** Classic voice (phone, CarPlay; streamed) · Read Aloud and its
-Now Playing title · live read-back of a reply ("read me the last reply") ·
+Now Playing title · live read-back of a reply ("read me the last reply", in
+Gemini, Qwen, Grok and GPT-Live) and the result a Hermes call reads out ·
 Local Live (Hermes' words, streamed) · Gemini Live, Qwen Live, Grok Live and
 GPT-Live with the Hermes personality (told not to say actions) · the chat
 transcript (never filtered)
@@ -2106,7 +2107,7 @@ transcript (never filtered)
 - The filter: `Conduit/Voice/SpokenTextFilter.swift` (firstActionMarker, closingMarker, speakable)
 - Classic voice: `Conduit/Voice/VoiceConversationController.swift` (spokenTextFilter)
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift`, `Conduit/Voice/ReadAloudNowPlaying.swift` (title)
-- Read-back: `Conduit/Voice/VoiceReadBack.swift` (plainSpeech, line by line)
+- Read-back: `Conduit/Voice/VoiceReadBack.swift` (plainSpeech, line by line), read by `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (read_last_reply), `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` (lastReplyText) and `Conduit/Voice/HermesCalls.swift` (a call's result)
 - Local Live: `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift` (actions, after SpokenVisualSplitter)
 - Persona instructions: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift`, `Conduit/Voice/GPTLive/GPTLiveConversationController.swift`
 - Tests: `ConduitTests/GeminiLiveVoiceTests.swift` (testSpokenTextFilter…), `ConduitTests/VoiceBackgroundJobTests.swift` (plainSpeech), `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift` (testLocalLiveTurnLeavesNarratedActionsOutOfSpeech)

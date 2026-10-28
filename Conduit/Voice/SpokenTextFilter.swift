@@ -163,14 +163,12 @@ struct SpokenTextFilter {
                 index = next
                 continue
             }
-            if marker == "_" {
-                // Whether "_" ends a word is only known once the next
-                // character arrives.
-                if next >= text.endIndex, !final { return .none }
-                if next < text.endIndex, isWordCharacter(text[next]) {
-                    index = next
-                    continue
-                }
+            // Whether it closes ("**" doesn't, nor "_" inside a word) is
+            // only known once the next character arrives.
+            if next >= text.endIndex, !final { return .none }
+            if marker == "_", next < text.endIndex, isWordCharacter(text[next]) {
+                index = next
+                continue
             }
             return .close(index)
         }
