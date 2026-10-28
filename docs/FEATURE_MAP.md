@@ -1677,6 +1677,7 @@ Keyboard caption is unchanged, as it describes the option)
 - Tests: `ConduitTests/ComposerReturnKeyTests.swift`
 
 **Rulings**
+- On a Mac the composer fields (a chat's, a room's, the full editor) show no inline prediction (autocorrect and spelling stay on; ReturnKeyTextView). macOS draws it in a correction panel with its own nested event loop, and both Mac freezes captured on 2.2.1 (237) ran inside three or four of them, the chat's LazyVStack re-laying out forever (2026-10-28, #1460).
 - The caption describes the option, not current behaviour, because the
   option starts off on iPhone and iPad (2026-10-24, #1208, review of #1190).
 - While dictating, Return does what the Stop in Send's place does: stops
@@ -1692,7 +1693,7 @@ Keyboard caption is unchanged, as it describes the option)
   command sending, Shift-Return and the IME's Return still reaching the
   text, in chats, rooms and the full editor.
 
-**Checked:** 2026-10-27, #1394.
+**Checked:** 2026-10-28, #1460 (inline prediction off on a Mac).
 
 ## A chat's last reply
 

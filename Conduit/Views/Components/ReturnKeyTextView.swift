@@ -13,6 +13,27 @@ import SwiftUI
 import UIKit
 
 class ReturnKeyTextView: UITextView {
+    override init(frame: CGRect, textContainer: NSTextContainer?) {
+        super.init(frame: frame, textContainer: textContainer)
+        inlinePredictionType = Self.inlinePredictionType(onMac: ProcessInfo.processInfo.isiOSAppOnMac)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        inlinePredictionType = Self.inlinePredictionType(onMac: ProcessInfo.processInfo.isiOSAppOnMac)
+    }
+
+    /// On a Mac, macOS shows an inline prediction in a correction panel that
+    /// runs its own nested event loop, and the text checker can open another
+    /// panel inside it. Both Mac freezes captured on 2.2.1 (237) ran SwiftUI's
+    /// update from three and four such nested panels, where the transcript's
+    /// LazyVStack re-laid out forever and the chat stopped updating. The
+    /// fields keep autocorrect and spelling; only the inline prediction is
+    /// off on a Mac. iPhone and iPad keep theirs.
+    static func inlinePredictionType(onMac: Bool) -> UITextInlinePredictionType {
+        onMac ? .no : .default
+    }
+
     // Two routes reach the shortcut. A Return key command that takes
     // priority over the text system: on a Mac (the iPad app on macOS) the
     // text view's own Return handling runs before pressesBegan would see
