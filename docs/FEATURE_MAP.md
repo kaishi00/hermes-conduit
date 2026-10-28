@@ -803,15 +803,15 @@ heard · chat bubbles (the file card)
 
 **Rulings**
 - A tag is never said, and a line that was only a tag says nothing; the words around it, and a link's label, are said as written (2026-10-28, #1434, after a Local voice call on the farm read "MEDIA:/opt/data/cache/audio/tts_….mp3" out and its microphone heard "media." back).
-- Streaming voices hold from where a tag may begin (with its emphasis or `[label](`) to the end of its line, and only while it can still be one: `MEDIA:` with a path after it, or a directive. Prose such as "social media: we shipped" is said as it comes. A reply is said the same however it is split (#CARRY).
-- Local Live puts a tagged file on the call's screen, as the chat shows it; a tag written as a link is listed with the links (#CARRY).
-- A live model is told of a file by name ("(a file in the chat: report.pdf)"), never its path: a job's result, a chat reply and a chat read into the call alike (#CARRY).
+- Streaming voices hold from where a tag may begin (with its emphasis or `[label](`) to the end of its line, and only while it can still be one: `MEDIA:` with a path after it, or a directive. Prose such as "social media: we shipped" is said as it comes. A reply is said the same however it is split (#1449).
+- Local Live puts a tagged file on the call's screen, as the chat shows it; a tag written as a link is listed with the links (#1449).
+- A live model is told of a file by name ("(a file in the chat: report.pdf)"), never its path: a job's result, a chat reply and a chat read into the call alike (#1449).
 - A spoken message's line tells the model its answer is heard: say it in words, not with text_to_speech or a sound file of its own; a file the user asks for is still fine. Hermes' own spoken-reply note isn't on every Hermes (2026-10-28, #1434, notifier #444, 0.114.1).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1434, carried in #CARRY.
+**Checked:** 2026-10-28, #1434, carried in #1449.
 
 ## Qwen direct voice
 
@@ -1462,7 +1462,7 @@ Read Aloud and live voice read-back · chat list previews and quotes
 - A single list item too big for one long-reply chunk is split into paragraphs that each repeat its number.
 - A long reply's continuation chunks draw list items as paragraphs with the number baked in, so they lose the list's styled marker column.
 
-**Checked:** 2026-10-28, #CARRY (speech leaves Hermes' file tags out, see Files Hermes attaches); 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
+**Checked:** 2026-10-28, #1449 (speech leaves Hermes' file tags out, see Files Hermes attaches); 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
 
 ## Attaching files
 
@@ -2211,7 +2211,7 @@ transcript (never filtered)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #CARRY (Hermes' file tags are left out too, with their own entry, Files Hermes attaches); #1429, carried in #1430.
+**Checked:** 2026-10-28, #1449 (Hermes' file tags are left out too, with their own entry, Files Hermes attaches); #1429, carried in #1430.
 
 ## Speech stream failures
 
@@ -2781,7 +2781,7 @@ split · Read Aloud and live read-back · chat list previews and quotes
 - Previews and quotes only drop fence lines and track no block, so they need no closing rule (not a gap, noted so nobody adds one).
 - A ```` block holding a ``` line in a Bot Chat can route a mention after that line, as Hermes does; changing it starts in Hermes.
 
-**Checked:** 2026-10-28, #CARRY (Local Live's split leaves file tags unsaid and shows their files); 2026-10-28, #1430 (read-back's action filter runs only on lines outside a code block); 2026-10-24, at #1220.
+**Checked:** 2026-10-28, #1449 (Local Live's split leaves file tags unsaid and shows their files); 2026-10-28, #1430 (read-back's action filter runs only on lines outside a code block); 2026-10-24, at #1220.
 
 ## Files prepared for preview and Save to Files
 
