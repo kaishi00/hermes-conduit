@@ -1586,6 +1586,12 @@ final class CarPlayVoiceCoordinator {
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
             guard let self, self.isCurrent(generation), self.isConnected else { return }
+            // A switch the phone started meanwhile would refuse this one:
+            // it waits behind it instead.
+            if appState.isProfileSwitching {
+                self.queueAgent(profile, appState: appState)
+                return
+            }
             // A profile change replaces the voice gateway, so the
             // conversation ends first, as switching on the phone does.
             self.endConversation()

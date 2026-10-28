@@ -554,12 +554,17 @@ struct V2Shell: View {
             }
             .onChange(of: appState.isProfileSwitching) { _, switching in
                 // A strip switch drains its own kept tap when it ends; this
-                // is for a switch started elsewhere (the picker sheet).
-                guard !switching, !isPickingProfile,
-                      let next = queuedProfilePick.take(
-                          landedOn: appState.activeProfile,
-                          dashboardID: appState.activeDashboardID
-                      ) else { return }
+                // is for a switch started elsewhere (the picker sheet,
+                // CarPlay).
+                guard !switching, !isPickingProfile else { return }
+                guard let next = queuedProfilePick.take(
+                    landedOn: appState.activeProfile,
+                    dashboardID: appState.activeDashboardID
+                ) else {
+                    // A strip pick that waited behind it came to nothing.
+                    fadeContentBackIn()
+                    return
+                }
                 // Its haptic came with the tap.
                 pickProfile(next, haptic: false)
             }
@@ -910,6 +915,16 @@ struct V2Shell: View {
             guard token == profileSwitchToken else { return }
             // Out of sight, content moves to the side it arrives from.
             withTransaction(Transaction(animation: nil)) { contentShift = distance }
+            // A switch started elsewhere (CarPlay) in the fade-out would
+            // refuse this one: it waits behind it, unless a later tap
+            // already does.
+            if appState.isProfileSwitching {
+                if queuedProfilePick.profile == nil {
+                    queuedProfilePick.tap(profile, dashboardID: appState.activeDashboardID)
+                }
+                isPickingProfile = false
+                return
+            }
             await appState.switchProfile(to: profile)
             guard token == profileSwitchToken else { return }
             isPickingProfile = false
