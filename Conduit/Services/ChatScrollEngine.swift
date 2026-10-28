@@ -606,7 +606,11 @@ final class ChatScrollEngine: ObservableObject {
         surfaceCallbackDepth += 1
         defer { surfaceCallbackDepth -= 1 }
         isDragging = false
+        // A bar that moved under the finger is not where the reader let go:
+        // its inset is taken first, and a reader browsing stays browsing.
+        let barMoved = surface.map { $0.insetBottom != lastBottomBarInset } ?? false
         if mode == .browsing,
+           !barMoved,
            let surface,
            !surface.isDecelerating,
            surface.distanceFromBottom <= Self.nearBottomTolerance {

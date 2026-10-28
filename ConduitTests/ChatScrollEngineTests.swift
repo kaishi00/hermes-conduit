@@ -460,6 +460,26 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(engine.mode, .browsing)
     }
 
+    /// A browsing reader 70 pt above the bottom drags while the bar shrinks
+    /// 120 pt: letting go past the new bottom is the bar's doing, so they
+    /// are moved up to it and stay browsing.
+    func testABottomBarShrinkingUnderADragLeavesTheReaderBrowsing() {
+        let surface = FakeChatScrollSurface()
+        surface.insetBottom = 120
+        let (engine, _) = makeEngine(surface: surface)
+        surface.userScroll(to: 3250)
+        XCTAssertEqual(engine.mode, .browsing)
+        surface.isTracking = true
+        engine.userDragBegan()
+        surface.insetBottom = 0
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3250, "a finger owns the offset")
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
     /// The inset went back to a value a bar check saw before, by an
     /// ordinary layout in between: the next bar change is still taken.
     func testABottomBarBackAtAnEarlierInsetStillPins() {

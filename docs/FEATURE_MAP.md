@@ -1651,7 +1651,7 @@ devices)
 - Group rooms have no "Load earlier messages", so history above the 200-event tail isn't reachable in the app.
 - The Responding row reads the kept tail, so a discussion longer than 200 events (when opened, or after a trim) can lose it while a member still works.
 - Trimming a busy room's tail moves rows above a reader scrolled to its top, once per 200 new events.
-- A group room's composer bar growing doesn't move a following room: GroupRoomScrollFollow checks the inset only when its content lays out again.
+- A group room's composer bar growing doesn't move a following room: GroupRoomScrollFollow checks the inset only when its content lays out again. Left for its own change: rooms show no prediction chips, so only a multi-line draft or the room's own bars grow there, and its follow logic is separate from the chat engine (#1431).
 - Group rooms keep the scroll position by row id (ScrollViewReader), not by the chat engine's same-pass layout, so a follow can animate where a chat snaps.
 - Opening an unread chat lands at the reply after its last user message, so one whose unread rows came without a new user message (a cron or background result after an already read reply) lands at that older reply, not at the newest row; a chat with no user message at all stays at the end.
 - A chat restored on launch (Continue where you left off) keeps its saved place, unread or not.
