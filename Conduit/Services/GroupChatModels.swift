@@ -142,6 +142,9 @@ struct GroupEvent: Equatable, Identifiable {
     let authorityEpoch: Int?
     let payload: [String: AnyCodable]
     let createdAt: Double
+    /// In a copy of a room someone else hosts, a message its home posted
+    /// for one of the room's people (RoomPosts.swift).
+    var post: GroupEventPost? = nil
 
     var id: String { eventID.isEmpty ? "seq-\(seq)" : eventID }
 
@@ -157,6 +160,12 @@ struct GroupEvent: Equatable, Identifiable {
 
     /// The thread a chat/turn event belongs to (`thread_id` payload key).
     var threadID: String? { payload["thread_id"]?.stringValue }
+}
+
+/// Who a room's home posted a message for: a person by the name its Link
+/// gives them, or nil for the copy's own person.
+struct GroupEventPost: Equatable {
+    let by: String?
 }
 
 /// A hosted room, as `groups.list`/`groups.state` return it.
@@ -393,7 +402,8 @@ enum GroupDecoders {
             actor: actor(object["actor"]),
             authorityEpoch: HermesClient.exactIntValue(object["authority_epoch"]),
             payload: object["payload"]?.objectValue ?? [:],
-            createdAt: object["created_at"]?.doubleValue ?? 0
+            createdAt: object["created_at"]?.doubleValue ?? 0,
+            post: object["post"]?.objectValue.map { GroupEventPost(by: $0["by"]?.stringValue) }
         )
     }
 
