@@ -5693,6 +5693,36 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// The chat a profile switched to opens on: the outgoing profile's
+    /// transcript leaves with it (it showed under the new chat's title for
+    /// the whole switch, #1442). Its saved copy shows while Hermes sends it,
+    /// or nothing does. A chat opened in that profile (All chats, a
+    /// notification, a link) replaces it with its own as it opens.
+    private func presentRestoredChatAfterProfileChange() {
+        messages = []
+        dismissOfflineChatPresentation()
+        guard let sessionID = activeSessionId else { return }
+        if let bot = botConversationProfile(for: sessionID) {
+            presentKeptBotChatCopy(bot: bot, openedAs: sessionID, title: activeSessionTitle)
+            return
+        }
+        guard let dashboardID = activeDashboardID,
+              let saved = offlineChatCache.loadTranscript(sessionID, dashboardID: dashboardID, profile: activeProfile) else {
+            return
+        }
+        offlineChatPresentation = OfflineChatPresentation(
+            dashboardID: dashboardID,
+            profile: activeProfile,
+            snapshot: OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: []),
+            displayedTranscript: saved,
+            picked: OfflineChatPresentation.PickedChat(
+                title: activeSessionTitle,
+                sessionIDs: [sessionID],
+                durableSessionID: sessionID
+            )
+        )
+    }
+
     /// A Bot Chat has no row of its own, so it keeps no copy on the phone:
     /// the one on screen is kept in memory when it's left, by dashboard and
     /// bot, to show while it opens again (#1352).
@@ -30217,6 +30247,8 @@ final class AppState: ObservableObject {
         let previousProjects = projects
         let previousSupportsProjects = supportsProjects
         let previousTurnState = turnState
+        let previousMessages = messages
+        let previousOfflineChatPresentation = offlineChatPresentation
         isProfileSwitching = true
         defer { isProfileSwitching = false }
         invalidateReconciliation()
@@ -30310,6 +30342,7 @@ final class AppState: ObservableObject {
             slashCommands = Self.builtInSlashCommands
             slashSubcommands = [:]
             restoreActiveSessionState(for: target)
+            presentRestoredChatAfterProfileChange()
             restorePinnedSessions(for: target)
             // The target's list as it showed last time, until its own lands.
             if let dashboardID = activeDashboardID {
@@ -30408,6 +30441,12 @@ final class AppState: ObservableObject {
             // flush scheduled under the failed target during the aborted
             // attempt stale.
             setActiveProfile(previousProfile)
+            // The previous profile's transcript left with it: it comes back
+            // as it was.
+            if adoptedTarget {
+                messages = previousMessages
+                offlineChatPresentation = previousOfflineChatPresentation
+            }
             connection = savedConnection
             previousClient?.disconnect()
             client?.disconnect()

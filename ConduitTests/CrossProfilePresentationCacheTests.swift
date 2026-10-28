@@ -382,6 +382,37 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
         )
     }
 
+    /// While the profile switched to connects, the outgoing profile's
+    /// transcript is gone: it used to show under the new chat's title for the
+    /// whole switch (#1442). The new chat's own transcript replaces it.
+    func testTheOutgoingTranscriptLeavesWhenTheProfileChangesOver() async {
+        let fixtures = workSessionFixtures()
+        final class Observed {
+            weak var appState: AppState?
+            var whileConnecting: (profile: String, messages: [ChatMessage])?
+        }
+        let observed = Observed()
+        var operations = switchLifecycleOperations(workCatalog: [fixtures.session]) { client in
+            (client.profile ?? "default") == "work" ? fixtures.messages : []
+        }
+        operations.connectClient = { _ in
+            guard let appState = observed.appState else { return }
+            observed.whileConnecting = (appState.activeProfile, appState.messages)
+        }
+        let harness = makeHarness(lifecycleOperations: operations) { _ in }
+        observed.appState = harness.appState
+        let connection = HermesConnection(baseUrl: "https://127.0.0.1:1", ticket: "saved-ticket")
+        harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: "session-a"), for: "default")
+        harness.coordinator.rememberSession(.dashboard(profile: "work", sessionID: fixtures.session.id), for: "work")
+        seedOutgoingTranscript(in: harness.appState, connection: connection, sessionID: "session-a")
+
+        await harness.appState.switchProfile(to: "work")
+
+        XCTAssertEqual(observed.whileConnecting?.profile, "work")
+        XCTAssertEqual(observed.whileConnecting?.messages, [])
+        XCTAssertEqual(harness.appState.messages, fixtures.messages)
+    }
+
     /// A failed switch that already flipped the identity must fence anything
     /// scheduled mid-attempt, and rollback flushes the RESTORED previous
     /// profile's transcript under its own namespace only — never leaving
