@@ -628,6 +628,9 @@ extension VoiceConversationControllerTests {
         // A tag the clip would cut in half goes with its line.
         let long = String(repeating: "a", count: HermesCallOpening.maximumResultCharacters - 10) + "\nMEDIA:/opt/data/cache/audio/tts_1.mp3"
         XCTAssertFalse(HermesCallOpening(kind: .done, title: "Briefing", result: long).result?.contains("MEDIA") ?? true)
+        // Prose that only mentions media keeps its words, on one long line too.
+        let prose = "Posted on social media: " + String(repeating: "word ", count: HermesCallOpening.maximumResultCharacters / 5)
+        XCTAssertTrue(HermesCallOpening(kind: .done, title: "Briefing", result: prose).result?.hasPrefix("Posted on social media: word") ?? false)
         XCTAssertTrue(approval.watchOpeningTurn.hasPrefix("[" + HermesCallOpening.speakFirst))
         XCTAssertFalse(approval.spokenBrief.contains("Earlier reply"))
 

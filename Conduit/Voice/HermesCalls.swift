@@ -185,10 +185,11 @@ struct HermesCallOpening: Equatable {
             self.result = nil
         } else if trimmed.count > Self.maximumResultCharacters {
             var clipped = String(trimmed.prefix(Self.maximumResultCharacters))
-            // A file tag cut in half can't be named or left unsaid: its line goes.
-            let lineStart = clipped.range(of: "\n", options: .backwards)?.upperBound ?? clipped.startIndex
-            if clipped[lineStart...].range(of: "MEDIA:", options: .caseInsensitive) != nil {
-                clipped.removeSubrange(lineStart...)
+            // A file tag cut in half can't be named or left unsaid: it goes,
+            // and the words before it stay.
+            if let tag = clipped.range(of: "MEDIA:", options: [.caseInsensitive, .backwards]),
+               !clipped[tag.upperBound...].drop(while: { $0 == " " || $0 == "\t" }).contains(where: \.isWhitespace) {
+                clipped.removeSubrange(tag.lowerBound...)
             }
             self.result = clipped + " […]"
         } else {
