@@ -40,7 +40,9 @@ enum VoiceReadBack {
                     continue
                 }
             }
-            if let spoken = spokenLine(line) { lines.append(spoken) }
+            // A persona's narrated actions ("*sets down the gavel*") are
+            // left out, as in Classic voice and Read Aloud.
+            if let spoken = spokenLine(SpokenTextFilter.filter(line)) { lines.append(spoken) }
         }
         // Emoji go too; the spaces one leaves (before a full stop, at a
         // line's start, doubled) go with it.

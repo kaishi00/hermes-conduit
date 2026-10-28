@@ -2097,7 +2097,8 @@ What a spoken reply leaves out that the chat keeps: a persona's narrated
 actions in single asterisks or underscores, and emoji.
 
 **Siblings:** Classic voice (phone, CarPlay; streamed) · Read Aloud and its
-Now Playing title · live read-back of a reply (emoji only) · Gemini Live and
+Now Playing title · live read-back of a reply ("read me the last reply") ·
+Local Live (Hermes' words, streamed) · Gemini Live, Qwen Live, Grok Live and
 GPT-Live with the Hermes personality (told not to say actions) · the chat
 transcript (never filtered)
 
@@ -2105,13 +2106,15 @@ transcript (never filtered)
 - The filter: `Conduit/Voice/SpokenTextFilter.swift` (firstActionMarker, closingMarker, speakable)
 - Classic voice: `Conduit/Voice/VoiceConversationController.swift` (spokenTextFilter)
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift`, `Conduit/Voice/ReadAloudNowPlaying.swift` (title)
-- Read-back: `Conduit/Voice/VoiceReadBack.swift` (speakable only)
+- Read-back: `Conduit/Voice/VoiceReadBack.swift` (plainSpeech, line by line)
+- Local Live: `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift` (actions, after SpokenVisualSplitter)
 - Persona instructions: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift`, `Conduit/Voice/GPTLive/GPTLiveConversationController.swift`
-- Tests: `ConduitTests/GeminiLiveVoiceTests.swift` (testSpokenTextFilter…)
+- Tests: `ConduitTests/GeminiLiveVoiceTests.swift` (testSpokenTextFilter…), `ConduitTests/VoiceBackgroundJobTests.swift` (plainSpeech), `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift` (testLocalLiveTurnLeavesNarratedActionsOutOfSpeech)
 
 **Rulings**
 - An action is three or more words between a single `*` or `_` pair on one line; emphasis ("*really*"), bold and snake_case are spoken (2026-09-28, 223fca85).
 - As in Markdown, a marker followed by a space opens nothing and one after a space closes nothing, so "price * units sold * 12" is spoken; one after a space with a word right after it opens again (2026-10-28, #1429). The Now Playing title strips emphasis markers but keeps a spaced `*` too.
+- Every path that speaks Hermes' own words drops actions, so a reply sounds the same in Classic voice, Read Aloud, a live read-back and Local Live; the live models that speak for themselves are told not to say them (2026-10-28, #1430).
 
 **Open gaps**
 - None known.

@@ -2717,6 +2717,8 @@ extension VoiceConversationControllerTests {
         ].joined(separator: "\n")
         XCTAssertEqual(VoiceReadBack.plainSpeech(markdown), expected)
         XCTAssertEqual(VoiceReadBack.plainSpeech("Already plain."), "Already plain.")
+        XCTAssertEqual(VoiceReadBack.plainSpeech("*sets down the gavel* Order.\n- Fine, *really*: 5 * 3"), "Order.\nFine, really: 5 * 3.",
+                       "a narrated action is left out; emphasis and a spaced * are read")
         XCTAssertEqual(VoiceReadBack.plainSpeech("Summary\n=======\nAll good."), "Summary\nAll good.", "a heading's underline isn't read")
         XCTAssertEqual(VoiceReadBack.plainSpeech("Item | Cost\n--- | ---\nMilk | $2"), "Item, Cost.\nMilk, $2.", "a table without outer pipes")
         XCTAssertEqual(VoiceReadBack.plainSpeech("## Done | Blocked"), "Done, Blocked.", "a heading isn't a table row, and its pipe isn't read")

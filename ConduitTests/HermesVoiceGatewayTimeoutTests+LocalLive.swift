@@ -663,6 +663,23 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(runner.isFollowingReply)
     }
 
+    func testLocalLiveTurnLeavesNarratedActionsOutOfSpeech() async {
+        let script = LocalLiveTurnScript()
+        let runner = script.makeRunner()
+        runner.start(turnID: "t1", text: "Is it done?")
+        await localLiveSettle(until: { !script.submitted.isEmpty })
+        let chunks = ["Order! *sets", " down the gav", "el* The heist ", "is done, 5 * 3", " ways."]
+        for chunk in chunks {
+            runner.observe(.messageDelta(sessionId: "rt-1", text: chunk))
+        }
+        runner.observe(.messageComplete(sessionId: "rt-1", messageId: "m1", content: chunks.joined(), reasoning: nil))
+        // A dropped action leaves a space, which can double across deltas.
+        let said = script.spoken.map { $0.replacingOccurrences(of: "t1:", with: "") }.joined()
+            .replacingOccurrences(of: "  ", with: " ")
+        XCTAssertEqual(said, "Order! The heist is done, 5 * 3 ways.", "the action is left out, the spaced * is said")
+        XCTAssertEqual(script.done, ["t1"])
+    }
+
     func testLocalLiveTurnShowsWhatsToBeSeenAndSaysTheRest() async {
         let script = LocalLiveTurnScript()
         let runner = script.makeRunner()
