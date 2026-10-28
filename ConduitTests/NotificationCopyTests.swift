@@ -181,6 +181,9 @@ final class NotificationCopyTests: XCTestCase {
         XCTAssertEqual(named.title, "Groceries", "another chat keeps its title")
         XCTAssertEqual(named.subtitle, "Jarvis", "and says which bot, as for a bot named in Hermes")
         XCTAssertNil(NotificationCopy.preview(NotificationCopy.named(chat, mainName: nil)).subtitle)
+        let hostNamed: [String: Any] = ["title_label": "response.ready", "session_title": "Groceries", "profile": "default", "profile_name": "Hermes"]
+        XCTAssertNil(NotificationCopy.preview(NotificationCopy.named(hostNamed, mainName: nil)).subtitle, "a host's \"Hermes\" is an unnamed main bot")
+        XCTAssertEqual(NotificationCopy.preview(NotificationCopy.named(hostNamed, mainName: "Jarvis")).subtitle, "Jarvis")
 
         let other: [String: Any] = ["title_label": "response.ready", "session_title": "Hermes", "profile": "atlas"]
         XCTAssertEqual(NotificationCopy.named(other, mainName: "Jarvis")["session_title"] as? String, "Hermes", "only the main profile")

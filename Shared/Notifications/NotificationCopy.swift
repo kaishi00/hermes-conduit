@@ -100,15 +100,16 @@ enum NotificationCopy {
     static func named(_ content: [String: Any], mainName: String?) -> [String: Any] {
         let profile = nonEmpty(content["profile"])?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard profile == "default" else { return content }
+        // "Default" or "Hermes" names it no more than an unnamed main bot.
         let given = nonEmpty(content["profile_name"])?.trimmingCharacters(in: .whitespacesAndNewlines)
-            .flatMap { $0.lowercased() == "default" ? nil : $0 }
+            .flatMap { ["default", mainBotName.lowercased()].contains($0.lowercased()) ? nil : $0 }
         let renamed = mainName?.trimmingCharacters(in: .whitespacesAndNewlines)
             .flatMap { $0.isEmpty || $0 == mainBotName ? nil : $0 }
         let name = renamed ?? given ?? mainBotName
         // An older plugin titles an unnamed main bot's chat "Default".
         let hostNames = given.map { [$0] } ?? ["Default", mainBotName]
         var content = content
-        if renamed != nil { content["profile_name"] = name }
+        if renamed != nil || given != nil { content["profile_name"] = name } else { content.removeValue(forKey: "profile_name") }
         if let chat = nonEmpty(content["session_title"])?.trimmingCharacters(in: .whitespacesAndNewlines),
            hostNames.contains(where: { $0.caseInsensitiveCompare(chat) == .orderedSame }) {
             content["session_title"] = name
