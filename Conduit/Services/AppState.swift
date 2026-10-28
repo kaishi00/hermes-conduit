@@ -27492,6 +27492,7 @@ final class AppState: ObservableObject {
         // another opens while the rewind runs.
         let editDraftKey = durableComposerDraftKeyOnScreen
         let editDashboardID = activeDashboardID
+        let editAuthorName = conversationAgentIdentity.name
         // A bot chat's transcript lives in the bot profile's store; any
         // other chat's in the workspace's, which needs no profile.
         let profile = botScopeProfile(forSessionIDs: [sessionID], workspaceProfile: activeProfile)
@@ -27569,13 +27570,13 @@ final class AppState: ObservableObject {
         // Taken back on Hermes: Edit and resend's words go back now, into
         // their own chat's draft, whatever happens to the reopen below.
         if editing != nil, !text.isEmpty {
-            putRewoundTextBack(text, key: editDraftKey, dashboardID: editDashboardID)
+            putRewoundTextBack(text, key: editDraftKey, dashboardID: editDashboardID, authorName: editAuthorName)
         }
         // A chat left while the rewind ran keeps an /undo's or /retry's
         // words in its draft, as Edit and resend's.
         func keepWordsInTheirChat() -> Bool {
             if editing == nil, !text.isEmpty {
-                putRewoundTextBack(text, key: editDraftKey, dashboardID: editDashboardID)
+                putRewoundTextBack(text, key: editDraftKey, dashboardID: editDashboardID, authorName: editAuthorName)
             }
             return true
         }
@@ -27655,10 +27656,10 @@ final class AppState: ObservableObject {
     /// there, a quoted reply as its "Replying to" chip. The composer puts
     /// them in its field when that chat is on screen, else into the chat's
     /// stored draft, as for a send that didn't go.
-    private func putRewoundTextBack(_ text: String, key: ComposerDraftKey, dashboardID: UUID?) {
+    private func putRewoundTextBack(_ text: String, key: ComposerDraftKey, dashboardID: UUID?, authorName: String) {
         let reply = ReplyQuoteEnvelope.parse(text)
         let replyReference = reply.map {
-            ComposerReplyReference(authorName: conversationAgentIdentity.name, text: $0.quote)
+            ComposerReplyReference(authorName: authorName, text: $0.quote)
         }
         guard let dashboardID else {
             // Restore requests and stored drafts belong to a saved

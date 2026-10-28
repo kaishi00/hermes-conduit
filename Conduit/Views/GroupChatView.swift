@@ -150,7 +150,7 @@ struct GroupChatView: View {
                         .reportsGroupRoomRowFrame(id: event.id)
                     }
                     if let pending = appState.pendingRoomMessage {
-                        GroupUserBubble(text: pending.text, members: members, timestamp: nil) {
+                        GroupUserBubble(text: pending.text, members: members, timestamp: nil, eventID: pending.eventID) {
                             if appState.activeRoomSendInFlight {
                                 Text(AppLocalization.string("Sending…"))
                                     .font(.caption2)
@@ -720,7 +720,7 @@ struct GroupUserBubble<Footer: View>: View {
     let members: [GroupMember]
     let timestamp: Double?
     /// The room event it is: its "Replying to" card scrolls to the message
-    /// it quoted. Nil for a send not in the log yet.
+    /// it quoted; a send not in the log yet looks through all of it.
     var eventID: String? = nil
     @ViewBuilder let footer: Footer
 
