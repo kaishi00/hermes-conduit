@@ -116,16 +116,21 @@ struct SpokenMediaTagFilter {
             held = min(held, Self.opening(of: start, in: text))
             break
         }
-        // A Markdown link or image still open may wrap a tag, a "!" may open
-        // an image, and emphasis or a quote may open a tag.
+        // A Markdown link or image still open may wrap a tag, a "!" not
+        // ending a word may open an image ("Hello!" is said), and emphasis
+        // or a quote may open a tag.
         let range = NSRange(text.startIndex..., in: text)
         if let open = Self.openLink.firstMatch(in: text, range: range), let start = Range(open.range, in: text) {
             held = min(held, start.lowerBound)
         }
         var markup = text.endIndex
         while markup > text.startIndex, text.distance(from: markup, to: text.endIndex) < 3,
-              Self.tagOpeners.contains(text[text.index(before: markup)]) || text[text.index(before: markup)] == "!" {
+              Self.tagOpeners.contains(text[text.index(before: markup)]) {
             markup = text.index(before: markup)
+        }
+        if markup == text.endIndex, text.last == "!" {
+            let bang = text.index(before: text.endIndex)
+            if bang == text.startIndex || !(text[text.index(before: bang)].isLetter || text[text.index(before: bang)].isNumber) { markup = bang }
         }
         held = min(held, markup)
         // A directive, written or still being written, goes with its line.
@@ -138,9 +143,11 @@ struct SpokenMediaTagFilter {
             }
             search = open.upperBound
         }
-        // Spaces go with what follows them, and a line's opening markers
-        // ("- ", "**") with a tag that may follow.
-        while held > text.startIndex, text[text.index(before: held)].isWhitespace { held = text.index(before: held) }
+        // Spaces go with a tag that may follow them, and a line's opening
+        // markers ("- ", "**") with one too; with none, it's said as it came.
+        if held < text.endIndex {
+            while held > text.startIndex, text[text.index(before: held)].isWhitespace { held = text.index(before: held) }
+        }
         if said.isEmpty, text[..<held].allSatisfy({ $0.isWhitespace || GatewayMediaTags.leftoverMarkers.contains($0) }) {
             return text.startIndex
         }

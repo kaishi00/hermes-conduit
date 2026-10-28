@@ -2734,6 +2734,11 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testSpokenMediaTagFilterGivesTheSameSpeechHoweverTheReplyIsSplit() {
+        // The same words, whatever the split; a space said before a tag
+        // that came later may stay.
+        func words(_ text: String) -> String {
+            text.components(separatedBy: "\n").map { $0.split(separator: " ").joined(separator: " ") }.joined(separator: "\n")
+        }
         let replies: [(reply: String, said: String)] = [
             ("Here you go MEDIA:/x.png\nAnything else?", "Here you go\nAnything else?"),
             ("![Screenshot](MEDIA:/tmp/My Shot.png)\nThat is it.", "Screenshot\nThat is it."),
@@ -2756,7 +2761,7 @@ extension HermesVoiceGatewayTimeoutTests {
                     spoken += filter.feed(String(reply[index..<end]))
                     index = end
                 }
-                XCTAssertEqual(spoken + filter.finish(), said, "\(reply) split every \(size)")
+                XCTAssertEqual(words(spoken + filter.finish()), said, "\(reply) split every \(size)")
             }
         }
         // A bulleted tag leaves no stray marker for the action filter.
@@ -2776,7 +2781,7 @@ extension HermesVoiceGatewayTimeoutTests {
         // A tag ending a line keeps the line's end, and its file is kept
         // for the call's screen.
         XCTAssertEqual(["Here you go ", "MEDIA:/x.png\n", "Anything else?"].map { filter.feed($0) }.joined() + filter.finish(),
-                       "Here you go\nAnything else?")
+                       "Here you go \nAnything else?")
         XCTAssertEqual(filter.takeFiles(), ["MEDIA:/x.png"])
         XCTAssertEqual(filter.takeFiles(), [])
         // Quoted words after "media:" are words, not a file; a quoted path is a file.
