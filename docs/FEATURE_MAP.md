@@ -1427,7 +1427,7 @@ Watch and CarPlay (not needed: neither shows a transcript)
 
 **Code**
 - Chats: `Conduit/Services/AppState.swift` (performSessionOpenNotingRefusal, presentSavedCopyWhileOpening, recordOfflineChatCopy), `Conduit/Services/OfflineChatCache.swift` (loadTranscript, keptTranscripts), `Conduit/Views/OfflineChatTranscriptView.swift`, `Conduit/Views/ChatView.swift` (the copy's overlay)
-- Bot Chat: `Conduit/Services/AppState.swift` (keepBotChatCopy, botChatCopyOwner, noteBotChatOpen, presentKeptBotChatCopy, keptBotChatCopies)
+- Bot Chat: `Conduit/Services/AppState.swift` (keepBotChatCopy, botChatCopyOwner, noteBotChatOpen, outgoingBotChatCopyOwner and where it's cleared: flushPendingPresentationCache, performSessionOpenNotingRefusal, switchDashboard, createNewSession; presentKeptBotChatCopy, keptBotChatCopies)
 - Group rooms: `Conduit/Services/AppState.swift` (openGroupRoom, parkActiveRoomSend, keptRoomReplays)
 - Tests: `ConduitTests/OfflineChatCacheTests.swift`, `ConduitTests/GroupChatSessionSafetyTests.swift`
 

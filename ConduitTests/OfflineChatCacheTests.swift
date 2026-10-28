@@ -1640,10 +1640,10 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.messages.map(\.id), ["atlas-reply-3"])
     }
 
-    /// An ordinary chat opened over a Bot Chat keeps no copy for that bot,
-    /// though its scroll identity can still name the Bot Chat it replaced
-    /// (#1352): only the id it is open as decides, so reopening the bot
-    /// still shows the bot's own chat.
+    /// An ordinary chat whose other ids name a bot (here its stored id, in
+    /// the registry as Atlas's, as the chat a Bot Chat replaced can be,
+    /// #1352) keeps no copy for that bot: only the id it is open as
+    /// decides, so reopening the bot still shows the bot's own chat.
     func testAnOrdinaryChatNamingABotKeepsNoCopyForIt() async throws {
         useInMemoryKeychain()
         var opens = 0
@@ -1656,7 +1656,7 @@ final class OfflineChatCacheTests: XCTestCase {
                 let owner = profile ?? "ordinary"
                 return SessionResumeResult(
                     sessionId: profile == nil ? sessionID : "\(owner)-runtime-\(opens)",
-                    storedSessionId: profile == nil ? sessionID : "atlas-chat",
+                    storedSessionId: profile == nil ? "ordinary-stored" : "atlas-chat",
                     messages: [ChatMessage(id: "\(owner)-reply-\(opens)", role: .assistant, content: "Hi", timestamp: "1")],
                     snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                 )
@@ -1676,6 +1676,7 @@ final class OfflineChatCacheTests: XCTestCase {
 
         let openedAtlas = await appState.openBotChat(for: atlas)
         XCTAssertTrue(openedAtlas)
+        appState.noteBotChatSessionForTesting("ordinary-stored", profile: "atlas")
         let openedOrdinary = await appState.openSession("ordinary-chat")
         XCTAssertTrue(openedOrdinary)
         XCTAssertEqual(appState.messages.map(\.id), ["ordinary-reply-2"])
