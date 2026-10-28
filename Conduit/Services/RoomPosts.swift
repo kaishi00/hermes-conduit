@@ -134,12 +134,20 @@ enum RoomPostText {
     /// `takesPosts` false is a room that ended (`roomOver`) or one your
     /// agents left: a post still pending there can't go any further, unless
     /// it may still settle (`settling`: your Hermes is still asked about it).
+    /// `waitedOut`: asked about long enough without settling, so it may
+    /// still be posted. `canAsk` false: the plugin no longer posts, so
+    /// nothing can be asked about it.
     static func rowState(post: RoomPost?, inFlight: Bool, takesPosts: Bool = true, roomOver: Bool = false,
-                         settling: Bool = false) -> RowState {
+                         settling: Bool = false, waitedOut: Bool = false, canAsk: Bool = true) -> RowState {
         if inFlight { return .sending }
+        if waitedOut { return .closed(AppLocalization.string("Not confirmed yet: it may still be posted.")) }
         guard takesPosts else {
-            if settling { return .sending }
+            // A refusal's reason stands, whatever the plugin says now.
             if case .refused(let error)? = post?.status { return .closed(refusal(error)) }
+            guard canAsk else {
+                return .closed(AppLocalization.string("Can't check this post: update the Conduit plugin on your Hermes."))
+            }
+            if settling { return .sending }
             return .closed(refusal(roomOver ? "ended" : "not_in"))
         }
         guard let status = post?.status else { return .notDelivered }
@@ -210,7 +218,8 @@ extension RoomPeople {
         var posts: [String: String] = [:]
         for post in response["posts"] as? [[String: Any]] ?? [] {
             guard let eventID = post["event_id"] as? String, !eventID.isEmpty,
-                  let by = post["by"] as? String, !by.isEmpty else { continue }
+                  let by = post["by"] as? String, !by.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { continue }
             posts[eventID] = by
         }
         return posts

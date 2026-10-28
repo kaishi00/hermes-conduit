@@ -281,8 +281,34 @@ extension GroupChatModelsTests {
 
         for _ in 0..<AppState.roomCopyPostWaitLimit { await appState.pollActiveRoom() }
         XCTAssertFalse(appState.activeRoomCopyPostUnsettled, "Copy and Dismiss, after a while")
+        XCTAssertTrue(appState.activeRoomCopyPostWaitedOut)
+        XCTAssertEqual(
+            RoomPostText.rowState(post: appState.activeRoomCopyPost, inFlight: false, takesPosts: false, roomOver: true,
+                                  settling: false, waitedOut: true),
+            .closed(AppLocalization.string("Not confirmed yet: it may still be posted.")),
+            "not called not posted: your Hermes may still post it"
+        )
         appState.dismissActiveRoomCopyPost()
         XCTAssertNil(appState.pendingRoomMessage)
+    }
+
+    @MainActor
+    func testAPostSendingTooLongInARoomStillGoingCanBeDismissed() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy()])
+        let appState = try await postsOpenCopy(routes)
+        await appState.sendGroupRoomMessage("slow link")
+        // While it's sending, it holds the next message and can't go.
+        appState.dismissActiveRoomCopyPost()
+        XCTAssertNotNil(appState.pendingRoomMessage)
+        XCTAssertFalse(appState.activeRoomCopyPostWaitedOut)
+
+        for _ in 0..<AppState.roomCopyPostWaitLimit { await appState.pollActiveRoom() }
+        XCTAssertTrue(appState.activeRoomCopyTakesPosts)
+        XCTAssertTrue(appState.activeRoomCopyPostWaitedOut)
+        appState.dismissActiveRoomCopyPost()
+        XCTAssertNil(appState.pendingRoomMessage)
+        let next = await appState.sendGroupRoomMessage("next")
+        XCTAssertTrue(next, "the composer takes the next one")
     }
 
     @MainActor
@@ -408,16 +434,42 @@ extension GroupChatModelsTests {
         await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
         XCTAssertEqual(appState.pendingRoomMessage?.text, "parked")
         XCTAssertFalse(appState.activeRoomCopyPostUnsettled)
+        XCTAssertEqual(
+            RoomPostText.rowState(post: appState.activeRoomCopyPost, inFlight: false,
+                                  takesPosts: appState.activeRoomCopyTakesPosts, canAsk: appState.canPostInRoomCopies),
+            .closed(AppLocalization.string("Can't check this post: update the Conduit plugin on your Hermes.")),
+            "not said to be refused: it can't be asked about"
+        )
+        // One already refused keeps its reason.
+        let refused = RoomPost(eventID: "conduit-1", text: "parked", status: .refused("too_long"))
+        XCTAssertEqual(RoomPostText.rowState(post: refused, inFlight: false, takesPosts: false, canAsk: false),
+                       .closed(AppLocalization.string("Not posted: it's too long for this room.")))
         appState.dismissActiveRoomCopyPost()
         XCTAssertNil(appState.pendingRoomMessage)
+    }
+
+    @MainActor
+    func testAnEndedCopyAsksForYourNameAgainWithoutPolling() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(status: "ended", reason: "disbanded", lastSeq: 1)])
+        var yours = copiesEvent(1, kind: "message.user", actor: ["kind": "user", "id": "furina"], text: "Eric: bye")
+        yours["post"] = ["by": NSNull()]
+        routes.events = [yours]
+        let appState = try await postsOpenCopy(routes)
+        XCTAssertFalse(appState.isPollingActiveRoom)
+        await copiesWait("the opening people read", until: { !routes.peopleReads.isEmpty })
+
+        routes.people = ["ok": true, "room_id": "conduit-9", "home": "Furina", "you": "Eric", "members": [[String: Any]]()]
+        await copiesWait("your name, asked again", until: { appState.activeRoomPostAttribution.you == "Eric" })
+        let first = try XCTUnwrap(appState.activeRoomReplay.events.first)
+        XCTAssertEqual(appState.activeRoomPostAttribution.text(of: first), "bye")
     }
 
     @MainActor
     func testYourNameIsReadAgainWhenTheOpeningReadFailed() async throws {
         let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 1)])
         var yours = copiesEvent(1, kind: "message.user", actor: ["kind": "user", "id": "furina"], text: "Eric: hi")
-        // An empty name is yours too.
-        yours["post"] = ["by": ""]
+        // An empty or blank name is yours too.
+        yours["post"] = ["by": "  "]
         routes.events = [yours]
         let appState = try await postsOpenCopy(routes)
         await copiesWait("the opening people read", until: { !routes.peopleReads.isEmpty })
@@ -483,6 +535,45 @@ extension GroupChatModelsTests {
                                post: GroupEventPost(by: "Mona"))
         XCTAssertTrue(GroupEventRow.sameSpeaker(events[3], monaThird, attribution: attribution))
         XCTAssertTrue(GroupEventRow.sameSpeaker(events[0], events[0], attribution: .none), "your own room, as before")
+    }
+
+    @MainActor
+    func testYourRoomReadsThePeopleAgainAfterAFailedRead() async throws {
+        let room = GroupRoom(
+            roomID: "conduit-5", name: "Picnic",
+            members: [
+                GroupMember(memberID: "m-nahida", profile: "nahida", handle: "nahida", displayName: "Nahida",
+                            target: ["kind": .string("local")], extra: [:]),
+                GroupMember(memberID: "m-laifu", profile: nil, handle: "laifu", displayName: "Laifu",
+                            target: ["kind": .string("peer")], extra: [:]),
+            ],
+            authorityGatewayID: "gw-a", authorityEpoch: 1, revision: 1, createdAt: 0, updatedAt: 0,
+            disbandedAt: nil, latestSeq: 1
+        )
+        let routes = CopiesRoutes(copies: [])
+        // Mona's post came before the people could be read.
+        routes.ownEvents = [GroupEvent(
+            roomID: "conduit-5", seq: 1, eventID: "user:aa", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "eric", profile: nil, displayName: nil, connectionID: nil),
+            authorityEpoch: 1, payload: ["text": .string("Mona: hi"), "thread_id": .string("main")], createdAt: 0
+        )]
+        let appState = try copiesAppState(routes, room: room)
+        copiesConnect(appState)
+        appState.applyNotifierPluginReport(postsPluginReport)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        await copiesWait("the opening people read", until: { !routes.peopleReads.isEmpty })
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertNil(appState.activeRoomPostAttribution.posts["user:aa"])
+
+        // A quiet tick asks again, and her post is hers.
+        routes.people = ["ok": true, "room_id": "conduit-5", "home": NSNull(), "members": [[String: Any]](),
+                         "posts": [["event_id": "user:aa", "seq": 1, "by": "Mona"]]]
+        await appState.pollActiveRoom()
+        await copiesWait("the people read again", until: { appState.activeRoomPostAttribution.posts["user:aa"] == "Mona" })
+        let event = try XCTUnwrap(appState.activeRoomReplay.events.first { $0.eventID == "user:aa" })
+        XCTAssertEqual(appState.activeRoomPostAttribution.text(of: event), "hi")
+        appState.closeGroupRoom()
     }
 
     func testYourOwnRoomNamesLinkedPeoplesPosts() throws {
