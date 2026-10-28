@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import Conduit
 
 /// Settings > Chat > Predictive (Predictive.swift): what Conduit asks the
@@ -597,5 +598,21 @@ extension ChatTypographyTests {
         store.showReplies([.init(text: "Thanks!", p: 0.8)], for: anchor)
         XCTAssertTrue(store.tapIsGuarded())
         XCTAssertFalse(store.tapIsGuarded(now: Date().addingTimeInterval(Predictive.tapGuard + 0.1)))
+    }
+
+    /// A reply chip sends its whole text, so in the row's horizontal scroll
+    /// view (no width offered) a long guess wraps at 250 pt instead of being
+    /// cut to one line, and a short one keeps its own width.
+    @MainActor
+    func testAReplyChipWrapsItsWholeTextPastItsWidth() {
+        func size(_ text: String) -> CGSize {
+            let host = UIHostingController(rootView: WrapsPastWidth(maxWidth: 250) { Text(text) }.fixedSize())
+            return host.sizeThatFits(in: CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude))
+        }
+        let short = size("Oui")
+        let long = size("Vérifie s'il reste des billets pour le Can Can de 6 PM samedi soir")
+        XCTAssertLessThan(short.width, 100)
+        XCTAssertLessThanOrEqual(long.width, 250)
+        XCTAssertGreaterThan(long.height, short.height * 1.5, "the long guess takes a second line")
     }
 }

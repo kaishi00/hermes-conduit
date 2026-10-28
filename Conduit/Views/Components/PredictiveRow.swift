@@ -88,7 +88,7 @@ struct PredictiveRow: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.conduitAura.opacity(isFirst ? 0.6 : 0.35), lineWidth: 1)
         )
-        // A 44 pt target around the smaller capsule.
+        // A 44 pt target around the smaller chip.
         .frame(minHeight: 44)
         .contentShape(Rectangle())
         .onTapGesture { send(guess.text) }
@@ -213,16 +213,16 @@ struct PredictiveFollowUpTag: View {
     }
 }
 
-/// Its content at its natural width up to `maxWidth`, and past that wrapped
-/// to `maxWidth` at whatever height that takes. A horizontal scroll view
-/// offers no width at all, so a plain `frame(maxWidth:)` there sizes text
-/// for one line and then cuts it short.
-private struct WrapsPastWidth: Layout {
+/// Its content at its natural width up to `maxWidth` (or the width offered,
+/// when narrower), and past that wrapped at whatever height that takes. A
+/// horizontal scroll view offers no width at all, so a plain
+/// `frame(maxWidth:)` there sizes text for one line and then cuts it short.
+struct WrapsPastWidth: Layout {
     let maxWidth: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         guard let content = subviews.first else { return .zero }
-        return content.sizeThatFits(contentProposal(content))
+        return content.sizeThatFits(contentProposal(proposal, content: content))
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
@@ -230,8 +230,9 @@ private struct WrapsPastWidth: Layout {
         content.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 
-    private func contentProposal(_ content: LayoutSubview) -> ProposedViewSize {
-        let ideal = content.sizeThatFits(.unspecified).width
-        return ProposedViewSize(width: min(ideal, maxWidth), height: nil)
+    private func contentProposal(_ proposal: ProposedViewSize, content: LayoutSubview) -> ProposedViewSize {
+        var width = min(content.sizeThatFits(.unspecified).width, maxWidth)
+        if let offered = proposal.width, offered.isFinite { width = min(width, offered) }
+        return ProposedViewSize(width: width, height: nil)
     }
 }

@@ -265,6 +265,8 @@ final class ChatScrollEngine: ObservableObject {
     private var surfaceCallbackDepth = 0
     /// A bottom bar check waits for the next turn of the main queue.
     private var bottomBarCheckScheduled = false
+    /// The bottom inset the last bar check saw.
+    private var lastBottomBarInset: CGFloat?
     private var lastObservedOffsetY: CGFloat?
     private var pastBottomCheckScheduled = false
     /// Bumped when the reader or a command takes over, so a pending
@@ -421,18 +423,24 @@ final class ChatScrollEngine: ObservableObject {
     /// out again, so a following reader was left with the reply's end under
     /// the bar (the chips over its actions). Checked now, and once more on
     /// the next turn of the main queue, in case the inset lands after the
-    /// bar's own layout; one check waits at a time. A reader browsing is
-    /// left browsing: a bar shrinking under them is not their scroll back
-    /// to the bottom.
+    /// bar's own layout; one check waits at a time, and each runs only when
+    /// the inset moved. A reader browsing is left browsing: a bar shrinking
+    /// under them is not their scroll back to the bottom.
     func bottomBarResized() {
-        layoutChanged(relatches: false)
+        checkBottomBarInset()
         guard !bottomBarCheckScheduled else { return }
         bottomBarCheckScheduled = true
         schedule(0) { [weak self] in
             guard let self else { return }
             self.bottomBarCheckScheduled = false
-            self.layoutChanged(relatches: false)
+            self.checkBottomBarInset()
         }
+    }
+
+    private func checkBottomBarInset() {
+        guard let inset = surface?.insetBottom, inset != lastBottomBarInset else { return }
+        lastBottomBarInset = inset
+        layoutChanged(relatches: false)
     }
 
     /// The offset changed (user scroll, deceleration, or one of ours).
