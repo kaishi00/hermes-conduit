@@ -498,6 +498,38 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 3252)
     }
 
+    /// A following reader who scrolls well away while the chips appear stays
+    /// where they went.
+    func testAFollowingReaderScrollingAwayWhileTheBarGrowsStaysBrowsing() {
+        let (engine, surface) = makeEngine()
+        surface.isTracking = true
+        engine.userDragBegan()
+        surface.contentOffsetY = 1000
+        engine.surfaceScrolled()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertEqual(engine.mode, .browsing)
+        XCTAssertEqual(surface.contentOffsetY, 1000)
+    }
+
+    /// Just past the near-bottom distance once the chips are counted, but
+    /// within it as the chat was when the finger came down: follows again.
+    func testAFollowingReaderIsMeasuredAgainstTheBarAtDragStart() {
+        let (engine, surface) = makeEngine()
+        surface.isTracking = true
+        engine.userDragBegan()
+        surface.contentOffsetY = 3170
+        engine.surfaceScrolled()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertTrue(engine.isFollowingLatest, "30 pt from the bottom it had; 82 pt from the new one")
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+    }
+
     /// The inset went back to a value a bar check saw before, by an
     /// ordinary layout in between: the next bar change is still taken.
     func testABottomBarBackAtAnEarlierInsetStillPins() {

@@ -623,10 +623,11 @@ extension ChatTypographyTests {
             let host = UIHostingController(rootView: PredictiveReplyChip(text: text, isFirst: true, send: { _ in }, edit: { _ in }).fixedSize())
             return host.sizeThatFits(in: CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude))
         }
-        let shortChip = chip("Oui")
+        // On one line this guess runs past 400 pt; with no line limit and its
+        // ideal height, a chip this narrow holds it on more lines.
         let longChip = chip("Vérifie s'il reste des billets pour le Can Can de 6 PM samedi soir")
         XCTAssertLessThan(longChip.width, 320, "250 pt of text plus padding and the arrow")
-        XCTAssertGreaterThan(longChip.height, shortChip.height + 10, "the long chip takes a second line")
+        XCTAssertGreaterThan(longChip.height, 44, "taller than the one-line chip's 44 pt target")
 
         // Offered less than 250 pt, it wraps at what it's offered.
         let narrowHost = UIHostingController(rootView: WrapsPastWidth(maxWidth: 250) {

@@ -273,6 +273,8 @@ final class ChatScrollEngine: ObservableObject {
     private var closingBarGap = false
     /// Whether the reader was following when the current drag began.
     private var followingAtDragStart = false
+    /// The bottom inset when the current drag began.
+    private var insetAtDragStart: CGFloat?
     private var lastObservedOffsetY: CGFloat?
     private var pastBottomCheckScheduled = false
     /// Bumped when the reader or a command takes over, so a pending
@@ -601,6 +603,7 @@ final class ChatScrollEngine: ObservableObject {
         landedAtReplyStart = false
         emit(.cancelAutomaticRestoration)
         followingAtDragStart = mode == .following
+        insetAtDragStart = surface?.insetBottom
         if mode != .browsing {
             setMode(.browsing)
             emit(.persistSnapshot(renderedSessionKey))
@@ -621,9 +624,12 @@ final class ChatScrollEngine: ObservableObject {
            surface.distanceFromBottom <= Self.nearBottomTolerance {
             setMode(.following)
         }
-        // One who was following when the finger came down follows again,
-        // pinned above the bar, rather than being left where it moved them.
-        if barMoved, followingAtDragStart, mode == .browsing, surface?.isDecelerating == false {
+        // One who was following when the finger came down, and let go near
+        // the bottom as it was before the bar moved, follows again, pinned
+        // above the bar; one who scrolled away stays where they went.
+        if barMoved, followingAtDragStart, mode == .browsing,
+           let surface, !surface.isDecelerating, let startInset = insetAtDragStart,
+           surface.distanceFromBottom - (surface.insetBottom - startInset) <= Self.nearBottomTolerance {
             setMode(.following)
         }
         if surface?.isDecelerating == false {
