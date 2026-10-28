@@ -3354,12 +3354,13 @@ describes them
 
 **Rulings**
 - On iOS 26 a bar is a `safeAreaBar` with the system's soft scroll edge. Before iOS 26, and on a Mac, it is a `safeAreaInset` over Conduit's own fading material. A bar and its fade read the same switch (`V2SystemScrollEdge.isUsed`), so they always agree (2026-10-27, #1397: on macOS 27 the composer bar's edge hid the transcript well above the composer, #1357).
+- The tab bar's own fade (`V2LegacyTabBarEdge`) is only as wide as the screen it sits under: under the list column when the bar sits there, the whole window when it is centered. Across the window it covered the composer and voice button of the chat beside the list (2026-10-28, #1444, #1439).
 
 **Open gaps**
 - The Mac fallback isn't confirmed on macOS 27; it waits on the reporter's TestFlight check (#1357).
 - The system navigation bar over a chat keeps the system's top edge on a Mac too (`V2FadingBarBackdrop`, `V2SoftTopScrollEdge` in `Conduit/Views/ChatView.swift`): it is the navigation bar's own, not a bar of ours, and #1357 only showed the bottom. If macOS 27 draws it too tall as well, it moves to the same switch.
 
-**Checked:** 2026-10-27, #1397.
+**Checked:** 2026-10-28, #1444.
 
 ## Readable width on wide windows
 
