@@ -24,8 +24,9 @@ final class ComposerReturnKeyTests: XCTestCase {
     func testTheComposerFieldsTurnOffInlinePredictionOnlyOnAMac() {
         XCTAssertEqual(ReturnKeyTextView.inlinePredictionType(onMac: true), .no)
         XCTAssertEqual(ReturnKeyTextView.inlinePredictionType(onMac: false), .default)
-        XCTAssertEqual(ImagePasteTextView(frame: .zero, textContainer: nil).inlinePredictionType, .default)
-        XCTAssertEqual(ReturnKeyTextView().inlinePredictionType, .default)
+        let here = ReturnKeyTextView.inlinePredictionType(onMac: ProcessInfo.processInfo.isiOSAppOnMac)
+        XCTAssertEqual(ImagePasteTextView(frame: .zero, textContainer: nil).inlinePredictionType, here)
+        XCTAssertEqual(ReturnKeyTextView().inlinePredictionType, here)
     }
     override func setUp() {
         super.setUp()
