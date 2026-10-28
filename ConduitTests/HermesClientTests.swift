@@ -3586,6 +3586,31 @@ extension HermesClientTests {
         XCTAssertFalse(outgoingDropped)
     }
 
+    /// The successor's pings would wait behind a large frame still being
+    /// written and close a working socket (#1265): the switch opens its own.
+    func testASocketStillWritingALargeFrameIsNotHandedOn() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        socket.holdsSendCompletion = true
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let picture = String(repeating: "A", count: HermesClient.largeFrameBytes)
+        let upload = Task { try await outgoing.attachImage("s1", base64: picture, filename: "photo.jpg") }
+        try await sent.wait("the image upload to go out")
+        socket.onSend = nil
+
+        XCTAssertFalse(outgoing.canHandOffSocket)
+        let incoming = makeClient(transport: transport, profile: "work")
+        XCTAssertFalse(outgoing.handOffSocket(to: incoming))
+        XCTAssertTrue(outgoing.isConnected)
+        XCTAssertFalse(incoming.isConnected)
+
+        socket.finishHeldSends()
+        await flushMainActor()
+        XCTAssertTrue(outgoing.canHandOffSocket, "Once the frame is written the socket can be handed on")
+        upload.cancel()
+        outgoing.disconnect()
+    }
+
     func testASocketIsNotHandedOnToAnotherDashboard() async throws {
         let (outgoing, socket, transport) = try await connectedForHandOff()
         let elsewhere = HermesClient(

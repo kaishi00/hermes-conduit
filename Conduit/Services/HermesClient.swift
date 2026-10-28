@@ -1257,7 +1257,7 @@ final class HermesClient: ObservableObject {
     /// changed, when there's no open socket to hand on.
     @discardableResult
     func handOffSocket(to successor: HermesClient) -> Bool {
-        guard let socket, isConnected, socketHasOpened, !closedIntentionally,
+        guard canHandOffSocket, let socket,
               successor !== self, successor.socket == nil,
               successor.connection.baseUrl == connection.baseUrl else { return false }
         closedIntentionally = true
@@ -1269,6 +1269,16 @@ final class HermesClient: ObservableObject {
         successor.adoptSocket(socket, transport: transport, from: self)
         transport = nil
         return true
+    }
+
+    /// Whether `handOffSocket` would hand the socket on: it's open, no large
+    /// frame is still being written (the successor's pings would wait
+    /// behind it and close the socket, #1265), and the gateway has answered
+    /// this socket's `client.capabilities` (its reply would come to a
+    /// client that never asked, and the successor wouldn't advertise again).
+    var canHandOffSocket: Bool {
+        socket != nil && isConnected && socketHasOpened && !closedIntentionally
+            && requestsBeingWritten.isEmpty && !capabilityReplyPending
     }
 
     private func adoptSocket(

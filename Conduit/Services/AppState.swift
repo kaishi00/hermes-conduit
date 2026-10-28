@@ -18596,9 +18596,10 @@ final class AppState: ObservableObject {
 
     /// The connected client whose socket a profile switch on
     /// `savedConnection` hands to the new profile's client, or nil when the
-    /// switch opens its own (no socket open, or another dashboard's).
+    /// switch opens its own (no socket open, another dashboard's, or one
+    /// that can't be handed on yet).
     private func socketToKeepForProfileSwitch(within savedConnection: HermesConnection) -> HermesClient? {
-        guard let client, client.isConnected,
+        guard let client, client.canHandOffSocket,
               client.connection.baseUrl == savedConnection.baseUrl else { return nil }
         return client
     }
