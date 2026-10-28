@@ -352,6 +352,11 @@ extension AppState {
         Set((currentLinkedRoomCopies?.copies ?? []).map(\.id))
     }
 
+    /// The same, nil until the copies are read for the dashboard in use.
+    var readLinkedRoomCopyIDs: Set<String>? {
+        currentLinkedRoomCopies.map { Set($0.copies.map(\.id)) }
+    }
+
     /// Reads the copies. A read that fails keeps what was read last, and
     /// one that a sign-out or another dashboard overtook is dropped, as the
     /// invites' is.

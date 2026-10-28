@@ -10738,6 +10738,10 @@ final class AppState: ObservableObject {
     /// A poll asked for another while one was under way: it runs next, so
     /// a post that came in meanwhile is named too.
     private var activeRoomPeopleRereadWanted = false
+    /// A copy's people reads for your name this visit (the opening read
+    /// failed), up to `roomCopyNameReadLimit`.
+    private var activeRoomCopyNameReads = 0
+    static let roomCopyNameReadLimit = 5
     /// Whose the open room's people's posted messages are (RoomPosts.swift).
     @Published private(set) var activeRoomPostAttribution = RoomPostAttribution.none
     /// In a room someone else hosts, how your pending post stands as your
@@ -10962,10 +10966,14 @@ final class AppState: ObservableObject {
     private func pruneRoomStores(liveRoomIDs: Set<String>) {
         guard let dashboardID = activeDashboardID else { return }
         let prefix = "\(dashboardID.uuidString)|"
-        // Rooms other people host are kept by their copies, not this list.
-        let live = liveRoomIDs.union(linkedRoomCopyInviteIDs)
+        // Rooms other people host (keyed by Link and room, with a slash)
+        // are kept by their copies, not this list, and until those are read.
+        let copies = readLinkedRoomCopyIDs
         func isGone(_ key: String) -> Bool {
-            key.hasPrefix(prefix) && !live.contains(String(key.dropFirst(prefix.count)))
+            guard key.hasPrefix(prefix) else { return false }
+            let id = String(key.dropFirst(prefix.count))
+            if id.contains("/") { return copies.map { !$0.contains(id) } ?? false }
+            return !liveRoomIDs.contains(id)
         }
         parkedRoomOutboxes = parkedRoomOutboxes.filter { !isGone($0.key) }
         groupRoomDrafts = groupRoomDrafts.filter { !isGone($0.key) }
@@ -11692,8 +11700,10 @@ final class AppState: ObservableObject {
         guard let surface = activeRoomSurface else { return }
         let attribution = activeRoomPostAttribution
         if surface.copy != nil {
-            guard attribution.you == nil,
+            // Each tick until it's known, a few times a visit.
+            guard attribution.you == nil, activeRoomCopyNameReads < Self.roomCopyNameReadLimit,
                   activeRoomReplay.events.contains(where: { attribution.poster(of: $0) == .you }) else { return }
+            if !activeRoomPeopleRereading { activeRoomCopyNameReads += 1 }
         } else {
             guard surface.room.members.contains(where: \.isPeer), !attribution.names(events) else { return }
         }
@@ -11838,6 +11848,7 @@ final class AppState: ObservableObject {
         activeRoomPeople = [:]
         // Its events say whose each post is; the people read names yours.
         activeRoomPostAttribution = RoomPostAttribution(isCopy: true, you: nil, posts: [:])
+        activeRoomCopyNameReads = 0
         activeRoomCopyPost = nil
         roomDraftHandBack = nil
         activeRoomCopyNeedsTail = false
@@ -11913,7 +11924,7 @@ final class AppState: ObservableObject {
             } else if !fresh.isEmpty {
                 activeRoomReplay.adopt(page: page)
             }
-            if !fresh.isEmpty { rereadActiveRoomPeopleForPosts(fresh) }
+            rereadActiveRoomPeopleForPosts(fresh)
             await refreshActiveRoomCopyPost(epoch: epoch)
             if fresh.isEmpty || activeRoomReplay.cursor >= page.latestSeq {
                 guard await refreshActiveRoomCopy(epoch: epoch) else { return }
@@ -11950,6 +11961,12 @@ final class AppState: ObservableObject {
             activeRoomSurface = GroupRoomSurface(dashboardID: open.dashboardID, room: latest.room, copy: latest)
         }
         if latest.state != activeRoomDriverStatus { activeRoomDriverStatus = latest.state }
+        // A post pending as it ended is asked about once more: posted, it
+        // settles, as the polling stops here.
+        if latest.isOver, open.copy?.isOver != true, groupRoomOutbox.pending != nil {
+            await refreshActiveRoomCopyPost(epoch: epoch)
+            guard groupRoomEpoch == epoch, activeRoomSurface?.copy?.id == copy.id else { return false }
+        }
         // One whose opening read failed is polled until its tail comes.
         if latest.isOver, !activeRoomCopyNeedsTail { stopRoomCopyPolling() }
         return true

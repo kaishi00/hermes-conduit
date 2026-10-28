@@ -259,6 +259,39 @@ extension GroupChatModelsTests {
     }
 
     @MainActor
+    func testAPostTheRoomTookAsItEndedSettles() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 3)])
+        routes.events = (1...3).map { copiesEvent($0) }
+        let appState = try await postsOpenCopy(routes)
+        await appState.sendGroupRoomMessage("just in time")
+        let eventID = try XCTUnwrap(appState.pendingRoomMessage?.eventID)
+
+        // Posted at 4, and the room ended in the same tick, before the
+        // copy's log brought it.
+        routes.posts = [postsListed(eventID, text: "just in time", status: "posted", seq: 4)]
+        routes.copies = [copiesCopy(status: "ended", reason: "disbanded", lastSeq: 3)]
+        await appState.pollActiveRoom()
+        XCTAssertFalse(appState.activeRoomCopyTakesPosts)
+        XCTAssertNil(appState.pendingRoomMessage, "not shown as refused")
+    }
+
+    @MainActor
+    func testACopysParkedPostOutlastsARoomListReadBeforeTheCopies() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy()])
+        let appState = try await postsOpenCopy(routes)
+        await appState.sendGroupRoomMessage("hello")
+        let pending = try XCTUnwrap(appState.pendingRoomMessage)
+        appState.closeGroupRoom()
+
+        // As after another dashboard: the copies aren't read for this one
+        // when its room list is.
+        appState.linkedRoomCopies = nil
+        await appState.refreshGroupChatSupport()
+        await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
+        XCTAssertEqual(appState.pendingRoomMessage, pending)
+    }
+
+    @MainActor
     func testYourNameIsReadAgainWhenTheOpeningReadFailed() async throws {
         let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 1)])
         var yours = copiesEvent(1, kind: "message.user", actor: ["kind": "user", "id": "furina"], text: "Eric: hi")
