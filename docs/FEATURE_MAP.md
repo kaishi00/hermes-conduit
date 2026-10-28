@@ -204,7 +204,7 @@ the outcome text each model is told
 - "Add" goes as `session.steer`; "change", hold and cancel go as `session.redirect`. No kind, or a refused steer, falls back to redirect. The same in every live mode (2026-10-21, #1157).
 - An unattached call with one running job and no job number follows up into that job; "New job:" starts another (2026-10-09, #472). Once the call has taken its first request's chat, a follow-up goes into that request while it runs, and "New job:" is the chat's next turn (Eric, 2026-10-25, #1252).
 - Steering in the chat never waits for an OK (2026-10-08, #451).
-- The words go to Hermes as `(voice) <words>`, into a job as into the call's chat, on the phone and on the Watch's relay, so a job's chat that only voice used still leaves Desktop's list once answered (Voice in the chats list) (2026-10-28, #1445, notifier #442).
+- A job's follow-up words go to Hermes as `(voice) <words>`, as the call's chat turns do, on the phone and on the Watch's relay, so a job's chat that only voice used still leaves Desktop's list once answered (Voice in the chats list). Local Live's own Hermes turns and Classic's steer stay plain: those chats aren't jobs, and their archive goes by the call (2026-10-28, #1445, notifier #442).
 
 **Open gaps**
 - After a steer the model is still told Hermes "changes course now": steer and redirect both end as `.interrupted`, and the text has four copies, in `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`, `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift`, `Shared/WatchVoice/WatchJobRelay.swift` and `Shared/WatchVoice/WatchBridgeDelegation.swift` (#1157).

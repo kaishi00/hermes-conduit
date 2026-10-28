@@ -842,6 +842,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(links.links.count, VoiceCallChatLinks.maximumLinks)
         XCTAssertEqual(links.links.first?.callID, "c1", "the oldest call goes first")
         XCTAssertEqual(links.links.last?.callID, "newest")
+        XCTAssertFalse(links.adopt(host, profile: "default") { _ in nil }, "the call the cap dropped is no change")
     }
 
     func testCallTranscriptLeadsBackToItsChatAndNeverShowsTheChatsCard() {

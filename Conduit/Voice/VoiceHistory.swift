@@ -989,9 +989,11 @@ struct VoiceCallChatLinks: Codable, Equatable {
     /// make or has forgotten, so their chats show the call cards and are
     /// listed under Voice here too. `title` names a listed chat. The links
     /// stay in the order their calls started, so the oldest go first past
-    /// the cap. True when one was added.
+    /// the cap. True when the links changed: a call the cap drops again is
+    /// no change, so a full list doesn't rewrite them on every refresh.
     mutating func adopt(_ calls: [VoiceHostChatCall], profile: String, title: (String) -> String?) -> Bool {
-        let known = Set(links.map(\.callID))
+        let before = links.map(\.callID)
+        let known = Set(before)
         let adopted = calls.filter { !known.contains($0.callID) }
         guard !adopted.isEmpty else { return false }
         links += adopted.map { call in
@@ -1012,7 +1014,7 @@ struct VoiceCallChatLinks: Codable, Equatable {
             .sorted { ($0.element.startedAt, $0.offset) < ($1.element.startedAt, $1.offset) }
             .map(\.element)
         if links.count > Self.maximumLinks { links.removeFirst(links.count - Self.maximumLinks) }
-        return true
+        return links.map(\.callID) != before
     }
 
     /// The ids of the chats on `profile` with a call kept with them or
