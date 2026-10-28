@@ -271,8 +271,6 @@ final class ChatScrollEngine: ObservableObject {
     /// Moving a browsing reader up to the bottom a shrinking bar left them
     /// past: not their scroll back to it.
     private var closingBarGap = false
-    /// Whether the reader was following when the current drag began.
-    private var followingAtDragStart = false
     /// The bottom inset when the current drag began.
     private var insetAtDragStart: CGFloat?
     private var lastObservedOffsetY: CGFloat?
@@ -466,8 +464,11 @@ final class ChatScrollEngine: ObservableObject {
             self.bottomBarCheckScheduled = false
             self.checkBottomBarInset()
             // A fling can outlast the turns, and its last scroll callback
-            // may still say it is moving: the chain waits it out.
-            if self.isDragging || self.surface?.isTracking == true || self.surface?.isDecelerating == true {
+            // may still say it is moving: the chain waits it out, while an
+            // inset it kept from pinning is still untaken.
+            if let surface = self.surface,
+               self.isDragging || surface.isTracking || surface.isDecelerating,
+               surface.insetBottom != self.lastBottomBarInset {
                 self.bottomBarChecksLeft = max(self.bottomBarChecksLeft, 1)
             }
             self.scheduleBottomBarCheck()
@@ -602,7 +603,6 @@ final class ChatScrollEngine: ObservableObject {
         replyStartLandingPending = false
         landedAtReplyStart = false
         emit(.cancelAutomaticRestoration)
-        followingAtDragStart = mode == .following
         insetAtDragStart = surface?.insetBottom
         if mode != .browsing {
             setMode(.browsing)
@@ -614,23 +614,16 @@ final class ChatScrollEngine: ObservableObject {
         surfaceCallbackDepth += 1
         defer { surfaceCallbackDepth -= 1 }
         isDragging = false
-        // A bar that moved under the finger is not where the reader let go:
-        // its inset is taken first, and a reader browsing stays browsing.
-        let barMoved = surface.map { $0.insetBottom != lastBottomBarInset } ?? false
+        // Near the bottom is measured against the bottom as it was when the
+        // finger came down: a bar that moved under it is not where the
+        // reader let go, either way. Its inset is taken just below.
         if mode == .browsing,
-           !barMoved,
            let surface,
-           !surface.isDecelerating,
-           surface.distanceFromBottom <= Self.nearBottomTolerance {
-            setMode(.following)
-        }
-        // One who was following when the finger came down, and let go near
-        // the bottom as it was before the bar moved, follows again, pinned
-        // above the bar; one who scrolled away stays where they went.
-        if barMoved, followingAtDragStart, mode == .browsing,
-           let surface, !surface.isDecelerating, let startInset = insetAtDragStart,
-           surface.distanceFromBottom - (surface.insetBottom - startInset) <= Self.nearBottomTolerance {
-            setMode(.following)
+           !surface.isDecelerating {
+            let barShift = surface.insetBottom - (insetAtDragStart ?? surface.insetBottom)
+            if surface.distanceFromBottom - barShift <= Self.nearBottomTolerance {
+                setMode(.following)
+            }
         }
         if surface?.isDecelerating == false {
             checkBottomBarInset()
