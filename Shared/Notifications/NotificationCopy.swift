@@ -85,13 +85,16 @@ enum NotificationCopy {
     }
 
     /// Which profile the push came from (#1415): its bot's name
-    /// (`profile_name`), else its id, left out for an unnamed default
+    /// (`profile_name`, unless it is only the id), else its id capitalized, left out for an unnamed default
     /// profile and when the title already ends with it (a Bot Chat's).
     static func profileLine(_ content: [String: Any], title: String?) -> String? {
         // Routing reads a profile id trimmed and lowercased, so "Default" is the default too.
         let profile = nonEmpty(content["profile"])?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let name = nonEmpty(content["profile_name"])?.trimmingCharacters(in: .whitespacesAndNewlines)
-            ?? profile.flatMap({ $0.lowercased() == "default" ? nil : $0 }) else { return nil }
+        // A name that is only the id names it no more than the id (BotProfile.displayLabel).
+        let given = nonEmpty(content["profile_name"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let name = given.flatMap({ $0.lowercased() == profile?.lowercased() ? nil : $0 })
+            ?? profile.flatMap({ $0.lowercased() == "default" ? nil : String($0.prefix(1)).uppercased() + String($0.dropFirst()) })
+        else { return nil }
         if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
            title == name.lowercased() || title.hasSuffix(" · \(name.lowercased())") { return nil }
         return name

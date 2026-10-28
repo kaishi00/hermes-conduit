@@ -9996,17 +9996,20 @@ final class AppState: ObservableObject {
     }
 
     /// The header title for a restored Bot Chat. The bot's display label when
-    /// the reference carries one, else the BOT PROFILE NAME — the same
-    /// last-resort fallback `BotProfile.displayLabel` uses. Never the reserved
+    /// the reference carries one, else the BOT PROFILE NAME capitalized — the
+    /// same last-resort fallback `BotProfile.displayLabel` uses. Never the reserved
     /// wire title: that constant is an identity used for the exact-title lookup,
     /// not a user-facing string, and it would tell the user nothing about which
     /// bot they are looking at.
     static func botConversationTitle(for reference: SessionReference) -> String {
         let label = reference.botLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !label.isEmpty { return label }
         let name = (reference.botName ?? reference.scopeProfile)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? AppLocalization.string("New conversation") : name
+        // A label that is only the id (saved before #1448) names it as the id does.
+        if !label.isEmpty, label != name { return label }
+        return name.isEmpty
+            ? AppLocalization.string("New conversation")
+            : String(name.prefix(1)).uppercased() + String(name.dropFirst())
     }
 
     /// Registers a Bot Mode reference's identity so the conversation resolves
@@ -11424,7 +11427,10 @@ final class AppState: ObservableObject {
         }
         let label = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !label.isEmpty else { return nil }
-        return roster.first { $0.displayLabel == label || $0.name == label }
+        // The id first, then a bot's own name over another's id capitalized.
+        return roster.first { $0.name == label }
+            ?? roster.first { $0.displayLabel == label && $0.displayLabel.lowercased() != $0.name.lowercased() }
+            ?? roster.first { $0.displayLabel == label }
     }
 
     /// Each member's color by `identityKey`: its bot's color, else the hue
@@ -23088,7 +23094,10 @@ final class AppState: ObservableObject {
               let scope = ChatResumeStore.rpcProfileName(profile) else { return }
         botChatSessionProfiles[sessionID] = scope
         invalidateBotOwnershipCache()
-        if let label = label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty {
+        // A label that is only the profile id (saved before #1448) is no
+        // label: the roster's displayLabel names the bot instead.
+        if let label = label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty,
+           label != profile.trimmingCharacters(in: .whitespacesAndNewlines) {
             botChatSessionLabels[sessionID] = label
         }
     }
