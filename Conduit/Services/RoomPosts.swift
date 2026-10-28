@@ -142,11 +142,12 @@ enum RoomPostText {
         if inFlight { return .sending }
         if waitedOut { return .closed(AppLocalization.string("Not confirmed yet: it may still be posted.")) }
         guard takesPosts else {
+            // A refusal's reason stands, whatever the plugin says now.
+            if case .refused(let error)? = post?.status { return .closed(refusal(error)) }
             guard canAsk else {
                 return .closed(AppLocalization.string("Can't check this post: update the Conduit plugin on your Hermes."))
             }
             if settling { return .sending }
-            if case .refused(let error)? = post?.status { return .closed(refusal(error)) }
             return .closed(refusal(roomOver ? "ended" : "not_in"))
         }
         guard let status = post?.status else { return .notDelivered }

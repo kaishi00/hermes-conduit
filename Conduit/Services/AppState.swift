@@ -10758,10 +10758,13 @@ final class AppState: ObservableObject {
         }
     }
     /// Your Hermes was asked about the pending post and doesn't have it.
-    private var activeRoomCopyPostAbsent = false
+    /// Published, as the waits are: either can change the pending row on a
+    /// tick that changes nothing else.
+    @Published private(set) var activeRoomCopyPostAbsent = false
     /// Ticks the pending post has been asked about since its copy took no
-    /// more posts, up to `roomCopyPostWaitLimit`.
-    private var activeRoomCopyPostWaits = 0
+    /// more posts, or while your Hermes last said it's sending or posted,
+    /// up to `roomCopyPostWaitLimit`.
+    @Published private(set) var activeRoomCopyPostWaits = 0
     static let roomCopyPostWaitLimit = 20
     /// Between an ended copy's people reads for your name.
     static let roomPeopleRetryDelay: Duration = .seconds(2)
@@ -11728,15 +11731,15 @@ final class AppState: ObservableObject {
         let attribution = activeRoomPostAttribution
         if surface.copy != nil {
             // Each tick until it's known, a few times a visit.
-            guard attribution.you == nil, activeRoomPeopleRetries < Self.roomCopyNameReadLimit,
+            guard attribution.you == nil, activeRoomPeopleReadFailed, activeRoomPeopleRetries < Self.roomCopyNameReadLimit,
                   activeRoomReplay.events.contains(where: { attribution.poster(of: $0) == .you }) else { return }
-            if !activeRoomPeopleRereading { activeRoomPeopleRetries += 1 }
+            activeRoomPeopleRetries += 1
         } else {
             guard surface.room.members.contains(where: \.isPeer) else { return }
             if attribution.names(events) {
                 guard activeRoomPeopleReadFailed, activeRoomPeopleRetries < Self.roomCopyNameReadLimit,
                       !attribution.names(activeRoomReplay.events) else { return }
-                if !activeRoomPeopleRereading { activeRoomPeopleRetries += 1 }
+                activeRoomPeopleRetries += 1
             }
         }
         guard !activeRoomPeopleRereading else {

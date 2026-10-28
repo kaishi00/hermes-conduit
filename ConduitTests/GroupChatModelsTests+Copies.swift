@@ -476,7 +476,10 @@ extension GroupChatModelsTests {
                 return (room, nil)
             },
             log: { _, _, _, _ in
-                GroupLogPage(events: [], cursor: 0, latestSeq: 0, hasMore: false, authorityGatewayID: "gw-a", authorityEpoch: 1)
+                let events = routes.ownEvents
+                let latest = events.last?.seq ?? 0
+                return GroupLogPage(events: events, cursor: latest, latestSeq: latest, hasMore: false,
+                                    authorityGatewayID: "gw-a", authorityEpoch: 1)
             },
             roomRoute: { path, method, body, timeout in try await routes.answer(path, method, body, timeout) }
         )
@@ -531,6 +534,8 @@ final class CopiesRoutes {
     var copies: [[String: Any]]
     /// The copy's log, for every room.
     var events: [[String: Any]] = []
+    /// Your own room's log (`groups.log`).
+    var ownEvents: [GroupEvent] = []
     var invites: [[String: Any]] = []
     var approvals: [[String: Any]] = []
     var people: [String: Any] = ["ok": false]
