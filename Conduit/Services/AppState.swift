@@ -1127,6 +1127,10 @@ final class AppState: ObservableObject {
     private var chatPickedFromSavedList: SavedChatListPick?
     /// The Bot Chats left this run, by dashboard and bot (`keepBotChatCopy`).
     private var keptBotChatCopies: [String: KeptBotChatCopy] = [:]
+    /// The bot the chat on screen was open for, taken before a bot open
+    /// notes its destination's ids (`noteBotChatOpen`): the destination can
+    /// share the id the chat on screen is open as.
+    private var outgoingBotChatCopyOwner: (sessionID: String, bot: String?)?
     /// The scope whose list in memory came from Hermes after the saved files
     /// were last wiped, and so may be saved.
     private var savableChatListScope: WidgetWorkspaceID?
@@ -5294,6 +5298,11 @@ final class AppState: ObservableObject {
         cacheMessagePresentation(for: sessionIDs)
         recordOfflineChatCopy()
         keepBotChatCopy()
+        // Kept while that chat is still the one on screen: a flush can run
+        // while a bot open awaits its lookup.
+        if outgoingBotChatCopyOwner?.sessionID != activeSessionId {
+            outgoingBotChatCopyOwner = nil
+        }
     }
 
     // MARK: - Offline chat cache (#99)
@@ -5704,7 +5713,12 @@ final class AppState: ObservableObject {
               let dashboardID = activeDashboardID,
               let sessionID = activeSessionId,
               let identities = offlineChatIdentities(),
-              let bot = botStoreProfile(forSessionIDs: Array(identities.union([sessionID]))) else { return }
+              // The bot owning the id the chat is open as: the registry names
+              // the bot each open was for. Never one the chat's other ids name:
+              // the scroll identity's aliases can still name the chat it
+              // replaced, another bot's, or a Bot Chat an ordinary chat
+              // replaced (#1352).
+              let bot = ChatResumeStore.rpcProfileName(botChatCopyOwner(openAs: sessionID)) else { return }
         let rows = messages.compactMap(OfflineCachedMessage.init)
             .suffix(OfflineChatCacheStore.maxMessagesPerTranscript)
         guard !rows.isEmpty else { return }
@@ -5719,11 +5733,35 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// The bot whose copy the chat open as `sessionID` is, as it was before
+    /// any bot open since noted its destination over that id.
+    private func botChatCopyOwner(openAs sessionID: String) -> String? {
+        if let outgoing = outgoingBotChatCopyOwner, outgoing.sessionID == sessionID {
+            return outgoing.bot
+        }
+        return botConversationProfile(for: sessionID)
+            ?? botStoreProfile(forSessionIDs: [sessionID])
+    }
+
+    /// Notes the ids a bot open is for, after taking the owner of the chat
+    /// on screen: the open keeps that chat's copy when it flushes, and a
+    /// destination sharing its id must not take it.
+    private func noteBotChatOpen(_ sessionIDs: [String?], bot: BotProfile) {
+        if let active = activeSessionId, outgoingBotChatCopyOwner?.sessionID != active {
+            outgoingBotChatCopyOwner = (active, botChatCopyOwner(openAs: active))
+        }
+        for sessionID in sessionIDs {
+            noteBotChatSession(sessionID, profile: bot.name, label: bot.displayLabel)
+        }
+    }
+
     /// `presentSavedCopyWhileOpening` for a Bot Chat: its kept copy, when
     /// the chat being opened is one of the ids it was kept under. It is what
     /// was on screen when the chat was left, a /new's compaction included.
     private func presentKeptBotChatCopy(bot: String, openedAs sessionID: String, title: String?) {
+        // Spelled as the registry spells the bot the copy was kept for.
         guard let dashboardID = activeDashboardID,
+              let bot = ChatResumeStore.rpcProfileName(bot),
               let kept = keptBotChatCopies[Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: bot)],
               kept.sessionIDs.contains(sessionID) else { return }
         // Under the id it opens as, the Bot Chat's own: the one it was kept
@@ -13921,6 +13959,8 @@ final class AppState: ObservableObject {
         // what the next visit there opens to.
         recordOfflineChatCopy()
         keepBotChatCopy()
+        // The owner taken for the chat on screen is this dashboard's.
+        outgoingBotChatCopyOwner = nil
         recordSavedChatList()
         selectDashboardTarget(id)
         rememberDashboardURL(dashboard.normalizedURL)
@@ -22512,8 +22552,7 @@ final class AppState: ObservableObject {
                 finishChatViewportTransition(generation: transition)
                 return .deferred
             }
-            noteBotChatSession(resumeID, profile: bot.name, label: bot.displayLabel)
-            noteBotChatSession(registryID, profile: bot.name, label: bot.displayLabel)
+            noteBotChatOpen([resumeID, registryID], bot: bot)
             let outcome = await performSessionOpen(
                 resumeID,
                 reusing: transition,
@@ -22681,8 +22720,7 @@ final class AppState: ObservableObject {
         presentationMigrationSessionIDs: Set<String> = [],
         viewportTransitionGeneration: UInt64? = nil
     ) async -> Bool {
-        noteBotChatSession(resumeID, profile: bot.name, label: bot.displayLabel)
-        noteBotChatSession(registryID, profile: bot.name, label: bot.displayLabel)
+        noteBotChatOpen([resumeID, registryID], bot: bot)
         let outcome = await performSessionOpen(
             resumeID,
             reusing: viewportTransitionGeneration,
@@ -22767,7 +22805,7 @@ final class AppState: ObservableObject {
             return failBotChatOpen(bot, error: error, stage: .title)
         }
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
-        noteBotChatSession(created.sessionId, profile: bot.name, label: bot.displayLabel)
+        noteBotChatOpen([created.sessionId], bot: bot)
         // The open resumes the STORED id, as Desktop's does: Hermes finds a
         // chat by its stored key (the live session it just made, or the row
         // the title wrote) and answers 4007 for a runtime id. Opening the
@@ -23231,6 +23269,9 @@ final class AppState: ObservableObject {
         // through `eventBelongsToActiveSession` and repopulating the
         // cleared message array while reconciliation is in flight.
         flushPendingPresentationCache()
+        // The chat on screen is kept and is being replaced: its owner,
+        // taken before this open noted its ids, has done its job.
+        outgoingBotChatCopyOwner = nil
         let openedIdentity = captureConversationIdentity(
             for: sessionId,
             scopeProfile: conversationProfile
@@ -24017,6 +24058,7 @@ final class AppState: ObservableObject {
         // The chat being left shows as it is now when it's opened again.
         recordOfflineChatCopy()
         keepBotChatCopy()
+        outgoingBotChatCopyOwner = nil
         let newTitle = AppLocalization.string("New conversation")
         activeSessionTitle = newTitle
         let previousTurnState = turnState
