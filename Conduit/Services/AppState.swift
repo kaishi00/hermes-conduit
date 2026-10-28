@@ -11371,7 +11371,19 @@ final class AppState: ObservableObject {
             keptRoomReplays.removeValue(forKey: key)
             dropRoomAttachments { $0 == key }
         }
-        closeRoomSurface(parkingPendingSend: false)
+        closeRoomSurfaceBackToChat(parkingPendingSend: false)
+    }
+
+    /// Close the room onto the chat under it, which shows what its sync said
+    /// while the room covered it (`chatErrorBehindRoom`). Opening another
+    /// chat or a new one closes the room with `closeRoomSurface` instead,
+    /// which drops that error.
+    private func closeRoomSurfaceBackToChat(parkingPendingSend: Bool = true) {
+        let chatError = chatErrorBehindRoom
+        closeRoomSurface(parkingPendingSend: parkingPendingSend)
+        if let chatError {
+            errorMessage = chatError
+        }
     }
 
     /// Settle the open room's pending send when `events` carry its
@@ -12047,12 +12059,7 @@ final class AppState: ObservableObject {
     /// Leave the room view WITHOUT touching session state — the next session
     /// open, or this call's inverse, owns the viewport transition.
     func closeGroupRoom() {
-        let chatError = chatErrorBehindRoom
-        closeRoomSurface()
-        // The chat under the room is back on screen, with what its sync said.
-        if let chatError {
-            errorMessage = chatError
-        }
+        closeRoomSurfaceBackToChat()
         Task { await self.refreshGroupRooms() }
     }
 
