@@ -299,23 +299,10 @@ struct RoomCopiesClient {
     }
 }
 
-/// Who's who in a room over Links: each member's owner, by member id
-/// (`GET /rooms/people`).
+/// Who's who in a room over Links, by member id (`GET /rooms/people`);
+/// read by `RoomPeople.people` (RoomLeave.swift).
 enum RoomPeople {
     static let path = "/api/plugins/conduit_push/rooms/people"
-
-    /// Owners by member id; your own agents have none.
-    static func owners(_ response: [String: Any]) -> [String: String] {
-        guard response["ok"] as? Bool == true else { return [:] }
-        var owners: [String: String] = [:]
-        for member in response["members"] as? [[String: Any]] ?? [] {
-            guard let id = member["member_id"] as? String, !id.isEmpty,
-                  let owner = (member["owner"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !owner.isEmpty else { continue }
-            owners[id] = owner
-        }
-        return owners
-    }
 }
 
 extension AppState {

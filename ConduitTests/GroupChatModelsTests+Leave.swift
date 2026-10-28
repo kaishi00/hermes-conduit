@@ -99,6 +99,15 @@ extension GroupChatModelsTests {
         XCTAssertEqual(renamed.map(\.out), [.left, nil])
     }
 
+    func testAMemberThatsOutIsntOfferedToMentionOrAddress() {
+        var kuro = GroupMember(memberID: "m-kuro", profile: nil, handle: "kuro", displayName: "Kuro",
+                               target: ["kind": .string("peer")], extra: [:])
+        kuro.out = .left
+        let nahida = leaveOwnRoom.members[0]
+        XCTAssertEqual(MentionAutocomplete.roomCandidates([kuro, nahida]).map(\.tag), ["nahida", "all"])
+        XCTAssertEqual(GroupRoomRecipients.pickable([kuro, nahida]).map(\.handle), ["nahida"])
+    }
+
     @MainActor
     func testLeavingARoomSomeoneElseHostsTakesOutAllYourAgents() async throws {
         let routes = CopiesRoutes(copies: [copiesCopy()])

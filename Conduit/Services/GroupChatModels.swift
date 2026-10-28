@@ -885,11 +885,11 @@ enum GroupRoomRecipients {
     }
 
     /// The members the "To" row offers: those with a handle the gateway
-    /// can route, each once.
+    /// can route, each once, and not out of a room over Links.
     static func pickable(_ members: [GroupMember]) -> [GroupMember] {
         var seen: Set<String> = ["all", "everyone", "user"]
         return members.filter { member in
-            guard let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines),
+            guard member.out == nil, let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !handle.isEmpty else { return false }
             return seen.insert(handle.lowercased()).inserted
         }
@@ -1381,13 +1381,14 @@ enum MentionAutocomplete {
     }
 
     /// Room members, then `@all`. Members without a handle cannot be routed
-    /// and are left out.
+    /// and are left out, as are those out of a room over Links: the home
+    /// cut off their route.
     static func roomCandidates(_ members: [GroupMember]) -> [Candidate] {
         // A member handle can never shadow the broadcast tags or the human
         // handoff (the create path reserves the same set).
         var seen: Set<String> = ["all", "everyone", "user"]
         var result: [Candidate] = []
-        for member in members {
+        for member in members where member.out == nil {
             guard let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !handle.isEmpty, seen.insert(handle.lowercased()).inserted else { continue }
             result.append(Candidate(tag: handle, title: GroupRoomTurns.displayName(of: member)))
