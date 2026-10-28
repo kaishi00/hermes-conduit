@@ -192,11 +192,14 @@ struct RoomCopyHostSection: View {
 /// Under your pending post's bubble in a room someone else hosts: sending,
 /// not delivered (retried under its id), or why it wasn't posted, with
 /// Retry when posting it again could go differently and Edit to take its
-/// text back into the composer.
+/// text back into the composer. In a room that takes no more posts, Copy
+/// and Dismiss instead: there's no composer to edit it in.
 struct RoomCopyPostFooter: View {
     let state: RoomPostText.RowState
     let retry: () -> Void
     let edit: () -> Void
+    let copy: () -> Void
+    let dismiss: () -> Void
     @ObservedObject private var appLanguage = AppLanguageStore.shared
 
     var body: some View {
@@ -224,6 +227,21 @@ struct RoomCopyPostFooter: View {
                         Button(AppLocalization.string("Retry"), action: retry)
                     }
                     Button(AppLocalization.string("Edit"), action: edit)
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.conduitAccent)
+            }
+        case .closed(let why):
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(verbatim: why)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 14) {
+                    Button(AppLocalization.string("Copy"), action: copy)
+                    Button(AppLocalization.string("Dismiss"), action: dismiss)
                 }
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.plain)

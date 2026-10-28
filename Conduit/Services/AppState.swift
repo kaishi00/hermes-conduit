@@ -10735,6 +10735,9 @@ final class AppState: ObservableObject {
     private var activeRoomPeopleRead = 0
     /// A poll's people read for posts it brought is under way.
     private var activeRoomPeopleRereading = false
+    /// A poll asked for another while one was under way: it runs next, so
+    /// a post that came in meanwhile is named too.
+    private var activeRoomPeopleRereadWanted = false
     /// Whose the open room's people's posted messages are (RoomPosts.swift).
     @Published private(set) var activeRoomPostAttribution = RoomPostAttribution.none
     /// In a room someone else hosts, how your pending post stands as your
@@ -11367,7 +11370,7 @@ final class AppState: ObservableObject {
             if !fresh.isEmpty {
                 activeRoomReplay.adopt(page: page)
                 settlePendingRoomSend(from: fresh)
-                rereadActiveRoomPeopleForPosts(fresh, epoch: epoch)
+                rereadActiveRoomPeopleForPosts(fresh)
             }
             // Driver status tracks the DRIVER, not the log: refresh even on
             // an eventless tick, or a settled room keeps offering Stop and
@@ -11680,15 +11683,30 @@ final class AppState: ObservableObject {
         if attribution != activeRoomPostAttribution { activeRoomPostAttribution = attribution }
     }
 
-    /// In a room you host with linked people, a poll that brought a user
-    /// message the people don't name reads them again: it may be one of
-    /// their posts. One such read at a time.
-    private func rereadActiveRoomPeopleForPosts(_ events: [GroupEvent], epoch: Int) {
-        guard let surface = activeRoomSurface, surface.copy == nil, surface.room.members.contains(where: \.isPeer),
-              !activeRoomPostAttribution.names(events), !activeRoomPeopleRereading else { return }
+    /// A poll's events ask for the people again: in a room you host with
+    /// linked people, a user message they don't name, which may be one of
+    /// their posts; in a copy, your posts while the name the home gives you
+    /// isn't known yet (the opening read failed). One read at a time, and
+    /// one asked for meanwhile runs after it.
+    private func rereadActiveRoomPeopleForPosts(_ events: [GroupEvent]) {
+        guard let surface = activeRoomSurface else { return }
+        let attribution = activeRoomPostAttribution
+        if surface.copy != nil {
+            guard attribution.you == nil,
+                  activeRoomReplay.events.contains(where: { attribution.poster(of: $0) == .you }) else { return }
+        } else {
+            guard surface.room.members.contains(where: \.isPeer), !attribution.names(events) else { return }
+        }
+        guard !activeRoomPeopleRereading else {
+            activeRoomPeopleRereadWanted = true
+            return
+        }
         activeRoomPeopleRereading = true
         Task {
-            await self.readActiveRoomPeople(epoch: epoch)
+            repeat {
+                self.activeRoomPeopleRereadWanted = false
+                await self.readActiveRoomPeople(epoch: self.groupRoomEpoch)
+            } while self.activeRoomPeopleRereadWanted
             self.activeRoomPeopleRereading = false
         }
     }
@@ -11743,10 +11761,11 @@ final class AppState: ObservableObject {
 
     /// How the pending post stands, as your Hermes says. Posted, it's the
     /// room's message once the copy's log has it; until then it shows as
-    /// sending.
+    /// sending. In a copy that takes no more posts, whose log may never
+    /// bring it, posted is settled as it is.
     private func adoptActiveRoomCopyPost(_ post: RoomPost) {
         guard groupRoomOutbox.pending?.eventID == post.eventID else { return }
-        if case .posted(let seq) = post.status, activeRoomReplay.cursor >= seq {
+        if case .posted(let seq) = post.status, activeRoomReplay.cursor >= seq || !activeRoomCopyTakesPosts {
             groupRoomOutbox.accept(eventID: post.eventID)
             pendingRoomMessage = groupRoomOutbox.pending
             activeRoomCopyPost = nil
@@ -11767,15 +11786,27 @@ final class AppState: ObservableObject {
     }
 
     /// A refused post's Edit: it leaves the room screen, and its text goes
-    /// back into the composer.
+    /// back into the composer. Only while there is one: in a room that
+    /// takes no more posts the row offers Copy and Dismiss instead.
     func editActiveRoomCopyPost() {
-        guard activeRoomSurface?.copy != nil, let pending = groupRoomOutbox.pending,
+        guard activeRoomCopyTakesPosts, let pending = groupRoomOutbox.pending,
               case .refused(_)? = activeRoomCopyPost?.status else { return }
         groupRoomOutbox.discard()
         pendingRoomMessage = nil
         activeRoomCopyPost = nil
         clearRoomSendError()
         roomDraftHandBack = RoomDraftHandBack(text: pending.text)
+    }
+
+    /// Dismiss: a pending post in a copy that takes no more posts leaves
+    /// the room screen, and isn't kept for when it opens again.
+    func dismissActiveRoomCopyPost() {
+        guard activeRoomSurface?.copy != nil, !activeRoomCopyTakesPosts, !activeRoomSendInFlight,
+              groupRoomOutbox.pending != nil else { return }
+        groupRoomOutbox.discard()
+        pendingRoomMessage = nil
+        activeRoomCopyPost = nil
+        clearRoomSendError()
     }
 
     /// The room composer took the text back.
@@ -11882,6 +11913,7 @@ final class AppState: ObservableObject {
             } else if !fresh.isEmpty {
                 activeRoomReplay.adopt(page: page)
             }
+            if !fresh.isEmpty { rereadActiveRoomPeopleForPosts(fresh) }
             await refreshActiveRoomCopyPost(epoch: epoch)
             if fresh.isEmpty || activeRoomReplay.cursor >= page.latestSeq {
                 guard await refreshActiveRoomCopy(epoch: epoch) else { return }

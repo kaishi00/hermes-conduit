@@ -148,14 +148,21 @@ struct GroupChatView: View {
                                 RoomCopyPostFooter(
                                     state: RoomPostText.rowState(
                                         post: appState.activeRoomCopyPost,
-                                        inFlight: appState.activeRoomSendInFlight
+                                        inFlight: appState.activeRoomSendInFlight,
+                                        takesPosts: appState.activeRoomCopyTakesPosts,
+                                        roomOver: appState.activeRoomSurface?.copy?.status == "ended"
                                     ),
                                     retry: {
                                         followLatest()
                                         latestJumps += 1
                                         Task { await appState.sendGroupRoomMessage(pending.text) }
                                     },
-                                    edit: { appState.editActiveRoomCopyPost() }
+                                    edit: { appState.editActiveRoomCopyPost() },
+                                    copy: {
+                                        UIPasteboard.general.string = pending.text
+                                        Haptics.success()
+                                    },
+                                    dismiss: { appState.dismissActiveRoomCopyPost() }
                                 )
                             } else if appState.activeRoomSendInFlight {
                                 Text(AppLocalization.string("Sending…"))

@@ -680,9 +680,6 @@ struct GroupRoomComposer: View {
 
     // MARK: - Quotes
 
-    /// A quote from the room (#385 in a chat): selected text joins the draft
-    /// as a `>` quote; a message's Quote button attaches the whole message
-    /// as the "Replying to…" chip. Either way the composer takes focus.
     /// A refused post's text, back to edit: ahead of anything typed since.
     private func applyDraftHandBack(_ handBack: RoomDraftHandBack?) {
         guard let handBack else { return }
@@ -692,6 +689,9 @@ struct GroupRoomComposer: View {
         isFocused = true
     }
 
+    /// A quote from the room (#385 in a chat): selected text joins the draft
+    /// as a `>` quote; a message's Quote button attaches the whole message
+    /// as the "Replying to…" chip. Either way the composer takes focus.
     private func applyQuoteRequest(_ request: ComposerQuoteRequest?) {
         guard let request else { return }
         appState.consumeRoomQuoteRequest(request.id)

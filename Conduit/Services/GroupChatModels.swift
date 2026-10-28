@@ -403,7 +403,10 @@ enum GroupDecoders {
             authorityEpoch: HermesClient.exactIntValue(object["authority_epoch"]),
             payload: object["payload"]?.objectValue ?? [:],
             createdAt: object["created_at"]?.doubleValue ?? 0,
-            post: object["post"]?.objectValue.map { GroupEventPost(by: $0["by"]?.stringValue) }
+            // An empty name counts as none (yours), as the people's `posts` drop it.
+            post: object["post"]?.objectValue.map {
+                GroupEventPost(by: $0["by"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 })
+            }
         )
     }
 

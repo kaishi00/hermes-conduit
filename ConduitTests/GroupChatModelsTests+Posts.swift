@@ -209,6 +209,78 @@ extension GroupChatModelsTests {
     }
 
     @MainActor
+    func testAPendingPostInARoomThatEndedCanBeCopiedNotEdited() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy()])
+        routes.postStatus = "refused"
+        routes.postError = "ended"
+        let appState = try await postsOpenCopy(routes)
+        await appState.sendGroupRoomMessage("bye all")
+        // The room ended as it was posted: no composer to edit it in.
+        routes.copies = [copiesCopy(status: "ended", reason: "disbanded")]
+        await appState.pollActiveRoom()
+        XCTAssertFalse(appState.activeRoomCopyTakesPosts)
+        XCTAssertEqual(
+            RoomPostText.rowState(post: appState.activeRoomCopyPost, inFlight: false, takesPosts: false, roomOver: true),
+            .closed(AppLocalization.string("Not posted: the room has ended."))
+        )
+        appState.editActiveRoomCopyPost()
+        XCTAssertEqual(appState.pendingRoomMessage?.text, "bye all", "Edit leaves the text where it can be copied")
+        XCTAssertNil(appState.roomDraftHandBack)
+        appState.dismissActiveRoomCopyPost()
+        XCTAssertNil(appState.pendingRoomMessage)
+        XCTAssertNil(appState.activeRoomCopyPost)
+
+        // One that never got an answer says the room took no more; one
+        // your agents left says that.
+        XCTAssertEqual(RoomPostText.rowState(post: nil, inFlight: false, takesPosts: false, roomOver: true),
+                       .closed(AppLocalization.string("Not posted: the room has ended.")))
+        let sending = RoomPost(eventID: "conduit-1", text: "hi", status: .sending)
+        XCTAssertEqual(RoomPostText.rowState(post: sending, inFlight: false, takesPosts: false),
+                       .closed(AppLocalization.string("Not posted: your agents aren't in this room.")))
+        XCTAssertEqual(RoomPostText.rowState(post: sending, inFlight: true, takesPosts: false), .sending)
+    }
+
+    @MainActor
+    func testAPostedPostSettlesInARoomThatEnded() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 3)])
+        routes.events = (1...3).map { copiesEvent($0) }
+        let appState = try await postsOpenCopy(routes)
+        await appState.sendGroupRoomMessage("last word")
+        let eventID = try XCTUnwrap(appState.pendingRoomMessage?.eventID)
+        appState.closeGroupRoom()
+
+        // Posted at 4, but the copy ended at 3: it won't bring it.
+        routes.copies = [copiesCopy(status: "ended", reason: "disbanded", lastSeq: 3)]
+        routes.posts = [postsListed(eventID, text: "last word", status: "posted", seq: 4)]
+        await appState.refreshGroupChatSupport()
+        await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
+        XCTAssertNil(appState.pendingRoomMessage, "not left sending for good")
+        XCTAssertNil(appState.activeRoomCopyPost)
+    }
+
+    @MainActor
+    func testYourNameIsReadAgainWhenTheOpeningReadFailed() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 1)])
+        var yours = copiesEvent(1, kind: "message.user", actor: ["kind": "user", "id": "furina"], text: "Eric: hi")
+        // An empty name is yours too.
+        yours["post"] = ["by": ""]
+        routes.events = [yours]
+        let appState = try await postsOpenCopy(routes)
+        await copiesWait("the opening people read", until: { !routes.peopleReads.isEmpty })
+        let first = try XCTUnwrap(appState.activeRoomReplay.events.first)
+        XCTAssertEqual(appState.activeRoomPostAttribution.poster(of: first), .you)
+        XCTAssertNil(appState.activeRoomPostAttribution.you)
+
+        // The room moves on: the people are read again for your name.
+        routes.people = ["ok": true, "room_id": "conduit-9", "home": "Furina", "you": "Eric", "members": [[String: Any]]()]
+        routes.events.append(copiesEvent(2))
+        routes.copies = [copiesCopy(lastSeq: 2)]
+        await appState.pollActiveRoom()
+        await copiesWait("the people read again", until: { appState.activeRoomPostAttribution.you == "Eric" })
+        XCTAssertEqual(appState.activeRoomPostAttribution.text(of: first), "hi")
+    }
+
+    @MainActor
     func testAPendingPostComesBackWhenTheRoomReopens() async throws {
         let routes = CopiesRoutes(copies: [copiesCopy()])
         let appState = try await postsOpenCopy(routes)
