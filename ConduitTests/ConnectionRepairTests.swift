@@ -133,10 +133,12 @@ final class ConnectionRepairTests: XCTestCase {
             ConnectionSetupFlow.initialPath(for: .repairConnection, draft: draft, repairFailure: .cloudflareTokenRejected),
             [.connectionDetails, .cloudflareTroubleshooting]
         )
-        XCTAssertEqual(
-            ConnectionSetupFlow.initialPath(for: .repairConnection, draft: draft, repairFailure: .tlsUntrusted),
-            [.connectionDetails, .tlsTroubleshooting]
-        )
+        for failure: ConnectionFailure in [.tlsUntrusted, .tlsBadDate, .tlsFailure, .tlsHostnameMismatch, .tlsNotStandardsCompliant] {
+            XCTAssertEqual(
+                ConnectionSetupFlow.initialPath(for: .repairConnection, draft: draft, repairFailure: failure),
+                [.connectionDetails, .tlsTroubleshooting]
+            )
+        }
         for failure: ConnectionFailure in [.invalidAddress, .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline, .dashboardUnavailable, .unexpectedServerResponse] {
             XCTAssertEqual(
                 ConnectionSetupFlow.initialPath(for: .repairConnection, draft: draft, repairFailure: failure),

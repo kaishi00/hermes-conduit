@@ -231,7 +231,7 @@ struct ConnectionSetupFlow: Equatable {
             return details + [.loginCredentials]
         case .cloudflareTokenRejected:
             return details + [.cloudflareTroubleshooting]
-        case .tlsUntrusted, .tlsBadDate, .tlsFailure:
+        case .tlsUntrusted, .tlsBadDate, .tlsFailure, .tlsHostnameMismatch, .tlsNotStandardsCompliant:
             return details + [.tlsTroubleshooting]
         // Transport/dashboard/address problems and a password-login throttle
         // all start at the address editor. A throttled login in particular

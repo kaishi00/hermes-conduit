@@ -163,4 +163,79 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
         XCTAssertNil(PictureUpload.resized(try pngData(width: 2048, height: 1024), filename: "small.png"))
         XCTAssertNil(PictureUpload.resized(Data("not a picture".utf8), filename: "broken.jpg"))
     }
+
+    // MARK: - Dropped files (#1408)
+
+    func testADroppedFileIsStagedAsItsRichestFileType() {
+        XCTAssertEqual(
+            AttachmentDrop.fileType(registeredTypeIdentifiers: [UTType.pdf.identifier, UTType.fileURL.identifier]),
+            .pdf
+        )
+        XCTAssertEqual(
+            AttachmentDrop.fileType(registeredTypeIdentifiers: [UTType.fileURL.identifier, UTType.heic.identifier]),
+            .heic,
+            "A link to the file is not its content"
+        )
+        XCTAssertNil(AttachmentDrop.fileType(registeredTypeIdentifiers: [UTType.url.identifier]))
+        XCTAssertNil(AttachmentDrop.fileType(registeredTypeIdentifiers: [UTType.folder.identifier]))
+        XCTAssertEqual(
+            AttachmentDrop.fileType(registeredTypeIdentifiers: [UTType.data.identifier, UTType.pdf.identifier]),
+            .pdf,
+            "Plain data loses the file's kind when something more specific is offered"
+        )
+    }
+
+    func testDraggedWordsStayTextAndNamedTextFilesAttach() {
+        let plainText = [UTType.utf8PlainText.identifier]
+        XCTAssertFalse(AttachmentDrop.isFile(registeredTypeIdentifiers: plainText, suggestedName: nil))
+        XCTAssertFalse(AttachmentDrop.isFile(registeredTypeIdentifiers: plainText, suggestedName: "  "))
+        XCTAssertTrue(AttachmentDrop.isFile(registeredTypeIdentifiers: plainText, suggestedName: "notes.txt"))
+        XCTAssertTrue(AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.pdf.identifier], suggestedName: nil))
+        XCTAssertFalse(AttachmentDrop.isFile(registeredTypeIdentifiers: [UTType.url.identifier], suggestedName: "Example"))
+    }
+
+    func testOnlyALoneImageKeepsTheImagePasteOnTheTextField() {
+        let png = [UTType.png.identifier]
+        let pdf = [UTType.pdf.identifier]
+        XCTAssertFalse(AttachmentDrop.stagesAsFiles(registeredTypeIdentifiers: [png], suggestedNames: [nil]))
+        XCTAssertTrue(AttachmentDrop.stagesAsFiles(registeredTypeIdentifiers: [png, png], suggestedNames: [nil, nil]))
+        XCTAssertTrue(AttachmentDrop.stagesAsFiles(registeredTypeIdentifiers: [pdf], suggestedNames: ["report"]))
+        XCTAssertTrue(
+            AttachmentDrop.stagesAsFiles(registeredTypeIdentifiers: [png, [UTType.utf8PlainText.identifier]], suggestedNames: [nil, nil]),
+            "An image dropped with words is staged as a file, the words stay text"
+        )
+        XCTAssertFalse(
+            AttachmentDrop.stagesAsFiles(registeredTypeIdentifiers: [[UTType.utf8PlainText.identifier]], suggestedNames: [nil]),
+            "Dragged words go into the draft"
+        )
+    }
+
+    func testADroppedFileIsCopiedUnderItsOwnName() async throws {
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString)-report.pdf")
+        try Data("%PDF-1.4 dropped".utf8).write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+        let provider = try XCTUnwrap(NSItemProvider(contentsOf: source))
+        provider.suggestedName = "report"
+
+        let outcome = await AttachmentDrop.stage(provider, ordinal: 1, limitMegabytes: 16)
+        guard case .staged(let attachment) = outcome else {
+            return XCTFail("Expected the file to be staged, got \(outcome)")
+        }
+        XCTAssertEqual(attachment.name, "report.pdf")
+        XCTAssertEqual(attachment.mimeType, "application/pdf")
+        XCTAssertEqual(attachment.kind, .document)
+        let staged = try XCTUnwrap(URL(string: attachment.uri))
+        XCTAssertEqual(try Data(contentsOf: staged), Data("%PDF-1.4 dropped".utf8))
+        try? FileManager.default.removeItem(at: staged)
+    }
+
+    func testADroppedFileOverTheLimitIsNotCopied() throws {
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString)-big.bin")
+        try Data(count: 9 * 1024 * 1024).write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+        guard case .tooLarge(let name) = AttachmentStaging.stageCopy(of: source, name: "big.bin", type: .data, limitMegabytes: 8) else {
+            return XCTFail("Expected the 9 MB file to be refused under an 8 MB limit")
+        }
+        XCTAssertEqual(name, "big.bin")
+    }
 }

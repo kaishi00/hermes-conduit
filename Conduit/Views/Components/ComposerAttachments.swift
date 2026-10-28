@@ -190,6 +190,22 @@ enum AttachmentStaging {
         case failed(String)
     }
 
+    /// Copies a file the user picked or dropped into the staging folder,
+    /// size checked before anything is copied, then finished like the rest.
+    static func stageCopy(of url: URL, name: String, type: UTType?, limitMegabytes: Int) -> StagedImport {
+        if let size = AttachmentSizeLimit.fileSize(at: url),
+           !AttachmentSizeLimit.allows(byteCount: size, megabytes: limitMegabytes) {
+            return .tooLarge(name)
+        }
+        do {
+            let staged = try destination(for: name)
+            try FileManager.default.copyItem(at: url, to: staged)
+            return finishStaging(fileAt: staged, name: name, type: type, limitMegabytes: limitMegabytes)
+        } catch {
+            return .failed(name)
+        }
+    }
+
     /// The composer's rules for a file already copied into the staging
     /// folder: the size limit, checked before anything is decoded, and a
     /// JPEG re-encode for image formats providers can't read.

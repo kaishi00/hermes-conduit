@@ -386,6 +386,11 @@ struct ChatView: View {
         // thread, so rows above take their final height (#1238).
         .task { await TranscriptPictureMemory.loadKeptSizes() }
         .background(Color.clear)
+        // Files dragged onto the chat (Finder on a Mac, Files on an iPad)
+        // are staged in the composer for the user to send (#1408).
+        .attachmentDropTarget(isEnabled: appState.composerIsEnabled) { providers in
+            appState.dropIntoComposer(providers)
+        }
         .overlay(alignment: .top) {
             if appState.isOpeningNotificationSession {
                 Label("Opening conversation…", systemImage: "arrow.down.message")

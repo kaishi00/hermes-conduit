@@ -1369,6 +1369,38 @@ Read Aloud and live voice read-back · chat list previews and quotes
 
 **Checked:** 2026-10-23, at #1175.
 
+## Attaching files
+
+Photos, camera shots and any other file go into the composer as
+attachments, staged on the device and sent with the next message.
+
+**Siblings:** chat composer (chats, project chats, Bot Chat) · the full
+editor · group rooms · the composer's text field (pasted pictures, files
+dropped on it) · README.md's feature list
+
+| Way in | Chat composer and its full editor | Group room and its full editor |
+|---|---|---|
+| Attach › Camera, Photo Library, Document | yes | yes, with a plugin that stores room files |
+| A picture pasted in the field | yes, one picture | no |
+| Files dragged onto the chat, the room, the field or the full editor | yes | yes, with a plugin that stores room files |
+
+**Code**
+- Staging and its limits: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, AttachmentTypePolicy, AttachmentStaging's stageCopy and finishStaging)
+- Dropped files: `Conduit/Views/Components/AttachmentDrop.swift` (AttachmentDrop, attachmentDropTarget), `Conduit/Views/ChatView.swift` and `Conduit/Views/GroupChatView.swift` (the drop targets), `Conduit/Services/AppState.swift` (dropIntoComposer, dropIntoRoomComposer), `Conduit/Views/Components/ComposerFullEditor.swift` (onDropFiles)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (attachmentButton, handleDocumentSelection, handleDroppedFiles, handlePastedImage), `Conduit/Views/Components/ComposerPasteTextView.swift` (paste(itemProviders:), onDroppedFiles)
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (attachButton, importDocuments, importDroppedFiles, finishImport)
+- Tests: `ConduitTests/ComposerAttachmentPolicyTests.swift`, `ConduitTests/ComposerPasteTextViewTests.swift`
+
+**Rulings**
+- Every way in stages the same way: copied into the staging folder, size checked against the device's limit before it is read, images providers can't read re-encoded as JPEG, and anything left out named in the composer's notice. Nothing is sent until the user presses Send (2026-10-28, #1411).
+- A drop attaches files and leaves the rest: words dragged from another app go into the draft only when dropped on the field, and a link stays a link. Text counts as a file only when it comes as a named file. One picture dropped or pasted on the field keeps the picture paste; several items, or any other file, are staged like picked documents (2026-10-28, #1411, from #1408).
+- A locked chat composer takes no drop, as its Attach menu is off then; a room on a plugin that can't store its files says what fixes it, as its Attach menu does (2026-10-28, #1411).
+
+**Open gaps**
+- A folder dropped from Finder isn't attached, and nothing says why: the drop is just refused.
+
+**Checked:** 2026-10-28, #1411 (drag-and-drop attachments, issue #1408).
+
 ## A chat while it opens
 
 A chat that's opened again shows what it had at once, while Hermes sends
@@ -1921,6 +1953,7 @@ message · the group room composer · the Settings caption for the limit
 - The limit and its message: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, tooLargeMessage)
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift`
 - Paste: `Conduit/Views/Components/ComposerPasteTextView.swift`
+- Dropped files: `Conduit/Views/Components/AttachmentDrop.swift` (through AttachmentStaging.stageCopy, the Document picker's path)
 - Share extension: `Conduit/Services/AppState+ShareDraft.swift`
 - Ask Hermes About Screen: `Conduit/Intents/AskHermesAboutScreenIntent.swift`
 - Voice message: `Conduit/Services/AppState+VoiceMessage.swift`
@@ -1935,7 +1968,7 @@ message · the group room composer · the Settings caption for the limit
 - A pasted picture link whose header claims more pixels than a reply's picture may have is refused as "The image provider returned invalid image data.", not as too large.
 - The Settings caption doesn't say that a group room takes at most 50 MB whatever the limit.
 
-**Checked:** 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
+**Checked:** 2026-10-28, #1411 (dropped files refused with the same limit and message as picked ones); 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
 
 ## Sending files in a chat
 
@@ -2651,6 +2684,32 @@ server, never Tailscale SSH)
 
 **Checked:** 2026-10-27, at #1377.
 
+## Connection failure messages
+
+What Conduit says when it can't connect or sign in, classified from the
+error's type and code (never its text), and the troubleshooting it points to.
+
+**Siblings:** the sign-in screen's failure card · the setup assistant's
+connection test · Repair's Reconnect Now · Settings' Sign In Again · Siri's
+voice launch notice · the HTTPS & certificates troubleshooting page · the
+website's setup page (When it doesn't connect, in scripts/build_site.py in
+hermes-conduit-website)
+
+**Code**
+- Classification and copy: `Conduit/Services/ConnectionFailure.swift` (ConnectionFailureClassifier, TLSTrustDiagnosis, userTitle, userMessage, helpDestination)
+- Where it lands: `Conduit/Services/ConnectionSetupFlow.swift` (repairPath), `Conduit/Services/ConnectionSetupTest.swift` (ConnectionSetupTestRecoveryPlan)
+- Shown: `Conduit/Views/ConnectionSetupForm.swift`, `Conduit/Views/ConnectionSetupView.swift` (the troubleshooting checks), `Conduit/Voice/Wake/PendingVoiceLaunchPolicy.swift`
+- Tests: `ConduitTests/ConnectionFailureTests.swift`, `ConduitTests/ConnectionSetupTestTests.swift`, `ConduitTests/ConnectionRepairTests.swift`
+
+**Rulings**
+- No TLS validation override: a certificate iOS refuses is never accepted, on any device (Eric, 2026-10-19, issue #129).
+- A refused certificate names the check iOS failed, read from the peer trust URLSession leaves on the error: the certificate doesn't name the address, it breaks Apple's certificate rules (825 days, serverAuth, key size, SHA-2), its dates, or else its root isn't trusted. The most specific comes first, since trusting the root wouldn't fix the others (2026-10-27, #1405, from issue #129's iPad report).
+
+**Open gaps**
+- The Watch and the dictation clip retry treat TLS failures only as never sent or not transient; they show no classified copy.
+
+**Checked:** 2026-10-27, #1405.
+
 ## Review bots
 
 The two opencode reviewers that review every PR here and in the notifier, and
@@ -2665,13 +2724,14 @@ notifier's copies of both
 - Notifier: `notifier/.github/workflows/opencode-review.yml`, `notifier/opencode.json`
 
 **Rulings**
-- Two reviewers gate merges, and both repos run the same pair: GLM-5.3-Flash on Z.ai and Muse Spark 1.3 on Command Code (2026-10-27, #1335 and notifier #405, Eric).
-- A provider whose id is in the models.dev catalog (`commandcode` is) whitelists the one model it reviews with. Otherwise opencode titles each session with the newest small model in that catalog, which was Gemini 3.8 Flash, a call Eric didn't want (2026-10-27, #1391 and notifier #428, Eric asked why Gemini Flash was being called).
+- Two reviewers gate merges, and both repos run the same pair: GLM-5.3-Flash on Z.ai at reasoning effort max, and Claude Haiku 5.5 on the Anthropic API at effort high, set in opencode.json (2026-10-28, #1421, Eric; Muse Spark 1.3 on Command Code before that, #1335).
+- Both repos give the reviewers the same prompt apart from their focus areas: bugs the PR introduces first, a concrete failure for each finding, the four severities defined, and REQUEST_CHANGES on any critical or major finding (2026-10-28, #1421, Eric asked for a review of the prompt).
+- A provider whose id is in the models.dev catalog (`anthropic` is, as `commandcode` was) whitelists the one model it reviews with. Otherwise opencode titles each session with the newest small model in that catalog, which was Gemini 3.8 Flash, a call Eric didn't want (2026-10-27, #1391 and notifier #428, Eric asked why Gemini Flash was being called).
 
 **Open gaps**
 - The workflow runs main's config, so a change to either file is first exercised by the review after it merges.
 
-**Checked:** 2026-10-27, #1391.
+**Checked:** 2026-10-28, #1421.
 
 ## Settings connection page
 
@@ -2993,7 +3053,9 @@ leaves out agents that are out) · rooms of
 only your own agents (unchanged, except that disbanding one now deletes its
 hidden chats) · past-chat search in every chat (it no longer finds those
 rooms) · approvals for your agents in rooms hosted elsewhere, with their
-routes and the rooms commands `approvals`, `approve` and `deny` · the invite
+routes and the rooms commands `approvals`, `approve` and `deny` · copies of
+rooms hosted elsewhere (the home's pages to everyone with agents in a room, the
+copy each keeps on their own Hermes, its routes and `rooms copies`) · the invite
 push (room.invite, on a phone whose Conduit turns it on) and the reply and
 failure pushes your agents' turns in rooms hosted elsewhere don't send · a profile
 the dashboard didn't start with (new drafts and the setup take
@@ -3016,12 +3078,13 @@ captions, Settings captions, the invite's share message
 - Room bridge, a member's side: `notifier/room_bridge.py` (the envelopes' bodies and their checks, a grant's scope, bridge.json), `notifier/room_bridge_member.py` (a member's Hermes answers a home's room requests over its Link: the replay to its own API server, When asked and turns a day as "(pass)" runs, the run's statuses, the 10-minute cap), `notifier/room_links.py` (`Received.age` and `root`), `notifier/room_mailbox.py` (`Delivered.age`, by the mailbox's clock), `notifier/dashboard/plugin_api.py` (starts the bridge before the links loop)
 - Room bridge, the home's side: `notifier/room_bridge_home.py` (the loopback server Hermes reaches a member's agent at: each request carried over the Link, status reads answered from the statuses the member sends, a quiet member, a 12-minute turn and an unanswered dispatch read failed, Stop and revoke through an outbox, bridge.json's home section), `notifier/room_bridge.py` (the route table, the run states and the fields Hermes' client reads, `url`, `start` for both sides)
 - Rooms over Links: `notifier/room_invites.py` (drafts and invites on both sides, the answers, the rooms loop beside the bridge, rooms.json and its outbox, the join card's choices from the last room with the same people, who's who with each member's status; while a room goes on, the fresh grants every 12 hours, leaving, taking an agent out and the end of a disbanded room, with their envelopes), `notifier/room_join.py` (a join's grants for its places, never approve, the reservation, the catalog from this Hermes' API server, the bridge binding and the choices, and undoing them; `renew`), `notifier/room_start.py` (the start: each agent probed through the bridge, the room made in the running room service the draft names, legacy or canonical, its routes registered live, and the gateway's lock on the CLI's drafts; later a route's fresh grant, `swap`, and a member cut off, `cut_off` and `revoke`), `notifier/room_bridge.py` (`grant_issued_at`), `notifier/room_choices.py` (a room's people, `last_with`), `notifier/room_rules.py` and `notifier/__init__.py` (the framing names other agents' owners and the room's host, and leaves out agents that are out), `notifier/dashboard/plugin_api.py` (/rooms/drafts, /rooms/drafts/start, /rooms/invites, /rooms/invites/answer, /rooms/people, capability room-invites; a new draft's `?conduit_profile=`, capability room-dashboard-profiles; /rooms/leave, /rooms/drafts/remove, capability room-leave; the rooms loop starts with the bridge), `notifier/cli.py` (rooms invite, drafts, start, withdraw, invites, join, decline, leave, remove), `notifier/README.md` (Rooms with people you've linked)
+- Copies of rooms hosted elsewhere: `notifier/room_copies.py` (the home's pages, one waiting for its answer at a time; the copy, kept with Hermes' replica store in conduit-rooms/copies.db; what Conduit reads), `notifier/room_invites.py` (room.page and room.copied, the rooms loop's pass), `notifier/dashboard/plugin_api.py` (/rooms/copies, /rooms/copies/log, capability room-copies), `notifier/cli.py` (rooms copies), `notifier/README.md` (Rooms with people you've linked)
 - Approvals from rooms hosted elsewhere: `notifier/room_approvals.py` (each approval your agents' turns there wait for, read with the run's own grant; the answer, once or deny, through this Hermes' API server with a grant for that answer alone; the session its notification names), `notifier/dashboard/plugin_api.py` (/rooms/approvals, /rooms/approvals/answer, capability room-approvals), `notifier/cli.py` (rooms approvals, approve, deny), `notifier/README.md` (Rooms with people you've linked)
 - The invite push and quiet room turns: `notifier/room_invites.py` (notify_invite, Rooms' notify), `notifier/events.py` (sanitize_room), `notifier/e2e.py` (the room sealed, its ids alone when it can't be), `notifier/client.py` (relay_takes), `notifier/relay/src/server.mjs` (validateRoom, genericCopy, shouldDeliver, the gateway's GET /v1/meta, capability room-invites), `notifier/relay/src/store.mjs` (room_invite, off by default), `notifier/__init__.py` (_member_room_turn), `notifier/README.md` (Rooms with people you've linked), `notifier/docs/privacy/index.html` (room invites); tests `notifier/tests/test_delivery.py`, `notifier/tests/test_turn_end_pushes.py`, `notifier/relay/test/server.test.mjs`, `notifier/relay/test/decisions.e2e.test.mjs`
 - App, today's rooms (a member from another installation has target kind peer): `Conduit/Services/GroupChatModels.swift` (GroupMember.target, members(namedBy:)), `Conduit/Services/AppState.swift` (activeRoomResponder, groupMemberBot), `Conduit/Views/GroupChatView.swift` (and Disband's warning), `Conduit/Views/V2/V2ConversationScreen.swift` (Disband's warning in V2), `Conduit/Services/HermesClient.swift` (groups.*)
 - App, on the `linked-rooms` branch only, so not in backticks: Conduit/Services/RoomChoices.swift (RoomChoices, RoomChoicesClient, canSetRoomChoices), Conduit/Views/GroupRoomInfoView.swift (GroupRoomInfoSheet, RoomAgentChoicesView), ConduitTests/GroupChatModelsTests+LinkedRooms.swift; in the files above, GroupPeerRoute, GroupMemberActivity, responderState, liveMember, rosterBot and GroupRoomDisband (GroupChatModels.swift), roomResponderCache and activeRoomResponderState (AppState.swift), and Group Info in both room menus. Each of the branch's PRs names here the app paths it adds
 - Settings > People, on the branch only too: Conduit/Views/PeopleSettingsViews.swift (PeopleSettingsPage, RoomSetupSection, PeopleSettingsText; Link with someone, Scan, Paste), Conduit/Views/RoomLinkSheets.swift (RoomLinkInviteSheet, RoomLinkOpenedSheet, RoomLinkQRCode, RoomLinkSheetText), Conduit/Services/RoomLinks.swift (RoomLinksClient, RoomLinkURL, canLinkRooms, routeRoomLink), Conduit/Services/RoomSetup.swift (RoomSetupClient, canSetUpRooms), ConduitTests/GroupChatModelsTests+People.swift; in files on main, the People row under Hermes in both shells (`Conduit/Views/AuxiliaryViews.swift`), DashboardTicketBridgeError.meaningfulDetail (`Conduit/Services/DashboardTicketBridge.swift`), pendingRoomLink (`Conduit/Services/AppState.swift`), an invite's way in through openURL and onOpenURL (`Conduit/ConduitApp.swift`) to its sheet (`Conduit/Views/RootView.swift`), the scheme's notes (`Conduit/Services/ConduitAppLink.swift`), and CodeScanPurpose, the scanner's words for an invite (`Conduit/Views/Login/DashboardCodeScanner.swift`)
-- Tests: `notifier/tests/test_room_rules.py`, `notifier/tests/test_room_choices.py`, `notifier/tests/test_room_memory.py`, `notifier/tests/test_room_cutoff.py`, `notifier/tests/test_room_cleanup.py`, `notifier/tests/test_room_identity.py`, `notifier/tests/test_room_envelope.py`, `notifier/tests/test_room_mailbox.py`, `notifier/tests/test_room_links.py`, `notifier/tests/test_room_wakeups.py`, `notifier/tests/test_room_setup.py`, `notifier/tests/test_room_bridge.py`, `notifier/tests/test_room_bridge_member.py`, `notifier/tests/test_room_bridge_home.py`, `notifier/tests/test_room_invites.py`, `notifier/tests/test_room_join.py`, `notifier/tests/test_room_start.py`, `notifier/tests/test_room_approvals.py`, `notifier/tests/roomlink_client.py` (Hermes' own RoomLink client, verbatim from c73cbcc4), `notifier/mailbox/test/server.e2e.test.mjs`
+- Tests: `notifier/tests/test_room_rules.py`, `notifier/tests/test_room_choices.py`, `notifier/tests/test_room_memory.py`, `notifier/tests/test_room_cutoff.py`, `notifier/tests/test_room_cleanup.py`, `notifier/tests/test_room_identity.py`, `notifier/tests/test_room_envelope.py`, `notifier/tests/test_room_mailbox.py`, `notifier/tests/test_room_links.py`, `notifier/tests/test_room_wakeups.py`, `notifier/tests/test_room_setup.py`, `notifier/tests/test_room_bridge.py`, `notifier/tests/test_room_bridge_member.py`, `notifier/tests/test_room_bridge_home.py`, `notifier/tests/test_room_invites.py`, `notifier/tests/test_room_join.py`, `notifier/tests/test_room_start.py`, `notifier/tests/test_room_approvals.py`, `notifier/tests/test_room_copies.py`, `notifier/tests/roomlink_client.py` (Hermes' own RoomLink client, verbatim from c73cbcc4), `notifier/mailbox/test/server.e2e.test.mjs`
 
 **Rulings**
 - The app side stays off main: Linked Rooms PRs target `linked-rooms`, which reaches main only once Eric has seen it all work, like `pulse`. The notifier side is on its main, hidden until Conduit shows it (2026-10-23, Eric).
@@ -3053,6 +3116,7 @@ captions, Settings captions, the invite's share message
 - Disbanding a room over Links ends it on the home and tells each person with agents still in it, whose Hermes undo their joins, so a revoke Hermes' disband sent through the bridge and lost still ends it there; their hidden chats stay (2026-10-27, notifier #411).
 - An approval one of your agents' turns waits for in a room hosted elsewhere waits on your own Hermes, and the home only hears that the turn waits. GET /rooms/approvals lists each, the oldest turn's first, with the room, who hosts it, the agent by its handle there and what it asks, reading each run with the grant the bridge keeps for it, since Hermes ties a room's run to the grant scope that started it. POST /rooms/approvals/answer (`rooms approve`, `rooms deny`) answers it once or deny only, through this Hermes' own API server, with a grant made for that answer alone: the run's scope and policy, approve only, for a minute, never stored, sent, logged or returned, and not revoked, which would revoke the agent's own. Each listed approval names the session its "Approval needed" notification names (`session_key`), for the app to match them. The routes (capability room-approvals) take no profile and answer 60 requests a minute of their own, on two threads of their own, each within 30 s, so a slow API server never holds the dashboard's shared ones (2026-10-27, notifier #416).
 - An invite tells the invited person's phone: their Hermes sends a room.invite push when it comes in, once per invite, with the pairing of the profile its dashboard runs as, titled "<who> invited you to <room>" and carrying the invite's Link and room for the tap. The relay sends it only to a phone whose Conduit turned its `room_invite` preference on, off until then, so main's app, which would show it as a reply, gets none; see Notifications for the gate on relays from before it and what stays sealed. An invite dropped as it comes in (over the 50 kept) tells no one, and a push that fails never stops the rooms loop (2026-10-27, #1381, notifier #425).
+- Everyone whose agents are in a room keeps a copy of it on their own Hermes, which their Conduit reads, never the home. The home sends each of them its log a page at a time (room.page: at most 500 events and 160 KB, one waiting for its answer at a time and sent again after a minute without one), with what the room is doing (whether it ended, who's answering, each linked agent's route), never the home's approvals or its own agents' turn errors. Their Hermes takes a page only over the Link that invited it, once the room started, from the room's own authority, keeps it with Hermes' replica store in its own conduit-rooms/copies.db (owner only, apart from Hermes' rooms), and answers with what the copy holds (room.copied), so a gap or a lost page starts the next one where the copy is. Pages stop when a person's agents are all out; a disbanded room's go on until every copy has its end. GET /rooms/copies, /rooms/copies/log and DELETE /rooms/copies (capability room-copies, `rooms copies`) read and forget them (2026-10-28, notifier #434).
 - Your agents' turns in a room someone else hosts send no reply or failure push and no automatic alert call, since the room shows them and their hidden chats aren't ones Conduit opens; approvals and questions still notify. A turn whose room can't be told from the session store notifies as any other (2026-10-27, #1381, notifier #425).
 - Who's live in a room: the gateway's live turns where it reports them (`member_activity`, Hermes c73cbcc4), a running or stopping turn before a queued one, as Hermes Desktop reads them, and a status this build doesn't know is skipped; else the log, as before. A live member on another Hermes whose route says its Hermes refused the room reads "<name> is cut off", and one whose Hermes couldn't be reached reads "<name> can't be reached", in the header and where its reply would land, until its turn runs, whether the turn names it by member id or, having none, by profile. Hermes keeps routes in memory, so one not tried since its room service started reads as responding (2026-10-26, #1289).
 - Disband's warning in a room with a member from another installation says the room ends for everyone, your agents' sessions for it are deleted, and agents on other people's Hermes keep theirs. Rooms of only your own agents keep the old text, which holds since notifier #384 (2026-10-26, #1289).
@@ -3079,12 +3143,14 @@ captions, Settings captions, the invite's share message
 - The branch's host setup sends `?profile=`, so for a profile the dashboard didn't start with it saves without restarting the gateway and says to restart it. C3 sends `?conduit_profile=` to the setup and to new drafts when the plugin lists room-dashboard-profiles.
 - Approvals for your agents in rooms hosted elsewhere are answered on your own Hermes with `hermes conduit-push rooms approvals`, `approve` and `deny`, or by a call from Hermes about one; C3 adds their card to the app, opened from the "Approval needed" notification by its `session_key`.
 - No app turns the relay's `room_invite` on yet, so an invite shows only in `hermes conduit-push rooms invites`: C3c, on the `linked-rooms` branch, turns it on with the invite push's copy, its tap to the join card and Settings > Notifications' Room invites.
+- No app reads the copies of rooms hosted elsewhere yet: C4, on the `linked-rooms` branch, shows those rooms in the Chats list and the room screen from them, and forgets one with its hidden chats when you delete it.
+- A copy's events are Hermes' as the home logged them, apart from the home's own agents' turn errors; a single event too big for a page (160 KB) reaches the copy without its payload.
 - Agents that aren't Hermes (an A2A member) are left out.
 - An acceptor's Hermes that stays off for more than 7 days while its confirm waits at the mailbox leaves the inviter's side linked until its owner unlinks it (the notifier README says so).
 - Changing the tools rooms may use says the agent stops answering in rooms already started, but not in which.
 - An invite opened from another app while a sheet is already up (classic Settings, say) can't show over it, as a sign-in code link can't: open it again once the sheet is closed.
 
-**Checked:** 2026-10-27, #1381 (the invite push and quiet room turns), with notifier #425; #1360 (new drafts and the setup on a profile the dashboard didn't start with), with notifier #387, #390, #396, #397, #398, #401, #406, #409, #411, #416 and #419.
+**Checked:** 2026-10-28, #1410 (copies of rooms hosted elsewhere), with notifier #434; 2026-10-27, #1381 (the invite push and quiet room turns), with notifier #425; #1360 (new drafts and the setup on a profile the dashboard didn't start with), with notifier #387, #390, #396, #397, #398, #401, #406, #409, #411, #416 and #419.
 
 ## Kanban workers' transcripts
 

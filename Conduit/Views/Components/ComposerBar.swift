@@ -460,6 +460,10 @@ struct ComposerBar: View, Equatable {
         .onChange(of: updates.inputs.quoteRequest) { _, request in
             applyQuoteRequest(request)
         }
+        .onChange(of: updates.inputs.dropRequest) { _, request in
+            guard let request, appState.consumeComposerDropRequest(request.id) else { return }
+            handleDroppedFiles(request.providers)
+        }
         .onChange(of: updates.inputs.predictiveRequest) { _, request in
             applyPredictiveRequest(request)
         }
@@ -741,6 +745,10 @@ struct ComposerBar: View, Equatable {
                     handlePastedImageError(message, editorIdentity: currentEditorIdentity)
                 },
                 editorIdentity: editorIdentity,
+                onDroppedFiles: { providers in
+                    guard currentEditorIdentity == editorIdentity else { return }
+                    handleDroppedFiles(providers)
+                },
                 programmaticRevision: composerRevision,
                 programmaticCursorAtEnd: composerCursorAtEnd,
                 returnKeySends: returnKeySends,
@@ -818,7 +826,14 @@ struct ComposerBar: View, Equatable {
                 onCollapse: { isShowingFullEditor = false },
                 canSubmitFromReturn: ComposerReturnKey.canSubmit(action: action) || dictationHoldsSendSlot,
                 onSubmitFromReturn: { submitFromReturnKey() },
+                // Off while the composer is locked, as on the chat itself.
+                onDropFiles: appState.composerIsEnabled ? { providers in handleDroppedFiles(providers) } : nil,
                 attachments: {
+                    // A drop on the editor that left files out says so here,
+                    // not only behind the sheet.
+                    if let composerErrorMessage, !composerErrorMessage.isEmpty {
+                        pasteErrorNotice(composerErrorMessage)
+                    }
                     if let replyReference {
                         replyReferenceChip(replyReference)
                             .padding(.horizontal, 12)
@@ -2586,28 +2601,43 @@ struct ComposerBar: View, Equatable {
         }
     }
 
+    /// Files dropped on the chat or its text field (#1408), staged one by
+    /// one like picked documents. A locked composer takes none, as its
+    /// Attach menu is off then.
+    private func handleDroppedFiles(_ providers: [NSItemProvider]) {
+        guard appState.composerIsEnabled, !providers.isEmpty else { return }
+        composerErrorMessage = nil
+        let origin = asyncAttachmentContext
+        let limitMegabytes = attachmentLimitMegabytes
+        Task {
+            var tally = ImportTally()
+            for (index, provider) in providers.enumerated() {
+                guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else { break }
+                let outcome = await AttachmentDrop.stage(provider, ordinal: index + 1, limitMegabytes: limitMegabytes)
+                guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else {
+                    if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
+                    break
+                }
+                record(outcome, in: &tally)
+            }
+            if shouldAcceptAsyncAttachmentCompletion(startedIn: origin) {
+                finishImport(tally, limitMegabytes: limitMegabytes)
+            }
+        }
+    }
+
     /// Stages a file from the document picker the same way as a picked
     /// photo: size checked before it is read, copied rather than loaded.
     nonisolated static func stageDocument(at url: URL, limitMegabytes: Int) -> StagedImport {
         let name = url.lastPathComponent
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-        if let size = AttachmentSizeLimit.fileSize(at: url),
-           !AttachmentSizeLimit.allows(byteCount: size, megabytes: limitMegabytes) {
-            return .tooLarge(name)
-        }
-        do {
-            let staged = try AttachmentStaging.destination(for: name)
-            try FileManager.default.copyItem(at: url, to: staged)
-            return AttachmentStaging.finishStaging(
-                fileAt: staged,
-                name: name,
-                type: UTType(filenameExtension: url.pathExtension),
-                limitMegabytes: limitMegabytes
-            )
-        } catch {
-            return .failed(name)
-        }
+        return AttachmentStaging.stageCopy(
+            of: url,
+            name: name,
+            type: UTType(filenameExtension: url.pathExtension),
+            limitMegabytes: limitMegabytes
+        )
     }
 
     /// A photo from the Camera item, staged like a picked one: encoded as

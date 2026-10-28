@@ -24,6 +24,9 @@ struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: 
     /// which reports whether it did anything.
     let canSubmitFromReturn: Bool
     let onSubmitFromReturn: () -> Bool
+    /// Files dropped on the editor go to the composer's attachments, as
+    /// on the chat itself (#1408). Nil takes no drops.
+    var onDropFiles: (([NSItemProvider]) -> Void)? = nil
     /// The staged attachments, so what Send will include stays visible
     /// and removable here.
     @ViewBuilder let attachments: () -> Attachments
@@ -89,6 +92,9 @@ struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: 
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
+        }
+        .attachmentDropTarget(isEnabled: onDropFiles != nil) { providers in
+            onDropFiles?(providers)
         }
         .task {
             // After the sheet has settled; focus set while it is still

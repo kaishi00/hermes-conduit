@@ -77557,6 +77557,88 @@
         }
       }
     },
+    "Drop to attach" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Anhängen ablegen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suelta para adjuntar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Déposer pour joindre"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lepaskan untuk melampirkan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rilascia per allegare"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ドロップして添付"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "놓아서 첨부"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upuść, aby załączyć"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solte para anexar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отпустите, чтобы прикрепить"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eklemek için bırakın"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拖放以添加附件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拖放以加入附件"
+          }
+        }
+      }
+    },
     "Quoted in your message" : {
       "localizations" : {
         "de" : {
@@ -353202,6 +353284,498 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這裡有些檔案夾的內容多於 Conduit 列出的。搜尋可以找到其餘內容。"
+          }
+        }
+      }
+    },
+    "Certificate doesn’t match the address" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zertifikat passt nicht zur Adresse"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El certificado no coincide con la dirección"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le certificat ne correspond pas à l’adresse"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sertifikat tidak cocok dengan alamat"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il certificato non corrisponde all’indirizzo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "証明書がアドレスと一致しません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "인증서가 주소와 일치하지 않음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Certyfikat nie pasuje do adresu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O certificado não corresponde ao endereço"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сертификат не соответствует адресу"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sertifika adresle eşleşmiyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "证书与地址不匹配"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "憑證與位址不符"
+          }
+        }
+      }
+    },
+    "Certificate not accepted by iOS" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zertifikat von iOS nicht akzeptiert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS no acepta el certificado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Certificat refusé par iOS"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sertifikat tidak diterima iOS"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Certificato non accettato da iOS"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOSが証明書を受け付けません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS가 인증서를 허용하지 않음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS nie akceptuje certyfikatu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O iOS não aceitou o certificado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS не принимает сертификат"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sertifika iOS tarafından kabul edilmedi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 不接受该证书"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 不接受此憑證"
+          }
+        }
+      }
+    },
+    "Conduit reached the server, but its TLS certificate isn’t issued for this address. Connect with a name or IP address the certificate lists, or add this address to the certificate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit hat den Server erreicht, aber sein TLS-Zertifikat ist nicht für diese Adresse ausgestellt. Verbinde dich mit einem Namen oder einer IP-Adresse aus dem Zertifikat oder nimm diese Adresse ins Zertifikat auf."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit llegó al servidor, pero su certificado TLS no está emitido para esta dirección. Conéctate con un nombre o una dirección IP que figure en el certificado, o añade esta dirección al certificado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit a atteint le serveur, mais son certificat TLS n’est pas émis pour cette adresse. Connectez-vous avec un nom ou une adresse IP indiqués dans le certificat, ou ajoutez cette adresse au certificat."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit menjangkau server, tetapi sertifikat TLS-nya tidak diterbitkan untuk alamat ini. Hubungkan dengan nama atau alamat IP yang tercantum di sertifikat, atau tambahkan alamat ini ke sertifikat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit ha raggiunto il server, ma il suo certificato TLS non è emesso per questo indirizzo. Connettiti con un nome o un indirizzo IP indicato nel certificato, oppure aggiungi questo indirizzo al certificato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitはサーバーに接続できましたが、そのTLS証明書はこのアドレス用に発行されていません。証明書に記載された名前またはIPアドレスで接続するか、このアドレスを証明書に追加してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit가 서버에 연결했지만 해당 TLS 인증서는 이 주소용으로 발급되지 않았습니다. 인증서에 나열된 이름이나 IP 주소로 연결하거나 이 주소를 인증서에 추가하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit połączył się z serwerem, ale jego certyfikat TLS nie został wystawiony dla tego adresu. Połącz się przez nazwę lub adres IP podane w certyfikacie albo dodaj ten adres do certyfikatu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit alcançou o servidor, mas o certificado TLS dele não foi emitido para este endereço. Conecte com um nome ou endereço IP listado no certificado, ou adicione este endereço ao certificado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit связался с сервером, но его сертификат TLS выпущен не для этого адреса. Подключайтесь по имени или IP-адресу, указанному в сертификате, или добавьте этот адрес в сертификат."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit sunucuya ulaştı ancak TLS sertifikası bu adres için verilmemiş. Sertifikada listelenen bir ad veya IP adresiyle bağlanın ya da bu adresi sertifikaya ekleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 已连接到服务器，但其 TLS 证书不是为此地址签发的。请使用证书中列出的名称或 IP 地址连接，或将此地址添加到证书中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 已連上伺服器，但其 TLS 憑證並非為此位址簽發。請使用憑證列出的名稱或 IP 位址連線，或將此位址加入憑證。"
+          }
+        }
+      }
+    },
+    "iOS refuses this server certificate, whichever authority issued it. Apple requires a validity of 825 days or less, the serverAuth extended key usage, an RSA key of at least 2048 bits (or ECC 256 bits) and a SHA-2 signature." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS lehnt dieses Serverzertifikat ab, egal welche Stelle es ausgestellt hat. Apple verlangt eine Gültigkeit von höchstens 825 Tagen, die erweiterte Schlüsselverwendung serverAuth, einen RSA-Schlüssel mit mindestens 2048 Bit (oder ECC mit 256 Bit) und eine SHA-2-Signatur."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS rechaza este certificado del servidor, sea cual sea la autoridad que lo emitió. Apple exige una validez de 825 días o menos, el uso extendido de clave serverAuth, una clave RSA de al menos 2048 bits (o ECC de 256 bits) y una firma SHA-2."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS refuse ce certificat de serveur, quelle que soit l’autorité qui l’a émis. Apple exige une validité de 825 jours au maximum, l’usage étendu de clé serverAuth, une clé RSA d’au moins 2048 bits (ou ECC de 256 bits) et une signature SHA-2."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS menolak sertifikat server ini, siapa pun penerbitnya. Apple mensyaratkan masa berlaku 825 hari atau kurang, penggunaan kunci tambahan serverAuth, kunci RSA minimal 2048 bit (atau ECC 256 bit), dan tanda tangan SHA-2."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS rifiuta questo certificato del server, qualunque sia l’autorità che l’ha emesso. Apple richiede una validità di 825 giorni o meno, l’utilizzo esteso della chiave serverAuth, una chiave RSA di almeno 2048 bit (o ECC da 256 bit) e una firma SHA-2."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "発行元に関係なく、iOSはこのサーバー証明書を拒否しています。Appleの要件は、有効期間825日以内、拡張キー使用法serverAuth、2048ビット以上のRSA鍵（またはECC 256ビット）、SHA-2署名です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "발급 기관과 관계없이 iOS가 이 서버 인증서를 거부합니다. Apple은 유효 기간 825일 이하, serverAuth 확장 키 사용, 2048비트 이상의 RSA 키(또는 256비트 ECC), SHA-2 서명을 요구합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS odrzuca ten certyfikat serwera bez względu na to, kto go wystawił. Apple wymaga ważności do 825 dni, rozszerzonego użycia klucza serverAuth, klucza RSA co najmniej 2048-bitowego (lub ECC 256-bitowego) i podpisu SHA-2."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O iOS recusa este certificado do servidor, seja qual for a autoridade que o emitiu. A Apple exige validade de até 825 dias, o uso estendido de chave serverAuth, uma chave RSA de pelo menos 2048 bits (ou ECC de 256 bits) e uma assinatura SHA-2."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS отклоняет этот сертификат сервера, кто бы его ни выпустил. Apple требует срок действия не более 825 дней, расширенное использование ключа serverAuth, ключ RSA не короче 2048 бит (или ECC 256 бит) и подпись SHA-2."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS, hangi otorite vermiş olursa olsun bu sunucu sertifikasını reddediyor. Apple en fazla 825 günlük geçerlilik, serverAuth genişletilmiş anahtar kullanımı, en az 2048 bit RSA anahtarı (veya 256 bit ECC) ve SHA-2 imzası ister."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无论由哪个机构签发，iOS 都拒绝此服务器证书。Apple 要求有效期不超过 825 天、具有 serverAuth 扩展密钥用途、RSA 密钥至少 2048 位（或 ECC 256 位）以及 SHA-2 签名。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無論由哪個機構簽發，iOS 都拒絕此伺服器憑證。Apple 要求有效期間不超過 825 天、具備 serverAuth 延伸金鑰用途、至少 2048 位元的 RSA 金鑰（或 ECC 256 位元）以及 SHA-2 簽章。"
+          }
+        }
+      }
+    },
+    "Each iPhone and iPad keeps its own trust: turn on full trust on every device you connect from, even if another one already works." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jedes iPhone und iPad hat sein eigenes Vertrauen: Aktiviere das volle Vertrauen auf jedem Gerät, mit dem du dich verbindest, auch wenn es auf einem anderen schon funktioniert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada iPhone y iPad tiene su propia confianza: activa la confianza total en cada dispositivo desde el que te conectes, aunque en otro ya funcione."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaque iPhone et iPad a sa propre confiance : activez la confiance totale sur chaque appareil depuis lequel vous vous connectez, même si un autre fonctionne déjà."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setiap iPhone dan iPad menyimpan kepercayaannya sendiri: aktifkan kepercayaan penuh di setiap perangkat yang Anda gunakan untuk terhubung, meskipun perangkat lain sudah berfungsi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni iPhone e iPad ha la propria attendibilità: attiva l’attendibilità completa su ogni dispositivo da cui ti connetti, anche se su un altro funziona già."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhoneとiPadはそれぞれ独自の信頼設定を持っています。別のデバイスで接続できていても、接続するすべてのデバイスで完全な信頼をオンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone과 iPad는 각각 자체 신뢰 설정을 가집니다. 다른 기기에서 이미 작동하더라도 연결하는 모든 기기에서 완전한 신뢰를 켜세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Każdy iPhone i iPad ma własne zaufanie: włącz pełne zaufanie na każdym urządzeniu, z którego się łączysz, nawet jeśli na innym już działa."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada iPhone e iPad tem a própria confiança: ative a confiança total em cada dispositivo usado para conectar, mesmo que outro já funcione."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У каждого iPhone и iPad своё доверие: включите полное доверие на каждом устройстве, с которого подключаетесь, даже если на другом всё уже работает."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her iPhone ve iPad kendi güvenini tutar: başka bir cihazda zaten çalışsa bile bağlandığınız her cihazda tam güveni açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每台 iPhone 和 iPad 各自保存信任设置：即使另一台设备已经可以连接，也请在每台用于连接的设备上开启完全信任。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每台 iPhone 和 iPad 各自保存信任設定：即使另一台裝置已能連線，也請在每台用來連線的裝置上開啟完整信任。"
+          }
+        }
+      }
+    },
+    "The certificate must name the exact address you entered, as a host name or IP address in its Subject Alternative Name." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Zertifikat muss genau die eingegebene Adresse nennen, als Hostname oder IP-Adresse im Subject Alternative Name."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El certificado debe incluir exactamente la dirección que escribiste, como nombre de host o dirección IP en su Subject Alternative Name."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le certificat doit indiquer exactement l’adresse saisie, sous forme de nom d’hôte ou d’adresse IP dans son Subject Alternative Name."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sertifikat harus mencantumkan alamat persis yang Anda masukkan, sebagai nama host atau alamat IP di Subject Alternative Name-nya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il certificato deve indicare esattamente l’indirizzo inserito, come nome host o indirizzo IP nel suo Subject Alternative Name."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "証明書には、入力したアドレスそのものが、Subject Alternative Nameのホスト名またはIPアドレスとして含まれている必要があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "인증서에는 입력한 주소가 Subject Alternative Name의 호스트 이름이나 IP 주소로 정확히 포함되어야 합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Certyfikat musi zawierać dokładnie wpisany adres, jako nazwę hosta lub adres IP w polu Subject Alternative Name."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O certificado precisa conter exatamente o endereço digitado, como nome de host ou endereço IP no Subject Alternative Name."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сертификат должен содержать именно тот адрес, который вы ввели, как имя хоста или IP-адрес в Subject Alternative Name."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sertifika, girdiğiniz adresi tam olarak, Subject Alternative Name içinde ana bilgisayar adı veya IP adresi olarak içermelidir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "证书必须在其 Subject Alternative Name 中以主机名或 IP 地址的形式包含你输入的确切地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "憑證必須在其 Subject Alternative Name 中，以主機名稱或 IP 位址的形式包含你輸入的確切位址。"
           }
         }
       }

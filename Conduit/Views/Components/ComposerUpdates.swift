@@ -47,6 +47,7 @@ struct ComposerInputs: Equatable {
     let prefillText: String
     let prefillDraftKey: ComposerDraftKey?
     let quoteRequest: ComposerQuoteRequest?
+    let dropRequest: AttachmentDropRequest?
     let predictiveRequest: PredictiveComposerRequest?
     let focusRequest: ComposerFocusRequest?
     let dictationRequest: ComposerDictationRequest?
@@ -101,6 +102,7 @@ struct ComposerInputs: Equatable {
         prefillText = appState.composerPrefillText
         prefillDraftKey = appState.composerPrefillDraftKey
         quoteRequest = appState.composerQuoteRequest
+        dropRequest = appState.composerDropRequest
         predictiveRequest = appState.predictiveComposerRequest
         focusRequest = appState.composerFocusRequest
         dictationRequest = appState.composerDictationRequest

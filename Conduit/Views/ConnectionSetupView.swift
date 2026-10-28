@@ -846,6 +846,8 @@ extension ConnectionHelpDestination {
         case .tls:
             return [
                 AppLocalization.string("If you use your own certificate authority, install its profile on this device (Settings → General → VPN & Device Management), then turn on full trust for its root certificate (Settings → General → About → Certificate Trust Settings)."),
+                AppLocalization.string("Each iPhone and iPad keeps its own trust: turn on full trust on every device you connect from, even if another one already works."),
+                AppLocalization.string("The certificate must name the exact address you entered, as a host name or IP address in its Subject Alternative Name."),
                 AppLocalization.string("Check the server certificate’s expiration and validity dates."),
                 AppLocalization.string("Confirm this device’s date and time are correct.")
             ]

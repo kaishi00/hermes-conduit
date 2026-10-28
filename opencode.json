@@ -1,17 +1,20 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
-    "commandcode": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Command Code",
+    "anthropic": {
       "options": {
-        "baseURL": "https://api.commandcode.ai/provider/v1",
-        "apiKey": "{env:COMMANDCODE_API_KEY}"
+        "apiKey": "{env:ANTHROPIC_API_KEY}"
       },
-      "whitelist": ["meta/muse-spark-1.3-contributor"],
+      "whitelist": ["claude-haiku-5-5"],
       "models": {
-        "meta/muse-spark-1.3-contributor": {
-          "name": "Muse Spark 1.3"
+        "claude-haiku-5-5": {
+          "name": "Claude Haiku 5.5",
+          "options": {
+            "thinking": {
+              "type": "adaptive"
+            },
+            "effort": "high"
+          }
         }
       }
     },
@@ -24,7 +27,10 @@
       },
       "models": {
         "glm-5.3-flash": {
-          "name": "GLM-5.3-Flash"
+          "name": "GLM-5.3-Flash",
+          "options": {
+            "reasoningEffort": "max"
+          }
         }
       }
     }

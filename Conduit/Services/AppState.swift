@@ -2219,6 +2219,10 @@ final class AppState: ObservableObject {
     /// The same for the open group room's composer, kept apart so a chat's
     /// composer never takes a quote meant for a room.
     @Published private(set) var roomQuoteRequest: ComposerQuoteRequest?
+    /// Files dropped on the open chat (#1408), waiting for its composer to
+    /// stage them, and the same for the open room's composer.
+    @Published private(set) var composerDropRequest: AttachmentDropRequest?
+    @Published private(set) var roomDropRequest: AttachmentDropRequest?
     /// Words added to a room's kept draft from outside its composer (a
     /// dictation Retry). The open room's composer adds them to its field.
     @Published private(set) var roomDraftAppend: RoomDraftAppend?
@@ -10432,6 +10436,45 @@ final class AppState: ObservableObject {
         composerPrefillDraftKey = nil
     }
 
+    /// Files dropped on the open chat go to its composer, which stages them
+    /// as attachments for the user to send.
+    func dropIntoComposer(_ providers: [NSItemProvider]) {
+        guard !providers.isEmpty else { return }
+        let owner = composerDraftKeyOnScreen
+        // A second drop on the same chat before the composer took the
+        // first adds to it; one left by another chat is dropped.
+        let pending = composerDropRequest?.owner == AnyHashable(owner) ? composerDropRequest?.providers ?? [] : []
+        composerDropRequest = AttachmentDropRequest(owner: owner, providers: pending + providers)
+    }
+
+    /// Whether the request was still the pending one for the chat on
+    /// screen: a drop that came on top of it replaced it with both, so its
+    /// composer stages that, and one dropped on another chat is discarded.
+    func consumeComposerDropRequest(_ id: UUID) -> Bool {
+        guard let request = composerDropRequest, request.id == id else { return false }
+        composerDropRequest = nil
+        guard let owner = request.owner.base as? ComposerDraftKey else { return false }
+        return composerDraftKeysAreSameChat(owner, composerDraftKeyOnScreen)
+    }
+
+    /// Files dropped on the open group room go to its composer.
+    func dropIntoRoomComposer(_ providers: [NSItemProvider]) {
+        guard !providers.isEmpty, let surface = activeRoomSurface else { return }
+        let owner = "\(surface.dashboardID.uuidString)/\(surface.room.roomID)"
+        // A second drop on the same room before the composer took the
+        // first adds to it.
+        let pending = roomDropRequest?.owner == AnyHashable(owner) ? roomDropRequest?.providers ?? [] : []
+        roomDropRequest = AttachmentDropRequest(owner: owner, providers: pending + providers)
+    }
+
+    /// Whether the request was still the pending one for the open room.
+    func consumeRoomDropRequest(_ id: UUID) -> Bool {
+        guard let request = roomDropRequest, request.id == id else { return false }
+        roomDropRequest = nil
+        guard let surface = activeRoomSurface else { return false }
+        return request.owner == AnyHashable("\(surface.dashboardID.uuidString)/\(surface.room.roomID)")
+    }
+
     /// The composer took the quote: drop it, so the quoted text is not kept
     /// around after it has landed.
     func consumeComposerQuoteRequest(_ id: UUID) {
@@ -11288,9 +11331,10 @@ final class AppState: ObservableObject {
         groupRoomOutbox.discard()
         pendingRoomMessage = nil
         roomSendErrorMessage = nil
-        // A quote the closed room's composer never took must not land in
-        // the next room opened.
+        // A quote or drop the closed room's composer never took must not
+        // land in the next room opened.
         roomQuoteRequest = nil
+        roomDropRequest = nil
     }
 
     /// Probe `groups.capabilities` and, when the foundation methods are
@@ -11382,8 +11426,11 @@ final class AppState: ObservableObject {
         activeRoomSendInFlight = inFlightRoomSendTokens[
             Self.roomKey(dashboardID: dashboardID, roomID: room.roomID)
         ] != nil
-        // A quote the room being left never took stays with it.
-        if activeRoomSurface?.room.roomID != room.roomID { roomQuoteRequest = nil }
+        // A quote or drop the room being left never took stays with it.
+        if activeRoomSurface?.room.roomID != room.roomID {
+            roomQuoteRequest = nil
+            roomDropRequest = nil
+        }
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: room)
         activeRoomReplay = keptRoomReplays[Self.roomKey(dashboardID: dashboardID, roomID: room.roomID)]
             ?? GroupRoomReplay(roomID: room.roomID)

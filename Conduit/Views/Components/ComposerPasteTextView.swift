@@ -65,6 +65,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
     let onPastedImage: (PastedImage) -> Void
     let onPastedImageError: (String) -> Void
     let editorIdentity: UUID
+    /// Files dropped or pasted on the field that are staged as attachments
+    /// (`AttachmentDrop.stagesAsFiles`), on the main thread.
+    var onDroppedFiles: (([NSItemProvider]) -> Void)? = nil
     /// Generation of INTENTIONAL programmatic composer replacements (draft
     /// restore, prefill, session handoff, slash insertion, clear after send).
     /// ComposerBar advances it only through `replaceComposerText(_:)`.
@@ -128,6 +131,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         }
         view.onPastedImage = onPastedImage
         view.onPastedImageError = onPastedImageError
+        view.onDroppedFiles = onDroppedFiles
         view.returnKeySends = returnKeySends
         view.canSubmitFromReturn = canSubmitFromReturn
         view.onSubmitFromReturn = onSubmitFromReturn
@@ -171,6 +175,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         }
         uiView.onPastedImage = onPastedImage
         uiView.onPastedImageError = onPastedImageError
+        uiView.onDroppedFiles = onDroppedFiles
         uiView.returnKeySends = returnKeySends
         uiView.canSubmitFromReturn = canSubmitFromReturn
         uiView.onSubmitFromReturn = onSubmitFromReturn
@@ -325,6 +330,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
                 textView.onContentHeightChange = nil
                 textView.onPastedImage = nil
                 textView.onPastedImageError = nil
+                textView.onDroppedFiles = nil
                 textView.returnKeySends = false
                 textView.canSubmitFromReturn = false
                 textView.onSubmitFromReturn = nil
@@ -400,6 +406,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
 final class ImagePasteTextView: ReturnKeyTextView {
     var onPastedImage: ((PastedImage) -> Void)?
     var onPastedImageError: ((String) -> Void)?
+    var onDroppedFiles: (([NSItemProvider]) -> Void)?
     var onContentHeightChange: ((CGFloat) -> Void)?
     var editorIdentity: UUID?
     var minimumReportedHeight: CGFloat = 44
@@ -453,6 +460,9 @@ final class ImagePasteTextView: ReturnKeyTextView {
 
     override func canPaste(_ itemProviders: [NSItemProvider]) -> Bool {
         if itemProviders.contains(where: { canLoadImageProvider($0) }) {
+            return true
+        }
+        if onDroppedFiles != nil, AttachmentDrop.stagesAsFiles(itemProviders) {
             return true
         }
         return super.canPaste(itemProviders)
@@ -511,6 +521,16 @@ final class ImagePasteTextView: ReturnKeyTextView {
     }
 
     override func paste(itemProviders: [NSItemProvider]) {
+        // Dropped files (Finder, Files) attach as picked files do; words
+        // and links among them go into the text, and a lone image keeps
+        // the image paste below.
+        if let onDroppedFiles, AttachmentDrop.stagesAsFiles(itemProviders) {
+            let files = AttachmentDrop.files(in: itemProviders)
+            DispatchQueue.main.async { onDroppedFiles(files) }
+            let words = itemProviders.filter { !AttachmentDrop.isFile($0) }
+            if !words.isEmpty { super.paste(itemProviders: words) }
+            return
+        }
         guard let provider = itemProviders.first(where: { canLoadImageProvider($0) }) else {
             super.paste(itemProviders: itemProviders)
             return

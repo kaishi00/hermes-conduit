@@ -591,7 +591,8 @@ final class ConnectionSetupTestTests: XCTestCase {
     func testTransportFailuresTargetConnectionDetails() {
         let transportFailures: [ConnectionFailure] = [
             .hostNotFound, .unreachable, .connectionRefused, .timedOut,
-            .offline, .tlsUntrusted, .tlsBadDate, .tlsFailure, .insecureTransport, .invalidAddress
+            .offline, .tlsUntrusted, .tlsBadDate, .tlsFailure, .tlsHostnameMismatch, .tlsNotStandardsCompliant,
+            .insecureTransport, .invalidAddress
         ]
         for failure in transportFailures {
             let plan = ConnectionSetupTestRecoveryPlan.plan(for: .server, failure: failure)

@@ -170,6 +170,10 @@ struct GroupRoomComposer: View {
         .onChange(of: appState.roomQuoteRequest) { _, request in
             applyQuoteRequest(request)
         }
+        .onChange(of: appState.roomDropRequest) { _, request in
+            guard let request, appState.consumeRoomDropRequest(request.id) else { return }
+            importDroppedFiles(request.providers)
+        }
         // A dictation Retry added words to this room's kept draft, which
         // tracks the field as it changes: show it. Reading the kept draft
         // keeps both of two Retries that land in the same update.
@@ -244,7 +248,19 @@ struct GroupRoomComposer: View {
                 onCollapse: { isShowingFullEditor = false },
                 canSubmitFromReturn: canSubmitFromReturn,
                 onSubmitFromReturn: { submitFromReturnKey() },
+                onDropFiles: surface?.room.isDisbanded == false ? { providers in importDroppedFiles(providers) } : nil,
                 attachments: {
+                    // A drop on the editor that left files out says so here,
+                    // not only behind the sheet.
+                    if let composerError, !composerError.isEmpty {
+                        Label(composerError, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
+                            .padding(.top, 8)
+                    }
                     if !attachments.isEmpty { attachmentStrip }
                 },
                 dictateButton: {
@@ -919,6 +935,26 @@ struct GroupRoomComposer: View {
                     ComposerBar.stageDocument(at: url, limitMegabytes: limit)
                 }.value)
             }
+            finishImport(outcomes, roomID: roomID)
+        }
+    }
+
+    /// Files dropped on the room (#1408), staged like picked documents,
+    /// even while a send's files go up: a send takes only its own files
+    /// out of the draft. A plugin that can't store a room's files says
+    /// what fixes it, as the Attach menu does.
+    private func importDroppedFiles(_ providers: [NSItemProvider]) {
+        // A disbanded room sends nothing, whichever target took the drop.
+        guard !providers.isEmpty, surface?.room.isDisbanded == false else { return }
+        guard appState.canAttachRoomFiles else {
+            composerError = AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.")
+            Haptics.error()
+            return
+        }
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+        let roomID = surface?.room.roomID
+        Task {
+            let outcomes = await AttachmentDrop.stage(providers, limitMegabytes: limit)
             finishImport(outcomes, roomID: roomID)
         }
     }
