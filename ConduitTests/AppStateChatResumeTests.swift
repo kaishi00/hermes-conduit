@@ -1541,6 +1541,35 @@ final class AppStateChatResumeTests: XCTestCase {
         )
     }
 
+    func testAChatSyncErrorWaitsBehindAnOpenRoom() async {
+        // A room's banner shows the shared error: the chat under it failing
+        // to sync (a return to the app) must not read as the room failing
+        // (#1459). The error shows once the room closes back to the chat.
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [] },
+            openSession: { _, _, _ in throw URLError(.badServerResponse) },
+            refreshContext: { _, _ in }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"), profile: "default")
+        harness.appState.activeSessionId = "selected"
+        harness.appState.setActiveRoomSurfaceForTesting(AppState.GroupRoomSurface(
+            dashboardID: UUID(),
+            room: GroupRoom(roomID: "room-1", name: "Planning", members: [], authorityGatewayID: "gw-a",
+                            authorityEpoch: 1, revision: 1, createdAt: 0, updatedAt: 0,
+                            disbandedAt: nil, latestSeq: 0)
+        ))
+
+        await harness.appState.syncSession()
+
+        XCTAssertNil(harness.appState.errorMessage, "The room shows only its own errors")
+        harness.appState.closeGroupRoom()
+        XCTAssertTrue(
+            harness.appState.errorMessage?.hasPrefix("Failed to restore this conversation:") == true,
+            "Back on the chat, its error shows: \(String(describing: harness.appState.errorMessage))"
+        )
+    }
+
     func testNewChatThatFailsKeepsTheOpenChatsTitle() async {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(

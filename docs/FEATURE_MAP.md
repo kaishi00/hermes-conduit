@@ -1529,23 +1529,25 @@ Watch and CarPlay (not needed: neither shows a transcript)
 **Code**
 - Chats: `Conduit/Services/AppState.swift` (performSessionOpenNotingRefusal, presentSavedCopyWhileOpening, recordOfflineChatCopy; presentRestoredChatAfterProfileChange and its rollback in switchProfile), `Conduit/Services/OfflineChatCache.swift` (loadTranscript, keptTranscripts), `Conduit/Views/OfflineChatTranscriptView.swift`, `Conduit/Views/ChatView.swift` (the copy's overlay)
 - Bot Chat: `Conduit/Services/AppState.swift` (keepBotChatCopy, botChatCopyOwner, noteBotChatOpen, outgoingBotChatCopyOwner and where it's cleared: flushPendingPresentationCache, performSessionOpenNotingRefusal, switchDashboard, createNewSession; presentKeptBotChatCopy, keptBotChatCopies)
-- Group rooms: `Conduit/Services/AppState.swift` (openGroupRoom, parkActiveRoomSend, keptRoomReplays)
-- Tests: `ConduitTests/OfflineChatCacheTests.swift`, `ConduitTests/GroupChatSessionSafetyTests.swift`, `ConduitTests/CrossProfilePresentationCacheTests.swift` (testTheOutgoingTranscriptLeavesWhenTheProfileChangesOver)
+- Group rooms: `Conduit/Services/AppState.swift` (openGroupRoom, parkActiveRoomSend, keptRoomReplays; chatSyncErrorMessage, chatErrorBehindRoom and closeRoomSurfaceBackToChat for the chat's error under a room)
+- Tests: `ConduitTests/OfflineChatCacheTests.swift`, `ConduitTests/GroupChatSessionSafetyTests.swift`, `ConduitTests/CrossProfilePresentationCacheTests.swift` (testTheOutgoingTranscriptLeavesWhenTheProfileChangesOver), `ConduitTests/AppStateChatResumeTests.swift` (testAChatSyncErrorWaitsBehindAnOpenRoom)
 
 **Rulings**
 - What shows while a chat opens is presentation only: it never enters the live transcript, so approvals, paging and resume never read it, and the live transcript replaces it wholesale (2026-10-27, #1404, Eric picked this over seeding the live transcript or keeping chat views alive).
 - Copies are kept per dashboard and profile (Bot Chat: per bot), so another profile's history never shows (2026-10-27, #1404).
 - A profile switch takes the outgoing profile's transcript, and any reply still streaming into it, off the screen as the profile changes over: the chat the new profile opens on shows its saved copy (a Bot Chat, its kept copy), or nothing, until Hermes sends it, and a chat opened in that profile replaces it as it opens. It used to stay up under the new chat's title for the whole switch, several seconds on a real dashboard. A switch that fails puts the outgoing chat and its transcript back as they were, over a chat opened during the switch (the transcript never onto another dashboard), until the reconnect resolves it (2026-10-28, #1447, Eric asked for it, from issue #1442).
+- A group room on screen shows only its own errors. The chat under it can still sync (a return to the app), and its error used to land in the room's banner, read as the room failing (issue #1459). A chat sync's error raised while a room is on screen waits and shows when the room closes back to that chat (closed, or gone: disbanded or not found); opening another chat or a new one, switching profile, a reconnect or the chat resuming meanwhile drops it (2026-10-28, #1461, from issue #1459, which Eric asked to fix).
 - A Bot Chat's copy is kept only for the bot owning the id the chat is open as (the registry first, then the roster and the saved last-chat reference). The chat's other ids never decide the bot: the scroll identity's aliases can name the chat it replaced, another bot's, so an ordinary chat left after a Bot Chat keeps no copy for it, and reopening one bot never shows another's chat. The owner is taken before a bot open notes its own ids, so a bot opening as the same id never takes the copy of the chat being left (2026-10-28, #1432).
 
 **Open gaps**
 - A chat whose live transcript lands somewhere other than its newest row (an unread reply, a restored reading place) moves there at the handover.
 - Bot Chat copies and group room events are memory only, so they don't outlive Conduit being stopped.
+- An error already on the chat when a room opens is cleared by the open (openGroupRoom) and doesn't come back when the room closes; only a sync error raised while the room is up waits (#1461 review). `errorMessage` holds non-chat errors too, so carrying it needs a rule for which ones are the chat's.
 - Settings' Data handling caption says recent conversations are kept so Conduit opens straight to them while it connects. It doesn't mention reopening, because what's kept on the device hasn't changed.
 - The first open of a chat after launch reads its file on the main thread (repeat opens come from memory); kept as is unless it shows in profiling (#1404).
 - While the copy is up, VoiceOver reads its rows with no "opening" announcement; the header and composer say Conduit is connecting, as for a chat picked in the saved list (#1404).
 
-**Checked:** 2026-10-28, #1447 (a profile switch shows the new profile's chat, not the outgoing transcript); 2026-10-28, #1432.
+**Checked:** 2026-10-28, #1461 (a chat's sync error stays out of a room on screen); 2026-10-28, #1447 (a profile switch shows the new profile's chat, not the outgoing transcript); 2026-10-28, #1432.
 
 ## Composer drafts
 
@@ -3398,7 +3400,9 @@ A Kanban task's worker runs in a Hermes session of its own (source
 `kanban`). Hermes refuses to reopen one as a chat (`session.resume` 4132):
 only the board may run it, so it can supervise the worker. Conduit leaves
 these sessions out wherever it offers chats, and the task's Worker Log is
-where to follow one.
+where to follow one. The other sessions Hermes' pickers hide as not
+conversations (`INTERNAL_LISTING_SOURCES`: `kanban`, `tool`, `oneshot`) stay
+out the same way, and so do workers Hermes stored before it tagged them.
 
 **Siblings:** each profile's chats list and its archived list (and their
 `session.list` fallback) · All profiles · project chats (lanes and
@@ -3413,8 +3417,8 @@ link or notification (the message shown) · the Kanban task's Worker Log ·
 Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 
 **Code**
-- Sources: `Conduit/Models/Models.swift` (SessionSource.hermesKanbanSource, chatListExcludedSources)
-- Lists: `Conduit/Services/AppState.swift` (profileSessionsPath, archivedSessionsPath), `Conduit/Models/AllProfilesChats.swift` (sessionsPath), `Conduit/Services/HermesClient.swift` (MessageNormalizer.normalizeSessions drops `kanban` rows from every list it builds: the `session.list` fallback, project lanes and previews)
+- Sources: `Conduit/Models/Models.swift` (SessionSource.hermesKanbanSource, hermesInternalSources, nonChatExcludedSources, chatListExcludedSources, isLegacyKanbanWorker)
+- Lists: `Conduit/Services/AppState.swift` (profileSessionsPath, archivedSessionsPath), `Conduit/Models/AllProfilesChats.swift` (sessionsPath), `Conduit/Services/HermesClient.swift` (MessageNormalizer.normalizeSessions drops `kanban`, `tool` and `oneshot` rows and legacy workers from every list it builds: the `session.list` fallback, project lanes and previews)
 - Search: `Conduit/Services/SessionContentSearch.swift` (path), `Conduit/Voice/VoiceChatFinder.swift` (path), `notifier/dashboard/plugin_api.py` (run_watch_find_chat, CHAT_SEARCH_EXCLUDED_SOURCES)
 - Opening one anyway: `Conduit/Services/AppState.swift` (the 4132 case where a resume fails, reconciliationWasKanbanWorker)
 - Pickers: `Conduit/Services/AppState+Widgets.swift` (publishWidgetSnapshot builds the widget and Share extension choices from the chats list), `Conduit/Services/AppState+WidgetLaunch.swift` (prepareWidgetLaunch says a choice no longer listed is unavailable), `Conduit/Services/AppState+ShareDraft.swift` (deliverSharedDraft's fallback to the chat on screen)
@@ -3427,12 +3431,17 @@ Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 - A 4132 counts as "not found" everywhere a missing chat is handled: a worker saved as the last conversation is retired on the next return (the newest chat opens instead, and its stored id isn't tried, since Hermes refuses a worker under any id) and a notification for one isn't retried; only the message differs (2026-10-26, #1305 review).
 - A launcher widget still holding a worker (picked or saved before this change) says the conversation is unavailable, since the worker isn't in the chats list any more; it doesn't try the resume that would show the board message. A share sent to a worker from a snapshot written before this change goes the same way: the draft lands in the chat on screen with "Conduit couldn't open the chat you picked". The next snapshot, written once the app reads its chats list, has no workers (2026-10-26, #1305 review).
 - Rows saved before this change stay in the saved chat list until a full, non-empty read replaces them: a saved `SessionSummary` keeps no raw Hermes source (a worker is `.other`), and storing one for that window isn't worth the code (2026-10-26, #1305 review).
+- Conduit hides what Hermes' own pickers hide: `tool` (third-party integrations, `hermes chat --source tool`) and `oneshot` (`chat -q`, `-z`) sessions as well as `kanban`, in the lists, search and voice (2026-10-28, #1461, from issue #1459, which Eric asked to fix).
+- A worker Hermes stored before it tagged workers `kanban` is a `cli` (or `local`) row whose preview is the dispatcher's one-line prompt, `work kanban task <task id>`. Hermes retags only those whose folder is under the board's workspaces, and resumes the rest, so they listed as chats (Eric's own list, 2026-10-28). The lists leave out a `cli` or `local` row whose preview is exactly that prompt; one where a person wrote more after it stays, and so does a row from another source (Telegram, cron) that reads the same; a chat whose whole first message is that prompt would hide too, which no one types (2026-10-28, #1461: follows from issue #1459's stated fix, which Eric asked for after the rows showed in his TestFlight list).
 
 **Open gaps**
 - A project card's count is Hermes' `session_count`, which may include workers in the project's folders; only the fallback (counting previews) leaves them out.
 - A worker's transcript (its messages, not the log) can't be read in Conduit. Hermes would serve it read-only over `GET /api/sessions/{id}/messages`; a read-only view is the maintainer's call.
+- Search "In messages" and voice's find chat can still match a legacy worker (the `work kanban task` rows): search results carry no preview to tell one by. Hermes resumes those, so one opens as a chat.
+- A legacy worker saved as the last chat (picked before #1461) still reopens on a return: Hermes resumes it, so nothing retires the saved pointer until another chat is opened. It opens as a readable chat, not an error (#1461 review).
+- The Watch's find chat (notifier `CHAT_SEARCH_EXCLUDED_SOURCES`) still leaves out only `kanban`; `tool` and `oneshot` follow once the notifier's `notifier/dashboard/plugin_api.py` split lands (#1459).
 
-**Checked:** 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
+**Checked:** 2026-10-28, #1461 (`tool` and `oneshot` sessions and legacy workers left out, issue #1459); 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
 
 ## Bars lists scroll under
 
