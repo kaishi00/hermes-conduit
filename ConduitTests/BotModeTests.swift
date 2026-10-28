@@ -81,6 +81,8 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "default", label: "Default", sessionID: "s1")), "Hermes",
                        "the main bot's label saved before #1457 gives way to its Conduit name")
         XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "default", label: nil, sessionID: "s1"), mainName: "Jarvis"), "Jarvis")
+        XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "default", label: "Muse", sessionID: "s1"), mainName: "Jarvis"), "Jarvis",
+                       "a label saved before the main bot was renamed gives way too")
     }
 
     func testRosterDecodeRejectsNonProfilesEnvelope() {

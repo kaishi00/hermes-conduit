@@ -10016,8 +10016,9 @@ final class AppState: ObservableObject {
         let label = reference.botLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let name = (reference.botName ?? reference.scopeProfile)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        if !label.isEmpty, !isIDOnlyBotLabel(label, profile: name) { return label }
+        // The main bot by its name now, not one saved before a rename.
         if BotManagement.isDefaultProfile(name) { return mainName }
+        if !label.isEmpty, !isIDOnlyBotLabel(label, profile: name) { return label }
         return name.isEmpty
             ? AppLocalization.string("New conversation")
             : String(name.prefix(1)).uppercased() + String(name.dropFirst())
@@ -23137,8 +23138,10 @@ final class AppState: ObservableObject {
         invalidateBotOwnershipCache()
         // A label that is only the profile id is no label: the roster's
         // displayLabel names the bot instead.
+        // The main bot's label follows its Conduit name (the roster's), so
+        // one saved before a rename isn't kept.
         if let label = label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty,
-           !Self.isIDOnlyBotLabel(label, profile: profile) {
+           !Self.isIDOnlyBotLabel(label, profile: profile), !BotManagement.isDefaultProfile(profile) {
             botChatSessionLabels[sessionID] = label
         }
     }

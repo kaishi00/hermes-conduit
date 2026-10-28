@@ -65,7 +65,10 @@ extension AppState {
            lastReference.kind == .bot,
            // By chat, not label: a label saved earlier (the main bot's
            // "Default" before #1457) mustn't list the same chat twice.
-           !choices.contains(where: { $0.reference.kind == .bot && $0.reference.sessionID == lastReference.sessionID }) {
+           !choices.contains(where: {
+               $0.reference.kind == .bot && $0.reference.sessionID == lastReference.sessionID
+                   && $0.reference.botName == lastReference.botName
+           }) {
             // Labelled as titled, so a label saved earlier (the main bot's
             // "Default") reads as the bot does now.
             let title = Self.botConversationTitle(for: lastReference, mainName: profileDisplayName("default"))
