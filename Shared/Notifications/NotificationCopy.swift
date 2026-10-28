@@ -91,6 +91,12 @@ enum NotificationCopy {
     /// name, so a chat title that is only that name is renamed with it.
     static let mainBotName = "Hermes"
 
+    /// The name given the main profile on a push's dashboard: the one its
+    /// key was made for, else the dashboard open in the app.
+    static func mainName(dashboardID: String?, activeDashboardID: String?, names: [String: String]) -> String? {
+        (dashboardID ?? activeDashboardID).flatMap(UUID.init(uuidString:)).flatMap { names[$0.uuidString] }
+    }
+
     static func named(_ content: [String: Any], mainName: String?) -> [String: Any] {
         let profile = nonEmpty(content["profile"])?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard profile == "default" else { return content }

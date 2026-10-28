@@ -52,11 +52,11 @@ final class NotificationService: UNNotificationServiceExtension {
             content.subtitle = ""
             content.body = generic.body
             // The main bot by the name Conduit gives it on the push's dashboard.
-            let dashboard = verified.record.dashboardID ?? NotificationSharedSettings.activeDashboardID
-            let named = NotificationCopy.named(
-                verified.content,
-                mainName: dashboard.flatMap(UUID.init(uuidString:)).flatMap { NotificationSharedSettings.mainProfileNames[$0.uuidString] }
-            )
+            let named = NotificationCopy.named(verified.content, mainName: NotificationCopy.mainName(
+                dashboardID: verified.record.dashboardID,
+                activeDashboardID: NotificationSharedSettings.activeDashboardID,
+                names: NotificationSharedSettings.mainProfileNames
+            ))
             if NotificationSharedSettings.showPreviews {
                 let preview = NotificationCopy.preview(named)
                 if let title = preview.title { content.title = title }

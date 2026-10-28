@@ -185,4 +185,14 @@ final class NotificationCopyTests: XCTestCase {
         let other: [String: Any] = ["title_label": "response.ready", "session_title": "Hermes", "profile": "atlas"]
         XCTAssertEqual(NotificationCopy.named(other, mainName: "Jarvis")["session_title"] as? String, "Hermes", "only the main profile")
     }
+
+    func testTheMainNameIsThePushsDashboards() {
+        let one = UUID().uuidString, two = UUID().uuidString
+        let names = [one: "Jarvis", two: "Home"]
+        XCTAssertEqual(NotificationCopy.mainName(dashboardID: one, activeDashboardID: two, names: names), "Jarvis", "the key's dashboard")
+        XCTAssertEqual(NotificationCopy.mainName(dashboardID: nil, activeDashboardID: two, names: names), "Home", "else the open one")
+        XCTAssertEqual(NotificationCopy.mainName(dashboardID: one.lowercased(), activeDashboardID: nil, names: names), "Jarvis", "in any case")
+        XCTAssertNil(NotificationCopy.mainName(dashboardID: UUID().uuidString, activeDashboardID: two, names: names), "a dashboard with no name")
+        XCTAssertNil(NotificationCopy.mainName(dashboardID: nil, activeDashboardID: nil, names: names))
+    }
 }

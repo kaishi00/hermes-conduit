@@ -128,7 +128,11 @@ extension AppState {
             kind: reference.kind == .bot ? .bot : .dashboard,
             scopeProfile: reference.scopeProfile,
             botName: reference.botName,
-            botLabel: reference.botLabel,
+            // A label that is only the id names nothing (the main bot's
+            // "Default" saved before #1457).
+            botLabel: reference.botLabel.flatMap {
+                isIDOnlyBotLabel($0, profile: reference.botName ?? reference.scopeProfile) ? nil : $0
+            },
             sessionID: reference.sessionID,
             isUnverified: reference.isUnverified
         )
