@@ -671,6 +671,9 @@ struct V2Shell: View {
                     .modifier(V2LegacyTabBarEdge(isOn: underList))
                     .frame(maxWidth: .infinity, alignment: underList ? .leading : .center)
                     .modifier(V2LegacyTabBarEdge(isOn: !underList))
+                    // Moving between under the list and centered snaps with
+                    // the tab switch, as the screens do, instead of sliding.
+                    .animation(nil, value: underList)
                     .onGeometryChange(for: CGFloat.self) { proxy in
                         proxy.size.height
                     } action: { height in
