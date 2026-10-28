@@ -4072,7 +4072,7 @@ private struct NotificationsSettingsDetail: View {
                 .font(.footnote)
                 .foregroundStyle(.red)
         } else if let pairedProfile, pairedProfile == profile {
-            Label(AppLocalization.string("Paired. Notifications and calls from \(appState.profileDisplayName(pairedProfile)) now come to this iPhone, and to the Apple Watch paired with it."), systemImage: "checkmark.circle.fill")
+            Label(AppLocalization.string("Paired. Notifications and calls from \(appState.profileDisplayName(pairedProfile)) now come to this iPhone."), systemImage: "checkmark.circle.fill")
                 .font(.footnote)
                 .foregroundStyle(.green)
                 .accessibilityIdentifier("notifications.paired")

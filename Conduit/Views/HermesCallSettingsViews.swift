@@ -228,7 +228,7 @@ struct HermesCallSettingsSection: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         if ringsLikeCall, notifications.watchRingsForAnotherIPhone {
-                            Label(AppLocalization.string("Your Apple Watch still rings for Conduit on the iPhone it was with before, so calls you answer there can't reach this one. Pair this profile with this iPhone in Settings > Notifications to move it here."), systemImage: "applewatch.slash")
+                            Label(AppLocalization.string("Your Apple Watch rings for Conduit on another iPhone, so a call you answer on the Watch goes there. If the Watch is with this iPhone now, pair each of your profiles with this iPhone in Settings > Notifications to move it here."), systemImage: "applewatch.slash")
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                                 .accessibilityIdentifier("hermesCalls.watchElsewhere")
