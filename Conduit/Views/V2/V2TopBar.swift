@@ -338,13 +338,12 @@ struct V2ProfileStrip: View {
         let name = appState.profileDisplayName(profile)
         let isSelected = !allSelected && profile == appState.activeProfile
         return Button {
-            if appState.isProfileSwitching {
-                // Kept for when the switch ends, the chip on screen
-                // included (`V2QueuedProfilePick`).
-                shell.pickProfile(profile)
-            } else if isSelected {
+            // While a switch runs, every chip is a pick the shell keeps for
+            // when it ends (`V2QueuedProfilePick`), the one on screen too.
+            let switching = appState.isProfileSwitching
+            if isSelected, !switching {
                 onManage()
-            } else if allSelected, profile == appState.activeProfile {
+            } else if allSelected, profile == appState.activeProfile, !switching {
                 // Back to this profile's own list: nothing to switch.
                 Haptics.selection()
                 appState.setAllProfilesChatsOn(false)
