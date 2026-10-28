@@ -711,11 +711,21 @@ final class AppState: ObservableObject {
     }
     /// The dashboard a connection currently belongs to (the selected target).
     var activeDashboardID: UUID? { savedDashboardRegistry.activeDashboardID }
-    @Published private(set) var defaultProfileName: String
+    @Published private(set) var defaultProfileName: String {
+        didSet { persistSiriProfileNames() }
+    }
     /// Each profile's `display_name` set in Hermes, when it has one (#1046):
     /// "Coding Assistant" for `coding-agent`. Names only; routing keeps the
     /// profile id.
-    @Published private(set) var profileHermesNames: [String: String] = [:]
+    @Published private(set) var profileHermesNames: [String: String] = [:] {
+        didSet { persistSiriProfileNames() }
+    }
+    /// Each profile's bot title (`ui_meta['hermes-bots'].title`), the name
+    /// Edit Bot, the Profiles sheet and Hermes Desktop rename it with. It
+    /// wins over `display_name`, as on Desktop and in the bot's pushes.
+    @Published private(set) var profileBotTitles: [String: String] = [:] {
+        didSet { persistSiriProfileNames() }
+    }
     @Published private(set) var profileAvatarURLs: [String: URL] {
         // Also bumped when a photo's bytes change under the same URL, so the
         // glow colors drawn from the photos are worked out again.
@@ -724,6 +734,11 @@ final class AppState: ObservableObject {
     /// Backdrop glow colors picked in the profile picker (`#rrggbb`), for
     /// the selected dashboard.
     @Published private(set) var profileGlowPicks: [String: String] = [:]
+    /// Names given in the profile picker to profiles a gateway without bot
+    /// looks can't name, for the selected dashboard.
+    @Published private(set) var profileDeviceNames: [String: String] = [:] {
+        didSet { persistSiriProfileNames() }
+    }
     private var profileAvatarRevision = 0
     private var profileGlowCache: (key: ProfileGlowCacheKey, colors: [String: ProfileGlowRGB])?
     /// Each photo's colors, kept while the photos stay the same, so a pick
@@ -1560,7 +1575,10 @@ final class AppState: ObservableObject {
     /// capability call: a gateway old enough to lack the method has no
     /// Bot Mode, and the UI degrades to "requires a newer Hermes gateway"
     /// without blocking Sessions or anything else.
-    @Published private(set) var botModePhase: BotModePhase = .idle
+    @Published private(set) var botModePhase: BotModePhase = .idle {
+        // Device names count only until the gateway shows bot looks.
+        didSet { if oldValue != botModePhase { persistSiriProfileNames() } }
+    }
     /// The read-only roster. Hermes remains authoritative; nothing bot-related
     /// is durably persisted client-side.
     @Published private(set) var botRoster: [BotProfile] = [] {
@@ -5929,7 +5947,8 @@ final class AppState: ObservableObject {
     private let sessionFilterOrderKey = "conduit.sessionFilterOrder.v1"
     private let reviewSummaryCacheKey = "conduit.reviewSummaryCache.v1"
     private let knownProfilesKey = "conduit.knownProfiles.v1"
-    private let profileHermesNamesKey = "conduit.profileHermesNames.v1"
+    /// Each known profile's name, for Siri and Shortcuts.
+    private let knownProfileNamesKey = "conduit.knownProfileNames.v1"
     /// Per-dashboard copies of profile-level presentation choices (#148).
     /// Profile names repeat across Hermes servers ("default" everywhere), so
     /// these are keyed by dashboard UUID. The pre-scoping global values were
@@ -6414,6 +6433,9 @@ final class AppState: ObservableObject {
         defaultProfileName = self.profileAppearanceStore.loadDefaultName(dashboardID: initialDashboardID)
         profileAvatarURLs = self.profileAppearanceStore.loadAvatarURLs(dashboardID: initialDashboardID)
         profileGlowPicks = self.profileAppearanceStore.loadGlowColors(dashboardID: initialDashboardID)
+        profileDeviceNames = self.profileAppearanceStore.loadDeviceNames(dashboardID: initialDashboardID)
+        profileBotTitles = self.profileAppearanceStore.loadBotTitles(dashboardID: initialDashboardID)
+        profileHermesNames = self.profileAppearanceStore.loadHermesNames(dashboardID: initialDashboardID)
         appIconChoice = UIApplication.shared.alternateIconName == AppIconChoice.light.alternateIconName ? .light : .dark
         themePreference = ThemePreference(
             rawValue: defaults.string(forKey: themePreferenceKey) ?? ""
@@ -6469,7 +6491,6 @@ final class AppState: ObservableObject {
         profiles = orderedProfiles(
             (defaults.stringArray(forKey: knownProfilesKey) ?? []) + [activeProfile, "default"]
         )
-        profileHermesNames = defaults.dictionary(forKey: profileHermesNamesKey) as? [String: String] ?? [:]
         restoreActiveSessionState(for: activeProfile)
         restorePinnedSessions(for: activeProfile)
         if shouldLoadSavedConnection {
@@ -6831,6 +6852,9 @@ final class AppState: ObservableObject {
             match = profile
         } else if profilesMatch(name, defaultProfileName) {
             match = "default"
+        } else if let profile = profiles.first(where: { profilesMatch(profileDisplayName($0), name) }) {
+            // The name Conduit shows, a device-kept one included.
+            match = profile
         } else if let bot = botRoster.first(where: { bot in
             profilesMatch(bot.displayLabel, name) || profilesMatch(bot.name, name)
                 || bot.previousNames.contains { profilesMatch($0, name) }
@@ -6858,6 +6882,7 @@ final class AppState: ObservableObject {
         }
         let entries = profiles.map { entry($0, [$0]) }
             + [entry("default", [defaultProfileName])]
+            + profiles.map { entry($0, [profileDisplayName($0)]) }
             + botRoster.map { entry($0.name, [$0.displayLabel, $0.name] + $0.previousNames) }
         var result: [WatchVoiceWire.JobProfileName] = []
         var bytes = 0
@@ -10770,8 +10795,11 @@ final class AppState: ObservableObject {
         defaults.removeObject(forKey: voiceJobSessionIDsByProfileKey)
         defaults.removeObject(forKey: reviewSummaryCacheKey)
         defaults.removeObject(forKey: knownProfilesKey)
-        defaults.removeObject(forKey: profileHermesNamesKey)
-        profileHermesNames = [:]
+        defaults.removeObject(forKey: knownProfileNamesKey)
+        // Names are kept per dashboard: the selected one's come back, and
+        // the outgoing server's never show here.
+        profileHermesNames = profileAppearanceStore.loadHermesNames(dashboardID: activeDashboardID)
+        profileBotTitles = profileAppearanceStore.loadBotTitles(dashboardID: activeDashboardID)
         refreshSiriProfileShortcuts()
         clearSessionPresentationCache()
         // Guesses name sessions, and a new server's ids can repeat the old one's.
@@ -12122,13 +12150,51 @@ final class AppState: ObservableObject {
         if let baseURL = connection?.baseUrl { prepareDashboardBridge(for: baseURL) }
     }
 
-    /// Gateway profile IDs remain stable; this is only the device-local label
-    /// used for presentation in the chat and profile picker.
+    /// Gateway profile IDs remain stable; this is only the label used for
+    /// presentation in the chat and profile picker: the profile's bot title,
+    /// else its Hermes `display_name`, else its id. The main profile goes by
+    /// its Conduit name, and by those only while it has none (#1257). A name
+    /// given on the device (a gateway without bot looks) comes first until
+    /// the roster says the gateway keeps bot looks.
     func profileDisplayName(_ profile: String) -> String {
-        let normalized = profile.trimmingCharacters(in: .whitespacesAndNewlines)
-        if normalized.isEmpty || normalized.lowercased() == "default" { return defaultProfileName }
+        var normalized = profile.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isMain = normalized.isEmpty || normalized.lowercased() == "default"
+        if isMain {
+            guard defaultProfileName == ProfileAppearanceStore.defaultName else { return defaultProfileName }
+            normalized = "default"
+        }
+        // Until the roster says the gateway keeps bot looks, launch and
+        // offline included, as the device's photos do.
+        if !isMain, botModePhase != .available, let name = profileDeviceNames[normalized] { return name }
+        if let title = profileBotTitles[normalized] { return title }
         if let name = profileHermesNames[normalized] { return name }
+        if isMain { return defaultProfileName }
         return String(normalized.prefix(1)).uppercased() + String(normalized.dropFirst())
+    }
+
+    /// Takes the bot titles the roster gave. The roster lists every
+    /// profile, so it replaces what was known: a title another server's
+    /// roster gave never names this one's profile.
+    func adoptProfileBotTitles(_ rows: [(profile: String, title: String)]) {
+        var titles: [String: String] = [:]
+        for row in rows {
+            let profile = row.profile.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !profile.isEmpty else { continue }
+            let title = row.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            titles[profile] = title.isEmpty || title == profile ? nil : title
+        }
+        // A roster that answers means the gateway keeps bot looks, so names
+        // kept on the device while it had none are dropped: they can't come
+        // back over Hermes' names while loading or offline.
+        if !profileDeviceNames.isEmpty {
+            for profile in profileDeviceNames.keys {
+                profileAppearanceStore.saveDeviceName(nil, for: profile, dashboardID: activeDashboardID)
+            }
+            profileDeviceNames = profileAppearanceStore.loadDeviceNames(dashboardID: activeDashboardID)
+        }
+        guard titles != profileBotTitles else { return }
+        profileBotTitles = titles
+        profileAppearanceStore.saveBotTitles(titles, dashboardID: activeDashboardID)
     }
 
     /// Takes the `display_name`s a listing gave. The bot roster and
@@ -12145,7 +12211,7 @@ final class AppState: ObservableObject {
         }
         guard names != profileHermesNames else { return }
         profileHermesNames = names
-        defaults.set(names, forKey: profileHermesNamesKey)
+        profileAppearanceStore.saveHermesNames(names, dashboardID: activeDashboardID)
     }
 
     func profileAvatarURL(for profile: String) -> URL? {
@@ -12201,6 +12267,86 @@ final class AppState: ObservableObject {
         publishWidgetSnapshot()
         // A call ringing on the Watch shows it.
         shareWatchCallVoices()
+    }
+
+    /// The Profiles sheet's Rename. The main profile keeps its Conduit
+    /// name, as Settings > Edit profile does; any other profile's bot title
+    /// is written as Edit Bot writes it, so Bots, Desktop and every name in
+    /// Conduit follow. A gateway without bot looks keeps it on the device,
+    /// like its photos. An empty name goes back to Hermes' name, and the
+    /// name already shown writes nothing, so a Save with no edit never pins
+    /// a display name as a title. Returns a message when it was not saved.
+    func renameProfile(_ profile: String, to name: String) async -> String? {
+        guard name.trimmingCharacters(in: .whitespacesAndNewlines) != profileDisplayName(profile) else { return nil }
+        if BotManagement.isDefaultProfile(profile) {
+            saveDefaultProfileName(name)
+            return nil
+        }
+        switch await profilePhotoHome(for: profile) {
+        case .device:
+            // Also returned for a profile a bot-capable roster doesn't list:
+            // its name has nowhere to go.
+            guard botModePhase == .gatewayUnsupported else {
+                return AppLocalization.string("The name was not saved.")
+            }
+            profileAppearanceStore.saveDeviceName(name, for: profile, dashboardID: activeDashboardID)
+            profileDeviceNames = profileAppearanceStore.loadDeviceNames(dashboardID: activeDashboardID)
+            publishWidgetSnapshot()
+            return nil
+        case .offline:
+            return AppLocalization.string("Connect to Hermes to rename this profile.")
+        case .hermes(let bot, let client):
+            // In the photo writes' queue: they write the same ui_meta, and
+            // one landing mid-rename would spend the rename's retry.
+            return await queueProfilePhotoWrite(bot.name) {
+                await self.writeProfileTitle(name, for: bot, client: client)
+            }
+        }
+    }
+
+    private func writeProfileTitle(_ name: String, for bot: BotProfile, client: HermesClient) async -> String? {
+        let epoch = botRosterEpoch
+        let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let patch: [String: Any?] = ["title": title.isEmpty ? nil : title]
+        // The photo write ahead in the queue may have moved the revision on.
+        let current = botRoster.first(where: { $0.name == bot.name }) ?? bot
+        var outcome: BotMetaWriteOutcome
+        do {
+            let result = try await client.configureBotProfile(
+                name: current.name,
+                botMeta: BotMetaPatch.merged(existing: current.botMeta, patch: patch),
+                expectedMetaRevision: current.botMetaRevision
+            )
+            outcome = BotMetaWriteOutcome(configureResult: result)
+            if outcome == .conflict {
+                outcome = await retryBotMetaWrite(current.name, patch: patch, client: client, epoch: epoch)
+            }
+        } catch {
+            outcome = .failed
+        }
+        guard outcome == .persisted || outcome == .unsupported else {
+            await refreshBotRosterAfterWrite()
+            return AppLocalization.string("The name was not saved.")
+        }
+        if botOpenFenceIsCurrent(epoch: epoch, client: client) {
+            // Shown at once, whether or not the roster refresh below answers.
+            var titles = profileBotTitles
+            titles[current.name] = title.isEmpty || title == current.name ? nil : title
+            if titles != profileBotTitles {
+                profileBotTitles = titles
+                profileAppearanceStore.saveBotTitles(titles, dashboardID: activeDashboardID)
+            }
+            // A name kept on the device while the gateway had no bot looks
+            // is replaced by the title.
+            if profileDeviceNames[current.name] != nil {
+                profileAppearanceStore.saveDeviceName(nil, for: current.name, dashboardID: activeDashboardID)
+                profileDeviceNames = profileAppearanceStore.loadDeviceNames(dashboardID: activeDashboardID)
+            }
+            renameCapturedBotChatLabels(for: current.name, to: title)
+            publishWidgetSnapshot()
+        }
+        await refreshBotRosterAfterWrite()
+        return nil
     }
 
     var mainProfileNamesByDashboard: [String: String] {
@@ -12397,6 +12543,9 @@ final class AppState: ObservableObject {
         defaultProfileName = profileAppearanceStore.loadDefaultName(dashboardID: dashboardID)
         profileAvatarURLs = profileAppearanceStore.loadAvatarURLs(dashboardID: dashboardID)
         profileGlowPicks = profileAppearanceStore.loadGlowColors(dashboardID: dashboardID)
+        profileDeviceNames = profileAppearanceStore.loadDeviceNames(dashboardID: dashboardID)
+        profileBotTitles = profileAppearanceStore.loadBotTitles(dashboardID: dashboardID)
+        profileHermesNames = profileAppearanceStore.loadHermesNames(dashboardID: dashboardID)
         modelVisibility = scopedModelVisibility(dashboardID: dashboardID)
         restoreDisplayPreferences()
     }
@@ -21279,8 +21428,11 @@ final class AppState: ObservableObject {
             // The FULL roster is kept: sessions-list hygiene must know every
             // bot's canonical registry (including meta-hidden bots), while
             // the roster VIEW hides meta-hidden rows for display only.
-            botRoster = BotProfile.displayOrder(snapshot.bots)
+            // Names first: the roster's didSet publishes the widget, which
+            // shows the profile's name.
             adoptProfileHermesNames(snapshot.bots.map { (profile: $0.name, displayName: $0.displayName) })
+            adoptProfileBotTitles(snapshot.bots.map { (profile: $0.name, title: $0.botTitle ?? "") })
+            botRoster = BotProfile.displayOrder(snapshot.bots)
             desktopGroupChats = snapshot.desktopGroups
             botRosterSupportsProtocol = snapshot.supportsBotProtocol
             botModePhase = .available
@@ -21905,6 +22057,14 @@ final class AppState: ObservableObject {
                 await refreshBotRosterAfterWrite()
                 return .saved(warning: problems.joined(separator: " "))
             }
+        }
+        // The main profile goes by its Conduit name, so a rename here is
+        // that name too.
+        if metaPersisted, patch.keys.contains("title"), botOpenFenceIsCurrent(epoch: epoch, client: client) {
+            if BotManagement.isDefaultProfile(bot.name) {
+                saveDefaultProfileName(title)
+            }
+            renameCapturedBotChatLabels(for: bot.name, to: title)
         }
         if removing, metaPersisted {
             do {
@@ -22716,6 +22876,28 @@ final class AppState: ObservableObject {
         errorMessage = AppLocalization.string(
             "Could not confirm \(bot.displayLabel)'s Bot Chat — not starting a new chat."
         )
+    }
+
+    /// A rename names the profile's open Bot Chats too: the label each
+    /// captured when it opened is the old name. An empty name lets the
+    /// roster's label name them again.
+    private func renameCapturedBotChatLabels(for profile: String, to name: String) {
+        guard let scope = ChatResumeStore.rpcProfileName(profile) else { return }
+        let label = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        for (sessionID, owner) in botChatSessionProfiles where owner == scope {
+            botChatSessionLabels[sessionID] = label.isEmpty ? nil : label
+        }
+        // The saved selection carries the label for a cold launch too.
+        if let saved = chatResumeCoordinator.lastSession(for: activeProfile), saved.kind == .bot,
+           let botName = saved.botName, ChatResumeStore.rpcProfileName(botName) == scope {
+            chatResumeCoordinator.rememberSession(
+                .bot(botName: botName, label: label.isEmpty ? nil : label, sessionID: saved.sessionID),
+                for: activeProfile
+            )
+        }
+        if let open = activeBotChatProfile, ChatResumeStore.rpcProfileName(open) == scope {
+            activeSessionTitle = label.isEmpty ? profileDisplayName(profile) : label
+        }
     }
 
     private func noteBotChatSession(
@@ -30305,6 +30487,18 @@ final class AppState: ObservableObject {
     private func persistKnownProfiles(_ names: [String]) {
         guard defaults.stringArray(forKey: knownProfilesKey) != names else { return }
         defaults.set(names, forKey: knownProfilesKey)
+        persistSiriProfileNames()
+        refreshSiriProfileShortcuts()
+    }
+
+    /// Siri and Shortcuts name each profile as the rest of Conduit does,
+    /// and follow a rename.
+    private func persistSiriProfileNames() {
+        let ids = defaults.stringArray(forKey: knownProfilesKey) ?? ["default"]
+        var names: [String: String] = [:]
+        for id in ids { names[id] = profileDisplayName(id) }
+        guard defaults.dictionary(forKey: knownProfileNamesKey) as? [String: String] != names else { return }
+        defaults.set(names, forKey: knownProfileNamesKey)
         refreshSiriProfileShortcuts()
     }
 
