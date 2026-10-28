@@ -401,6 +401,13 @@ final class ChatScrollEngine: ObservableObject {
     /// Content size, viewport size or insets changed. Runs inside the layout
     /// pass that changed them.
     func surfaceLayoutChanged() {
+        // The bottom inset moved in this pass: a bar under the transcript
+        // changed height before ChatView reported it. That isn't the
+        // reader's scroll, so it takes the bar's path (bottomBarResized).
+        if let surface, let lastBottomBarInset, surface.insetBottom != lastBottomBarInset {
+            checkBottomBarInset()
+            return
+        }
         layoutChanged(relatches: true)
     }
 

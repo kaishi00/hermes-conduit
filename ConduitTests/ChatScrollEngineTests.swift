@@ -460,6 +460,23 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(engine.mode, .browsing)
     }
 
+    /// The same shrink reaching the engine first through a layout pass (the
+    /// locator laid out with the new inset) still leaves the reader browsing.
+    func testABottomBarShrinkingInALayoutPassLeavesABrowsingReaderBrowsing() {
+        let surface = FakeChatScrollSurface()
+        surface.insetBottom = 120
+        let (engine, _) = makeEngine(surface: surface)
+        surface.userScroll(to: 3250)
+        XCTAssertEqual(engine.mode, .browsing)
+        surface.insetBottom = 0
+        engine.surfaceLayoutChanged()
+        XCTAssertEqual(surface.contentOffsetY, 3200, "moved up to the new bottom")
+        XCTAssertEqual(engine.mode, .browsing)
+        engine.bottomBarResized()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
     /// A browsing reader 70 pt above the bottom drags while the bar shrinks
     /// 120 pt: letting go past the new bottom is the bar's doing, so they
     /// are moved up to it and stay browsing.
