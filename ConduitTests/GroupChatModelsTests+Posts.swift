@@ -140,12 +140,13 @@ extension GroupChatModelsTests {
         XCTAssertEqual(appState.activeRoomCopyPost?.status, .sending)
 
         // Refusals a retry can't change offer no retry.
-        for (error, words) in [
+        let fixed: [(String, String.LocalizationValue)] = [
             ("ended", "Not posted: the room has ended."),
             ("not_in", "Not posted: your agents aren't in this room."),
             ("too_long", "Not posted: it's too long for this room."),
             ("bad_post", "Not posted: the host's Hermes couldn't read it."),
-        ] {
+        ]
+        for (error, words) in fixed {
             let post = RoomPost(eventID: eventID, text: "hello", status: .refused(error))
             XCTAssertEqual(RoomPostText.rowState(post: post, inFlight: false),
                            .refused(AppLocalization.string(words), retry: false), error)
@@ -363,6 +364,52 @@ extension GroupChatModelsTests {
         await appState.refreshGroupChatSupport()
         await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
         XCTAssertEqual(appState.pendingRoomMessage, pending)
+    }
+
+    @MainActor
+    func testAnEndedCopysPostKeepsItPolledPastAFailedTail() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 3)])
+        routes.events = (1...3).map { copiesEvent($0) }
+        let appState = try await postsOpenCopy(routes)
+        await appState.sendGroupRoomMessage("late")
+        let eventID = try XCTUnwrap(appState.pendingRoomMessage?.eventID)
+        appState.closeGroupRoom()
+
+        // Reopened ended at 5 with the post at 4, and the tail read fails.
+        routes.posts = [postsListed(eventID, text: "late", status: "posted", seq: 4)]
+        routes.copies = [copiesCopy(status: "ended", reason: "disbanded", lastSeq: 5)]
+        routes.failingLogReads = 1
+        await appState.refreshGroupChatSupport()
+        await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
+        XCTAssertTrue(appState.isPollingActiveRoom)
+
+        // The tail comes without the post yet: still polled for it.
+        await appState.pollActiveRoom()
+        XCTAssertNotNil(appState.pendingRoomMessage)
+        XCTAssertTrue(appState.isPollingActiveRoom, "the post may still settle")
+
+        var mine = copiesEvent(4, kind: "message.user", actor: ["kind": "user", "id": "furina"], text: "Eric: late")
+        mine["post"] = ["by": NSNull()]
+        routes.events += [mine, copiesEvent(5)]
+        await appState.pollActiveRoom()
+        XCTAssertNil(appState.pendingRoomMessage)
+        XCTAssertFalse(appState.isPollingActiveRoom)
+    }
+
+    @MainActor
+    func testAParkedPostWithoutThePostsRoutesCanBeDismissed() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy()])
+        let appState = try await postsOpenCopy(routes)
+        await appState.sendGroupRoomMessage("parked")
+        appState.closeGroupRoom()
+
+        // The plugin went back to one that doesn't post.
+        appState.applyNotifierPluginReport(copiesPluginReport)
+        await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
+        XCTAssertEqual(appState.pendingRoomMessage?.text, "parked")
+        XCTAssertFalse(appState.activeRoomCopyPostUnsettled)
+        appState.dismissActiveRoomCopyPost()
+        XCTAssertNil(appState.pendingRoomMessage)
     }
 
     @MainActor

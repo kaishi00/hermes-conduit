@@ -11934,8 +11934,9 @@ final class AppState: ObservableObject {
                 activeRoomReplay = replay
                 activeRoomCopyNeedsTail = false
                 errorMessage = nil
-                // As it stands now: it may have ended, or been left, since.
-                if activeRoomSurface?.copy?.isOver == true { stopRoomCopyPolling() }
+                // As it stands now: it may have ended, or been left, since;
+                // a post that may still settle keeps it polled.
+                if activeRoomSurface?.copy?.isOver == true, !activeRoomCopyPostUnsettled { stopRoomCopyPolling() }
                 return
             }
             let page = try await client.log(
@@ -12006,7 +12007,9 @@ final class AppState: ObservableObject {
     /// it's sending or posted, or hasn't been asked yet. Not once it was
     /// waited on long enough in a copy that takes no more posts.
     var activeRoomCopyPostUnsettled: Bool {
-        guard groupRoomOutbox.pending != nil, activeRoomCopyPostWaits < Self.roomCopyPostWaitLimit else { return false }
+        // Without the posts routes nothing can be asked: it's as it is.
+        guard groupRoomOutbox.pending != nil, canPostInRoomCopies,
+              activeRoomCopyPostWaits < Self.roomCopyPostWaitLimit else { return false }
         switch activeRoomCopyPost?.status {
         case .sending?, .posted?: return true
         case .refused?: return false
