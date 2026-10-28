@@ -3054,10 +3054,14 @@ extension VoiceConversationControllerTests {
         let start = Date(timeIntervalSince1970: 1_000)
         trace.begin("Grok Live", at: start)
         trace.note("Function call start_job", at: start + 2.5)
-        XCTAssertEqual(trace.report, "Last Grok Live call: tool steps\n+0.0s Starting call\n+2.5s Function call start_job")
+        XCTAssertEqual(trace.report, "Last Grok Live call: steps\n+0.0s Starting call\n+2.5s Function call start_job")
         for index in 0..<LiveCallTrace.maximumSteps { trace.note("step \(index)", at: start + 3) }
         XCTAssertEqual(trace.steps.count, LiveCallTrace.maximumSteps)
-        XCTAssertTrue(trace.report?.hasSuffix("… 2 more steps not kept") == true)
+        // The setup stays, the newest steps stay, and the gap says what went.
+        let lines = trace.report?.components(separatedBy: "\n") ?? []
+        XCTAssertEqual(lines[1], "+0.0s Starting call")
+        XCTAssertEqual(lines[1 + LiveCallTrace.keptFirstSteps], "… 2 steps not kept")
+        XCTAssertEqual(lines.last, "+3.0s step \(LiveCallTrace.maximumSteps - 1)")
     }
 
     func testGeminiLiveAskingToHangUpEndsTheCall() async {

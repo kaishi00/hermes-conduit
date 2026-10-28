@@ -2769,7 +2769,7 @@ final class AppState: ObservableObject {
             makeSession: { [weak self] in
                 let search = qwen ? (self?.qwenLiveSearchSource ?? .none) : (self?.geminiLiveSearchSource ?? .google)
                 let memory = qwen ? self?.qwenLiveMemoryContext : self?.geminiLiveMemoryContext
-                return GeminiLiveSession(
+                let session = GeminiLiveSession(
                     tokens: tokens,
                     systemInstruction: GeminiLiveConversationController.instructions(
                         search: search,
@@ -2794,6 +2794,8 @@ final class AppState: ObservableObject {
                     googleSearch: search == .google,
                     voice: qwen ? self?.qwenLiveVoice : self?.geminiLiveVoice
                 )
+                if qwen { session.onTrace = { LiveCallTrace.shared.note($0) } }
+                return session
             },
             availability: { [weak self] in
                 guard let self else { return try await tokens.availability() }
@@ -2841,6 +2843,8 @@ final class AppState: ObservableObject {
             provider: provider
         )
         controller.startsMuted = { [weak self] in self?.hermesCallStartsMuted ?? false }
+        // Gemini sends no turn detection events, so only Qwen's calls are traced.
+        if qwen { controller.traceName = "Qwen Live" }
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in
             if qwen { self?.closeQwenLiveConversation() } else { self?.closeGeminiLiveConversation() }
@@ -4011,6 +4015,7 @@ final class AppState: ObservableObject {
         let controller = GeminiLiveConversationController(
             makeSession: { [weak self] in
                 let session = LocalLiveSession(client: client)
+                session.onTrace = { LiveCallTrace.shared.note($0) }
                 // The greeting setting, said by the speech server itself:
                 // Hermes isn't asked, so "own words" is a short fixed line.
                 session.greeting = { [weak self] in

@@ -186,10 +186,11 @@ extension HermesVoiceGatewayTimeoutTests {
         func decode(_ object: [String: Any]) -> [GrokLiveProtocol.ServerFrame] {
             GrokLiveProtocol.decode(try! JSONSerialization.data(withJSONObject: object))
         }
-        XCTAssertEqual(decode(["type": "session.updated", "session": [String: Any]()]), [.sessionUpdated])
+        XCTAssertEqual(decode(["type": "session.updated", "session": [String: Any]()]), [.sessionUpdated, .turnDetection("not stated")])
         XCTAssertEqual(decode(["type": "response.created"]), [.responseStarted])
         XCTAssertEqual(decode(["type": "response.done"]), [.responseDone, .event(.turnComplete)])
-        XCTAssertEqual(decode(["type": "input_audio_buffer.speech_started"]), [.event(.interrupted)])
+        XCTAssertEqual(decode(["type": "input_audio_buffer.speech_started"]), [.speechStarted, .event(.interrupted)])
+        XCTAssertEqual(decode(["type": "input_audio_buffer.speech_stopped"]), [.speechStopped])
         XCTAssertEqual(decode(["type": "conversation.item.input_audio_transcription.completed", "item_id": "i1", "transcript": "hi"]), [.inputTranscriptSnapshot(itemID: "i1", text: "hi", stage: .unstated)])
         XCTAssertEqual(decode(["type": "conversation.item.input_audio_transcription.completed", "transcript": "hi"]), [.inputTranscriptSnapshot(itemID: nil, text: "hi", stage: .unstated)])
         XCTAssertEqual(decode(["type": "conversation.item.input_audio_transcription.completed", "item_id": "i1", "status": "in_progress", "transcript": "hi..."]), [.inputTranscriptSnapshot(itemID: "i1", text: "hi...", stage: .draft)])
@@ -241,7 +242,7 @@ extension HermesVoiceGatewayTimeoutTests {
         // session.updated names the functions xAI took.
         XCTAssertEqual(
             decode(["type": "session.updated", "session": ["tools": [["type": "web_search"], ["type": "function", "name": "start_job"], ["type": "function", "name": "list_jobs"]]]]),
-            [.sessionUpdated, .acceptedFunctions(["start_job", "list_jobs"])]
+            [.sessionUpdated, .turnDetection("not stated"), .acceptedFunctions(["start_job", "list_jobs"])]
         )
     }
 
@@ -378,6 +379,69 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(trace.contains { $0.hasPrefix("Grok took 1 of ") && $0.hasSuffix(" functions: start_job") }, "\(trace)")
         XCTAssertEqual(trace.filter { $0.hasPrefix("Function call") }, ["Function call start_job", "Function call start_job (arguments not valid JSON)"])
         XCTAssertFalse(trace.joined().contains("dummy task"), "the trace never carries arguments")
+        session.stop()
+    }
+
+    /// The turn detection xAI applied is what the trace shows (#1418), not
+    /// what Conduit asked for.
+    func testGrokLiveTurnDetectionSummaryNamesWhatTheServerEchoed() {
+        XCTAssertEqual(GrokLiveProtocol.turnDetectionSummary(nil), "not stated")
+        XCTAssertEqual(GrokLiveProtocol.turnDetectionSummary(NSNull()), "off")
+        XCTAssertEqual(
+            GrokLiveProtocol.turnDetectionSummary(["type": "server_vad", "threshold": 0.5, "silence_duration_ms": 700, "prefix_padding_ms": 300]),
+            "server_vad, threshold 0.5, silence ms 700, prefix ms 300"
+        )
+        XCTAssertEqual(GrokLiveProtocol.turnDetectionSummary(["type": "server_vad"]), "server_vad")
+    }
+
+    /// Steps for a turn that never ends (#1418): when the server heard the
+    /// user start and stop, and the microphone's levels meanwhile.
+    func testLiveTurnTraceReportsSpeechAndMicrophoneLevels() {
+        func pcm(amplitude: Int16, seconds: Double) -> Data {
+            var data = Data()
+            for index in 0..<Int(Double(LiveTurnTrace.sampleRate) * seconds) {
+                let sample = UInt16(bitPattern: index % 2 == 0 ? amplitude : -amplitude)
+                data.append(UInt8(sample & 0xFF))
+                data.append(UInt8(sample >> 8))
+            }
+            return data
+        }
+        var trace = LiveTurnTrace()
+        XCTAssertNil(trace.add(pcm(amplitude: 33, seconds: 1)))
+        // 33 of 32 768 is -60 dBFS; 3 277 is -20 dBFS.
+        XCTAssertEqual(trace.speechStarted(), "Speech start heard (before it: microphone loudest -60 dBFS, quietest -60 dBFS)")
+        XCTAssertNil(trace.add(pcm(amplitude: 3_277, seconds: 1)))
+        XCTAssertNil(trace.add(pcm(amplitude: 33, seconds: 0.5)))
+        XCTAssertEqual(trace.speechStopped(), "Speech end heard after 1.5 s (microphone loudest -20 dBFS, quietest -60 dBFS)")
+
+        // A turn the server never ends says so once.
+        _ = trace.speechStarted()
+        XCTAssertNil(trace.add(pcm(amplitude: 3_277, seconds: 14.9)))
+        XCTAssertEqual(trace.add(pcm(amplitude: 3_277, seconds: 0.2)), "No speech end after 15 s of audio (microphone loudest -20 dBFS, quietest -20 dBFS)")
+        XCTAssertNil(trace.add(pcm(amplitude: 3_277, seconds: 1)))
+
+        trace.reset()
+        XCTAssertEqual(trace.speechStopped(), "Speech end heard with no start")
+        XCTAssertEqual(trace.speechStarted(), "Speech start heard (before it: no microphone audio)")
+    }
+
+    func testGrokLiveSessionTracesTurnDetectionAndTheUsersTurns() async throws {
+        let (session, sockets) = makeGrokSession()
+        var trace: [String] = []
+        session.onTrace = { trace.append($0) }
+        session.start()
+        await grokSettle()
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated", "session": ["turn_detection": ["type": "server_vad", "silence_duration_ms": 700]]])
+        await grokSettle()
+        session.send(.audio(Data(count: 3_200)))
+        socket.deliver(["type": "input_audio_buffer.speech_started"])
+        socket.deliver(["type": "input_audio_buffer.speech_stopped"])
+        socket.deliver(["type": "response.created"])
+        await grokSettle(until: { trace.contains("Reply started") })
+        XCTAssertTrue(trace.contains("Turn detection: server_vad, silence ms 700"), "\(trace)")
+        XCTAssertTrue(trace.contains("Speech start heard (before it: microphone loudest -96 dBFS, quietest -96 dBFS)"), "\(trace)")
+        XCTAssertTrue(trace.contains("Speech end heard after 0.0 s (no microphone audio)"), "\(trace)")
         session.stop()
     }
 

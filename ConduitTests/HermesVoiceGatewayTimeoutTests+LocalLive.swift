@@ -95,6 +95,32 @@ extension HermesVoiceGatewayTimeoutTests {
         session.stop()
     }
 
+    /// Local Live traces the same turn steps as Grok Live (#1418).
+    func testLocalLiveSessionTracesTurnDetectionAndTheUsersTurns() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        var trace: [String] = []
+        session.onTrace = { trace.append($0) }
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated", "session": ["turn_detection": ["type": "server_vad", "silence_duration_ms": 500]]])
+        try await passLocalLiveReadiness(socket, session: session)
+        socket.deliver(["type": "response.done"])
+
+        session.send(.audio(Data(count: 3_200)))
+        socket.deliver(["type": "input_audio_buffer.speech_started"])
+        socket.deliver(["type": "input_audio_buffer.speech_stopped"])
+        socket.deliver(["type": "response.created"])
+        await localLiveSettle(until: { trace.contains("Reply started") })
+        XCTAssertEqual(trace, [
+            "Turn detection: server_vad, silence ms 500",
+            "Speech start heard (before it: microphone loudest -96 dBFS, quietest -96 dBFS)",
+            "Speech end heard after 0.0 s (no microphone audio)",
+            "Reply started",
+        ])
+        session.stop()
+    }
+
     func testLocalLiveSplitsLongRepliesIntoFramesThePluginTakes() {
         XCTAssertEqual(LocalLiveProtocol.deltaChunks(""), [])
         XCTAssertEqual(LocalLiveProtocol.deltaChunks("Hello."), ["Hello."])

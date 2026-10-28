@@ -112,6 +112,10 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     /// Function calls already passed on, on this connection: one call can
     /// arrive both as its arguments event and as its finished item.
     private var deliveredCallIDs: Set<String> = []
+    /// The user's turns as the turn detector heard them, for the trace.
+    private var turnTrace = LiveTurnTrace()
+    /// Whether this connection already traced dropping microphone audio.
+    private var tracedAudioDrop = false
 
     init(
         client: GrokLiveConnecting,
@@ -197,7 +201,15 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
                 onFailure?()
             }
         }
-        if !queued { onFailure?() }
+        // Only audio the server gets counts toward the turn's levels.
+        if queued, let onTrace, case .audio(let pcm16) = message, let step = turnTrace.add(pcm16) { onTrace(step) }
+        if !queued {
+            if message.isAudio, !tracedAudioDrop {
+                tracedAudioDrop = true
+                onTrace?("Microphone audio dropped: the connection fell behind")
+            }
+            onFailure?()
+        }
     }
 
     private func socketWriter(for socket: GeminiLiveSocket) -> LiveVoiceSocketWriter {
@@ -380,6 +392,8 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         finishPendingInput()
         finishedInputItems = []
         deliveredCallIDs = []
+        turnTrace.reset()
+        tracedAudioDrop = false
         receiveTask = Task { [weak self] in await self?.receiveLoop(socket, id: id) }
         // A server that neither confirms the session nor closes would leave
         // the call connecting forever.
@@ -448,7 +462,14 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
                 failUnconfirmedTurns()
                 if responseRequested { sendResponseCreate() }
             }
+        case .turnDetection(let summary):
+            onTrace?("Turn detection: \(summary)")
+        case .speechStarted:
+            if let onTrace { onTrace(turnTrace.speechStarted()) }
+        case .speechStopped:
+            if let onTrace { onTrace(turnTrace.speechStopped()) }
         case .responseStarted:
+            onTrace?("Reply started")
             responseActive = true
             confirmRequest()
             responseHadTranscript = false
