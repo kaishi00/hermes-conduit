@@ -2116,7 +2116,7 @@ transcript (never filtered)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1429.
+**Checked:** 2026-10-28, #1429, carried in #1430.
 
 ## Speech stream failures
 
