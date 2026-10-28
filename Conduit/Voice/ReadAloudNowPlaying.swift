@@ -132,8 +132,9 @@ extension ReadAloudNowPlaying {
         for (index, character) in line.enumerated() {
             if character == "`" { continue }
             if character == "*" {
-                // A list or quote marker before the line's words goes too.
-                let inWords = line[..<index].contains { !$0.isWhitespace && $0 != ">" }
+                // A list, quote or heading marker before the line's words
+                // goes too.
+                let inWords = line[..<index].contains { $0.isLetter || $0.isNumber }
                 let spacedBefore = index > 0 && line[index - 1].isWhitespace
                 let spacedAfter = index + 1 < line.count && line[index + 1].isWhitespace
                 guard inWords && spacedBefore && spacedAfter else { continue }
