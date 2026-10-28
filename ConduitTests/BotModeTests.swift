@@ -78,6 +78,9 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: "atlas", sessionID: "s1")), "Atlas",
                        "and so does one saved with the id as its label")
         XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: "Scout", sessionID: "s1")), "Scout")
+        XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "default", label: "Default", sessionID: "s1")), "Hermes",
+                       "the main bot's label saved before #1457 gives way to its Conduit name")
+        XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "default", label: nil, sessionID: "s1"), mainName: "Jarvis"), "Jarvis")
     }
 
     func testRosterDecodeRejectsNonProfilesEnvelope() {
@@ -628,6 +631,41 @@ final class BotModeTests: XCTestCase {
             "the captured label travels to the rotated id; the roster's retitled label must not take over"
         )
         XCTAssertEqual(harness.appState.activeSessionTitle, "Bo")
+    }
+
+    /// The main bot's open Bot Chat goes by its Conduit name, and a rename
+    /// on the Profiles card renames it there too (#1457).
+    func testTheMainBotsOpenBotChatFollowsItsConduitName() async {
+        let main = makeBot(name: "default", canonicalID: "stored-default")
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, id, _, _ in
+                SessionResumeResult(
+                    sessionId: id,
+                    storedSessionId: "stored-default",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            botRoster: { _ in BotRosterSnapshot(bots: [main], supportsBotProtocol: true) },
+            findBotChat: { _, profile in
+                [BotChatLookupRow(id: "stored-\(profile)", resolvedID: "runtime-\(profile)", title: "Bot Chat")]
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        await harness.appState.refreshBotRoster()
+        let opened = await harness.appState.openBotChat(for: harness.appState.botRoster.first ?? main)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Hermes")
+        XCTAssertEqual(harness.appState.conversationAgentIdentity.name, "Hermes")
+
+        let failure = await harness.appState.renameProfile("default", to: "Jarvis")
+        XCTAssertNil(failure)
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Jarvis")
+        XCTAssertEqual(harness.appState.conversationAgentIdentity.name, "Jarvis", "the reply headers too")
     }
 
     func testMissingCanonicalCreatesHiddenTitledChatThenOpensStoredID() async {

@@ -10000,7 +10000,7 @@ final class AppState: ObservableObject {
                 label: reference.botLabel
             )
             activeSessionId = reference.sessionID
-            activeSessionTitle = Self.botConversationTitle(for: reference)
+            activeSessionTitle = Self.botConversationTitle(for: reference, mainName: profileDisplayName("default"))
         }
         publishWidgetSnapshot()
     }
@@ -10011,15 +10011,24 @@ final class AppState: ObservableObject {
     /// wire title: that constant is an identity used for the exact-title lookup,
     /// not a user-facing string, and it would tell the user nothing about which
     /// bot they are looking at.
-    static func botConversationTitle(for reference: SessionReference) -> String {
+    /// `mainName` names the main bot, as AppState.profileDisplayName does.
+    static func botConversationTitle(for reference: SessionReference, mainName: String = ProfileAppearanceStore.defaultName) -> String {
         let label = reference.botLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let name = (reference.botName ?? reference.scopeProfile)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        // A label that is only the id (saved before #1448) names it as the id does.
-        if !label.isEmpty, label != name { return label }
+        if !label.isEmpty, !isIDOnlyBotLabel(label, profile: name) { return label }
+        if BotManagement.isDefaultProfile(name) { return mainName }
         return name.isEmpty
             ? AppLocalization.string("New conversation")
             : String(name.prefix(1)).uppercased() + String(name.dropFirst())
+    }
+
+    /// A Bot Chat label that is only the profile id, in any case (saved
+    /// before #1448, or the main bot's "Default" saved before #1457), is no
+    /// label: the bot is named as Conduit names it now.
+    static func isIDOnlyBotLabel(_ label: String, profile: String) -> Bool {
+        label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            == profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     /// Registers a Bot Mode reference's identity so the conversation resolves
@@ -10042,7 +10051,7 @@ final class AppState: ObservableObject {
         guard reference.kind == .bot else { return }
         // Same resolver as the relaunch path, so a Bot Chat cannot show one
         // title when restored and another when re-adopted.
-        activeSessionTitle = Self.botConversationTitle(for: reference)
+        activeSessionTitle = Self.botConversationTitle(for: reference, mainName: profileDisplayName("default"))
     }
 
     private func persistActiveSessionTitles() {
@@ -12465,6 +12474,8 @@ final class AppState: ObservableObject {
 
     func saveDefaultProfileName(_ name: String) {
         defaultProfileName = profileAppearanceStore.saveDefaultName(name, dashboardID: activeDashboardID)
+        // The main bot's open Bot Chats go by it too (#1457).
+        renameCapturedBotChatLabels(for: "default", to: profileDisplayName("default"))
         publishWidgetSnapshot()
         // A call ringing on the Watch shows it.
         shareWatchCallVoices()
@@ -23123,10 +23134,10 @@ final class AppState: ObservableObject {
               let scope = ChatResumeStore.rpcProfileName(profile) else { return }
         botChatSessionProfiles[sessionID] = scope
         invalidateBotOwnershipCache()
-        // A label that is only the profile id (saved before #1448) is no
-        // label: the roster's displayLabel names the bot instead.
+        // A label that is only the profile id is no label: the roster's
+        // displayLabel names the bot instead.
         if let label = label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty,
-           label != profile.trimmingCharacters(in: .whitespacesAndNewlines) {
+           !Self.isIDOnlyBotLabel(label, profile: profile) {
             botChatSessionLabels[sessionID] = label
         }
     }

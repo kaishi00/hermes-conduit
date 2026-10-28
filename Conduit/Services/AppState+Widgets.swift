@@ -66,7 +66,7 @@ extension AppState {
            !choices.contains(where: { $0.reference == Self.widgetReference(from: lastReference) }) {
             choices.append(WidgetConversationChoice(
                 reference: Self.widgetReference(from: lastReference),
-                title: Self.botConversationTitle(for: lastReference),
+                title: Self.botConversationTitle(for: lastReference, mainName: profileDisplayName("default")),
                 isPinned: false,
                 recency: 0
             ))
