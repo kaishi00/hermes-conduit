@@ -481,13 +481,13 @@ describes it
 **Code**
 - Keeping the row: `Conduit/Services/AppState.swift` (newChatAwaitingListing, set in createAndReconcileSession for createNewSession; newChatRowAwaitingListing, read by loadSessions and syncSession's catalog; chatListListedIDs; knownProjectID), `Conduit/Services/ChatSync.swift` (NewChatAwaitingListing)
 - Project page: `Conduit/Views/V2/V2ProjectPage.swift` (lanes, the task keyed on chatListCatalogGeneration)
-- Tests: `ConduitTests/SessionRenameTests.swift` (testANewChatStaysListedWhileOpenUntilHermesListsIt, testANewChatLeftEmptyLeavesTheList, testANewChatBelongsToTheProjectItStartedIn)
+- Tests: `ConduitTests/SessionRenameTests.swift` (testANewChatStaysListedWhileOpenUntilHermesListsIt, testANewChatLeftEmptyLeavesTheList, testANewChatBelongsToTheProjectItStartedIn, testANewChatGoesOnTopOfItsFoldersLaneOnAProjectPage)
 
 **Rulings**
-- The row the create puts in stays through every catalog read while it is the open chat, until Hermes lists it; then Hermes' row, with its title, takes over. Opening another chat ends the wait, so an empty chat left behind leaves the list, as Hermes keeps no row for it (2026-10-28, issue 1454, #1456).
+- The row the create puts in stays through every catalog read while it is the open chat, until Hermes lists it; then Hermes' row, with its title, takes over. Opening another chat ends the wait (the registry poll and project sorting stop counting it at once, the list drops it at the next read), so an empty chat left behind leaves the list, as Hermes keeps no row for it (2026-10-28, issue 1454, #1456).
 - Only a chat someone started (createNewSession): one a sync starts because there was nothing to resume waits for Hermes, as before.
 - It still counts as unlisted for the registry poll, so the poll reads the catalog in for it as for a chat started on another device.
-- A project's page shows it on top of the project's own folder lane (a new lane, Recent, when the page has none), and Home's page shows a plain chat. The page reads Hermes' list again whenever the chats list's catalog changes, so it follows while it stays beside the chat (2026-10-28, #1456).
+- A project's page shows it on top of the lane of the folder it started in (Hermes names that folder in the lane's path, or in its label when the two are one), else in a new Recent lane on top; Home's page shows a plain chat in a Recent lane. The page reads Hermes' list again whenever the chats list changes, from a list read or a chat sync. It follows while it stays beside the chat (2026-10-28, #1456).
 
 **Open gaps**
 - None known.

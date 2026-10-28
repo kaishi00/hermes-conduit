@@ -15132,8 +15132,12 @@ final class AppState: ObservableObject {
             // A list read that started after this sync's read already
             // listed newer rows; the sync still resumes its chat.
             if claimSessionListListing(readTicket) {
-                sessions = allSessions.filter { $0.source != .cron }
-                cronSessions = allSessions.filter { $0.source == .cron }
+                let listedSessions = allSessions.filter { $0.source != .cron }
+                let listedCron = allSessions.filter { $0.source == .cron }
+                // A project's page beside the chat follows this list too.
+                if listedSessions != sessions || listedCron != cronSessions { chatListCatalogGeneration &+= 1 }
+                sessions = listedSessions
+                cronSessions = listedCron
                 savedChatListReplacedByLiveList(
                     newestPageOnly: catalogLoad.olderPagesDeferred,
                     dashboardID: dashboardID
@@ -20540,9 +20544,8 @@ final class AppState: ObservableObject {
     /// yet. The wait ends once the catalog lists it or another chat opens:
     /// an empty chat left behind is gone, as Hermes has no row for it.
     private func newChatRowAwaitingListing(loaded: [SessionSummary]) -> SessionSummary? {
-        guard let awaiting = newChatAwaitingListing else { return nil }
-        guard awaiting.profile == activeProfile,
-              let activeSessionId, awaiting.ids.contains(activeSessionId),
+        guard newChatAwaitingListing != nil else { return nil }
+        guard let awaiting = openNewChatAwaitingListing,
               !loaded.contains(where: awaiting.matches),
               let row = sessions.first(where: awaiting.matches) else {
             newChatAwaitingListing = nil
@@ -20553,11 +20556,18 @@ final class AppState: ObservableObject {
 
     /// The open chat made here in `project`'s folder (or, for Home, in no
     /// folder) that Hermes doesn't list yet, for the project's page.
-    func newChatAwaitingListing(in project: ProjectSummary) -> SessionSummary? {
+    func newChatAwaitingListing(in project: ProjectSummary) -> (row: SessionSummary, awaiting: NewChatAwaitingListing)? {
+        guard let awaiting = openNewChatAwaitingListing, awaiting.isIn(project),
+              let row = sessions.first(where: awaiting.matches) else { return nil }
+        return (row, awaiting)
+    }
+
+    /// The wait, while its chat is still the open one: a chat left behind
+    /// no longer counts, even before the next catalog read ends the wait.
+    private var openNewChatAwaitingListing: NewChatAwaitingListing? {
         guard let awaiting = newChatAwaitingListing, awaiting.profile == activeProfile,
-              let activeSessionId, awaiting.ids.contains(activeSessionId),
-              awaiting.isIn(project) else { return nil }
-        return sessions.first(where: awaiting.matches)
+              let activeSessionId, awaiting.ids.contains(activeSessionId) else { return nil }
+        return awaiting
     }
 
     private func takeSessionListReadTicket() -> UInt64 {
@@ -20715,7 +20725,7 @@ final class AppState: ObservableObject {
         // A new chat made here is listed only until Hermes lists it: the
         // registry still reads the catalog in for it, its title included.
         Self.chatListIDs(of: sessions + cronSessions + archivedSessions)
-            .subtracting(newChatAwaitingListing?.ids ?? [])
+            .subtracting(openNewChatAwaitingListing?.ids ?? [])
     }
 
     /// Every id the chats the list shows go by: the profile's own, without
@@ -31552,7 +31562,7 @@ final class AppState: ObservableObject {
     func knownProjectID(for session: SessionSummary) -> String? {
         // A new chat Hermes doesn't list yet belongs to the project it was
         // started in, so the Chats list sorts it as it will once listed.
-        if let awaiting = newChatAwaitingListing, awaiting.matches(session) {
+        if let awaiting = openNewChatAwaitingListing, awaiting.matches(session) {
             return projects.first { !$0.isHome && awaiting.isIn($0) }?.id
         }
         let index = projectPositionsIndex()

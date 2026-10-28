@@ -620,6 +620,36 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertFalse(awaiting.matches(makeSession(id: "other", alternateIDs: [])))
     }
 
+    func testANewChatGoesOnTopOfItsFoldersLaneOnAProjectPage() {
+        let created = makeSession(id: "st", alternateIDs: ["rt"], title: "New conversation")
+        let older = makeSession(id: "older", alternateIDs: [], title: "Older")
+        let worktree = ProjectSessionLane(id: "wt", title: "voice-v2", sessions: [older], path: "/repo/app/.worktrees/voice-v2")
+        let root = ProjectSessionLane(id: "root", title: "app", sessions: [older], path: "/repo/app")
+        let awaiting = NewChatAwaitingListing(ids: ["rt", "st"], profile: "default", cwd: "/repo/app")
+
+        let placed = awaiting.lanes([worktree, root], with: created, newLaneID: "p-new")
+        XCTAssertEqual(placed.map(\.id), ["wt", "root"])
+        XCTAssertEqual(placed[0].sessions.map(\.id), ["older"], "never under a worktree's lane")
+        XCTAssertEqual(placed[1].sessions.map(\.id), ["st", "older"])
+
+        // A lane Hermes names by its folder alone (no separate path).
+        let labelled = ProjectSessionLane(id: "label", title: "/repo/app/", sessions: [older])
+        XCTAssertEqual(awaiting.lanes([labelled], with: created, newLaneID: "p-new")[0].sessions.map(\.id), ["st", "older"])
+
+        // No lane is its folder: a Recent lane on top.
+        let recent = awaiting.lanes([worktree], with: created, newLaneID: "p-new")
+        XCTAssertEqual(recent.map(\.id), ["p-new", "wt"])
+        XCTAssertEqual(recent[0].sessions.map(\.id), ["st"])
+
+        // A plain chat on Home's page.
+        let plain = NewChatAwaitingListing(ids: ["rt", "st"], profile: "default", cwd: nil)
+        XCTAssertEqual(plain.lanes([root], with: created, newLaneID: "home-new").map(\.id), ["home-new", "root"])
+
+        // Listed by Hermes, by any of its ids: shown once.
+        let listed = ProjectSessionLane(id: "root", title: "app", sessions: [makeSession(id: "lineage", alternateIDs: ["st"])], path: "/repo/app")
+        XCTAssertEqual(awaiting.lanes([listed], with: created, newLaneID: "p-new"), [listed])
+    }
+
     private func makeConnectedAppState(
         catalog: @escaping @MainActor () -> [SessionSummary] = { [] },
         onPrompt: @escaping @MainActor (String, String) -> Void

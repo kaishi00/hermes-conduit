@@ -56,15 +56,9 @@ struct V2ProjectPage: View {
     /// until Hermes lists it: Hermes stores a chat with its first message,
     /// and the page beside the open chat would miss it (issue 1454).
     private var lanes: [ProjectSessionLane] {
-        var lanes = detail?.lanes ?? []
-        guard let created = appState.newChatAwaitingListing(in: project),
-              !lanes.contains(where: { $0.sessions.contains { $0.id == created.id } }) else { return lanes }
-        if let index = lanes.firstIndex(where: { lanePath($0) == nil }) ?? lanes.indices.first {
-            lanes[index].sessions.insert(created, at: 0)
-        } else {
-            lanes = [ProjectSessionLane(id: "\(project.id)-new", title: AppLocalization.string("Recent"), sessions: [created])]
-        }
-        return lanes
+        let lanes = detail?.lanes ?? []
+        guard let created = appState.newChatAwaitingListing(in: project) else { return lanes }
+        return created.awaiting.lanes(lanes, with: created.row, newLaneID: "\(project.id)-new")
     }
 
     var body: some View {
