@@ -903,6 +903,9 @@ struct V2Shell: View {
             if haptic { Haptics.medium() }
             return
         }
+        // This tap is the newest: a pick still kept from a switch that
+        // just ended elsewhere no longer goes.
+        queuedProfilePick = V2QueuedProfilePick()
         guard profile != appState.activeProfile else { return }
         if haptic { Haptics.medium() }
         isPickingProfile = true
@@ -915,6 +918,8 @@ struct V2Shell: View {
         }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(ConduitMotion.fadeOutDuration))
+            // Only a newer strip pick moves the token, and it owns
+            // isPickingProfile from then on.
             guard token == profileSwitchToken else { return }
             // Out of sight, content moves to the side it arrives from.
             withTransaction(Transaction(animation: nil)) { contentShift = distance }
