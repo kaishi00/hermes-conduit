@@ -11812,7 +11812,7 @@ final class AppState: ObservableObject {
     /// the room screen, and isn't kept for when it opens again.
     func dismissActiveRoomCopyPost() {
         guard activeRoomSurface?.copy != nil, !activeRoomCopyTakesPosts, !activeRoomSendInFlight,
-              groupRoomOutbox.pending != nil else { return }
+              groupRoomOutbox.pending != nil, !activeRoomCopyPostUnsettled else { return }
         groupRoomOutbox.discard()
         pendingRoomMessage = nil
         activeRoomCopyPost = nil
@@ -11882,7 +11882,7 @@ final class AppState: ObservableObject {
         Task { await self.readActiveRoomPeople(epoch: epoch) }
         await refreshActiveRoomCopyPost(epoch: epoch)
         // One whose opening read failed is polled until its tail comes.
-        if !copy.isOver || activeRoomCopyNeedsTail { startRoomPolling() }
+        if !copy.isOver || activeRoomCopyNeedsTail || activeRoomCopyPostUnsettled { startRoomPolling() }
     }
 
     /// One tick of a copy's room screen: the log after the cursor, then,
@@ -11967,8 +11967,17 @@ final class AppState: ObservableObject {
             await refreshActiveRoomCopyPost(epoch: epoch)
             guard groupRoomEpoch == epoch, activeRoomSurface?.copy?.id == copy.id else { return false }
         }
-        // One whose opening read failed is polled until its tail comes.
-        if latest.isOver, !activeRoomCopyNeedsTail { stopRoomCopyPolling() }
+        // One whose opening read failed is polled until its tail comes, and
+        // one with a post your Hermes hasn't settled until it does.
+        if latest.isOver, !activeRoomCopyNeedsTail, !activeRoomCopyPostUnsettled { stopRoomCopyPolling() }
+        return true
+    }
+
+    /// The open copy's pending post is sending or posted as your Hermes
+    /// last said: it can still settle, or be refused.
+    private var activeRoomCopyPostUnsettled: Bool {
+        guard groupRoomOutbox.pending != nil, let status = activeRoomCopyPost?.status else { return false }
+        if case .refused = status { return false }
         return true
     }
 

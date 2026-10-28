@@ -230,14 +230,38 @@ extension GroupChatModelsTests {
         XCTAssertNil(appState.pendingRoomMessage)
         XCTAssertNil(appState.activeRoomCopyPost)
 
-        // One that never got an answer says the room took no more; one
-        // your agents left says that.
+        // One your Hermes never had says the room took no more, or that
+        // your agents left; one it's still sending is still sending.
         XCTAssertEqual(RoomPostText.rowState(post: nil, inFlight: false, takesPosts: false, roomOver: true),
                        .closed(AppLocalization.string("Not posted: the room has ended.")))
-        let sending = RoomPost(eventID: "conduit-1", text: "hi", status: .sending)
-        XCTAssertEqual(RoomPostText.rowState(post: sending, inFlight: false, takesPosts: false),
+        XCTAssertEqual(RoomPostText.rowState(post: nil, inFlight: false, takesPosts: false),
                        .closed(AppLocalization.string("Not posted: your agents aren't in this room.")))
+        let sending = RoomPost(eventID: "conduit-1", text: "hi", status: .sending)
+        XCTAssertEqual(RoomPostText.rowState(post: sending, inFlight: false, takesPosts: false), .sending)
         XCTAssertEqual(RoomPostText.rowState(post: sending, inFlight: true, takesPosts: false), .sending)
+    }
+
+    @MainActor
+    func testAPostStillSendingAsTheRoomEndsIsAskedAboutUntilItSettles() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 3)])
+        routes.events = (1...3).map { copiesEvent($0) }
+        let appState = try await postsOpenCopy(routes)
+        await appState.sendGroupRoomMessage("on its way")
+        let eventID = try XCTUnwrap(appState.pendingRoomMessage?.eventID)
+
+        // The room ends while your Hermes is still sending it.
+        routes.posts = [postsListed(eventID, text: "on its way", status: "sending")]
+        routes.copies = [copiesCopy(status: "ended", reason: "disbanded", lastSeq: 3)]
+        await appState.pollActiveRoom()
+        XCTAssertFalse(appState.activeRoomCopyTakesPosts)
+        XCTAssertEqual(appState.activeRoomCopyPost?.status, .sending)
+        appState.dismissActiveRoomCopyPost()
+        XCTAssertNotNil(appState.pendingRoomMessage, "not dismissed while it may still post")
+
+        // The next tick still asks, and it settles.
+        routes.posts = [postsListed(eventID, text: "on its way", status: "posted", seq: 4)]
+        await appState.pollActiveRoom()
+        XCTAssertNil(appState.pendingRoomMessage)
     }
 
     @MainActor
