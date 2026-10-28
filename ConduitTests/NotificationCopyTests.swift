@@ -160,4 +160,29 @@ final class NotificationCopyTests: XCTestCase {
             "title_label": "response.ready", "session_title": "ada ", "profile_name": "Ada",
         ]).subtitle)
     }
+
+    /// The main bot goes by its Conduit name (Eric 2026-10-28).
+    func testTheMainBotGoesByItsConduitName() {
+        let botChat: [String: Any] = ["title_label": "response.ready", "session_title": "Hermes", "profile": "default", "body": "Done."]
+        let renamed = NotificationCopy.preview(NotificationCopy.named(botChat, mainName: "Jarvis"))
+        XCTAssertEqual(renamed.title, "Jarvis", "its Bot Chat is titled with the name given it in Conduit")
+        XCTAssertNil(renamed.subtitle, "which the title already says")
+        XCTAssertEqual(NotificationCopy.preview(NotificationCopy.named(botChat, mainName: nil)).title, "Hermes")
+        XCTAssertEqual(NotificationCopy.preview(NotificationCopy.named(botChat, mainName: "Hermes")).title, "Hermes", "Conduit's own name is no rename")
+        let older = ["title_label": "response.ready", "session_title": "Default", "profile": "default"]
+        XCTAssertEqual(NotificationCopy.preview(NotificationCopy.named(older, mainName: nil)).title, "Hermes", "an older plugin's \"Default\"")
+
+        let titled: [String: Any] = ["title_label": "approval.needed", "session_title": "Muse", "profile": "default", "profile_name": "Muse"]
+        XCTAssertEqual(NotificationCopy.chatNames(NotificationCopy.named(titled, mainName: "Jarvis")).title, "Approval needed · Jarvis", "the Conduit name over the bot's")
+        XCTAssertEqual(NotificationCopy.chatNames(NotificationCopy.named(titled, mainName: nil)).title, "Approval needed · Muse")
+
+        let chat: [String: Any] = ["title_label": "response.ready", "session_title": "Groceries", "profile": "default"]
+        let named = NotificationCopy.preview(NotificationCopy.named(chat, mainName: "Jarvis"))
+        XCTAssertEqual(named.title, "Groceries", "another chat keeps its title")
+        XCTAssertEqual(named.subtitle, "Jarvis", "and says which bot, as for a bot named in Hermes")
+        XCTAssertNil(NotificationCopy.preview(NotificationCopy.named(chat, mainName: nil)).subtitle)
+
+        let other: [String: Any] = ["title_label": "response.ready", "session_title": "Hermes", "profile": "atlas"]
+        XCTAssertEqual(NotificationCopy.named(other, mainName: "Jarvis")["session_title"] as? String, "Hermes", "only the main profile")
+    }
 }

@@ -713,19 +713,28 @@ final class AppState: ObservableObject {
     /// The dashboard a connection currently belongs to (the selected target).
     var activeDashboardID: UUID? { savedDashboardRegistry.activeDashboardID }
     @Published private(set) var defaultProfileName: String {
-        didSet { persistSiriProfileNames() }
+        didSet {
+            persistSiriProfileNames()
+            stampMainBotConduitName()
+        }
     }
     /// Each profile's `display_name` set in Hermes, when it has one (#1046):
     /// "Coding Assistant" for `coding-agent`. Names only; routing keeps the
     /// profile id.
     @Published private(set) var profileHermesNames: [String: String] = [:] {
-        didSet { persistSiriProfileNames() }
+        didSet {
+            persistSiriProfileNames()
+            stampMainBotConduitName()
+        }
     }
     /// Each profile's bot title (`ui_meta['hermes-bots'].title`), the name
     /// Edit Bot, the Profiles sheet and Hermes Desktop rename it with. It
     /// wins over `display_name`, as on Desktop and in the bot's pushes.
     @Published private(set) var profileBotTitles: [String: String] = [:] {
-        didSet { persistSiriProfileNames() }
+        didSet {
+            persistSiriProfileNames()
+            stampMainBotConduitName()
+        }
     }
     @Published private(set) var profileAvatarURLs: [String: URL] {
         // Also bumped when a photo's bytes change under the same URL, so the
@@ -1588,6 +1597,7 @@ final class AppState: ObservableObject {
     /// is durably persisted client-side.
     @Published private(set) var botRoster: [BotProfile] = [] {
         didSet {
+            stampMainBotConduitName()
             invalidateBotOwnershipCache()
             publishWidgetSnapshot()
         }
@@ -12330,6 +12340,15 @@ final class AppState: ObservableObject {
             KeychainHelper.clearCloudflareAccess(dashboardID: dashboardID)
         }
         if let baseURL = connection?.baseUrl { prepareDashboardBridge(for: baseURL) }
+    }
+
+    /// Names the roster's main bot by its Conduit name, so Bots, rooms, the
+    /// widget and Artifacts call it what the rest of Conduit does (Eric
+    /// 2026-10-28). The roster's observer runs again and finds it stamped.
+    private func stampMainBotConduitName() {
+        guard let index = botRoster.firstIndex(where: { BotManagement.isDefaultProfile($0.name) }) else { return }
+        let name = profileDisplayName("default")
+        if botRoster[index].conduitName != name { botRoster[index].conduitName = name }
     }
 
     /// Gateway profile IDs remain stable; this is only the label used for

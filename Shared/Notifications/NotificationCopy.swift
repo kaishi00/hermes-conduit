@@ -84,6 +84,32 @@ enum NotificationCopy {
         return phoneTitle(for: label)
     }
 
+    /// The push's content with the main bot named as Conduit names it
+    /// (AppState.profileDisplayName, Eric 2026-10-28): the name given it in
+    /// Conduit, `mainName`, wins over its bot's name, and an unnamed one is
+    /// "Hermes", not "Default". The host titles a Bot Chat with the bot's
+    /// name, so a chat title that is only that name is renamed with it.
+    static let mainBotName = "Hermes"
+
+    static func named(_ content: [String: Any], mainName: String?) -> [String: Any] {
+        let profile = nonEmpty(content["profile"])?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard profile == "default" else { return content }
+        let given = nonEmpty(content["profile_name"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .flatMap { $0.lowercased() == "default" ? nil : $0 }
+        let renamed = mainName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .flatMap { $0.isEmpty || $0 == mainBotName ? nil : $0 }
+        let name = renamed ?? given ?? mainBotName
+        // An older plugin titles an unnamed main bot's chat "Default".
+        let hostNames = given.map { [$0] } ?? ["Default", mainBotName]
+        var content = content
+        if renamed != nil { content["profile_name"] = name }
+        if let chat = nonEmpty(content["session_title"])?.trimmingCharacters(in: .whitespacesAndNewlines),
+           hostNames.contains(where: { $0.caseInsensitiveCompare(chat) == .orderedSame }) {
+            content["session_title"] = name
+        }
+        return content
+    }
+
     /// Which profile the push came from (#1415): its bot's name
     /// (`profile_name`, unless it is only the id), else its id capitalized, left out for an unnamed default
     /// profile and when the title already ends with it (a Bot Chat's).

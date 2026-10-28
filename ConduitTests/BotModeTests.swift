@@ -220,9 +220,11 @@ final class BotModeTests: XCTestCase {
         await harness.appState.refreshBotRoster()
         XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Prime")
         XCTAssertEqual(harness.appState.profileDisplayName("default"), "Muse", "A main profile with no Conduit name goes by its bot's")
+        XCTAssertEqual(mainBotLabel(harness.appState), "Muse")
 
         harness.appState.saveDefaultProfileName("Home")
         XCTAssertEqual(harness.appState.profileDisplayName("default"), "Home", "The Conduit name wins for the main profile")
+        XCTAssertEqual(mainBotLabel(harness.appState), "Home", "Bots, rooms and the widget call the main bot what Conduit does")
 
         // A profile listing that only knows `display_name` doesn't undo it.
         harness.appState.adoptProfileHermesNames([(profile: "atlas", displayName: "Atlas")])
@@ -234,11 +236,33 @@ final class BotModeTests: XCTestCase {
         harness.appState.adoptProfileHermesNames([(profile: "atlas", displayName: "Atlas Hermes")])
         XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Hermes", "No title: the display name")
         XCTAssertEqual(harness.appState.profileDisplayName("default"), "Home")
+        XCTAssertEqual(mainBotLabel(harness.appState), "Home", "A roster that answers again keeps it")
 
         // Renaming the main profile sets its Conduit name.
         let failure = await harness.appState.renameProfile("default", to: "Studio")
         XCTAssertNil(failure)
         XCTAssertEqual(harness.appState.profileDisplayName("default"), "Studio")
+        XCTAssertEqual(mainBotLabel(harness.appState), "Studio")
+        XCTAssertEqual(harness.appState.botRoster.first(where: { $0.name == "atlas" })?.displayLabel, "Atlas", "Only the main bot")
+    }
+
+    /// The main bot nobody named reads "Hermes" in Bots, as everywhere else
+    /// in Conduit, not "Default" (Eric 2026-10-28).
+    func testAnUnnamedMainBotIsHermes() async {
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            botRoster: { _ in BotRosterSnapshot(bots: [self.makeBot(name: "default")], supportsBotProtocol: true) }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(mainBotLabel(harness.appState), "Hermes")
+        XCTAssertEqual(makeBot(name: "default").displayLabel, "Default", "A bot off the roster keeps its own label")
+    }
+
+    private func mainBotLabel(_ appState: AppState) -> String? {
+        appState.botRoster.first(where: { BotManagement.isDefaultProfile($0.name) })?.displayLabel
     }
 
     /// On a gateway without bot looks a rename stays on the device and names

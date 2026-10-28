@@ -224,6 +224,7 @@ extension AppState {
     /// accent the Watch app draws in, and whether the active dashboard's
     /// notifications are end-to-end encrypted (the Watch's Settings).
     func shareWatchCallVoices() {
+        shareMainProfileNamesWithNotifications()
         let notifications = PushNotificationService.shared
         WatchVoiceLink.shared.share(WatchPhoneContext(
             voices: Self.watchContextVoices(
@@ -237,6 +238,15 @@ extension AppState {
             accent: UserDefaults.standard.string(forKey: ConduitAccent.storageKey) ?? ConduitAccent.defaultValue.rawValue,
             notificationsEncryption: Self.watchNotificationsEncryption(activeDashboardID.flatMap(notificationsEncryption(of:)))
         ))
+    }
+
+    /// The Notification Service Extension names the main bot's pushes as
+    /// the app does (NotificationCopy.named), from these.
+    func shareMainProfileNamesWithNotifications() {
+        let names = mainProfileNamesByDashboard
+        if NotificationSharedSettings.mainProfileNames != names { NotificationSharedSettings.mainProfileNames = names }
+        let active = activeDashboardID?.uuidString
+        if NotificationSharedSettings.activeDashboardID != active { NotificationSharedSettings.activeDashboardID = active }
     }
 
     /// The Watch's word for a dashboard's notifications encryption: nil
