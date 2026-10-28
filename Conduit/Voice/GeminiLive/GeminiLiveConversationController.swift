@@ -1119,7 +1119,8 @@ final class GeminiLiveConversationController: ObservableObject {
                     self.trace("Running \(call.name)")
                     var outgoing = await self.tools.handle(call)
                     self.inFlightCallIDs.remove(call.id)
-                    self.trace("\(call.name): \(Self.traceStatus(of: outgoing, answering: call.id))")
+                    // A call that ended while this ran has its own trace no more.
+                    if self.callEpoch == epoch { self.trace("\(call.name): \(Self.traceStatus(of: outgoing, answering: call.id))") }
                     // The model withdrew the call while it ran (the user
                     // spoke over a lookup): its answer must not go back.
                     if self.withdrawnCallIDs.remove(call.id) != nil {
@@ -1269,6 +1270,16 @@ final class GeminiLiveConversationController: ObservableObject {
     private func trace(_ label: String) {
         guard traceName != nil else { return }
         LiveCallTrace.shared.note(label)
+    }
+
+    /// Which microphone the call records from, for the trace (#1418): the
+    /// port's type and the iPhone microphone in use (Bottom, Front, Back),
+    /// never a device's own name.
+    static func traceInputRoute(_ session: AVAudioSession = .sharedInstance()) -> String {
+        guard let port = session.currentRoute.inputs.first else { return "no input route" }
+        var description = port.portType.rawValue
+        if let source = port.selectedDataSource?.dataSourceName { description += " (\(source))" }
+        return description
     }
 
     /// How a call was answered, for the trace: never its text.
@@ -1628,6 +1639,7 @@ final class GeminiLiveConversationController: ObservableObject {
             initialWidgetCaptureAuthorization?.captureDidStart()
             initialWidgetCaptureAuthorization = nil
             inputRunning = true
+            trace("Microphone started: \(Self.traceInputRoute())\(input.cancelsEcho ? ", echo cancelling" : "")\(routePolicy() == .speakerSafeHalfDuplex ? ", open speaker" : "")")
             return true
         } catch {
             if pausingOnFailure {

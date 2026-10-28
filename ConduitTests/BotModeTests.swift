@@ -72,6 +72,12 @@ final class BotModeTests: XCTestCase {
         let bot = try XCTUnwrap(snapshot.bots.first)
         XCTAssertEqual(bot.displayLabel, "Default Profile")
         XCTAssertNil(bot.canonicalSession)
+        XCTAssertEqual(makeBot(name: "atlas").displayLabel, "Atlas", "unnamed, or named only by its id: capitalized, as everywhere in Conduit")
+        XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: nil, sessionID: "s1")), "Atlas",
+                       "a restored Bot Chat without a label names its bot as displayLabel does")
+        XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: "atlas", sessionID: "s1")), "Atlas",
+                       "and so does one saved with the id as its label")
+        XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: "Scout", sessionID: "s1")), "Scout")
     }
 
     func testRosterDecodeRejectsNonProfilesEnvelope() {
@@ -194,6 +200,85 @@ final class BotModeTests: XCTestCase {
         XCTAssertFalse(BotChatHygiene.isCanonicalBotChatRow(dashboardTitled, roster: [bot]))
         XCTAssertFalse(BotChatHygiene.isCanonicalBotChatRow(botProfileSession, roster: [bot]))
         XCTAssertFalse(BotChatHygiene.isCanonicalBotChatRow(unrelated, roster: [bot]))
+    }
+
+    /// A bot renamed in Edit Bot (or the Profiles sheet) goes by that name
+    /// everywhere Conduit names the profile, not only in Bots (#1409).
+    func testABotTitleNamesItsProfileEverywhere() async {
+        var roster = [
+            makeBot(name: "default", botTitle: "Muse"),
+            makeBot(name: "atlas", botTitle: "Atlas Prime")
+        ]
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            botRoster: { _ in BotRosterSnapshot(bots: roster, supportsBotProtocol: true) }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Prime")
+        XCTAssertEqual(harness.appState.profileDisplayName("default"), "Muse", "A main profile with no Conduit name goes by its bot's")
+
+        harness.appState.saveDefaultProfileName("Home")
+        XCTAssertEqual(harness.appState.profileDisplayName("default"), "Home", "The Conduit name wins for the main profile")
+
+        // A profile listing that only knows `display_name` doesn't undo it.
+        harness.appState.adoptProfileHermesNames([(profile: "atlas", displayName: "Atlas")])
+        XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Prime")
+
+        roster = [makeBot(name: "default"), makeBot(name: "atlas")]
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas", "No title and no display name: the id")
+        harness.appState.adoptProfileHermesNames([(profile: "atlas", displayName: "Atlas Hermes")])
+        XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Hermes", "No title: the display name")
+        XCTAssertEqual(harness.appState.profileDisplayName("default"), "Home")
+
+        // Renaming the main profile sets its Conduit name.
+        let failure = await harness.appState.renameProfile("default", to: "Studio")
+        XCTAssertNil(failure)
+        XCTAssertEqual(harness.appState.profileDisplayName("default"), "Studio")
+    }
+
+    /// On a gateway without bot looks a rename stays on the device and names
+    /// the profile until the roster says the gateway keeps bot looks; the
+    /// name already shown writes nothing (#1409).
+    func testADeviceNameNamesAProfileOnlyWithoutBotLooks() async {
+        var unsupported = true
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            botRoster: { _ in
+                if unsupported { throw RpcError(code: -32601, message: "unknown method") }
+                return BotRosterSnapshot(bots: [self.makeBot(name: "atlas", botTitle: "Atlas Prime")], supportsBotProtocol: true)
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.botModePhase, .gatewayUnsupported)
+
+        let unchanged = await harness.appState.renameProfile("atlas", to: "Atlas")
+        XCTAssertNil(unchanged)
+        XCTAssertTrue(harness.appState.profileDeviceNames.isEmpty, "Saving the name shown writes nothing")
+
+        let renamed = await harness.appState.renameProfile("atlas", to: "Atlas Local")
+        XCTAssertNil(renamed)
+        XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Local")
+        harness.appState.profiles = ["default", "atlas"]
+        XCTAssertEqual(harness.appState.voiceJobProfileTarget(named: "atlas local"), .other("atlas"), "A spoken job reaches a profile by its device name")
+        XCTAssertTrue(harness.appState.watchJobProfileNames().contains { $0.profile == "atlas" && $0.names == ["Atlas Local"] })
+
+        unsupported = false
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.botModePhase, .available)
+        XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Prime", "Bot looks: the title names it")
+        XCTAssertNil(harness.appState.profileDeviceNames["atlas"], "A roster that answers drops device names, so they can't come back offline")
+
+        let unlisted = await harness.appState.renameProfile("ghost", to: "Ghost Writer")
+        XCTAssertEqual(unlisted, AppLocalization.string("The name was not saved."), "A profile the roster doesn't list has nowhere to keep a name")
+        XCTAssertNil(harness.appState.profileDeviceNames["ghost"])
     }
 
     func testActiveProfileSessionsProjectionDropsCanonicalButKeepsCatalog() async {
@@ -339,7 +424,7 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(resumedIDs, ["runtime-1"], "the open addresses the compression-lineage tip")
         XCTAssertEqual(resumeProfiles, ["atlas"], "the resume rides the BOT profile, never the dashboard scope")
         XCTAssertEqual(harness.appState.activeSessionId, "runtime-1")
-        XCTAssertEqual(harness.appState.activeSessionTitle, "atlas", "the bot's display label titles the chat")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Atlas", "the bot's display label titles the chat")
         XCTAssertNil(harness.appState.errorMessage)
     }
 
@@ -470,7 +555,7 @@ final class BotModeTests: XCTestCase {
         XCTAssertTrue(openedBo)
         XCTAssertEqual(harness.appState.conversationIdentityProfile, "bo")
         let boIdentity = harness.appState.conversationAgentIdentity
-        XCTAssertEqual(boIdentity.name, "bo")
+        XCTAssertEqual(boIdentity.name, "Bo")
         XCTAssertEqual(boIdentity.botFace?.name, "bo")
         XCTAssertNil(boIdentity.botFace?.image)
         XCTAssertNil(boIdentity.botFace?.colorString)
@@ -515,10 +600,10 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeSessionId, "runtime-bo-rot",
                        "the resume stub rotated the runtime id and the open adopted it")
         XCTAssertEqual(
-            harness.appState.conversationAgentIdentity.name, "bo",
+            harness.appState.conversationAgentIdentity.name, "Bo",
             "the captured label travels to the rotated id; the roster's retitled label must not take over"
         )
-        XCTAssertEqual(harness.appState.activeSessionTitle, "bo")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Bo")
     }
 
     func testMissingCanonicalCreatesHiddenTitledChatThenOpensStoredID() async {
@@ -1819,7 +1904,7 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(resumes.last?.id, "atlas-chat", "the sync resumes the chat on screen")
         XCTAssertEqual(resumes.last?.profile, "atlas")
         XCTAssertEqual(harness.appState.activeSessionId, "atlas-runtime-4")
-        XCTAssertEqual(harness.appState.activeSessionTitle, "atlas")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Atlas")
     }
 
     /// The durable selection is state written by earlier builds: a bare session
@@ -2082,6 +2167,39 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeSessionId, "runtime-1")
         XCTAssertEqual(harness.appState.activeSessionTitle, "Scout")
         XCTAssertEqual(harness.store.lastSession(for: "default")?.kind, SessionReference.Kind.bot)
+    }
+
+    /// A room member known only by name ("Atlas") is the bot titled Atlas,
+    /// not an unnamed bot whose id capitalizes to it; its id still finds it.
+    func testRoomMemberNameMatchesABotsOwnNameBeforeAnIdCapitalized() async {
+        let unnamed = makeBot(name: "atlas")
+        let titled = makeBot(name: "atlas-2", botTitle: "Atlas")
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            refreshContext: { _, _ in },
+            botRoster: { _ in BotRosterSnapshot(bots: [unnamed, titled], supportsBotProtocol: true) }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.groupMemberBot(nil, name: "Atlas")?.name, "atlas-2")
+        XCTAssertEqual(harness.appState.groupMemberBot(nil, name: "atlas")?.name, "atlas")
+    }
+
+    /// A Bot Chat saved before #1448 with its bot's id as its label: the
+    /// relaunch names the bot by its id capitalized, in the header and on its
+    /// replies, as the Bots list does.
+    func testRestoredBotChatSavedWithItsIdAsLabelCapitalizesIt() async {
+        let harness = makeBotHarness(configureDefaults: { defaults in
+            ChatResumeStore(defaults: defaults).setLastSession(
+                .bot(botName: "atlas", label: "atlas", sessionID: "runtime-1"),
+                for: "default"
+            )
+        }, lifecycleOperations: ChatResumeLifecycleOperations(refreshContext: { _, _ in }))
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-1")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Atlas")
+        XCTAssertEqual(harness.appState.conversationAgentIdentity.name, "Atlas")
     }
 
     /// "Continue where I left off" prefers the stored conversation even when it

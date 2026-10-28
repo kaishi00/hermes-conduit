@@ -770,6 +770,11 @@ final class PushNotificationService: ObservableObject {
     private var registration: StoredRegistration? {
         didSet { relayHasLocationToken = registration?.locationToken != nil }
     }
+    /// The relay has the Apple Watch's PushKit token on another iPhone's
+    /// registration (the Watch moved here from it), so calls ring the Watch
+    /// for that iPhone, not this one. Pairing a profile here moves it
+    /// (relay 0.23, plugin 0.113).
+    @Published private(set) var watchRingsForAnotherIPhone = false
     /// The relay holds this iPhone's location push token, so Hermes can ask
     /// it for a fresh position (Settings > Location says when not, #287).
     @Published private(set) var relayHasLocationToken = false
@@ -1878,6 +1883,7 @@ final class PushNotificationService: ObservableObject {
             removeEncryptionKeys(installationID: registration.installationID)
         }
         registration = nil
+        watchRingsForAnotherIPhone = false
         KeychainHelper.clearPushRegistration()
     }
 
@@ -2298,13 +2304,19 @@ final class PushNotificationService: ObservableObject {
     static let watchCallVoicesKey = "hermesCalls.watchCallVoices"
 
     /// The Watch app has a new PushKit token, or none any more, or another
-    /// voice.
+    /// voice. It reports once a launch, to the iPhone it is with, so a token
+    /// it reports goes to the relay even when this registration already
+    /// holds it: the relay may have moved it to another iPhone since (a
+    /// re-pair there), and the answer says so.
     func updateWatchVoIPToken(_ token: String?, engine: String?) {
         watchVoIPToken = token
         watchEngine = engine
         UserDefaults.standard.set(token, forKey: Self.watchVoIPTokenKey)
         UserDefaults.standard.set(engine, forKey: Self.watchEngineKey)
-        queueRegistrationUpdate()
+        // A Watch with no token rings nowhere, so not for another iPhone
+        // either, and a registration that holds none sends nothing to say so.
+        if token == nil { watchRingsForAnotherIPhone = false }
+        queueRegistrationUpdate(resendWatchToken: token != nil)
     }
 
     func updateWatchCallVoices(_ voices: WatchCallVoices) {
@@ -2371,7 +2383,7 @@ final class PushNotificationService: ObservableObject {
     /// anything new is decided when its turn comes; a device token the
     /// relay hasn't accepted yet always counts as new.
     @discardableResult
-    private func queueRegistrationUpdate(deviceToken: String? = nil) -> Task<Void, Error>? {
+    private func queueRegistrationUpdate(deviceToken: String? = nil, resendWatchToken: Bool = false) -> Task<Void, Error>? {
         guard registration != nil else { return nil }
         let previous = registrationUpdate
         let update = Task {
@@ -2381,10 +2393,11 @@ final class PushNotificationService: ObservableObject {
             // so one that failed at launch goes again (a relay meta refresh
             // queues one); the same token twice sends once.
             let tokenChanged = (deviceToken ?? self.deviceToken).map { $0 != registration.deviceToken } ?? false
-            guard tokenChanged || registration.preferences != preferences
+            let resendsWatchToken = resendWatchToken && ringingWatchVoIPToken != nil
+            guard tokenChanged || resendsWatchToken || registration.preferences != preferences
                     || registration.voipToken != voipToken || registration.watchVoipToken != ringingWatchVoIPToken
                     || locationTokenChange(registered: registration.locationToken) != .keep else { return }
-            try await updateRegistration(deviceToken: deviceToken)
+            try await updateRegistration(deviceToken: deviceToken, resendWatchToken: resendsWatchToken)
         }
         registrationUpdate = update
         return update
@@ -2885,6 +2898,7 @@ final class PushNotificationService: ObservableObject {
         registration?.voipToken = responseBody.installation.voip == true ? voipToken : nil
         // Likewise the Watch's, on a relay that rings it (0.10+).
         registration?.watchVoipToken = responseBody.installation.watchVoip == true ? watchToken : nil
+        watchRingsForAnotherIPhone = responseBody.installation.watchVoipElsewhere == true
         // And the location push token, which goes only to a relay that
         // says it sends locates (`location-push`).
         registration?.locationToken = responseBody.installation.location != false ? locationToken : nil
@@ -2899,12 +2913,13 @@ final class PushNotificationService: ObservableObject {
         }
     }
 
-    private func updateRegistration(deviceToken: String? = nil) async throws {
+    private func updateRegistration(deviceToken: String? = nil, resendWatchToken: Bool = false) async throws {
         guard let registration else { return }
         let voipToken = self.voipToken
         let voipChange: VoIPTokenChange = registration.voipToken == voipToken ? .keep : (voipToken.map(VoIPTokenChange.set) ?? .clear)
         let watchToken = ringingWatchVoIPToken
-        let watchChange: VoIPTokenChange = registration.watchVoipToken == watchToken ? .keep : (watchToken.map(VoIPTokenChange.set) ?? .clear)
+        let watchChange: VoIPTokenChange = registration.watchVoipToken == watchToken && !resendWatchToken
+            ? .keep : (watchToken.map(VoIPTokenChange.set) ?? .clear)
         let locationToken = relayLocationToken
         let locationChange = locationTokenChange(registered: registration.locationToken)
         // What the relay keeps once this lands, rather than whatever the
@@ -2949,7 +2964,14 @@ final class PushNotificationService: ObservableObject {
             let rings = installation?.watchVoip == true
             self.registration?.watchVoipToken = rings ? watchToken : nil
             newerToken = newerToken || (rings && watchToken != ringingWatchVoIPToken)
+        } else if registration.watchVoipToken != nil, installation?.watchVoip == false {
+            // The relay let it go (the pairing moved to another iPhone): the
+            // next update sends it again, so a Watch back with this iPhone
+            // rings here again. While the other iPhone holds it, the relay
+            // leaves it out and says so (watchRingsForAnotherIPhone).
+            self.registration?.watchVoipToken = nil
         }
+        if let installation { watchRingsForAnotherIPhone = installation.watchVoipElsewhere == true }
         if locationChange != .keep {
             let locates = installation?.location != false
             self.registration?.locationToken = locates ? locationToken : nil
@@ -3119,8 +3141,11 @@ private struct RegistrationResponse: Decodable {
         let preferences: ConduitNotificationPreferences?
         let voip: Bool?
         let watchVoip: Bool?
+        let watchVoipElsewhere: Bool?
         let location: Bool?
-        enum CodingKeys: String, CodingKey { case id, preferences, voip, watchVoip = "watch_voip", location }
+        enum CodingKeys: String, CodingKey {
+            case id, preferences, voip, watchVoip = "watch_voip", watchVoipElsewhere = "watch_voip_elsewhere", location
+        }
     }
     let credential: String
     let installation: Installation
@@ -3130,8 +3155,9 @@ private struct UpdateRegistrationResponse: Decodable {
     struct Installation: Decodable {
         let voip: Bool?
         let watchVoip: Bool?
+        let watchVoipElsewhere: Bool?
         let location: Bool?
-        enum CodingKeys: String, CodingKey { case voip, watchVoip = "watch_voip", location }
+        enum CodingKeys: String, CodingKey { case voip, watchVoip = "watch_voip", watchVoipElsewhere = "watch_voip_elsewhere", location }
     }
     let installation: Installation?
 }

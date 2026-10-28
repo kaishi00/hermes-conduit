@@ -24,6 +24,10 @@ struct ChatRowState: Equatable {
     /// own part.
     var reactionsAvailable = false
     var latestAssistantMessageID: String?
+    /// The newest reply, while it answers the last message sent: /retry
+    /// sends that message again, so a reply with a message after it (a
+    /// stopped or unanswered turn) offers no Retry.
+    var retryableReplyID: String?
     var readAloudUnavailable = false
     var displayPreferences = ProfileDisplayPreferences()
     /// A call card finds its call through AppState; this redraws it when
@@ -65,6 +69,7 @@ struct ChatRowState: Equatable {
         canQuoteIntoComposer = appState.canQuoteIntoComposer()
         reactionsAvailable = appState.reactionsAvailable
         latestAssistantMessageID = appState.messages.last(where: { $0.role == .assistant })?.id
+        retryableReplyID = AppState.retryableReplyID(in: appState.messages)
         readAloudUnavailable = appState.readAloudUnavailableReason != nil
         displayPreferences = appState.displayPreferences
         voiceCallLinksRevision = appState.voiceCallChatLinksRevision

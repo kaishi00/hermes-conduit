@@ -271,4 +271,105 @@ extension ComposerDraftStoreTests {
         store.save(ComposerDraft(text: "", attachments: []), for: key)
         XCTAssertNil(store.draft(for: key).replyReference)
     }
+
+    // MARK: - Message actions (issue 1420)
+
+    private func row(_ id: String, _ role: MessageRole, _ content: String, rowId: Int? = nil) -> ChatMessage {
+        ChatMessage(id: id, role: role, content: content, timestamp: "", rowId: rowId)
+    }
+
+    @MainActor
+    func testQuotedReplyCardFindsTheNewestMatchingReplyAboveIt() {
+        let transcript = [
+            row("a1", .assistant, "Same answer"),
+            row("u1", .user, "thanks"),
+            row("a2", .assistant, "Same answer  \n"),
+            row("u2", .user, ReplyQuoteEnvelope.outboundText(quoting: "Same answer", message: "why?")),
+            row("a3", .assistant, "Same answer")
+        ]
+        XCTAssertEqual(AppState.quotedReplyMessageID(quote: "Same answer", quotedIn: "u2", in: transcript), "a2")
+        XCTAssertNil(AppState.quotedReplyMessageID(quote: "Gone", quotedIn: "u2", in: transcript))
+        XCTAssertEqual(
+            AppState.quotedReplyMessageID(quote: "Same answer", quotedIn: "pending-1", in: transcript), "a3",
+            "A waiting message isn't in the transcript yet; it comes after everything"
+        )
+    }
+
+    @MainActor
+    func testRetryAsksFirstOnlyWhenTheLatestTurnRanSteps() {
+        let quiet = [row("u1", .user, "hi"), row("t1", .tool, ""), row("a1", .assistant, "x"), row("u2", .user, "again"), row("a2", .assistant, "y")]
+        XCTAssertFalse(AppState.latestTurnRanTools(in: quiet), "Steps in an earlier turn don't count")
+        let busy = [row("u1", .user, "hi"), row("t1", .tool, ""), row("a1", .assistant, "x")]
+        XCTAssertTrue(AppState.latestTurnRanTools(in: busy))
+    }
+
+    @MainActor
+    func testEditAndResendFindsItsTurnByRowIDOrByItsWords() {
+        let snapshot = SessionRewindSnapshot(
+            turns: [.init(rowID: 3, text: "same"), .init(rowID: 7, text: "other"), .init(rowID: 9, text: "same")],
+            revision: 1,
+            generation: 1
+        )
+        let saved = row("u1", .user, "same", rowId: 3)
+        XCTAssertEqual(AppState.rewindTurn(for: saved, in: [saved], snapshot: snapshot)?.rowID, 3)
+
+        // Sent here and not reloaded yet: no row id, so the words find it,
+        // counting the same words sent after it.
+        let first = row("u1", .user, "same")
+        let middle = row("u2", .user, "other")
+        let last = row("u3", .user, "same ")
+        let transcript = [first, middle, last]
+        XCTAssertEqual(AppState.rewindTurn(for: first, in: transcript, snapshot: snapshot)?.rowID, 3)
+        XCTAssertEqual(AppState.rewindTurn(for: last, in: transcript, snapshot: snapshot)?.rowID, 9)
+        XCTAssertEqual(AppState.rewindTurn(for: middle, in: transcript, snapshot: snapshot)?.rowID, 7)
+        XCTAssertNil(AppState.rewindTurn(for: row("u4", .user, "never sent"), in: transcript + [row("u4", .user, "never sent")], snapshot: snapshot))
+        XCTAssertNil(AppState.rewindTurn(for: row("u5", .user, "gone", rowId: 42), in: [], snapshot: snapshot))
+    }
+
+    @MainActor
+    func testRetryIsOnlyOnAReplyThatAnswersTheLastMessage() {
+        XCTAssertEqual(AppState.retryableReplyID(in: [row("u1", .user, "hi"), row("a1", .assistant, "x")]), "a1")
+        XCTAssertNil(
+            AppState.retryableReplyID(in: [row("u1", .user, "hi"), row("a1", .assistant, "x"), row("u2", .user, "unanswered")]),
+            "/retry would send the unanswered message, not this reply's"
+        )
+        XCTAssertNil(AppState.retryableReplyID(in: [row("u1", .user, "hi")]))
+    }
+
+    func testRestoredWordsGoAboveTheDraftAndASecondChipBecomesAQuote() {
+        let typed = ComposerDraft(text: "typed since", attachments: [], replyReference: ComposerReplyReference(authorName: "Hermes", text: "kept"))
+        let restored = ComposerDraft(text: "my message", attachments: [], replyReference: ComposerReplyReference(authorName: "Hermes", text: "quoted\nreply"))
+
+        let merged = typed.restoring(restored)
+
+        XCTAssertEqual(merged.text, "> quoted\n> reply\n\nmy message\n\ntyped since")
+        XCTAssertEqual(merged.replyReference?.text, "kept")
+
+        let plain = ComposerDraft(text: "", attachments: []).restoring(restored)
+        XCTAssertEqual(plain.text, "my message")
+        XCTAssertEqual(plain.replyReference?.text, "quoted\nreply", "With no chip in the composer, the restored one comes back as a chip")
+    }
+
+    @MainActor
+    func testRoomReplyingToCardFindsTheMemberMessageAboveIt() {
+        func event(_ seq: Int, _ kind: String, _ text: String) -> GroupEvent {
+            GroupEvent(
+                roomID: "room",
+                seq: seq,
+                eventID: "e\(seq)",
+                kind: kind,
+                actor: GroupActor(kind: "member", id: "atlas", profile: "atlas", displayName: "Atlas", connectionID: nil),
+                authorityEpoch: nil,
+                payload: ["text": .string(text)],
+                createdAt: 0
+            )
+        }
+        let events = [
+            event(1, "message.member", "The plan"),
+            event(2, "message.user", "The plan"),
+            event(3, "message.user", GroupRoomReplyQuote.outboundText(quoting: "The plan", author: "Atlas", message: "why?"))
+        ]
+        XCTAssertEqual(AppState.quotedRoomMessageID(quote: "The plan", quotedIn: "e3", in: events), "e1", "Only a member's message is quoted")
+        XCTAssertNil(AppState.quotedRoomMessageID(quote: "Other", quotedIn: "e3", in: events))
+    }
 }

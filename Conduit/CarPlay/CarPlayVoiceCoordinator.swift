@@ -250,6 +250,10 @@ final class CarPlayVoiceCoordinator {
     var liveChatOpenWait: Duration = .seconds(3)
     /// The profiles the open Voice list offered, in row order.
     private var listedAgentProfiles: [String] = []
+    /// An agent picked while a profile switch was running, switched to
+    /// once it ends.
+    private(set) var queuedAgent = V2QueuedProfilePick()
+    private var queuedAgentObservation: AnyCancellable?
     /// The chat the driver picked from the chat list. A live call started
     /// from the car's Listen button is attached to it too, not only the
     /// call the pick starts (#378).
@@ -329,6 +333,9 @@ final class CarPlayVoiceCoordinator {
         stopKeepingChatsCurrent()
         chatTitleObservation?.cancel()
         chatTitleObservation = nil
+        queuedAgentObservation?.cancel()
+        queuedAgentObservation = nil
+        queuedAgent = V2QueuedProfilePick()
         chosenChat = nil
         isBrowsing = false
         self.interfacing = interfacing
@@ -407,6 +414,9 @@ final class CarPlayVoiceCoordinator {
         stopKeepingChatsCurrent()
         chatTitleObservation?.cancel()
         chatTitleObservation = nil
+        queuedAgentObservation?.cancel()
+        queuedAgentObservation = nil
+        queuedAgent = V2QueuedProfilePick()
         chosenChat = nil
         isBrowsing = false
         lastActivatedState = nil
@@ -1535,12 +1545,53 @@ final class CarPlayVoiceCoordinator {
         guard listedAgentProfiles.indices.contains(index) else { return }
         let profile = listedAgentProfiles[index]
         let appState = lastBoundAppState ?? appStateProvider()
-        // A switch already under way would refuse this one, so the
-        // conversation is left alone.
-        guard profile != appState.activeProfile, !appState.isProfileSwitching else { return }
+        // A switch already under way would refuse this one, so the pick
+        // is kept and goes once that switch ends, as a chip tapped on the
+        // phone during a switch does (#1435). The last pick wins.
+        if appState.isProfileSwitching {
+            queueAgent(profile, appState: appState)
+            return
+        }
+        queuedAgentObservation = nil
+        queuedAgent = V2QueuedProfilePick()
+        guard profile != appState.activeProfile else { return }
+        switchAgent(to: profile, appState: appState)
+    }
+
+    private func queueAgent(_ profile: String, appState: AppState) {
+        queuedAgent.tap(profile, dashboardID: appState.activeDashboardID)
+        guard queuedAgentObservation == nil else { return }
+        let generation = connectionGeneration
+        queuedAgentObservation = appState.$isProfileSwitching
+            .dropFirst()
+            .filter { !$0 }
+            .first()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.isCurrent(generation), self.isConnected else { return }
+                    self.queuedAgentObservation = nil
+                    // Nothing to do when the switch landed where the pick
+                    // asked.
+                    guard let queued = self.queuedAgent.take(
+                        landedOn: appState.activeProfile,
+                        dashboardID: appState.activeDashboardID
+                    ) else { return }
+                    self.switchAgent(to: queued, appState: appState)
+                }
+            }
+    }
+
+    private func switchAgent(to profile: String, appState: AppState) {
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
             guard let self, self.isCurrent(generation), self.isConnected else { return }
+            // A switch the phone started meanwhile would refuse this one:
+            // it waits behind it instead.
+            if appState.isProfileSwitching {
+                self.queueAgent(profile, appState: appState)
+                return
+            }
             // A profile change replaces the voice gateway, so the
             // conversation ends first, as switching on the phone does.
             self.endConversation()

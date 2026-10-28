@@ -361,6 +361,8 @@ struct ChatView: View {
                     PendingNewChatView()
                 } else if showsOfflineCopy, let offline = appState.offlineChatPresentation {
                     OfflineChatTranscriptView(presentation: offline)
+                        // Its own scroll view: the chat's jump can't reach it.
+                        .environment(\.quotedReplyJump, nil)
                 }
             }
 
@@ -426,6 +428,13 @@ struct ChatView: View {
                 isAvailable: appState.canQuoteIntoComposer,
                 handler: appState.quoteIntoComposer
             )
+        )
+        // A "Replying to" card's tap scrolls to the reply it quoted.
+        .environment(
+            \.quotedReplyJump,
+            QuotedReplyJumpAction(owner: appState) { [weak appState = appState] quote, messageID in
+                appState?.showQuotedReply(quote, quotedIn: messageID) ?? false
+            }
         )
         // The rows show AppState through this, not by observing it.
         .chatRows()
@@ -687,6 +696,12 @@ struct ChatView: View {
             }
             .onChange(of: appState.pendingArtifactReveal) { _, _ in revealPendingArtifact() }
             .onChange(of: appState.pendingPinnedReplyReveal) { _, _ in revealPendingPinnedReply() }
+            // A "Replying to" card's tap (issue 1420): the reply it quoted.
+            .onChange(of: appState.pendingQuotedReplyJump) { _, jump in
+                guard let jump else { return }
+                appState.pendingQuotedReplyJump = nil
+                scrollEngine.explicitMessageRequested(id: jump.messageID)
+            }
             .onAppear {
                 revealPendingArtifact()
                 revealPendingPinnedReply()
@@ -1398,6 +1413,7 @@ struct UserBubble: View {
                     Spacer(minLength: 0)
                     MessageTimestampLabel(timestamp: message.timestamp)
                     UserMessageCopyButton(message: message)
+                    UserMessageMoreMenu(message: message)
                 }
             }
         }
@@ -1603,6 +1619,85 @@ struct UserMessageCopyButton: View {
     }
 }
 
+/// The ⋯ beside a sent message's Copy (issue 1420): Quote puts its words
+/// in the draft, and Edit and resend takes it back, with everything after
+/// it, to change and send again.
+struct UserMessageMoreMenu: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let message: ChatMessage
+    @Environment(\.chatRowState) private var rowState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed: what a row shows comes from `rowState`.
+    private var appState: AppState { rowActions.required }
+    @State private var confirmsEdit = false
+    /// Worked out once, not on each re-render of the row.
+    private let hasText: Bool
+    /// Only typed words come back: a message with pictures, files or a
+    /// recording can't be put back as it was.
+    private let canEdit: Bool
+
+    init(message: ChatMessage) {
+        self.message = message
+        hasText = UserMessageCopyButton.copyText(for: message).contains(where: { !$0.isWhitespace })
+        canEdit = hasText && (message.attachments ?? []).isEmpty && VoiceMessage.parse(message.content) == nil
+    }
+
+    var body: some View {
+        Menu {
+            Button {
+                appState.quoteOwnMessageIntoComposer(message)
+            } label: {
+                Label(AppLocalization.string("Quote"), systemImage: "text.quote")
+            }
+            .disabled(!rowState.canQuoteIntoComposer || !hasText)
+
+            if canEdit {
+                Button {
+                    let messages = appState.messages
+                    let later = messages.firstIndex { $0.id == message.id }.map { index in
+                        messages[(index + 1)...].contains { $0.role == .user }
+                    } ?? false
+                    if later {
+                        confirmsEdit = true
+                    } else {
+                        editAndResend(confirmedLaterTurns: false)
+                    }
+                } label: {
+                    Label(AppLocalization.string("Edit and resend"), systemImage: "pencil")
+                }
+                .disabled(rowState.isBusy || rowState.isOffline || !rowState.canQuoteIntoComposer)
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.footnote.weight(.semibold))
+                // A full-size tap target in the footer, as Copy's.
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                .padding(-6)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .accessibilityLabel(AppLocalization.string("More"))
+        .accessibilityIdentifier("chat.messageMoreMenu")
+        .confirmationDialog(
+            AppLocalization.string("Edit and resend this message?"),
+            isPresented: $confirmsEdit,
+            titleVisibility: .visible
+        ) {
+            Button(AppLocalization.string("Edit and resend"), role: .destructive) {
+                editAndResend(confirmedLaterTurns: true)
+            }
+        } message: {
+            Text(AppLocalization.string("Your later messages and the replies to them leave the chat, and this one goes back in the composer to change and send again."))
+        }
+    }
+
+    private func editAndResend(confirmedLaterTurns: Bool) {
+        Haptics.medium()
+        Task { await appState.editAndResend(message, confirmedLaterTurns: confirmedLaterTurns) }
+    }
+}
+
 /// A message steered into a running turn (issue #337). Right-aligned like
 /// the user's own bubble, but a lighter outlined surface with the steering
 /// glyph, so it reads as guidance delivered mid-turn rather than a new prompt.
@@ -1655,7 +1750,7 @@ struct SteerMessageContent: View, Equatable {
                 .accessibilityHidden(true)
             if let reply {
                 VStack(alignment: .leading, spacing: 8) {
-                    ReplyReferenceQuoteCard(quote: reply.quote, onAccentSurface: false)
+                    ReplyReferenceQuoteCard(quote: reply.quote, onAccentSurface: false, quotedIn: message.id)
                     MarkdownText(source: reply.message)
                 }
             } else {
@@ -1735,7 +1830,7 @@ struct UserMessageContent: View, Equatable {
         let voice = VoiceMessage.parse(text)
         VStack(alignment: .leading, spacing: 9) {
             if let reply {
-                ReplyReferenceQuoteCard(quote: reply.quote)
+                ReplyReferenceQuoteCard(quote: reply.quote, quotedIn: message.id)
             }
 
             if let voice {
@@ -2492,6 +2587,8 @@ struct AssistantMessageMoreMenu: View {
     /// Acted on, not observed: what a row shows comes from `rowState`.
     private var appState: AppState { rowActions.required }
 
+    @State private var confirmsRetry = false
+
     private var hasText: Bool {
         message.content.contains(where: { !$0.isWhitespace })
     }
@@ -2514,6 +2611,21 @@ struct AssistantMessageMoreMenu: View {
                 Label(AppLocalization.string("Branch"), systemImage: "arrow.triangle.branch")
             }
             .disabled(rowState.isBusy || rowState.isBranchingChat || rowState.isOffline)
+
+            // The newest reply only, while it answers the last message sent:
+            // /retry sends that message again (issue 1420).
+            if message.id == rowState.retryableReplyID {
+                Button {
+                    if AppState.latestTurnRanTools(in: appState.messages) {
+                        confirmsRetry = true
+                    } else {
+                        retry()
+                    }
+                } label: {
+                    Label(AppLocalization.string("Retry"), systemImage: "arrow.clockwise")
+                }
+                .disabled(rowState.isBusy || rowState.isOffline || !rowState.canQuoteIntoComposer)
+            }
 
             // The whole reply; a selection's menu pins a passage.
             if rowState.canPinReplies {
@@ -2545,6 +2657,24 @@ struct AssistantMessageMoreMenu: View {
         .foregroundStyle(.secondary)
         .accessibilityLabel(AppLocalization.string("More"))
         .accessibilityIdentifier("chat.replyMoreMenu")
+        // Steps run again: a file written, a message sent, twice.
+        .confirmationDialog(
+            AppLocalization.string("Retry this reply?"),
+            isPresented: $confirmsRetry,
+            titleVisibility: .visible
+        ) {
+            Button(AppLocalization.string("Retry")) {
+                retry()
+            }
+        } message: {
+            Text(AppLocalization.string("Steps ran for this reply, and retrying runs them again."))
+        }
+    }
+
+    /// As typing /retry: the reply goes and your last message is sent again.
+    private func retry() {
+        Haptics.medium()
+        Task { _ = await appState.submitComposer(text: "/retry") }
     }
 }
 

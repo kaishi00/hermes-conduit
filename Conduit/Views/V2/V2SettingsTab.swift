@@ -75,7 +75,6 @@ struct V2SettingsTab: View {
             persistProfileMainModel: { provider, model, reasoning in
                 await appState.setProfileMainModel(provider: provider, model: model, reasoning: reasoning)
             },
-            saveDefaultProfileName: { appState.saveDefaultProfileName($0) },
             reconnect: {
                 await appState.reconnect()
                 return appState.isConnected

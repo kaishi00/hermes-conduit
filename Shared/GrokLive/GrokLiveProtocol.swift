@@ -226,6 +226,14 @@ enum GrokLiveProtocol {
         /// The function names xAI's session.updated echoes back: which of
         /// the declared tools it took, for the call's trace.
         case acceptedFunctions([String])
+        /// The turn detection session.updated echoes back, for the call's
+        /// trace: what the server applied, not what was asked (#1418).
+        case turnDetection(String)
+        /// The server's turn detector heard the user start
+        /// (`speech_started`, which also interrupts the model) or stop
+        /// (`speech_stopped`), for the call's trace.
+        case speechStarted
+        case speechStopped
         /// The user's words in one input item, whole each time, not as
         /// deltas. xAI sends drafts while the user talks, each rewriting
         /// the last, then one completed transcript per item; the session
@@ -254,9 +262,11 @@ enum GrokLiveProtocol {
               let type = object["type"] as? String else { return [] }
         switch type {
         case "session.updated":
-            let tools = (object["session"] as? [String: Any])?["tools"] as? [[String: Any]]
+            let session = object["session"] as? [String: Any]
+            let tools = session?["tools"] as? [[String: Any]]
             let names = tools?.compactMap { $0["type"] as? String == "function" ? $0["name"] as? String : nil }
-            return [.sessionUpdated] + (names.map { [.acceptedFunctions($0)] } ?? [])
+            return [.sessionUpdated, .turnDetection(turnDetectionSummary(session?["turn_detection"]))]
+                + (names.map { [.acceptedFunctions($0)] } ?? [])
         case "error":
             let error = object["error"] as? [String: Any]
             let message = (error?["message"] as? String) ?? (object["message"] as? String) ?? (error?["code"] as? String) ?? ""
@@ -268,7 +278,9 @@ enum GrokLiveProtocol {
         case "input_audio_buffer.speech_started":
             // The user started speaking: the server cancels the response,
             // and playback has to stop now.
-            return [.event(.interrupted)]
+            return [.speechStarted, .event(.interrupted)]
+        case "input_audio_buffer.speech_stopped":
+            return [.speechStopped]
         case "conversation.item.input_audio_transcription.completed":
             guard let text = object["transcript"] as? String, !text.isEmpty else { return [] }
             let itemID = (object["item_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
@@ -302,6 +314,22 @@ enum GrokLiveProtocol {
         default:
             return []
         }
+    }
+
+    /// The echoed turn detection in a line: its type and the settings it
+    /// states. Absent is "not stated", null is off.
+    static func turnDetectionSummary(_ value: Any?) -> String {
+        guard let value else { return "not stated" }
+        guard let object = value as? [String: Any] else { return value is NSNull ? "off" : "not readable" }
+        var parts = [(object["type"] as? String) ?? "no type"]
+        let settings = [
+            ("threshold", "threshold"), ("silence_duration_ms", "silence ms"),
+            ("prefix_padding_ms", "prefix ms"), ("idle_timeout_ms", "idle timeout ms"),
+        ]
+        for (key, label) in settings {
+            if let number = object[key] as? NSNumber { parts.append("\(label) \(number)") }
+        }
+        return parts.joined(separator: ", ")
     }
 
     /// `arguments` is a JSON string; Conduit's tools take string values.

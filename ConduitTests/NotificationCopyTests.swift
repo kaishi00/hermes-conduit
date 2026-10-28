@@ -106,7 +106,13 @@ final class NotificationCopyTests: XCTestCase {
         ]).subtitle, "Segundo Cérebro", "the bot's name over the id")
         XCTAssertEqual(NotificationCopy.preview([
             "title_label": "response.ready", "session_title": "Skills research", "profile": "work",
-        ]).subtitle, "work", "an unnamed profile shows its id")
+        ]).subtitle, "Work", "an unnamed profile shows its id, capitalized as in Conduit")
+        XCTAssertEqual(NotificationCopy.preview([
+            "title_label": "response.ready", "session_title": "Skills research", "profile": "work", "profile_name": "work",
+        ]).subtitle, "Work", "a name that is only the id is capitalized too")
+        XCTAssertEqual(NotificationCopy.preview([
+            "title_label": "response.ready", "session_title": "Skills research", "profile": "Work", "profile_name": "work",
+        ]).subtitle, "Work", "in any case, as routing reads the id")
         XCTAssertNil(NotificationCopy.preview([
             "title_label": "response.ready", "session_title": "Skills research", "profile": "default",
         ]).subtitle, "an unnamed default profile says nothing")
@@ -133,7 +139,7 @@ final class NotificationCopyTests: XCTestCase {
         ]).title, "Approval needed · Deploy")
         XCTAssertNil(NotificationCopy.chatNames(["title": "Head to the airport", "profile": "work"]).title,
                      "an unlabelled host title may be content, so the generic title stays")
-        XCTAssertEqual(NotificationCopy.chatNames(["title": "Head to the airport", "profile": "work"]).subtitle, "work")
+        XCTAssertEqual(NotificationCopy.chatNames(["title": "Head to the airport", "profile": "work"]).subtitle, "Work")
     }
 
     func testWrittenHeadlineIsOnlyInThePreviewCopy() {
