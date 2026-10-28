@@ -401,9 +401,9 @@ extension AppState {
         guard canDeleteRoomCopies else { return .refused(RoomCopyText.deleteRefusal(for: HermesError.invalidResponse)) }
         let client = roomCopiesClient
         let inviteID = copy.id
-        // Your agents that left are only on its invite: without it read,
-        // their chats would stay behind.
-        if linkedRoomInvite(inviteID) == nil, !(await readLinkedRoomInvites()), copy.yours.isEmpty {
+        // Your agents that left are only on its invite, whatever `yours`
+        // still lists: without it read, their chats would stay behind.
+        if linkedRoomInvite(inviteID) == nil, !(await readLinkedRoomInvites()) {
             return .refused(RoomCopyText.deleteRefusal(for: HermesError.invalidResponse))
         }
         let invite = linkedRoomInvite(inviteID)

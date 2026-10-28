@@ -80,6 +80,11 @@ struct GroupMember: Equatable {
     /// Link gives its owner (Linked Rooms, `GET /rooms/people` or a room
     /// copy's members). Nil for your own and when no Link names them.
     var owner: String? = nil
+    /// Yours, though the room lists it as on another Hermes: an agent of
+    /// yours that left a room someone else hosts (`GET /rooms/people`).
+    var isYours = false
+    /// How it's out of a room over Links: left, or taken out.
+    var out: RoomMemberOut? = nil
 
     /// A member on another installation (target kind `peer`): its turns run
     /// on someone else's Hermes, over the room's link.
@@ -1054,6 +1059,8 @@ enum GroupRoomTurns {
             // The room's name for it and the bot's own rename history.
             renamed.previousNames = member.previousNames
             renamed.owner = member.owner
+            renamed.isYours = member.isYours
+            renamed.out = member.out
             for name in [old] + bot.previousNames where !name.isEmpty && !renamed.previousNames.contains(name) {
                 renamed.previousNames.append(name)
             }
@@ -1061,34 +1068,46 @@ enum GroupRoomTurns {
         }
     }
 
-    /// The members with their owners from `owners`, keyed by member id;
-    /// only a member on another Hermes has one.
-    static func members(_ members: [GroupMember], ownedBy owners: [String: String]) -> [GroupMember] {
-        guard !owners.isEmpty else { return members }
+    /// The members as `people` (keyed by member id) shows them: how each is
+    /// out, and for one on another Hermes, its owner or that it's yours.
+    static func members(_ members: [GroupMember], people: [String: RoomPerson]) -> [GroupMember] {
+        guard !people.isEmpty else { return members }
         return members.map { member in
-            guard member.isPeer, let id = member.memberID,
-                  let owner = owners.first(where: { $0.key.caseInsensitiveCompare(id) == .orderedSame })?.value
+            guard let id = member.memberID,
+                  let person = people.first(where: { $0.key.caseInsensitiveCompare(id) == .orderedSame })?.value
             else { return member }
-            var owned = member
-            owned.owner = owner
-            return owned
+            var known = member
+            known.out = person.out
+            if member.isPeer {
+                if person.isYours {
+                    known.isYours = true
+                } else if let owner = person.owner {
+                    known.owner = owner
+                }
+            }
+            return known
         }
     }
 
     /// A bubble's name for another person's agent: "Laifu · Mona's".
     static func ownedName(_ name: String, of member: GroupMember?) -> String {
-        guard let member, member.isPeer,
+        guard let member, member.isPeer, !member.isYours,
               let owner = member.owner?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty else { return name }
         return AppLocalization.string("\(name) · \(owner)'s")
     }
 
     /// Group Info's line under a member: whose agent it is.
     static func ownerLine(of member: GroupMember) -> String {
-        guard member.isPeer else { return AppLocalization.string("Your agent") }
-        guard let owner = member.owner?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty else {
-            return AppLocalization.string("On another Hermes")
+        let whose: String
+        if !member.isPeer || member.isYours {
+            whose = AppLocalization.string("Your agent")
+        } else if let owner = member.owner?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty {
+            whose = AppLocalization.string("\(owner)'s agent")
+        } else {
+            whose = AppLocalization.string("On another Hermes")
         }
-        return AppLocalization.string("\(owner)'s agent")
+        guard let out = member.out else { return whose }
+        return AppLocalization.string("\(whose) · \(RoomLeaveText.outLine(out))")
     }
 
     /// The member's name for captions, never empty: a member with no name

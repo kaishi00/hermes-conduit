@@ -143,7 +143,12 @@ struct RoomCopyBottomBar: View {
         answers[approval.id] = .submitting
         Task { @MainActor in
             let result = await appState.answerLinkedRoomApproval(approval, choice: choice)
-            answers[approval.id] = result
+            // A card already gone keeps no answer behind.
+            if appState.activeRoomCopyApprovals.contains(where: { $0.id == approval.id }) {
+                answers[approval.id] = result
+            } else {
+                answers[approval.id] = nil
+            }
             if result == .sent {
                 Haptics.success()
             } else {
