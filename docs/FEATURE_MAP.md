@@ -484,15 +484,15 @@ describes it
 - Tests: `ConduitTests/SessionRenameTests.swift` (testANewChatStaysListedWhileOpenUntilHermesListsIt, testANewChatLeftEmptyLeavesTheList, testANewChatBelongsToTheProjectItStartedIn)
 
 **Rulings**
-- The row the create puts in stays through every catalog read while it is the open chat, until Hermes lists it; then Hermes' row, with its title, takes over. Opening another chat ends the wait, so an empty chat left behind leaves the list, as Hermes keeps no row for it (2026-10-28, issue 1454, #PRNUM).
+- The row the create puts in stays through every catalog read while it is the open chat, until Hermes lists it; then Hermes' row, with its title, takes over. Opening another chat ends the wait, so an empty chat left behind leaves the list, as Hermes keeps no row for it (2026-10-28, issue 1454, #1456).
 - Only a chat someone started (createNewSession): one a sync starts because there was nothing to resume waits for Hermes, as before.
 - It still counts as unlisted for the registry poll, so the poll reads the catalog in for it as for a chat started on another device.
-- A project's page shows it on top of the project's own folder lane (a new lane, Recent, when the page has none), and Home's page shows a plain chat. The page reads Hermes' list again whenever the chats list's catalog changes, so it follows while it stays beside the chat (2026-10-28, #PRNUM).
+- A project's page shows it on top of the project's own folder lane (a new lane, Recent, when the page has none), and Home's page shows a plain chat. The page reads Hermes' list again whenever the chats list's catalog changes, so it follows while it stays beside the chat (2026-10-28, #1456).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, added at #PRNUM.
+**Checked:** 2026-10-28, added at #1456.
 
 ## Chat open elsewhere
 
