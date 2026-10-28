@@ -2720,8 +2720,28 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(SpokenTextFilter.filter("Done 👍🏽 ✨❤️ 🇨🇦 👨‍👩‍👧"), "Done ")
     }
 
+    func testSpokenTextFilterKeepsSpacedAsterisksAndUnderscores() {
+        XCTAssertEqual(SpokenTextFilter.filter("Revenue is price * units sold per month * 12."),
+                       "Revenue is price * units sold per month * 12.",
+                       "a marker followed by a space opens nothing")
+        XCTAssertEqual(SpokenTextFilter.filter("Total: 5 * 3 apples plus 2 * 4 pears"), "Total: 5 * 3 apples plus 2 * 4 pears")
+        XCTAssertEqual(SpokenTextFilter.filter("Total: 2*3 apples plus 4*5 pears"), "Total: 2*3 apples plus 4*5 pears",
+                       "a marker inside a word opens and closes nothing")
+        XCTAssertEqual(SpokenTextFilter.filter("*raises the alarm!*Run!"), " Run!", "a closer after punctuation still closes")
+        XCTAssertEqual(SpokenTextFilter.filter("Fill blanks _ like this one _ please"), "Fill blanks _ like this one _ please")
+        XCTAssertEqual(SpokenTextFilter.filter("Then *walks over to the window * and more words"),
+                       "Then *walks over to the window * and more words",
+                       "a marker after a space closes nothing")
+        XCTAssertEqual(SpokenTextFilter.filter("So x * y. *leans back in the chair* Fine."), "So x * y. Fine.")
+        XCTAssertEqual(SpokenTextFilter.filter("Then *walks over to the window * and more words *nods three times slowly* end"),
+                       "Then *walks over to the window * and more words end")
+        var filter = SpokenTextFilter()
+        let spoken = ["width *", " height of the", " room *", " 2"].map { filter.feed($0) }.joined() + filter.finish()
+        XCTAssertEqual(spoken, "width * height of the room * 2")
+    }
+
     func testSpokenTextFilterGivesTheSameSpeechHoweverTheReplyIsSplit() {
-        let reply = "Order! *bangs the gavel twice* The court finds snake_case_var and **bold words here** and _whispers very quietly now_ fine. 🎉 2*3 and *really* done_"
+        let reply = "Order! *bangs the gavel twice* The court finds snake_case_var and **bold words here** and _whispers very quietly now_ fine. 🎉 2*3 and *really* done_ *not an action here** either"
         let whole = SpokenTextFilter.filter(reply)
         for size in 1...9 {
             var filter = SpokenTextFilter()
@@ -2738,6 +2758,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(whole.contains("gavel"))
         XCTAssertFalse(whole.contains("whispers"))
         XCTAssertTrue(whole.contains("snake_case_var"))
+        XCTAssertTrue(whole.contains("not an action here"), "\"**\" closes nothing, even when a delta ends between its two markers")
     }
 
     func testGeminiLivePersonalityClientAndInstructions() async throws {

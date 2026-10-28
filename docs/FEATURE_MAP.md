@@ -1373,7 +1373,7 @@ Read Aloud and live voice read-back · chat list previews and quotes
 - A single list item too big for one long-reply chunk is split into paragraphs that each repeat its number.
 - A long reply's continuation chunks draw list items as paragraphs with the number baked in, so they lose the list's styled marker column.
 
-**Checked:** 2026-10-23, at #1175.
+**Checked:** 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
 
 ## Attaching files
 
@@ -1803,7 +1803,7 @@ from Hermes: commentary is said, see Acknowledging work handed to Hermes)
 **Open gaps**
 - `Haptics.signal` still plays the writing haptic only for `message.delta`.
 
-**Checked:** 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
+**Checked:** 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
 
 ## Live Activity for a running turn
 
@@ -2091,6 +2091,37 @@ calls (no trace) · docs/VOICE_SETTINGS.md
 - Gemini Live sends no turn detection events and GPT-Live's turns run over WebRTC, so neither is traced; the Watch has no trace to show.
 
 **Checked:** 2026-10-28, #1424.
+
+## Narrated actions left out of speech
+
+What a spoken reply leaves out that the chat keeps: a persona's narrated
+actions in single asterisks or underscores, and emoji.
+
+**Siblings:** Classic voice (phone, CarPlay; streamed) · Read Aloud and its
+Now Playing title · live read-back of a reply ("read me the last reply", in
+Gemini, Qwen, Grok and GPT-Live) and the result a Hermes call reads out ·
+Local Live (Hermes' words, streamed) · Gemini Live, Qwen Live, Grok Live and
+GPT-Live with the Hermes personality (told not to say actions) · the chat
+transcript (never filtered)
+
+**Code**
+- The filter: `Conduit/Voice/SpokenTextFilter.swift` (firstActionMarker, closingMarker, speakable)
+- Classic voice: `Conduit/Voice/VoiceConversationController.swift` (spokenTextFilter)
+- Read Aloud: `Conduit/Voice/MessageReadAloudController.swift`, `Conduit/Voice/ReadAloudNowPlaying.swift` (title)
+- Read-back: `Conduit/Voice/VoiceReadBack.swift` (plainSpeech, line by line), read by `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (read_last_reply), `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` (lastReplyText) and `Conduit/Voice/HermesCalls.swift` (a call's result)
+- Local Live: `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift` (actions, after SpokenVisualSplitter)
+- Persona instructions: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift`, `Conduit/Voice/GPTLive/GPTLiveConversationController.swift`
+- Tests: `ConduitTests/GeminiLiveVoiceTests.swift` (testSpokenTextFilter…), `ConduitTests/VoiceBackgroundJobTests.swift` (plainSpeech), `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift` (testLocalLiveTurnLeavesNarratedActionsOutOfSpeech)
+
+**Rulings**
+- An action is three or more words between a single `*` or `_` pair on one line; emphasis ("*really*"), bold and snake_case are spoken (2026-09-28, 223fca85).
+- As in Markdown, a marker followed by a space opens nothing and one after a space closes nothing, so "price * units sold * 12" is spoken; one after a space with a word right after it opens again (2026-10-28, #1429). A marker inside a word ("2*3", "4*5", snake_case) neither opens nor closes one (#1430). The Now Playing title strips emphasis, list and quote markers but keeps a spaced `*` within the line's words.
+- Every path that speaks Hermes' own words drops actions, so a reply sounds the same in Classic voice, Read Aloud, a live read-back and Local Live; the live models that speak for themselves are told not to say them (2026-10-28, #1430).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-28, #1429, carried in #1430.
 
 ## Speech stream failures
 
@@ -2656,7 +2687,7 @@ split · Read Aloud and live read-back · chat list previews and quotes
 - Previews and quotes only drop fence lines and track no block, so they need no closing rule (not a gap, noted so nobody adds one).
 - A ```` block holding a ``` line in a Bot Chat can route a mention after that line, as Hermes does; changing it starts in Hermes.
 
-**Checked:** 2026-10-24, at #1220.
+**Checked:** 2026-10-28, #1430 (read-back's action filter runs only on lines outside a code block); 2026-10-24, at #1220.
 
 ## Files prepared for preview and Save to Files
 

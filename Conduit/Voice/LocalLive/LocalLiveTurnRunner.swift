@@ -103,6 +103,9 @@ final class LocalLiveTurnRunner {
     private var reply: Reply?
     /// The open turn's words, with what's to be seen kept out.
     private var splitter = SpokenVisualSplitter()
+    /// Leaves a persona's narrated actions and emoji out of what is said,
+    /// as in Classic voice.
+    private var actions = SpokenTextFilter()
     /// Hermes showed something with `conduit_show` while answering the
     /// open turn: what its reply writes isn't shown again.
     private var showedCard = false
@@ -126,6 +129,7 @@ final class LocalLiveTurnRunner {
         // still open here has nobody waiting for it.
         turn = (turnID, false)
         splitter.reset()
+        actions.reset()
         showedCard = false
         endedLine = true
         generation += 1
@@ -170,6 +174,7 @@ final class LocalLiveTurnRunner {
         turn = nil
         reply = nil
         splitter.reset()
+        actions.reset()
         showedCard = false
         endedLine = true
     }
@@ -365,7 +370,7 @@ final class LocalLiveTurnRunner {
     private func speak(_ text: String) {
         guard let current = turn, !text.isEmpty else { return }
         turn?.spoke = true
-        let spoken = splitter.feed(text)
+        let spoken = actions.feed(splitter.feed(text))
         if !spoken.isEmpty {
             endedLine = spoken.hasSuffix("\n")
             onDelta?(current.id, spoken)
@@ -377,8 +382,11 @@ final class LocalLiveTurnRunner {
         guard generation == self.generation, turn?.id == turnID else { return }
         turn?.spoke = true
         // What the reply still held ends with it: nothing of it follows the
-        // call's line.
+        // call's line. Words the action filter held back for a marker that
+        // never closed were said, so they go first.
         splitter.reset()
+        let held = actions.finish()
+        if !held.isEmpty { onDelta?(turnID, held + (held.hasSuffix("\n") ? "" : "\n")) }
         onDelta?(turnID, text)
         finish(turnID)
     }
@@ -390,7 +398,7 @@ final class LocalLiveTurnRunner {
 
     private func finish(_ turnID: String) {
         guard turn?.id == turnID else { return }
-        let rest = splitter.finish()
+        let rest = actions.feed(splitter.finish()) + actions.finish()
         if !rest.isEmpty {
             endedLine = rest.hasSuffix("\n")
             onDelta?(turnID, rest)
@@ -399,6 +407,7 @@ final class LocalLiveTurnRunner {
             onDelta?(turnID, (endedLine ? "" : "\n") + Self.onScreenLine)
         }
         splitter.reset()
+        actions.reset()
         showedCard = false
         endedLine = true
         turn = nil
