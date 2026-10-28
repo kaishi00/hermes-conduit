@@ -1903,6 +1903,37 @@ final class AppStateSessionCompressTests: XCTestCase {
         )
     }
 
+    func testEditAndResendRewindsToThatMessageAndPutsItBack() async throws {
+        var rewinds: [Int] = []
+        let harness = rewindHarness { target, _ in rewinds.append(target) }
+        let earlier = ChatMessage(id: "u1", role: .user, content: "first ask", timestamp: "", rowId: 11)
+        harness.appState.messages = [
+            earlier,
+            ChatMessage(id: "a1", role: .assistant, content: "answer", timestamp: ""),
+            ChatMessage(id: "u3", role: .user, content: "latest ask", timestamp: "", rowId: 17)
+        ]
+
+        await harness.appState.editAndResend(earlier)
+
+        XCTAssertEqual(rewinds, [11], "Edit and resend takes back that message and everything after it")
+        XCTAssertEqual(harness.appState.composerPrefillText, "first ask")
+    }
+
+    func testEditAndResendOfAMessageNotInTheHistoryTakesNothingBack() async throws {
+        var rewinds: [Int] = []
+        let harness = rewindHarness { target, _ in rewinds.append(target) }
+        let unknown = ChatMessage(id: "u9", role: .user, content: "never saved", timestamp: "")
+        harness.appState.messages = [unknown]
+
+        await harness.appState.editAndResend(unknown)
+
+        XCTAssertEqual(rewinds, [])
+        XCTAssertEqual(
+            harness.appState.messages.last?.content,
+            "Couldn't find that message in the chat's history. Open the chat again, then try once more."
+        )
+    }
+
     func testUndoBeyondTheTranscriptRewindsNothing() async throws {
         var rewinds: [Int] = []
         let harness = rewindHarness { target, _ in rewinds.append(target) }

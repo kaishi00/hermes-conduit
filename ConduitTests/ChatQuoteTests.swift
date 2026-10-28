@@ -271,4 +271,55 @@ extension ComposerDraftStoreTests {
         store.save(ComposerDraft(text: "", attachments: []), for: key)
         XCTAssertNil(store.draft(for: key).replyReference)
     }
+
+    // MARK: - Message actions (issue 1420)
+
+    private func row(_ id: String, _ role: MessageRole, _ content: String, rowId: Int? = nil) -> ChatMessage {
+        ChatMessage(id: id, role: role, content: content, timestamp: "", rowId: rowId)
+    }
+
+    @MainActor
+    func testQuotedReplyCardFindsTheNewestMatchingReplyAboveIt() {
+        let transcript = [
+            row("a1", .assistant, "Same answer"),
+            row("u1", .user, "thanks"),
+            row("a2", .assistant, "Same answer  \n"),
+            row("u2", .user, ReplyQuoteEnvelope.outboundText(quoting: "Same answer", message: "why?")),
+            row("a3", .assistant, "Same answer")
+        ]
+        XCTAssertEqual(AppState.quotedReplyMessageID(quote: "Same answer", quotedIn: "u2", in: transcript), "a2")
+        XCTAssertNil(AppState.quotedReplyMessageID(quote: "Gone", quotedIn: "u2", in: transcript))
+        XCTAssertNil(AppState.quotedReplyMessageID(quote: "Same answer", quotedIn: "missing", in: transcript))
+    }
+
+    @MainActor
+    func testRetryAsksFirstOnlyWhenTheLatestTurnRanSteps() {
+        let quiet = [row("u1", .user, "hi"), row("t1", .tool, ""), row("a1", .assistant, "x"), row("u2", .user, "again"), row("a2", .assistant, "y")]
+        XCTAssertFalse(AppState.latestTurnRanTools(in: quiet), "Steps in an earlier turn don't count")
+        let busy = [row("u1", .user, "hi"), row("t1", .tool, ""), row("a1", .assistant, "x")]
+        XCTAssertTrue(AppState.latestTurnRanTools(in: busy))
+    }
+
+    @MainActor
+    func testEditAndResendFindsItsTurnByRowIDOrByItsWords() {
+        let snapshot = SessionRewindSnapshot(
+            turns: [.init(rowID: 3, text: "same"), .init(rowID: 7, text: "other"), .init(rowID: 9, text: "same")],
+            revision: 1,
+            generation: 1
+        )
+        let saved = row("u1", .user, "same", rowId: 3)
+        XCTAssertEqual(AppState.rewindTurn(for: saved, in: [saved], snapshot: snapshot)?.rowID, 3)
+
+        // Sent here and not reloaded yet: no row id, so the words find it,
+        // counting the same words sent after it.
+        let first = row("u1", .user, "same")
+        let middle = row("u2", .user, "other")
+        let last = row("u3", .user, "same ")
+        let transcript = [first, middle, last]
+        XCTAssertEqual(AppState.rewindTurn(for: first, in: transcript, snapshot: snapshot)?.rowID, 3)
+        XCTAssertEqual(AppState.rewindTurn(for: last, in: transcript, snapshot: snapshot)?.rowID, 9)
+        XCTAssertEqual(AppState.rewindTurn(for: middle, in: transcript, snapshot: snapshot)?.rowID, 7)
+        XCTAssertNil(AppState.rewindTurn(for: row("u4", .user, "never sent"), in: transcript + [row("u4", .user, "never sent")], snapshot: snapshot))
+        XCTAssertNil(AppState.rewindTurn(for: row("u5", .user, "gone", rowId: 42), in: [], snapshot: snapshot))
+    }
 }

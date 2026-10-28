@@ -838,15 +838,21 @@ tell models · Settings > Contacts' caption
 
 ## Message row actions
 
-The controls on a message: the row under a reply, its long-press and
-selection menus, and the same actions in the other chat surfaces.
+The controls on a message: the row under a reply, the row under your own
+message, their long-press and selection menus, and the same actions in the
+other chat surfaces.
 
 **Siblings:** chats, project chats and Bot Chat (one row view) · group rooms ·
 the selection menu · the long-press menu · VoiceOver labels · pinned replies
-(the bar, and the sheet from the chat and from the Chats list)
+(the bar, and the sheet from the chat and from the Chats list) · your own
+message's row · the "Replying to" card on a sent message · /undo and /retry,
+which Edit and resend and Retry run
 
 **Code**
 - Reply row: `Conduit/Views/ChatView.swift` (AssistantMessageActions, ReadAloudButton, AssistantMessageMoreMenu), `Conduit/Views/Components/MessageReactionViews.swift` (MessageReactButton)
+- Your own message's row: `Conduit/Views/ChatView.swift` (UserMessageCopyButton, UserMessageMoreMenu)
+- Edit and resend, Retry: `Conduit/Services/AppState.swift` (editAndResend, rewindTurn, rewindLastTurns, latestTurnRanTools); tests in `ConduitTests/AppStateSessionCompressTests.swift` and `ConduitTests/ChatQuoteTests.swift`
+- "Replying to" card and its jump: `Conduit/Views/Components/ChatQuote.swift` (ReplyReferenceQuoteCard, QuotedReplyJump), `Conduit/Services/AppState.swift` (showQuotedReply, quotedReplyMessageID), `Conduit/Views/ChatView.swift` (pendingQuotedReplyJump)
 - Selection and long-press menus: `Conduit/Views/Components/SelectableTextView.swift`
 - Group rooms: `Conduit/Views/GroupChatView.swift` (GroupMessageCopyButton, GroupMessageQuoteButton, GroupReadAloudButton)
 - Pins: `Conduit/Views/PinnedReplyViews.swift`, `Conduit/Models/PinnedReplies.swift` (overview), `Conduit/Services/AppState+PinnedReplies.swift`, `Conduit/Services/AppState.swift` (deleteBot, forgetBotChatPinnedReplies), the sheet's Chats-list entry points in `Conduit/Views/SidebarView.swift` and `Conduit/Views/V2/V2ChatsView.swift` (showPinnedReplies)
@@ -854,9 +860,13 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 - Branch (the ⋯ menu, /branch and /fork): `Conduit/Services/AppState.swift` (branchFromAssistantMessage), `Conduit/Services/HermesClient.swift` (branchSession); tests in `ConduitTests/AppStateChatResumeTests.swift`
 
 **Rulings**
-- A reply's row is React, Copy, Read aloud and ⋯ (Quote, Branch, Pin reply, and Show thinking when the run above it has thinking that Settings keeps for On request (see Steps in a turn)); no more icons of their own under messages (2026-10-23, #1156; 2026-10-25, #1243).
+- A reply's row is React, Copy, Read aloud and ⋯ (Quote, Branch, Retry on the newest reply (2026-10-28, issue 1420, #PRNUM), Pin reply, and Show thinking when the run above it has thinking that Settings keeps for On request (see Steps in a turn)); no more icons of their own under messages (2026-10-23, #1156; 2026-10-25, #1243).
 - Pin lives in the long-press and selection menus, not the row: Pin for a passage, Pin reply for the whole reply (2026-10-20, #982 and #1097; 2026-10-23, #1156).
 - A branch opens by the stored id `session.create` names, and by its runtime id only when Hermes names none: Hermes' `session.resume` finds sessions only by stored id or title, so the runtime id is "session not found" (2026-10-27, issue 1400, #1402).
+- Your own message's row is Copy and ⋯ (Quote, Edit and resend). Quote puts its words in the draft as a `>` quote, as a selection's Quote does (2026-10-28, issue 1420, #PRNUM).
+- Edit and resend takes back the message and everything after it through Hermes' rewind, as /undo does, and puts its words back ahead of whatever is typed, a quoted reply as its "Replying to" chip; it asks first when later messages would go. Not offered for a message with pictures, files or a recording, which can't come back as they were. There is no edit in place: the model already answered the original (2026-10-28, issue 1420, #PRNUM).
+- Retry runs /retry and asks first when the newest turn ran steps, since retrying runs them again (2026-10-28, issue 1420, #PRNUM).
+- Tapping a "Replying to" card scrolls to the reply it quoted, found by its words since the envelope carries no id; one no longer in the transcript says so (2026-10-28, issue 1420, #PRNUM).
 - Double-tap and long-press on text stay text selection; reactions come from React or a reaction chip (2026-10-07, #437).
 - Read Aloud has no estimated follow-along highlight; only exact word timings from Hermes would bring it back (2026-10-19, #923).
 - A quoted reply travels in the message text, since Hermes has no field for hidden context (2026-10-04, #387).
@@ -864,9 +874,9 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 - The Pinned replies sheet opened from a chat starts on This chat, with All chats a tap away and that chat's section first; the filter shows while this chat and another both have pins, and once shown stays until the sheet closes, so unpinning this chat's last pin leaves This chat empty. Opened from the Chats list it lists every chat by latest pin (2026-10-25, issue 1267, #1269).
 
 **Open gaps**
-- Group rooms still show Copy, Quote and Read aloud as three icons, with no React and no ⋯ (#1156).
+- Group rooms still show Copy, Quote and Read aloud as three icons, with no React and no ⋯ (#1156). Edit and resend and Retry are not needed there: a room is shared and has no rewind.
 
-**Checked:** 2026-10-27, #1402 (Branch opens the new chat by its stored id; the row, menus and pins needed no change); 2026-10-26, #1311 (a drawn reply's text view is laid out as it mounts; selection and long-press menus unchanged); #1282 (carrying the ⋯'s Show thinking from #1243); the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
+**Checked:** 2026-10-28, #PRNUM (your own message's ⋯ with Quote and Edit and resend, Retry in the newest reply's ⋯, the "Replying to" card's jump; selection and long-press menus unchanged); 2026-10-27, #1402 (Branch opens the new chat by its stored id; the row, menus and pins needed no change); 2026-10-26, #1311 (a drawn reply's text view is laid out as it mounts; selection and long-press menus unchanged); #1282 (carrying the ⋯'s Show thinking from #1243); the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
 
 ## Conduit plugin update
 

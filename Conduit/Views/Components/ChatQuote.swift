@@ -167,6 +167,13 @@ struct ComposerQuoteRequest: Equatable {
     let content: Content
 }
 
+/// A "Replying to" card's tap: the reply it quoted, for ChatView to scroll
+/// to. Each tap has its own id, so tapping the same card again still goes.
+struct QuotedReplyJump: Equatable {
+    let id = UUID()
+    let messageID: String
+}
+
 /// Puts selected chat text into the composer as a quote. Only the chat
 /// screen provides one, so text outside a chat (Kanban logs, voice sheets,
 /// the selection fixture) shows no Quote action. Equal by owner, so a
@@ -224,14 +231,44 @@ struct ReplyReferenceQuoteCard: View {
     private let onAccentSurface: Bool
     /// Whose message it quoted, in a group room, where there are several.
     private let authorName: String?
+    private let quote: String
+    /// The chat message the card heads: in a chat, a tap scrolls to the
+    /// reply it quoted (issue 1420).
+    private let quotedIn: String?
+    @Environment(\.chatRowActions) private var rowActions
 
-    init(quote: String, onAccentSurface: Bool = true, authorName: String? = nil) {
+    init(quote: String, onAccentSurface: Bool = true, authorName: String? = nil, quotedIn: String? = nil) {
         self.excerpt = ChatQuote.excerpt(of: quote)
         self.onAccentSurface = onAccentSurface
         self.authorName = authorName
+        self.quote = quote
+        self.quotedIn = quotedIn
     }
 
     var body: some View {
+        if let quotedIn, let appState = rowActions?.appState {
+            Button {
+                if appState.showQuotedReply(quote, quotedIn: quotedIn) {
+                    Haptics.selection()
+                } else {
+                    // Taken back, or older than the history loaded.
+                    Haptics.warning()
+                    UIAccessibility.post(
+                        notification: .announcement,
+                        argument: AppLocalization.string("The quoted reply isn't in this chat anymore.")
+                    )
+                }
+            } label: {
+                card
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text(AppLocalization.string("Shows the reply it quoted.")))
+        } else {
+            card
+        }
+    }
+
+    private var card: some View {
         HStack(alignment: .top, spacing: 8) {
             RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                 .fill(primaryColor.opacity(0.7))
