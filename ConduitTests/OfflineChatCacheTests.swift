@@ -1640,6 +1640,59 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.messages.map(\.id), ["atlas-reply-3"])
     }
 
+    /// An ordinary chat opened over a Bot Chat keeps no copy for that bot,
+    /// though its scroll identity can still name the Bot Chat it replaced
+    /// (#1352): only the id it is open as decides, so reopening the bot
+    /// still shows the bot's own chat.
+    func testAnOrdinaryChatNamingABotKeepsNoCopyForIt() async throws {
+        useInMemoryKeychain()
+        var opens = 0
+        var gate: ControlledSuspension?
+        let (appState, _, _) = makeAppState(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [] },
+            openSessionWithProfile: { _, sessionID, _, profile in
+                opens += 1
+                if let gate { await gate.suspend() }
+                let owner = profile ?? "ordinary"
+                return SessionResumeResult(
+                    sessionId: profile == nil ? sessionID : "\(owner)-runtime-\(opens)",
+                    storedSessionId: profile == nil ? sessionID : "atlas-chat",
+                    messages: [ChatMessage(id: "\(owner)-reply-\(opens)", role: .assistant, content: "Hi", timestamp: "1")],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, _ in
+                [BotChatLookupRow(id: "atlas-chat", title: "Bot Chat")]
+            }
+        ))
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        appState.showLogin = false
+        addTeardownBlock { appState.client?.disconnect() }
+        let atlas = botProfile("atlas")
+
+        let openedAtlas = await appState.openBotChat(for: atlas)
+        XCTAssertTrue(openedAtlas)
+        let openedOrdinary = await appState.openSession("ordinary-chat")
+        XCTAssertTrue(openedOrdinary)
+        XCTAssertEqual(appState.messages.map(\.id), ["ordinary-reply-2"])
+
+        let suspension = ControlledSuspension()
+        gate = suspension
+        let reopening = Task { @MainActor in await appState.openBotChat(for: atlas) }
+        await suspension.waitUntilSuspended()
+        XCTAssertEqual(appState.offlineChatPresentation?.displayedMessages.map(\.id), ["atlas-reply-1"],
+                       "Atlas shows its own chat while it opens, never the ordinary chat")
+        gate = nil
+        suspension.resume()
+        let reopened = await reopening.value
+        XCTAssertTrue(reopened)
+        XCTAssertEqual(appState.messages.map(\.id), ["atlas-reply-3"])
+    }
+
     /// A chat with no saved copy opens as it always has.
     func testAChatWithNoSavedCopyOpensWithoutOne() async throws {
         useInMemoryKeychain()
