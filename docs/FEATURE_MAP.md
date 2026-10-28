@@ -2333,8 +2333,9 @@ profiles don't fit beside the controls.
 one-row bar (every profile fits) and the stacked bar (profiles on their own
 row) · iPad and Mac (same view) · searching messages ("In messages") ·
 the profile strip on Tasks and Settings (same chips) · CarPlay's agent
-list (picks a profile too) · Settings' busy-mode picker and display
-settings (show the new profile's at the switch)
+list (picks a profile too) · the profile picker sheet (same switch) ·
+Settings' busy-mode picker and display settings (show the new profile's
+at the switch)
 
 **Code**
 - Bar layout: `Conduit/Views/V2/V2TopBar.swift` (ViewThatFits: one row, else stacked with lowerLeading under the profiles)
