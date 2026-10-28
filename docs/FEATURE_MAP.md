@@ -204,11 +204,12 @@ the outcome text each model is told
 - "Add" goes as `session.steer`; "change", hold and cancel go as `session.redirect`. No kind, or a refused steer, falls back to redirect. The same in every live mode (2026-10-21, #1157).
 - An unattached call with one running job and no job number follows up into that job; "New job:" starts another (2026-10-09, #472). Once the call has taken its first request's chat, a follow-up goes into that request while it runs, and "New job:" is the chat's next turn (Eric, 2026-10-25, #1252).
 - Steering in the chat never waits for an OK (2026-10-08, #451).
+- The words go to Hermes as `(voice) <words>`, into a job as into the call's chat, on the phone and on the Watch's relay, so a job's chat that only voice used still leaves Desktop's list once answered (Voice in the chats list) (2026-10-28, #CPR, notifier #442).
 
 **Open gaps**
 - After a steer the model is still told Hermes "changes course now": steer and redirect both end as `.interrupted`, and the text has four copies, in `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`, `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift`, `Shared/WatchVoice/WatchJobRelay.swift` and `Shared/WatchVoice/WatchBridgeDelegation.swift` (#1157).
 
-**Checked:** 2026-10-27, #1390 (Classic: speech over Hermes' acknowledgement steers); 2026-10-25, at #1252, for a call that took its first request's chat; Qwen in the siblings and the table, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-28, #CPR (a job's follow-up words are marked as voice's); 2026-10-27, #1390 (Classic: speech over Hermes' acknowledgement steers); 2026-10-25, at #1252, for a call that took its first request's chat; Qwen in the siblings and the table, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
 
 ## Job results during calls
 
@@ -511,7 +512,7 @@ Hermes · Resume Call · memory at call end (notifier)
 - While a call runs its unsaved turns are kept in the on-device outbox, within 10 seconds of a turn settling and on a 15-second timer, so a call the app loses mid-way is saved later. A checkpoint with nothing new (no turn, job or chat change) writes nothing, and a call cut short is measured to its last checkpoint (2026-10-24, #1220, from #1002). Gemini, Qwen, Grok, GPT-Live and Local Live share this path; Classic saves in its own chat, and the Watch saves once at the end.
 - A saved call keeps the session source "desktop"; its voice tags live in their own meta key, since a session's source picks the agent's toolsets (2026-09-30).
 - A call joined to a chat is kept with the chat, not in a second session, and a reconnect within 120 seconds continues the same call (2026-10-13, #574, notifier #98). So is a call that took its first request's chat: that chat is the call's, not one of its jobs, and Resume Call goes back to it (2026-10-25, #1252). A Watch call has no attached chat on the phone, so it is still saved as its own.
-- A call that stands alone, and a chat a Classic call created, are archived when the call ends; a typed turn brings them back (2026-10-22, #1127, notifier #295).
+- A call that stands alone, and a chat a Classic call created, are archived when the call ends; a typed turn brings them back (2026-10-22, #1127, notifier #295). So is each of its jobs' chats once Hermes has answered it (its own entry, Voice in the chats list; 2026-10-28, #CPR, notifier #442).
 - Ending a call runs Hermes' session-end hooks and memory commit; a call kept with its chat writes memory under the chat (2026-10-06, notifier #46; 2026-10-13, notifier #98).
 - A call's turns stay in memory until the host has them; each capture starts after the last line it took, and rescans only when the engine changed a line before it (2026-10-24, #1222, from #1004).
 - A Watch call, in every voice mode, keeps only the newest 40 KB of its transcript while it runs, the most its saved call can carry. Lines still in use (an open line, the user turn a tool call answers) and a single newest turn over 40 KB are kept whole; the saved call clips them (2026-10-24, #1221).
@@ -519,7 +520,38 @@ Hermes · Resume Call · memory at call end (notifier)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-26, #1247 (the closing transcript save and the Watch broker's revokes keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for a call kept with its first request's chat; Qwen joins the shared save path (`qwen-live` history), at #1182, carried in #1235; 2026-10-24, at #1222 (capture cursor); at #1221, for the Watch's transcript tail; at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review); at #1220: quiet checkpoints, and a saved turn's cut closes a long fence with one as long, within the plugin's limit.
+**Checked:** 2026-10-28, #CPR (a call's jobs leave Desktop's list once answered); 2026-10-26, #1247 (the closing transcript save and the Watch broker's revokes keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for a call kept with its first request's chat; Qwen joins the shared save path (`qwen-live` history), at #1182, carried in #1235; 2026-10-24, at #1222 (capture cursor); at #1221, for the Watch's transcript tail; at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review); at #1220: quiet checkpoints, and a saved turn's cut closes a long fence with one as long, within the plugin's limit.
+
+## Voice in the chats list
+
+What voice leaves in the chats lists: saved calls, the chats calls were kept
+with, Classic voice chats and voice jobs, in Conduit and in Hermes Desktop.
+
+**Siblings:** the Chats list's Voice filter (iPhone, iPad, Mac) · the
+sidebar's Voice source · nests under a call or a chat · the Archived screen
+· content search · Hermes Desktop's list (what the plugin archives) · a call
+kept with its chat · a call row · a chat Classic made · voice jobs (phone,
+CarPlay, Classic, the Watch's relay and the iPhone's jobs for a Watch call)
+· the chat an unattached call took · `docs/VOICE_BACKGROUND_JOBS.md` · the
+notifier's README
+
+**Code**
+- Filing and listing: `Conduit/Services/AppState.swift` (sessionCategory, voiceCallChatFilter, isArchivedVoiceChat, refreshVoiceSessionTags, adoptHostChatCalls), `Conduit/Voice/VoiceHistory.swift` (VoiceSessionTag, VoiceHostChatCall, VoiceCallChatLinks adopt and chatIDs)
+- Lists: `Conduit/Views/V2/V2ChatsView.swift` (V2FilterSelection.rows), `Conduit/Views/SidebarView.swift` (SidebarSourceRows), `Conduit/Models/SessionNesting.swift`
+- A job's follow-up words: `Conduit/Voice/VoiceBackgroundJobs.swift` (sendFollowUp, threadTurnText)
+- Notifier: `notifier/voice_archive.py` (archive_answered_job, settled_voice_job, bring_back), `notifier/__init__.py` (_on_session_end, _pre_llm_call), `notifier/dashboard/plugin_api.py` (/voice/tags with chat_calls, set_voice_tag, /voice/archive, _WatchJobs._follow_up)
+
+**Rulings**
+- Hermes Desktop's list keeps only the chats people work in: a call's own row and a chat Classic made are archived when the call ends (Eric 2026-10-22, #1127, notifier #295), and a voice job's chat each time Hermes answers what voice asked there, at its turn's end or when Conduit tags it after the call. All with Hermes' auto-archive stamp, so a turn in one brings it back (Eric 2026-10-28, #CPR, notifier #442).
+- A job's chat is archived only while voice alone has used it: every request in it is a job prompt, the Watch's next request or `(voice) ` words. Typed into, it stays listed for good; failed, stopped, running, pinned or user-archived, it's left as it is. The chat an unattached call took for its first request is the call's, never tagged a job, and stays listed (2026-10-28, #CPR).
+- Conduit lists every row the plugin archived as if it weren't, and its Archived screen leaves them out (2026-10-22, #1127).
+- Voice lists the call rows, the chats Classic made and every chat a call was kept with or started from, on every device: the host lists each chat's kept calls with the voice tags (the latest 300), and a device adopts the ones it lacks, so their chats show the call cards too. Such a chat keeps its own icon and source (Eric 2026-10-28, #CPR, notifier #442).
+
+**Open gaps**
+- A Bot Chat's calls are kept in the bot's profile, so another device doesn't adopt them (#CPR).
+- Desktop doesn't group voice rows under their call; archiving is how they stay out of its list (would need Hermes).
+
+**Checked:** 2026-10-28, #CPR.
 
 ## The user's words in a call's transcript
 

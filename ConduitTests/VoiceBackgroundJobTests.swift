@@ -1916,7 +1916,7 @@ extension VoiceConversationControllerTests {
 
         XCTAssertEqual(outcome, .interrupted(title: job.title))
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.first?.1, "wait, make it Alex", "a background job's words carry no chat mark")
+        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it Alex", "marked as voice's, as in the chat")
         XCTAssertEqual(fake.submissions.count, 2, "a follow-up is never a new turn")
         // Hermes' marker for the cut-off reply is never the result.
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: Self.correctionNotice, reasoning: nil))
@@ -1937,7 +1937,7 @@ extension VoiceConversationControllerTests {
 
         XCTAssertEqual(outcome, .interrupted(title: job.title))
         XCTAssertEqual(fake.steers.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.steers.map(\.1), ["also ask for a quiet table"])
+        XCTAssertEqual(fake.steers.map(\.1), ["(voice) also ask for a quiet table"])
         XCTAssertTrue(fake.redirects.isEmpty)
     }
 
@@ -1951,7 +1951,7 @@ extension VoiceConversationControllerTests {
 
             XCTAssertTrue(fake.steers.isEmpty, "\(String(describing: kind))")
             XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"], "\(String(describing: kind))")
-            XCTAssertEqual(fake.redirects.map(\.1), ["make it Alex"], "\(String(describing: kind))")
+            XCTAssertEqual(fake.redirects.map(\.1), ["(voice) make it Alex"], "\(String(describing: kind))")
         }
     }
 
@@ -1964,7 +1964,7 @@ extension VoiceConversationControllerTests {
         _ = await supervisor.followUp(jobID: job.id, words: "also make it quiet", kind: "add")
         XCTAssertEqual(fake.steers.count, 1)
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.map(\.1), ["also make it quiet"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) also make it quiet"])
 
         let (timedOutSupervisor, timedOutFake) = makeSupervisor()
         _ = await timedOutSupervisor.startJob(instructions: "book a table for Sam")
@@ -2157,7 +2157,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(result["status"], "sent")
         XCTAssertNil(result["job_id"])
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.first?.1, "wait, make it Alex")
+        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it Alex")
 
         supervisor.observe(.messageDelta(sessionId: "rt-1", text: "Alex"))
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked for Alex.", reasoning: nil))
@@ -2182,7 +2182,7 @@ extension VoiceConversationControllerTests {
         guard case .toolResponse("call_2", "interrupt_job", let result, _)? = sent.first else { return XCTFail("\(sent)") }
         XCTAssertEqual(result["status"], "sent", "a Watch call's correction reaches the job, not a no-op default")
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.first?.1, "wait, make it Alex", "a background job's words carry no chat mark")
+        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it Alex", "marked as voice's, as in the chat")
     }
 
     func testWatchCallsAreNotOfferedAskingFirst() {
@@ -2253,7 +2253,7 @@ extension VoiceConversationControllerTests {
 
         XCTAssertEqual(firstOutcome, .interrupted(title: job.title))
         XCTAssertEqual(secondOutcome, .interrupted(title: job.title))
-        XCTAssertEqual(fake.redirects.map(\.1), ["make it Alex", "and four people"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) make it Alex", "(voice) and four people"])
         XCTAssertEqual(supervisor.jobs.first?.followUp, .accepted)
     }
 
