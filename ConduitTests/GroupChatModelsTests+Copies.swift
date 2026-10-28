@@ -560,6 +560,8 @@ final class CopiesRoutes {
     var postError: String?
     /// The next posts fail with a 502.
     var failingPosts = 0
+    /// The next post list reads fail with a 502.
+    var failingPostLists = 0
     /// POST /rooms/copies/messages's bodies.
     private(set) var postBodies: [[String: Any]] = []
     private(set) var postListReads = 0
@@ -602,6 +604,10 @@ final class CopiesRoutes {
         if path.hasPrefix(RoomPostsClient.path) {
             if method == "GET" {
                 postListReads += 1
+                if failingPostLists > 0 {
+                    failingPostLists -= 1
+                    throw DashboardTicketBridgeError.http(status: 502, detail: "Bad gateway")
+                }
                 return ["ok": true, "messages": posts]
             }
             postBodies.append(body ?? [:])

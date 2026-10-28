@@ -237,8 +237,51 @@ extension GroupChatModelsTests {
         XCTAssertEqual(RoomPostText.rowState(post: nil, inFlight: false, takesPosts: false),
                        .closed(AppLocalization.string("Not posted: your agents aren't in this room.")))
         let sending = RoomPost(eventID: "conduit-1", text: "hi", status: .sending)
-        XCTAssertEqual(RoomPostText.rowState(post: sending, inFlight: false, takesPosts: false), .sending)
+        XCTAssertEqual(RoomPostText.rowState(post: sending, inFlight: false, takesPosts: false, settling: true), .sending)
         XCTAssertEqual(RoomPostText.rowState(post: sending, inFlight: true, takesPosts: false), .sending)
+        XCTAssertEqual(RoomPostText.rowState(post: sending, inFlight: false, takesPosts: false, roomOver: true),
+                       .closed(AppLocalization.string("Not posted: the room has ended.")), "waited on long enough")
+    }
+
+    @MainActor
+    func testAPostWhoseLastCheckFailedAsTheRoomEndedIsAskedAgain() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy()])
+        routes.failingPosts = 1
+        let appState = try await postsOpenCopy(routes)
+        // The request failed: your Hermes may have it or not.
+        await appState.sendGroupRoomMessage("maybe")
+        XCTAssertNil(appState.activeRoomCopyPost)
+
+        routes.copies = [copiesCopy(status: "ended", reason: "disbanded")]
+        routes.failingPostLists = 2
+        await appState.pollActiveRoom()
+        XCTAssertFalse(appState.activeRoomCopyTakesPosts)
+        XCTAssertTrue(appState.activeRoomCopyPostUnsettled, "not called not posted on a failed check")
+        appState.dismissActiveRoomCopyPost()
+        XCTAssertNotNil(appState.pendingRoomMessage)
+
+        // A check that answers without it: never posted, so it can go.
+        await appState.pollActiveRoom()
+        XCTAssertFalse(appState.activeRoomCopyPostUnsettled)
+        appState.dismissActiveRoomCopyPost()
+        XCTAssertNil(appState.pendingRoomMessage)
+    }
+
+    @MainActor
+    func testAPostNeverSettlingInARoomThatEndedIsWaitedOnABoundedTime() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy()])
+        let appState = try await postsOpenCopy(routes)
+        await appState.sendGroupRoomMessage("stuck")
+        let eventID = try XCTUnwrap(appState.pendingRoomMessage?.eventID)
+        routes.posts = [postsListed(eventID, text: "stuck", status: "sending")]
+        routes.copies = [copiesCopy(status: "ended", reason: "disbanded")]
+        await appState.pollActiveRoom()
+        XCTAssertTrue(appState.activeRoomCopyPostUnsettled)
+
+        for _ in 0..<AppState.roomCopyPostWaitLimit { await appState.pollActiveRoom() }
+        XCTAssertFalse(appState.activeRoomCopyPostUnsettled, "Copy and Dismiss, after a while")
+        appState.dismissActiveRoomCopyPost()
+        XCTAssertNil(appState.pendingRoomMessage)
     }
 
     @MainActor
@@ -290,13 +333,20 @@ extension GroupChatModelsTests {
         await appState.sendGroupRoomMessage("just in time")
         let eventID = try XCTUnwrap(appState.pendingRoomMessage?.eventID)
 
-        // Posted at 4, and the room ended in the same tick, before the
-        // copy's log brought it.
+        // Posted at 4, and the room ended at 5 in the same tick, before the
+        // copy's log brought either: still sending until it does.
         routes.posts = [postsListed(eventID, text: "just in time", status: "posted", seq: 4)]
-        routes.copies = [copiesCopy(status: "ended", reason: "disbanded", lastSeq: 3)]
+        routes.copies = [copiesCopy(status: "ended", reason: "disbanded", lastSeq: 5)]
         await appState.pollActiveRoom()
         XCTAssertFalse(appState.activeRoomCopyTakesPosts)
-        XCTAssertNil(appState.pendingRoomMessage, "not shown as refused")
+        XCTAssertNotNil(appState.pendingRoomMessage, "not shown as refused, nor gone before the log has it")
+        XCTAssertTrue(appState.activeRoomCopyPostUnsettled)
+
+        var mine = copiesEvent(4, kind: "message.user", actor: ["kind": "user", "id": "furina"], text: "Eric: just in time")
+        mine["post"] = ["by": NSNull()]
+        routes.events += [mine, copiesEvent(5)]
+        await appState.pollActiveRoom()
+        XCTAssertNil(appState.pendingRoomMessage)
     }
 
     @MainActor

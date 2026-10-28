@@ -10746,7 +10746,21 @@ final class AppState: ObservableObject {
     @Published private(set) var activeRoomPostAttribution = RoomPostAttribution.none
     /// In a room someone else hosts, how your pending post stands as your
     /// Hermes last said; nil before it answers.
-    @Published private(set) var activeRoomCopyPost: RoomPost?
+    @Published private(set) var activeRoomCopyPost: RoomPost? {
+        didSet {
+            // Another post, or none: what was asked about the last is moot.
+            if activeRoomCopyPost == nil || activeRoomCopyPost?.eventID != oldValue?.eventID {
+                activeRoomCopyPostAbsent = false
+                activeRoomCopyPostWaits = 0
+            }
+        }
+    }
+    /// Your Hermes was asked about the pending post and doesn't have it.
+    private var activeRoomCopyPostAbsent = false
+    /// Ticks the pending post has been asked about since its copy took no
+    /// more posts, up to `roomCopyPostWaitLimit`.
+    private var activeRoomCopyPostWaits = 0
+    static let roomCopyPostWaitLimit = 20
     /// A refused post's text, for the room composer to take back.
     @Published private(set) var roomDraftHandBack: RoomDraftHandBack?
 
@@ -11771,11 +11785,12 @@ final class AppState: ObservableObject {
 
     /// How the pending post stands, as your Hermes says. Posted, it's the
     /// room's message once the copy's log has it; until then it shows as
-    /// sending. In a copy that takes no more posts, whose log may never
-    /// bring it, posted is settled as it is.
+    /// sending. In a copy that takes no more posts, once its log has all
+    /// it will (or it was waited on long enough), posted is settled as it
+    /// is.
     private func adoptActiveRoomCopyPost(_ post: RoomPost) {
         guard groupRoomOutbox.pending?.eventID == post.eventID else { return }
-        if case .posted(let seq) = post.status, activeRoomReplay.cursor >= seq || !activeRoomCopyTakesPosts {
+        if case .posted(let seq) = post.status, activeRoomReplay.cursor >= seq || activeRoomCopyLogIsComplete {
             groupRoomOutbox.accept(eventID: post.eventID)
             pendingRoomMessage = groupRoomOutbox.pending
             activeRoomCopyPost = nil
@@ -11789,10 +11804,24 @@ final class AppState: ObservableObject {
     private func refreshActiveRoomCopyPost(epoch: Int) async {
         guard let copy = activeRoomSurface?.copy, let pending = groupRoomOutbox.pending, canPostInRoomCopies,
               !activeRoomSendInFlight, groupRoomEpoch == epoch else { return }
+        if !activeRoomCopyTakesPosts { activeRoomCopyPostWaits += 1 }
         guard let posts = try? await roomPostsClient.list(roomID: copy.roomID), groupRoomEpoch == epoch,
               activeRoomSurface?.copy?.id == copy.id, !activeRoomSendInFlight,
-              let post = posts.first(where: { $0.eventID == pending.eventID }) else { return }
+              groupRoomOutbox.pending?.eventID == pending.eventID else { return }
+        guard let post = posts.first(where: { $0.eventID == pending.eventID }) else {
+            activeRoomCopyPostAbsent = true
+            return
+        }
         adoptActiveRoomCopyPost(post)
+    }
+
+    /// The open copy takes no more posts and its log has all it will: the
+    /// room ended (its last event is in), or the pending post was waited on
+    /// long enough.
+    private var activeRoomCopyLogIsComplete: Bool {
+        guard let copy = activeRoomSurface?.copy, !activeRoomCopyTakesPosts else { return false }
+        return activeRoomCopyPostWaits >= Self.roomCopyPostWaitLimit
+            || (copy.isOver && activeRoomReplay.cursor >= copy.lastSeq)
     }
 
     /// A refused post's Edit: it leaves the room screen, and its text goes
@@ -11973,12 +12002,16 @@ final class AppState: ObservableObject {
         return true
     }
 
-    /// The open copy's pending post is sending or posted as your Hermes
-    /// last said: it can still settle, or be refused.
-    private var activeRoomCopyPostUnsettled: Bool {
-        guard groupRoomOutbox.pending != nil, let status = activeRoomCopyPost?.status else { return false }
-        if case .refused = status { return false }
-        return true
+    /// The open copy's pending post may still settle: your Hermes last said
+    /// it's sending or posted, or hasn't been asked yet. Not once it was
+    /// waited on long enough in a copy that takes no more posts.
+    var activeRoomCopyPostUnsettled: Bool {
+        guard groupRoomOutbox.pending != nil, activeRoomCopyPostWaits < Self.roomCopyPostWaitLimit else { return false }
+        switch activeRoomCopyPost?.status {
+        case .sending?, .posted?: return true
+        case .refused?: return false
+        case nil: return !activeRoomCopyPostAbsent
+        }
     }
 
     private func stopRoomCopyPolling() {

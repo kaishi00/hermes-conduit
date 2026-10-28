@@ -126,23 +126,21 @@ enum RoomPostText {
         case notDelivered
         case refused(String, retry: Bool)
         /// The room takes no more posts (it ended, or your agents left) and
-        /// your Hermes refused it or never had it: why, with its text to
-        /// copy before it's dismissed.
+        /// the post won't settle: why, with its text to copy before it's
+        /// dismissed.
         case closed(String)
     }
 
     /// `takesPosts` false is a room that ended (`roomOver`) or one your
     /// agents left: a post still pending there can't go any further, unless
-    /// your Hermes says it's sending or posted, which is still asked about.
-    static func rowState(post: RoomPost?, inFlight: Bool, takesPosts: Bool = true, roomOver: Bool = false)
-        -> RowState {
+    /// it may still settle (`settling`: your Hermes is still asked about it).
+    static func rowState(post: RoomPost?, inFlight: Bool, takesPosts: Bool = true, roomOver: Bool = false,
+                         settling: Bool = false) -> RowState {
         if inFlight { return .sending }
         guard takesPosts else {
-            switch post?.status {
-            case .sending?, .posted?: return .sending
-            case .refused(let error)?: return .closed(refusal(error))
-            case nil: return .closed(refusal(roomOver ? "ended" : "not_in"))
-            }
+            if settling { return .sending }
+            if case .refused(let error)? = post?.status { return .closed(refusal(error)) }
+            return .closed(refusal(roomOver ? "ended" : "not_in"))
         }
         guard let status = post?.status else { return .notDelivered }
         switch status {

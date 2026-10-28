@@ -150,7 +150,8 @@ struct GroupChatView: View {
                                         post: appState.activeRoomCopyPost,
                                         inFlight: appState.activeRoomSendInFlight,
                                         takesPosts: appState.activeRoomCopyTakesPosts,
-                                        roomOver: appState.activeRoomSurface?.copy?.status == "ended"
+                                        roomOver: appState.activeRoomSurface?.copy?.status == "ended",
+                                        settling: appState.activeRoomCopyPostUnsettled
                                     ),
                                     retry: {
                                         followLatest()
