@@ -289,7 +289,10 @@ extension ComposerDraftStoreTests {
         ]
         XCTAssertEqual(AppState.quotedReplyMessageID(quote: "Same answer", quotedIn: "u2", in: transcript), "a2")
         XCTAssertNil(AppState.quotedReplyMessageID(quote: "Gone", quotedIn: "u2", in: transcript))
-        XCTAssertNil(AppState.quotedReplyMessageID(quote: "Same answer", quotedIn: "missing", in: transcript))
+        XCTAssertEqual(
+            AppState.quotedReplyMessageID(quote: "Same answer", quotedIn: "pending-1", in: transcript), "a3",
+            "A waiting message isn't in the transcript yet; it comes after everything"
+        )
     }
 
     @MainActor
