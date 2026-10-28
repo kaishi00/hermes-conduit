@@ -464,7 +464,7 @@ struct V2Shell: View {
             let canSplit = V2SplitLayout.isSplit(width: proxy.size.width)
             let split = V2SplitLayout.isSplit(width: proxy.size.width, showsList: chatListBeside)
             tabs(split: split, canSplit: canSplit)
-                .environment(\.v2Shell, V2ShellContext(pickProfile: pickProfile, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit)))
+                .environment(\.v2Shell, V2ShellContext(pickProfile: { pickProfile($0) }, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit)))
         }
     }
 
@@ -540,7 +540,8 @@ struct V2Shell: View {
             .onChange(of: appState.isProfileSwitching) { _, switching in
                 guard !switching,
                       let next = queuedProfilePick.take(landedOn: appState.activeProfile) else { return }
-                pickProfile(next)
+                // Its haptic came with the tap.
+                pickProfile(next, haptic: false)
             }
             .onChange(of: appState.settingsLinkRequest) { _, page in
                 guard let page else { return }
@@ -865,7 +866,7 @@ struct V2Shell: View {
     /// page), the profile switches, and the new profile's sessions slide in
     /// from the other side (with the backdrop glow in its color). Under
     /// Reduce Motion it only fades.
-    private func pickProfile(_ profile: String) {
+    private func pickProfile(_ profile: String, haptic: Bool = true) {
         // A switch takes a moment on a real dashboard: a tap meanwhile is
         // kept rather than dropped, and the last one goes once it ends.
         if appState.isProfileSwitching {
@@ -874,7 +875,7 @@ struct V2Shell: View {
             return
         }
         guard profile != appState.activeProfile else { return }
-        Haptics.medium()
+        if haptic { Haptics.medium() }
         profileSwitchToken &+= 1
         let token = profileSwitchToken
         let distance = reduceMotion ? 0 : Self.profileSwitchDistance * profileSwitchDirection(to: profile)

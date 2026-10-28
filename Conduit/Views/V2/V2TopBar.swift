@@ -338,7 +338,11 @@ struct V2ProfileStrip: View {
         let name = appState.profileDisplayName(profile)
         let isSelected = !allSelected && profile == appState.activeProfile
         return Button {
-            if isSelected {
+            if appState.isProfileSwitching {
+                // Kept for when the switch ends, the chip on screen
+                // included (`V2QueuedProfilePick`).
+                shell.pickProfile(profile)
+            } else if isSelected {
                 onManage()
             } else if allSelected, profile == appState.activeProfile {
                 // Back to this profile's own list: nothing to switch.
