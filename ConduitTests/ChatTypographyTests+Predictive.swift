@@ -43,6 +43,8 @@ extension ChatTypographyTests {
             ["text": "Raise the quota", "p": 0.7],
             ["text": "   ", "p": 0.9],
             ["p": 0.5],
+            // Too long for a chip: dropped, never cut short.
+            ["text": String(repeating: "a", count: Predictive.maxGuessLength + 1), "p": 0.95],
         ])
         XCTAssertEqual(guesses.map(\.text), ["Raise the quota", "Remind me tonight"])
         XCTAssertEqual(Predictive.guesses(nil), [])

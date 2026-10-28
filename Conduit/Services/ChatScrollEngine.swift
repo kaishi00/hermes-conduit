@@ -263,10 +263,14 @@ final class ChatScrollEngine: ObservableObject {
     private var isVisibilityTrackedMessageOffscreen = false
     private(set) weak var surface: ChatScrollSurface?
     private var surfaceCallbackDepth = 0
-    /// A bottom bar check waits for the next turn of the main queue.
+    /// A bottom bar check waits on the main queue, with this many after it.
     private var bottomBarCheckScheduled = false
-    /// The bottom inset the last bar check saw.
+    private var bottomBarChecksLeft = 0
+    /// The bottom inset the last layout check handled.
     private var lastBottomBarInset: CGFloat?
+    /// Moving a browsing reader up to the bottom a shrinking bar left them
+    /// past: not their scroll back to it.
+    private var closingBarGap = false
     private var lastObservedOffsetY: CGFloat?
     private var pastBottomCheckScheduled = false
     /// Bumped when the reader or a command takes over, so a pending
@@ -403,6 +407,11 @@ final class ChatScrollEngine: ObservableObject {
         surfaceCallbackDepth += 1
         defer { surfaceCallbackDepth -= 1 }
         guard let surface, !isPaused else { return }
+        // The inset this pass handled, unless a finger or momentum kept it
+        // from pinning: then the bar check after they let go takes it.
+        if !isDragging, !surface.isTracking, !surface.isDecelerating {
+            lastBottomBarInset = surface.insetBottom
+        }
         takeCardShifts(on: surface)
         holdPrependAnchor(on: surface)
         if relatches {
@@ -421,26 +430,47 @@ final class ChatScrollEngine: ObservableObject {
     /// bar the transcript scrolls under, so only the scroll view's bottom
     /// inset changes: no KVO reports that, and the transcript need not lay
     /// out again, so a following reader was left with the reply's end under
-    /// the bar (the chips over its actions). Checked now, and once more on
-    /// the next turn of the main queue, in case the inset lands after the
-    /// bar's own layout; one check waits at a time, and each runs only when
-    /// the inset moved. A reader browsing is left browsing: a bar shrinking
-    /// under them is not their scroll back to the bottom.
+    /// the bar (the chips over its actions). Checked now, then on the next
+    /// turns of the main queue (`bottomBarCheckDelays`) in case the inset
+    /// lands after the bar's own layout; one chain of checks runs at a time,
+    /// and a check does work only when the inset moved since the last
+    /// layout check saw it. A finger or momentum on the chat leaves the
+    /// inset unseen, so the check after it lets go takes it.
+    ///
+    /// A reader browsing is left browsing: a bar shrinking under them is not
+    /// their scroll back to the bottom. If it leaves them past the new
+    /// bottom, they are moved up to it, still browsing, so no empty space
+    /// shows under the last message.
     func bottomBarResized() {
         checkBottomBarInset()
+        bottomBarChecksLeft = Self.bottomBarCheckDelays.count
         guard !bottomBarCheckScheduled else { return }
+        scheduleBottomBarCheck()
+    }
+
+    static let bottomBarCheckDelays: [TimeInterval] = [0, 0.1, 0.3]
+
+    private func scheduleBottomBarCheck() {
+        guard bottomBarChecksLeft > 0 else { return }
+        let delay = Self.bottomBarCheckDelays[Self.bottomBarCheckDelays.count - bottomBarChecksLeft]
+        bottomBarChecksLeft -= 1
         bottomBarCheckScheduled = true
-        schedule(0) { [weak self] in
+        schedule(delay) { [weak self] in
             guard let self else { return }
             self.bottomBarCheckScheduled = false
             self.checkBottomBarInset()
+            self.scheduleBottomBarCheck()
         }
     }
 
     private func checkBottomBarInset() {
-        guard let inset = surface?.insetBottom, inset != lastBottomBarInset else { return }
-        lastBottomBarInset = inset
+        guard let surface, !isPaused, surface.insetBottom != lastBottomBarInset else { return }
         layoutChanged(relatches: false)
+        guard lastBottomBarInset == surface.insetBottom, mode == .browsing,
+              surface.distanceFromBottom < -0.5 else { return }
+        closingBarGap = true
+        surface.setContentOffsetY(surface.maxOffsetY, animated: false)
+        closingBarGap = false
     }
 
     /// The offset changed (user scroll, deceleration, or one of ours).
@@ -468,6 +498,7 @@ final class ChatScrollEngine: ObservableObject {
         }
         if mode == .browsing,
            !landingCardShift,
+           !closingBarGap,
            !surface.isTracking,
            !deceleratingAway,
            surface.distanceFromBottom <= Self.nearBottomTolerance {
@@ -501,6 +532,10 @@ final class ChatScrollEngine: ObservableObject {
         }
         refreshTrackedMessageVisibility()
         refreshJumpButton()
+        // Momentum ended: an inset that changed under it is taken now.
+        if !isDragging, !surface.isTracking, !surface.isDecelerating {
+            checkBottomBarInset()
+        }
     }
 
     func rowFramesChanged(_ frames: [String: ChatScrollRowFrame]) {
@@ -571,6 +606,9 @@ final class ChatScrollEngine: ObservableObject {
            !surface.isDecelerating,
            surface.distanceFromBottom <= Self.nearBottomTolerance {
             setMode(.following)
+        }
+        if surface?.isDecelerating == false {
+            checkBottomBarInset()
         }
         emit(.persistSnapshot(renderedSessionKey))
         // A fling saves once it comes to rest (`isUserScrolling`).

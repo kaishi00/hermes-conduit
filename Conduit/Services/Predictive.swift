@@ -173,12 +173,17 @@ enum Predictive {
         return body
     }
 
+    /// A guess longer than this is dropped, not shortened: a chip that sends
+    /// shows its whole text, so one this long would fill the screen.
+    static let maxGuessLength = 200
+
     /// A list of guesses from the route's answer, best first.
     static func guesses(_ value: Any?) -> [Guess] {
         guard let items = value as? [[String: Any]] else { return [] }
         let found = items.compactMap { item -> Guess? in
             guard let text = item["text"] as? String,
-                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  text.count <= maxGuessLength else { return nil }
             let p = (item["p"] as? NSNumber)?.doubleValue ?? 0.5
             return Guess(text: text, p: min(1, max(0, p)))
         }

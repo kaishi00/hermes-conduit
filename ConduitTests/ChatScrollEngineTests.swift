@@ -456,8 +456,54 @@ final class ChatScrollEngineTests: XCTestCase {
         surface.insetBottom = 0
         engine.bottomBarResized()
         scheduled.forEach { $0() }
-        XCTAssertEqual(surface.contentOffsetY, 3250)
+        XCTAssertEqual(surface.contentOffsetY, 3200, "moved up to the new bottom: no empty space under the last message")
         XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    /// The inset went back to a value a bar check saw before, by an
+    /// ordinary layout in between: the next bar change is still taken.
+    func testABottomBarBackAtAnEarlierInsetStillPins() {
+        let (engine, surface) = makeEngine()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+        surface.insetBottom = 0
+        surface.layOut(contentHeight: 4000)
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+    }
+
+    /// A finger resting on the chat (no scroll) when the chips appear: the
+    /// pin waits, and the lift takes it.
+    func testABottomBarChangeUnderAFingerPinsWhenItLifts() {
+        let (engine, surface) = makeEngine()
+        surface.isTracking = true
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3200, "a finger owns the offset")
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    /// The inset can land after the bar's layout: the checks go on for a few
+    /// main-queue turns, one waiting at a time.
+    func testBottomBarChecksRetryAFewTurns() {
+        let (engine, surface) = makeEngine()
+        scheduled.removeAll()
+        engine.bottomBarResized()
+        var turns = 0
+        while !scheduled.isEmpty, turns < 10 {
+            let next = scheduled.removeFirst()
+            turns += 1
+            if turns == 3 { surface.insetBottom = 52 }
+            next()
+        }
+        XCTAssertEqual(turns, ChatScrollEngine.bottomBarCheckDelays.count)
+        XCTAssertEqual(surface.contentOffsetY, 3252, "the inset that landed on the last turn is taken")
     }
 
     func testBottomBarChangesWaitOnOneLaterCheck() {
@@ -470,7 +516,7 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(scheduled.count, 1)
         scheduled.removeAll()
         engine.bottomBarResized()
-        XCTAssertEqual(scheduled.count, 0, "the check still waits until it has run")
+        XCTAssertEqual(scheduled.count, 0, "the chain still waits until its check has run")
     }
 
     func testFollowingRepairsAnOvershootWhenContentShrinks() {
