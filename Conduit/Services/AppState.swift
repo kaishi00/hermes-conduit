@@ -30337,16 +30337,22 @@ final class AppState: ObservableObject {
                 KeychainHelper.saveConnection(freshConnection, dashboardID: dashboardID)
             }
             persistActiveProfile(target)
+            // The profile's busy mode and display settings are read in the
+            // background: both already show what this profile last said
+            // (restoreDisplayPreferences, the busy mode's cache), and the
+            // display read alone took over two seconds on a real dashboard,
+            // which the switch and a chat opened in the other profile waited
+            // on (#1442).
+            Task {
+                await loadChatResumeBusyInputMode(using: nextClient)
+                guard self.client === nextClient else { return }
+                await loadChatResumeProfileDisplayPreferences()
+            }
             // A newer navigation opens and syncs its own chat.
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
                 return false
             }
 
-            // The profile's busy mode and display settings are read while
-            // its chats load rather than one after another behind them: each
-            // is a round trip the switch (and the strip's next tap) waited on.
-            async let busyInputModeLoad: Void = loadChatResumeBusyInputMode(using: nextClient)
-            async let displayPreferencesLoad: Void = loadChatResumeProfileDisplayPreferences()
             await syncSession(
                 purpose: .preserveCurrent,
                 using: nil,
@@ -30363,10 +30369,6 @@ final class AppState: ObservableObject {
                 finishChatViewportTransitionIfNoTranscriptReplacement(
                     generation: transitionGeneration
                 )
-            }
-            _ = await (busyInputModeLoad, displayPreferencesLoad)
-            guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
-                return false
             }
             Task { await loadChatResumeSlashCommands() }
             return true
@@ -32243,6 +32245,8 @@ final class AppState: ObservableObject {
         busyInputMode = defaults.string(forKey: key).flatMap(BusyInputMode.init(rawValue:)) ?? .interrupt
         do {
             let mode = try await client.busyInputMode()
+            // A switch away while this was out reads its own.
+            guard self.client === client else { return }
             busyInputMode = mode
             defaults.set(mode.rawValue, forKey: key)
         } catch {}
