@@ -903,6 +903,9 @@ struct V2Shell: View {
         if appState.isProfileSwitching || isPickingProfile {
             queuedProfilePick.tap(profile, dashboardID: appState.activeDashboardID)
             if haptic { Haptics.medium() }
+            // The profile showing is on its way out: its chats leave now
+            // rather than stay tappable until the kept pick goes.
+            withAnimation(ConduitMotion.fadeOut) { contentFaded = true }
             return
         }
         // This tap is the newest: a pick still kept from a switch that

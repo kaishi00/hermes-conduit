@@ -32203,6 +32203,8 @@ final class AppState: ObservableObject {
             displayPreferences = previous
             return false
         }
+        // A read still out (a switch's, in the background) predates this.
+        displayPreferencesWriteRevision &+= 1
 
         do {
             try await updateProfileConfig(profile: profile) { config in
@@ -32244,14 +32246,20 @@ final class AppState: ObservableObject {
         let key = busyInputModeCacheKey
         // Shown while Hermes answers, and kept if it can't.
         restoreBusyInputMode()
+        let revision = busyInputModeWriteRevision
         do {
             let mode = try await client.busyInputMode()
-            // A switch away while this was out reads its own.
-            guard self.client === client else { return }
+            // A switch away while this was out reads its own, and a mode
+            // picked meanwhile is newer.
+            guard self.client === client, revision == busyInputModeWriteRevision else { return }
             busyInputMode = mode
             defaults.set(mode.rawValue, forKey: key)
         } catch {}
     }
+
+    /// Bumped by each busy mode picked, so a read that was already out
+    /// doesn't put the old one back.
+    private var busyInputModeWriteRevision = 0
 
     /// Another profile: the busy mode it last had here, until Hermes
     /// answers for it.
@@ -32273,6 +32281,7 @@ final class AppState: ObservableObject {
         // The profile that takes the write, captured before it.
         let key = busyInputModeCacheKey
         busyInputMode = mode
+        busyInputModeWriteRevision &+= 1
         do {
             if let setBusyInputMode = chatResumeLifecycleOperations.setBusyInputMode {
                 try await setBusyInputMode(client, mode)
