@@ -5710,8 +5710,12 @@ final class AppState: ObservableObject {
         }
         // Copies are saved under the chat's stored id, and the restored
         // reference can hold its runtime id: the saved list's row maps one
-        // to the other.
-        let row = savedChatListForActiveScope?.list.sessions.first { $0.nestingIDs.contains(sessionID) }
+        // to the other. A row that owns the id wins over one that only
+        // borrows it, and an alias two rows borrow maps to neither.
+        let rows = savedChatListForActiveScope?.list.sessions ?? []
+        let aliasRows = rows.filter { $0.nestingIDs.contains(sessionID) }
+        let row = rows.first { $0.id == sessionID || $0.storedSessionId == sessionID }
+            ?? (aliasRows.count == 1 ? aliasRows.first : nil)
         let durableID = row.map { $0.storedSessionId ?? $0.id } ?? sessionID
         guard let dashboardID = activeDashboardID,
               let saved = offlineChatCache.loadTranscript(durableID, dashboardID: dashboardID, profile: activeProfile) else {
