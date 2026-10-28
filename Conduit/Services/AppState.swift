@@ -30420,7 +30420,9 @@ final class AppState: ObservableObject {
             // Superseded before anything changed over: only the approval
             // state was neutralized. Once the target was installed, its
             // failed client is rolled back even when a newer navigation owns
-            // the chat; only the chat and the error are left to that one.
+            // the chat; only the error is left to that one, and the outgoing
+            // chat and its transcript come back over it until the reconnect
+            // resolves it.
             guard ownsChat || adoptedTarget else {
                 restorePreviousApprovalState()
                 return false
