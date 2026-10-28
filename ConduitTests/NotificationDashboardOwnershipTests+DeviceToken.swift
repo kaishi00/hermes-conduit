@@ -152,6 +152,91 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertEqual(change(nil, "a", relay: false), .keep)
     }
 
+    func testAWatchTokenAnotherIPhoneHoldsSaysSoUntilThePairingMovesIt() async throws {
+        let stored: [String: Any] = [
+            "credential": "credential-1",
+            "installationID": "installation-1",
+            "relayURL": "https://relay.example.com",
+            "deviceToken": "abcd",
+            "preferences": try JSONSerialization.jsonObject(with: JSONEncoder().encode(ConduitNotificationPreferences())),
+        ]
+        KeychainHelper.savePushRegistration(try JSONSerialization.data(withJSONObject: stored))
+        let service = PushNotificationService(retryDelay: .zero)
+
+        // The Watch moved here from an iPhone whose registration still holds
+        // its token (relay 0.23).
+        var elsewhere = true
+        var bodies: [[String: Any]] = []
+        service.sendRegistrationUpdate = { request in
+            bodies.append(try XCTUnwrap(JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]))
+            let response = try XCTUnwrap(HTTPURLResponse(url: try XCTUnwrap(request.url), statusCode: 200, httpVersion: nil, headerFields: nil))
+            let json = elsewhere
+                ? #"{"installation":{"voip":true,"watch_voip":false,"watch_voip_elsewhere":true}}"#
+                : #"{"installation":{"voip":true,"watch_voip":true}}"#
+            return (Data(json.utf8), response)
+        }
+        defer {
+            service.sendRegistrationUpdate = { _ in throw URLError(.cancelled) }
+            service.updateWatchVoIPToken(nil, engine: nil)
+        }
+
+        service.updateVoIPToken("0123")
+        service.updateWatchVoIPToken("4567", engine: nil)
+        try await waitUntil { service.watchRingsForAnotherIPhone }
+
+        // A pairing moved here took it: the next update sends it again, and
+        // the notice goes.
+        elsewhere = false
+        service.updateWatchVoIPToken("4567", engine: nil)
+        try await waitUntil { !service.watchRingsForAnotherIPhone }
+        XCTAssertEqual(bodies.last?["watch_voip_token"] as? String, "4567")
+    }
+
+    func testAWatchTokenTheRelayLetGoGoesWithTheNextChange() async throws {
+        // The relay held this Watch's token for this iPhone, then let it go
+        // when the pairing moved to another iPhone.
+        let stored: [String: Any] = [
+            "credential": "credential-1",
+            "installationID": "installation-1",
+            "relayURL": "https://relay.example.com",
+            "deviceToken": "abcd",
+            "voipToken": "0123",
+            "watchVoipToken": "4567",
+            "preferences": try JSONSerialization.jsonObject(with: JSONEncoder().encode(ConduitNotificationPreferences())),
+        ]
+        KeychainHelper.savePushRegistration(try JSONSerialization.data(withJSONObject: stored))
+        let service = PushNotificationService(retryDelay: .zero)
+        var bodies: [[String: Any]] = []
+        service.sendRegistrationUpdate = { request in
+            bodies.append(try XCTUnwrap(JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]))
+            let response = try XCTUnwrap(HTTPURLResponse(url: try XCTUnwrap(request.url), statusCode: 200, httpVersion: nil, headerFields: nil))
+            return (Data(#"{"installation":{"voip":true,"watch_voip":false}}"#.utf8), response)
+        }
+        defer {
+            service.sendRegistrationUpdate = { _ in throw URLError(.cancelled) }
+            service.updateWatchVoIPToken(nil, engine: nil)
+        }
+
+        service.updateVoIPToken("0123")
+        service.updateWatchVoIPToken("4567", engine: nil)
+        // A new push token: the Watch's is left out as held, and the answer
+        // says the relay doesn't have it, so it isn't recorded as held.
+        service.didReceiveDeviceToken(Data([0x12, 0x34]))
+        try await waitUntil { self.savedDeviceToken() == "1234" }
+        XCTAssertFalse(try XCTUnwrap(bodies.first).keys.contains("watch_voip_token"))
+        XCTAssertNil(savedWatchToken())
+
+        // The next update sends it again.
+        service.updateLocationToken(nil)
+        try await waitUntil { bodies.last?["watch_voip_token"] as? String == "4567" }
+    }
+
+    private func savedWatchToken() -> String? {
+        guard let saved = KeychainHelper.loadPushRegistration(),
+              let json = try? JSONSerialization.jsonObject(with: saved) as? [String: Any] else { return nil }
+        return json["watchVoipToken"] as? String
+    }
+
     private func savedDeviceToken() -> String? {
         guard let saved = KeychainHelper.loadPushRegistration(),
               let json = try? JSONSerialization.jsonObject(with: saved) as? [String: Any] else { return nil }

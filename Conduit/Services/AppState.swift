@@ -34670,6 +34670,11 @@ final class AppState: ObservableObject {
         persistedVoiceEnabled(profile: activeProfile) || isQwenLiveEnabled || isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled || isLocalLiveEnabled
     }
 
+    /// The active profile's saved Voice switch, which Settings > Voice
+    /// shows: `isVoiceEnabled` is false while Conduit isn't connected,
+    /// and a switch shown off then reads as turned off.
+    var activeProfileVoiceSwitch: Bool { persistedVoiceEnabled(profile: activeProfile) }
+
     /// The profile's saved Voice switch. Voice is on out of the box, so a
     /// switch never touched reads as on; only the user turns it off.
     private func persistedVoiceEnabled(profile: String) -> Bool {

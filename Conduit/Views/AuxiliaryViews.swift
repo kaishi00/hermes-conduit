@@ -716,7 +716,9 @@ struct SettingsView: View {
                         runASRTest: { await appState.runVoiceASRTest() },
                         runTTSTest: { await appState.runVoiceTTSTest() }
                     ),
-                    voiceEnabled: appState.isVoiceEnabled,
+                    // The saved switch: while Conduit reconnects, voice isn't
+                    // usable yet, but it wasn't turned off.
+                    voiceEnabled: appState.activeProfileVoiceSwitch,
                     transcriptionMode: appState.voiceTranscriptionMode,
                     transcriptionModeChosen: voicePreferences.transcriptionMode != nil,
                     speechOutput: voicePreferences.speechOutput,
@@ -3617,6 +3619,9 @@ private struct NotificationsSettingsDetail: View {
     @State private var relayDraftInvalid = false
     @State private var pairing = false
     @State private var pairingError: String?
+    /// What the last Pair tap did, kept on screen: a haptic alone left
+    /// people unsure anything happened.
+    @State private var pairedProfile: String?
     @AppStorage(LiveTurnActivities.enabledDefaultsKey) private var liveActivitiesEnabled = true
 
     private func trimmed(_ value: String) -> String {
@@ -4032,8 +4037,10 @@ private struct NotificationsSettingsDetail: View {
             Task {
                 pairing = true
                 pairingError = nil
+                pairedProfile = nil
                 do {
                     try await appState.pairProfileWithThisDevice(profile)
+                    pairedProfile = profile
                     Haptics.success()
                 } catch {
                     pairingError = UserFacingError.message(for: error)
@@ -4043,7 +4050,9 @@ private struct NotificationsSettingsDetail: View {
             }
         } label: {
             Label(
-                pairing ? AppLocalization.string("Pairing…") : AppLocalization.string("Pair \(profile) with this iPhone"),
+                // The automatic pairing runs on the same flag and holds the
+                // button too, so it says so rather than looking stuck.
+                pairing || notifications.isPairing ? AppLocalization.string("Pairing…") : AppLocalization.string("Pair \(profile) with this iPhone"),
                 systemImage: "link"
             )
             .frame(maxWidth: .infinity)
@@ -4062,6 +4071,11 @@ private struct NotificationsSettingsDetail: View {
             Label(pairingError, systemImage: "exclamationmark.triangle.fill")
                 .font(.footnote)
                 .foregroundStyle(.red)
+        } else if let pairedProfile, pairedProfile == profile {
+            Label(AppLocalization.string("Paired. Notifications and calls from \(appState.profileDisplayName(pairedProfile)) now come to this iPhone, and to the Apple Watch paired with it."), systemImage: "checkmark.circle.fill")
+                .font(.footnote)
+                .foregroundStyle(.green)
+                .accessibilityIdentifier("notifications.paired")
         }
     }
 

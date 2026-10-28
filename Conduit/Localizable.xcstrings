@@ -165,6 +165,88 @@
         }
       }
     },
+    "Paired. Notifications and calls from %@ now come to this iPhone, and to the Apple Watch paired with it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gekoppelt. Mitteilungen und Anrufe von %@ kommen jetzt auf dieses iPhone und auf die damit gekoppelte Apple Watch."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vinculado. Las notificaciones y llamadas de %@ llegan ahora a este iPhone y al Apple Watch vinculado con él."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jumelé. Les notifications et les appels de %@ arrivent maintenant sur cet iPhone et sur l’Apple Watch jumelée avec lui."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dipasangkan. Notifikasi dan panggilan dari %@ kini masuk ke iPhone ini, dan ke Apple Watch yang dipasangkan dengannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbinato. Le notifiche e le chiamate di %@ ora arrivano su questo iPhone e sull’Apple Watch abbinato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ペアリングしました。%@ からの通知と通話は、このiPhoneとペアリング済みのApple Watchに届きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "페어링되었습니다. 이제 %@의 알림과 전화가 이 iPhone과 이 iPhone에 페어링된 Apple Watch로 옵니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sparowano. Powiadomienia i połączenia od %@ trafiają teraz na ten iPhone i sparowany z nim Apple Watch."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Emparelhado. Notificações e chamadas de %@ agora chegam a este iPhone e ao Apple Watch emparelhado com ele."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сопряжено. Уведомления и звонки от %@ теперь приходят на этот iPhone и на сопряжённые с ним Apple Watch."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eşlendi. %@ bildirimleri ve aramaları artık bu iPhone’a ve onunla eşli Apple Watch’a geliyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已配对。%@ 的通知和来电现在会发到这台 iPhone 及与其配对的 Apple Watch。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已配對。%@ 的通知和來電現在會傳到這部 iPhone 及與其配對的 Apple Watch。"
+          }
+        }
+      }
+    },
     "These folders weren't attached: %@. Drop the files inside them instead." : {
       "localizations" : {
         "de" : {
@@ -3769,6 +3851,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法刪除排程工作：%@"
+          }
+        }
+      }
+    },
+    "Your Apple Watch still rings for Conduit on the iPhone it was with before, so calls you answer there can't reach this one. Pair this profile with this iPhone in Settings > Notifications to move it here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Apple Watch klingelt noch für Conduit auf dem iPhone, mit dem sie vorher gekoppelt war. Anrufe, die du dort annimmst, erreichen dieses iPhone nicht. Kopple dieses Profil unter Einstellungen > Mitteilungen mit diesem iPhone, um sie hierher zu holen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu Apple Watch sigue sonando para Conduit en el iPhone con el que estaba antes, así que las llamadas que contestes ahí no llegan a este. Vincula este perfil con este iPhone en Ajustes > Notificaciones para traerlo aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre Apple Watch sonne encore pour Conduit sur l’iPhone avec lequel elle était avant : les appels que vous y prenez n’atteignent pas celui-ci. Jumelez ce profil avec cet iPhone dans Réglages > Notifications pour la ramener ici."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Watch Anda masih berdering untuk Conduit di iPhone yang sebelumnya dipasangkan dengannya, jadi panggilan yang Anda jawab di sana tidak sampai ke iPhone ini. Pasangkan profil ini dengan iPhone ini di Pengaturan > Notifikasi untuk memindahkannya ke sini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo Apple Watch squilla ancora per Conduit sull’iPhone con cui era prima, quindi le chiamate a cui rispondi lì non arrivano a questo. Abbina questo profilo a questo iPhone in Impostazioni > Notifiche per spostarlo qui."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Watchは、以前ペアリングしていたiPhoneのConduit用にまだ着信します。そこで応答した通話はこのiPhoneに届きません。「設定」>「通知」でこのプロファイルをこのiPhoneとペアリングすると、こちらに移ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Watch가 아직 이전에 함께 쓰던 iPhone의 Conduit용으로 울려서, 그곳에서 받은 전화가 이 iPhone에 닿지 않습니다. 설정 > 알림에서 이 프로필을 이 iPhone과 페어링하면 이쪽으로 옮겨집니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój Apple Watch nadal dzwoni dla Conduit na iPhonie, z którym był wcześniej, więc połączenia odebrane na nim nie docierają do tego iPhone’a. Sparuj ten profil z tym iPhone’em w Ustawieniach > Powiadomienia, aby go tu przenieść."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu Apple Watch ainda toca para o Conduit no iPhone com que estava antes, então as chamadas que você atende nele não chegam a este. Emparelhe este perfil com este iPhone em Ajustes > Notificações para trazê-lo para cá."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваши Apple Watch всё ещё звонят для Conduit на iPhone, с которым были раньше, поэтому принятые на них звонки не доходят до этого iPhone. Сопрягите этот профиль с этим iPhone в «Настройки» > «Уведомления», чтобы перенести их сюда."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Watch’unuz hâlâ önceki iPhone’daki Conduit için çalıyor, bu yüzden orada yanıtladığınız aramalar bu iPhone’a ulaşmıyor. Buraya taşımak için Ayarlar > Bildirimler’de bu profili bu iPhone ile eşleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Apple Watch 仍在为之前配对的 iPhone 上的 Conduit 响铃，因此在手表上接听的来电无法到达这台 iPhone。在“设置”>“通知”中将此配置文件与这台 iPhone 配对即可移到这里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Apple Watch 仍在為先前配對的 iPhone 上的 Conduit 響鈴，因此在手錶上接聽的來電無法傳到這部 iPhone。在「設定」>「通知」中將此設定檔與這部 iPhone 配對即可移到這裡。"
           }
         }
       }
