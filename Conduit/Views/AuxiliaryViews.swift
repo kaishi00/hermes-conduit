@@ -3619,9 +3619,10 @@ private struct NotificationsSettingsDetail: View {
     @State private var relayDraftInvalid = false
     @State private var pairing = false
     @State private var pairingError: String?
-    /// What the last Pair tap did, kept on screen: a haptic alone left
-    /// people unsure anything happened.
-    @State private var pairedProfile: String?
+    /// The profile the last Pair tap was for: what it did stays on screen
+    /// (a haptic alone left people unsure anything happened), for that
+    /// profile only.
+    @State private var pairTapProfile: String?
     @AppStorage(LiveTurnActivities.enabledDefaultsKey) private var liveActivitiesEnabled = true
 
     private func trimmed(_ value: String) -> String {
@@ -4037,10 +4038,9 @@ private struct NotificationsSettingsDetail: View {
             Task {
                 pairing = true
                 pairingError = nil
-                pairedProfile = nil
+                pairTapProfile = profile
                 do {
                     try await appState.pairProfileWithThisDevice(profile)
-                    pairedProfile = profile
                     Haptics.success()
                 } catch {
                     pairingError = UserFacingError.message(for: error)
@@ -4067,12 +4067,14 @@ private struct NotificationsSettingsDetail: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
-        if let pairingError {
+        if pairTapProfile != profile || pairing {
+            EmptyView()
+        } else if let pairingError {
             Label(pairingError, systemImage: "exclamationmark.triangle.fill")
                 .font(.footnote)
                 .foregroundStyle(.red)
-        } else if let pairedProfile, pairedProfile == profile {
-            Label(AppLocalization.string("Paired. Notifications and calls from \(appState.profileDisplayName(pairedProfile)) now come to this iPhone."), systemImage: "checkmark.circle.fill")
+        } else {
+            Label(AppLocalization.string("Paired. Notifications and calls from \(appState.profileDisplayName(profile)) now come to this iPhone."), systemImage: "checkmark.circle.fill")
                 .font(.footnote)
                 .foregroundStyle(.green)
                 .accessibilityIdentifier("notifications.paired")
