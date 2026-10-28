@@ -281,8 +281,34 @@ extension GroupChatModelsTests {
 
         for _ in 0..<AppState.roomCopyPostWaitLimit { await appState.pollActiveRoom() }
         XCTAssertFalse(appState.activeRoomCopyPostUnsettled, "Copy and Dismiss, after a while")
+        XCTAssertTrue(appState.activeRoomCopyPostWaitedOut)
+        XCTAssertEqual(
+            RoomPostText.rowState(post: appState.activeRoomCopyPost, inFlight: false, takesPosts: false, roomOver: true,
+                                  settling: false, waitedOut: true),
+            .closed(AppLocalization.string("Not confirmed yet: it may still be posted.")),
+            "not called not posted: your Hermes may still post it"
+        )
         appState.dismissActiveRoomCopyPost()
         XCTAssertNil(appState.pendingRoomMessage)
+    }
+
+    @MainActor
+    func testAPostSendingTooLongInARoomStillGoingCanBeDismissed() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy()])
+        let appState = try await postsOpenCopy(routes)
+        await appState.sendGroupRoomMessage("slow link")
+        // While it's sending, it holds the next message and can't go.
+        appState.dismissActiveRoomCopyPost()
+        XCTAssertNotNil(appState.pendingRoomMessage)
+        XCTAssertFalse(appState.activeRoomCopyPostWaitedOut)
+
+        for _ in 0..<AppState.roomCopyPostWaitLimit { await appState.pollActiveRoom() }
+        XCTAssertTrue(appState.activeRoomCopyTakesPosts)
+        XCTAssertTrue(appState.activeRoomCopyPostWaitedOut)
+        appState.dismissActiveRoomCopyPost()
+        XCTAssertNil(appState.pendingRoomMessage)
+        let next = await appState.sendGroupRoomMessage("next")
+        XCTAssertTrue(next, "the composer takes the next one")
     }
 
     @MainActor
@@ -408,16 +434,38 @@ extension GroupChatModelsTests {
         await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
         XCTAssertEqual(appState.pendingRoomMessage?.text, "parked")
         XCTAssertFalse(appState.activeRoomCopyPostUnsettled)
+        XCTAssertEqual(
+            RoomPostText.rowState(post: appState.activeRoomCopyPost, inFlight: false,
+                                  takesPosts: appState.activeRoomCopyTakesPosts, canAsk: appState.canPostInRoomCopies),
+            .closed(AppLocalization.string("Can't check this post: update the Conduit plugin on your Hermes.")),
+            "not said to be refused: it can't be asked about"
+        )
         appState.dismissActiveRoomCopyPost()
         XCTAssertNil(appState.pendingRoomMessage)
+    }
+
+    @MainActor
+    func testAnEndedCopyAsksForYourNameAgainWithoutPolling() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(status: "ended", reason: "disbanded", lastSeq: 1)])
+        var yours = copiesEvent(1, kind: "message.user", actor: ["kind": "user", "id": "furina"], text: "Eric: bye")
+        yours["post"] = ["by": NSNull()]
+        routes.events = [yours]
+        let appState = try await postsOpenCopy(routes)
+        XCTAssertFalse(appState.isPollingActiveRoom)
+        await copiesWait("the opening people read", until: { !routes.peopleReads.isEmpty })
+
+        routes.people = ["ok": true, "room_id": "conduit-9", "home": "Furina", "you": "Eric", "members": [[String: Any]]()]
+        await copiesWait("your name, asked again", until: { appState.activeRoomPostAttribution.you == "Eric" })
+        let first = try XCTUnwrap(appState.activeRoomReplay.events.first)
+        XCTAssertEqual(appState.activeRoomPostAttribution.text(of: first), "bye")
     }
 
     @MainActor
     func testYourNameIsReadAgainWhenTheOpeningReadFailed() async throws {
         let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 1)])
         var yours = copiesEvent(1, kind: "message.user", actor: ["kind": "user", "id": "furina"], text: "Eric: hi")
-        // An empty name is yours too.
-        yours["post"] = ["by": ""]
+        // An empty or blank name is yours too.
+        yours["post"] = ["by": "  "]
         routes.events = [yours]
         let appState = try await postsOpenCopy(routes)
         await copiesWait("the opening people read", until: { !routes.peopleReads.isEmpty })
