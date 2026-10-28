@@ -2294,10 +2294,14 @@ profiles don't fit beside the controls.
 
 **Siblings:** the chats list · the Projects view (same bar and field) · the
 one-row bar (every profile fits) and the stacked bar (profiles on their own
-row) · iPad and Mac (same view) · searching messages ("In messages")
+row) · iPad and Mac (same view) · searching messages ("In messages") ·
+the profile strip on Tasks and Settings (same chips) · CarPlay's agent
+list (picks a profile too)
 
 **Code**
 - Bar layout: `Conduit/Views/V2/V2TopBar.swift` (ViewThatFits: one row, else stacked with lowerLeading under the profiles)
+- Profile chips (on Chats, Tasks and Settings): `Conduit/Views/V2/V2TopBar.swift` (V2ProfileStrip), `Conduit/Views/V2/V2Shell.swift` (pickProfile, V2QueuedProfilePick)
+- CarPlay's agent list: `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (selectAgent, queueAgent)
 - Controls and search: `Conduit/Views/V2/V2ChatsView.swift` (trailingControls, stackedLeading, barUnstacked, setBarStacked, filterPill, barSearchField, searchField, searchCapsule)
 - Message match row ("In messages"): `Conduit/Views/V2/V2SessionRow.swift` (V2ContentMatchRow: two lines of matching text, four at accessibility text sizes)
 
@@ -2305,12 +2309,13 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 - The profiles get their own row when they don't fit beside the controls, and the filter becomes a labeled pill under them (2026-10-22, #1117, Eric).
 - In the stacked bar, search is a magnifier leading the controls. Tapping it turns the whole second row (filter and controls) into the field with Cancel until the search is cancelled, the list has no search row, and the filter pill fills the row up to the controls. The one-row bar keeps the field as the list's first row (2026-10-24, #1199, Eric).
 - Going from the stacked bar to the one-row bar carries a query over to the list's field and closes an empty open field (2026-10-24, #1199).
+- A profile chip tapped while a switch is still running (its fade-out included) is kept, with its haptic at once (the highlighted chip too, rather than opening Profiles), and the last one tapped is switched to when that switch ends, with no second haptic (none when it's where the switch landed). The chips stay tappable meanwhile: a switch takes a couple of seconds on a real dashboard, and taps in it used to do nothing (2026-10-28, #1435). The profile picker sheet still disables its rows during a switch, as it closes on the one picked. An agent picked in CarPlay's Voice list during a switch is kept the same way and switched to once it ends (#1435). A tap in the fade-out, before the switch starts, changes its target, and one back on the profile showing cancels it; a tap on All drops a kept pick. A kept pick is dropped if the dashboard changed meanwhile, and the content stays out until the kept pick lands rather than flickering in between.
 - The list's search row follows the bar's layout, starting from the last layout seen (`barStackedKey`). Before any layout is known (first launch) the row stays out until the one-row bar appears; a change of layout (rotation, a profile added) animates it in or out (2026-10-24, #1206: implementation of #1199's open gap).
 
 **Open gaps**
 - A launch whose layout differs from the last one seen still starts from the old layout, so the row can show for a frame or arrive a frame late: the iPad was rotated or profiles were added while Conduit was closed, or another iPad window in the other layout wrote the shared key last. Closing it needs the bar's choice before the first frame, which `ViewThatFits` doesn't expose.
 
-**Checked:** 2026-10-26, #1328 (the chip names Home apart from hidden projects); #1322 (the chip and filter pill also name hidden projects, "Project chats in Chats"); at #1319 (trailingControls' swapped voice steps aside beside a chat, see Voice beside the tabs); the match row at #1208, carried in #1229.
+**Checked:** 2026-10-28, #1435 (profile chips and CarPlay's agent list keep a pick made during a switch); 2026-10-26, #1328 (the chip names Home apart from hidden projects); #1322 (the chip and filter pill also name hidden projects, "Project chats in Chats"); at #1319 (trailingControls' swapped voice steps aside beside a chat, see Voice beside the tabs); the match row at #1208, carried in #1229.
 
 ## Project chats in Chats
 
