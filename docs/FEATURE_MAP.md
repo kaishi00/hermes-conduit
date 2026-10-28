@@ -3070,12 +3070,13 @@ profiles line)
 - A profile goes by its bot title (`ui_meta['hermes-bots'].title`), else its Hermes `display_name`, else its id, as on Desktop and in its pushes. A listing that only knows `display_name` (`/api/profiles`) never undoes a title (Eric 2026-10-28, #1413, issue #1409).
 - The main profile goes by its Conduit name, kept on the device per dashboard, and by its bot's name only while it has none (#1257). Renaming it on the Profiles sheet or in Settings > Edit profile sets that name; renaming the main bot in Edit Bot sets it too, so the rename shows. A rename on the card or in Settings doesn't reach the main bot's title, so Bots and Desktop keep theirs (2026-10-28, #1413).
 - Renaming any other profile, on its card or in Settings > Edit profile, writes its bot title the way Edit Bot does (compare-and-swap on ui_meta, retried once on a conflict), so Bots and Desktop show it, and its id, chats and settings stay. An empty name goes back to Hermes' name (2026-10-28, #1413).
+- A profile with neither title nor display name (or one that is only its id) goes by its id capitalized everywhere, Bots, Bot Chats, rooms, the widget, Artifacts and its pushes included (`displayLabel`, the notifier's `_bot_name`) (Eric 2026-10-28, #PR).
 - Titles and display names are remembered per saved dashboard, so one server's names never label another's profiles (2026-10-28, #1413).
 - Every profile is renamed from its Profiles card, Bot Mode or not: people who never open Bots still need it (Eric 2026-10-28, #1413).
 - A gateway without bot looks (`botModePhase == .gatewayUnsupported`) has nowhere to keep another profile's name, so the name stays on the device per dashboard, as photos there do, and comes first until the roster says the gateway keeps bot looks (at launch and offline too); from then its title and display name name the profile, and a roster that answers drops the device names, so they don't come back offline (2026-10-28, #1413).
 
 **Open gaps**
-- Bots, Bot Chats, group rooms, the widget's Bot Chat rows and Artifacts name a profile Desktop's way (`displayLabel`): one with neither title nor display name shows its id as typed there ("atlas"), and capitalized everywhere else ("Atlas"). Left for Eric to decide (2026-10-28, #1413).
+- None known.
 
 **Checked:** 2026-10-28, #1413.
 

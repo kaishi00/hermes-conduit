@@ -86,12 +86,17 @@ struct BotProfile: Identifiable, Equatable {
     }
 
     /// Upstream `displayName`: the bot's customized title, else the profile's
-    /// display name, else the profile name.
+    /// display name, else the profile name capitalized, as the rest of
+    /// Conduit names it (AppState.profileDisplayName).
     var displayLabel: String {
         let title = botTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !title.isEmpty { return title }
         let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? self.name : name
+        // A display name that is only the id names it no more than the id.
+        guard !name.isEmpty, name != self.name else {
+            return String(self.name.prefix(1)).uppercased() + String(self.name.dropFirst())
+        }
+        return name
     }
 
     /// The canonical chat positively confirmed by the roster, if any.

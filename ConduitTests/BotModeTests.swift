@@ -72,6 +72,7 @@ final class BotModeTests: XCTestCase {
         let bot = try XCTUnwrap(snapshot.bots.first)
         XCTAssertEqual(bot.displayLabel, "Default Profile")
         XCTAssertNil(bot.canonicalSession)
+        XCTAssertEqual(makeBot(name: "atlas").displayLabel, "Atlas", "unnamed, or named only by its id: capitalized, as everywhere in Conduit")
     }
 
     func testRosterDecodeRejectsNonProfilesEnvelope() {
@@ -418,7 +419,7 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(resumedIDs, ["runtime-1"], "the open addresses the compression-lineage tip")
         XCTAssertEqual(resumeProfiles, ["atlas"], "the resume rides the BOT profile, never the dashboard scope")
         XCTAssertEqual(harness.appState.activeSessionId, "runtime-1")
-        XCTAssertEqual(harness.appState.activeSessionTitle, "atlas", "the bot's display label titles the chat")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Atlas", "the bot's display label titles the chat")
         XCTAssertNil(harness.appState.errorMessage)
     }
 
@@ -1898,7 +1899,7 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(resumes.last?.id, "atlas-chat", "the sync resumes the chat on screen")
         XCTAssertEqual(resumes.last?.profile, "atlas")
         XCTAssertEqual(harness.appState.activeSessionId, "atlas-runtime-4")
-        XCTAssertEqual(harness.appState.activeSessionTitle, "atlas")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Atlas")
     }
 
     /// The durable selection is state written by earlier builds: a bare session
