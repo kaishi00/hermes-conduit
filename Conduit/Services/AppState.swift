@@ -5298,7 +5298,11 @@ final class AppState: ObservableObject {
         cacheMessagePresentation(for: sessionIDs)
         recordOfflineChatCopy()
         keepBotChatCopy()
-        outgoingBotChatCopyOwner = nil
+        // Kept while that chat is still the one on screen: a flush can run
+        // while a bot open awaits its lookup.
+        if outgoingBotChatCopyOwner?.sessionID != activeSessionId {
+            outgoingBotChatCopyOwner = nil
+        }
     }
 
     // MARK: - Offline chat cache (#99)
@@ -5714,7 +5718,7 @@ final class AppState: ObservableObject {
               // the scroll identity's aliases can still name the chat it
               // replaced, another bot's, or a Bot Chat an ordinary chat
               // replaced (#1352).
-              let bot = botChatCopyOwner(openAs: sessionID) else { return }
+              let bot = ChatResumeStore.rpcProfileName(botChatCopyOwner(openAs: sessionID)) else { return }
         let rows = messages.compactMap(OfflineCachedMessage.init)
             .suffix(OfflineChatCacheStore.maxMessagesPerTranscript)
         guard !rows.isEmpty else { return }
@@ -5755,7 +5759,9 @@ final class AppState: ObservableObject {
     /// the chat being opened is one of the ids it was kept under. It is what
     /// was on screen when the chat was left, a /new's compaction included.
     private func presentKeptBotChatCopy(bot: String, openedAs sessionID: String, title: String?) {
+        // Spelled as the registry spells the bot the copy was kept for.
         guard let dashboardID = activeDashboardID,
+              let bot = ChatResumeStore.rpcProfileName(bot),
               let kept = keptBotChatCopies[Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: bot)],
               kept.sessionIDs.contains(sessionID) else { return }
         // Under the id it opens as, the Bot Chat's own: the one it was kept
@@ -23261,6 +23267,9 @@ final class AppState: ObservableObject {
         // through `eventBelongsToActiveSession` and repopulating the
         // cleared message array while reconciliation is in flight.
         flushPendingPresentationCache()
+        // The chat on screen is kept and is being replaced: its owner,
+        // taken before this open noted its ids, has done its job.
+        outgoingBotChatCopyOwner = nil
         let openedIdentity = captureConversationIdentity(
             for: sessionId,
             scopeProfile: conversationProfile
