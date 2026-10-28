@@ -2239,6 +2239,9 @@ final class AppState: ObservableObject {
     /// A quote waiting for the composer (#385). ComposerBar, which owns the
     /// draft, applies it and then consumes it.
     @Published private(set) var composerQuoteRequest: ComposerQuoteRequest?
+    /// A "Replying to" card's tap (issue 1420): the chat or room on screen
+    /// scrolls to the reply it quoted, then clears it.
+    @Published var pendingQuotedReplyJump: QuotedReplyJump?
     /// The same for the open group room's composer, kept apart so a chat's
     /// composer never takes a quote meant for a room.
     @Published private(set) var roomQuoteRequest: ComposerQuoteRequest?
@@ -10455,6 +10458,71 @@ final class AppState: ObservableObject {
             text: message.content
         )
         composerQuoteRequest = ComposerQuoteRequest(content: .reply(reference))
+    }
+
+    /// A sent message's own Quote: its words go into the draft as a `>`
+    /// quote, as a selection's Quote does.
+    func quoteOwnMessageIntoComposer(_ message: ChatMessage) {
+        quoteIntoComposer(UserMessageCopyButton.copyText(for: message))
+    }
+
+    /// A "Replying to" card's tap: scrolls to the reply it quoted, when the
+    /// transcript still holds it. False when it doesn't.
+    @discardableResult
+    func showQuotedReply(_ quote: String, quotedIn messageID: String) -> Bool {
+        guard let id = Self.quotedReplyMessageID(quote: quote, quotedIn: messageID, in: messages) else { return false }
+        pendingQuotedReplyJump = QuotedReplyJump(messageID: id)
+        return true
+    }
+
+    /// A room's "Replying to" card: scrolls to the member message it quoted.
+    @discardableResult
+    func showQuotedRoomMessage(_ quote: String, quotedIn eventID: String) -> Bool {
+        let events = activeRoomReplay.events.filter(GroupRoomTurns.isVisible)
+        guard let id = Self.quotedRoomMessageID(quote: quote, quotedIn: eventID, in: events) else { return false }
+        pendingQuotedReplyJump = QuotedReplyJump(messageID: id)
+        return true
+    }
+
+    /// The newest member message before `eventID` whose words are `quote`,
+    /// as `quotedReplyMessageID` finds a chat's reply.
+    static func quotedRoomMessageID(quote: String, quotedIn eventID: String, in events: [GroupEvent]) -> String? {
+        let quoted = ChatQuote.blockquote(quote)
+        guard !quoted.isEmpty else { return nil }
+        // A message still sending isn't in the room's events yet: it comes last.
+        let index = events.firstIndex { $0.id == eventID } ?? events.endIndex
+        return events[..<index].last {
+            $0.isMemberMessage && ChatQuote.blockquote(GroupMessageParts($0.messageText ?? "").text) == quoted
+        }?.id
+    }
+
+    /// The newest reply before `messageID` whose words are `quote`. The
+    /// envelope carries only the words, so a reply is found by them, as
+    /// a Markdown quote compares them (trailing spaces and blank edges
+    /// dropped).
+    static func quotedReplyMessageID(quote: String, quotedIn messageID: String, in transcript: [ChatMessage]) -> String? {
+        let quoted = ChatQuote.blockquote(quote)
+        guard !quoted.isEmpty else { return nil }
+        // A waiting message isn't in the transcript yet: it comes last.
+        let index = transcript.firstIndex { $0.id == messageID } ?? transcript.endIndex
+        return transcript[..<index].last {
+            $0.role == .assistant && ChatQuote.blockquote($0.content) == quoted
+        }?.id
+    }
+
+    /// The newest reply, when no message was sent after it: the turn /retry
+    /// takes back and sends again is the one it answered.
+    static func retryableReplyID(in transcript: [ChatMessage]) -> String? {
+        guard let index = transcript.lastIndex(where: { $0.role == .assistant }),
+              !transcript[(index + 1)...].contains(where: { $0.role == .user }) else { return nil }
+        return transcript[index].id
+    }
+
+    /// Whether the newest reply's turn ran tools, which Retry runs again:
+    /// a step between the last message sent and the end of the transcript.
+    static func latestTurnRanTools(in transcript: [ChatMessage]) -> Bool {
+        let start = transcript.lastIndex { $0.role == .user }.map { $0 + 1 } ?? transcript.startIndex
+        return transcript[start...].contains { $0.role == .tool || $0.tool != nil }
     }
 
     /// A guess from the suggestion row for the composer to send, edit or
@@ -27327,22 +27395,77 @@ final class AppState: ObservableObject {
         return AppLocalization.string("⚠️ Command failed: \(UserFacingError.message(for: error))")
     }
 
+    /// A sent message's Edit and resend (issue 1420): takes it back, with
+    /// everything after it, and puts its words back in the composer ahead
+    /// of whatever is typed there, its "Replying to" chip too.
+    /// `confirmedLaterTurns`: the user agreed to lose the messages after it;
+    /// without that, Hermes' history having any (another device's) stops it.
+    func editAndResend(_ message: ChatMessage, confirmedLaterTurns: Bool) async {
+        let context = composerSubmissionContext()
+        guard message.role == .user, isCurrentComposerSubmission(context),
+              let client, let sessionID = activeSessionId else { return }
+        cancelChatResumeRestoration()
+        guard await rewindLastTurns(
+            retry: false,
+            argument: "",
+            editing: message,
+            editingConfirmsLaterTurns: confirmedLaterTurns,
+            client: client,
+            sessionID: sessionID,
+            context: context
+        ) else {
+            appendSlashOutput(
+                AppLocalization.string("This Hermes can't take a message back. Update Hermes to edit and resend."),
+                context: context
+            )
+            return
+        }
+    }
+
+    /// The turn in `snapshot` that `message` shows: by its row id when the
+    /// transcript has it, else by its words, counting the same words sent
+    /// later so a repeated message finds its own turn. Nil when the
+    /// snapshot doesn't hold it.
+    static func rewindTurn(
+        for message: ChatMessage,
+        in transcript: [ChatMessage],
+        snapshot: SessionRewindSnapshot
+    ) -> SessionRewindSnapshot.Turn? {
+        if let rowID = message.rowId {
+            return snapshot.turns.first { $0.rowID == rowID }
+        }
+        func words(_ text: String?) -> String? {
+            text?.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard let index = transcript.firstIndex(where: { $0.id == message.id }),
+              let sent = words(message.rawContent ?? message.content), !sent.isEmpty else { return nil }
+        let sentLater = transcript[(index + 1)...].filter {
+            $0.role == .user && words($0.rawContent ?? $0.content) == sent
+        }.count
+        let matching = snapshot.turns.filter { words($0.text) == sent }
+        guard matching.count > sentLater else { return nil }
+        return matching[matching.count - 1 - sentLater]
+    }
+
     /// `/undo [N]` takes back the last N user turns and everything after
     /// them, and puts the oldest one back in the composer; `/retry` takes
-    /// back the last one and sends it again. Hermes' `_rewind`
+    /// back the last one and sends it again; `editing` takes back that
+    /// message and everything after it (Edit and resend). Hermes' `_rewind`
     /// (hermes_cli/gateway_chat_commands.py): the target comes from the
     /// same `session.resume` snapshot whose fences the rewind presents.
     /// False when this Hermes has no `session.mutate`.
     private func rewindLastTurns(
         retry: Bool,
         argument: String,
+        editing: ChatMessage? = nil,
+        editingConfirmsLaterTurns: Bool = false,
         client: HermesClient,
         sessionID: String,
         context: ComposerSubmissionContext
     ) async -> Bool {
         let trimmed = argument.trimmingCharacters(in: .whitespacesAndNewlines)
         let turnCount: Int
-        if retry || trimmed.isEmpty {
+        if retry || editing != nil || trimmed.isEmpty {
             turnCount = 1
         } else if let count = Int(trimmed), count > 0 {
             turnCount = count
@@ -27359,9 +27482,18 @@ final class AppState: ObservableObject {
         }
         let nothingToRewind = retry
             ? AppLocalization.string("There's no message to retry.")
+            : editing != nil
+            ? AppLocalization.string("Couldn't find that message in the chat's history. Open the chat again, then try once more.")
             : AppLocalization.string("There's no message to undo.")
         let receipt: SessionRewindReceipt
         let target: SessionRewindSnapshot.Turn
+        // Edit and resend on an earlier message takes later turns back too.
+        var takesLaterTurns = false
+        // Where the words taken back go: the chat this ran in, even if
+        // another opens while the rewind runs.
+        let editDraftKey = durableComposerDraftKeyOnScreen
+        let editDashboardID = activeDashboardID
+        let editAuthorName = conversationAgentIdentity.name
         // A bot chat's transcript lives in the bot profile's store; any
         // other chat's in the workspace's, which needs no profile.
         let profile = botScopeProfile(forSessionIDs: [sessionID], workspaceProfile: activeProfile)
@@ -27373,11 +27505,38 @@ final class AppState: ObservableObject {
                 snapshot = try await client.rewindSnapshot(sessionId: sessionID, profile: profile)
             }
             guard isCurrentComposerSubmission(context) else { return true }
-            guard snapshot.turns.count >= turnCount else {
-                appendSlashOutput(nothingToRewind, context: context)
-                return true
+            if let editing {
+                guard let turn = Self.rewindTurn(for: editing, in: messages, snapshot: snapshot) else {
+                    appendSlashOutput(
+                        AppLocalization.string("Couldn't find that message in the chat's history. Open the chat again, then try once more."),
+                        context: context
+                    )
+                    return true
+                }
+                target = turn
+                takesLaterTurns = turn != snapshot.turns.last
+                // Messages after it that the user wasn't asked about (sent
+                // from another device since): nothing is taken back. The
+                // chat loads them, so the next Edit and resend asks.
+                if takesLaterTurns, !editingConfirmsLaterTurns {
+                    let reopened = await openSessionOutcome(context.durableSessionID ?? sessionID)
+                    guard reopened != .superseded else { return true }
+                    let current = composerSubmissionContext()
+                    guard composerSessionIDsAreEquivalent(context.sessionID, current.sessionID)
+                        || composerSessionIDsAreEquivalent(context.durableSessionID, current.sessionID) else { return true }
+                    appendSlashOutput(
+                        AppLocalization.string("This chat has newer messages. Try Edit and resend again to see what it takes back."),
+                        context: current
+                    )
+                    return true
+                }
+            } else {
+                guard snapshot.turns.count >= turnCount else {
+                    appendSlashOutput(nothingToRewind, context: context)
+                    return true
+                }
+                target = snapshot.turns[snapshot.turns.count - turnCount]
             }
-            target = snapshot.turns[snapshot.turns.count - turnCount]
             // Refused before anything is taken back, as Hermes does.
             if retry, target.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
                 appendSlashOutput(AppLocalization.string("/retry can only send a text message again."), context: context)
@@ -27396,23 +27555,41 @@ final class AppState: ObservableObject {
         } catch where HermesClient.isMissingRPCMethod(error) {
             return false
         } catch {
-            appendSlashOutput(Self.rewindFailureNote(command: retry ? "retry" : "undo", error: error), context: context)
+            appendSlashOutput(
+                editing != nil
+                    ? Self.editFailureNote(error: error)
+                    : Self.rewindFailureNote(command: retry ? "retry" : "undo", error: error),
+                context: context
+            )
             return true
         }
         guard receipt.rewoundCount > 0 else {
             appendSlashOutput(nothingToRewind, context: context)
             return true
         }
-        // Open the chat again so it shows the shortened transcript.
-        guard isCurrentOrAliasedComposerSubmission(context) else { return true }
-        let reopened = await openSessionOutcome(context.durableSessionID ?? sessionID)
-        guard reopened != .superseded else { return true }
         let text = receipt.text ?? target.text ?? ""
+        // Taken back on Hermes: Edit and resend's words go back now, into
+        // their own chat's draft, whatever happens to the reopen below.
+        if editing != nil, !text.isEmpty {
+            putRewoundTextBack(text, key: editDraftKey, dashboardID: editDashboardID, authorName: editAuthorName)
+        }
+        // A chat left while the rewind ran keeps an /undo's or /retry's
+        // words in its draft, as Edit and resend's.
+        func keepWordsInTheirChat() -> Bool {
+            if editing == nil, !text.isEmpty {
+                putRewoundTextBack(text, key: editDraftKey, dashboardID: editDashboardID, authorName: editAuthorName)
+            }
+            return true
+        }
+        // Open the chat again so it shows the shortened transcript.
+        guard isCurrentOrAliasedComposerSubmission(context) else { return keepWordsInTheirChat() }
+        let reopened = await openSessionOutcome(context.durableSessionID ?? sessionID)
+        guard reopened != .superseded else { return keepWordsInTheirChat() }
         let current = composerSubmissionContext()
         // Our own open moved the viewport on, so `context` is stale by
         // construction; the rewound chat must still be the one on screen.
         guard composerSessionIDsAreEquivalent(context.sessionID, current.sessionID)
-            || composerSessionIDsAreEquivalent(context.durableSessionID, current.sessionID) else { return true }
+            || composerSessionIDsAreEquivalent(context.durableSessionID, current.sessionID) else { return keepWordsInTheirChat() }
         if reopened == .failed {
             // Taken back, but the chat on screen still shows it: say so,
             // and keep the words (a /retry's too) in the composer.
@@ -27422,7 +27599,18 @@ final class AppState: ObservableObject {
                     : AppLocalization.string("Took the message back, but the chat couldn't reload. Open it again to see the change. The message is in the composer."),
                 context: current
             )
-            if !text.isEmpty { prefillComposer(text) }
+            if !text.isEmpty, editing == nil { prefillComposer(text) }
+            return true
+        }
+        if editing != nil {
+            appendSlashOutput(
+                text.isEmpty
+                    ? AppLocalization.string("Took back your message.")
+                    : takesLaterTurns
+                    ? AppLocalization.string("Took back your message and everything after it. It's in the composer to edit.")
+                    : AppLocalization.string("Took back your message. It's in the composer to edit."),
+                context: current
+            )
             return true
         }
         if retry, !composerIsEnabled {
@@ -27463,6 +27651,44 @@ final class AppState: ObservableObject {
         )
         prefillComposer(text)
         return true
+    }
+
+    /// Words taken back in `key`'s draft, ahead of whatever is typed
+    /// there, a quoted reply as its "Replying to" chip. The composer puts
+    /// them in its field when that chat is on screen, else into the chat's
+    /// stored draft, as for a send that didn't go.
+    private func putRewoundTextBack(_ text: String, key: ComposerDraftKey, dashboardID: UUID?, authorName: String) {
+        let reply = ReplyQuoteEnvelope.parse(text)
+        let replyReference = reply.map {
+            ComposerReplyReference(authorName: authorName, text: $0.quote)
+        }
+        guard let dashboardID else {
+            // Restore requests and stored drafts belong to a saved
+            // dashboard. A chat is only open on one; without it (tests,
+            // a first connection still being saved) the words go in as
+            // the draft, the quote as its chip.
+            prefillComposer(reply?.message ?? text)
+            if let replyReference, canQuoteIntoComposer() {
+                composerQuoteRequest = ComposerQuoteRequest(content: .reply(replyReference))
+            }
+            return
+        }
+        composerRestoreRequests.append(ComposerRestoreRequest(
+            dashboardID: dashboardID,
+            key: key,
+            draft: ComposerDraft(text: reply?.message ?? text, attachments: [], replyReference: replyReference),
+            focuses: true,
+            pending: nil
+        ))
+    }
+
+    /// Edit and resend's refusals: Hermes' words for a rewind, without
+    /// naming a slash command the user didn't type.
+    static func editFailureNote(error: Error) -> String {
+        if let refusal = error as? RpcError, (refusal.reason ?? refusal.message) == "unsupported_command" {
+            return AppLocalization.string("This Hermes can't take a message back. Update Hermes to edit and resend.")
+        }
+        return rewindFailureNote(command: "undo", error: error)
     }
 
     /// Hermes' rewind refusals in words: a running reply, or a message
