@@ -368177,19 +368177,19 @@
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ przestaje brać udział, a jego Hermes zostaje powiadomiony."
+            "value" : "%@ przestaje brać udział, a Hermes właściciela zostaje powiadomiony."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ deixa de participar, e o Hermes dele é avisado."
+            "value" : "%@ deixa de participar, e o Hermes de origem é avisado."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ больше не участвует, и его Hermes получит уведомление."
+            "value" : "%@ больше не участвует, и Hermes владельца получит уведомление."
           }
         },
         "tr" : {

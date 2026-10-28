@@ -1077,7 +1077,8 @@ enum GroupRoomTurns {
                   let person = people.first(where: { $0.key.caseInsensitiveCompare(id) == .orderedSame })?.value
             else { return member }
             var known = member
-            known.out = person.out
+            // Out stays out: an older read can't put one back in.
+            known.out = person.out ?? member.out
             if member.isPeer {
                 if person.isYours {
                     known.isYours = true
@@ -1099,9 +1100,10 @@ enum GroupRoomTurns {
         )
         guard !handles.isEmpty else { return members }
         return members.map { member in
-            guard member.isPeer, let handle = member.handle?.lowercased(), let reason = handles[handle] else { return member }
+            // Yours still listed as yours too, when the copy wasn't read again.
+            guard let handle = member.handle?.lowercased(), let reason = handles[handle] else { return member }
             var known = member
-            known.isYours = true
+            known.isYours = member.isPeer || member.isYours
             known.out = reason.flatMap(RoomMemberOut.init(rawValue:))
             return known
         }

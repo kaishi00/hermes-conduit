@@ -99,6 +99,35 @@ extension GroupChatModelsTests {
         XCTAssertEqual(renamed.map(\.out), [.left, nil])
     }
 
+    func testTheInvitesWordThatOneLeftOutlastsAnOlderPeopleRead() throws {
+        // The copy not read again since: Kuro is still listed as yours.
+        let copy = try XCTUnwrap(RoomCopiesClient.copy(copiesCopy()))
+        let gone = [RoomInvite.Agent(profile: "research", displayName: "Kuro", handle: "kuro", reason: "left")]
+        let stale = ["m-kuro": RoomPerson(owner: nil, isYours: true, out: nil)]
+        let members = GroupRoomTurns.members(GroupRoomTurns.members(copy.room.members, gone: gone), people: stale)
+        let kuro = try XCTUnwrap(members.first { $0.memberID == "m-kuro" })
+        XCTAssertEqual(kuro.out, .left)
+        XCTAssertFalse(kuro.isPeer)
+    }
+
+    @MainActor
+    func testATakeOutStillOnItsWayReadsThePeopleAgain() async throws {
+        let routes = CopiesRoutes(copies: [])
+        routes.people = leaveOwnPeople(laifu: "in")
+        let appState = try await leaveAppState(routes, room: leaveOwnRoom)
+        await appState.openGroupRoom(leaveOwnRoom)
+        await copiesWait("the people read", until: { appState.activeRoomPeople["m-laifu"]?.owner == "Mona" })
+        let laifu = try XCTUnwrap(appState.activeRoomMembers.first { $0.memberID == "m-laifu" })
+
+        routes.refusesLeaving = "The mailbox didn't answer"
+        routes.leavingStatus = 504
+        routes.people = leaveOwnPeople(laifu: "removed")
+        let result = await appState.takeOut(laifu)
+        XCTAssertEqual(result, .sending(AppLocalization.string("Your Hermes is still sending this. The room shows it once it has.")))
+        XCTAssertEqual(appState.activeRoomPeople["m-laifu"]?.out, .removed, "who's in is read again")
+        appState.closeGroupRoom()
+    }
+
     func testAMemberThatsOutIsntOfferedToMentionOrAddress() {
         var kuro = GroupMember(memberID: "m-kuro", profile: nil, handle: "kuro", displayName: "Kuro",
                                target: ["kind": .string("peer")], extra: [:])

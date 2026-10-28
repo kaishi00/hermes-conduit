@@ -11644,6 +11644,8 @@ final class AppState: ObservableObject {
         guard canInviteLinkedPeople, let surface = activeRoomSurface,
               let room = DashboardPath.encodedQueryComponent(surface.room.roomID) else { return }
         let dashboard = activeDashboardID
+        // One for a room already left mustn't drop the open room's read.
+        guard groupRoomEpoch == epoch else { return }
         activeRoomPeopleRead &+= 1
         let read = activeRoomPeopleRead
         guard let response = try? await roomRouteJSON(
