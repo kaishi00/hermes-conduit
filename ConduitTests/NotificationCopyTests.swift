@@ -111,6 +111,9 @@ final class NotificationCopyTests: XCTestCase {
             "title_label": "response.ready", "session_title": "Skills research", "profile": "default",
         ]).subtitle, "an unnamed default profile says nothing")
         XCTAssertNil(NotificationCopy.preview([
+            "title_label": "response.ready", "profile": " Default ",
+        ]).subtitle, "as routing reads it, trimmed and in any case")
+        XCTAssertNil(NotificationCopy.preview([
             "title_label": "response.ready", "session_title": "Ada", "profile": "ada", "profile_name": "Ada",
         ]).subtitle, "a Bot Chat's title already names its bot")
         XCTAssertNil(NotificationCopy.preview([

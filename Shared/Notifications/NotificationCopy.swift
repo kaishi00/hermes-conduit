@@ -80,8 +80,10 @@ enum NotificationCopy {
     /// (`profile_name`), else its id, left out for an unnamed default
     /// profile and when the title already ends with it (a Bot Chat's).
     static func profileLine(_ content: [String: Any], title: String?) -> String? {
-        let profile = nonEmpty(content["profile"])
-        guard let name = nonEmpty(content["profile_name"]) ?? profile.flatMap({ $0 == "default" ? nil : $0 }) else { return nil }
+        // Routing reads a profile id trimmed and lowercased, so "Default" is the default too.
+        let profile = nonEmpty(content["profile"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let name = nonEmpty(content["profile_name"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? profile.flatMap({ $0.lowercased() == "default" ? nil : $0 }) else { return nil }
         if let title, title == name || title.hasSuffix(" · \(name)") { return nil }
         return name
     }

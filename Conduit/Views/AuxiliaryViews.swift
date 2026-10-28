@@ -4181,14 +4181,14 @@ private struct NotificationsSettingsDetail: View {
                     Task { await notifications.setDetail(choice) }
                 }
             ) {
-                Text("Show in notifications")
+                Text(AppLocalization.string("Show in notifications"))
             }
             .accessibilityIdentifier("notifications.detail")
             Text(detail.caption)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if detail != .generic {
-                Text("To keep them off the Lock Screen, set Show Previews to When Unlocked in iOS Settings > Notifications > Conduit.")
+                Text(AppLocalization.string("To keep them off the Lock Screen, set Show Previews to When Unlocked in iOS Settings > Notifications > Conduit."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
