@@ -2091,6 +2091,33 @@ calls (no trace) · docs/VOICE_SETTINGS.md
 
 **Checked:** 2026-10-28, #1424.
 
+## Narrated actions left out of speech
+
+What a spoken reply leaves out that the chat keeps: a persona's narrated
+actions in single asterisks or underscores, and emoji.
+
+**Siblings:** Classic voice (phone, CarPlay; streamed) · Read Aloud and its
+Now Playing title · live read-back of a reply (emoji only) · Gemini Live and
+GPT-Live with the Hermes personality (told not to say actions) · the chat
+transcript (never filtered)
+
+**Code**
+- The filter: `Conduit/Voice/SpokenTextFilter.swift` (firstActionMarker, closingMarker, speakable)
+- Classic voice: `Conduit/Voice/VoiceConversationController.swift` (spokenTextFilter)
+- Read Aloud: `Conduit/Voice/MessageReadAloudController.swift`, `Conduit/Voice/ReadAloudNowPlaying.swift` (title)
+- Read-back: `Conduit/Voice/VoiceReadBack.swift` (speakable only)
+- Persona instructions: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift`, `Conduit/Voice/GPTLive/GPTLiveConversationController.swift`
+- Tests: `ConduitTests/GeminiLiveVoiceTests.swift` (testSpokenTextFilter…)
+
+**Rulings**
+- An action is three or more words between a single `*` or `_` pair on one line; emphasis ("*really*"), bold and snake_case are spoken (2026-09-28, 223fca85).
+- As in Markdown, a marker followed by a space opens nothing and one after a space closes nothing, so "price * units sold * 12" is spoken; one after a space with a word right after it opens again (2026-10-28, #1429).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-28, #1429.
+
 ## Speech stream failures
 
 What a spoken reply says when its speech stream fails partway: Classic voice
