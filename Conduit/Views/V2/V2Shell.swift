@@ -114,6 +114,9 @@ struct V2ShellContext: Equatable {
         /// That chat shows its own voice button (a group room has none),
         /// so the list column leaves voice to it.
         var hasChatVoiceBeside = false
+        /// A switch picked from the profile strip is under way, from the
+        /// first tap's fade-out until its content comes back.
+        var isPickingProfile = false
     }
 
     var pickProfile: (String) -> Void = { _ in }
@@ -164,6 +167,11 @@ struct V2ShellContext: Equatable {
     var hasChatVoiceBeside: Bool {
         get { values.hasChatVoiceBeside }
         set { values.hasChatVoiceBeside = newValue }
+    }
+
+    var isPickingProfile: Bool {
+        get { values.isPickingProfile }
+        set { values.isPickingProfile = newValue }
     }
 
     static func == (lhs: V2ShellContext, rhs: V2ShellContext) -> Bool {
@@ -467,7 +475,7 @@ struct V2Shell: View {
             let canSplit = V2SplitLayout.isSplit(width: proxy.size.width)
             let split = V2SplitLayout.isSplit(width: proxy.size.width, showsList: chatListBeside)
             tabs(split: split, canSplit: canSplit)
-                .environment(\.v2Shell, V2ShellContext(pickProfile: { pickProfile($0) }, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit)))
+                .environment(\.v2Shell, V2ShellContext(pickProfile: { pickProfile($0) }, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit, isPickingProfile: isPickingProfile)))
         }
     }
 
@@ -545,17 +553,15 @@ struct V2Shell: View {
                 fadeContentBackIn()
             }
             .onChange(of: appState.isProfileSwitching) { _, switching in
-                guard !switching,
-                      let next = queuedProfilePick.take(landedOn: appState.activeProfile) else { return }
-                let token = profileSwitchToken
+                // A strip switch drains its own kept tap when it ends; this
+                // is for a switch started elsewhere (the picker sheet).
+                guard !switching, !isPickingProfile,
+                      let next = queuedProfilePick.take(
+                          landedOn: appState.activeProfile,
+                          dashboardID: appState.activeDashboardID
+                      ) else { return }
                 // Its haptic came with the tap.
                 pickProfile(next, haptic: false)
-                // A strip switch whose kept tap was queued again behind
-                // another switch, and came to nothing, still comes back in.
-                if token == profileSwitchToken, isPickingProfile {
-                    isPickingProfile = false
-                    fadeContentBackIn()
-                }
             }
             .onChange(of: appState.settingsLinkRequest) { _, page in
                 guard let page else { return }
@@ -881,10 +887,11 @@ struct V2Shell: View {
     /// from the other side (with the backdrop glow in its color). Under
     /// Reduce Motion it only fades.
     private func pickProfile(_ profile: String, haptic: Bool = true) {
-        // A switch takes a moment on a real dashboard: a tap meanwhile is
-        // kept rather than dropped, and the last one goes once it ends.
-        if appState.isProfileSwitching {
-            queuedProfilePick.tap(profile)
+        // A switch takes a moment on a real dashboard: a tap meanwhile (its
+        // fade-out included) is kept rather than dropped, and the last one
+        // goes once it ends.
+        if appState.isProfileSwitching || isPickingProfile {
+            queuedProfilePick.tap(profile, dashboardID: appState.activeDashboardID)
             if haptic { Haptics.medium() }
             return
         }
@@ -905,14 +912,17 @@ struct V2Shell: View {
             withTransaction(Transaction(animation: nil)) { contentShift = distance }
             await appState.switchProfile(to: profile)
             guard token == profileSwitchToken else { return }
+            isPickingProfile = false
             // A tap kept during this switch goes now, with the content
             // still out of sight.
-            if let next = queuedProfilePick.take(landedOn: appState.activeProfile) {
+            if let next = queuedProfilePick.take(
+                landedOn: appState.activeProfile,
+                dashboardID: appState.activeDashboardID
+            ) {
                 pickProfile(next, haptic: false)
                 // It started its own switch, which brings the content back.
                 guard token == profileSwitchToken else { return }
             }
-            isPickingProfile = false
             fadeContentBackIn()
         }
     }
@@ -972,14 +982,23 @@ extension View {
 /// ends, it goes there, unless that's where the switch landed.
 struct V2QueuedProfilePick: Equatable {
     private(set) var profile: String?
+    /// The dashboard the tap was made on: a profile name means nothing on
+    /// another one.
+    private(set) var dashboardID: UUID?
 
-    mutating func tap(_ profile: String) {
+    mutating func tap(_ profile: String, dashboardID: UUID?) {
         self.profile = profile
+        self.dashboardID = dashboardID
     }
 
-    /// The profile to switch to now that the switch ended on `landed`.
-    mutating func take(landedOn landed: String) -> String? {
-        defer { profile = nil }
+    /// The profile to switch to now that the switch ended on `landed`, on
+    /// the dashboard `dashboardID`.
+    mutating func take(landedOn landed: String, dashboardID: UUID?) -> String? {
+        defer {
+            profile = nil
+            self.dashboardID = nil
+        }
+        guard self.dashboardID == dashboardID else { return nil }
         return profile == landed ? nil : profile
     }
 }

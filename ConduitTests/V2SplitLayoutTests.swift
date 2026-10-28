@@ -195,15 +195,20 @@ extension SidebarLayoutTests {
     /// Profiles tapped while a switch runs: the last tap goes once it ends,
     /// and a tap on where it landed (or no tap) starts nothing.
     func testV2ProfileTappedDuringASwitchGoesOnceItEnds() {
+        let dashboard = UUID()
         var pick = V2QueuedProfilePick()
-        XCTAssertNil(pick.take(landedOn: "work"), "No tap, no further switch.")
+        XCTAssertNil(pick.take(landedOn: "work", dashboardID: dashboard), "No tap, no further switch.")
 
-        pick.tap("home")
-        pick.tap("lab")
-        XCTAssertEqual(pick.take(landedOn: "work"), "lab", "The last tap wins.")
-        XCTAssertNil(pick.take(landedOn: "lab"), "Taken once.")
+        pick.tap("home", dashboardID: dashboard)
+        pick.tap("lab", dashboardID: dashboard)
+        XCTAssertEqual(pick.take(landedOn: "work", dashboardID: dashboard), "lab", "The last tap wins.")
+        XCTAssertNil(pick.take(landedOn: "lab", dashboardID: dashboard), "Taken once.")
 
-        pick.tap("work")
-        XCTAssertNil(pick.take(landedOn: "work"), "A tap on where the switch lands starts nothing.")
+        pick.tap("work", dashboardID: dashboard)
+        XCTAssertNil(pick.take(landedOn: "work", dashboardID: dashboard), "A tap on where the switch lands starts nothing.")
+
+        pick.tap("lab", dashboardID: dashboard)
+        XCTAssertNil(pick.take(landedOn: "work", dashboardID: UUID()), "A tap on another dashboard is dropped.")
+        XCTAssertNil(pick.take(landedOn: "work", dashboardID: dashboard), "Dropped, not kept for later.")
     }
 }

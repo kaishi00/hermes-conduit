@@ -1559,7 +1559,7 @@ final class CarPlayVoiceCoordinator {
     }
 
     private func queueAgent(_ profile: String, appState: AppState) {
-        queuedAgent.tap(profile)
+        queuedAgent.tap(profile, dashboardID: appState.activeDashboardID)
         guard queuedAgentObservation == nil else { return }
         let generation = connectionGeneration
         queuedAgentObservation = appState.$isProfileSwitching
@@ -1573,7 +1573,10 @@ final class CarPlayVoiceCoordinator {
                     self.queuedAgentObservation = nil
                     // Nothing to do when the switch landed where the pick
                     // asked.
-                    guard let queued = self.queuedAgent.take(landedOn: appState.activeProfile) else { return }
+                    guard let queued = self.queuedAgent.take(
+                        landedOn: appState.activeProfile,
+                        dashboardID: appState.activeDashboardID
+                    ) else { return }
                     self.switchAgent(to: queued, appState: appState)
                 }
             }

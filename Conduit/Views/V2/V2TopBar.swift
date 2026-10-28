@@ -340,7 +340,7 @@ struct V2ProfileStrip: View {
         return Button {
             // While a switch runs, every chip is a pick the shell keeps for
             // when it ends (`V2QueuedProfilePick`), the one on screen too.
-            let switching = appState.isProfileSwitching
+            let switching = appState.isProfileSwitching || shell.isPickingProfile
             if isSelected, !switching {
                 onManage()
             } else if allSelected, profile == appState.activeProfile, !switching {
@@ -399,7 +399,7 @@ struct V2ProfileStrip: View {
         .accessibilityIdentifier(isSelected ? "sidebar.workspace" : "v2.profile.\(profile)")
         .accessibilityLabel(AppLocalization.string("\(name) profile"))
         .accessibilityValue(unread ? AppLocalization.string("Unread") : "")
-        .accessibilityHint(isSelected && !appState.isProfileSwitching ? AppLocalization.string("Manage profiles") : AppLocalization.string("Switches to this profile"))
+        .accessibilityHint(isSelected && !(appState.isProfileSwitching || shell.isPickingProfile) ? AppLocalization.string("Manage profiles") : AppLocalization.string("Switches to this profile"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
