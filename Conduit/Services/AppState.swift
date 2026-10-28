@@ -22887,6 +22887,14 @@ final class AppState: ObservableObject {
         for (sessionID, owner) in botChatSessionProfiles where owner == scope {
             botChatSessionLabels[sessionID] = label.isEmpty ? nil : label
         }
+        // The saved selection carries the label for a cold launch too.
+        if let saved = chatResumeCoordinator.lastSession(for: activeProfile), saved.kind == .bot,
+           let botName = saved.botName, ChatResumeStore.rpcProfileName(botName) == scope {
+            chatResumeCoordinator.rememberSession(
+                .bot(botName: botName, label: label.isEmpty ? nil : label, sessionID: saved.sessionID),
+                for: activeProfile
+            )
+        }
         if let open = activeBotChatProfile, ChatResumeStore.rpcProfileName(open) == scope {
             activeSessionTitle = label.isEmpty ? profileDisplayName(profile) : label
         }
