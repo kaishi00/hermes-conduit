@@ -11358,7 +11358,10 @@ final class AppState: ObservableObject {
         }
         let label = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !label.isEmpty else { return nil }
-        return roster.first { $0.displayLabel == label || $0.name == label }
+        // The id first, then a bot's own name over another's id capitalized.
+        return roster.first { $0.name == label }
+            ?? roster.first { $0.displayLabel == label && $0.displayLabel.lowercased() != $0.name.lowercased() }
+            ?? roster.first { $0.displayLabel == label }
     }
 
     /// Each member's color by `identityKey`: its bot's color, else the hue
@@ -23022,7 +23025,10 @@ final class AppState: ObservableObject {
               let scope = ChatResumeStore.rpcProfileName(profile) else { return }
         botChatSessionProfiles[sessionID] = scope
         invalidateBotOwnershipCache()
-        if let label = label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty {
+        // A label that is only the profile id (saved before #1448) is no
+        // label: the roster's displayLabel names the bot instead.
+        if let label = label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty,
+           label != profile.trimmingCharacters(in: .whitespacesAndNewlines) {
             botChatSessionLabels[sessionID] = label
         }
     }

@@ -92,7 +92,7 @@ enum NotificationCopy {
         let profile = nonEmpty(content["profile"])?.trimmingCharacters(in: .whitespacesAndNewlines)
         // A name that is only the id names it no more than the id (BotProfile.displayLabel).
         let given = nonEmpty(content["profile_name"])?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let name = given.flatMap({ $0 == profile ? nil : $0 })
+        guard let name = given.flatMap({ $0.lowercased() == profile?.lowercased() ? nil : $0 })
             ?? profile.flatMap({ $0.lowercased() == "default" ? nil : String($0.prefix(1)).uppercased() + String($0.dropFirst()) })
         else { return nil }
         if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),

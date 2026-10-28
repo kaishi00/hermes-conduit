@@ -555,7 +555,7 @@ final class BotModeTests: XCTestCase {
         XCTAssertTrue(openedBo)
         XCTAssertEqual(harness.appState.conversationIdentityProfile, "bo")
         let boIdentity = harness.appState.conversationAgentIdentity
-        XCTAssertEqual(boIdentity.name, "bo")
+        XCTAssertEqual(boIdentity.name, "Bo")
         XCTAssertEqual(boIdentity.botFace?.name, "bo")
         XCTAssertNil(boIdentity.botFace?.image)
         XCTAssertNil(boIdentity.botFace?.colorString)
@@ -600,7 +600,7 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeSessionId, "runtime-bo-rot",
                        "the resume stub rotated the runtime id and the open adopted it")
         XCTAssertEqual(
-            harness.appState.conversationAgentIdentity.name, "bo",
+            harness.appState.conversationAgentIdentity.name, "Bo",
             "the captured label travels to the rotated id; the roster's retitled label must not take over"
         )
         XCTAssertEqual(harness.appState.activeSessionTitle, "Bo")
@@ -2167,6 +2167,21 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeSessionId, "runtime-1")
         XCTAssertEqual(harness.appState.activeSessionTitle, "Scout")
         XCTAssertEqual(harness.store.lastSession(for: "default")?.kind, SessionReference.Kind.bot)
+    }
+
+    /// A Bot Chat saved before #1448 with its bot's id as its label: the
+    /// relaunch names the bot by its id capitalized, in the header and on its
+    /// replies, as the Bots list does.
+    func testRestoredBotChatSavedWithItsIdAsLabelCapitalizesIt() async {
+        let harness = makeBotHarness(configureDefaults: { defaults in
+            ChatResumeStore(defaults: defaults).setLastSession(
+                .bot(botName: "atlas", label: "atlas", sessionID: "runtime-1"),
+                for: "default"
+            )
+        }, lifecycleOperations: ChatResumeLifecycleOperations(refreshContext: { _, _ in }))
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-1")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Atlas")
+        XCTAssertEqual(harness.appState.conversationAgentIdentity.name, "Atlas")
     }
 
     /// "Continue where I left off" prefers the stored conversation even when it

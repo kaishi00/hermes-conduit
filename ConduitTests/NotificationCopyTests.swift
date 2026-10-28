@@ -110,6 +110,9 @@ final class NotificationCopyTests: XCTestCase {
         XCTAssertEqual(NotificationCopy.preview([
             "title_label": "response.ready", "session_title": "Skills research", "profile": "work", "profile_name": "work",
         ]).subtitle, "Work", "a name that is only the id is capitalized too")
+        XCTAssertEqual(NotificationCopy.preview([
+            "title_label": "response.ready", "session_title": "Skills research", "profile": "Work", "profile_name": "work",
+        ]).subtitle, "Work", "in any case, as routing reads the id")
         XCTAssertNil(NotificationCopy.preview([
             "title_label": "response.ready", "session_title": "Skills research", "profile": "default",
         ]).subtitle, "an unnamed default profile says nothing")
