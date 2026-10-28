@@ -68,9 +68,15 @@ struct GroupChatView: View {
 
     private var bottomBar: some View {
         VStack(spacing: 0) {
-            pendingApprovals
-            MinimisedLiveVoiceBar()
-            GroupRoomComposer(members: members)
+            if let copy = surface?.copy {
+                // Hosted elsewhere: nothing goes to it from here yet (C5).
+                MinimisedLiveVoiceBar()
+                RoomCopyBottomBar(copy: copy, members: members)
+            } else {
+                pendingApprovals
+                MinimisedLiveVoiceBar()
+                GroupRoomComposer(members: members)
+            }
         }
         .overlay(alignment: .topTrailing) {
             if !isFollowingLatest {
@@ -98,8 +104,9 @@ struct GroupChatView: View {
     private var surface: AppState.GroupRoomSurface? { appState.activeRoomSurface }
 
     /// Named as the bots are now, not as they were when they joined.
+    /// With their owners, for a room over Links.
     private var members: [GroupMember] {
-        GroupRoomTurns.members(surface?.room.members ?? [], namedBy: appState.botRoster)
+        GroupRoomTurns.members(appState.activeRoomMembers, namedBy: appState.botRoster)
     }
 
     /// Log events that earn a row: a member turn that posted settles
@@ -127,7 +134,8 @@ struct GroupChatView: View {
                         GroupEventRow(
                             event: event,
                             members: members,
-                            continuesRun: previous.map { GroupEventRow.sameSpeaker($0, event) } ?? false
+                            continuesRun: previous.map { GroupEventRow.sameSpeaker($0, event) } ?? false,
+                            host: surface?.copy.map { RoomCopyText.hostName(for: $0) }
                         )
                     }
                     if let pending = appState.pendingRoomMessage {
@@ -237,7 +245,9 @@ struct GroupChatView: View {
                 members: members,
                 size: 56
             )
-            Text(AppLocalization.string("No messages yet. Say something to the room."))
+            Text(surface?.copy == nil
+                ? AppLocalization.string("No messages yet. Say something to the room.")
+                : AppLocalization.string("No messages yet."))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -372,7 +382,7 @@ struct GroupChatView: View {
 
     private var memberSummary: String {
         let count = surface?.room.members.count ?? 0
-        if !appState.activeRoomPendingApprovals.isEmpty {
+        if !appState.activeRoomPendingApprovals.isEmpty || !appState.activeRoomCopyApprovals.isEmpty {
             return AppLocalization.string("Approval needed")
         }
         if let responder = respondingMember {
@@ -403,6 +413,14 @@ struct GroupRoomActionItems: View {
         Button(action: onShowInfo) {
             Label(AppLocalization.string("Group Info"), systemImage: "info.circle")
         }
+        // A room someone else hosts is theirs to change.
+        if appState.activeRoomSurface?.copy == nil {
+            ownRoomItems
+        }
+    }
+
+    @ViewBuilder
+    private var ownRoomItems: some View {
         if appState.canSetGroupRoomPictures, let roomID = appState.activeRoomSurface?.room.roomID {
             Button {
                 onChoosePicture(.choose)
@@ -593,9 +611,22 @@ struct GroupEventRow: View {
     let members: [GroupMember]
     /// The previous row is the same speaker's: no picture or name again.
     var continuesRun = false
+    /// In a room someone else hosts, who posts its people's messages: they
+    /// aren't yours.
+    var host: String? = nil
 
     var body: some View {
-        if event.isUserMessage {
+        if event.isUserMessage, let host {
+            GroupMemberBubble(
+                member: nil,
+                name: host,
+                text: event.messageText ?? "",
+                members: members,
+                timestamp: event.createdAt,
+                continuesRun: continuesRun,
+                roomEventID: event.id
+            )
+        } else if event.isUserMessage {
             GroupUserBubble(text: event.messageText ?? "", members: members, timestamp: event.createdAt) {
                 EmptyView()
             }
@@ -614,9 +645,13 @@ struct GroupEventRow: View {
         }
     }
 
+    /// Another person's agent is named with its owner.
     private var speakerLabel: String {
         let label = event.actor.displayLabel(members: members)
-        return label.isEmpty ? AppLocalization.string("Member") : label
+        return GroupRoomTurns.ownedName(
+            label.isEmpty ? AppLocalization.string("Member") : label,
+            of: GroupRoomTurns.member(for: event, members: members)
+        )
     }
 
     /// Two rows in a row from one member (or both from the user).
@@ -1173,6 +1208,13 @@ struct GroupMessageQuoteButton: View {
     var authorHandle: String? = nil
 
     var body: some View {
+        // A room someone else hosts has no composer to quote into (C5).
+        if appState.activeRoomSurface?.copy == nil {
+            button
+        }
+    }
+
+    private var button: some View {
         Button {
             appState.replyInRoomComposer(text: text, authorName: authorName, authorHandle: authorHandle)
         } label: {
@@ -1202,6 +1244,15 @@ struct GroupMemberMentionButton<Label: View>: View {
     @ViewBuilder let label: Label
 
     var body: some View {
+        if appState.activeRoomSurface?.copy != nil {
+            // No "To" row in a room someone else hosts (C5).
+            label
+        } else {
+            button
+        }
+    }
+
+    private var button: some View {
         Button {
             Haptics.selection()
             appState.mentionInRoomComposer(handle: handle)

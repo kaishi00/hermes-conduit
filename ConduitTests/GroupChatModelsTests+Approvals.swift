@@ -246,7 +246,8 @@ extension GroupChatModelsTests {
         XCTAssertEqual(refused, .failed(AppLocalization.string("Could not answer: \(ApprovalsRoutes.notPending)")))
         XCTAssertEqual(appState.linkedRoomApprovalRows, [])
 
-        routes.approvals = [approvalsApproval()]
+        // A new one (the one answered here stays gone).
+        routes.approvals = [approvalsApproval(run: "run_c3")]
         await appState.refreshGroupChatSupport()
         XCTAssertEqual(appState.linkedRoomApprovalRows.count, 1)
         routes.holdsNextRead = true

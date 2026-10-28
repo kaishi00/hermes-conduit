@@ -164,7 +164,8 @@ struct BotRosterView: View {
 
     private var hasGroupRows: Bool {
         (hostedGroupsAvailable && (!appState.groupRooms.isEmpty || !appState.linkedRoomDraftRows.isEmpty
-            || !appState.linkedRoomInviteRows.isEmpty || !appState.linkedRoomApprovalRows.isEmpty))
+            || !appState.linkedRoomInviteRows.isEmpty || !appState.linkedRoomApprovalRows.isEmpty
+            || !appState.linkedRoomCopyRows.isEmpty))
             || !appState.desktopGroupChats.isEmpty
     }
 
@@ -384,6 +385,9 @@ struct BotRosterView: View {
                     }
                     ForEach(appState.groupRooms) { room in
                         GroupRosterRow(room: room)
+                    }
+                    ForEach(appState.linkedRoomCopyRows) { copy in
+                        RoomCopyRosterRow(copy: copy)
                     }
                     ForEach(appState.linkedRoomDraftRows) { draft in
                         RoomDraftRosterRow(draft: draft) {

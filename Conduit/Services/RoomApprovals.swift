@@ -188,7 +188,7 @@ extension AppState {
     var linkedRoomApprovalRows: [RoomApproval] {
         guard groupChatPhase == .available, canAnswerRoomApprovals,
               let approvals = linkedRoomApprovals, approvals.dashboardID == activeDashboardID else { return [] }
-        return approvals.approvals
+        return approvals.approvals.filter { !answeredLinkedRoomApprovalIDs.contains($0.id) }
     }
 
     /// The approvals were read, and that one isn't among them any more: it
@@ -214,7 +214,14 @@ extension AppState {
         let client = roomApprovalsClient
         guard let approvals = try? await client.approvals(timeoutMilliseconds: timeoutMilliseconds),
               groupRoomEpoch == epoch, activeDashboardID == client.dashboardID else { return nil }
-        linkedRoomApprovals = LinkedRoomApprovals(dashboardID: client.dashboardID, approvals: approvals)
+        // One the plugin no longer lists needn't be remembered as answered.
+        let listed = Set(approvals.map(\.id))
+        if !answeredLinkedRoomApprovalIDs.isSubset(of: listed) {
+            answeredLinkedRoomApprovalIDs.formIntersection(listed)
+        }
+        let read = LinkedRoomApprovals(dashboardID: client.dashboardID, approvals: approvals)
+        // A copy's room screen reads them each tick: unchanged, nothing is published.
+        if read != linkedRoomApprovals { linkedRoomApprovals = read }
         return approvals
     }
 
@@ -225,6 +232,7 @@ extension AppState {
         let client = roomApprovalsClient
         do {
             try await client.answer(approval, choice: choice)
+            answeredLinkedRoomApprovalIDs.insert(approval.id)
             if activeDashboardID == client.dashboardID, var approvals = linkedRoomApprovals,
                approvals.dashboardID == client.dashboardID {
                 approvals.approvals.removeAll { $0.id == approval.id }
@@ -252,6 +260,7 @@ extension AppState {
               let approvals = await readLinkedRoomApprovals(
                   timeoutMilliseconds: timeoutMilliseconds) else { return nil }
         return approvals.first { approval in
+            !answeredLinkedRoomApprovalIDs.contains(approval.id) &&
             approval.sessionKey.map { wanted.contains($0.trimmingCharacters(in: .whitespacesAndNewlines)) } ?? false
         }
     }

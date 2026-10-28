@@ -55,6 +55,9 @@ struct RoomInvite: Identifiable, Equatable {
     /// Each profile's choices for the room: those of its last room with the
     /// same people, else its defaults.
     let choices: [String: RoomChoices]
+    /// Your agents that were in it and are out: left, taken out, or there
+    /// when it ended. Their hidden chats for it stay until it's deleted.
+    var gone: [Agent] = []
 }
 
 /// What Group Chats lists of the invites.
@@ -271,13 +274,18 @@ struct RoomInvitesClient {
             expiresAt: RoomLinksClient.date(object["expires_at"]),
             status: status,
             reason: (object["reason"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-            joined: (object["joined"] as? [[String: Any]] ?? []).compactMap { agent in
-                guard let profile = agent["profile"] as? String, let name = agent["display_name"] as? String else { return nil }
-                return RoomInvite.Agent(profile: profile, displayName: name)
-            },
+            joined: agents(object["joined"]),
             profiles: profiles,
-            choices: choices
+            choices: choices,
+            gone: agents(object["gone"])
         )
+    }
+
+    private static func agents(_ value: Any?) -> [RoomInvite.Agent] {
+        (value as? [[String: Any]] ?? []).compactMap { agent in
+            guard let profile = agent["profile"] as? String, let name = agent["display_name"] as? String else { return nil }
+            return RoomInvite.Agent(profile: profile, displayName: name)
+        }
     }
 
     /// What a failed invites request says: the plugin's own words, as
@@ -384,7 +392,9 @@ extension AppState {
     /// Group Chats' invite rows.
     var linkedRoomInviteRows: [RoomInvite] {
         guard groupChatPhase == .available, let invites = currentLinkedRoomInvites else { return [] }
-        return RoomInviteRows.rows(invites.invites, dismissed: dismissedRoomInviteIDs)
+        // A room your Hermes has a copy of is listed as the room.
+        let copied = linkedRoomCopyInviteIDs
+        return RoomInviteRows.rows(invites.invites, dismissed: dismissedRoomInviteIDs).filter { !copied.contains($0.id) }
     }
 
     /// An invite by its id, whatever its status.
@@ -403,15 +413,22 @@ extension AppState {
     /// one that a sign-out or another dashboard overtook is dropped, as the
     /// drafts' is.
     func refreshLinkedRoomInvites() async {
-        guard canInviteLinkedPeople, isConnected else { return }
+        _ = await readLinkedRoomInvites()
+    }
+
+    /// Whether the invites were read now and kept.
+    func readLinkedRoomInvites() async -> Bool {
+        guard canInviteLinkedPeople, isConnected else { return false }
         let epoch = groupRoomEpoch
         let client = roomInvitesClient
         do {
             let invites = try await client.invites()
-            guard groupRoomEpoch == epoch, activeDashboardID == client.dashboardID else { return }
+            guard groupRoomEpoch == epoch, activeDashboardID == client.dashboardID else { return false }
             linkedRoomInvites = LinkedRoomInvites(dashboardID: client.dashboardID, invites: invites)
+            return true
         } catch {
             // The rows stay as they were: a stale row is safer than none.
+            return false
         }
     }
 

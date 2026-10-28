@@ -18,6 +18,9 @@ struct GroupRoomInfoSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                if let copy = appState.activeRoomSurface?.copy {
+                    RoomCopyHostSection(copy: copy)
+                }
                 if let room = appState.activeRoomSurface?.room {
                     memberSection(room)
                 }
@@ -38,8 +41,8 @@ struct GroupRoomInfoSheet: View {
 
     @ViewBuilder
     private func memberSection(_ room: GroupRoom) -> some View {
-        // Named as the bots are now, as in the room.
-        let members = GroupRoomTurns.members(room.members, namedBy: appState.botRoster)
+        // Named as the bots are now, as in the room, with their owners.
+        let members = GroupRoomTurns.members(appState.activeRoomMembers, namedBy: appState.botRoster)
         // Choices matter only beside other people's agents.
         let offersChoices = appState.canSetRoomChoices && members.contains(where: \.isPeer)
         Section {
@@ -71,8 +74,9 @@ struct GroupRoomInfoSheet: View {
     }
 }
 
-/// One member in Group Info: its picture and name, whose it is, and the
-/// trouble the room last found on the way to it.
+/// One member in Group Info: its picture and name, whose it is ("Your
+/// agent", "Mona's agent"), and the trouble the room last found on the way
+/// to it.
 private struct GroupRoomMemberRow: View {
     let member: GroupMember
     let route: GroupPeerRoute.Status?
@@ -95,7 +99,7 @@ private struct GroupRoomMemberRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
                     .lineLimit(1)
-                Text(member.isPeer ? AppLocalization.string("On another Hermes") : AppLocalization.string("Your agent"))
+                Text(GroupRoomTurns.ownerLine(of: member))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 if let trouble {

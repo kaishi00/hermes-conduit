@@ -76,6 +76,10 @@ struct GroupMember: Equatable {
     /// `previous_names` when the gateway supplies them — renamed members'
     /// old tags keep styling as mentions (presentation gap-fill only).
     var previousNames: [String] = []
+    /// Whose agent it is, for a member on another Hermes: the name your
+    /// Link gives its owner (Linked Rooms, `GET /rooms/people` or a room
+    /// copy's members). Nil for your own and when no Link names them.
+    var owner: String? = nil
 
     /// A member on another installation (target kind `peer`): its turns run
     /// on someone else's Hermes, over the room's link.
@@ -1049,11 +1053,42 @@ enum GroupRoomTurns {
             )
             // The room's name for it and the bot's own rename history.
             renamed.previousNames = member.previousNames
+            renamed.owner = member.owner
             for name in [old] + bot.previousNames where !name.isEmpty && !renamed.previousNames.contains(name) {
                 renamed.previousNames.append(name)
             }
             return renamed
         }
+    }
+
+    /// The members with their owners from `owners`, keyed by member id;
+    /// only a member on another Hermes has one.
+    static func members(_ members: [GroupMember], ownedBy owners: [String: String]) -> [GroupMember] {
+        guard !owners.isEmpty else { return members }
+        return members.map { member in
+            guard member.isPeer, let id = member.memberID,
+                  let owner = owners.first(where: { $0.key.caseInsensitiveCompare(id) == .orderedSame })?.value
+            else { return member }
+            var owned = member
+            owned.owner = owner
+            return owned
+        }
+    }
+
+    /// A bubble's name for another person's agent: "Laifu · Mona's".
+    static func ownedName(_ name: String, of member: GroupMember?) -> String {
+        guard let member, member.isPeer,
+              let owner = member.owner?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty else { return name }
+        return AppLocalization.string("\(name) · \(owner)'s")
+    }
+
+    /// Group Info's line under a member: whose agent it is.
+    static func ownerLine(of member: GroupMember) -> String {
+        guard member.isPeer else { return AppLocalization.string("Your agent") }
+        guard let owner = member.owner?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty else {
+            return AppLocalization.string("On another Hermes")
+        }
+        return AppLocalization.string("\(owner)'s agent")
     }
 
     /// The member's name for captions, never empty: a member with no name
