@@ -10487,6 +10487,14 @@ final class AppState: ObservableObject {
         }?.id
     }
 
+    /// The newest reply, when no message was sent after it: the turn /retry
+    /// takes back and sends again is the one it answered.
+    static func retryableReplyID(in transcript: [ChatMessage]) -> String? {
+        guard let index = transcript.lastIndex(where: { $0.role == .assistant }),
+              !transcript[(index + 1)...].contains(where: { $0.role == .user }) else { return nil }
+        return transcript[index].id
+    }
+
     /// Whether the newest reply's turn ran tools, which Retry runs again:
     /// a step between the last message sent and the end of the transcript.
     static func latestTurnRanTools(in transcript: [ChatMessage]) -> Bool {
@@ -27583,21 +27591,27 @@ final class AppState: ObservableObject {
     /// as the draft; Edit and resend puts them ahead of whatever is typed,
     /// with a quoted reply back as its "Replying to" chip.
     private func putRewoundTextBack(_ text: String, editing: Bool) {
-        guard editing, let dashboardID = activeDashboardID else {
+        guard editing else {
             prefillComposer(text)
             return
         }
         let reply = ReplyQuoteEnvelope.parse(text)
+        let replyReference = reply.map {
+            ComposerReplyReference(authorName: conversationAgentIdentity.name, text: $0.quote)
+        }
+        guard let dashboardID = activeDashboardID else {
+            // No saved dashboard to restore into: the words as the draft,
+            // the quoted reply as its chip.
+            prefillComposer(reply?.message ?? text)
+            if let replyReference, canQuoteIntoComposer() {
+                composerQuoteRequest = ComposerQuoteRequest(content: .reply(replyReference))
+            }
+            return
+        }
         composerRestoreRequests.append(ComposerRestoreRequest(
             dashboardID: dashboardID,
             key: durableComposerDraftKeyOnScreen,
-            draft: ComposerDraft(
-                text: reply?.message ?? text,
-                attachments: [],
-                replyReference: reply.map {
-                    ComposerReplyReference(authorName: conversationAgentIdentity.name, text: $0.quote)
-                }
-            ),
+            draft: ComposerDraft(text: reply?.message ?? text, attachments: [], replyReference: replyReference),
             focuses: true,
             pending: nil
         ))

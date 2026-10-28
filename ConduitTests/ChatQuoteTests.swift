@@ -322,4 +322,28 @@ extension ComposerDraftStoreTests {
         XCTAssertNil(AppState.rewindTurn(for: row("u4", .user, "never sent"), in: transcript + [row("u4", .user, "never sent")], snapshot: snapshot))
         XCTAssertNil(AppState.rewindTurn(for: row("u5", .user, "gone", rowId: 42), in: [], snapshot: snapshot))
     }
+
+    @MainActor
+    func testRetryIsOnlyOnAReplyThatAnswersTheLastMessage() {
+        XCTAssertEqual(AppState.retryableReplyID(in: [row("u1", .user, "hi"), row("a1", .assistant, "x")]), "a1")
+        XCTAssertNil(
+            AppState.retryableReplyID(in: [row("u1", .user, "hi"), row("a1", .assistant, "x"), row("u2", .user, "unanswered")]),
+            "/retry would send the unanswered message, not this reply's"
+        )
+        XCTAssertNil(AppState.retryableReplyID(in: [row("u1", .user, "hi")]))
+    }
+
+    func testRestoredWordsGoAboveTheDraftAndASecondChipBecomesAQuote() {
+        let typed = ComposerDraft(text: "typed since", attachments: [], replyReference: ComposerReplyReference(authorName: "Hermes", text: "kept"))
+        let restored = ComposerDraft(text: "my message", attachments: [], replyReference: ComposerReplyReference(authorName: "Hermes", text: "quoted\nreply"))
+
+        let merged = typed.restoring(restored)
+
+        XCTAssertEqual(merged.text, "> quoted\n> reply\n\nmy message\n\ntyped since")
+        XCTAssertEqual(merged.replyReference?.text, "kept")
+
+        let plain = ComposerDraft(text: "", attachments: []).restoring(restored)
+        XCTAssertEqual(plain.text, "my message")
+        XCTAssertEqual(plain.replyReference?.text, "quoted\nreply", "With no chip in the composer, the restored one comes back as a chip")
+    }
 }

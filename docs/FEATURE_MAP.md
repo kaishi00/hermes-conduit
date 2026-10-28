@@ -845,14 +845,17 @@ other chat surfaces.
 **Siblings:** chats, project chats and Bot Chat (one row view) · group rooms ·
 the selection menu · the long-press menu · VoiceOver labels · pinned replies
 (the bar, and the sheet from the chat and from the Chats list) · your own
-message's row · the "Replying to" card on a sent message · /undo and /retry,
-which Edit and resend and Retry run
+message's row · the "Replying to" card on a sent message and on a steered
+one · /undo and /retry, which Edit and resend and Retry run · the composer's
+restore of words put back (failed sends, the waiting message's Edit)
 
 **Code**
 - Reply row: `Conduit/Views/ChatView.swift` (AssistantMessageActions, ReadAloudButton, AssistantMessageMoreMenu), `Conduit/Views/Components/MessageReactionViews.swift` (MessageReactButton)
 - Your own message's row: `Conduit/Views/ChatView.swift` (UserMessageCopyButton, UserMessageMoreMenu)
 - Edit and resend, Retry: `Conduit/Services/AppState.swift` (editAndResend, rewindTurn, rewindLastTurns, latestTurnRanTools); tests in `ConduitTests/AppStateSessionCompressTests.swift` and `ConduitTests/ChatQuoteTests.swift`
-- "Replying to" card and its jump: `Conduit/Views/Components/ChatQuote.swift` (ReplyReferenceQuoteCard, QuotedReplyJump), `Conduit/Services/AppState.swift` (showQuotedReply, quotedReplyMessageID), `Conduit/Views/ChatView.swift` (pendingQuotedReplyJump)
+- "Replying to" card and its jump: `Conduit/Views/Components/ChatQuote.swift` (ReplyReferenceQuoteCard, QuotedReplyJump), `Conduit/Services/AppState.swift` (showQuotedReply, quotedReplyMessageID), `Conduit/Views/ChatView.swift` (UserMessageContent, SteerMessageContent, pendingQuotedReplyJump), `Conduit/Services/ChatScrollEngine.swift` (explicitMessageRequested)
+- Edit and resend's words in the composer: `Conduit/Views/Components/ComposerBar.swift` (applyComposerRestoreRequests), `Conduit/Models/PendingComposerSend.swift` (ComposerDraft.restoring)
+- Which reply offers Retry: `Conduit/Views/ChatRowState.swift` (retryableReplyID)
 - Selection and long-press menus: `Conduit/Views/Components/SelectableTextView.swift`
 - Group rooms: `Conduit/Views/GroupChatView.swift` (GroupMessageCopyButton, GroupMessageQuoteButton, GroupReadAloudButton)
 - Pins: `Conduit/Views/PinnedReplyViews.swift`, `Conduit/Models/PinnedReplies.swift` (overview), `Conduit/Services/AppState+PinnedReplies.swift`, `Conduit/Services/AppState.swift` (deleteBot, forgetBotChatPinnedReplies), the sheet's Chats-list entry points in `Conduit/Views/SidebarView.swift` and `Conduit/Views/V2/V2ChatsView.swift` (showPinnedReplies)
@@ -865,7 +868,7 @@ which Edit and resend and Retry run
 - A branch opens by the stored id `session.create` names, and by its runtime id only when Hermes names none: Hermes' `session.resume` finds sessions only by stored id or title, so the runtime id is "session not found" (2026-10-27, issue 1400, #1402).
 - Your own message's row is Copy and ⋯ (Quote, Edit and resend). Quote puts its words in the draft as a `>` quote, as a selection's Quote does (2026-10-28, issue 1420, #1446).
 - Edit and resend takes back the message and everything after it through Hermes' rewind, as /undo does, and puts its words back ahead of whatever is typed, a quoted reply as its "Replying to" chip; it asks first when later messages would go. Not offered for a message with pictures, files or a recording, which can't come back as they were. There is no edit in place: the model already answered the original (2026-10-28, issue 1420, #1446).
-- Retry runs /retry and asks first when the newest turn ran steps, since retrying runs them again (2026-10-28, issue 1420, #1446).
+- Retry is on the newest reply only while it answers the last message sent (a message after it, stopped or unanswered, is what /retry would resend), runs /retry, and asks first when the newest turn ran steps, since retrying runs them again (2026-10-28, issue 1420, #1446).
 - Tapping a "Replying to" card scrolls to the reply it quoted, found by its words since the envelope carries no id; one no longer in the transcript says so (2026-10-28, issue 1420, #1446).
 - Double-tap and long-press on text stay text selection; reactions come from React or a reaction chip (2026-10-07, #437).
 - Read Aloud has no estimated follow-along highlight; only exact word timings from Hermes would bring it back (2026-10-19, #923).

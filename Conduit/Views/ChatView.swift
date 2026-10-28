@@ -2598,9 +2598,9 @@ struct AssistantMessageMoreMenu: View {
             }
             .disabled(rowState.isBusy || rowState.isBranchingChat || rowState.isOffline)
 
-            // The newest reply only: /retry sends the last message again
-            // (issue 1420).
-            if message.id == rowState.latestAssistantMessageID {
+            // The newest reply only, while it answers the last message sent:
+            // /retry sends that message again (issue 1420).
+            if message.id == rowState.retryableReplyID {
                 Button {
                     if AppState.latestTurnRanTools(in: appState.messages) {
                         confirmsRetry = true

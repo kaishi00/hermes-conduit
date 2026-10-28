@@ -255,7 +255,7 @@ struct ReplyReferenceQuoteCard: View {
                     Haptics.warning()
                     UIAccessibility.post(
                         notification: .announcement,
-                        argument: AppLocalization.string("The quoted reply isn't in this chat anymore.")
+                        argument: AppLocalization.string("Couldn't find the quoted reply in the loaded chat.")
                     )
                 }
             } label: {
