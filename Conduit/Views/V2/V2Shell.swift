@@ -415,6 +415,9 @@ struct V2Shell: View {
     /// A switch picked from the strip is running, from the first tap's
     /// fade-out until the switch is over.
     @State private var isPickingProfile = false
+    /// A strip pick is still fading out and hasn't started its switch: a
+    /// switch started elsewhere meanwhile doesn't bring the content back.
+    @State private var isFadingOutForPick = false
     /// A tab the shell switched to itself, which skips the selection click.
     @State private var programmaticTab: V2Tab?
     /// A settings link waiting for the Settings tab to open its page.
@@ -554,7 +557,7 @@ struct V2Shell: View {
                 // switch is over. A tap kept for after this switch keeps the
                 // content out instead, so it doesn't flicker in and out
                 // between the two.
-                guard queuedProfilePick.profile == nil else { return }
+                guard queuedProfilePick.profile == nil, !isFadingOutForPick else { return }
                 fadeContentBackIn()
             }
             .onChange(of: appState.isProfileSwitching) { _, switching in
@@ -914,6 +917,7 @@ struct V2Shell: View {
         guard profile != appState.activeProfile else { return }
         if haptic { Haptics.medium() }
         isPickingProfile = true
+        isFadingOutForPick = true
         profileSwitchToken &+= 1
         let token = profileSwitchToken
         let distance = reduceMotion ? 0 : Self.profileSwitchDistance * profileSwitchDirection(to: profile)
@@ -926,6 +930,7 @@ struct V2Shell: View {
             // Only a newer strip pick moves the token, and it owns
             // isPickingProfile from then on.
             guard token == profileSwitchToken else { return }
+            isFadingOutForPick = false
             // Out of sight, content moves to the side it arrives from.
             withTransaction(Transaction(animation: nil)) { contentShift = distance }
             var target = profile
