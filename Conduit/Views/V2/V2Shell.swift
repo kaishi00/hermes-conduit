@@ -552,7 +552,9 @@ struct V2Shell: View {
                 // A switch picked here brings the content back itself, after
                 // any tap kept during it has gone too, so it doesn't flicker
                 // in and out between the two.
-                guard !isPickingProfile else { return }
+                // A strip pick waiting behind a switch started elsewhere keeps
+                // it out too, until that pick lands.
+                guard !isPickingProfile, queuedProfilePick.profile == nil else { return }
                 fadeContentBackIn()
             }
             .onChange(of: appState.isProfileSwitching) { _, switching in
