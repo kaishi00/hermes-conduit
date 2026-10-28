@@ -434,6 +434,9 @@ struct ConduitNotificationPreferences: Codable, Equatable {
     /// user (approvals time out and fail closed), so they chime by default.
     var attentionSound = true
     var showPreviews = false
+    /// The chat's title and the profile without the reply's words, when
+    /// `showPreviews` is off (#1415). See `detail`.
+    var showChatNames = false
     /// Independent of `showPreviews`: controls whether pushes carry structured
     /// decision content (answerable approval cards). Defaults on because the
     /// feature's audience is exactly the approval-gate crowd; privacy-focused
@@ -450,6 +453,7 @@ struct ConduitNotificationPreferences: Codable, Equatable {
         case completionSound = "completion_sound"
         case attentionSound = "attention_sound"
         case showPreviews = "show_previews"
+        case showChatNames = "show_chat_names"
         case decisionCards = "decision_cards"
     }
 }
@@ -472,7 +476,55 @@ extension ConduitNotificationPreferences {
         completionSound = try container.decodeIfPresent(Bool.self, forKey: .completionSound) ?? true
         attentionSound = try container.decodeIfPresent(Bool.self, forKey: .attentionSound) ?? true
         showPreviews = try container.decodeIfPresent(Bool.self, forKey: .showPreviews) ?? false
+        showChatNames = try container.decodeIfPresent(Bool.self, forKey: .showChatNames) ?? false
         decisionCards = try container.decodeIfPresent(Bool.self, forKey: .decisionCards) ?? true
+    }
+}
+
+/// How much a notification says (#1415): Settings > Notifications' "Show in
+/// notifications". Stored as the relay's two flags, so a relay without
+/// `show_chat_names` treats Chat names as Generic.
+enum NotificationDetail: CaseIterable {
+    /// Only what happened: "Response ready".
+    case generic
+    /// The chat's title and the profile, none of Hermes' words.
+    case chatNames
+    /// The chat's title, the profile and what Hermes said.
+    case previews
+
+    var title: String {
+        switch self {
+        case .generic: return AppLocalization.string("Generic")
+        case .chatNames: return AppLocalization.string("Chat names")
+        case .previews: return AppLocalization.string("Full previews")
+        }
+    }
+
+    var caption: String {
+        switch self {
+        case .generic: return AppLocalization.string("Notifications say only what happened, like “Response ready”.")
+        case .chatNames: return AppLocalization.string("Notifications name the chat and profile, without what Hermes said.")
+        case .previews: return AppLocalization.string("Notifications name the chat and profile and show what Hermes said.")
+        }
+    }
+}
+
+extension ConduitNotificationPreferences {
+    var detail: NotificationDetail {
+        get { showPreviews ? .previews : showChatNames ? .chatNames : .generic }
+        set {
+            showPreviews = newValue == .previews
+            showChatNames = newValue != .generic
+        }
+    }
+}
+
+extension NotificationSharedSettings {
+    /// What the Notification Service Extension reads to decide how much a
+    /// decrypted push shows.
+    static func mirror(_ preferences: ConduitNotificationPreferences) {
+        showPreviews = preferences.showPreviews
+        showChatNames = preferences.showChatNames
     }
 }
 
@@ -497,7 +549,7 @@ final class PushNotificationService: ObservableObject {
     @Published var preferences = ConduitNotificationPreferences() {
         // The Notification Service Extension decides whether a decrypted
         // push shows its real text; it reads this from the App Group.
-        didSet { NotificationSharedSettings.showPreviews = preferences.showPreviews }
+        didSet { NotificationSharedSettings.mirror(preferences) }
     }
     /// Relay gateways this iPhone holds an end-to-end encryption key for
     /// (#431). Settings > Notifications marks those pairings encrypted.
@@ -803,7 +855,7 @@ final class PushNotificationService: ObservableObject {
             preferences = saved.preferences
             if needsRelayStamp { persistRegistration() }
         }
-        NotificationSharedSettings.showPreviews = preferences.showPreviews
+        NotificationSharedSettings.mirror(preferences)
         NotificationSharedSettings.appLanguage = AppLanguage.current.rawValue
         refreshEncryptionState()
         restoreWaitingTap()
@@ -1840,7 +1892,15 @@ final class PushNotificationService: ObservableObject {
     }
 
     func setPreference(_ keyPath: WritableKeyPath<ConduitNotificationPreferences, Bool>, enabled: Bool) async {
-        preferences[keyPath: keyPath] = enabled
+        await setPreferences { $0[keyPath: keyPath] = enabled }
+    }
+
+    func setDetail(_ detail: NotificationDetail) async {
+        await setPreferences { $0.detail = detail }
+    }
+
+    private func setPreferences(_ change: (inout ConduitNotificationPreferences) -> Void) async {
+        change(&preferences)
         // Queued behind any update on its way: two quick switches never
         // race, so the relay can't end on the older preferences.
         guard let update = queueRegistrationUpdate() else { return }

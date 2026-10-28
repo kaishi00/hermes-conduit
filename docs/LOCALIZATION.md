@@ -127,8 +127,10 @@ the App Language (#1144), from the app's catalog (`NotificationCopy`,
 mirrors its App Language into the notifications App Group for it. The
 phone writes the chrome and the host sends the content: the title comes
 from the event type, or from the `title_label` the notifier plugin sends,
-joined with the chat's `session_title`; the body is the host's own text
-when Show previews is on, else the generic copy for the type. A plaintext
+joined with the chat's `session_title`, and the subtitle names the
+profile; the body is the host's own text when Show in notifications is on
+Full previews, else the generic copy for the type. With Generic the title
+is the generic one too. A plaintext
 push from a pairing without encryption still shows the relay's English
 copy.
 

@@ -548,6 +548,14 @@ enum NotificationSharedSettings {
         set { defaults?.set(newValue, forKey: showPreviewsKey) }
     }
 
+    private static let showChatNamesKey = "conduit.notifications.showChatNames"
+
+    /// Show previews off but the chat's title and the profile shown (#1415).
+    static var showChatNames: Bool {
+        get { defaults?.bool(forKey: showChatNamesKey) ?? false }
+        set { defaults?.set(newValue, forKey: showChatNamesKey) }
+    }
+
     private static let appLanguageKey = "conduit.notifications.appLanguage"
 
     /// The App Language ("system" or a localization identifier), so the

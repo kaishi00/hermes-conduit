@@ -3694,7 +3694,7 @@ private struct NotificationsSettingsDetail: View {
                     notificationToggle(AppLocalization.string("Background task finished"), detail: AppLocalization.string("A delegated agent completes"), keyPath: \.backgroundTaskFinished)
                     notificationToggle(AppLocalization.string("Approval & input sound"), detail: AppLocalization.string("Play a sound when Hermes is waiting on you"), keyPath: \.attentionSound)
                     notificationToggle(AppLocalization.string("Completion sound"), detail: AppLocalization.string("Play a sound when a turn or task finishes"), keyPath: \.completionSound)
-                    notificationToggle(AppLocalization.string("Show previews"), detail: AppLocalization.string("Include response text in notifications"), keyPath: \.showPreviews)
+                    notificationDetailPicker
                     notificationToggle(AppLocalization.string("Approval cards in pushes"), detail: AppLocalization.string("Include approval details so cards work from notifications. Disable for maximum privacy."), keyPath: \.decisionCards)
                 }
 
@@ -4168,6 +4168,33 @@ private struct NotificationsSettingsDetail: View {
     }
 
     @ViewBuilder
+    /// How much a notification says (#1415).
+    private var notificationDetailPicker: some View {
+        let detail = notifications.preferences.detail
+        return VStack(alignment: .leading, spacing: 4) {
+            ConduitMenuPicker(
+                value: detail,
+                choices: NotificationDetail.allCases.map { (id: $0, title: $0.title) },
+                onSelect: { choice in
+                    guard choice != detail else { return }
+                    Haptics.selection()
+                    Task { await notifications.setDetail(choice) }
+                }
+            ) {
+                Text("Show in notifications")
+            }
+            .accessibilityIdentifier("notifications.detail")
+            Text(detail.caption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if detail != .generic {
+                Text("To keep them off the Lock Screen, set Show Previews to When Unlocked in iOS Settings > Notifications > Conduit.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private func notificationToggle(
         _ title: String,
         detail: String,
