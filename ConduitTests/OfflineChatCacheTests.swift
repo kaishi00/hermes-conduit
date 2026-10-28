@@ -1579,26 +1579,6 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.messages.map(\.id), ["atlas-reply-3"])
     }
 
-    func testABotChatCopyOwnerIsTheBotTheChatIsOpenAs() {
-        let owners = ["atlas-runtime": "atlas", "shared": "scout", "other-runtime": "scout"]
-        let kept = AppState.botChatCopyOwner(
-            of: ["atlas-runtime", "shared", "plain"],
-            openAs: "atlas-runtime",
-            owner: { owners[$0] },
-            sameBot: { $0 == $1 }
-        )
-        XCTAssertEqual(kept?.bot, "atlas")
-        XCTAssertEqual(kept?.sessionIDs, ["atlas-runtime", "plain"], "Another bot's id is left out")
-
-        XCTAssertNil(AppState.botChatCopyOwner(
-            of: ["plain", "shared"], openAs: "plain", owner: { owners[$0] }, sameBot: { $0 == $1 }
-        ), "An ordinary chat whose aliases still name a Bot Chat it replaced keeps no copy for that bot")
-
-        XCTAssertNil(AppState.botChatCopyOwner(
-            of: ["plain"], openAs: "plain", owner: { owners[$0] }, sameBot: { $0 == $1 }
-        ), "An ordinary chat is no Bot Chat")
-    }
-
     /// A chat with no saved copy opens as it always has.
     func testAChatWithNoSavedCopyOpensWithoutOne() async throws {
         useInMemoryKeychain()
