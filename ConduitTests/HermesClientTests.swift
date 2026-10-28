@@ -3448,3 +3448,271 @@ extension HermesClientTests {
         XCTAssertLessThan(HermesClient.pingTimeout, HermesClient.livenessProbeTimeout)
     }
 }
+
+// MARK: - A socket kept across a profile switch (#1442)
+
+extension HermesClientTests {
+    private func connectedForHandOff(
+        profile: String? = nil
+    ) async throws -> (client: HermesClient, socket: FakeSocket, transport: FakeTransport) {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport, profile: profile)
+        let receivePending = Gate()
+        socket.onReceivePending = { receivePending.signal() }
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+        try await receivePending.wait("the receive loop to wait on the socket")
+        socket.onReceivePending = nil
+        return (client, socket, transport)
+    }
+
+    private func lastRequest(on socket: FakeSocket) throws -> [String: Any] {
+        try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+    }
+
+    func testAHandedOnSocketCarriesTheNextProfilesRequestsAndEvents() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        var outgoingEvents = 0
+        outgoing.onEvent = { _ in outgoingEvents += 1 }
+        let incoming = makeClient(transport: transport, profile: "work")
+        var incomingEvents: [StreamEvent] = []
+        incoming.onEvent = { incomingEvents.append($0) }
+
+        XCTAssertTrue(outgoing.handOffSocket(to: incoming))
+        XCTAssertFalse(outgoing.isConnected)
+        XCTAssertTrue(incoming.isConnected)
+        XCTAssertFalse(socket.cancelled, "The socket stays open for the next profile")
+        XCTAssertFalse(transport.invalidated)
+        XCTAssertEqual(transport.socketsMade.count, 1, "No second socket is opened")
+        // The outgoing client lets go without closing what it handed on.
+        outgoing.disconnect()
+        XCTAssertFalse(socket.cancelled)
+
+        // The receive the outgoing loop still had waiting brings its frame
+        // to the client holding the socket.
+        try deliverReply(["jsonrpc": "2.0", "method": "event", "params": ["type": "sessions.changed"]], on: socket)
+        await flushMainActor()
+        XCTAssertEqual(incomingEvents.count, 1)
+        XCTAssertEqual(outgoingEvents, 0)
+
+        // Its requests go out under its own profile, and their answers come back to it.
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let list = Task { try await incoming.sessions() }
+        try await sent.wait("the new profile's session list to be sent")
+        let request = try lastRequest(on: socket)
+        XCTAssertEqual((request["params"] as? [String: Any])?["profile"] as? String, "work")
+        try deliverReply(["jsonrpc": "2.0", "id": try XCTUnwrap(request["id"] as? Int), "result": ["sessions": []]], on: socket)
+        let sessions = try await awaitResult(of: list, "the new profile's session list")
+        XCTAssertEqual(sessions.count, 0)
+
+        // Frames after the first are read by its own loop.
+        try deliverReply(["jsonrpc": "2.0", "method": "event", "params": ["type": "sessions.changed"]], on: socket)
+        await flushMainActor()
+        XCTAssertEqual(incomingEvents.count, 2)
+        incoming.disconnect()
+        XCTAssertTrue(socket.cancelled)
+    }
+
+    func testALateAnswerToTheOutgoingProfilesRequestNeverSettlesTheNextOnes() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let outgoingList = Task { try await outgoing.sessions() }
+        try await sent.wait("the outgoing profile's session list to be sent")
+        let outgoingID = try XCTUnwrap(try lastRequest(on: socket)["id"] as? Int)
+
+        let incoming = makeClient(transport: transport, profile: "work")
+        XCTAssertTrue(outgoing.handOffSocket(to: incoming))
+        do {
+            _ = try await awaitResult(of: outgoingList, "the outgoing request to fail")
+            XCTFail("A request of the outgoing profile fails when its client hands the socket on")
+        } catch HermesError.connectionClosed {}
+
+        let sentAgain = Gate()
+        socket.onSend = { sentAgain.signal() }
+        let incomingList = Task { try await incoming.sessions() }
+        try await sentAgain.wait("the new profile's session list to be sent")
+        let incomingID = try XCTUnwrap(try lastRequest(on: socket)["id"] as? Int)
+        XCTAssertGreaterThan(incomingID, outgoingID, "Request ids carry on, so the two never share one")
+
+        // The outgoing profile's answer arrives late: nothing takes it.
+        try deliverReply([
+            "jsonrpc": "2.0", "id": outgoingID,
+            "result": ["sessions": [["id": "old", "title": "Outgoing chat"]]]
+        ], on: socket)
+        await flushMainActor()
+        try deliverReply(["jsonrpc": "2.0", "id": incomingID, "result": ["sessions": []]], on: socket)
+        let sessions = try await awaitResult(of: incomingList, "the new profile's own answer")
+        XCTAssertTrue(sessions.isEmpty, "The new profile's list is its own answer, not the outgoing one")
+        incoming.disconnect()
+    }
+
+    func testASocketHandedOnTwiceStillReachesTheLatestClient() async throws {
+        let (first, socket, transport) = try await connectedForHandOff()
+        let second = makeClient(transport: transport, profile: "work")
+        let third = makeClient(transport: transport, profile: "home")
+        var thirdEvents = 0
+        third.onEvent = { _ in thirdEvents += 1 }
+        XCTAssertTrue(first.handOffSocket(to: second))
+        XCTAssertTrue(second.handOffSocket(to: third))
+        first.disconnect()
+        second.disconnect()
+        XCTAssertFalse(socket.cancelled)
+
+        try deliverReply(["jsonrpc": "2.0", "method": "event", "params": ["type": "sessions.changed"]], on: socket)
+        await flushMainActor()
+        XCTAssertEqual(thirdEvents, 1)
+        third.disconnect()
+    }
+
+    func testAHandedOnSocketThatDropsReportsTheDropToTheClientHoldingIt() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        var outgoingDropped = false
+        outgoing.onDisconnected = { outgoingDropped = true }
+        let incoming = makeClient(transport: transport, profile: "work")
+        let dropped = Gate()
+        incoming.onDisconnected = { dropped.signal() }
+        XCTAssertTrue(outgoing.handOffSocket(to: incoming))
+
+        socket.failReceive(URLError(.networkConnectionLost))
+        try await dropped.wait("the drop to reach the new profile's client")
+        XCTAssertFalse(incoming.isConnected)
+        XCTAssertFalse(outgoingDropped)
+    }
+
+    /// The successor's pings would wait behind a large frame still being
+    /// written and close a working socket (#1265): the switch opens its own.
+    func testASocketStillWritingALargeFrameIsNotHandedOn() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        socket.holdsSendCompletion = true
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let picture = String(repeating: "A", count: HermesClient.largeFrameBytes)
+        let upload = Task { try await outgoing.attachImage("s1", base64: picture, filename: "photo.jpg") }
+        try await sent.wait("the image upload to go out")
+        socket.onSend = nil
+
+        XCTAssertFalse(outgoing.canHandOffSocket)
+        let incoming = makeClient(transport: transport, profile: "work")
+        XCTAssertFalse(outgoing.handOffSocket(to: incoming))
+        XCTAssertTrue(outgoing.isConnected)
+        XCTAssertFalse(incoming.isConnected)
+
+        socket.finishHeldSends()
+        await flushMainActor()
+        XCTAssertTrue(outgoing.canHandOffSocket, "Once the frame is written the socket can be handed on")
+        upload.cancel()
+        outgoing.disconnect()
+    }
+
+    func testAnApprovalOpenedBeforeTheHandOffIsStillWithdrawnAfterIt() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        try deliverReply([
+            "jsonrpc": "2.0", "id": "srq-a1a1a1a1a1a1", "method": "approval",
+            "params": ["session_id": "runtime-1", "request_id": "queue-1", "command": "rm -rf scratch"]
+        ], on: socket)
+        await flushMainActor()
+
+        let incoming = makeClient(transport: transport, profile: "work")
+        var events: [StreamEvent] = []
+        incoming.onEvent = { events.append($0) }
+        XCTAssertTrue(outgoing.handOffSocket(to: incoming))
+        outgoing.disconnect()
+        try deliverReply([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "request.cancel", "session_id": "runtime-1",
+                "payload": ["id": "srq-a1a1a1a1a1a1", "method": "approval", "reason": "timeout"]
+            ]
+        ], on: socket)
+        await flushMainActor()
+
+        let withdrawn = events.compactMap { event -> String? in
+            guard case .approvalWithdrawn(_, let requestId, _) = event else { return nil }
+            return requestId
+        }
+        XCTAssertEqual(withdrawn, ["queue-1"])
+        XCTAssertTrue(incoming.isConnected)
+        incoming.disconnect()
+    }
+
+    func testASocketWaitingOnItsCapabilitiesReplyIsNotHandedOn() async throws {
+        // The reply settles the advertisement on the client that asked; a
+        // successor would never hear it and never advertise again.
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        try deliverReply([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "gateway.ready", "payload": [String: Any]()]
+        ], on: socket)
+        try await sent.wait("client.capabilities to be sent after gateway.ready")
+        socket.onSend = nil
+        let request = try lastRequest(on: socket)
+        XCTAssertEqual(request["method"] as? String, "client.capabilities")
+
+        XCTAssertFalse(outgoing.canHandOffSocket)
+        let incoming = makeClient(transport: transport, profile: "work")
+        XCTAssertFalse(outgoing.handOffSocket(to: incoming))
+        XCTAssertTrue(outgoing.isConnected)
+        XCTAssertFalse(incoming.isConnected)
+
+        try deliverReply([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(request["id"] as? Int), "result": ["server_requests": true]
+        ], on: socket)
+        await flushMainActor()
+        XCTAssertTrue(outgoing.canHandOffSocket, "Once the reply lands the socket can be handed on")
+        outgoing.disconnect()
+    }
+
+    func testASocketTheServerHasClosedIsNotHandedOn() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        socket.closeCode = .goingAway
+        let incoming = makeClient(transport: transport, profile: "work")
+        XCTAssertFalse(outgoing.canHandOffSocket)
+        XCTAssertFalse(outgoing.handOffSocket(to: incoming))
+        XCTAssertFalse(incoming.isConnected)
+        outgoing.disconnect()
+    }
+
+    func testAClientWithNoOpenSocketHandsNothingOn() async throws {
+        let transport = FakeTransport()
+        let outgoing = makeClient(transport: transport)
+        let incoming = makeClient(transport: transport, profile: "work")
+        XCTAssertFalse(outgoing.canHandOffSocket)
+        XCTAssertFalse(outgoing.handOffSocket(to: incoming))
+        XCTAssertFalse(incoming.isConnected)
+        XCTAssertTrue(transport.socketsMade.isEmpty)
+    }
+
+    func testASocketIsNotHandedOnToAClientThatHasOne() async throws {
+        let (outgoing, socket, _) = try await connectedForHandOff()
+        let (incoming, incomingSocket, _) = try await connectedForHandOff(profile: "work")
+        XCTAssertFalse(outgoing.handOffSocket(to: incoming))
+        XCTAssertTrue(outgoing.isConnected)
+        outgoing.disconnect()
+        incoming.disconnect()
+        XCTAssertTrue(socket.cancelled)
+        XCTAssertTrue(incomingSocket.cancelled)
+    }
+
+    func testASocketIsNotHandedOnToAnotherDashboard() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        let elsewhere = HermesClient(
+            connection: HermesConnection(baseUrl: "https://other.example", ticket: "ticket"),
+            profile: "work",
+            transportFactory: { transport }
+        )
+        XCTAssertFalse(outgoing.handOffSocket(to: elsewhere))
+        XCTAssertTrue(outgoing.isConnected)
+        XCTAssertFalse(elsewhere.isConnected)
+        outgoing.disconnect()
+        XCTAssertTrue(socket.cancelled)
+    }
+}

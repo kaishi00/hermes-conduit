@@ -1241,9 +1241,125 @@ final class HermesClient: ObservableObject {
 
         // Start listening for messages
         receiveTask = Task { [weak self] in
-            await self?.receiveLoop()
+            await self?.receiveLoop(on: socket)
         }
         startKeepalive(for: socket)
+    }
+
+    /// Hands this client's open socket to `successor`, a client for another
+    /// profile on the same dashboard, instead of closing it. The socket
+    /// isn't tied to a profile (every request names its own), so a profile
+    /// switch skips a new ticket and socket, two seconds and more on a slow
+    /// path (#1442). This client ends as if disconnected: its requests still
+    /// waiting fail, and frames still coming reach only `successor`, whose
+    /// request ids carry on from this client's so a late answer to one of
+    /// this client's requests matches nothing there. False, with nothing
+    /// changed, when there's no open socket to hand on.
+    @discardableResult
+    func handOffSocket(to successor: HermesClient) -> Bool {
+        guard canHandOffSocket, let socket,
+              successor !== self, successor.socket == nil,
+              successor.connection.baseUrl == connection.baseUrl else { return false }
+        closedIntentionally = true
+        stopKeepalive()
+        failAllPendingRequests(with: HermesError.connectionClosed)
+        self.socket = nil
+        isConnected = false
+        socketSuccessor = successor
+        successor.adoptSocket(socket, transport: transport, from: self)
+        transport = nil
+        // Not cancelled: the receive it runs brings the socket's next frame
+        // to the successor, and a later disconnect() must not end it as a drop.
+        receiveTask = nil
+        return true
+    }
+
+    /// Whether `handOffSocket` would hand the socket on: it's open, no large
+    /// frame is still being written (the successor's pings would wait
+    /// behind it and close the socket, #1265), and the gateway has answered
+    /// this socket's `client.capabilities` (its reply would come to a
+    /// client that never asked, and the successor wouldn't advertise again).
+    /// A socket whose close frame has come in, before its receive fails,
+    /// isn't open.
+    var canHandOffSocket: Bool {
+        socket?.closeCode == .invalid && isConnected && socketHasOpened && !closedIntentionally
+            && requestsBeingWritten.isEmpty && !capabilityReplyPending
+    }
+
+    private func adoptSocket(
+        _ socket: any HermesWebSocket,
+        transport: (any HermesWebSocketTransport)?,
+        from predecessor: HermesClient
+    ) {
+        self.socket = socket
+        self.transport = transport
+        requestId = max(requestId, predecessor.requestId)
+        connectGeneration &+= 1
+        socketHasOpened = true
+        closedIntentionally = false
+        // The gateway already has this socket's capabilities.
+        advertisedSocket = predecessor.advertisedSocket
+        backendCountsDeclines = predecessor.backendCountsDeclines
+        // Server requests still open on the socket come here, so a later
+        // request.cancel still withdraws their cards.
+        openServerRequestIDs.formUnion(predecessor.openServerRequestIDs)
+        approvalQueueIDs.merge(predecessor.approvalQueueIDs) { mine, _ in mine }
+        clarifySessions.merge(predecessor.clarifySessions) { mine, _ in mine }
+        isConnected = true
+        startKeepalive(for: socket)
+        // A receive already waiting on the socket (URLSession's can't be
+        // called off) brings its frame here, and this client reads on from
+        // it; a second receive could take a frame out of turn.
+        if predecessor.isReceiving || predecessor.awaitsHandedOnFrame {
+            awaitsHandedOnFrame = true
+        } else {
+            receiveTask = Task { [weak self] in
+                await self?.receiveLoop(on: socket)
+            }
+        }
+    }
+
+    /// The client this one handed its socket to. Held while this client's
+    /// last receive waits, so its frame always finds the client holding
+    /// the socket, however many switches ago it was handed on.
+    private var socketSuccessor: HermesClient?
+    /// Set while a predecessor's receive is still waiting on this client's
+    /// socket: its frame comes here, then this client reads on.
+    private var awaitsHandedOnFrame = false
+    /// A receive loop is running: its receive may be waiting on the socket.
+    private var isReceiving = false
+
+    /// The successor, let go once this client's last receive has ended.
+    private func takeSocketSuccessor() -> HermesClient? {
+        defer { socketSuccessor = nil }
+        return socketSuccessor
+    }
+
+    /// A frame read on `socket` by a client it was handed on from: the
+    /// client holding it now handles it and reads on.
+    private func receiveHandedOn(_ frame: DecodedFrame, on socket: any HermesWebSocket) {
+        guard self.socket === socket else {
+            socketSuccessor?.receiveHandedOn(frame, on: socket)
+            return
+        }
+        guard awaitsHandedOnFrame else { return }
+        awaitsHandedOnFrame = false
+        lastInboundAt = Date()
+        handleMessage(frame)
+        guard self.socket === socket else { return }
+        receiveTask = Task { [weak self] in
+            await self?.receiveLoop(on: socket)
+        }
+    }
+
+    /// The receive a predecessor still had waiting on `socket` failed.
+    private func receiveFailedHandedOn(on socket: any HermesWebSocket) {
+        guard self.socket === socket else {
+            socketSuccessor?.receiveFailedHandedOn(on: socket)
+            return
+        }
+        awaitsHandedOnFrame = false
+        receiveFailed(on: socket)
     }
 
     /// The `/api/ws` upgrade for `ticket`: proxy headers first, then what
@@ -1454,28 +1570,29 @@ final class HermesClient: ObservableObject {
         openContinuation = nil
     }
 
-    private func receiveLoop() async {
-        guard let socket = socket else { return }
+    private func receiveLoop(on socket: any HermesWebSocket) async {
+        guard self.socket === socket else { return }
+        isReceiving = true
+        defer { isReceiving = false }
 
         while !Task.isCancelled {
             do {
                 let message = try await socket.receive()
-                lastInboundAt = Date()
                 // A reconnect replaces `self.socket`; if this loop has been
                 // superseded, drop the frame rather than dispatch it —
                 // `handleMessage` has no identity check of its own and could
                 // otherwise fire `onEvent`/resolve pending RPCs for the new
-                // connection. Same guard the catch uses below.
-                guard self.socket === socket else { break }
-                let data: Data
-                switch message {
-                case .data(let bytes):
-                    data = bytes
-                case .string(let text):
-                    data = Data(text.utf8)
-                @unknown default:
-                    continue
+                // connection. Same guard the catch uses below. A socket
+                // handed to another profile's client goes on there, frame
+                // and all.
+                guard self.socket === socket else {
+                    if let next = takeSocketSuccessor(), let data = Self.frameData(message) {
+                        next.receiveHandedOn(await Self.decodeInBackground(data), on: socket)
+                    }
+                    break
                 }
+                lastInboundAt = Date()
+                guard let data = Self.frameData(message) else { continue }
                 let frame: DecodedFrame
                 if data.count >= Self.backgroundDecodeThreshold {
                     // A big frame (a resume, a history page, a tool's
@@ -1483,7 +1600,10 @@ final class HermesClient: ObservableObject {
                     // off the main actor so it can't stall a scroll. The
                     // loop waits for it, so frames still apply in order.
                     frame = await Self.decodeInBackground(data)
-                    guard self.socket === socket else { break }
+                    guard self.socket === socket else {
+                        takeSocketSuccessor()?.receiveHandedOn(frame, on: socket)
+                        break
+                    }
                 } else {
                     frame = DecodedFrame(data)
                 }
@@ -1496,22 +1616,39 @@ final class HermesClient: ObservableObject {
                 // unguarded late catch from the superseded loop would mark the
                 // healthy new connection disconnected and fail its in-flight
                 // RPCs. didOpen/didClose/failSocketOpen guard the same way.
-                guard self.socket === socket else { break }
-                isConnected = false
-                stopKeepalive()
-                // No response can ever arrive on a dead socket; failing the
-                // in-flight requests here keeps awaiting UI from hanging for
-                // the remainder of each request's timeout.
-                failAllPendingRequests(with: HermesError.connectionClosed)
-                // Drop the dead socket: its `closeCode` stays `.invalid` after
-                // a receive error, so leaving it installed would let `rpc`
-                // re-issue against it and hang until its own timeout.
-                self.socket = nil
-                if !closedIntentionally {
-                    onDisconnected?()
+                // A socket handed on fails for the client holding it.
+                guard self.socket === socket else {
+                    takeSocketSuccessor()?.receiveFailedHandedOn(on: socket)
+                    break
                 }
+                receiveFailed(on: socket)
                 break
             }
+        }
+    }
+
+    nonisolated private static func frameData(_ message: URLSessionWebSocketTask.Message) -> Data? {
+        switch message {
+        case .data(let bytes): return bytes
+        case .string(let text): return Data(text.utf8)
+        @unknown default: return nil
+        }
+    }
+
+    private func receiveFailed(on socket: any HermesWebSocket) {
+        guard self.socket === socket else { return }
+        isConnected = false
+        stopKeepalive()
+        // No response can ever arrive on a dead socket; failing the
+        // in-flight requests here keeps awaiting UI from hanging for
+        // the remainder of each request's timeout.
+        failAllPendingRequests(with: HermesError.connectionClosed)
+        // Drop the dead socket: its `closeCode` stays `.invalid` after
+        // a receive error, so leaving it installed would let `rpc`
+        // re-issue against it and hang until its own timeout.
+        self.socket = nil
+        if !closedIntentionally {
+            onDisconnected?()
         }
     }
 

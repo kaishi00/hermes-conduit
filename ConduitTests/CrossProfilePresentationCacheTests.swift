@@ -413,6 +413,52 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages, fixtures.messages)
     }
 
+    /// The open socket isn't tied to a profile: a switch hands it to the new
+    /// profile's client instead of minting a ticket and opening another,
+    /// about two seconds on a slow path (#1442).
+    func testAProfileSwitchKeepsTheOpenSocket() async throws {
+        let fixtures = workSessionFixtures()
+        final class Counts { var mints = 0; var sockets = 0 }
+        let counts = Counts()
+        var operations = switchLifecycleOperations(workCatalog: [fixtures.session]) { client in
+            (client.profile ?? "default") == "work" ? fixtures.messages : []
+        }
+        operations.connectClient = nil
+        operations.mintTicket = { _ in
+            counts.mints += 1
+            return "profile-ticket"
+        }
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        transport.nextSocket = {
+            counts.sockets += 1
+            return socket
+        }
+        let harness = makeHarness(lifecycleOperations: operations) { _ in }
+        let connection = HermesConnection(baseUrl: "https://127.0.0.1:1", ticket: "saved-ticket")
+        harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: "session-a"), for: "default")
+        harness.coordinator.rememberSession(.dashboard(profile: "work", sessionID: fixtures.session.id), for: "work")
+        seedOutgoingTranscript(in: harness.appState, connection: connection, sessionID: "session-a")
+        let outgoing = HermesClient(connection: connection, profile: "default", transportFactory: { transport })
+        transport.open(socket)
+        try await outgoing.connect()
+        harness.appState.client = outgoing
+        addTeardownBlock { harness.appState.client?.disconnect() }
+
+        await harness.appState.switchProfile(to: "work")
+
+        XCTAssertEqual(harness.appState.activeProfile, "work")
+        let incoming = try XCTUnwrap(harness.appState.client)
+        XCTAssertFalse(incoming === outgoing)
+        XCTAssertEqual(incoming.profile, "work")
+        XCTAssertTrue(incoming.isConnected)
+        XCTAssertFalse(outgoing.isConnected)
+        XCTAssertEqual(socket.closeCode, .invalid, "The socket stays open for the new profile")
+        XCTAssertEqual(counts.sockets, 1, "No second socket is opened")
+        XCTAssertEqual(counts.mints, 0, "No ticket is minted")
+        XCTAssertEqual(harness.appState.messages, fixtures.messages)
+    }
+
     /// A failed switch that already flipped the identity must fence anything
     /// scheduled mid-attempt, and rollback flushes the RESTORED previous
     /// profile's transcript under its own namespace only — never leaving
