@@ -1061,6 +1061,8 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             XCTAssertNotNil(member["handle"])
             XCTAssertNotNil(member["display_name"])
         }
+        XCTAssertEqual(Set(recorder.members.compactMap { $0["display_name"] as? String }), ["Alpha", "Beta"],
+                       "an unnamed bot joins by its id capitalized, as Bots names it (#1448)")
         // Creation opens the fresh room; closing leaves session state alone.
         XCTAssertEqual(appState.activeRoomSurface?.room.roomID, "room-1")
         appState.closeGroupRoom()

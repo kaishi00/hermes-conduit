@@ -1365,7 +1365,7 @@ the bot's SOUL messaging section · README.md's bots line
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-25, at #1259.
+**Checked:** 2026-10-28, #1448 (an unnamed teammate is named by its id capitalized in its notes, replies and steps, through displayLabel); 2026-10-25, at #1259.
 
 ## Links in messages
 
