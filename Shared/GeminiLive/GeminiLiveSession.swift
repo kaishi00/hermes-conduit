@@ -251,6 +251,11 @@ final class GeminiLiveSession {
     /// A new connection took over. Function calls opened on the previous
     /// connection can no longer be answered on this one.
     var onConnectionReplaced: (@MainActor () -> Void)?
+    /// Privacy-safe steps for the call's trace. Only Qwen's socket reports
+    /// them (its server's turn detection, #1418); Gemini sends no such events.
+    var onTrace: (@MainActor (String) -> Void)?
+    /// The connection that already traced dropping microphone audio.
+    private var tracedAudioDrop: UUID?
     /// Counts connections that took over: a function call made under one
     /// value can't be answered once it changes.
     private(set) var connectionGeneration = 0
@@ -403,7 +408,13 @@ final class GeminiLiveSession {
             // A closed writer's frames belong to a connection already gone.
             if !(error is CancellationError) { self?.connectionFailed(id, error: error) }
         }
-        if !queued { onFailure?() }
+        if !queued {
+            if message.isAudio, let onTrace, tracedAudioDrop != id {
+                tracedAudioDrop = id
+                onTrace("Microphone audio dropped: the connection fell behind")
+            }
+            onFailure?()
+        }
     }
 
     private func socketWriter(for socket: GeminiLiveSocket) -> LiveVoiceSocketWriter {
@@ -444,7 +455,7 @@ final class GeminiLiveSession {
             if hasConnectedOnce { startingFresh = true }
             do {
                 let request = try QwenLiveSocket.request(token: token)
-                socket = QwenLiveSocket(upstream: openSocket(request), voice: voice.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 } ?? token.qwenVoice)
+                socket = QwenLiveSocket(upstream: openSocket(request), voice: voice.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 } ?? token.qwenVoice, onTrace: onTrace)
             } catch {
                 fail(UserFacingError.message(for: error))
                 return

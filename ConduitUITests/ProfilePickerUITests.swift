@@ -78,8 +78,8 @@ final class ProfilePickerUITests: XCTestCase {
             "A place with no selection target must not start a switch. Tree:\n\(app.debugDescription)"
         )
 
-        // The probe is the gap just past the row's accessory: every interactive
-        // element in the row ends at that accessory's trailing edge, so a point
+        // The probe is the gap just past the row's accessory: the row's 12 pt
+        // spacing separates it from the Edit menu that follows, so a point 6 pt
         // beyond it is reached only by the card-sized selection surface behind
         // the row. (Taking the accessory's mid-point instead lands inside the
         // text column's button on rows whose accessory is a narrow chevron — the

@@ -215,7 +215,7 @@ enum GatewayMediaTags {
         result.append(.text(text))
     }
 
-    private static let leftoverMarkers: Set<Character> = ["-", "+", "*", "_", "~", "`", "'", "\"", "(", ")", "[", "]", "{", "}", ".", ",", ";", ":", "!", "?", ">", "#"]
+    static let leftoverMarkers: Set<Character> = ["-", "+", "*", "_", "~", "`", "'", "\"", "(", ")", "[", "]", "{", "}", ".", ",", ";", ":", "!", "?", ">", "#"]
 
     /// Ranges of single-backtick inline code, so a tag shown as an example
     /// (`` `MEDIA:/path` ``) stays text.

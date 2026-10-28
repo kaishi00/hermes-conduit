@@ -576,7 +576,6 @@ struct SettingsView: View {
     let loadProfileConfigOptions: () async -> ProfileConfigOptions
     let loadProfileModelDefaults: () async -> ProfileModelDefaults?
     let persistProfileMainModel: (String, String, String) async -> Bool
-    let saveDefaultProfileName: (String) -> Void
     let reconnect: () async -> Bool
     let disconnect: () -> Void
     /// V2's Settings tab: the home page shows this bar (the profile picker)
@@ -663,8 +662,7 @@ struct SettingsView: View {
         case .profile:
             ProfileSettingsDetail(
                 profile: snapshot.profile,
-                displayName: snapshot.profileDisplayName,
-                saveDefaultProfileName: saveDefaultProfileName
+                displayName: snapshot.profileDisplayName
             )
         case .model:
             ProfileConfigSettingsPage(
@@ -718,7 +716,9 @@ struct SettingsView: View {
                         runASRTest: { await appState.runVoiceASRTest() },
                         runTTSTest: { await appState.runVoiceTTSTest() }
                     ),
-                    voiceEnabled: appState.isVoiceEnabled,
+                    // The saved switch: while Conduit reconnects, voice isn't
+                    // usable yet, but it wasn't turned off.
+                    voiceEnabled: appState.activeProfileVoiceSwitch,
                     transcriptionMode: appState.voiceTranscriptionMode,
                     transcriptionModeChosen: voicePreferences.transcriptionMode != nil,
                     speechOutput: voicePreferences.speechOutput,
@@ -1364,7 +1364,7 @@ private struct SettingsHome: View {
             v2Action(
                 icon: "person.2.crop.square.stack",
                 title: AppLocalization.string("Profiles"),
-                detail: AppLocalization.string("Add, reorder, or change profile photos"),
+                detail: AppLocalization.string("Rename, reorder, or change profile photos"),
                 identifier: "settings.profiles",
                 first: true
             ) {
@@ -1589,16 +1589,19 @@ private struct ProfileSettingsDetail: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let profile: String
     let displayName: String
-    let saveDefaultProfileName: (String) -> Void
     @EnvironmentObject private var appState: AppState
     @State private var name: String
+    /// The name the field last showed: Save writes nothing until it's edited.
+    @State private var seeded: String
     @State private var didSave = false
+    @State private var isSaving = false
+    @State private var saveError: String?
 
-    init(profile: String, displayName: String, saveDefaultProfileName: @escaping (String) -> Void) {
+    init(profile: String, displayName: String) {
         self.profile = profile
         self.displayName = displayName
-        self.saveDefaultProfileName = saveDefaultProfileName
         _name = State(initialValue: displayName)
+        _seeded = State(initialValue: displayName)
     }
 
     var body: some View {
@@ -1608,29 +1611,68 @@ private struct ProfileSettingsDetail: View {
                 Text("Choose a different profile from the session drawer. Chat, model, workspace, and memory preferences on the other settings pages follow that profile.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
-            if profile == "default" {
-                ConduitSettingsSection(title: AppLocalization.string("On this device"), symbol: "pencil", tint: .conduitAccent) {
-                    Text("Display name").font(.subheadline.weight(.semibold))
-                    TextField("Hermes", text: $name)
-                        .textInputAutocapitalization(.words)
-                        .padding(10)
-                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    Text("This only changes how the default profile is named in Conduit. Hermes itself still uses the default profile.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    Button(didSave ? AppLocalization.string("Saved") : AppLocalization.string("Save display name")) {
-                        saveDefaultProfileName(name)
-                        name = appState.defaultProfileName
-                        didSave = true
-                    }
-                        .buttonStyle(.settingsPrimary)
+            ConduitSettingsSection(title: namedOnDevice ? AppLocalization.string("On this device") : AppLocalization.string("Name"), symbol: "pencil", tint: .conduitAccent) {
+                Text("Display name").font(.subheadline.weight(.semibold))
+                TextField("Hermes", text: $name)
+                    .textInputAutocapitalization(.words)
+                    // What's typed mid-save would be replaced by the saved name.
+                    .disabled(isSaving)
+                    .padding(10)
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                Text(BotManagement.isDefaultProfile(profile)
+                     ? AppLocalization.string("This only changes how the default profile is named in Conduit. Hermes itself still uses the default profile.")
+                     : namedOnDevice
+                        ? AppLocalization.string("This only changes how the profile is named in Conduit.")
+                        : AppLocalization.string("Chats and settings stay with the profile. Bots and Hermes Desktop show the new name too."))
+                    .font(.footnote).foregroundStyle(.secondary)
+                if let saveError {
+                    Text(saveError).font(.footnote).foregroundStyle(.red)
                 }
+                Button(didSave ? AppLocalization.string("Saved") : AppLocalization.string("Save display name")) {
+                    save()
+                }
+                    .buttonStyle(.settingsPrimary)
+                    .disabled(isSaving)
             }
         }
         .navigationTitle("Profile")
+        // A rename elsewhere (Edit Bot, the Profiles sheet) shows here
+        // unless the field is being edited.
+        .onAppear(perform: followCurrentName)
+        .onChange(of: currentDisplayName) { _, _ in followCurrentName() }
+        .onChange(of: name) { _, _ in if name != seeded { didSave = false } }
+    }
+
+    private func followCurrentName() {
+        guard name == seeded else { return }
+        name = currentDisplayName
+        seeded = currentDisplayName
     }
 
     private var currentDisplayName: String {
-        profile == "default" ? appState.defaultProfileName : displayName
+        appState.profileDisplayName(profile)
+    }
+
+    /// The main profile's name is Conduit's own; any other profile's is its
+    /// bot title on Hermes, unless the gateway has no bot looks.
+    private var namedOnDevice: Bool {
+        BotManagement.isDefaultProfile(profile) || !appState.profilePhotosLiveOnHermes
+    }
+
+    private func save() {
+        guard name.trimmingCharacters(in: .whitespacesAndNewlines)
+                != seeded.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+        isSaving = true
+        saveError = nil
+        Task { @MainActor in
+            saveError = await appState.renameProfile(profile, to: name)
+            isSaving = false
+            // A failed save keeps what was typed, to try again.
+            guard saveError == nil else { return }
+            name = appState.profileDisplayName(profile)
+            seeded = name
+            didSave = true
+        }
     }
 }
 
@@ -3577,6 +3619,10 @@ private struct NotificationsSettingsDetail: View {
     @State private var relayDraftInvalid = false
     @State private var pairing = false
     @State private var pairingError: String?
+    /// The profile the last Pair tap was for: what it did stays on screen
+    /// (a haptic alone left people unsure anything happened), for that
+    /// profile only.
+    @State private var pairTapProfile: String?
     @AppStorage(LiveTurnActivities.enabledDefaultsKey) private var liveActivitiesEnabled = true
 
     private func trimmed(_ value: String) -> String {
@@ -3992,6 +4038,7 @@ private struct NotificationsSettingsDetail: View {
             Task {
                 pairing = true
                 pairingError = nil
+                pairTapProfile = profile
                 do {
                     try await appState.pairProfileWithThisDevice(profile)
                     Haptics.success()
@@ -4003,7 +4050,9 @@ private struct NotificationsSettingsDetail: View {
             }
         } label: {
             Label(
-                pairing ? AppLocalization.string("Pairing…") : AppLocalization.string("Pair \(profile) with this iPhone"),
+                // The automatic pairing runs on the same flag and holds the
+                // button too, so it says so rather than looking stuck.
+                pairing || notifications.isPairing ? AppLocalization.string("Pairing…") : AppLocalization.string("Pair \(profile) with this iPhone"),
                 systemImage: "link"
             )
             .frame(maxWidth: .infinity)
@@ -4018,10 +4067,17 @@ private struct NotificationsSettingsDetail: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
-        if let pairingError {
+        if pairTapProfile != profile || pairing {
+            EmptyView()
+        } else if let pairingError {
             Label(pairingError, systemImage: "exclamationmark.triangle.fill")
                 .font(.footnote)
                 .foregroundStyle(.red)
+        } else {
+            Label(AppLocalization.string("Paired. Notifications and calls from \(appState.profileDisplayName(profile)) now come to this iPhone."), systemImage: "checkmark.circle.fill")
+                .font(.footnote)
+                .foregroundStyle(.green)
+                .accessibilityIdentifier("notifications.paired")
         }
     }
 

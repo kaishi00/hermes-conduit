@@ -107,10 +107,15 @@ extension ComposerDraft {
     }
 
     /// `restored` put back over this draft: its words first, then what was
-    /// typed since; the reply chip already there stays.
+    /// typed since; the reply chip already there stays, and a second chip's
+    /// reply comes back as a quote above its words rather than being lost.
     func restoring(_ restored: ComposerDraft) -> ComposerDraft {
-        ComposerDraft(
-            text: Self.joined(restored.text, text),
+        var restoredText = restored.text
+        if let kept = replyReference, let other = restored.replyReference, other != kept {
+            restoredText = Self.joined(ChatQuote.blockquote(other.text), restoredText)
+        }
+        return ComposerDraft(
+            text: Self.joined(restoredText, text),
             attachments: attachments + restored.attachments,
             replyReference: replyReference ?? restored.replyReference
         )

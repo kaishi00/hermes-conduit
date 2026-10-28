@@ -95,6 +95,32 @@ extension HermesVoiceGatewayTimeoutTests {
         session.stop()
     }
 
+    /// Local Live traces the same turn steps as Grok Live (#1418).
+    func testLocalLiveSessionTracesTurnDetectionAndTheUsersTurns() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        var trace: [String] = []
+        session.onTrace = { trace.append($0) }
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated", "session": ["turn_detection": ["type": "server_vad", "silence_duration_ms": 500]]])
+        try await passLocalLiveReadiness(socket, session: session)
+        socket.deliver(["type": "response.done"])
+
+        session.send(.audio(Data(count: 3_200)))
+        socket.deliver(["type": "input_audio_buffer.speech_started"])
+        socket.deliver(["type": "input_audio_buffer.speech_stopped"])
+        socket.deliver(["type": "response.created"])
+        await localLiveSettle(until: { trace.contains("Reply started") })
+        XCTAssertEqual(trace, [
+            "Turn detection: server_vad, silence ms 500",
+            "Speech start heard (before it: microphone loudest -96 dBFS, quietest -96 dBFS)",
+            "Speech end heard after 0.0 s (no microphone audio)",
+            "Reply started",
+        ])
+        session.stop()
+    }
+
     func testLocalLiveSplitsLongRepliesIntoFramesThePluginTakes() {
         XCTAssertEqual(LocalLiveProtocol.deltaChunks(""), [])
         XCTAssertEqual(LocalLiveProtocol.deltaChunks("Hello."), ["Hello."])
@@ -637,6 +663,38 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(runner.isFollowingReply)
     }
 
+    func testLocalLiveTurnLeavesNarratedActionsOutOfSpeech() async {
+        let script = LocalLiveTurnScript()
+        let runner = script.makeRunner()
+        runner.start(turnID: "t1", text: "Is it done?")
+        await localLiveSettle(until: { !script.submitted.isEmpty })
+        let chunks = ["Order! *sets", " down the gav", "el* The heist ", "is done, 5 * 3", " ways."]
+        for chunk in chunks {
+            runner.observe(.messageDelta(sessionId: "rt-1", text: chunk))
+        }
+        runner.observe(.messageComplete(sessionId: "rt-1", messageId: "m1", content: chunks.joined(), reasoning: nil))
+        // A dropped action leaves a space, which can double across deltas.
+        let said = script.spoken.map { $0.replacingOccurrences(of: "t1:", with: "") }.joined()
+            .replacingOccurrences(of: "  ", with: " ")
+        XCTAssertEqual(said, "Order! The heist is done, 5 * 3 ways.", "the action is left out, the spaced * is said")
+        XCTAssertEqual(script.done, ["t1"])
+    }
+
+    func testLocalLiveSaysHeldWordsBeforeTheCallsOwnLine() async {
+        let script = LocalLiveTurnScript()
+        let runner = script.makeRunner()
+        runner.start(turnID: "t1", text: "Clear the old logs")
+        await localLiveSettle(until: { !script.submitted.isEmpty })
+        runner.observe(.messageDelta(sessionId: "rt-1", text: "Let me check *the calendar for"))
+        let approval = ApprovalActivity(sessionId: "rt-1", requestId: "req-1", command: "rm -rf logs/old",
+                                        description: "Delete the old logs", choices: nil, allowPermanent: false,
+                                        smartDenied: false, status: .pending, choice: nil, error: nil)
+        runner.observe(.approval(sessionId: "rt-1", activity: approval))
+        let said = script.spoken.map { $0.replacingOccurrences(of: "t1:", with: "") }.joined()
+        XCTAssertTrue(said.hasPrefix("Let me check *the calendar for\n"), "an unclosed marker's words are said, not dropped")
+        XCTAssertTrue(said.contains("Delete the old logs"))
+    }
+
     func testLocalLiveTurnShowsWhatsToBeSeenAndSaysTheRest() async {
         let script = LocalLiveTurnScript()
         let runner = script.makeRunner()
@@ -769,6 +827,15 @@ extension VoiceConversationControllerTests {
         }
         XCTAssertEqual(SpokenMediaTagFilter.filter("MEDIA:/opt/data/cache/audio/tts_1.mp3"), "", "only a tag: nothing said")
         XCTAssertEqual(SpokenMediaTagFilter.filter("Call me Medina, not media."), "Call me Medina, not media.")
+        // The files go on the call's screen, as the chat shows them.
+        var splitter = SpokenVisualSplitter()
+        _ = splitter.feed(reply) + splitter.finish()
+        XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/opt/data/cache/audio/tts_20261028_111922_603221.mp3\nMEDIA:/tmp/b.pdf")
+        // A tag written as a link is said by its label and listed with the
+        // links, not twice.
+        splitter.reset()
+        XCTAssertEqual(splitter.feed("See [the report](MEDIA:/r.pdf) now.\n") + splitter.finish(), "See the report now.\n")
+        XCTAssertEqual(splitter.visualMarkdown, "- [the report](MEDIA:/r.pdf)")
     }
 
     func testLocalLiveTurnSaysAWholeReplyThatCameWithoutDeltas() async {

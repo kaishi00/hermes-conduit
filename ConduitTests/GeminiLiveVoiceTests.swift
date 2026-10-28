@@ -2733,8 +2733,74 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(spoken, "Here it is: enjoy")
     }
 
+    func testSpokenMediaTagFilterGivesTheSameSpeechHoweverTheReplyIsSplit() {
+        let replies: [(reply: String, said: String)] = [
+            ("Here you go MEDIA:/x.png\nAnything else?", "Here you go\nAnything else?"),
+            ("![Screenshot](MEDIA:/tmp/My Shot.png)\nThat is it.", "Screenshot\nThat is it."),
+            ("See [the report](MEDIA:/r.pdf) here, or [the site](https://x.com).", "See the report here, or [the site](https://x.com)."),
+            ("- MEDIA:/x.mp3\n- Done.", "- Done."),
+            ("**MEDIA:/a/b.pdf** is the file.", "is the file."),
+            ("xMEDIA:/a.mp3 words", "x words"),
+            ("[[audio_as_voice]]\nMEDIA:/a.ogg\nHi.", "Hi."),
+            ("Wiki [[Page]] and MEDIA:'/Users/me/My Files/r.pdf' end", "Wiki [[Page]] and end"),
+            ("Done.\r\nMEDIA:/a.mp3\r\nBye.", "Done.\nBye."),
+        ]
+        for (reply, said) in replies {
+            XCTAssertEqual(SpokenMediaTagFilter.filter(reply), said, reply)
+            for size in 1...9 {
+                var filter = SpokenMediaTagFilter()
+                var spoken = ""
+                var index = reply.startIndex
+                while index < reply.endIndex {
+                    let end = reply.index(index, offsetBy: size, limitedBy: reply.endIndex) ?? reply.endIndex
+                    spoken += filter.feed(String(reply[index..<end]))
+                    index = end
+                }
+                XCTAssertEqual(spoken + filter.finish(), said, "\(reply) split every \(size)")
+            }
+        }
+        // A bulleted tag leaves no stray marker for the action filter.
+        var actions = SpokenTextFilter()
+        XCTAssertEqual(["* ", "MEDIA:/x.mp3\n", "Done."].map { actions.feed($0) }.joined() + actions.finish(), "Done.")
+    }
+
+    func testSpokenMediaTagFilterReleasesProseThatIsNoTag() {
+        // Only a path makes a tag, so prose is said as it comes, not held
+        // to the end of its line.
+        var filter = SpokenMediaTagFilter()
+        XCTAssertEqual(filter.feed("Post it on social media: we shipped. Next."), "Post it on social media: we shipped. Next.")
+        XCTAssertEqual(filter.feed(" Wiki [[Page]] link, then more."), " Wiki [[Page]] link, then more.")
+        XCTAssertEqual(filter.finish(), "")
+        // A tag ending a line keeps the line's end, and its file is kept
+        // for the call's screen.
+        XCTAssertEqual(["Here you go ", "MEDIA:/x.png\n", "Anything else?"].map { filter.feed($0) }.joined() + filter.finish(),
+                       "Here you go\nAnything else?")
+        XCTAssertEqual(filter.takeFiles(), ["MEDIA:/x.png"])
+        XCTAssertEqual(filter.takeFiles(), [])
+    }
+
+    func testSpokenTextFilterKeepsSpacedAsterisksAndUnderscores() {
+        XCTAssertEqual(SpokenTextFilter.filter("Revenue is price * units sold per month * 12."),
+                       "Revenue is price * units sold per month * 12.",
+                       "a marker followed by a space opens nothing")
+        XCTAssertEqual(SpokenTextFilter.filter("Total: 5 * 3 apples plus 2 * 4 pears"), "Total: 5 * 3 apples plus 2 * 4 pears")
+        XCTAssertEqual(SpokenTextFilter.filter("Total: 2*3 apples plus 4*5 pears"), "Total: 2*3 apples plus 4*5 pears",
+                       "a marker inside a word opens and closes nothing")
+        XCTAssertEqual(SpokenTextFilter.filter("*raises the alarm!*Run!"), " Run!", "a closer after punctuation still closes")
+        XCTAssertEqual(SpokenTextFilter.filter("Fill blanks _ like this one _ please"), "Fill blanks _ like this one _ please")
+        XCTAssertEqual(SpokenTextFilter.filter("Then *walks over to the window * and more words"),
+                       "Then *walks over to the window * and more words",
+                       "a marker after a space closes nothing")
+        XCTAssertEqual(SpokenTextFilter.filter("So x * y. *leans back in the chair* Fine."), "So x * y. Fine.")
+        XCTAssertEqual(SpokenTextFilter.filter("Then *walks over to the window * and more words *nods three times slowly* end"),
+                       "Then *walks over to the window * and more words end")
+        var filter = SpokenTextFilter()
+        let spoken = ["width *", " height of the", " room *", " 2"].map { filter.feed($0) }.joined() + filter.finish()
+        XCTAssertEqual(spoken, "width * height of the room * 2")
+    }
+
     func testSpokenTextFilterGivesTheSameSpeechHoweverTheReplyIsSplit() {
-        let reply = "Order! *bangs the gavel twice* The court finds snake_case_var and **bold words here** and _whispers very quietly now_ fine. 🎉 2*3 and *really* done_"
+        let reply = "Order! *bangs the gavel twice* The court finds snake_case_var and **bold words here** and _whispers very quietly now_ fine. 🎉 2*3 and *really* done_ *not an action here** either"
         let whole = SpokenTextFilter.filter(reply)
         for size in 1...9 {
             var filter = SpokenTextFilter()
@@ -2751,6 +2817,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(whole.contains("gavel"))
         XCTAssertFalse(whole.contains("whispers"))
         XCTAssertTrue(whole.contains("snake_case_var"))
+        XCTAssertTrue(whole.contains("not an action here"), "\"**\" closes nothing, even when a delta ends between its two markers")
     }
 
     func testGeminiLivePersonalityClientAndInstructions() async throws {
@@ -3067,10 +3134,14 @@ extension VoiceConversationControllerTests {
         let start = Date(timeIntervalSince1970: 1_000)
         trace.begin("Grok Live", at: start)
         trace.note("Function call start_job", at: start + 2.5)
-        XCTAssertEqual(trace.report, "Last Grok Live call: tool steps\n+0.0s Starting call\n+2.5s Function call start_job")
+        XCTAssertEqual(trace.report, "Last Grok Live call: steps\n+0.0s Starting call\n+2.5s Function call start_job")
         for index in 0..<LiveCallTrace.maximumSteps { trace.note("step \(index)", at: start + 3) }
         XCTAssertEqual(trace.steps.count, LiveCallTrace.maximumSteps)
-        XCTAssertTrue(trace.report?.hasSuffix("… 2 more steps not kept") == true)
+        // The setup stays, the newest steps stay, and the gap says what went.
+        let lines = trace.report?.components(separatedBy: "\n") ?? []
+        XCTAssertEqual(lines[1], "+0.0s Starting call")
+        XCTAssertEqual(lines[1 + LiveCallTrace.keptFirstSteps], "… 2 steps not kept")
+        XCTAssertEqual(lines.last, "+3.0s step \(LiveCallTrace.maximumSteps - 1)")
     }
 
     func testGeminiLiveAskingToHangUpEndsTheCall() async {

@@ -236,6 +236,23 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertThrowsError(try VoiceHistoryClient.tags(from: ["ok": false]))
     }
 
+    func testVoiceHistoryParsesEveryChatsCallsAndSkipsBadEntries() {
+        let calls = VoiceHistoryClient.hostChatCalls(from: ["ok": true, "tags": [String: Any](), "chat_calls": [
+            ["call_id": "c1", "chat_id": "chat-1", "engine": "gpt-live", "started_at": 1_000, "ended_at": 1_095.5],
+            ["call_id": "c2", "chat_id": "chat-2", "started_at": 2_000],
+            ["call_id": "c3", "chat_id": "chat-3"],
+            ["call_id": "", "chat_id": "chat-4", "started_at": 1],
+            "not a call"
+        ] as [Any]])
+        XCTAssertEqual(calls, [
+            VoiceHostChatCall(callID: "c1", chatID: "chat-1", startedAt: Date(timeIntervalSince1970: 1_000),
+                              endedAt: Date(timeIntervalSince1970: 1_095.5)),
+            VoiceHostChatCall(callID: "c2", chatID: "chat-2", startedAt: Date(timeIntervalSince1970: 2_000),
+                              endedAt: Date(timeIntervalSince1970: 2_000))
+        ])
+        XCTAssertEqual(VoiceHistoryClient.hostChatCalls(from: ["ok": true, "tags": [String: Any]()]), [], "an older plugin")
+    }
+
     func testVoiceHistorySummaryNeedsTextAndCoveredTurns() {
         XCTAssertEqual(
             VoiceHistoryClient.summary(from: ["ok": true, "available": true, "text": "We planned meals.", "covers": 30]),
@@ -787,6 +804,45 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(links.merge(into: merged, chatIDs: ["st-1"], openIDs: ["st-1"], profile: "default").count, 3)
         // A call later than every message goes last.
         XCTAssertEqual(links.merge(into: Array(history.prefix(1)), chatIDs: ["st-1"], openIDs: ["st-1"], profile: "default").last?.id, "voice-call-c1")
+    }
+
+    func testCallsAnotherDeviceKeptWithAChatGetTheirCardsHere() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let iso = ISO8601DateFormatter()
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "mine", row: "", chat: "rt-1", stored: "st-1", at: start.addingTimeInterval(600)))
+        let host = [
+            VoiceHostChatCall(callID: "mine", chatID: "st-1", startedAt: start.addingTimeInterval(600), endedAt: start.addingTimeInterval(700)),
+            VoiceHostChatCall(callID: "theirs", chatID: "st-1", startedAt: start, endedAt: start.addingTimeInterval(90)),
+            VoiceHostChatCall(callID: "elsewhere", chatID: "st-2", startedAt: start, endedAt: start)
+        ]
+        XCTAssertTrue(links.adopt(host, profile: "default") { $0 == "st-1" ? "Build" : nil })
+        XCTAssertFalse(links.adopt(host, profile: "default") { _ in nil }, "known calls aren't added twice")
+        XCTAssertEqual(links.links.map(\.callID), ["theirs", "elsewhere", "mine"], "in the order the calls started")
+        let theirs = links.links.first
+        XCTAssertEqual(theirs?.storedWithChat, true)
+        XCTAssertEqual(theirs?.chatTitle, "Build")
+        XCTAssertEqual(links.links[1].chatTitle, "")
+
+        let history = [ChatMessage(id: "a", role: .user, content: "later", timestamp: iso.string(from: start.addingTimeInterval(60)))]
+        let merged = links.merge(into: history, chatIDs: ["st-1"], openIDs: ["st-1"], profile: "default")
+        XCTAssertEqual(merged.map(\.id), ["voice-call-theirs", "a", "voice-call-mine"])
+        XCTAssertEqual(links.chatIDs(profile: "default"), ["st-1", "st-2"])
+        XCTAssertEqual(links.chatIDs(profile: "work"), [])
+    }
+
+    func testAdoptedCallsKeepTheLinkCap() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "newest", row: "", chat: "rt", stored: "st", at: start.addingTimeInterval(10_000)))
+        let host = (0..<VoiceCallChatLinks.maximumLinks).map {
+            VoiceHostChatCall(callID: "c\($0)", chatID: "st", startedAt: start.addingTimeInterval(Double($0)), endedAt: start)
+        }
+        XCTAssertTrue(links.adopt(host, profile: "default") { _ in nil })
+        XCTAssertEqual(links.links.count, VoiceCallChatLinks.maximumLinks)
+        XCTAssertEqual(links.links.first?.callID, "c1", "the oldest call goes first")
+        XCTAssertEqual(links.links.last?.callID, "newest")
+        XCTAssertFalse(links.adopt(host, profile: "default") { _ in nil }, "the call the cap dropped is no change")
     }
 
     func testCallTranscriptLeadsBackToItsChatAndNeverShowsTheChatsCard() {

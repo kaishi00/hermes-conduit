@@ -6,8 +6,9 @@
 //  table, code, an image, links) without showing it with `conduit_show`:
 //  those parts are kept out of what the speech server says and collected
 //  for the call's screen instead. A link is said by its title and listed on
-//  the screen; a bare address isn't said at all, nor is a `MEDIA:` file
-//  tag (SpokenMediaTagFilter). The chat keeps the whole reply.
+//  the screen; a bare address isn't said at all. A `MEDIA:` file tag isn't
+//  said either (SpokenMediaTagFilter): its file goes on the screen, as the
+//  chat shows it. The chat keeps the whole reply.
 //
 
 import Foundation
@@ -28,10 +29,10 @@ struct SpokenVisualSplitter {
     /// The kind of block the last collected line belongs to, so blocks of
     /// different kinds are kept apart on screen.
     private var lastBlock: Block?
-    /// What's said, without file tags.
+    /// What's said, without file tags, whose files go on the screen.
     private var mediaTags = SpokenMediaTagFilter()
 
-    private enum Block { case code, table, image, link }
+    private enum Block { case code, table, image, link, file }
 
     /// Whether anything was collected for the screen.
     var hasVisual: Bool { !visual.isEmpty }
@@ -54,7 +55,7 @@ struct SpokenVisualSplitter {
             lineIsProse = false
         }
         spoken += releaseProse()
-        return mediaTags.feed(spoken)
+        return withoutTags(mediaTags.feed(spoken))
     }
 
     /// Everything still held, at the end of the reply.
@@ -70,7 +71,18 @@ struct SpokenVisualSplitter {
             visual.append(open)
             fence = nil
         }
-        return mediaTags.feed(spoken) + mediaTags.finish()
+        return withoutTags(mediaTags.feed(spoken) + mediaTags.finish())
+    }
+
+    /// `spoken`, after the files its tags named went on the screen.
+    private mutating func withoutTags(_ spoken: String) -> String {
+        let files = mediaTags.takeFiles()
+        if !files.isEmpty {
+            if lastBlock != nil, lastBlock != .file { visual.append("") }
+            lastBlock = .file
+            visual.append(contentsOf: files)
+        }
+        return spoken
     }
 
     /// The start of the line in progress, released when it can't open a

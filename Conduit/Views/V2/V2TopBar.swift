@@ -338,9 +338,12 @@ struct V2ProfileStrip: View {
         let name = appState.profileDisplayName(profile)
         let isSelected = !allSelected && profile == appState.activeProfile
         return Button {
-            if isSelected {
+            // While a switch runs, every chip is a pick the shell keeps for
+            // when it ends (`V2QueuedProfilePick`), the one on screen too.
+            let switching = appState.isProfileSwitching || shell.isPickingProfile
+            if isSelected, !switching {
                 onManage()
-            } else if allSelected, profile == appState.activeProfile {
+            } else if allSelected, profile == appState.activeProfile, !switching {
                 // Back to this profile's own list: nothing to switch.
                 Haptics.selection()
                 appState.setAllProfilesChatsOn(false)
@@ -389,13 +392,14 @@ struct V2ProfileStrip: View {
             .frame(minWidth: 44, minHeight: 44)
             .contentShape(Rectangle())
         }
+        // Tappable while a switch runs: the shell keeps the tap for when
+        // it ends (`V2QueuedProfilePick`).
         .buttonStyle(PressableButtonStyle())
-        .disabled(!isSelected && appState.isProfileSwitching)
         .modifier(DashboardSwitchMenu(enabled: profile == appState.activeProfile))
         .accessibilityIdentifier(isSelected ? "sidebar.workspace" : "v2.profile.\(profile)")
         .accessibilityLabel(AppLocalization.string("\(name) profile"))
         .accessibilityValue(unread ? AppLocalization.string("Unread") : "")
-        .accessibilityHint(isSelected ? AppLocalization.string("Manage profiles") : AppLocalization.string("Switches to this profile"))
+        .accessibilityHint(isSelected && !(appState.isProfileSwitching || shell.isPickingProfile) ? AppLocalization.string("Manage profiles") : AppLocalization.string("Switches to this profile"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -407,6 +411,9 @@ struct V2ProfileStrip: View {
         let shown = Array(appState.allProfilesIncluded.prefix(3))
         return Button {
             Haptics.selection()
+            // The last tap wins: a profile kept for after a running switch
+            // no longer goes.
+            shell.dropQueuedProfilePick()
             if isSelected {
                 onChooseAll()
             } else {

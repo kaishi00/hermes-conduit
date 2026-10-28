@@ -150,7 +150,7 @@ struct GroupChatView: View {
                         .reportsGroupRoomRowFrame(id: event.id)
                     }
                     if let pending = appState.pendingRoomMessage {
-                        GroupUserBubble(text: pending.text, members: members, timestamp: nil) {
+                        GroupUserBubble(text: pending.text, members: members, timestamp: nil, eventID: pending.eventID) {
                             if appState.activeRoomSendInFlight {
                                 Text(AppLocalization.string("Sending…"))
                                     .font(.caption2)
@@ -238,6 +238,15 @@ struct GroupChatView: View {
             .onChange(of: latestJumps) { _, _ in
                 withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
             }
+            // A "Replying to" card's tap (issue 1420): the room stops
+            // following and shows the message it quoted.
+            .onChange(of: appState.pendingQuotedReplyJump) { _, jump in
+                guard let jump else { return }
+                appState.pendingQuotedReplyJump = nil
+                followFlag.isFollowing = false
+                isFollowingLatest = false
+                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(jump.messageID, anchor: .top) }
+            }
             .onAppear {
                 lastSeenEventID = visibleEvents.last?.id
                 followLatest()
@@ -268,6 +277,12 @@ struct GroupChatView: View {
                 isAvailable: appState.canQuoteIntoRoom,
                 handler: appState.quoteIntoRoomComposer
             )
+        )
+        .environment(
+            \.quotedReplyJump,
+            QuotedReplyJumpAction(owner: appState) { [weak appState = appState] quote, eventID in
+                appState?.showQuotedRoomMessage(quote, quotedIn: eventID) ?? false
+            }
         )
     }
 
@@ -627,7 +642,7 @@ struct GroupEventRow: View {
 
     var body: some View {
         if event.isUserMessage {
-            GroupUserBubble(text: event.messageText ?? "", members: members, timestamp: event.createdAt) {
+            GroupUserBubble(text: event.messageText ?? "", members: members, timestamp: event.createdAt, eventID: event.id) {
                 EmptyView()
             }
         } else if event.isMemberMessage {
@@ -704,6 +719,9 @@ struct GroupUserBubble<Footer: View>: View {
     let text: String
     let members: [GroupMember]
     let timestamp: Double?
+    /// The room event it is: its "Replying to" card scrolls to the message
+    /// it quoted; a send not in the log yet looks through all of it.
+    var eventID: String? = nil
     @ViewBuilder let footer: Footer
 
     var body: some View {
@@ -718,7 +736,7 @@ struct GroupUserBubble<Footer: View>: View {
                 VStack(alignment: .leading, spacing: 8) {
                     GroupMessageFiles(files: parts.files, onAccent: true)
                     if let reply {
-                        ReplyReferenceQuoteCard(quote: reply.quote, authorName: reply.author)
+                        ReplyReferenceQuoteCard(quote: reply.quote, authorName: reply.author, quotedIn: eventID)
                     }
                     if !ownText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         HugsIdealWidth {

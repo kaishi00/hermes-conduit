@@ -114,9 +114,15 @@ struct V2ShellContext: Equatable {
         /// That chat shows its own voice button (a group room has none),
         /// so the list column leaves voice to it.
         var hasChatVoiceBeside = false
+        /// A switch picked from the profile strip is under way, from the
+        /// first tap's fade-out until the switch is over.
+        var isPickingProfile = false
     }
 
     var pickProfile: (String) -> Void = { _ in }
+    /// Drops a profile tap kept for after the running switch: a later tap
+    /// on All decides instead.
+    var dropQueuedProfilePick: () -> Void = {}
     /// Opens Chats filtered to Scheduled, where cron runs are listed.
     var showScheduledRuns: () -> Void = {}
     var values = Values()
@@ -164,6 +170,11 @@ struct V2ShellContext: Equatable {
     var hasChatVoiceBeside: Bool {
         get { values.hasChatVoiceBeside }
         set { values.hasChatVoiceBeside = newValue }
+    }
+
+    var isPickingProfile: Bool {
+        get { values.isPickingProfile }
+        set { values.isPickingProfile = newValue }
     }
 
     static func == (lhs: V2ShellContext, rhs: V2ShellContext) -> Bool {
@@ -399,6 +410,14 @@ struct V2Shell: View {
     @State private var contentFaded = false
     @State private var contentShift: CGFloat = 0
     @State private var profileSwitchToken = 0
+    /// A profile tapped while a switch runs, switched to once it ends.
+    @State private var queuedProfilePick = V2QueuedProfilePick()
+    /// A switch picked from the strip is running, from the first tap's
+    /// fade-out until the switch is over.
+    @State private var isPickingProfile = false
+    /// A strip pick is still fading out and hasn't started its switch: a
+    /// switch started elsewhere meanwhile doesn't bring the content back.
+    @State private var isFadingOutForPick = false
     /// A tab the shell switched to itself, which skips the selection click.
     @State private var programmaticTab: V2Tab?
     /// A settings link waiting for the Settings tab to open its page.
@@ -462,7 +481,7 @@ struct V2Shell: View {
             let canSplit = V2SplitLayout.isSplit(width: proxy.size.width)
             let split = V2SplitLayout.isSplit(width: proxy.size.width, showsList: chatListBeside)
             tabs(split: split, canSplit: canSplit)
-                .environment(\.v2Shell, V2ShellContext(pickProfile: pickProfile, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit)))
+                .environment(\.v2Shell, V2ShellContext(pickProfile: { pickProfile($0) }, dropQueuedProfilePick: { queuedProfilePick = V2QueuedProfilePick() }, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit, isPickingProfile: isPickingProfile)))
         }
     }
 
@@ -533,7 +552,29 @@ struct V2Shell: View {
                 }
             }
             .onChange(of: appState.activeProfile) { _, _ in
+                // The new profile's chats show as soon as it's active (its
+                // saved list, until the live one lands), not once the whole
+                // switch is over. A tap kept for after this switch keeps the
+                // content out instead, so it doesn't flicker in and out
+                // between the two.
+                guard queuedProfilePick.profile == nil, !isFadingOutForPick else { return }
                 fadeContentBackIn()
+            }
+            .onChange(of: appState.isProfileSwitching) { _, switching in
+                // A strip switch drains its own kept tap when it ends; this
+                // is for a switch started elsewhere (the picker sheet,
+                // CarPlay).
+                guard !switching, !isPickingProfile else { return }
+                guard let next = queuedProfilePick.take(
+                    landedOn: appState.activeProfile,
+                    dashboardID: appState.activeDashboardID
+                ) else {
+                    // A strip pick that waited behind it came to nothing.
+                    fadeContentBackIn()
+                    return
+                }
+                // Its haptic came with the tap.
+                pickProfile(next, haptic: false)
             }
             .onChange(of: appState.settingsLinkRequest) { _, page in
                 guard let page else { return }
@@ -574,6 +615,7 @@ struct V2Shell: View {
     /// under it rather than sitting alone in the corner.
     private func tabs(split: Bool, canSplit: Bool) -> some View {
         let settingsBeside = V2SplitLayout.settingsBesideList(split: split)
+        let underList = V2SplitLayout.tabBarUnderList(split: split, tab: selectedTab)
         return ZStack {
             ForEach(V2Tab.destinations) { tab in
                 // The selected tab shows from the tap's own frame; it joins
@@ -624,16 +666,22 @@ struct V2Shell: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 6)
                     .frame(width: canSplit ? V2SplitLayout.listWidth : nil)
-                    .frame(maxWidth: .infinity, alignment: V2SplitLayout.tabBarUnderList(split: split, tab: selectedTab) ? .leading : .center)
+                    // Lists fade out under the bar, as a chat does under its
+                    // composer: iOS 26 draws that edge itself, under the
+                    // clearance (`tabBarClearance`). Under the list column
+                    // the fade stays as wide as the list: across the window
+                    // it covered the composer of the chat beside it (#1439).
+                    .modifier(V2LegacyTabBarEdge(isOn: underList))
+                    .frame(maxWidth: .infinity, alignment: underList ? .leading : .center)
+                    .modifier(V2LegacyTabBarEdge(isOn: !underList))
+                    // Moving between under the list and centered snaps with
+                    // the tab switch, as the screens do, instead of sliding.
+                    .animation(nil, value: underList)
                     .onGeometryChange(for: CGFloat.self) { proxy in
                         proxy.size.height
                     } action: { height in
                         if abs(height - tabBarHeight) > 0.5 { tabBarHeight = height }
                     }
-                    // Lists fade out under the bar, as a chat does under its
-                    // composer: iOS 26 draws that edge itself, under the
-                    // clearance (`tabBarClearance`).
-                    .modifier(V2LegacyTabBarEdge())
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -858,9 +906,25 @@ struct V2Shell: View {
     /// page), the profile switches, and the new profile's sessions slide in
     /// from the other side (with the backdrop glow in its color). Under
     /// Reduce Motion it only fades.
-    private func pickProfile(_ profile: String) {
-        guard profile != appState.activeProfile, !appState.isProfileSwitching else { return }
-        Haptics.medium()
+    private func pickProfile(_ profile: String, haptic: Bool = true) {
+        // A switch takes a moment on a real dashboard: a tap meanwhile (its
+        // fade-out included) is kept rather than dropped, and the last one
+        // goes once it ends.
+        if appState.isProfileSwitching || isPickingProfile {
+            queuedProfilePick.tap(profile, dashboardID: appState.activeDashboardID)
+            if haptic { Haptics.medium() }
+            // The profile showing is on its way out: its chats leave now
+            // rather than stay tappable until the kept pick goes.
+            withAnimation(ConduitMotion.fadeOut) { contentFaded = true }
+            return
+        }
+        // This tap is the newest: a pick still kept from a switch that
+        // just ended elsewhere no longer goes.
+        queuedProfilePick = V2QueuedProfilePick()
+        guard profile != appState.activeProfile else { return }
+        if haptic { Haptics.medium() }
+        isPickingProfile = true
+        isFadingOutForPick = true
         profileSwitchToken &+= 1
         let token = profileSwitchToken
         let distance = reduceMotion ? 0 : Self.profileSwitchDistance * profileSwitchDirection(to: profile)
@@ -870,11 +934,50 @@ struct V2Shell: View {
         }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(ConduitMotion.fadeOutDuration))
+            // Only a newer strip pick moves the token, and it owns
+            // isPickingProfile from then on.
             guard token == profileSwitchToken else { return }
+            isFadingOutForPick = false
             // Out of sight, content moves to the side it arrives from.
             withTransaction(Transaction(animation: nil)) { contentShift = distance }
-            await appState.switchProfile(to: profile)
+            var target = profile
+            // A tap in the fade-out is the latest word: back on the profile
+            // already showing means no switch at all, another one replaces
+            // this target.
+            if queuedProfilePick.profile != nil {
+                guard let next = queuedProfilePick.take(
+                    landedOn: appState.activeProfile,
+                    dashboardID: appState.activeDashboardID
+                ) else {
+                    isPickingProfile = false
+                    fadeContentBackIn()
+                    return
+                }
+                target = next
+            }
+            // A switch started elsewhere (CarPlay) in the fade-out would
+            // refuse this one: it waits behind it, unless a later tap
+            // already does.
+            if appState.isProfileSwitching {
+                if queuedProfilePick.profile == nil {
+                    queuedProfilePick.tap(target, dashboardID: appState.activeDashboardID)
+                }
+                isPickingProfile = false
+                return
+            }
+            await appState.switchProfile(to: target)
             guard token == profileSwitchToken else { return }
+            isPickingProfile = false
+            // A tap kept during this switch goes now, with the content
+            // still out of sight.
+            if let next = queuedProfilePick.take(
+                landedOn: appState.activeProfile,
+                dashboardID: appState.activeDashboardID
+            ) {
+                pickProfile(next, haptic: false)
+                // It started its own switch, which brings the content back.
+                guard token == profileSwitchToken else { return }
+            }
             fadeContentBackIn()
         }
     }
@@ -929,6 +1032,32 @@ extension View {
 /// so a narrow iPad window, or an unfolded iPhone Duo, keeps the phone's
 /// one column. The user can hide the list on a wide window too
 /// (`V2ChatListPreference`).
+/// The profile tapped in the strip (or picked in CarPlay's agent list)
+/// while a switch is running. Only the last tap counts; once the switch
+/// ends, it goes there, unless that's where the switch landed.
+struct V2QueuedProfilePick: Equatable {
+    private(set) var profile: String?
+    /// The dashboard the tap was made on: a profile name means nothing on
+    /// another one.
+    private(set) var dashboardID: UUID?
+
+    mutating func tap(_ profile: String, dashboardID: UUID?) {
+        self.profile = profile
+        self.dashboardID = dashboardID
+    }
+
+    /// The profile to switch to now that the switch ended on `landed`, on
+    /// the dashboard `dashboardID`.
+    mutating func take(landedOn landed: String, dashboardID: UUID?) -> String? {
+        defer {
+            profile = nil
+            self.dashboardID = nil
+        }
+        guard self.dashboardID == dashboardID else { return nil }
+        return profile == landed ? nil : profile
+    }
+}
+
 enum V2SplitLayout {
     /// The list column: the narrowest iPhone's width, which every V2 list
     /// screen already fits.
@@ -1292,12 +1421,20 @@ private struct V2TabBarClearance: ViewModifier {
 /// material the lists scroll under, reaching a little above the bar.
 /// iOS 26 draws a soft edge under the bar's clearance instead.
 private struct V2LegacyTabBarEdge: ViewModifier {
+    var isOn = true
+
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *), V2SystemScrollEdge.isUsed {
             content
         } else {
-            content.background { V2ScrollEdgeBackground(edge: .bottom).padding(.top, -14) }
+            // Only the fade comes and goes: the bar keeps its identity (and
+            // its voice button's state) when `isOn` flips.
+            content.background {
+                if isOn {
+                    V2ScrollEdgeBackground(edge: .bottom).padding(.top, -14)
+                }
+            }
         }
     }
 }

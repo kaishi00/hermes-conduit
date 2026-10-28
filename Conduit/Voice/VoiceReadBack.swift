@@ -4,9 +4,10 @@
 //
 //  A reply the user asked to hear again or in full (#451), as the live
 //  model reads it: Markdown flattened into plain speech, so nothing is
-//  skipped or read out as symbols. Headings, list items and table rows
-//  become sentences, links keep their words, a bare link becomes its site,
-//  and code stays in the chat.
+//  read out as symbols. Headings, list items and table rows become
+//  sentences, links keep their words, a bare link becomes its site, and
+//  code stays in the chat. A persona's narrated actions are left out, as in
+//  Classic voice and Read Aloud.
 //
 
 import Foundation
@@ -42,7 +43,7 @@ enum VoiceReadBack {
                     continue
                 }
             }
-            if let spoken = spokenLine(line) { lines.append(spoken) }
+            if let spoken = spokenLine(withoutActions(line)) { lines.append(spoken) }
         }
         // Emoji go too; the spaces one leaves (before a full stop, at a
         // line's start, doubled) go with it.
@@ -53,6 +54,23 @@ enum VoiceReadBack {
             .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    /// A persona's narrated actions ("*sets down the gavel*") are left out,
+    /// as in Classic voice and Read Aloud. A code span is read as written,
+    /// so the `*` of a pattern in one is never taken for an action.
+    private static func withoutActions(_ line: String) -> String {
+        guard line.contains("`"), let spans = codeSpan else { return SpokenTextFilter.filter(line) }
+        var result = ""
+        var rest = line.startIndex
+        for match in spans.matches(in: line, range: NSRange(line.startIndex..., in: line)) {
+            guard let span = Range(match.range, in: line) else { continue }
+            result += SpokenTextFilter.filter(String(line[rest..<span.lowerBound])) + line[span]
+            rest = span.upperBound
+        }
+        return result + SpokenTextFilter.filter(String(line[rest...]))
+    }
+
+    private static let codeSpan = try? NSRegularExpression(pattern: #"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)"#)
 
     /// One line without its block markup: a heading, list item or table row
     /// becomes a sentence. Nil drops the line: a rule, a heading's "==="

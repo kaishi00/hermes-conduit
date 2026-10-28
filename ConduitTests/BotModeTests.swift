@@ -196,6 +196,85 @@ final class BotModeTests: XCTestCase {
         XCTAssertFalse(BotChatHygiene.isCanonicalBotChatRow(unrelated, roster: [bot]))
     }
 
+    /// A bot renamed in Edit Bot (or the Profiles sheet) goes by that name
+    /// everywhere Conduit names the profile, not only in Bots (#1409).
+    func testABotTitleNamesItsProfileEverywhere() async {
+        var roster = [
+            makeBot(name: "default", botTitle: "Muse"),
+            makeBot(name: "atlas", botTitle: "Atlas Prime")
+        ]
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            botRoster: { _ in BotRosterSnapshot(bots: roster, supportsBotProtocol: true) }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Prime")
+        XCTAssertEqual(harness.appState.profileDisplayName("default"), "Muse", "A main profile with no Conduit name goes by its bot's")
+
+        harness.appState.saveDefaultProfileName("Home")
+        XCTAssertEqual(harness.appState.profileDisplayName("default"), "Home", "The Conduit name wins for the main profile")
+
+        // A profile listing that only knows `display_name` doesn't undo it.
+        harness.appState.adoptProfileHermesNames([(profile: "atlas", displayName: "Atlas")])
+        XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Prime")
+
+        roster = [makeBot(name: "default"), makeBot(name: "atlas")]
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas", "No title and no display name: the id")
+        harness.appState.adoptProfileHermesNames([(profile: "atlas", displayName: "Atlas Hermes")])
+        XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Hermes", "No title: the display name")
+        XCTAssertEqual(harness.appState.profileDisplayName("default"), "Home")
+
+        // Renaming the main profile sets its Conduit name.
+        let failure = await harness.appState.renameProfile("default", to: "Studio")
+        XCTAssertNil(failure)
+        XCTAssertEqual(harness.appState.profileDisplayName("default"), "Studio")
+    }
+
+    /// On a gateway without bot looks a rename stays on the device and names
+    /// the profile until the roster says the gateway keeps bot looks; the
+    /// name already shown writes nothing (#1409).
+    func testADeviceNameNamesAProfileOnlyWithoutBotLooks() async {
+        var unsupported = true
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            botRoster: { _ in
+                if unsupported { throw RpcError(code: -32601, message: "unknown method") }
+                return BotRosterSnapshot(bots: [self.makeBot(name: "atlas", botTitle: "Atlas Prime")], supportsBotProtocol: true)
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.botModePhase, .gatewayUnsupported)
+
+        let unchanged = await harness.appState.renameProfile("atlas", to: "Atlas")
+        XCTAssertNil(unchanged)
+        XCTAssertTrue(harness.appState.profileDeviceNames.isEmpty, "Saving the name shown writes nothing")
+
+        let renamed = await harness.appState.renameProfile("atlas", to: "Atlas Local")
+        XCTAssertNil(renamed)
+        XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Local")
+        harness.appState.profiles = ["default", "atlas"]
+        XCTAssertEqual(harness.appState.voiceJobProfileTarget(named: "atlas local"), .other("atlas"), "A spoken job reaches a profile by its device name")
+        XCTAssertTrue(harness.appState.watchJobProfileNames().contains { $0.profile == "atlas" && $0.names == ["Atlas Local"] })
+
+        unsupported = false
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.botModePhase, .available)
+        XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Prime", "Bot looks: the title names it")
+        XCTAssertNil(harness.appState.profileDeviceNames["atlas"], "A roster that answers drops device names, so they can't come back offline")
+
+        let unlisted = await harness.appState.renameProfile("ghost", to: "Ghost Writer")
+        XCTAssertEqual(unlisted, AppLocalization.string("The name was not saved."), "A profile the roster doesn't list has nowhere to keep a name")
+        XCTAssertNil(harness.appState.profileDeviceNames["ghost"])
+    }
+
     func testActiveProfileSessionsProjectionDropsCanonicalButKeepsCatalog() async {
         let bot = makeBot(name: "atlas", canonicalID: "stored-1")
         let canonicalRow = makeSessionSummary(id: "stored-1", title: "Bot Chat")

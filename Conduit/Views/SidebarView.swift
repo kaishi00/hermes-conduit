@@ -581,7 +581,8 @@ struct SessionList: View {
             cronSessions: appState.listedCronSessions,
             source: source,
             category: appState.sessionCategory,
-            isPinned: appState.isSessionPinned
+            isPinned: appState.isSessionPinned,
+            hasVoiceCalls: appState.voiceCallChatFilter()
         )
     }
 
@@ -2388,7 +2389,8 @@ enum SidebarSourceRows {
         cronSessions: [SessionSummary],
         source: SessionSource?,
         category: (SessionSummary) -> SessionSource,
-        isPinned: (SessionSummary) -> Bool
+        isPinned: (SessionSummary) -> Bool,
+        hasVoiceCalls: (SessionSummary) -> Bool = { _ in false }
     ) -> [SessionSummary] {
         let chats = sessions.filter { !$0.isArchived }
         let runs = cronSessions.filter { !$0.isArchived }
@@ -2397,6 +2399,10 @@ enum SidebarSourceRows {
             return runs.filter(isPinned) + chats
         case .cron?:
             return runs
+        case .voice?:
+            // A chat a call was kept with, or started from, is under Voice
+            // too, so every call is listed there.
+            return chats.filter { category($0) == .voice || hasVoiceCalls($0) }
         case let source?:
             return chats.filter { category($0) == source }
         }
