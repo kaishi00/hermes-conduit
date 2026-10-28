@@ -10751,7 +10751,8 @@ final class AppState: ObservableObject {
     @Published private(set) var activeRoomCopyPost: RoomPost? {
         didSet {
             // Another post, or none: what was asked about the last is moot.
-            if activeRoomCopyPost == nil || activeRoomCopyPost?.eventID != oldValue?.eventID {
+            // The first answer about the same pending post isn't another.
+            if activeRoomCopyPost == nil || (oldValue != nil && activeRoomCopyPost?.eventID != oldValue?.eventID) {
                 activeRoomCopyPostAbsent = false
                 activeRoomCopyPostWaits = 0
             }
@@ -11722,7 +11723,9 @@ final class AppState: ObservableObject {
 
     /// A poll's events ask for the people again: in a room you host with
     /// linked people, a user message they don't name, which may be one of
-    /// their posts, or any tick after a read failed (a few times a visit);
+    /// their posts, or any tick after a read failed while one isn't named
+    /// (your own messages count, as the people never name them; a few
+    /// times a visit);
     /// in a copy, your posts while the name the home gives you isn't known
     /// yet (the opening read failed). One read at a time, and one asked for
     /// meanwhile runs after it.
