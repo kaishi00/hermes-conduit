@@ -2689,20 +2689,22 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(GatewayMediaTags.namingFiles(in: reply),
                        "Done.\n(a file in the chat: tts_1.mp3)\nSee the report (a file in the chat: q3.pdf) now")
         XCTAssertEqual(GatewayMediaTags.namingFiles(in: "Social media: fine"), "Social media: fine")
-        for prompt in [VoiceBackgroundJobSupervisor.completionPrompt(title: "Briefing", result: reply),
-                       VoiceBackgroundJobSupervisor.threadReplyPrompt(result: reply),
-                       WatchJobRelay.completionPrompt(title: "Briefing", result: reply),
-                       VoiceChatToolText.readResult(chat: reply)["chat"] ?? "",
-                       VoiceChatToolText.delegatedRead(chat: reply),
-                       VoiceBackgroundJobSupervisor.chatContextPrompt(typed: nil, reply: reply)] {
+        let read: String = VoiceChatToolText.readResult(chat: reply)["chat"] ?? ""
+        var prompts: [String] = [VoiceBackgroundJobSupervisor.completionPrompt(title: "Briefing", result: reply)]
+        prompts.append(VoiceBackgroundJobSupervisor.threadReplyPrompt(result: reply))
+        prompts.append(WatchJobAnswer.completionPrompt(title: "Briefing", result: reply))
+        prompts.append(read)
+        prompts.append(VoiceChatToolText.delegatedRead(chat: reply))
+        prompts.append(VoiceBackgroundJobSupervisor.chatContextPrompt(typed: nil, reply: reply))
+        for prompt in prompts {
             XCTAssertFalse(prompt.contains("MEDIA:"), prompt)
             XCTAssertTrue(prompt.contains("(a file in the chat: q3.pdf)"), prompt)
         }
-        XCTAssertEqual(WatchJobRelay.completionPrompt(title: "Briefing", result: reply),
+        XCTAssertEqual(WatchJobAnswer.completionPrompt(title: "Briefing", result: reply),
                        VoiceBackgroundJobSupervisor.completionPrompt(title: "Briefing", result: reply))
         // A clip never cuts a path in two.
-        let long = String(repeating: "a", count: VoiceBackgroundJobSupervisor.maximumChatContextReplyCharacters - 10)
-            + "\nMEDIA:/opt/data/cache/audio/tts_1.mp3"
+        let filler = String(repeating: "a", count: VoiceBackgroundJobSupervisor.maximumChatContextReplyCharacters - 10)
+        let long = filler + "\nMEDIA:/opt/data/cache/audio/tts_1.mp3"
         XCTAssertFalse(VoiceBackgroundJobSupervisor.chatContextPrompt(typed: nil, reply: long).contains("MEDIA:"))
     }
 
