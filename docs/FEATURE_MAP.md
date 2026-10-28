@@ -474,8 +474,8 @@ Projects view's and the main list's project sorting (Project chats in Chats)
 · the drawer shell's persistent sidebar (V2 off; reads the same list) ·
 every way a chat is made: New Chat, a project's new conversation, the empty
 canvas's send, a widget's or Shortcut's New Chat, /new, a Classic call's
-fresh chat · not needed: a Shortcut's send to a new chat and a voice
-job's chat (made in the background and sent to at once, never opened, so the
+fresh chat · not needed: a Shortcut's send to a new chat, a voice
+job's chat and a Local Live call's own chat from Home or Siri (made in the background and sent to at once, never opened, so the
 registry poll lists them as it does a chat from another device), a branch (stored with its parent's messages, so
 Hermes lists it, and its own create waits for that read), CarPlay's chat
 list and the widget's pickers (they pick a chat to talk to, and the open one
