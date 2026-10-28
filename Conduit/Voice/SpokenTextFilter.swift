@@ -166,7 +166,8 @@ struct SpokenTextFilter {
             // Whether it closes ("**" doesn't, nor one inside a word like
             // "4*5") is only known once the next character arrives.
             if next >= text.endIndex, !final { return .none }
-            if next < text.endIndex, isWordCharacter(text[next]) {
+            if next < text.endIndex, isWordCharacter(text[next]),
+               index > text.startIndex, isWordCharacter(text[index - 1]) {
                 index = next
                 continue
             }
