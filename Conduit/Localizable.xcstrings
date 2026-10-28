@@ -369097,7 +369097,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ajanlarınız artık katılmıyor ve %@ adlı kişiye bildiriliyor. Odanın kopyanız ve içindeki sohbetleri, siz silene kadar kalır."
+            "value" : "Ajanlarınız artık katılmıyor ve %@ adlı kişiye bildiriliyor. Oda kopyanız ve içindeki sohbetleri, siz silene kadar kalır."
           }
         },
         "zh-Hans" : {
@@ -369179,7 +369179,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ajanlarınız artık katılmıyor ve odayı açana bildiriliyor. Odanın kopyanız ve içindeki sohbetleri, siz silene kadar kalır."
+            "value" : "Ajanlarınız artık katılmıyor ve odayı açana bildiriliyor. Oda kopyanız ve içindeki sohbetleri, siz silene kadar kalır."
           }
         },
         "zh-Hans" : {

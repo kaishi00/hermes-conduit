@@ -12,7 +12,8 @@ private let roomChoicesLogger = Logger(subsystem: "com.milim.relay", category: "
 struct GroupRoomInfoSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    /// The room the sheet opened on: another room closes it.
+    /// The room the sheet opened on (a copy by its Link and room, since
+    /// room ids are only unique per host): another room closes it.
     @State private var roomID: String?
     /// The member a Take Out asks about.
     @State private var takingOut: GroupMember?
@@ -80,10 +81,10 @@ struct GroupRoomInfoSheet: View {
                 }
             }
         }
-        .onAppear { roomID = appState.activeRoomSurface?.room.roomID }
+        .onAppear { roomID = openRoomKey }
         // Who left or was taken out since the room opened.
         .task { await appState.refreshActiveRoomPeople() }
-        .onChange(of: appState.activeRoomSurface?.room.roomID) { _, id in
+        .onChange(of: openRoomKey) { _, id in
             if id != roomID { dismiss() }
         }
     }
@@ -130,6 +131,10 @@ struct GroupRoomInfoSheet: View {
 }
 
 extension GroupRoomInfoSheet {
+    private var openRoomKey: String? {
+        appState.activeRoomSurface.map { $0.copy?.id ?? $0.room.roomID }
+    }
+
     private func takeOutMessage(_ member: GroupMember) -> String {
         let name = GroupRoomTurns.displayName(of: member)
         if let copy = appState.activeRoomSurface?.copy {

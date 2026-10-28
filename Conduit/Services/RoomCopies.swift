@@ -402,8 +402,8 @@ extension AppState {
         let client = roomCopiesClient
         let inviteID = copy.id
         // Your agents that left are only on its invite, whatever `yours`
-        // still lists: without it read, their chats would stay behind.
-        if linkedRoomInvite(inviteID) == nil, !(await readLinkedRoomInvites()) {
+        // still lists: without it read now, their chats would stay behind.
+        guard await readLinkedRoomInvites() else {
             return .refused(RoomCopyText.deleteRefusal(for: HermesError.invalidResponse))
         }
         let invite = linkedRoomInvite(inviteID)

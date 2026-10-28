@@ -11734,7 +11734,8 @@ final class AppState: ObservableObject {
                 activeRoomReplay = replay
                 activeRoomCopyNeedsTail = false
                 errorMessage = nil
-                if copy.isOver { stopRoomCopyPolling() }
+                // As it stands now: it may have ended, or been left, since.
+                if activeRoomSurface?.copy?.isOver == true { stopRoomCopyPolling() }
                 return
             }
             let page = try await client.log(
@@ -11787,7 +11788,8 @@ final class AppState: ObservableObject {
             activeRoomSurface = GroupRoomSurface(dashboardID: open.dashboardID, room: latest.room, copy: latest)
         }
         if latest.state != activeRoomDriverStatus { activeRoomDriverStatus = latest.state }
-        if latest.isOver { stopRoomCopyPolling() }
+        // One whose opening read failed is polled until its tail comes.
+        if latest.isOver, !activeRoomCopyNeedsTail { stopRoomCopyPolling() }
         return true
     }
 

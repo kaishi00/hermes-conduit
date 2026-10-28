@@ -299,6 +299,48 @@ extension GroupChatModelsTests {
     }
 
     @MainActor
+    func testLeavingBeforeTheTailCameKeepsPollingUntilItDoes() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy()])
+        routes.events = (1...3).map { copiesEvent($0) }
+        routes.failingLogReads = 1
+        let appState = try await leaveAppState(routes)
+        await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
+        XCTAssertEqual(appState.activeRoomReplay.events, [])
+
+        routes.copies = [copiesCopy(status: "left", yours: [])]
+        let result = await appState.leaveActiveRoom()
+        XCTAssertEqual(result, .done)
+        XCTAssertTrue(appState.isPollingActiveRoom, "its tail hasn't come")
+
+        await appState.pollActiveRoom()
+        XCTAssertEqual(appState.activeRoomReplay.events.last?.seq, 3)
+        XCTAssertFalse(appState.isPollingActiveRoom)
+        appState.closeGroupRoom()
+    }
+
+    @MainActor
+    func testDeletingACopyReadsItsInviteAgainEvenWhenOneWasRead() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(status: "ended", reason: "disbanded")])
+        routes.invites = [["room_id": "conduit-9", "link": "lk1a2b3c4d5e6f", "name": "Zoo trip", "status": "ended",
+                           "from": "Furina", "joined": [["profile": "research", "handle": "kuro", "display_name": "Kuro"]]]]
+        let appState = try await leaveAppState(routes)
+        let copy = try XCTUnwrap(appState.linkedRoomCopyRows.first)
+        XCTAssertNotNil(appState.linkedRoomInvite(copy.id))
+        // Since that read, another of yours turned out to have left.
+        routes.invites = [["room_id": "conduit-9", "link": "lk1a2b3c4d5e6f", "name": "Zoo trip", "status": "ended",
+                           "from": "Furina", "joined": [["profile": "research", "handle": "kuro", "display_name": "Kuro"]],
+                           "gone": [["profile": "writer", "handle": "quill", "display_name": "Quill", "reason": "left"]]]]
+
+        let result = await appState.deleteLinkedRoomCopy(copy)
+        XCTAssertEqual(result, .deleted)
+        XCTAssertEqual(routes.deletes, [
+            "/api/plugins/conduit_push/rooms/sessions?room_id=conduit-9&profile=research",
+            "/api/plugins/conduit_push/rooms/sessions?room_id=conduit-9&profile=writer",
+            "/api/plugins/conduit_push/rooms/copies?room_id=conduit-9",
+        ])
+    }
+
+    @MainActor
     func testAnEndedCopyWithAgentsStillListedIsntDeletedWhenItsInviteCantBeRead() async throws {
         // One of yours could have left before it ended: only its invite says.
         let routes = CopiesRoutes(copies: [copiesCopy(status: "ended", reason: "disbanded")])
