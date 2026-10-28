@@ -66,9 +66,17 @@ extension AppState {
            // By chat, not label: a label saved earlier (the main bot's
            // "Default" before #1457) mustn't list the same chat twice.
            !choices.contains(where: { $0.reference.kind == .bot && $0.reference.sessionID == lastReference.sessionID }) {
+            // Labelled as titled, so a label saved earlier (the main bot's
+            // "Default") reads as the bot does now.
+            let title = Self.botConversationTitle(for: lastReference, mainName: profileDisplayName("default"))
+            let saved = Self.widgetReference(from: lastReference)
+            let labelled = WidgetConversationReference(
+                kind: saved.kind, scopeProfile: saved.scopeProfile, botName: saved.botName,
+                botLabel: title, sessionID: saved.sessionID, isUnverified: saved.isUnverified
+            )
             choices.append(WidgetConversationChoice(
-                reference: Self.widgetReference(from: lastReference),
-                title: Self.botConversationTitle(for: lastReference, mainName: profileDisplayName("default")),
+                reference: labelled,
+                title: title,
                 isPinned: false,
                 recency: 0
             ))
@@ -130,11 +138,7 @@ extension AppState {
             kind: reference.kind == .bot ? .bot : .dashboard,
             scopeProfile: reference.scopeProfile,
             botName: reference.botName,
-            // A label that is only the id names nothing (the main bot's
-            // "Default" saved before #1457).
-            botLabel: reference.botLabel.flatMap {
-                isIDOnlyBotLabel($0, profile: reference.botName ?? reference.scopeProfile) ? nil : $0
-            },
+            botLabel: reference.botLabel,
             sessionID: reference.sessionID,
             isUnverified: reference.isUnverified
         )

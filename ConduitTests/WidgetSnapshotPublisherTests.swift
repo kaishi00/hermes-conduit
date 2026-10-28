@@ -108,8 +108,6 @@ final class WidgetSnapshotPublisherTests: XCTestCase {
         XCTAssertEqual(restored.botLabel, "Research")
         XCTAssertEqual(restored.sessionID, "canonical")
         XCTAssertTrue(restored.isUnverified)
-        let saved = SessionReference(kind: .bot, scopeProfile: "default", botName: "default", botLabel: "Default", sessionID: "main", isUnverified: false)
-        XCTAssertNil(AppState.widgetReference(from: saved).botLabel, "the main bot's \"Default\" saved before #1457 is no label")
     }
 
     func testBotEvidenceSurvivesMergeAndAuthoritativePrune() throws {
