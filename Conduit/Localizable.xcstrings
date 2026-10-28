@@ -367392,88 +367392,6 @@
         }
       }
     },
-    "Hosted by %@. You can read it here; posting in rooms other people host comes later." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gastgeber: %@. Du kannst ihn hier lesen; in Räumen anderer zu schreiben kommt später."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Organizada por %@. Puedes leerla aquí; escribir en salas de otras personas llegará más adelante."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Organisé par %@. Vous pouvez le lire ici ; écrire dans les salons des autres arrivera plus tard."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diselenggarakan oleh %@. Anda dapat membacanya di sini; menulis di ruang milik orang lain akan hadir nanti."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ospitata da %@. Puoi leggerla qui; scrivere nelle stanze di altre persone arriverà più avanti."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ホスト: %@。ここで読むことができます。ほかの人がホストするグループへの投稿は今後対応します。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 님이 연 방이에요. 여기서 읽을 수 있고, 다른 사람이 연 방에 글을 쓰는 기능은 나중에 제공돼요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gospodarz: %@. Możesz go tu czytać; pisanie w pokojach innych osób pojawi się później."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Organizada por %@. Você pode ler aqui; escrever em salas de outras pessoas virá depois."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Хозяин: %@. Здесь её можно читать; писать в комнаты других людей можно будет позже."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Açan: %@. Burada okuyabilirsiniz; başkalarının açtığı odalara yazmak daha sonra gelecek."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "由 %@ 主持。你可以在这里阅读；在他人主持的群聊中发言将在之后推出。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "由 %@ 主持。你可以在這裡閱讀；在他人主持的群組聊天中發言將於之後推出。"
-          }
-        }
-      }
-    },
     "Hosted elsewhere" : {
       "localizations" : {
         "de" : {
@@ -367634,88 +367552,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在其他地方主持 · 工作中…"
-          }
-        }
-      }
-    },
-    "Hosted elsewhere. You can read it here; posting in rooms other people host comes later." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auf einem anderen Hermes. Du kannst ihn hier lesen; in Räumen anderer zu schreiben kommt später."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "En otro Hermes. Puedes leerla aquí; escribir en salas de otras personas llegará más adelante."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hébergé ailleurs. Vous pouvez le lire ici ; écrire dans les salons des autres arrivera plus tard."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diselenggarakan di tempat lain. Anda dapat membacanya di sini; menulis di ruang milik orang lain akan hadir nanti."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ospitata altrove. Puoi leggerla qui; scrivere nelle stanze di altre persone arriverà più avanti."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ほかの場所でホスト。ここで読むことができます。ほかの人がホストするグループへの投稿は今後対応します。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "다른 곳에서 열린 방이에요. 여기서 읽을 수 있고, 다른 사람이 연 방에 글을 쓰는 기능은 나중에 제공돼요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Na innym Hermesie. Możesz go tu czytać; pisanie w pokojach innych osób pojawi się później."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Organizada em outro lugar. Você pode ler aqui; escrever em salas de outras pessoas virá depois."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "На другом Hermes. Здесь её можно читать; писать в комнаты других людей можно будет позже."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Başka bir yerde açıldı. Burada okuyabilirsiniz; başkalarının açtığı odalara yazmak daha sonra gelecek."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在其他地方主持。你可以在这里阅读；在他人主持的群聊中发言将在之后推出。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在其他地方主持。你可以在這裡閱讀；在他人主持的群組聊天中發言將於之後推出。"
           }
         }
       }
@@ -369356,6 +369192,990 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的 Hermes 仍在傳送。完成後群組聊天中會顯示。"
+          }
+        }
+      }
+    },
+    "Could not post in this room: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In diesem Raum konnte nicht gepostet werden: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo publicar en esta sala: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de publier dans ce salon : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat mengirim di ruang ini: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile pubblicare in questa stanza: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このグループに投稿できませんでした: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 방에 글을 올리지 못했어요: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się napisać w tym pokoju: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível publicar nesta sala: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось написать в эту комнату: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu odaya yazılamadı: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法在此群聊中发言：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法在此群組聊天中發言：%@"
+          }
+        }
+      }
+    },
+    "Hosted by %@. You can read it here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gastgeber: %@. Du kannst ihn hier lesen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Organizada por %@. Puedes leerla aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Organisé par %@. Vous pouvez le lire ici."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diselenggarakan oleh %@. Anda dapat membacanya di sini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ospitata da %@. Puoi leggerla qui."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト: %@。ここで読むことができます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 님이 연 방이에요. 여기서 읽을 수 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gospodarz: %@. Możesz go tu czytać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Organizada por %@. Você pode ler aqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Хозяин: %@. Здесь её можно читать."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Açan: %@. Burada okuyabilirsiniz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 %@ 主持。你可以在这里阅读。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 %@ 主持。你可以在這裡閱讀。"
+          }
+        }
+      }
+    },
+    "Hosted by %@. Update the Conduit plugin on your Hermes to post in it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gastgeber: %@. Aktualisiere das Conduit-Plugin auf deinem Hermes, um hier zu schreiben."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Organizada por %@. Actualiza el plugin de Conduit en tu Hermes para escribir en ella."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Organisé par %@. Mettez à jour le plugin Conduit de votre Hermes pour y écrire."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diselenggarakan oleh %@. Perbarui plugin Conduit di Hermes Anda untuk menulis di sini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ospitata da %@. Aggiorna il plugin Conduit sul tuo Hermes per scriverci."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト: %@。投稿するには、Hermes の Conduit プラグインをアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 님이 연 방이에요. 글을 쓰려면 Hermes의 Conduit 플러그인을 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gospodarz: %@. Zaktualizuj wtyczkę Conduit na swoim Hermesie, aby w nim pisać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Organizada por %@. Atualize o plugin do Conduit no seu Hermes para escrever nela."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Хозяин: %@. Чтобы писать в неё, обновите плагин Conduit на своём Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Açan: %@. Buraya yazmak için Hermes'inizdeki Conduit eklentisini güncelleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 %@ 主持。更新你 Hermes 上的 Conduit 插件即可在其中发言。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 %@ 主持。更新你 Hermes 上的 Conduit 外掛程式即可在其中發言。"
+          }
+        }
+      }
+    },
+    "Hosted elsewhere. You can read it here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf einem anderen Hermes. Du kannst ihn hier lesen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En otro Hermes. Puedes leerla aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hébergé ailleurs. Vous pouvez le lire ici."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diselenggarakan di tempat lain. Anda dapat membacanya di sini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ospitata altrove. Puoi leggerla qui."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ほかの場所でホスト。ここで読むことができます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 곳에서 열린 방이에요. 여기서 읽을 수 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na innym Hermesie. Możesz go tu czytać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Organizada em outro lugar. Você pode ler aqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На другом Hermes. Здесь её можно читать."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başka bir yerde açıldı. Burada okuyabilirsiniz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在其他地方主持。你可以在这里阅读。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在其他地方主持。你可以在這裡閱讀。"
+          }
+        }
+      }
+    },
+    "Hosted elsewhere. Update the Conduit plugin on your Hermes to post in it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf einem anderen Hermes. Aktualisiere das Conduit-Plugin auf deinem Hermes, um hier zu schreiben."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En otro Hermes. Actualiza el plugin de Conduit en tu Hermes para escribir en ella."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hébergé ailleurs. Mettez à jour le plugin Conduit de votre Hermes pour y écrire."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diselenggarakan di tempat lain. Perbarui plugin Conduit di Hermes Anda untuk menulis di sini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ospitata altrove. Aggiorna il plugin Conduit sul tuo Hermes per scriverci."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ほかの場所でホスト。投稿するには、Hermes の Conduit プラグインをアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 곳에서 열린 방이에요. 글을 쓰려면 Hermes의 Conduit 플러그인을 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na innym Hermesie. Zaktualizuj wtyczkę Conduit na swoim Hermesie, aby w nim pisać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Organizada em outro lugar. Atualize o plugin do Conduit no seu Hermes para escrever nela."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На другом Hermes. Чтобы писать в неё, обновите плагин Conduit на своём Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başka bir yerde açıldı. Buraya yazmak için Hermes'inizdeki Conduit eklentisini güncelleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在其他地方主持。更新你 Hermes 上的 Conduit 插件即可在其中发言。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在其他地方主持。更新你 Hermes 上的 Conduit 外掛程式即可在其中發言。"
+          }
+        }
+      }
+    },
+    "Not posted." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht gepostet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No publicado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non publié."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak terkirim."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non pubblicato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿されませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "올리지 못했어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie wysłano."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não publicado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не отправлено."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gönderilmedi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未发出。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未發出。"
+          }
+        }
+      }
+    },
+    "Not posted: it's too long for this room." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht gepostet: zu lang für diesen Raum."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No publicado: es demasiado largo para esta sala."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non publié : trop long pour ce salon."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak terkirim: terlalu panjang untuk ruang ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non pubblicato: è troppo lungo per questa stanza."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿されませんでした: このグループには長すぎます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "올리지 못했어요: 이 방에 올리기에는 너무 길어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie wysłano: za długa jak na ten pokój."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não publicado: é longo demais para esta sala."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не отправлено: слишком длинно для этой комнаты."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gönderilmedi: bu oda için çok uzun."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未发出：内容对此群聊来说太长。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未發出：內容對此群組聊天來說太長。"
+          }
+        }
+      }
+    },
+    "Not posted: the host's Hermes couldn't read it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht gepostet: Der Hermes des Gastgebers konnte sie nicht lesen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No publicado: el Hermes del anfitrión no pudo leerlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non publié : le Hermes de l’hôte n’a pas pu le lire."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak terkirim: Hermes tuan rumah tidak dapat membacanya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non pubblicato: l’Hermes dell’host non è riuscito a leggerlo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿されませんでした: ホストの Hermes が読み取れませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "올리지 못했어요: 방장의 Hermes가 읽지 못했어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie wysłano: Hermes gospodarza nie mógł jej odczytać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não publicado: o Hermes do anfitrião não conseguiu lê-lo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не отправлено: Hermes хозяина не смог это прочитать."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gönderilmedi: odayı açanın Hermes'i okuyamadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未发出：主持人的 Hermes 无法读取。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未發出：主持人的 Hermes 無法讀取。"
+          }
+        }
+      }
+    },
+    "Not posted: the host's Hermes couldn't take it. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht gepostet: Der Hermes des Gastgebers konnte sie nicht annehmen. Versuch es noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No publicado: el Hermes del anfitrión no pudo aceptarlo. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non publié : le Hermes de l’hôte n’a pas pu le prendre. Réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak terkirim: Hermes tuan rumah tidak dapat menerimanya. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non pubblicato: l’Hermes dell’host non è riuscito a prenderlo. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿されませんでした: ホストの Hermes が受け取れませんでした。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "올리지 못했어요: 방장의 Hermes가 받지 못했어요. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie wysłano: Hermes gospodarza nie mógł jej przyjąć. Spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não publicado: o Hermes do anfitrião não conseguiu recebê-lo. Tente de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не отправлено: Hermes хозяина не смог это принять. Попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gönderilmedi: odayı açanın Hermes'i alamadı. Tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未发出：主持人的 Hermes 无法接收。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未發出：主持人的 Hermes 無法接收。請重試。"
+          }
+        }
+      }
+    },
+    "Not posted: the room has ended." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht gepostet: Der Raum ist beendet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No publicado: la sala ha terminado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non publié : le salon est terminé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak terkirim: ruang sudah berakhir."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non pubblicato: la stanza è terminata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿されませんでした: グループは終了しています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "올리지 못했어요: 방이 끝났어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie wysłano: pokój się zakończył."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não publicado: a sala terminou."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не отправлено: комната завершена."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gönderilmedi: oda sona erdi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未发出：群聊已结束。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未發出：群組聊天已結束。"
+          }
+        }
+      }
+    },
+    "Not posted: too many posts this hour. Try again later." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht gepostet: zu viele Beiträge in dieser Stunde. Versuch es später noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No publicado: demasiadas publicaciones en esta hora. Inténtalo más tarde."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non publié : trop de messages cette heure-ci. Réessayez plus tard."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak terkirim: terlalu banyak pesan dalam satu jam ini. Coba lagi nanti."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non pubblicato: troppi messaggi in quest’ora. Riprova più tardi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿されませんでした: この1時間の投稿が多すぎます。あとでもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "올리지 못했어요: 이번 시간에 올린 글이 너무 많아요. 나중에 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie wysłano: za dużo wiadomości w tej godzinie. Spróbuj później."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não publicado: publicações demais nesta hora. Tente mais tarde."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не отправлено: слишком много сообщений за этот час. Попробуйте позже."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gönderilmedi: bu saat içinde çok fazla mesaj. Daha sonra tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未发出：这一小时内发言太多。请稍后再试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未發出：這一小時內發言太多。請稍後再試。"
+          }
+        }
+      }
+    },
+    "Not posted: your agents aren't in this room." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht gepostet: Deine Agenten sind nicht in diesem Raum."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No publicado: tus agentes no están en esta sala."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non publié : vos agents ne sont pas dans ce salon."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak terkirim: agen Anda tidak ada di ruang ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non pubblicato: i tuoi agenti non sono in questa stanza."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿されませんでした: あなたのエージェントはこのグループにいません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "올리지 못했어요: 내 에이전트가 이 방에 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie wysłano: twoich agentów nie ma w tym pokoju."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não publicado: seus agentes não estão nesta sala."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не отправлено: ваших агентов нет в этой комнате."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gönderilmedi: ajanlarınız bu odada değil."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未发出：你的智能体不在此群聊中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未發出：你的代理程式不在此群組聊天中。"
           }
         }
       }

@@ -61,9 +61,14 @@ struct GroupRoomComposer: View {
             // it explicitly (same event id) or it stays visible — a NEW
             // message typed meanwhile would be silently swallowed.
             && appState.pendingRoomMessage == nil
-            && appState.groupCapabilities?.supports("groups.send") == true
-            && surface?.room.isDisbanded == false
+            && (isCopy
+                ? appState.activeRoomCopyTakesPosts
+                : appState.groupCapabilities?.supports("groups.send") == true && surface?.room.isDisbanded == false)
     }
+
+    /// A room someone else hosts: posts go through your Hermes, and files
+    /// can't, since they'd stay on your Hermes.
+    private var isCopy: Bool { surface?.copy != nil }
 
     private var canSend: Bool {
         (hasText || !attachments.isEmpty) && roomAccepts && !isUploading
@@ -129,7 +134,7 @@ struct GroupRoomComposer: View {
                 attachmentStrip
             }
             HStack(alignment: .bottom, spacing: 2) {
-                if rests {
+                if rests, !isCopy {
                     attachButton
                         .padding(.leading, 6)
                         .padding(.bottom, 6)
@@ -165,9 +170,13 @@ struct GroupRoomComposer: View {
             attachments = appState.activeRoomAttachments()
             applyQuoteRequest(appState.roomQuoteRequest)
             applyRecipientRequest(appState.roomRecipientRequest)
+            applyDraftHandBack(appState.roomDraftHandBack)
         }
         .onChange(of: appState.roomQuoteRequest) { _, request in
             applyQuoteRequest(request)
+        }
+        .onChange(of: appState.roomDraftHandBack) { _, handBack in
+            applyDraftHandBack(handBack)
         }
         .onChange(of: appState.roomRecipientRequest) { _, request in
             applyRecipientRequest(request)
@@ -334,7 +343,9 @@ struct GroupRoomComposer: View {
 
     private var controlsRow: some View {
         HStack(spacing: 8) {
-            attachButton
+            if !isCopy {
+                attachButton
+            }
             Spacer(minLength: 0)
             if !dictationHoldsSendSlot {
                 dictateButton
@@ -668,6 +679,15 @@ struct GroupRoomComposer: View {
     }
 
     // MARK: - Quotes
+
+    /// A refused post's text, back to edit: ahead of anything typed since.
+    private func applyDraftHandBack(_ handBack: RoomDraftHandBack?) {
+        guard let handBack else { return }
+        appState.consumeRoomDraftHandBack(handBack.id)
+        dictation.yieldToTyping()
+        draft = draft.isEmpty ? handBack.text : handBack.text + "\n" + draft
+        isFocused = true
+    }
 
     /// A quote from the room (#385 in a chat): selected text joins the draft
     /// as a `>` quote; a message's Quote button attaches the whole message

@@ -7,8 +7,8 @@
 //  doing over your Link, and the notifier plugin keeps a copy of it
 //  (room_copies.py). Group Chats lists each copy after your own rooms, and
 //  its room screen reads the copy: the log as `groups.log` pages, what the
-//  room is doing from the copy's state. Posting in it comes with C5. One
-//  that ended can be deleted: your agents' hidden chats for it, then the
+//  room is doing from the copy's state; posting in it is RoomPosts.swift
+//  (C5a). One that ended can be deleted: your agents' hidden chats for it, then the
 //  copy. The others keep theirs.
 //
 
@@ -140,12 +140,18 @@ enum RoomCopyText {
         return host.isEmpty ? AppLocalization.string("The host") : host
     }
 
-    /// In the composer's place, until C5.
-    static func noPosting(for copy: RoomCopy) -> String {
+    /// In the composer's place, when it can't be posted in: it's over, or
+    /// the plugin doesn't post (`canPost` false).
+    static func readOnly(for copy: RoomCopy, canPost: Bool) -> String {
         let host = copy.from.trimmingCharacters(in: .whitespacesAndNewlines)
+        if canPost {
+            return host.isEmpty
+                ? AppLocalization.string("Hosted elsewhere. You can read it here.")
+                : AppLocalization.string("Hosted by \(host). You can read it here.")
+        }
         return host.isEmpty
-            ? AppLocalization.string("Hosted elsewhere. You can read it here; posting in rooms other people host comes later.")
-            : AppLocalization.string("Hosted by \(host). You can read it here; posting in rooms other people host comes later.")
+            ? AppLocalization.string("Hosted elsewhere. Update the Conduit plugin on your Hermes to post in it.")
+            : AppLocalization.string("Hosted by \(host). Update the Conduit plugin on your Hermes to post in it.")
     }
 
     static var deleteTitle: String { AppLocalization.string("Delete this room?") }
@@ -344,6 +350,11 @@ extension AppState {
     /// which Group Chats lists in their invites' place.
     var linkedRoomCopyInviteIDs: Set<String> {
         Set((currentLinkedRoomCopies?.copies ?? []).map(\.id))
+    }
+
+    /// The same, nil until the copies are read for the dashboard in use.
+    var readLinkedRoomCopyIDs: Set<String>? {
+        currentLinkedRoomCopies.map { Set($0.copies.map(\.id)) }
     }
 
     /// Reads the copies. A read that fails keeps what was read last, and

@@ -69,7 +69,8 @@ struct GroupChatView: View {
     private var bottomBar: some View {
         VStack(spacing: 0) {
             if let copy = surface?.copy {
-                // Hosted elsewhere: nothing goes to it from here yet (C5).
+                // Hosted elsewhere: its composer posts through your Hermes
+                // while it takes your posts.
                 MinimisedLiveVoiceBar()
                 RoomCopyBottomBar(copy: copy, members: members)
             } else {
@@ -134,13 +135,37 @@ struct GroupChatView: View {
                         GroupEventRow(
                             event: event,
                             members: members,
-                            continuesRun: previous.map { GroupEventRow.sameSpeaker($0, event) } ?? false,
-                            host: surface?.copy.map { RoomCopyText.hostName(for: $0) }
+                            continuesRun: previous.map {
+                                GroupEventRow.sameSpeaker($0, event, attribution: appState.activeRoomPostAttribution)
+                            } ?? false,
+                            host: surface?.copy.map { RoomCopyText.hostName(for: $0) },
+                            attribution: appState.activeRoomPostAttribution
                         )
                     }
                     if let pending = appState.pendingRoomMessage {
                         GroupUserBubble(text: pending.text, members: members, timestamp: nil) {
-                            if appState.activeRoomSendInFlight {
+                            if surface?.copy != nil {
+                                RoomCopyPostFooter(
+                                    state: RoomPostText.rowState(
+                                        post: appState.activeRoomCopyPost,
+                                        inFlight: appState.activeRoomSendInFlight,
+                                        takesPosts: appState.activeRoomCopyTakesPosts,
+                                        roomOver: appState.activeRoomSurface?.copy?.status == "ended",
+                                        settling: appState.activeRoomCopyPostUnsettled
+                                    ),
+                                    retry: {
+                                        followLatest()
+                                        latestJumps += 1
+                                        Task { await appState.sendGroupRoomMessage(pending.text) }
+                                    },
+                                    edit: { appState.editActiveRoomCopyPost() },
+                                    copy: {
+                                        UIPasteboard.general.string = pending.text
+                                        Haptics.success()
+                                    },
+                                    dismiss: { appState.dismissActiveRoomCopyPost() }
+                                )
+                            } else if appState.activeRoomSendInFlight {
                                 Text(AppLocalization.string("Sending…"))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
@@ -245,7 +270,7 @@ struct GroupChatView: View {
                 members: members,
                 size: 56
             )
-            Text(surface?.copy == nil
+            Text(surface?.copy == nil || appState.activeRoomCopyTakesPosts
                 ? AppLocalization.string("No messages yet. Say something to the room.")
                 : AppLocalization.string("No messages yet."))
                 .font(.footnote)
@@ -612,11 +637,23 @@ struct GroupEventRow: View {
     /// The previous row is the same speaker's: no picture or name again.
     var continuesRun = false
     /// In a room someone else hosts, who posts its people's messages: they
-    /// aren't yours.
+    /// aren't yours, unless the copy says one was posted for you.
     var host: String? = nil
+    /// Whose the people's posted messages are (RoomPosts.swift).
+    var attribution = RoomPostAttribution.none
 
     var body: some View {
-        if event.isUserMessage, let host {
+        if let name = personName {
+            GroupMemberBubble(
+                member: nil,
+                name: name,
+                text: attribution.text(of: event),
+                members: members,
+                timestamp: event.createdAt,
+                continuesRun: continuesRun,
+                roomEventID: event.id
+            )
+        } else if event.isUserMessage, attribution.poster(of: event) == nil, let host {
             GroupMemberBubble(
                 member: nil,
                 name: host,
@@ -627,7 +664,7 @@ struct GroupEventRow: View {
                 roomEventID: event.id
             )
         } else if event.isUserMessage {
-            GroupUserBubble(text: event.messageText ?? "", members: members, timestamp: event.createdAt) {
+            GroupUserBubble(text: attribution.text(of: event), members: members, timestamp: event.createdAt) {
                 EmptyView()
             }
         } else if event.isMemberMessage {
@@ -645,6 +682,12 @@ struct GroupEventRow: View {
         }
     }
 
+    /// The person a room's home posted this message for, when it isn't you.
+    private var personName: String? {
+        if case .person(let name) = attribution.poster(of: event) { return name }
+        return nil
+    }
+
     /// Another person's agent is named with its owner.
     private var speakerLabel: String {
         let label = event.actor.displayLabel(members: members)
@@ -654,9 +697,14 @@ struct GroupEventRow: View {
         )
     }
 
-    /// Two rows in a row from one member (or both from the user).
-    nonisolated static func sameSpeaker(_ previous: GroupEvent, _ next: GroupEvent) -> Bool {
-        if previous.isUserMessage && next.isUserMessage { return true }
+    /// Two rows in a row from one member (or both from the user, or both
+    /// from one of the room's people).
+    nonisolated static func sameSpeaker(
+        _ previous: GroupEvent, _ next: GroupEvent, attribution: RoomPostAttribution = .none
+    ) -> Bool {
+        if previous.isUserMessage && next.isUserMessage {
+            return attribution.poster(of: previous) == attribution.poster(of: next)
+        }
         guard previous.isMemberMessage, next.isMemberMessage else { return false }
         let key = previous.actor.id.trimmingCharacters(in: .whitespacesAndNewlines)
         return !key.isEmpty && key == next.actor.id.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1208,8 +1256,9 @@ struct GroupMessageQuoteButton: View {
     var authorHandle: String? = nil
 
     var body: some View {
-        // A room someone else hosts has no composer to quote into (C5).
-        if appState.activeRoomSurface?.copy == nil {
+        // A room someone else hosts has a composer only while it takes
+        // your posts.
+        if appState.activeRoomSurface?.copy == nil || appState.activeRoomCopyTakesPosts {
             button
         }
     }
@@ -1244,8 +1293,8 @@ struct GroupMemberMentionButton<Label: View>: View {
     @ViewBuilder let label: Label
 
     var body: some View {
-        if appState.activeRoomSurface?.copy != nil {
-            // No "To" row in a room someone else hosts (C5).
+        if appState.activeRoomSurface?.copy != nil, !appState.activeRoomCopyTakesPosts {
+            // No "To" row in a room someone else hosts that you can't post in.
             label
         } else {
             button

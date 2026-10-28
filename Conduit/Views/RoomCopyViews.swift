@@ -4,9 +4,9 @@
 //
 //  Rooms other people host (designs/cross-owner-agents, C4a): a room's row
 //  in Group Chats, which opens its room screen from your Hermes' copy and
-//  deletes one that ended; the line in the composer's place, since posting
-//  there comes with C5; your agents' approvals in it; and Group Info's
-//  Hosted by section.
+//  deletes one that ended; your agents' approvals in it, over its composer
+//  (C5a) or, when it can't be posted in, a line in the composer's place;
+//  and Group Info's Hosted by section.
 //
 
 import SwiftUI
@@ -77,8 +77,9 @@ struct RoomCopyRosterRow: View {
     }
 }
 
-/// In a room someone else hosts, in the composer's place: your agents'
-/// approvals in it, then who hosts it and that posting comes later.
+/// In a room someone else hosts: your agents' approvals in it, then its
+/// composer while it takes your posts, or who hosts it and why it can't be
+/// posted in.
 struct RoomCopyBottomBar: View {
     let copy: RoomCopy
     let members: [GroupMember]
@@ -89,6 +90,7 @@ struct RoomCopyBottomBar: View {
 
     var body: some View {
         let approvals = appState.activeRoomCopyApprovals
+        let takesPosts = appState.activeRoomCopyTakesPosts
         let cards = VStack(spacing: 8) {
             ForEach(approvals) { approval in
                 GroupApprovalCard(
@@ -100,30 +102,40 @@ struct RoomCopyBottomBar: View {
                 }
             }
         }
-        VStack(spacing: 8) {
-            if approvals.count > 1 {
-                // Several waiting at once scroll in a bounded strip, as the
-                // room screen's own approvals do.
-                ScrollView { cards }
-                    .frame(maxHeight: 300)
-            } else {
-                cards
+        VStack(spacing: 0) {
+            if !approvals.isEmpty || !takesPosts {
+                VStack(spacing: 8) {
+                    if approvals.count > 1 {
+                        // Several waiting at once scroll in a bounded strip, as the
+                        // room screen's own approvals do.
+                        ScrollView { cards }
+                            .frame(maxHeight: 300)
+                    } else {
+                        cards
+                    }
+                    if !takesPosts {
+                        Label {
+                            Text(verbatim: RoomCopyText.readOnly(for: copy, canPost: appState.canPostInRoomCopies))
+                        } icon: {
+                            Image(systemName: "eye")
+                                .accessibilityHidden(true)
+                        }
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .conduitGlassSurface(cornerRadius: 20, tint: Color.conduitAccent.opacity(0.06))
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .padding(.bottom, takesPosts ? 0 : 8)
             }
-            Label {
-                Text(verbatim: RoomCopyText.noPosting(for: copy))
-            } icon: {
-                Image(systemName: "eye")
-                    .accessibilityHidden(true)
+            if takesPosts {
+                GroupRoomComposer(members: members)
             }
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .conduitGlassSurface(cornerRadius: 20, tint: Color.conduitAccent.opacity(0.06))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
         // One answered elsewhere drops its card, and its answer with it.
         .onChange(of: appState.activeRoomCopyApprovals.map(\.id)) { _, ids in
             answers = answers.filter { ids.contains($0.key) }
@@ -173,6 +185,68 @@ struct RoomCopyHostSection: View {
                 }
             }
             .accessibilityElement(children: .combine)
+        }
+    }
+}
+
+/// Under your pending post's bubble in a room someone else hosts: sending,
+/// not delivered (retried under its id), or why it wasn't posted, with
+/// Retry when posting it again could go differently and Edit to take its
+/// text back into the composer. In a room that takes no more posts, Copy
+/// and Dismiss instead: there's no composer to edit it in.
+struct RoomCopyPostFooter: View {
+    let state: RoomPostText.RowState
+    let retry: () -> Void
+    let edit: () -> Void
+    let copy: () -> Void
+    let dismiss: () -> Void
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
+
+    var body: some View {
+        switch state {
+        case .sending:
+            Text(AppLocalization.string("Sending…"))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        case .notDelivered:
+            Button(action: retry) {
+                Label(AppLocalization.string("Not delivered — retry"), systemImage: "arrow.clockwise")
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.conduitAccent)
+        case .refused(let why, let canRetry):
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(verbatim: why)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 14) {
+                    if canRetry {
+                        Button(AppLocalization.string("Retry"), action: retry)
+                    }
+                    Button(AppLocalization.string("Edit"), action: edit)
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.conduitAccent)
+            }
+        case .closed(let why):
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(verbatim: why)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 14) {
+                    Button(AppLocalization.string("Copy"), action: copy)
+                    Button(AppLocalization.string("Dismiss"), action: dismiss)
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.conduitAccent)
+            }
         }
     }
 }

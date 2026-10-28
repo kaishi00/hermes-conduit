@@ -116,10 +116,12 @@ extension GroupChatModelsTests {
         XCTAssertTrue(try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(status: "ended"))).isOver)
         XCTAssertTrue(try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(status: "left"))).isOver)
 
-        // In the composer's place, until posting comes.
+        // In the composer's place, when it can't be posted in.
         let copy = try XCTUnwrap(RoomCopiesClient.copy(copiesCopy()))
-        XCTAssertEqual(RoomCopyText.noPosting(for: copy),
-                       AppLocalization.string("Hosted by \(host). You can read it here; posting in rooms other people host comes later."))
+        XCTAssertEqual(RoomCopyText.readOnly(for: copy, canPost: false),
+                       AppLocalization.string("Hosted by \(host). Update the Conduit plugin on your Hermes to post in it."))
+        XCTAssertEqual(RoomCopyText.readOnly(for: copy, canPost: true),
+                       AppLocalization.string("Hosted by \(host). You can read it here."))
         XCTAssertEqual(RoomCopyText.host(for: copy), AppLocalization.string("Hosted by \(host)"))
         XCTAssertEqual(RoomCopyText.hostName(for: copy), "Furina")
     }
@@ -551,6 +553,18 @@ final class CopiesRoutes {
     /// The next people reads each wait this long, answering what the people
     /// were when they were asked.
     var peopleDelays: [Duration] = []
+    /// What `GET /rooms/copies/messages` lists, oldest first.
+    var posts: [[String: Any]] = []
+    /// What a post is answered: its status and error (sending until set).
+    var postStatus = "sending"
+    var postError: String?
+    /// The next posts fail with a 502.
+    var failingPosts = 0
+    /// The next post list reads fail with a 502.
+    var failingPostLists = 0
+    /// POST /rooms/copies/messages's bodies.
+    private(set) var postBodies: [[String: Any]] = []
+    private(set) var postListReads = 0
     /// The invite a leave answers.
     var leftInvite: [String: Any] = [
         "room_id": "conduit-9", "link": "lk1a2b3c4d5e6f", "name": "Zoo trip", "status": "left", "from": "Furina",
@@ -586,6 +600,29 @@ final class CopiesRoutes {
             let cursor = (page.last?["seq"] as? Int) ?? since
             return ["ok": true, "events": page, "cursor": cursor, "latest_seq": latest, "has_more": cursor < latest,
                     "authority": ["gateway_id": "gw-home", "epoch": 1]]
+        }
+        if path.hasPrefix(RoomPostsClient.path) {
+            if method == "GET" {
+                postListReads += 1
+                if failingPostLists > 0 {
+                    failingPostLists -= 1
+                    throw DashboardTicketBridgeError.http(status: 502, detail: "Bad gateway")
+                }
+                return ["ok": true, "messages": posts]
+            }
+            postBodies.append(body ?? [:])
+            if failingPosts > 0 {
+                failingPosts -= 1
+                throw DashboardTicketBridgeError.http(status: 502, detail: "Bad gateway")
+            }
+            let eventID = body?["event_id"] as? String ?? ""
+            let post: [String: Any] = [
+                "event_id": eventID, "text": body?["text"] ?? "", "status": postStatus, "seq": NSNull(),
+                "error": postError ?? NSNull(), "created_at": 1_790_000_200.0,
+            ]
+            posts.removeAll { $0["event_id"] as? String == eventID }
+            posts.append(post)
+            return ["ok": true, "message": post]
         }
         if path.hasPrefix(RoomPeople.path) {
             peopleReads.append(path)
