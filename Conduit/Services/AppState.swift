@@ -13959,6 +13959,8 @@ final class AppState: ObservableObject {
         // what the next visit there opens to.
         recordOfflineChatCopy()
         keepBotChatCopy()
+        // The owner taken for the chat on screen is this dashboard's.
+        outgoingBotChatCopyOwner = nil
         recordSavedChatList()
         selectDashboardTarget(id)
         rememberDashboardURL(dashboard.normalizedURL)
@@ -24056,6 +24058,7 @@ final class AppState: ObservableObject {
         // The chat being left shows as it is now when it's opened again.
         recordOfflineChatCopy()
         keepBotChatCopy()
+        outgoingBotChatCopyOwner = nil
         let newTitle = AppLocalization.string("New conversation")
         activeSessionTitle = newTitle
         let previousTurnState = turnState
