@@ -89,7 +89,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testVoiceHistorySaveGoesInPartsTheHostTakes() async throws {
         // The plugin takes at most 500 turns and 1 MiB per save
-        // (plugin_api VOICE_MAX_TURNS, VOICE_MAX_BODY_BYTES).
+        // (dashboard/api/voice_calls.py VOICE_MAX_TURNS, VOICE_MAX_BODY_BYTES).
         let turns = (0..<1_201).map {
             VoiceTranscriptTurn(index: $0, role: $0 % 2 == 0 ? .user : .assistant, text: "Turn \($0)", at: Date(timeIntervalSince1970: 10))
         }
@@ -185,7 +185,7 @@ extension HermesVoiceGatewayTimeoutTests {
                                    callAnchor: VoiceJobCallAnchor(callID: UUID(), transcriptIndex: 0), shownAt: Date())
         recorder.screen(card)
         let text = try XCTUnwrap(recorder.turns.last?.text)
-        // plugin_api VOICE_MAX_TURN_CHARS
+        // dashboard/api/voice_calls.py VOICE_MAX_TURN_CHARS
         XCTAssertLessThanOrEqual(text.count, 16_000)
         XCTAssertTrue(text.hasPrefix("Script\n\nHere's the script:"))
         XCTAssertTrue(text.hasSuffix("\n```"), "The cut closes the code block it left open")

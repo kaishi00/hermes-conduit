@@ -309,8 +309,8 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testHostCallsWaitPastTheHostsOwnTimeout() async throws {
         // The host mints a Gemini token with a 15 s timeout to Google
-        // (plugin_api REQUEST_TIMEOUT_S): giving up first spends a mint for
-        // nothing and the call doesn't start.
+        // (dashboard/api/gemini_qwen_live.py REQUEST_TIMEOUT_S): giving up
+        // first spends a mint for nothing and the call doesn't start.
         var timeouts: [String: Int] = [:]
         let client = GeminiLiveTokenClient(request: { path, _, _, timeout in
             timeouts[path] = timeout
@@ -320,11 +320,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertGreaterThan(try XCTUnwrap(timeouts[GeminiLiveTokenClient.tokenPath]), 15_000)
 
         // The host claims a pairing at the relay with a 15 s timeout
-        // (plugin_api PAIR_TIMEOUT_S), then writes it.
+        // (dashboard/api/pairing.py PAIR_TIMEOUT_S), then writes it.
         XCTAssertGreaterThan(PushNotificationService.pairTimeoutMilliseconds, 15_000)
 
         // A room's files go to /room-files, which takes 50 MiB
-        // (plugin_api ROOM_FILE_MAX_BYTES), whatever the composer allows.
+        // (dashboard/api/rooms.py ROOM_FILE_MAX_BYTES), whatever the composer allows.
         XCTAssertEqual(GroupRoomFilesClient.stagingLimit(preference: AttachmentSizeLimit.hostMaximumMegabytes), 50)
         XCTAssertEqual(GroupRoomFilesClient.stagingLimit(preference: 16), 16)
     }
