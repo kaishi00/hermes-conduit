@@ -73,6 +73,8 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(bot.displayLabel, "Default Profile")
         XCTAssertNil(bot.canonicalSession)
         XCTAssertEqual(makeBot(name: "atlas").displayLabel, "Atlas", "unnamed, or named only by its id: capitalized, as everywhere in Conduit")
+        XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: nil, sessionID: "s1")), "Atlas",
+                       "a restored Bot Chat without a label names its bot as displayLabel does")
     }
 
     func testRosterDecodeRejectsNonProfilesEnvelope() {
@@ -598,7 +600,7 @@ final class BotModeTests: XCTestCase {
             harness.appState.conversationAgentIdentity.name, "bo",
             "the captured label travels to the rotated id; the roster's retitled label must not take over"
         )
-        XCTAssertEqual(harness.appState.activeSessionTitle, "bo")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Bo")
     }
 
     func testMissingCanonicalCreatesHiddenTitledChatThenOpensStoredID() async {

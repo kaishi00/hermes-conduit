@@ -9927,8 +9927,8 @@ final class AppState: ObservableObject {
     }
 
     /// The header title for a restored Bot Chat. The bot's display label when
-    /// the reference carries one, else the BOT PROFILE NAME — the same
-    /// last-resort fallback `BotProfile.displayLabel` uses. Never the reserved
+    /// the reference carries one, else the BOT PROFILE NAME capitalized — the
+    /// same last-resort fallback `BotProfile.displayLabel` uses. Never the reserved
     /// wire title: that constant is an identity used for the exact-title lookup,
     /// not a user-facing string, and it would tell the user nothing about which
     /// bot they are looking at.
@@ -9937,7 +9937,9 @@ final class AppState: ObservableObject {
         if !label.isEmpty { return label }
         let name = (reference.botName ?? reference.scopeProfile)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? AppLocalization.string("New conversation") : name
+        return name.isEmpty
+            ? AppLocalization.string("New conversation")
+            : String(name.prefix(1)).uppercased() + String(name.dropFirst())
     }
 
     /// Registers a Bot Mode reference's identity so the conversation resolves
