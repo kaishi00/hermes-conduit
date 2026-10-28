@@ -99,7 +99,8 @@ struct SpokenMediaTagFilter {
     /// Where the held part of a line starts: at a tag or directive, or at
     /// what may still become one; the end when there's none.
     private func heldFrom(_ text: String) -> String.Index {
-        var held = text.endIndex
+        // A "\r" waits for the "\n" that may follow it.
+        var held = text.last == "\r" ? text.index(before: text.endIndex) : text.endIndex
         var search = text.startIndex
         while let tag = text.range(of: "MEDIA:", options: .caseInsensitive, range: search..<text.endIndex) {
             if Self.mayStartPath(text[tag.upperBound...]) {

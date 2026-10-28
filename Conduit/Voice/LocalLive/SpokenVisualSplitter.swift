@@ -165,7 +165,8 @@ struct SpokenVisualSplitter {
     /// a bare address still being written, or what may begin one; the end
     /// when there's none.
     private static func heldFrom(_ text: String) -> String.Index {
-        var held = text.endIndex
+        // A "\r" waits for the "\n" that may follow it.
+        var held = text.last == "\r" ? text.index(before: text.endIndex) : text.endIndex
         if let open = text.lastIndex(of: "["), !text[open...].contains(")") {
             held = open > text.startIndex && text[text.index(before: open)] == "!" ? text.index(before: open) : open
         }
