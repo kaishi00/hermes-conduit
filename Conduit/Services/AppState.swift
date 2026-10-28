@@ -2238,8 +2238,8 @@ final class AppState: ObservableObject {
     /// A quote waiting for the composer (#385). ComposerBar, which owns the
     /// draft, applies it and then consumes it.
     @Published private(set) var composerQuoteRequest: ComposerQuoteRequest?
-    /// A "Replying to" card's tap (issue 1420): ChatView scrolls to the
-    /// reply it quoted, then clears it.
+    /// A "Replying to" card's tap (issue 1420): the chat or room on screen
+    /// scrolls to the reply it quoted, then clears it.
     @Published var pendingQuotedReplyJump: QuotedReplyJump?
     /// The same for the open group room's composer, kept apart so a chat's
     /// composer never takes a quote meant for a room.
@@ -10472,6 +10472,26 @@ final class AppState: ObservableObject {
         guard let id = Self.quotedReplyMessageID(quote: quote, quotedIn: messageID, in: messages) else { return false }
         pendingQuotedReplyJump = QuotedReplyJump(messageID: id)
         return true
+    }
+
+    /// A room's "Replying to" card: scrolls to the member message it quoted.
+    @discardableResult
+    func showQuotedRoomMessage(_ quote: String, quotedIn eventID: String) -> Bool {
+        let events = activeRoomReplay.events.filter(GroupRoomTurns.isVisible)
+        guard let id = Self.quotedRoomMessageID(quote: quote, quotedIn: eventID, in: events) else { return false }
+        pendingQuotedReplyJump = QuotedReplyJump(messageID: id)
+        return true
+    }
+
+    /// The newest member message before `eventID` whose words are `quote`,
+    /// as `quotedReplyMessageID` finds a chat's reply.
+    static func quotedRoomMessageID(quote: String, quotedIn eventID: String, in events: [GroupEvent]) -> String? {
+        let quoted = ChatQuote.blockquote(quote)
+        guard !quoted.isEmpty,
+              let index = events.firstIndex(where: { $0.id == eventID }) else { return nil }
+        return events[..<index].last {
+            $0.isMemberMessage && ChatQuote.blockquote(GroupMessageParts($0.messageText ?? "").text) == quoted
+        }?.id
     }
 
     /// The newest reply before `messageID` whose words are `quote`. The
@@ -27460,6 +27480,10 @@ final class AppState: ObservableObject {
         let target: SessionRewindSnapshot.Turn
         // Edit and resend on an earlier message takes later turns back too.
         var takesLaterTurns = false
+        // Where Edit and resend's words go back: the chat it was tapped in,
+        // even if another opens while the rewind runs.
+        let editDraftKey = durableComposerDraftKeyOnScreen
+        let editDashboardID = activeDashboardID
         // A bot chat's transcript lives in the bot profile's store; any
         // other chat's in the workspace's, which needs no profile.
         let profile = botScopeProfile(forSessionIDs: [sessionID], workspaceProfile: activeProfile)
@@ -27506,18 +27530,28 @@ final class AppState: ObservableObject {
         } catch where HermesClient.isMissingRPCMethod(error) {
             return false
         } catch {
-            appendSlashOutput(Self.rewindFailureNote(command: retry ? "retry" : "undo", error: error), context: context)
+            appendSlashOutput(
+                editing != nil
+                    ? Self.editFailureNote(error: error)
+                    : Self.rewindFailureNote(command: retry ? "retry" : "undo", error: error),
+                context: context
+            )
             return true
         }
         guard receipt.rewoundCount > 0 else {
             appendSlashOutput(nothingToRewind, context: context)
             return true
         }
+        let text = receipt.text ?? target.text ?? ""
+        // Taken back on Hermes: Edit and resend's words go back now, into
+        // their own chat's draft, whatever happens to the reopen below.
+        if editing != nil, !text.isEmpty {
+            putEditedTextBack(text, key: editDraftKey, dashboardID: editDashboardID)
+        }
         // Open the chat again so it shows the shortened transcript.
         guard isCurrentOrAliasedComposerSubmission(context) else { return true }
         let reopened = await openSessionOutcome(context.durableSessionID ?? sessionID)
         guard reopened != .superseded else { return true }
-        let text = receipt.text ?? target.text ?? ""
         let current = composerSubmissionContext()
         // Our own open moved the viewport on, so `context` is stale by
         // construction; the rewound chat must still be the one on screen.
@@ -27532,7 +27566,7 @@ final class AppState: ObservableObject {
                     : AppLocalization.string("Took the message back, but the chat couldn't reload. Open it again to see the change. The message is in the composer."),
                 context: current
             )
-            if !text.isEmpty { putRewoundTextBack(text, editing: editing != nil) }
+            if !text.isEmpty, editing == nil { prefillComposer(text) }
             return true
         }
         if editing != nil {
@@ -27544,7 +27578,6 @@ final class AppState: ObservableObject {
                     : AppLocalization.string("Took back your message. It's in the composer to edit."),
                 context: current
             )
-            if !text.isEmpty { putRewoundTextBack(text, editing: true) }
             return true
         }
         if retry, !composerIsEnabled {
@@ -27587,21 +27620,18 @@ final class AppState: ObservableObject {
         return true
     }
 
-    /// A rewound message's words back in the composer. `/undo` puts them in
-    /// as the draft; Edit and resend puts them ahead of whatever is typed,
-    /// with a quoted reply back as its "Replying to" chip.
-    private func putRewoundTextBack(_ text: String, editing: Bool) {
-        guard editing else {
-            prefillComposer(text)
-            return
-        }
+    /// Edit and resend's words back in `key`'s draft, ahead of whatever is
+    /// typed there, a quoted reply as its "Replying to" chip. The composer
+    /// puts them in its field when that chat is on screen, else into the
+    /// chat's stored draft, as for a send that didn't go.
+    private func putEditedTextBack(_ text: String, key: ComposerDraftKey, dashboardID: UUID?) {
         let reply = ReplyQuoteEnvelope.parse(text)
         let replyReference = reply.map {
             ComposerReplyReference(authorName: conversationAgentIdentity.name, text: $0.quote)
         }
-        guard let dashboardID = activeDashboardID else {
-            // No saved dashboard to restore into: the words as the draft,
-            // the quoted reply as its chip.
+        guard let dashboardID else {
+            // Restore requests belong to a saved dashboard; without one the
+            // words go in as the draft, the quote as its chip.
             prefillComposer(reply?.message ?? text)
             if let replyReference, canQuoteIntoComposer() {
                 composerQuoteRequest = ComposerQuoteRequest(content: .reply(replyReference))
@@ -27610,11 +27640,20 @@ final class AppState: ObservableObject {
         }
         composerRestoreRequests.append(ComposerRestoreRequest(
             dashboardID: dashboardID,
-            key: durableComposerDraftKeyOnScreen,
+            key: key,
             draft: ComposerDraft(text: reply?.message ?? text, attachments: [], replyReference: replyReference),
             focuses: true,
             pending: nil
         ))
+    }
+
+    /// Edit and resend's refusals: Hermes' words for a rewind, without
+    /// naming a slash command the user didn't type.
+    static func editFailureNote(error: Error) -> String {
+        if let refusal = error as? RpcError, (refusal.reason ?? refusal.message) == "unsupported_command" {
+            return AppLocalization.string("This Hermes can't take a message back. Update Hermes to edit and resend.")
+        }
+        return rewindFailureNote(command: "undo", error: error)
     }
 
     /// Hermes' rewind refusals in words: a running reply, or a message

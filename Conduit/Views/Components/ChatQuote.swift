@@ -167,11 +167,46 @@ struct ComposerQuoteRequest: Equatable {
     let content: Content
 }
 
-/// A "Replying to" card's tap: the reply it quoted, for ChatView to scroll
-/// to. Each tap has its own id, so tapping the same card again still goes.
+/// A "Replying to" card's tap: the reply it quoted, for the chat or room
+/// on screen to scroll to. Each tap has its own id, so tapping the same
+/// card again still goes.
 struct QuotedReplyJump: Equatable {
     let id = UUID()
     let messageID: String
+}
+
+/// Finds the reply a "Replying to" card quoted and scrolls to it: given the
+/// quote and the message the card heads, false when the transcript doesn't
+/// hold it. A chat and a room each provide one; equal by owner, as
+/// ChatQuoteAction, so rows don't re-render when it is made again.
+struct QuotedReplyJumpAction: Equatable {
+    private let owner: ObjectIdentifier
+    private let handler: @MainActor (String, String) -> Bool
+
+    init(owner: AnyObject, handler: @escaping @MainActor (String, String) -> Bool) {
+        self.owner = ObjectIdentifier(owner)
+        self.handler = handler
+    }
+
+    @MainActor
+    func callAsFunction(quote: String, quotedIn messageID: String) -> Bool {
+        handler(quote, messageID)
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.owner == rhs.owner
+    }
+}
+
+private struct QuotedReplyJumpActionKey: EnvironmentKey {
+    static let defaultValue: QuotedReplyJumpAction? = nil
+}
+
+extension EnvironmentValues {
+    var quotedReplyJump: QuotedReplyJumpAction? {
+        get { self[QuotedReplyJumpActionKey.self] }
+        set { self[QuotedReplyJumpActionKey.self] = newValue }
+    }
 }
 
 /// Puts selected chat text into the composer as a quote. Only the chat
@@ -232,10 +267,10 @@ struct ReplyReferenceQuoteCard: View {
     /// Whose message it quoted, in a group room, where there are several.
     private let authorName: String?
     private let quote: String
-    /// The chat message the card heads: in a chat, a tap scrolls to the
-    /// reply it quoted (issue 1420).
+    /// The message the card heads: in a chat or a room, a tap scrolls to
+    /// the reply it quoted (issue 1420).
     private let quotedIn: String?
-    @Environment(\.chatRowActions) private var rowActions
+    @Environment(\.quotedReplyJump) private var jump
 
     init(quote: String, onAccentSurface: Bool = true, authorName: String? = nil, quotedIn: String? = nil) {
         self.excerpt = ChatQuote.excerpt(of: quote)
@@ -246,9 +281,9 @@ struct ReplyReferenceQuoteCard: View {
     }
 
     var body: some View {
-        if let quotedIn, let appState = rowActions?.appState {
+        if let quotedIn, let jump {
             Button {
-                if appState.showQuotedReply(quote, quotedIn: quotedIn) {
+                if jump(quote: quote, quotedIn: quotedIn) {
                     Haptics.selection()
                 } else {
                     // Taken back, or older than the history loaded.

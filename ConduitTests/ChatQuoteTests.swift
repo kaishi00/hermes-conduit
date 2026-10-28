@@ -346,4 +346,27 @@ extension ComposerDraftStoreTests {
         XCTAssertEqual(plain.text, "my message")
         XCTAssertEqual(plain.replyReference?.text, "quoted\nreply", "With no chip in the composer, the restored one comes back as a chip")
     }
+
+    @MainActor
+    func testRoomReplyingToCardFindsTheMemberMessageAboveIt() {
+        func event(_ seq: Int, _ kind: String, _ text: String) -> GroupEvent {
+            GroupEvent(
+                roomID: "room",
+                seq: seq,
+                eventID: "e\(seq)",
+                kind: kind,
+                actor: GroupActor(kind: "member", id: "atlas", profile: "atlas", displayName: "Atlas", connectionID: nil),
+                authorityEpoch: nil,
+                payload: ["text": .string(text)],
+                createdAt: 0
+            )
+        }
+        let events = [
+            event(1, "message.member", "The plan"),
+            event(2, "message.user", "The plan"),
+            event(3, "message.user", GroupRoomReplyQuote.outboundText(quoting: "The plan", author: "Atlas", message: "why?"))
+        ]
+        XCTAssertEqual(AppState.quotedRoomMessageID(quote: "The plan", quotedIn: "e3", in: events), "e1", "Only a member's message is quoted")
+        XCTAssertNil(AppState.quotedRoomMessageID(quote: "Other", quotedIn: "e3", in: events))
+    }
 }

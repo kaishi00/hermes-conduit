@@ -1867,7 +1867,15 @@ final class AppStateSessionCompressTests: XCTestCase {
         generation: 2
     )
 
+    private static let dashboard = SavedDashboard(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000001420")!,
+        label: "Home",
+        normalizedURL: "https://one.example"
+    )
+
     private func rewindHarness(
+        savedDashboard: Bool = false,
+        rewoundText: String = "first ask",
         rewound: @escaping (Int, SessionRewindSnapshot) -> Void
     ) -> (appState: AppState, defaults: UserDefaults, suite: String) {
         var operations = ChatResumeLifecycleOperations(
@@ -1876,9 +1884,14 @@ final class AppStateSessionCompressTests: XCTestCase {
         operations.rewindSnapshot = { _, _ in Self.rewindTurns }
         operations.rewindSession = { _, _, target, snapshot in
             rewound(target, snapshot)
-            return SessionRewindReceipt(rewoundCount: 4, text: target == 11 ? "first ask" : nil)
+            return SessionRewindReceipt(rewoundCount: 4, text: target == 11 ? rewoundText : nil)
         }
-        let harness = makeHarness(lifecycleOperations: operations)
+        let harness = makeHarness(
+            lifecycleOperations: operations,
+            dashboardRegistry: savedDashboard
+                ? SavedDashboardRegistry(activeDashboardID: Self.dashboard.id, dashboards: [Self.dashboard])
+                : nil
+        )
         installComposerClient(in: harness)
         let origin = session("composer-origin")
         harness.appState.sessions = [origin]
@@ -1917,6 +1930,36 @@ final class AppStateSessionCompressTests: XCTestCase {
 
         XCTAssertEqual(rewinds, [11], "Edit and resend takes back that message and everything after it")
         XCTAssertEqual(harness.appState.composerPrefillText, "first ask")
+    }
+
+    func testEditAndResendPutsTheWordsBackIntoTheirChatsDraftWithTheQuoteAsItsChip() async throws {
+        var rewinds: [Int] = []
+        let sent = ReplyQuoteEnvelope.outboundText(quoting: "Earlier answer", message: "first ask")
+        let harness = rewindHarness(savedDashboard: true, rewoundText: sent) { target, _ in rewinds.append(target) }
+        let earlier = ChatMessage(id: "u1", role: .user, content: sent, timestamp: "", rowId: 11)
+        harness.appState.messages = [earlier]
+        let key = harness.appState.durableComposerDraftKeyOnScreen
+
+        await harness.appState.editAndResend(earlier)
+
+        XCTAssertEqual(rewinds, [11])
+        let request = try XCTUnwrap(harness.appState.composerRestoreRequests.last)
+        XCTAssertEqual(request.key, key, "Into the draft of the chat it was tapped in")
+        XCTAssertEqual(request.dashboardID, Self.dashboard.id)
+        XCTAssertEqual(request.draft.text, "first ask")
+        XCTAssertEqual(request.draft.replyReference?.text, "Earlier answer")
+        XCTAssertEqual(harness.appState.composerPrefillText, "", "Not as a prefill, which would replace what's typed")
+    }
+
+    func testEditAndResendRefusalNamesNoSlashCommand() {
+        XCTAssertEqual(
+            AppState.editFailureNote(error: RpcError(code: 4001, message: "unsupported_command", reason: "unsupported_command")),
+            "This Hermes can't take a message back. Update Hermes to edit and resend."
+        )
+        XCTAssertEqual(
+            AppState.editFailureNote(error: RpcError(code: 4009, message: "session_busy", reason: "session_busy")),
+            "Wait for the reply to finish, or /stop it, then try again."
+        )
     }
 
     func testEditAndResendOfAMessageNotInTheHistoryTakesNothingBack() async throws {
@@ -2077,7 +2120,8 @@ final class AppStateSessionCompressTests: XCTestCase {
 
     private func makeHarness(
         lifecycleOperations: ChatResumeLifecycleOperations = .live,
-        conversationIdentityIndex: ConversationIdentityIndex? = nil
+        conversationIdentityIndex: ConversationIdentityIndex? = nil,
+        dashboardRegistry: SavedDashboardRegistry? = nil
     ) -> (
         appState: AppState,
         defaults: UserDefaults,
@@ -2097,6 +2141,7 @@ final class AppStateSessionCompressTests: XCTestCase {
             chatResumeCoordinator: coordinator,
             recoverySequence: ChatResumeRecoverySequence(),
             loadSavedConnection: false,
+            dashboardRegistry: dashboardRegistry,
             clearSessionPresentationCache: {},
             chatResumeLifecycleOperations: lifecycleOperations,
             sessionPresentationCache: SessionPresentationCache(defaults: defaults),

@@ -422,6 +422,13 @@ struct ChatView: View {
                 handler: appState.quoteIntoComposer
             )
         )
+        // A "Replying to" card's tap scrolls to the reply it quoted.
+        .environment(
+            \.quotedReplyJump,
+            QuotedReplyJumpAction(owner: appState) { [weak appState = appState] quote, messageID in
+                appState?.showQuotedReply(quote, quotedIn: messageID) ?? false
+            }
+        )
         // The rows show AppState through this, not by observing it.
         .chatRows()
         .sheet(isPresented: $showsPinnedReplies) {
