@@ -53,11 +53,14 @@ enum V2Route: Hashable {
     case project(ProjectSummary)
     /// What the active profile's chats produced (Chats bar).
     case artifacts
+    /// The Pulse screen (Chats bar, pulse branch): its cards and ratings.
+    case pulse
 
     static func == (lhs: V2Route, rhs: V2Route) -> Bool {
         switch (lhs, rhs) {
         case (.conversation, .conversation): return true
         case (.artifacts, .artifacts): return true
+        case (.pulse, .pulse): return true
         case let (.project(left), .project(right)): return left.id == right.id
         default: return false
         }
@@ -72,6 +75,8 @@ enum V2Route: Hashable {
             hasher.combine(project.id)
         case .artifacts:
             hasher.combine(2)
+        case .pulse:
+            hasher.combine(3)
         }
     }
 }
@@ -434,6 +439,13 @@ struct V2Shell: View {
         }
     }
 
+    /// Whether the visible tab shows the Pulse screen, which takes the
+    /// whole window as a chat does: no tabs or voice button. Split, it is a
+    /// page in the list column, over the bar like Artifacts.
+    private var pulseVisible: Bool {
+        selectedTab == .chats && chatsPath.last == .pulse
+    }
+
     /// Whether either tab holds the conversation, shown or not.
     private var conversationPushed: Bool {
         chatsPath.contains(.conversation) || botsPath.contains(.conversation)
@@ -572,6 +584,28 @@ struct V2Shell: View {
                 }
                 // Its haptic came with the tap.
                 pickProfile(next, haptic: false)
+            .onChange(of: appState.showsPulseScreen) { _, shows in
+                // No Pulse here any more (another dashboard, an older plugin): no badge or marks.
+                guard !shows else { return }
+                appState.pulseUnseen = 0
+                appState.pulseSources = [:]
+                appState.pulseHomeChatID = nil
+            }
+            .onChange(of: appState.pulseOpenRequest, initial: true) { _, request in
+                // The page reads the card to show and clears the request. A
+                // push tapped at launch can ask before the shell is up.
+                guard request != nil else { return }
+                guard !appState.isModalSheetPresented else {
+                    appState.pulseOpenRequest = nil
+                    return
+                }
+                if chatsPath.last != .pulse {
+                    // One Pulse page: over a chat opened from it, it comes back to the top.
+                    chatsPath.removeAll { $0 == .pulse }
+                    chatsPath.append(.pulse)
+                }
+                visitedTabs.insert(.chats)
+                selectTab(.chats)
             }
             .onChange(of: appState.settingsLinkRequest) { _, page in
                 guard let page else { return }
@@ -654,7 +688,7 @@ struct V2Shell: View {
         // (`tabBarClearance`).
         .overlay(alignment: .bottom) {
             ZStack(alignment: .bottom) {
-                if split || !conversationVisible {
+                if split || (!conversationVisible && !pulseVisible) {
                     HStack(spacing: 10) {
                         V2CapsuleTabBar(selection: $selectedTab)
                         voiceButton(chatVoiceBeside: V2SplitLayout.hasChatVoiceBeside(split: split, path: path(of: selectedTab), inRoom: appState.activeRoomSurface != nil))
@@ -675,7 +709,7 @@ struct V2Shell: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: conversationVisible)
+            .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: conversationVisible || pulseVisible)
         }
         .overlay(alignment: .top) {
             // Animated on its own, so the notice slides in without
@@ -776,7 +810,13 @@ struct V2Shell: View {
         return HStack(spacing: 0) {
             NavigationStack(path: V2SplitLayout.listPath(path)) {
                 list
-                    .navigationDestination(for: V2Route.self) { destination($0) }
+                    .navigationDestination(for: V2Route.self) { route in
+                        if route == .pulse {
+                            tabBarClearance(V2PulsePage())
+                        } else {
+                            destination(route)
+                        }
+                    }
             }
             .frame(width: V2SplitLayout.listWidth)
             // Each column's backdrop stays in its own column.
@@ -837,6 +877,10 @@ struct V2Shell: View {
             listRoot(tabBarClearance(V2ProjectPage(project: project)), alone: alone)
         case .artifacts:
             listRoot(tabBarClearance(V2ArtifactsPage()), alone: alone)
+        case .pulse:
+            // Full screen on a phone, as a chat is: its reply box sits where
+            // the tabs were. Split, the list column keeps the bar (`splitColumns`).
+            V2PulsePage()
         }
     }
 
@@ -853,7 +897,12 @@ struct V2Shell: View {
             if botsPath.last != .conversation { botsPath.append(.conversation) }
         default:
             botsPath.removeAll { $0 == .conversation }
-            if chatsPath.last != .conversation { chatsPath.append(.conversation) }
+            if chatsPath.last != .conversation {
+                // A chat opened from a page over another chat (Pulse) moves
+                // to the top instead of showing twice in the stack.
+                chatsPath.removeAll { $0 == .conversation }
+                chatsPath.append(.conversation)
+            }
         }
         visitedTabs.insert(target)
         selectTab(target)

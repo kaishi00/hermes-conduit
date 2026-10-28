@@ -209,6 +209,13 @@ final class PhoneSyncEngine: ObservableObject {
     /// doesn't hand the same one out again. In memory: it covers races in
     /// one run of the app.
     private var applying: Set<String> = []
+    /// Changes the user approved on a Pulse card (Add, or Undo of one), by
+    /// id, with when the approval lapses: the tap was the asking, so this
+    /// app applies them without the phone's own card. In memory too: the
+    /// host hands a change out right after the tap, and one that comes
+    /// later, or after a relaunch, gets the usual card.
+    private var approvedOnCard: [String: Date] = [:]
+    static let cardApprovalWindow: TimeInterval = 15 * 60
 
     init(
         calendarSource: PhoneCalendarSource,
@@ -813,15 +820,33 @@ final class PhoneSyncEngine: ObservableObject {
                 if !state.unreported.contains(refusal) { state.unreported.append(refusal) }
                 continue
             }
-            if change.auto, change.kind.addsWithoutAsking, preferences.autoAdd {
+            if let approved = approvedOnCard.removeValue(forKey: change.id), approved > now() {
+                await applyNow(change, auto: false)
+            } else if change.auto, change.kind.addsWithoutAsking, preferences.autoAdd {
                 await applyNow(change, auto: true)
             } else {
                 fresh.append(PhoneChangePrompt(change: change, calendarTitle: calendarTitle(for: change),
                                                alarmTitle: alarmTitle(for: change)))
             }
         }
-        prompts = fresh
+        // One approved on a card while this ran gets no card: the pass the
+        // approval runs applies it.
+        prompts = fresh.filter { approvedOnCard[$0.id] == nil }
         persist()
+    }
+
+    /// A change the user approved on a Pulse card, by its id: applied now
+    /// if its card is already waiting here, else when the host hands it out
+    /// within 15 minutes (AppState.applyPulseApproval runs the pass). A
+    /// change for another device never comes here, and its approval lapses.
+    func approveFromCard(_ changeID: String) async {
+        let now = self.now()
+        approvedOnCard = approvedOnCard.filter { $0.value > now }
+        if let prompt = prompts.first(where: { $0.id == changeID }) {
+            await answer(prompt, approve: true)
+            return
+        }
+        approvedOnCard[changeID] = now.addingTimeInterval(Self.cardApprovalWindow)
     }
 
     /// The user's answer to a card (or to the question in a voice call).

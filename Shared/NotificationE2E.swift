@@ -607,4 +607,13 @@ enum NotificationSharedSettings {
         get { Set(defaults?.stringArray(forKey: knownGatewayIDsKey) ?? []) }
         set { defaults?.set(newValue.sorted(), forKey: knownGatewayIDsKey) }
     }
+
+    private static let pulseQuietGatewaysKey = "conduit.notifications.pulseQuietGateways"
+
+    /// The relay gateways whose host's plugin takes Quiet for today, so the
+    /// extension offers it on their Pulse pushes (PulseNotifications).
+    static var pulseQuietGateways: Set<String> {
+        get { Set(defaults?.stringArray(forKey: pulseQuietGatewaysKey) ?? []) }
+        set { defaults?.set(newValue.sorted(), forKey: pulseQuietGatewaysKey) }
+    }
 }

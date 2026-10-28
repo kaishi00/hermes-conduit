@@ -1074,13 +1074,12 @@ enum HermesCallNotifications {
     /// Where a call notification Conduit posted itself keeps its routing.
     static let localPayloadKey = "conduit_local_call"
 
-    /// Registered at launch and when the app's language changes, so the
-    /// button reads in it.
-    static func registerCategory(center: UNUserNotificationCenter = .current()) {
+    /// Registered with Conduit's other categories (NotificationCategories)
+    /// at launch and when the app's language changes, so the button reads
+    /// in it.
+    static func category() -> UNNotificationCategory {
         let talk = UNNotificationAction(identifier: talkActionIdentifier, title: HermesCallCopy.talkAction, options: [.foreground])
-        center.setNotificationCategories([
-            UNNotificationCategory(identifier: categoryIdentifier, actions: [talk], intentIdentifiers: [], options: [])
-        ])
+        return UNNotificationCategory(identifier: categoryIdentifier, actions: [talk], intentIdentifiers: [], options: [])
     }
 
     /// The local notification for `target`, routed like a call push.
