@@ -134,6 +134,17 @@ final class PinnedRepliesTests: XCTestCase {
         XCTAssertEqual(sections.first?.pins.map(\.excerpt), ["A2", "A1"])
     }
 
+    func testOverviewPutsTheOpenChatFirst() {
+        let open = pin(reply("a", "A1", rowId: 1), session: "s1", at: 0)
+        let pins = [
+            open,
+            pin(reply("b", "B1", rowId: 2), session: "s2", at: 5),
+            pin(reply("c", "C1", rowId: 3), session: "s3", at: 10),
+        ]
+        let sections = PinnedReplies.overview(pins, firstPins: [open.id])
+        XCTAssertEqual(sections.map(\.sessionID), ["s1", "s3", "s2"], "the open chat leads, the rest newest first")
+    }
+
     // MARK: - AppState
 
     @MainActor

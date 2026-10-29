@@ -1,5 +1,23 @@
 import Foundation
 
+/// The kind of card waiting on the user that the jump button goes to.
+enum PendingDecisionKind: Equatable {
+    case question
+    case approval
+    /// A password, secret, website login or code (an input card).
+    case input
+
+    init(message: ChatMessage) {
+        if message.approval != nil {
+            self = .approval
+        } else if message.inputPrompt != nil {
+            self = .input
+        } else {
+            self = .question
+        }
+    }
+}
+
 enum ChatResumeRestorationDestination: Equatable {
     case latest
     case snapshot(ChatScrollSnapshot)
@@ -38,7 +56,7 @@ final class ChatResumeCoordinator {
         self.store = store
     }
 
-    /// The newest question or approval card still waiting on the user.
+    /// The newest question, approval or input card still waiting on the user.
     /// A mixed batch may retain an expired sibling while another question
     /// remains answerable; only request-level expiry makes the whole card stale.
     static func pendingClarifyMessageID(in messages: [ChatMessage]) -> String? {
@@ -47,6 +65,10 @@ final class ChatResumeCoordinator {
                 // An answer on its way isn't waiting on the user, as a
                 // question's isn't; the voice panels still show its card.
                 return approval.status == .pending || approval.status == .error
+            }
+            if let prompt = message.inputPrompt {
+                // A password, login or code Hermes is waiting for.
+                return prompt.isAnswerable
             }
             guard let clarify = message.clarify else { return false }
             return clarify.needsAnswer

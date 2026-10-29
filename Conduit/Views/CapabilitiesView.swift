@@ -7,7 +7,7 @@ import SwiftUI
 struct CapabilitiesView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
-    @StateObject private var store = CapabilitiesStore()
+    @State private var store = CapabilitiesStore()
     @AppStorage("capabilities.tab") private var tabRaw = CapabilitiesTab.skills.rawValue
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
@@ -61,7 +61,6 @@ struct CapabilitiesView: View {
                 tabPicker
                 otherTabMatches
             }
-            .modifier(V2LegacyScrollEdge())
         }
         // The other settings pages' backdrop and small title.
         .background { SettingsBackdrop() }

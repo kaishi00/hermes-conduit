@@ -71,7 +71,7 @@ struct OfflineChatTranscriptView: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
             }
-            .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
+            .modifier(V2SoftTopScrollEdge(isOn: composerFloats, underChatHeader: true))
             .defaultScrollAnchor(.bottom)
             // A different saved conversation starts at its own latest row.
             .id(presentation.displayedSessionID)
@@ -108,7 +108,7 @@ private struct OfflineChatRows: View {
         _ = stepToggleRevision
         let preferences = appState.displayPreferences
         return rows.filter { row in
-            row.step?.drawsRow(messageID: row.id, preferences: preferences, isBusy: appState.isBusy, disclosure: disclosure) ?? true
+            row.drawsRow(preferences: preferences, isBusy: appState.isBusy, disclosure: disclosure)
         }
     }
 
@@ -117,7 +117,8 @@ private struct OfflineChatRows: View {
             MessageBubble(
                 message: row.message,
                 gatewayResolver: appState.gatewayMediaResolver,
-                step: row.step
+                step: row.step,
+                stepsAbove: row.stepsAbove
             )
             .equatable()
         }

@@ -29,7 +29,7 @@ struct GroupRoomComposer: View {
     @State private var recipients: [String] = []
     @Environment(\.groupMemberTints) private var tints
     @State private var attachments: [Attachment] = []
-    @FocusState private var isFocused: Bool
+    @State private var isFocused = false
     @State private var isUploading = false
     /// The upload in flight, cancelled when the composer goes away.
     @State private var uploadTask: Task<Void, Never>?
@@ -40,6 +40,7 @@ struct GroupRoomComposer: View {
     @State private var showCamera = false
     @State private var isShowingFullEditor = false
     @StateObject private var dictation = ComposerDictationService()
+    @ObservedObject private var dictationClips = DictationClipInbox.shared
     /// The draft as it was when dictation began; dictated text goes after it.
     @State private var dictationPrefix = ""
     /// The draft as dictation last wrote it, to tell its writes from typing.
@@ -69,8 +70,15 @@ struct GroupRoomComposer: View {
         (hasText || !attachments.isEmpty) && roomAccepts && !isUploading
     }
 
+    /// A dictation's settle counts, so typing then ends it as in a chat.
     private var isDictationActive: Bool {
-        dictation.isCapturing || dictation.isStarting || dictation.isTranscribing
+        dictation.isDictating || dictation.isCapturing || dictation.isStarting || dictation.isTranscribing
+    }
+
+    /// Send's place is dictation's Stop until its words are in, as in a
+    /// chat (#1309), and the small mic steps aside meanwhile.
+    private var dictationHoldsSendSlot: Bool {
+        ComposerDictation.holdsSendSlot(isDictating: dictation.isDictating, isStarting: dictation.isStarting)
     }
 
     /// Resting, it is one slim bar: attach beside the field. Anything in
@@ -145,6 +153,8 @@ struct GroupRoomComposer: View {
         }
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: rests)
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: mentionCandidates.isEmpty)
+        // Send and the mic give way to dictation's Stop, and come back.
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: dictationHoldsSendSlot)
         .padding(.horizontal, 12)
         .padding(.top, 8)
         .padding(.bottom, 10)
@@ -159,6 +169,18 @@ struct GroupRoomComposer: View {
         }
         .onChange(of: appState.roomQuoteRequest) { _, request in
             applyQuoteRequest(request)
+        }
+        .onChange(of: appState.roomDropRequest) { _, request in
+            guard let request, appState.consumeRoomDropRequest(request.id) else { return }
+            importDroppedFiles(request.providers)
+        }
+        // A dictation Retry added words to this room's kept draft, which
+        // tracks the field as it changes: show it. Reading the kept draft
+        // keeps both of two Retries that land in the same update.
+        .onChange(of: appState.roomDraftAppend) { _, append in
+            guard let append, let surface,
+                  append.dashboardID == surface.dashboardID, append.roomID == surface.room.roomID else { return }
+            draft = appState.activeRoomDraft()
         }
         .onChange(of: appState.roomRecipientRequest) { _, request in
             applyRecipientRequest(request)
@@ -220,14 +242,31 @@ struct GroupRoomComposer: View {
             ComposerFullEditor(
                 text: $draft,
                 placeholder: AppLocalization.string("Message the room"),
+                fieldIdentifier: "room.composer.fullEditor.field",
                 enabled: true,
                 onUserEdit: { _ in },
                 onCollapse: { isShowingFullEditor = false },
+                canSubmitFromReturn: canSubmitFromReturn,
+                onSubmitFromReturn: { submitFromReturnKey() },
+                onDropFiles: surface?.room.isDisbanded == false ? { providers in importDroppedFiles(providers) } : nil,
                 attachments: {
+                    // A drop on the editor that left files out says so here,
+                    // not only behind the sheet.
+                    if let composerError, !composerError.isEmpty {
+                        Label(composerError, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
+                            .padding(.top, 8)
+                    }
                     if !attachments.isEmpty { attachmentStrip }
                 },
-                dictateButton: { dictateButton },
-                actionButton: { sendButton }
+                dictateButton: {
+                    if !dictationHoldsSendSlot { dictateButton }
+                },
+                actionButton: { sendSlot(identifier: "room.composer.fullEditor.dictation.stop") }
             )
             .preferredColorScheme(appState.themePreference.colorScheme)
             .environmentObject(appState)
@@ -253,6 +292,12 @@ struct GroupRoomComposer: View {
                 "Your previous message is still pending. Retry it from the room, or wait for it to deliver."
             ), color: .secondary)
         }
+        UndeliveredDictationNotice(
+            inbox: dictationClips,
+            identity: dictationClipIdentity,
+            delivering: appState.dictationClipsOnTheirWay,
+            onRetry: retryDictationClip
+        )
         // The session surface's error banner lives inside ChatView, which
         // this room surface replaces: room errors must render here.
         if let error = composerError ?? appState.errorMessage, !error.isEmpty {
@@ -292,15 +337,28 @@ struct GroupRoomComposer: View {
     }
 
     private var field: some View {
-        TextField(AppLocalization.string("Message the room"), text: $draft, axis: .vertical)
-            .lineLimit(1...6)
-            .focused($isFocused)
+        ReturnKeyTextEditor(
+            text: $draft,
+            isFocused: $isFocused,
+            accessibilityLabel: AppLocalization.string("Message the room"),
+            accessibilityIdentifier: "room.composer.field",
+            maxLines: 6,
+            canSubmitFromReturn: canSubmitFromReturn,
+            onSubmitFromReturn: { submitFromReturnKey() }
+        )
+            .background(alignment: .topLeading) {
+                if draft.isEmpty {
+                    Text(AppLocalization.string("Message the room"))
+                        .foregroundStyle(.tertiary)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
             .padding(.leading, 12)
             // Clear of the expand button once it shows.
             .padding(.trailing, showsExpand ? 44 : 12)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .accessibilityIdentifier("room.composer.field")
             .overlay(alignment: .topTrailing) {
                 if showsExpand {
                     Button {
@@ -325,8 +383,10 @@ struct GroupRoomComposer: View {
         HStack(spacing: 8) {
             attachButton
             Spacer(minLength: 0)
-            dictateButton
-            sendButton
+            if !dictationHoldsSendSlot {
+                dictateButton
+            }
+            sendSlot()
         }
         .padding(.horizontal, 10)
         .padding(.top, 6)
@@ -445,6 +505,15 @@ struct GroupRoomComposer: View {
         return Text(AppLocalization.string("Dictate"))
     }
 
+    @ViewBuilder
+    private func sendSlot(identifier: String = "room.composer.dictation.stop") -> some View {
+        if dictationHoldsSendSlot {
+            ComposerDictationStopButton(dictation: dictation, identifier: identifier)
+        } else {
+            sendButton
+        }
+    }
+
     private var sendButton: some View {
         Button {
             send()
@@ -478,6 +547,22 @@ struct GroupRoomComposer: View {
     }
 
     // MARK: - Sending
+
+    /// Return key sends (Settings > Chat > Keyboard), as in a chat: Return
+    /// stands for Send, which is dictation's Stop while it runs.
+    private var canSubmitFromReturn: Bool {
+        canSend || dictationHoldsSendSlot
+    }
+
+    private func submitFromReturnKey() -> Bool {
+        if dictationHoldsSendSlot {
+            dictation.tapSlot()
+            return true
+        }
+        guard canSend else { return false }
+        send()
+        return true
+    }
 
     private func send() {
         guard canSend else { return }
@@ -752,6 +837,49 @@ struct GroupRoomComposer: View {
         }
     }
 
+    /// Where this room's dictations keep their recordings: none in a room
+    /// that takes no messages (disbanded, or a host without room sends),
+    /// so it offers nothing to retry. A send in flight or a pending
+    /// message only holds Send; the draft still takes words.
+    private var dictationClipIdentity: String? {
+        guard surface?.room.isDisbanded == false,
+              appState.groupCapabilities?.supports("groups.send") == true else { return nil }
+        return appState.dictationClipIdentity
+    }
+
+    /// Retry on a dictation whose words never came: one more upload of
+    /// its kept recording. The words go to this room's draft, even if
+    /// another room or chat opened meanwhile.
+    private func retryDictationClip(_ clip: DictationClip) {
+        guard let gateway = appState.makeVoiceGateway(), let surface = appState.activeRoomSurface else {
+            composerError = AppLocalization.string("Dictation with Hermes needs a connection to Hermes.")
+            return
+        }
+        let dashboardID = surface.dashboardID
+        let roomID = surface.room.roomID
+        composerError = nil
+        Task {
+            do {
+                let words = try await dictationClips.retry(clip, transcribe: gateway.transcribe)
+                guard !words.isEmpty else {
+                    composerError = AppLocalization.string("No speech was captured.")
+                    return
+                }
+                // Through the room's kept draft: this composer may be gone,
+                // or another one shows the room now. A room gone meanwhile
+                // takes nothing: the recording stays for a Retry elsewhere.
+                guard appState.appendToRoomDraft(words, dashboardID: dashboardID, roomID: roomID) else { return }
+                dictationClips.delivered(clip.id)
+            } catch is CancellationError {
+                return
+            } catch is DictationClipUnreadable {
+                composerError = AppLocalization.string("The recording couldn't be read. Try again in a moment.")
+            } catch {
+                composerError = AppLocalization.string("Hermes couldn't transcribe that: \(UserFacingError.message(for: error))")
+            }
+        }
+    }
+
     // MARK: - Attachments
 
     private func openCamera() {
@@ -811,6 +939,29 @@ struct GroupRoomComposer: View {
         }
     }
 
+    /// Files dropped on the room (#1408), staged like picked documents,
+    /// even while a send's files go up: a send takes only its own files
+    /// out of the draft. A plugin that can't store a room's files says
+    /// what fixes it, as the Attach menu does. A folder isn't attached;
+    /// the notice names it and says to drop the files inside.
+    private func importDroppedFiles(_ providers: [NSItemProvider]) {
+        // A disbanded room sends nothing, whichever target took the drop.
+        guard !providers.isEmpty, surface?.room.isDisbanded == false else { return }
+        guard appState.canAttachRoomFiles else {
+            composerError = AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.")
+            Haptics.error()
+            return
+        }
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+        let roomID = surface?.room.roomID
+        let files = providers.filter { !AttachmentDrop.isFolder($0) }
+        let folders = files.count < providers.count ? AttachmentDrop.folderNames(in: providers) : nil
+        Task {
+            let outcomes = await AttachmentDrop.stage(files, limitMegabytes: limit)
+            finishImport(outcomes, roomID: roomID, folders: folders)
+        }
+    }
+
     private func importCapturedPhoto(_ image: UIImage) {
         let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
         let roomID = surface?.room.roomID
@@ -824,7 +975,7 @@ struct GroupRoomComposer: View {
 
     /// One cue per selection: the error and its message when anything was
     /// left out, otherwise a light tap.
-    private func finishImport(_ outcomes: [AttachmentStaging.StagedImport], roomID: String?) {
+    private func finishImport(_ outcomes: [AttachmentStaging.StagedImport], roomID: String?, folders: [String]? = nil) {
         // Left the room while the files were staged: this composer is gone,
         // so their local copies are dropped.
         guard appState.activeRoomSurface?.room.roomID == roomID else {
@@ -849,6 +1000,9 @@ struct GroupRoomComposer: View {
         if !failed.isEmpty {
             let list = failed.joined(separator: ", ")
             messages.append(AppLocalization.string("Could not prepare \(list) for upload."))
+        }
+        if let folders {
+            messages.append(AttachmentDrop.folderMessage(names: folders))
         }
         if messages.isEmpty {
             if !outcomes.isEmpty { Haptics.light() }

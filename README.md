@@ -42,9 +42,11 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 - Streaming replies with Markdown, highlighted code, math, Mermaid diagrams and task lists
 - Thinking, tool calls and each turn's steps, shown live or folded away; delegated-agent progress
 - Map, place, travel, media, contact and info cards that Hermes draws in the chat
-- Attach photos, camera shots and any file; quote a message, react to it, copy it
-- Steer, queue or stop a running turn; context meter; slash commands and workspace files
-- Branch, pin, archive and delete sessions; project chats; Artifacts browser for every file and page Hermes made
+- Answer Hermes' questions with a tap, or in a short form when it needs several details: fill in what you know and leave the rest blank
+- Attach photos, camera shots and any file, or drag them onto a chat (Finder on a Mac, Files on an iPad); quote a message, react to it, copy it
+- Steer, queue or stop a running turn; context meter; slash commands
+- Branch, pin (in the order you set), archive and delete sessions; project chats; Artifacts browser for every file and page Hermes made
+- Browse the chat's folder and your projects' folders beside Artifacts: preview and edit files, search names and contents, make, rename, move and delete files, upload from the phone, and tap a file path in a reply to open it (the folder's search and changes need the plugin)
 - Saved chats open instantly, and you can type while Conduit reconnects
 
 **Voice**
@@ -78,7 +80,7 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 - Live Activities on the Lock Screen and in the Dynamic Island while a reply runs
 - Home Screen widgets to start a chat or talk in one tap
 - Provider, model and reasoning effort switching mid-conversation
-- Multiple dashboards and profiles, each with its own credentials and settings
+- Multiple dashboards and profiles, each with its own credentials and settings; rename a profile or change its photo and glow in Settings > Profiles
 - Capabilities: skills, tools, connectors and plugins, plus Hermes settings and gateway logs
 - Native OAuth sign-in through your dashboard, QR code and setup links, Cloudflare Access service tokens
 - Face ID or Touch ID lock, credentials in the Keychain
@@ -161,7 +163,9 @@ On your home network the address is then `http://<nas-ip>:9119`; through Tailsca
 
 Plain HTTP over Tailscale (MagicDNS `.ts.net` domains and `100.64.0.0/10` tailnet IPs) is supported, since that traffic is already WireGuard-encrypted.
 
-If the dashboard is behind Cloudflare Access, enable the optional service token on the login screen or in Settings > Connection > Gateway. Conduit stores the client secret in Keychain (scoped to the gateway origin), and injects both Access headers into native authentication requests, WebSocket handshakes, and all in-page WebKit fetches via a document-start user script. Credentials are bound to the gateway URL and cleared when switching to a different host.
+Conduit only needs Tailscale Serve, which shares the dashboard with devices on your own tailnet. It doesn't need Tailscale SSH, so leave that off unless you use it for something else, and keep Tailscale updated on every device, including older ones like an iPad or Apple TV. Tailscale posts fixes on its [security bulletins](https://tailscale.com/security-bulletins) page.
+
+If the dashboard is behind Cloudflare Access, enable the optional service token on the login screen or in Settings > Connection (the first row, under your profile name). Conduit stores the client secret in Keychain (scoped to the gateway origin), and injects both Access headers into native authentication requests, WebSocket handshakes, and all in-page WebKit fetches via a document-start user script. Credentials are bound to the gateway URL and cleared when switching to a different host.
 
 **Native OAuth limitation:** service-token headers cannot be attached to the system Safari navigation that opens `/auth/native/authorize`. Native OAuth therefore requires that browser authorization route to be reachable through an interactive Cloudflare policy or without a service-token challenge. The token exchange, refresh, REST, and WebSocket-ticket requests still use the configured service-token headers. A service-token-only challenge in front of the authorize route cannot be bypassed by Conduit and must not silently fall back to embedded Google OAuth.
 
@@ -222,7 +226,7 @@ Key places:
 
 ## Privacy
 
-Conduit has no analytics, telemetry, crash-reporting or ad SDKs, and its developer never receives your conversations, voice or phone data. Chats, attachments and opt-in phone data go to your own Hermes host. Live voice calls go to the voice provider you choose (Google, Alibaba Cloud, OpenAI or xAI) or your own speech server. The optional push relay delivers notifications and calls through Apple; with end-to-end encryption on, it sees only routing data, not their content.
+Conduit has no analytics, telemetry, crash-reporting or ad SDKs, and its developer never receives your conversations, voice or phone data. After a crash or freeze, Conduit asks once whether to send that report (call stacks and codes, the version, iOS version and device model) to its developer, through the developer's push relay; it goes only if you tap Send. Chats, attachments and opt-in phone data go to your own Hermes host. Live voice calls go to the voice provider you choose (Google, Alibaba Cloud, OpenAI or xAI) or your own speech server. The optional push relay delivers notifications and calls through Apple; with end-to-end encryption on, it sees only their routing data, not their content. A crash report you send isn't end-to-end encrypted: the developer's relay keeps what it says.
 
 The full [privacy policy](https://kaishi00.github.io/hermes-conduit-notifier/privacy/) says what each party receives.
 

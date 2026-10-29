@@ -33,6 +33,22 @@ final class PrivacyManifestTests: XCTestCase {
         "ConduitShareExtension": [userDefaults: ["1C8F.1"], fileTimestamp: ["C617.1"]],
     ]
 
+    /// Target folder -> the data it sends its developer, none linked to the
+    /// user or used to track: the app's crash and freeze reports, sent only
+    /// when the user taps Send (CrashReportOffer).
+    private static let collected: [String: Set<String>] = [
+        "Conduit": ["NSPrivacyCollectedDataTypeCrashData", "NSPrivacyCollectedDataTypePerformanceData"],
+    ]
+
+    private static func collectedTypes(_ manifest: [String: Any]) throws -> Set<String> {
+        let entries = try XCTUnwrap(manifest["NSPrivacyCollectedDataTypes"] as? [[String: Any]])
+        for entry in entries {
+            XCTAssertEqual(entry["NSPrivacyCollectedDataTypeLinked"] as? Bool, false)
+            XCTAssertEqual(entry["NSPrivacyCollectedDataTypeTracking"] as? Bool, false)
+        }
+        return Set(entries.compactMap { $0["NSPrivacyCollectedDataType"] as? String })
+    }
+
     private static var repoRoot: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // ConduitTests
@@ -45,7 +61,7 @@ final class PrivacyManifestTests: XCTestCase {
             let manifest = try Self.manifest(at: url)
             XCTAssertEqual(manifest["NSPrivacyTracking"] as? Bool, false, folder)
             XCTAssertEqual((manifest["NSPrivacyTrackingDomains"] as? [String])?.isEmpty, true, folder)
-            XCTAssertEqual((manifest["NSPrivacyCollectedDataTypes"] as? [Any])?.isEmpty, true, folder)
+            XCTAssertEqual(try Self.collectedTypes(manifest), Self.collected[folder] ?? [], folder)
             XCTAssertEqual(try Self.accessedReasons(manifest), reasons, folder)
         }
     }

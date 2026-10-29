@@ -493,6 +493,6 @@ enum PhoneSyncLimits {
     static let batchItems = 5_000
     /// The JSON one upload carries. Sealed, it grows by a third as base64,
     /// and the notifier refuses bodies over 4 MiB
-    /// (plugin_api PHONE_MAX_INGEST_BODY_BYTES).
+    /// (dashboard/api/phone_data.py PHONE_MAX_INGEST_BODY_BYTES).
     static let batchBytes = 3_000_000
 }

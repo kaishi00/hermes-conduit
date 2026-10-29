@@ -15,7 +15,7 @@ struct GatewayDiagnosticsSheet: View {
     /// The report copied last, so "Copied" clears once a newer step lands.
     @State private var copiedTimelineReport: String?
     @State private var confirmingRestart = false
-    /// Pushed inside Settings > Gateway rather than shown as its own sheet.
+    /// Pushed inside Settings > Connection rather than shown as its own sheet.
     var embedded = false
 
     var body: some View {
@@ -114,7 +114,7 @@ struct GatewayDiagnosticsSheet: View {
     }
 
     /// The connection timeline, then the last call from Hermes (#449) and
-    /// the last Grok Live call's tool steps, so one Copy takes them all.
+    /// the last Grok Live, Qwen Live or Local Live call's steps, so one Copy takes them all.
     private var lastConnectionReport: String? {
         let reports = [appState.connectionTimeline?.report, HermesCallTrace.shared.timeline?.report, LiveCallTrace.shared.report].compactMap { $0 }
         return reports.isEmpty ? nil : reports.joined(separator: "\n\n")
@@ -199,168 +199,28 @@ struct GatewayDiagnosticsSheet: View {
     }
 }
 
-struct WorkspaceBrowserSheet: View {
+/// The drawer shell's + › Workspace (V2 off), which has no Artifacts: the
+/// Folder tab on its own, at the chat's folder (#1389).
+struct WorkspaceSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
-    @State private var previewOpen = false
-
-    private var rows: [(entry: WorkspaceEntry, depth: Int)] {
-        flatten(appState.workspaceEntries[appState.workspaceRoot] ?? [], depth: 0)
-    }
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             ZStack {
                 ConduitBackdrop()
-                Group {
-                    if appState.workspaceRoot.isEmpty {
-                        ContentUnavailableView("Workspace unavailable", systemImage: "folder.badge.questionmark", description: Text("Hermes has not reported a working directory for this session yet."))
-                    } else {
-                        List(rows, id: \.entry.id) { row in
-                            Button {
-                                if row.entry.isDirectory {
-                                    Task { await appState.toggleWorkspaceFolder(row.entry) }
-                                } else {
-                                    previewOpen = true
-                                    Task { await appState.previewWorkspaceFile(row.entry) }
-                                }
-                            } label: {
-                                HStack(spacing: 10) {
-                                    Image(systemName: row.entry.isDirectory ? "folder.fill" : "doc.text")
-                                        .foregroundStyle(row.entry.isDirectory ? .conduitAccent : .secondary)
-                                    Text(row.entry.name).lineLimit(1)
-                                    Spacer()
-                                    if row.entry.isDirectory {
-                                        Image(systemName: appState.expandedWorkspacePaths.contains(row.entry.path) ? "chevron.down" : "chevron.right")
-                                            .font(.caption.weight(.semibold)).foregroundStyle(.conduitTertiary)
-                                    }
-                                }
-                                .padding(.leading, CGFloat(row.depth) * 18)
-                            }
-                            .tint(.primary)
-                        }
-                        .scrollContentBackground(.hidden)
-                    }
-                }
+                WorkspaceFolderView(includesChat: true, handlesReveals: true)
             }
-            .navigationTitle(workspaceTitle)
+            .navigationTitle(Text("Folder"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { Task { await appState.refreshWorkspace() } } label: {
-                        if appState.workspaceLoadingPath == appState.workspaceRoot { ProgressView().controlSize(.small) }
-                        else { Image(systemName: "arrow.clockwise") }
-                    }
-                    .accessibilityLabel("Refresh workspace")
+                    Button("Done") { dismiss() }
                 }
             }
         }
-        .sheet(isPresented: $previewOpen) {
-            WorkspaceFilePreviewSheet()
-                .presentationDetents([.medium, .large])
-                .environmentObject(appState)
-        }
-    }
-
-    private var workspaceTitle: String {
-        let name = URL(fileURLWithPath: appState.workspaceRoot).lastPathComponent
-        return name.isEmpty ? AppLocalization.string("Workspace") : name
-    }
-
-    private func flatten(_ entries: [WorkspaceEntry], depth: Int) -> [(entry: WorkspaceEntry, depth: Int)] {
-        entries.flatMap { entry in
-            var result = [(entry: entry, depth: depth)]
-            if entry.isDirectory, appState.expandedWorkspacePaths.contains(entry.path) {
-                result += flatten(appState.workspaceEntries[entry.path] ?? [], depth: depth + 1)
-            }
-            return result
-        }
-    }
-}
-
-private struct WorkspaceFilePreviewSheet: View {
-    @ObservedObject var appLanguage = AppLanguageStore.shared
-    @EnvironmentObject private var appState: AppState
-    @State private var download: WorkspaceDownload?
-    @State private var downloadTask: Task<Void, Never>?
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                ConduitBackdrop()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
-                        if appState.workspaceFileLoading {
-                            ProgressView("Loading preview…").frame(maxWidth: .infinity, minHeight: 180)
-                        } else if let error = appState.workspaceFileError {
-                            ContentUnavailableView("Couldn’t preview file", systemImage: "exclamationmark.triangle", description: Text(error))
-                        } else if let preview = appState.workspacePreview {
-                            fileMetadata(preview)
-                            if preview.binary {
-                                ContentUnavailableView("Binary file", systemImage: "doc.fill", description: Text("Use Save to Files to download this file."))
-                            } else {
-                                Text(preview.text.isEmpty ? AppLocalization.string("This file is empty.") : preview.text)
-                                    .font(.caption.monospaced())
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(12)
-                                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            }
-                        } else {
-                            ContentUnavailableView("Select a file", systemImage: "doc.text")
-                        }
-                    }
-                    .padding(16)
-                }
-            }
-            .navigationTitle(appState.workspaceSelectedFile?.name ?? AppLocalization.string("File"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    if let download {
-                        ShareLink(item: download.file, preview: SharePreview(appState.workspaceSelectedFile?.name ?? AppLocalization.string("Workspace file"))) {
-                            Label("Save to Files", systemImage: "square.and.arrow.up")
-                        }
-                    } else {
-                        Button { prepareDownload() } label: { Image(systemName: "arrow.down.circle") }
-                            .accessibilityLabel("Prepare file for download")
-                    }
-                }
-            }
-        }
-        // The prepared copy lives as long as this preview of this file.
-        .onChange(of: appState.workspaceSelectedFile?.path) { _, _ in discardDownload() }
-        .onDisappear { discardDownload() }
-    }
-
-    private func fileMetadata(_ preview: WorkspaceFilePreview) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("File"), symbol: "doc", tint: .conduitAccent) {
-            SettingsMetricRow(label: AppLocalization.string("Type"), value: preview.language)
-            SettingsMetricRow(label: AppLocalization.string("Size"), value: ByteCountFormatter.string(fromByteCount: Int64(preview.byteSize), countStyle: .file))
-            if preview.truncated { Text("Preview is truncated; save the file for its full contents.").font(.footnote).foregroundStyle(.secondary) }
-        }
-    }
-
-    private func prepareDownload() {
-        guard let entry = appState.workspaceSelectedFile, downloadTask == nil else { return }
-        downloadTask = Task {
-            let prepared = await appState.workspaceDownload(for: entry)
-            // Closed, or another file, while it was being prepared.
-            guard !Task.isCancelled, appState.workspaceSelectedFile?.path == entry.path else {
-                WorkspaceDownloads.remove(prepared)
-                return
-            }
-            downloadTask = nil
-            download = prepared
-        }
-    }
-
-    private func discardDownload() {
-        downloadTask?.cancel()
-        downloadTask = nil
-        WorkspaceDownloads.remove(download)
-        download = nil
     }
 }
 
@@ -630,7 +490,8 @@ private struct DelegateAgentTailSheet: View {
 
 /// iOS's own MetricKit reports for Conduit (MetricKitReports): a short
 /// English summary of the latest day and a file to share, for battery and
-/// data questions. Nothing here is uploaded.
+/// data questions. Nothing here is uploaded; a new crash or hang is
+/// offered once on its own card (CrashReportOffer).
 private struct DeviceReportsSection: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @State private var loaded: MetricKitReports.Loaded?
@@ -640,6 +501,9 @@ private struct DeviceReportsSection: View {
         ConduitSettingsSection(title: AppLocalization.string("Device reports"), symbol: "chart.bar.doc.horizontal", tint: .conduitAccent) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Usage, network and hang reports iOS makes about once a day. They stay on this device until you share them.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Text("After a crash or freeze, Conduit asks once whether to send that report to its developer.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 if let summary = loaded?.summary, !summary.isEmpty {

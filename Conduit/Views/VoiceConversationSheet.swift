@@ -879,11 +879,12 @@ private struct VoiceConversationTranscriptBubble: View {
     }
 }
 
-/// An approval or question Hermes' turn waits on, on the Classic voice
-/// screen: its card is in the chat behind it, and the conversation sits on
-/// Thinking until it is answered. The same card as the chat's, so a tap
-/// here answers it the same way; a spoken yes or no, or the answer, also
-/// does.
+/// An approval, question or input request Hermes' turn waits on, on the
+/// Classic voice screen: its card is in the chat behind it, and the
+/// conversation sits on Thinking until it is answered. The same card as the
+/// chat's, so a tap here answers it the same way; a spoken yes or no, or the
+/// answer, also does for an approval or question, never for an input
+/// request.
 struct VoiceApprovalPanel: View {
     @EnvironmentObject private var appState: AppState
     let approvals: [ChatMessage]
@@ -896,6 +897,8 @@ struct VoiceApprovalPanel: View {
                 Group {
                     if message.clarify != nil {
                         ClarifyCard(message: message)
+                    } else if message.inputPrompt != nil {
+                        InputPromptCard(message: message)
                     } else {
                         ApprovalCard(message: message)
                     }

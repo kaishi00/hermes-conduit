@@ -126,6 +126,36 @@ struct VoiceTranscriptSaveResult: Equatable {
     var chatID: String? = nil
 }
 
+/// A call the host keeps with a chat, as its list of every chat's calls
+/// names it: enough to file the chat under Voice and draw its call card on
+/// a device that didn't make the call.
+struct VoiceHostChatCall: Equatable {
+    let callID: String
+    let chatID: String
+    let startedAt: Date
+    let endedAt: Date
+
+    static func parse(_ raw: Any) -> VoiceHostChatCall? {
+        guard let raw = raw as? [String: Any],
+              let callID = raw["call_id"] as? String, !callID.isEmpty,
+              let chatID = raw["chat_id"] as? String, !chatID.isEmpty,
+              let started = (raw["started_at"] as? NSNumber)?.doubleValue else { return nil }
+        let ended = (raw["ended_at"] as? NSNumber)?.doubleValue ?? started
+        return VoiceHostChatCall(
+            callID: callID, chatID: chatID,
+            startedAt: Date(timeIntervalSince1970: started),
+            endedAt: Date(timeIntervalSince1970: max(started, ended))
+        )
+    }
+}
+
+/// The profile's voice tags, and every call the host keeps with a chat
+/// (none from a plugin that predates the list).
+struct VoiceTagsAnswer: Equatable {
+    var tags: [String: VoiceSessionTag]
+    var chatCalls: [VoiceHostChatCall] = []
+}
+
 /// A call kept with its chat, as the chat's call card shows it.
 struct VoiceChatCall: Identifiable, Equatable {
     let callID: String
@@ -185,7 +215,8 @@ final class VoiceHistoryClient {
     }
 
     /// What one save may carry: the plugin refuses more turns or a larger
-    /// body (plugin_api VOICE_MAX_TURNS, and VOICE_MAX_BODY_BYTES at 1 MiB).
+    /// body (dashboard/api/voice_calls.py VOICE_MAX_TURNS, and
+    /// VOICE_MAX_BODY_BYTES at 1 MiB).
     static let maxTurnsPerSave = 500
     static let maxBytesPerSave = 900_000
 
@@ -251,10 +282,11 @@ final class VoiceHistoryClient {
         return try Self.saveResult(from: response)
     }
 
-    /// Every tag on the profile, keyed by session id.
-    func tags(profile: String) async throws -> [String: VoiceSessionTag] {
+    /// Every tag on the profile, keyed by session id, and the calls kept
+    /// with its chats.
+    func tags(profile: String) async throws -> VoiceTagsAnswer {
         let response = try await send(Self.tagsPath, profile: profile, method: "GET", body: nil)
-        return try Self.tags(from: response)
+        return VoiceTagsAnswer(tags: try Self.tags(from: response), chatCalls: Self.hostChatCalls(from: response))
     }
 
     func tag(sessionID: String, kind: VoiceSessionTag.Kind, parentID: String? = nil, parentTitle: String? = nil, profile: String) async throws {
@@ -350,6 +382,10 @@ final class VoiceHistoryClient {
             throw VoiceHistoryError.malformed
         }
         return raw.compactMapValues { VoiceSessionTag.parse($0) }
+    }
+
+    static func hostChatCalls(from response: [String: Any]) -> [VoiceHostChatCall] {
+        (response["chat_calls"] as? [Any] ?? []).compactMap(VoiceHostChatCall.parse)
     }
 
     static func summary(from response: [String: Any]) -> VoiceResumeSummary? {
@@ -486,6 +522,14 @@ final class VoiceTranscriptRecorder {
         append(.assistant, text)
     }
 
+    /// Rewrites a note not saved yet: a job's line once the call took the
+    /// job's chat as its own (#1250).
+    func replaceNote(_ text: String, with replacement: String) {
+        guard let index = turns.lastIndex(where: { $0.index >= written && $0.role == .assistant && $0.text == Self.clipped(text) }) else { return }
+        let old = turns[index]
+        turns[index] = VoiceTranscriptTurn(index: old.index, role: old.role, text: Self.clipped(replacement), at: old.at, cards: old.cards)
+    }
+
     /// Something the live model put on screen: its Markdown as the line,
     /// and its cards kept with it.
     func screen(_ card: VoiceScreenCard) {
@@ -494,7 +538,7 @@ final class VoiceTranscriptRecorder {
         append(.assistant, text, cards: card.cardsJSON)
     }
 
-    /// The longest turn the plugin keeps whole (plugin_api
+    /// The longest turn the plugin keeps whole (dashboard/api/voice_calls.py
     /// VOICE_MAX_TURN_CHARS, counted in code points); it cuts a longer one.
     static let maxTurnCharacters = 16_000
 
@@ -940,6 +984,52 @@ struct VoiceCallChatLinks: Codable, Equatable {
         links.removeAll { $0.callID == link.callID }
         links.append(link)
         if links.count > Self.maximumLinks { links.removeFirst(links.count - Self.maximumLinks) }
+    }
+
+    /// Links the calls the host keeps with chats that this device didn't
+    /// make or has forgotten, so their chats show the call cards and are
+    /// listed under Voice here too. `title` names a listed chat. The links
+    /// stay in the order their calls started, so the oldest go first past
+    /// the cap. True when the links changed: a call the cap drops again is
+    /// no change, so a full list doesn't rewrite them on every refresh.
+    mutating func adopt(_ calls: [VoiceHostChatCall], profile: String, title: (String) -> String?) -> Bool {
+        let before = links.map(\.callID)
+        let known = Set(before)
+        let adopted = calls.filter { !known.contains($0.callID) }
+        guard !adopted.isEmpty else { return false }
+        links += adopted.map { call in
+            VoiceCallChatLink(
+                callID: call.callID,
+                callSessionID: "",
+                chatRuntimeSessionID: call.chatID,
+                chatStoredSessionID: call.chatID,
+                chatTitle: title(call.chatID) ?? "",
+                profile: profile,
+                startedAt: call.startedAt,
+                endedAt: call.endedAt,
+                resumed: false
+            )
+        }
+        // Stable, so a resumed call's links keep their order.
+        links = links.enumerated()
+            .sorted { ($0.element.startedAt, $0.offset) < ($1.element.startedAt, $1.offset) }
+            .map(\.element)
+        if links.count > Self.maximumLinks { links.removeFirst(links.count - Self.maximumLinks) }
+        return links.map(\.callID) != before
+    }
+
+    /// The ids of the chats on `profile` with a call kept with them or
+    /// started from them, for the Voice filter. Bot Chats are listed apart.
+    func chatIDs(profile: String) -> Set<String> {
+        var ids = Set<String>()
+        for link in links where link.profile == profile && link.chatProfile == nil {
+            if let stored = link.chatStoredSessionID, !stored.isEmpty {
+                ids.insert(stored)
+            } else if !link.chatRuntimeSessionID.isEmpty {
+                ids.insert(link.chatRuntimeSessionID)
+            }
+        }
+        return ids
     }
 
     /// The chat a saved call was last attached to, for Resume Call.

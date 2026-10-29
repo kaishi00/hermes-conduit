@@ -48,7 +48,7 @@ struct GeminiLiveSettingsSection: View {
     @State private var isAvailable: Bool?
     @State private var isChecking = false
 
-    init(model: GeminiLiveSettingsModel, showsModeToggle: Bool = true) {
+    init(model: GeminiLiveSettingsModel, showsModeToggle: Bool = false) {
         self.model = model
         self.showsModeToggle = showsModeToggle
         // Shown by the mode picker only once this mode is picked, maybe

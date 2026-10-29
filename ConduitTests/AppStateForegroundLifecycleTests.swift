@@ -235,6 +235,42 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
+    func testBotChatTakeoverAsksTheBotsProfile() async {
+        // A Bot Chat's claim is in its bot's registry. The takeover asked the
+        // workspace profile, which found nobody holding the chat, so every
+        // resend was refused again and the offer never went away.
+        let defaults = UserDefaults.standard
+        let savedAutomatic = defaults.object(forKey: ChatTakeoverPreference.automaticKey)
+        defaults.set(true, forKey: ChatTakeoverPreference.automaticKey)
+        defer { defaults.set(savedAutomatic, forKey: ChatTakeoverPreference.automaticKey) }
+        var sent: [String] = []
+        var takenOver = false
+        var takeoverPaths: [String] = []
+        let harness = makeHarness(lifecycleOperations: desktopHeldChatOperations(
+            sends: { sent.append($0) }, takenOver: { takenOver }
+        ))
+        harness.appState.chatTakeoverClient = ChatTakeoverClient(request: { path, _, _ in
+            takeoverPaths.append(path)
+            takenOver = path.contains("profile=nahida")
+            return ["ok": true, "status": takenOver ? "taken_over" : "free"]
+        })
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        harness.appState.noteBotChatSessionForTesting("stored-a", profile: "nahida")
+        harness.appState.noteBotChatSessionForTesting("runtime-a", profile: "nahida")
+
+        let submitted = await harness.appState.submitComposerForCall(text: "Hi Nahida")
+
+        XCTAssertTrue(submitted, "The request goes through once the bot's claim is dropped")
+        XCTAssertEqual(sent, ["Hi Nahida", "Hi Nahida"])
+        XCTAssertEqual(takeoverPaths.count, 1)
+        XCTAssertTrue(takeoverPaths.first?.contains("profile=nahida") ?? false, "Asked of \(takeoverPaths)")
+        XCTAssertNil(harness.appState.chatTakeover)
+        box.client.disconnect()
+    }
+
     func testCallRequestTakesOverEvenWithAutomaticTakeoverOff() async {
         // Starting a call in the chat already says the user wants it here:
         // the call takes over whatever the composer's setting says.
@@ -3908,6 +3944,145 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         )
         XCTAssertEqual(steerCount, 0)
         XCTAssertEqual(harness.appState.turnState, .running)
+    }
+
+    /// #1401: a send's stale-idle probe runs with the field already empty
+    /// and nothing in the transcript yet. The composer says it's sending
+    /// until the message shows, and only in the chat it was sent from.
+    func testComposerSaysSendingWhileTheStaleIdleProbeRuns() async {
+        let probeGate = LifecycleSuspension()
+        var submitCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                probeActiveSessions: { _ in
+                    await probeGate.suspend()
+                    return []
+                }
+            )
+        )
+        installDisconnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a")]
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.handleScenePhase(.background)
+        XCTAssertFalse(harness.appState.composerSendIsChecking)
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "Still there?")
+        }
+        await probeGate.waitUntilSuspended()
+        XCTAssertTrue(harness.appState.composerSendIsChecking, "The emptied field says the message is on its way")
+        XCTAssertEqual(submitCount, 0)
+
+        probeGate.resume()
+        let submitted = await submission.value
+
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(submitCount, 1)
+        XCTAssertEqual(harness.appState.messages.last?.content, "Still there?")
+        XCTAssertFalse(harness.appState.composerSendIsChecking, "The message shows: Sending… goes")
+    }
+
+    /// #1401: the user leaves the chat while its send is still checking.
+    /// The other chat isn't sending, the send stops, and its words go back
+    /// through AppState, which outlasts the composer that sent them.
+    func testLeavingAChatMidSendSendsNothingAndHandsTheWordsBack() async {
+        let probeGate = LifecycleSuspension()
+        var submitCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                sendPrompt: { _, _, _ in
+                    submitCount += 1
+                    return .accepted
+                },
+                probeActiveSessions: { _ in
+                    await probeGate.suspend()
+                    return []
+                }
+            )
+        )
+        installDisconnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a"), session("stored-b")]
+        harness.appState.activeSessionId = "stored-a"
+        harness.appState.handleScenePhase(.background)
+
+        let submission = Task { @MainActor in
+            await harness.appState.submitComposer(text: "Still there?")
+        }
+        await probeGate.waitUntilSuspended()
+        harness.appState.activeSessionId = "stored-b"
+        XCTAssertFalse(harness.appState.composerSendIsChecking, "Only the chat it was sent from says Sending…")
+
+        probeGate.resume()
+        let submitted = await submission.value
+        XCTAssertFalse(submitted)
+        XCTAssertEqual(submitCount, 0)
+
+        let key = ComposerDraftKey(profile: harness.appState.activeProfile, sessionID: "stored-a")
+        let words = ComposerDraft(text: "Still there?", attachments: [])
+        // From another dashboard: the words go back, and this one's
+        // composer says nothing about them.
+        let otherDashboard = UUID()
+        harness.appState.returnFailedComposerSubmission(
+            words, key: key, dashboardID: otherDashboard, title: "Trip plans", stoppedQuietly: true
+        )
+        let request = harness.appState.composerRestoreRequests.last
+        XCTAssertEqual(request?.key, key)
+        XCTAssertEqual(request?.dashboardID, otherDashboard)
+        XCTAssertEqual(request?.draft.text, "Still there?")
+        XCTAssertEqual(request?.focuses, false)
+        XCTAssertNil(harness.appState.composerNotice)
+
+        guard let dashboardID = harness.appState.activeDashboardID else { return }
+        harness.appState.returnFailedComposerSubmission(
+            words, key: key, dashboardID: dashboardID, title: "Trip plans", stoppedQuietly: true
+        )
+        XCTAssertEqual(
+            harness.appState.composerNotice,
+            AppLocalization.string("Your message to “\("Trip plans")” wasn't sent. It's back in that chat's draft."),
+            "Nothing else said the send stopped"
+        )
+    }
+
+    /// #1401: a send whose reply was lost after its chat was left may have
+    /// reached Hermes, so it isn't announced as unsent; one Hermes refused
+    /// outright is.
+    func testLeftChatSendWithLostReplyIsNotCalledUnsent() async {
+        for (lostReply, expectedQuiet) in [(true, false), (false, true)] {
+            let submitGate = LifecycleSuspension()
+            let harness = makeHarness(
+                lifecycleOperations: ChatResumeLifecycleOperations(
+                    sendPrompt: { _, _, _ in
+                        await submitGate.suspend()
+                        if lostReply { throw URLError(.networkConnectionLost) }
+                        throw RpcError(code: 4001, message: "refused")
+                    },
+                    probeActiveSessions: { _ in [] }
+                )
+            )
+            installDisconnectedClient(into: harness)
+            harness.appState.sessions = [session("stored-a"), session("stored-b")]
+            harness.appState.activeSessionId = "stored-a"
+            let context = harness.appState.composerSubmissionContext()
+
+            let submission = Task { @MainActor in
+                await harness.appState.submitComposer(text: "Still there?", context: context)
+            }
+            await submitGate.waitUntilSuspended()
+            harness.appState.activeSessionId = "stored-b"
+            submitGate.resume()
+            let submitted = await submission.value
+
+            XCTAssertFalse(submitted)
+            XCTAssertEqual(
+                harness.appState.composerSubmissionStoppedQuietly(context), expectedQuiet,
+                lostReply ? "A lost reply may mean Hermes has it" : "A refusal is a send that didn't go"
+            )
+            XCTAssertTrue(harness.appState.composerSubmissionStoppedQuietly(context), "Asked once per failed send")
+        }
     }
 
     func testQueuedPromptOutcomeAdoptsAuthoritativeRunningState() async {

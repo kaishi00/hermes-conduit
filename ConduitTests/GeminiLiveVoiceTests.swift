@@ -136,8 +136,10 @@ final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
     private(set) var started = 0
     private(set) var stopped = 0
     private(set) var sent: [[String: Any]] = []
+    private(set) var cancelledResponses = 0
 
     func start() { started += 1 }
+    func cancelResponse() { cancelledResponses += 1 }
     func stop() { stopped += 1; isReady = false }
     /// When set, sends are recorded but reported as failed.
     var failSends = false
@@ -307,8 +309,8 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testHostCallsWaitPastTheHostsOwnTimeout() async throws {
         // The host mints a Gemini token with a 15 s timeout to Google
-        // (plugin_api REQUEST_TIMEOUT_S): giving up first spends a mint for
-        // nothing and the call doesn't start.
+        // (dashboard/api/gemini_qwen_live.py REQUEST_TIMEOUT_S): giving up
+        // first spends a mint for nothing and the call doesn't start.
         var timeouts: [String: Int] = [:]
         let client = GeminiLiveTokenClient(request: { path, _, _, timeout in
             timeouts[path] = timeout
@@ -318,11 +320,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertGreaterThan(try XCTUnwrap(timeouts[GeminiLiveTokenClient.tokenPath]), 15_000)
 
         // The host claims a pairing at the relay with a 15 s timeout
-        // (plugin_api PAIR_TIMEOUT_S), then writes it.
+        // (dashboard/api/pairing.py PAIR_TIMEOUT_S), then writes it.
         XCTAssertGreaterThan(PushNotificationService.pairTimeoutMilliseconds, 15_000)
 
         // A room's files go to /room-files, which takes 50 MiB
-        // (plugin_api ROOM_FILE_MAX_BYTES), whatever the composer allows.
+        // (dashboard/api/rooms.py ROOM_FILE_MAX_BYTES), whatever the composer allows.
         XCTAssertEqual(GroupRoomFilesClient.stagingLimit(preference: AttachmentSizeLimit.hostMaximumMegabytes), 50)
         XCTAssertEqual(GroupRoomFilesClient.stagingLimit(preference: 16), 16)
     }
@@ -1564,6 +1566,18 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    /// A call from Hermes muted in CallKit while its voice opened starts
+    /// with the microphone off (#1378).
+    func testGeminiLiveCallMutedWhileOpeningStartsMuted() async {
+        let (controller, session, input, _, _) = makeGeminiController(clock: Date.init)
+        controller.startsMuted = { true }
+        await controller.start()
+        session.becomeReady()
+        XCTAssertTrue(controller.isMicrophoneMuted)
+        XCTAssertFalse(input.running, "the call connects without the microphone")
+        controller.stop()
+    }
+
     func testGeminiLiveNewConversationStartsWithTheMicrophoneOpen() async {
         let (controller, session, input, _, _) = makeGeminiController(clock: Date.init)
         await controller.start()
@@ -1834,12 +1848,16 @@ extension VoiceConversationControllerTests {
 
         // Interrupt is how the user cuts in on the speaker.
         session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        XCTAssertEqual(session.cancelledResponses, 0)
         controller.interruptSpeaking()
         XCTAssertFalse(output.isPlaying)
+        XCTAssertEqual(session.cancelledResponses, 1, "The server is told, so a gate it keeps opens too (#1325)")
         session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
         XCTAssertFalse(output.isPlaying, "The rest of an interrupted turn is dropped")
         input.onChunk?(Data([1]))
         XCTAssertEqual(session.sent.count, 3)
+        controller.interruptSpeaking()
+        XCTAssertEqual(session.cancelledResponses, 1, "With nothing playing there is nothing to cancel")
         controller.stop()
     }
 
@@ -2472,6 +2490,32 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(lost.contains(noRepeat))
     }
 
+    func testEveryLiveModeAcknowledgesHandoffsBrieflyWithoutRepeatingHermes() {
+        // One fixed example ("On it, I'll have Hermes look into that.") was
+        // said word for word on every request, in every live mode.
+        let rule = LiveVoiceAcknowledgement.rule
+        XCTAssertTrue(rule.contains("different each time"))
+        XCTAssertTrue(rule.contains("don't reuse them word for word"))
+        XCTAssertTrue(rule.contains("Don't keep saying you'll ask, tell or check with Hermes"))
+        let modes: [(String, String)] = [
+            ("Gemini and Qwen", GeminiLiveConversationController.instructions(search: .hermes)),
+            ("Watch", GeminiLiveConversationController.instructions(search: .hermes, onWatch: true)),
+            ("Grok", GeminiLiveConversationController.instructions(search: .grok, acknowledgesOnceStarted: true) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)),
+            ("Local Live agent", GeminiLiveConversationController.instructions(search: .none, acknowledgesOnceStarted: true) + LocalLiveProtocol.agentInstructions),
+            ("GPT-Live", GPTLiveConversationController.briefing()),
+            ("GPT-Live on the Watch", GPTLiveConversationController.briefing(onWatch: true)),
+        ]
+        for (mode, text) in modes {
+            XCTAssertEqual(text.components(separatedBy: rule).count, 2, "\(mode) carries the rule once")
+            XCTAssertFalse(text.contains("I'll have Hermes look into that"), mode)
+            XCTAssertFalse(text.contains("that Hermes is on it."), mode)
+        }
+        // Gemini's nudge when the model stayed quiet after start_job.
+        let nudge = GeminiLiveConversationController.acknowledgementPrompt
+        XCTAssertFalse(nudge.contains("Hermes is checking"))
+        XCTAssertTrue(nudge.contains("without saying again that you're asking Hermes"))
+    }
+
     func testGeminiLiveSessionWithoutGoogleSearchNeverAsksForIt() async throws {
         let tokens = FakeGeminiLiveTokens()
         var sockets: [FakeGeminiLiveSocket] = []
@@ -2676,8 +2720,105 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(SpokenTextFilter.filter("Done 👍🏽 ✨❤️ 🇨🇦 👨‍👩‍👧"), "Done ")
     }
 
+    func testSpokenTextFilterLeavesFileTagsUnsaid() {
+        // Classic voice reads the reply as it streams: a text_to_speech
+        // file tag in it is a path, not words.
+        XCTAssertEqual(SpokenTextFilter.filter("Done.\nMEDIA:/opt/data/cache/audio/tts_1.mp3\nAnything else?"),
+                       "Done.\nAnything else?")
+        XCTAssertEqual(SpokenTextFilter.filter("Here it is: MEDIA:/tmp/a.mp3 enjoy"), "Here it is: enjoy")
+        var filter = SpokenTextFilter()
+        var spoken = ""
+        for piece in ["Here it is: ME", "DIA:/tmp/a", ".mp3 enjoy"] { spoken += filter.feed(piece) }
+        spoken += filter.finish()
+        XCTAssertEqual(spoken, "Here it is: enjoy")
+    }
+
+    func testSpokenMediaTagFilterGivesTheSameSpeechHoweverTheReplyIsSplit() {
+        // The same words, whatever the split; a space said before a tag
+        // that came later may stay.
+        func words(_ text: String) -> String {
+            text.components(separatedBy: "\n").map { $0.split(separator: " ").joined(separator: " ") }.joined(separator: "\n")
+        }
+        let replies: [(reply: String, said: String)] = [
+            ("Here you go MEDIA:/x.png\nAnything else?", "Here you go\nAnything else?"),
+            ("![Screenshot](MEDIA:/tmp/My Shot.png)\nThat is it.", "Screenshot\nThat is it."),
+            ("See [the report](MEDIA:/r.pdf) here, or [the site](https://x.com).", "See the report here, or [the site](https://x.com)."),
+            ("- MEDIA:/x.mp3\n- Done.", "- Done."),
+            ("**MEDIA:/a/b.pdf** is the file.", "is the file."),
+            ("xMEDIA:/a.mp3 words", "x words"),
+            ("[[audio_as_voice]]\nMEDIA:/a.ogg\nHi.", "Hi."),
+            ("Wiki [[Page]] and MEDIA:'/Users/me/My Files/r.pdf' end", "Wiki [[Page]] and end"),
+            ("Done.\r\nMEDIA:/a.mp3\r\nBye.", "Done.\nBye."),
+        ]
+        for (reply, said) in replies {
+            XCTAssertEqual(SpokenMediaTagFilter.filter(reply), said, reply)
+            for size in 1...9 {
+                var filter = SpokenMediaTagFilter()
+                var spoken = ""
+                var index = reply.startIndex
+                while index < reply.endIndex {
+                    let end = reply.index(index, offsetBy: size, limitedBy: reply.endIndex) ?? reply.endIndex
+                    spoken += filter.feed(String(reply[index..<end]))
+                    index = end
+                }
+                XCTAssertEqual(words(spoken + filter.finish()), said, "\(reply) split every \(size)")
+            }
+        }
+        // A bulleted tag leaves no stray marker for the action filter.
+        var actions = SpokenTextFilter()
+        XCTAssertEqual(["* ", "MEDIA:/x.mp3\n", "Done."].map { actions.feed($0) }.joined() + actions.finish(), "Done.")
+    }
+
+    func testSpokenMediaTagFilterReleasesProseThatIsNoTag() {
+        // Only a path makes a tag, so prose is said as it comes, not held
+        // to the end of its line.
+        var filter = SpokenMediaTagFilter()
+        XCTAssertEqual(filter.feed("Post it on social media: we shipped. Next."), "Post it on social media: we shipped. Next.")
+        XCTAssertEqual(filter.feed(" Wiki [[Page]] link, then more."), " Wiki [[Page]] link, then more.")
+        let bracket = " Use arr[0 for the first item, then the rest of this sentence, which keeps going on for a while."
+        XCTAssertEqual(filter.feed(bracket), bracket, "a long [ run is prose")
+        XCTAssertEqual(filter.finish(), "")
+        // A tag ending a line keeps the line's end, and its file is kept
+        // for the call's screen.
+        XCTAssertEqual(["Here you go ", "MEDIA:/x.png\n", "Anything else?"].map { filter.feed($0) }.joined() + filter.finish(),
+                       "Here you go \nAnything else?")
+        XCTAssertEqual(filter.takeFiles(), ["MEDIA:/x.png"])
+        XCTAssertEqual(filter.takeFiles(), [])
+        // Quoted words after "media:" are words, not a file; a quoted path is a file.
+        let quote = "Post it to social media: \"We're live!\" and tag us."
+        XCTAssertEqual(SpokenMediaTagFilter.filter(quote), quote)
+        XCTAssertEqual(GatewayMediaTags.namingFiles(in: quote), quote)
+        XCTAssertEqual(GatewayMediaTags.soleMediaPath("MEDIA:\"/Users/me/My Files/r.pdf\""), "/Users/me/My Files/r.pdf")
+        XCTAssertEqual(GatewayMediaTags.soleMediaPath("MEDIA:`out report.pdf`"), "out report.pdf")
+        // A tag and a link on one line: both read, every word said.
+        XCTAssertEqual(SpokenMediaTagFilter.filter("[the report](MEDIA:/r.pdf) and [the site](https://x.com)"),
+                       "the report and [the site](https://x.com)")
+        XCTAssertEqual(SpokenMediaTagFilter.filter("![chart](MEDIA:/tmp/a.png) (large)"), "chart (large)")
+        XCTAssertEqual(GatewayMediaTags.namingFiles(in: "![chart](MEDIA:/tmp/a.png) (large)"), "chart (a file in the chat: a.png) (large)")
+    }
+
+    func testSpokenTextFilterKeepsSpacedAsterisksAndUnderscores() {
+        XCTAssertEqual(SpokenTextFilter.filter("Revenue is price * units sold per month * 12."),
+                       "Revenue is price * units sold per month * 12.",
+                       "a marker followed by a space opens nothing")
+        XCTAssertEqual(SpokenTextFilter.filter("Total: 5 * 3 apples plus 2 * 4 pears"), "Total: 5 * 3 apples plus 2 * 4 pears")
+        XCTAssertEqual(SpokenTextFilter.filter("Total: 2*3 apples plus 4*5 pears"), "Total: 2*3 apples plus 4*5 pears",
+                       "a marker inside a word opens and closes nothing")
+        XCTAssertEqual(SpokenTextFilter.filter("*raises the alarm!*Run!"), " Run!", "a closer after punctuation still closes")
+        XCTAssertEqual(SpokenTextFilter.filter("Fill blanks _ like this one _ please"), "Fill blanks _ like this one _ please")
+        XCTAssertEqual(SpokenTextFilter.filter("Then *walks over to the window * and more words"),
+                       "Then *walks over to the window * and more words",
+                       "a marker after a space closes nothing")
+        XCTAssertEqual(SpokenTextFilter.filter("So x * y. *leans back in the chair* Fine."), "So x * y. Fine.")
+        XCTAssertEqual(SpokenTextFilter.filter("Then *walks over to the window * and more words *nods three times slowly* end"),
+                       "Then *walks over to the window * and more words end")
+        var filter = SpokenTextFilter()
+        let spoken = ["width *", " height of the", " room *", " 2"].map { filter.feed($0) }.joined() + filter.finish()
+        XCTAssertEqual(spoken, "width * height of the room * 2")
+    }
+
     func testSpokenTextFilterGivesTheSameSpeechHoweverTheReplyIsSplit() {
-        let reply = "Order! *bangs the gavel twice* The court finds snake_case_var and **bold words here** and _whispers very quietly now_ fine. 🎉 2*3 and *really* done_"
+        let reply = "Order! *bangs the gavel twice* The court finds snake_case_var and **bold words here** and _whispers very quietly now_ fine. 🎉 2*3 and *really* done_ *not an action here** either"
         let whole = SpokenTextFilter.filter(reply)
         for size in 1...9 {
             var filter = SpokenTextFilter()
@@ -2694,6 +2835,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(whole.contains("gavel"))
         XCTAssertFalse(whole.contains("whispers"))
         XCTAssertTrue(whole.contains("snake_case_var"))
+        XCTAssertTrue(whole.contains("not an action here"), "\"**\" closes nothing, even when a delta ends between its two markers")
     }
 
     func testGeminiLivePersonalityClientAndInstructions() async throws {
@@ -3010,10 +3152,14 @@ extension VoiceConversationControllerTests {
         let start = Date(timeIntervalSince1970: 1_000)
         trace.begin("Grok Live", at: start)
         trace.note("Function call start_job", at: start + 2.5)
-        XCTAssertEqual(trace.report, "Last Grok Live call: tool steps\n+0.0s Starting call\n+2.5s Function call start_job")
+        XCTAssertEqual(trace.report, "Last Grok Live call: steps\n+0.0s Starting call\n+2.5s Function call start_job")
         for index in 0..<LiveCallTrace.maximumSteps { trace.note("step \(index)", at: start + 3) }
         XCTAssertEqual(trace.steps.count, LiveCallTrace.maximumSteps)
-        XCTAssertTrue(trace.report?.hasSuffix("… 2 more steps not kept") == true)
+        // The setup stays, the newest steps stay, and the gap says what went.
+        let lines = trace.report?.components(separatedBy: "\n") ?? []
+        XCTAssertEqual(lines[1], "+0.0s Starting call")
+        XCTAssertEqual(lines[1 + LiveCallTrace.keptFirstSteps], "… 2 steps not kept")
+        XCTAssertEqual(lines.last, "+3.0s step \(LiveCallTrace.maximumSteps - 1)")
     }
 
     func testGeminiLiveAskingToHangUpEndsTheCall() async {

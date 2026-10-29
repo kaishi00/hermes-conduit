@@ -12,7 +12,6 @@ import SwiftUI
 
 struct V2TasksView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @EnvironmentObject private var appState: AppState
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var layoutDirection
@@ -64,7 +63,7 @@ struct V2TasksView: View {
         // at a hard line below the control.
         .v2EdgeBar(.top) {
             VStack(spacing: 2) {
-                V2TopBar().withoutScrollEdge()
+                V2TopBar()
                 V2SegmentedControl(
                     selection: segment,
                     options: [
@@ -75,17 +74,12 @@ struct V2TasksView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 10)
             }
-            .modifier(V2LegacyScrollEdge())
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()
         }
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.tasks.title)
-        // A task to show (a Pulse card's) is on the Board.
-        .onChange(of: appState.kanbanTaskOpenRequest, initial: true) { _, request in
-            if request != nil { segmentRaw = Segment.board.rawValue }
-        }
     }
 
     /// Under Reduce Motion the pages only crossfade.

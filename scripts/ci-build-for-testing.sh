@@ -73,7 +73,8 @@ destination_s=$(( $(date +%s) - prep_start ))
 # echoed after the build and posted as a notice on the job.
 #
 # Incremental builds from a restored cache (2026-10-15): ci.yml restores the
-# newest main build's DerivedData, so only what changed since recompiles.
+# DerivedData of the newest build it can reach (main's, or its own branch's),
+# so only what changed since recompiles.
 # Xcode reuses a result only when its inputs' file info matches exactly, and a
 # fresh runner gives every file a new inode and the checkout time. So the
 # sources get content-derived timestamps (ci-normalize-mtimes.py), and XCBuild

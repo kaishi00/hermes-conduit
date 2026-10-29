@@ -1,7 +1,7 @@
 name: Nightly
 
 # The comprehensive half of hosted CI, which never gates a merge (docs/CI.md,
-# CI v5). PR and main runs (ci.yml) only build and run the curated smoke
+# CI v5). PR and push runs (ci.yml) only build and run the curated smoke
 # classes; this workflow runs everything else:
 #   unit       EVERY unit class except the timing families, split into
 #              balanced shards from scripts/hosted-suite.json (unit_shards),
@@ -288,7 +288,7 @@ jobs:
         # Main's builds only (PRs restore the newest of them), one job per
         # project kind: shard 1 saves the app-only (slim) build that PR smoke
         # runs restore when they need no Watch app or extensions; ci.yml's
-        # smoke job saves the full app on every push to main. After the tests,
+        # smoke job saves the full app on every push. After the tests,
         # so a test failure still saves a good build.
         if: >-
           always() && steps.build.outcome == 'success'

@@ -44,6 +44,32 @@ private final class FakeChatScrollSurface: ChatScrollSurface {
     }
 }
 
+/// A card drawn in a web page (HTMLPreviewBlock, MarkupBlock) as the engine
+/// sees it: its frame in the stack, how much taller than that frame its
+/// measured height is, and how often it took it.
+@MainActor
+private final class FakeMeasuredCard: ChatScrollMeasuredCard {
+    var stackFrame: CGRect?
+    var pendingGrowth: CGFloat
+    var heightsTaken = 0
+
+    init(delta: CGFloat, minY: CGFloat, height: CGFloat = 280) {
+        stackFrame = CGRect(x: 0, y: minY, width: 300, height: height)
+        pendingGrowth = delta
+    }
+
+    func takeMeasuredHeight() {
+        heightsTaken += 1
+    }
+
+    /// The layout that lands the growth: the card's frame has it, so
+    /// nothing is pending.
+    func lands() {
+        stackFrame?.size.height += pendingGrowth
+        pendingGrowth = 0
+    }
+}
+
 @MainActor
 final class ChatScrollEngineTests: XCTestCase {
     private var clock: TimeInterval = 100
@@ -133,7 +159,8 @@ final class ChatScrollEngineTests: XCTestCase {
     /// viewport (stack 3182...3982) is at the bottom.
     private func settleTurn(
         frames: [String: ChatScrollRowFrame],
-        liveTail: Bool = false
+        liveTail: Bool = false,
+        liveFrames: [String: ChatScrollRowFrame] = [:]
     ) -> (ChatScrollEngine, FakeChatScrollSurface) {
         // The engine holds its surface weakly, so the caller keeps it.
         let (engine, surface) = makeEngine()
@@ -145,6 +172,7 @@ final class ChatScrollEngineTests: XCTestCase {
             isInitialSync: false
         )
         engine.rowFramesChanged(frames)
+        engine.liveRowFramesChanged(liveFrames)
         events = []
         scheduled.forEach { $0() }
         return (engine, surface)
@@ -167,19 +195,153 @@ final class ChatScrollEngineTests: XCTestCase {
     func testLiveRowsUnderTheLatestRowAreNotABlankViewport() {
         let (_, surface) = settleTurn(
             frames: ["m10": ChatScrollRowFrame(minY: 2000, maxY: 3150, order: 10)],
-            liveTail: true
+            liveTail: true,
+            liveFrames: ["streaming": ChatScrollRowFrame(minY: 3162, maxY: 3900, order: .max)]
         )
         XCTAssertFalse(events.contains(.rebuildTranscript))
         withExtendedLifetime(surface) {}
     }
 
+    /// A long reply streaming at the bottom leaves the rows above it unlaid.
     func testLiveRowsUnderAnUnlaidLatestRowAreNotABlankViewport() {
         let (_, surface) = settleTurn(
             frames: ["m3": ChatScrollRowFrame(minY: 900, maxY: 1100, order: 3)],
-            liveTail: true
+            liveTail: true,
+            liveFrames: ["streaming": ChatScrollRowFrame(minY: 1200, maxY: 3990, order: .max)]
         )
         XCTAssertFalse(events.contains(.rebuildTranscript))
         withExtendedLifetime(surface) {}
+    }
+
+    /// #1358: the lazy stack dropped the live rows too while Hermes worked.
+    func testUnlaidLiveRowsUnderTheLatestRowAreABlankViewport() {
+        let (_, surface) = settleTurn(
+            frames: ["m10": ChatScrollRowFrame(minY: 2000, maxY: 3150, order: 10)],
+            liveTail: true
+        )
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+        withExtendedLifetime(surface) {}
+    }
+
+    /// #1358: a turn streaming into its live rows changes no settled
+    /// transcript, so its layout passes check.
+    func testALayoutPassDuringALiveTurnFindsABlankViewport() {
+        let (engine, surface) = makeEngine()
+        // Nothing laid out, live rows included.
+        engine.liveTailShowing = { true }
+        events = []
+        scheduled = []
+        surface.layOut(contentHeight: 4100)
+        surface.layOut(contentHeight: 4200)
+        XCTAssertEqual(scheduled.count, 1, "one check at a time")
+        scheduled.removeFirst()()
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+
+        // The rebuild's own follow-up check, then no rebuild for a while: a
+        // rebuild that didn't help isn't redone on every streamed line, but
+        // gets one more try once the interval is over.
+        scheduled.forEach { $0() }
+        scheduled = []
+        events = []
+        clock += 1
+        surface.layOut(contentHeight: 4300)
+        scheduled.removeFirst()()
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+        XCTAssertEqual(scheduled.count, 1, "a retry once the interval is over")
+        surface.layOut(contentHeight: 4400)
+        XCTAssertEqual(scheduled.count, 1, "still one check at a time")
+        clock += ChatScrollEngine.liveBlankViewportRebuildInterval
+        scheduled.removeFirst()()
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+    }
+
+    /// A fling moving the content puts the check off, not away.
+    func testABlankCheckDuringAFlingWaitsForItToStop() {
+        let (engine, surface) = makeEngine()
+        engine.liveTailShowing = { true }
+        events = []
+        scheduled = []
+        surface.layOut(contentHeight: 4100)
+        surface.isDecelerating = true
+        scheduled.removeFirst()()
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+        XCTAssertEqual(scheduled.count, 1, "checked again after the fling")
+        surface.isDecelerating = false
+        scheduled.removeFirst()()
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+    }
+
+    /// A stack that dropped its rows may change no size: the live rows'
+    /// frames going away checks.
+    func testLiveRowsLosingTheirFramesChecksForABlankViewport() {
+        let (engine, surface) = makeEngine()
+        engine.liveTailShowing = { true }
+        engine.liveRowFramesChanged(["streaming": ChatScrollRowFrame(minY: 3200, maxY: 3980, order: .max)])
+        events = []
+        scheduled = []
+        engine.liveRowFramesChanged([:])
+        scheduled.forEach { $0() }
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+        withExtendedLifetime(surface) {}
+    }
+
+    func testALiveRowLosingItsFrameChecksForABlankViewport() {
+        let (engine, surface) = makeEngine()
+        engine.liveTailShowing = { true }
+        engine.liveRowFramesChanged([
+            "thinking": ChatScrollRowFrame(minY: 2000, maxY: 2400, order: .max),
+            "streaming": ChatScrollRowFrame(minY: 3200, maxY: 3980, order: .max),
+        ])
+        events = []
+        scheduled = []
+        engine.liveRowFramesChanged(["thinking": ChatScrollRowFrame(minY: 2000, maxY: 2400, order: .max)])
+        scheduled.forEach { $0() }
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+        withExtendedLifetime(surface) {}
+    }
+
+    /// Settled changes share the interval.
+    func testASettledChangeSoonAfterARebuildWaitsOutTheInterval() {
+        let (engine, surface) = settleTurn(frames: ["m3": ChatScrollRowFrame(minY: 900, maxY: 1100, order: 3)])
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+        scheduled = []
+        events = []
+        clock += 0.5
+        engine.transcriptChanged(
+            messages: Self.messages(0..<12),
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 1,
+            isInitialSync: false
+        )
+        var due = scheduled
+        scheduled = []
+        due.forEach { $0() }
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+        XCTAssertFalse(scheduled.isEmpty, "a retry once the interval is over")
+        clock += ChatScrollEngine.liveBlankViewportRebuildInterval
+        due = scheduled
+        scheduled = []
+        due.forEach { $0() }
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+        withExtendedLifetime(surface) {}
+    }
+
+    func testALayoutPassDuringALiveTurnShowingItsRowsDoesNotRebuild() {
+        let (engine, surface) = makeEngine()
+        engine.liveTailShowing = { true }
+        events = []
+        scheduled = []
+        surface.layOut(contentHeight: 4100)
+        engine.liveRowFramesChanged(["streaming": ChatScrollRowFrame(minY: 3500, maxY: 4070, order: .max)])
+        scheduled.forEach { $0() }
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+    }
+
+    func testALayoutPassWithNoLiveTurnDoesNotCheck() {
+        let (_, surface) = makeEngine()
+        scheduled = []
+        surface.layOut(contentHeight: 4100)
+        XCTAssertTrue(scheduled.isEmpty)
     }
 
     func testARowOnScreenIsNotABlankViewport() {
@@ -242,6 +404,242 @@ final class ChatScrollEngineTests: XCTestCase {
         surface.viewportHeight = 500 // keyboard up
         surface.layOut(contentHeight: 4000)
         XCTAssertEqual(surface.contentOffsetY, 3500)
+    }
+
+    /// Predictive's chips appearing over the composer grow only the bottom
+    /// inset (iOS 26's safe-area bar), with no layout pass the surface sees.
+    func testFollowingPinsWhenTheBottomBarGrows() {
+        let (engine, surface) = makeEngine()
+        scheduled.removeAll()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3252, "the reply's end stays above the chips")
+
+        // The inset lands after the bar's own layout: the later check pins it.
+        surface.insetBottom = 104
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 3304)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testABottomBarGrowingLeavesABrowsingReaderAlone() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 1000)
+        scheduled.removeAll()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 1000)
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    func testFollowingPinsWhenTheBottomBarShrinks() {
+        let (engine, surface) = makeEngine()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+        surface.insetBottom = 0
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3200, "no empty space left where the chips were")
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    /// A reader just above the bottom, browsing, when the bar shrinks under
+    /// them: past the new bottom, but they didn't scroll there.
+    func testABottomBarShrinkingLeavesABrowsingReaderBrowsing() {
+        let surface = FakeChatScrollSurface()
+        surface.insetBottom = 120
+        let (engine, _) = makeEngine(surface: surface)
+        XCTAssertEqual(surface.contentOffsetY, 3320)
+        surface.userScroll(to: 3250)
+        XCTAssertEqual(engine.mode, .browsing)
+        surface.insetBottom = 0
+        engine.bottomBarResized()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 3200, "moved up to the new bottom: no empty space under the last message")
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    /// The same shrink reaching the engine first through a layout pass (the
+    /// locator laid out with the new inset) still leaves the reader browsing.
+    func testABottomBarShrinkingInALayoutPassLeavesABrowsingReaderBrowsing() {
+        let surface = FakeChatScrollSurface()
+        surface.insetBottom = 120
+        let (engine, _) = makeEngine(surface: surface)
+        surface.userScroll(to: 3250)
+        XCTAssertEqual(engine.mode, .browsing)
+        surface.insetBottom = 0
+        engine.surfaceLayoutChanged()
+        XCTAssertEqual(surface.contentOffsetY, 3200, "moved up to the new bottom")
+        XCTAssertEqual(engine.mode, .browsing)
+        engine.bottomBarResized()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    /// A browsing reader 70 pt above the bottom drags while the bar shrinks
+    /// 120 pt: letting go past the new bottom is the bar's doing, so they
+    /// are moved up to it and stay browsing.
+    func testABottomBarShrinkingUnderADragLeavesTheReaderBrowsing() {
+        let surface = FakeChatScrollSurface()
+        surface.insetBottom = 120
+        let (engine, _) = makeEngine(surface: surface)
+        surface.userScroll(to: 3250)
+        XCTAssertEqual(engine.mode, .browsing)
+        surface.isTracking = true
+        engine.userDragBegan()
+        surface.insetBottom = 0
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3250, "a finger owns the offset")
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    /// A following reader nudges the chat a little while the chips appear:
+    /// letting go, they follow again, pinned above the chips.
+    func testAFollowingReaderDraggingWhileTheBarGrowsFollowsAgain() {
+        let (engine, surface) = makeEngine()
+        XCTAssertTrue(engine.isFollowingLatest)
+        surface.isTracking = true
+        engine.userDragBegan()
+        surface.contentOffsetY = 3190
+        engine.surfaceScrolled()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3190, "a finger owns the offset")
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertTrue(engine.isFollowingLatest)
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+    }
+
+    /// A following reader who scrolls well away while the chips appear stays
+    /// where they went.
+    func testAFollowingReaderScrollingAwayWhileTheBarGrowsStaysBrowsing() {
+        let (engine, surface) = makeEngine()
+        surface.isTracking = true
+        engine.userDragBegan()
+        surface.contentOffsetY = 1000
+        engine.surfaceScrolled()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertEqual(engine.mode, .browsing)
+        XCTAssertEqual(surface.contentOffsetY, 1000)
+    }
+
+    /// Just past the near-bottom distance once the chips are counted, but
+    /// within it as the chat was when the finger came down: follows again.
+    func testAFollowingReaderIsMeasuredAgainstTheBarAtDragStart() {
+        let (engine, surface) = makeEngine()
+        surface.isTracking = true
+        engine.userDragBegan()
+        surface.contentOffsetY = 3170
+        engine.surfaceScrolled()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertTrue(engine.isFollowingLatest, "30 pt from the bottom it had; 82 pt from the new one")
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+    }
+
+    /// A browsing reader who drags back near the bottom while the chips
+    /// appear follows again, the same as with no bar change.
+    func testABrowsingReaderDraggingBackNearTheBottomWhileTheBarGrowsFollows() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 1000)
+        XCTAssertEqual(engine.mode, .browsing)
+        surface.isTracking = true
+        engine.userDragBegan()
+        surface.contentOffsetY = 3180
+        engine.surfaceScrolled()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertTrue(engine.isFollowingLatest, "20 pt from the bottom it had")
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+    }
+
+    /// The inset went back to a value a bar check saw before, by an
+    /// ordinary layout in between: the next bar change is still taken.
+    func testABottomBarBackAtAnEarlierInsetStillPins() {
+        let (engine, surface) = makeEngine()
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+        surface.insetBottom = 0
+        surface.layOut(contentHeight: 4000)
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+    }
+
+    /// A finger resting on the chat (no scroll) when the chips appear: the
+    /// pin waits, and the lift takes it.
+    func testABottomBarChangeUnderAFingerPinsWhenItLifts() {
+        let (engine, surface) = makeEngine()
+        surface.isTracking = true
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3200, "a finger owns the offset")
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    /// Chips appearing during a fling that outlasts the retries: the checks
+    /// go on until it stops, then the missed inset is taken.
+    func testABottomBarChangeDuringAFlingPinsOnceItStops() {
+        let (engine, surface) = makeEngine()
+        scheduled.removeAll()
+        surface.isDecelerating = true
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        for _ in 0..<5 {
+            XCTAssertEqual(scheduled.count, 1, "a check still waits while the fling moves")
+            scheduled.removeFirst()()
+        }
+        XCTAssertEqual(surface.contentOffsetY, 3200, "momentum owns the offset")
+        surface.isDecelerating = false
+        scheduled.removeFirst()()
+        XCTAssertEqual(surface.contentOffsetY, 3252)
+    }
+
+    /// The inset can land after the bar's layout: the checks go on for a few
+    /// main-queue turns, one waiting at a time.
+    func testBottomBarChecksRetryAFewTurns() {
+        let (engine, surface) = makeEngine()
+        scheduled.removeAll()
+        engine.bottomBarResized()
+        var turns = 0
+        while !scheduled.isEmpty, turns < 10 {
+            let next = scheduled.removeFirst()
+            turns += 1
+            if turns == 3 { surface.insetBottom = 52 }
+            next()
+        }
+        XCTAssertEqual(turns, ChatScrollEngine.bottomBarCheckDelays.count)
+        XCTAssertEqual(surface.contentOffsetY, 3252, "the inset that landed on the last turn is taken")
+    }
+
+    func testBottomBarChangesWaitOnOneLaterCheck() {
+        let (engine, surface) = makeEngine()
+        scheduled.removeAll()
+        for inset in [20, 40, 60] as [CGFloat] {
+            surface.insetBottom = inset
+            engine.bottomBarResized()
+        }
+        XCTAssertEqual(scheduled.count, 1)
+        scheduled.removeAll()
+        engine.bottomBarResized()
+        XCTAssertEqual(scheduled.count, 0, "the chain still waits until its check has run")
     }
 
     func testFollowingRepairsAnOvershootWhenContentShrinks() {
@@ -386,6 +784,94 @@ final class ChatScrollEngineTests: XCTestCase {
         current = identity("b")
         XCTAssertFalse(disclosure.isExpanded("0-reasoning", default: false), "another conversation")
         XCTAssertTrue(disclosure.isExpanded("0-tool-0", default: true), "defaults apply there")
+    }
+
+    /// Show thinking (a run's menu or its reply's ⋯) draws that run's
+    /// hidden thoughts, open, for this conversation only; Hide folds them
+    /// away again.
+    func testShowThinkingRevealsOneRunWhileSettingsHideIt() {
+        let disclosure = ChatRowDisclosure()
+        var current = identity("a")
+        disclosure.currentConversation = { current }
+        var preferences = ProfileDisplayPreferences()
+        preferences.showReasoning = false
+        let thinking = ChatMessage(id: "r", role: .reasoning, content: "Look it up", timestamp: "now")
+        let search = ChatMessage(
+            id: "t", role: .tool, content: "", timestamp: "now",
+            tool: ToolActivity(id: "t", name: "web_search", input: nil, output: nil, status: .complete)
+        )
+        let group = ChatStepGroup(members: [ChatStepGroupMember(thinking), ChatStepGroupMember(search)], isTrailing: false)
+        let thought = ChatStepPlacement(group: group, index: 0)
+        let tool = ChatStepPlacement(group: group, index: 1)
+        func draws(_ placement: ChatStepPlacement, _ id: String) -> Bool {
+            placement.drawsRow(messageID: id, preferences: preferences, isBusy: false, disclosure: disclosure)
+        }
+        XCTAssertFalse(draws(thought, "r"), "Settings hides the thought")
+        XCTAssertTrue(draws(tool, "t"))
+
+        disclosure.willShowThinking(in: group, true)
+        XCTAssertTrue(disclosure.showsThinking(in: "r"))
+        XCTAssertTrue(draws(thought, "r"))
+        XCTAssertTrue(draws(tool, "t"), "the run opens, so its other rows draw too")
+        XCTAssertTrue(disclosure.isExpanded("r", default: false), "the thought opens on its text")
+
+        disclosure.willShowThinking(in: group, false)
+        XCTAssertFalse(draws(thought, "r"))
+        XCTAssertFalse(disclosure.isGroupExpanded("r", default: false), "the run folds back as it was")
+        XCTAssertFalse(disclosure.isExpanded("r", default: false), "and so does the thought")
+
+        // A run the reader had open stays open after Hide thinking.
+        disclosure.willToggleGroup("r", to: true)
+        disclosure.willShowThinking(in: group, true)
+        disclosure.willShowThinking(in: group, false)
+        XCTAssertTrue(disclosure.isGroupExpanded("r", default: false))
+        XCTAssertFalse(disclosure.isExpanded("r", default: false))
+
+        // Thinking set to Off: no run shows its thinking, asked for or not.
+        disclosure.willShowThinking(in: group, true)
+        preferences.thinkingOnRequest = false
+        XCTAssertFalse(preferences.offersShowThinking)
+        XCTAssertFalse(draws(thought, "r"))
+        preferences.thinkingOnRequest = true
+
+        current = identity("b")
+        XCTAssertFalse(disclosure.showsThinking(in: "r"), "another conversation starts hidden")
+    }
+
+    /// A revealed run counts the steps Settings shows, or its thoughts when
+    /// Settings shows none of them, never "0 steps".
+    func testARevealedRunCountsTheStepsItShows() {
+        let thinking = ChatMessage(id: "r", role: .reasoning, content: "Look it up", timestamp: "now")
+        let search = ChatMessage(
+            id: "t", role: .tool, content: "", timestamp: "now",
+            tool: ToolActivity(id: "t", name: "web_search", input: nil, output: nil, status: .complete)
+        )
+        let group = ChatStepGroup(members: [ChatStepGroupMember(thinking), ChatStepGroupMember(search)], isTrailing: false)
+        func counted(showTools: Bool) -> [String] {
+            group.countedMembers(showReasoning: false, thinkingShown: true, showTools: showTools).map(\.messageID)
+        }
+        XCTAssertEqual(counted(showTools: true), ["t"], "the tools Settings shows, the revealed thought aside")
+        XCTAssertEqual(counted(showTools: false), ["r"], "with no tools shown, the revealed thought")
+        XCTAssertEqual(group.countedMembers(showReasoning: false, thinkingShown: false, showTools: true).map(\.messageID), ["t"])
+    }
+
+    /// Settings > Chat's Thinking: Show is Hermes' own switch, Conduit's key
+    /// tells On request from Off, and an install with the switch off keeps
+    /// its Show thinking menus.
+    func testThinkingChoiceReadsAndWritesTwoConfigValues() {
+        XCTAssertEqual(ReasoningDisplayMode(display: [:]), .show)
+        XCTAssertEqual(ReasoningDisplayMode(display: ["show_reasoning": true, "conduit_thinking_on_request": false]), .show)
+        XCTAssertEqual(ReasoningDisplayMode(display: ["show_reasoning": false]), .onRequest, "off before the choice maps to On request")
+        XCTAssertEqual(ReasoningDisplayMode(display: ["show_reasoning": false, "conduit_thinking_on_request": false]), .off)
+
+        for mode in ReasoningDisplayMode.allCases {
+            var display: [String: Any] = ["show_reasoning": true, "conduit_thinking_on_request": false]
+            mode.write(into: &display)
+            XCTAssertEqual(ReasoningDisplayMode(display: display), mode)
+        }
+        var display: [String: Any] = ["conduit_thinking_on_request": false]
+        ReasoningDisplayMode.show.write(into: &display)
+        XCTAssertEqual(display["conduit_thinking_on_request"] as? Bool, false, "Show leaves Conduit's key alone")
     }
 
     func testClosingARowAtTheBottomLeavesNoEmptySpace() {
@@ -1209,6 +1695,811 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertTrue(events.contains(.cancelAutomaticRestoration))
     }
 
+    // MARK: - Cards taking their measured height (#1238)
+
+    /// A reader browsing at 2000: the viewport covers stack 1982...2782.
+    private func browsingReader() -> (ChatScrollEngine, FakeChatScrollSurface) {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 2000)
+        XCTAssertEqual(engine.mode, .browsing)
+        surface.sets = []
+        return (engine, surface)
+    }
+
+    private func runScheduled() {
+        let blocks = scheduled
+        scheduled = []
+        blocks.forEach { $0() }
+    }
+
+    func testACardAboveTheReaderTakesItsHeightWithoutMovingThem() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        XCTAssertEqual(card.heightsTaken, 1, "at rest the card takes its height at once")
+        XCTAssertEqual(surface.contentOffsetY, 2000, "the offset moves in the layout pass, not before it")
+
+        card.lands()
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2227, "the pass that lands the growth moves the reader by it")
+        XCTAssertEqual(surface.sets.map { $0.animated }, [false])
+        XCTAssertEqual(engine.mode, .browsing)
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testACardOnScreenGrowsBelowWhatTheReaderLooksAt() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 227, minY: 2100)
+        engine.cardMeasured(card)
+        XCTAssertEqual(card.heightsTaken, 1)
+        card.lands()
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2000)
+        XCTAssertTrue(surface.sets.isEmpty)
+    }
+
+    func testACardShrinkingAboveTheReaderMovesThemUpButNotPastTheTop() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 100)
+        let card = FakeMeasuredCard(delta: -227, minY: 10)
+        engine.cardMeasured(card)
+        card.lands()
+        surface.layOut(contentHeight: 3773)
+        XCTAssertEqual(surface.contentOffsetY, 0, "clamped at the top")
+    }
+
+    func testACardGrowingAboveAReaderNearTheEndTakesTheRestWithTheContentSize() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 3100)
+        XCTAssertEqual(engine.mode, .browsing, "100 pt from the end")
+        surface.sets = []
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        // Its frame reports before the content size: the move goes as far
+        // as the content's old end.
+        card.lands()
+        engine.cardFrameChanged(card)
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        XCTAssertEqual(engine.mode, .browsing, "that end isn't the pass's yet")
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.sets.map { $0.y }, [3200, 3327], "the rest, with the pass's content size")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+        runScheduled()
+        XCTAssertEqual(engine.mode, .browsing, "still 100 pt from the end")
+        XCTAssertEqual(surface.contentOffsetY, 3327)
+    }
+
+    func testACardGrowingAboveAReaderNearTheEndNeverRelatchesThemOnAStaleEnd() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 2940)
+        XCTAssertEqual(engine.mode, .browsing, "260 pt from the end")
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        // Moved by 227 before the content grows, the reader ends 33 pt from
+        // its old end, close enough to relatch following.
+        card.lands()
+        engine.cardFrameChanged(card)
+        XCTAssertEqual(surface.contentOffsetY, 3167)
+        XCTAssertEqual(engine.mode, .browsing)
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 3167)
+        runScheduled()
+        XCTAssertEqual(engine.mode, .browsing, "260 pt from the pass's end")
+    }
+
+    func testAGrowthNearTheEndLandsWholeAfterAnEarlierPassGrewTheContent() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 3100)
+        surface.sets = []
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        // A reply streaming below lays out a pass before the one that lands
+        // the card.
+        surface.layOut(contentHeight: 4001)
+        XCTAssertTrue(surface.sets.isEmpty)
+        // That one reports the card's frame before its content size.
+        card.lands()
+        engine.cardFrameChanged(card)
+        XCTAssertEqual(surface.contentOffsetY, 3201, "as far as the end as it stands")
+        surface.layOut(contentHeight: 4228)
+        XCTAssertEqual(surface.sets.map { $0.y }, [3201, 3327], "the whole growth, once the room comes")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+        runScheduled()
+        XCTAssertEqual(engine.mode, .browsing, "101 pt from the end")
+    }
+
+    func testAGrowthWhosePassLeavesTheContentSizeUnchangedStillLands() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 2960)
+        surface.sets = []
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        // Rows below fold by as much as the card grows: the content size
+        // stays, so the pass reports only the card's frame.
+        card.lands()
+        engine.cardFrameChanged(card)
+        XCTAssertEqual(surface.sets.map { $0.y }, [3187])
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+        XCTAssertEqual(engine.mode, .browsing)
+        runScheduled()
+        XCTAssertEqual(engine.mode, .following, "13 pt from the end, they follow again")
+        XCTAssertEqual(surface.contentOffsetY, 3187)
+    }
+
+    func testAGrowthWithNoRoomLeftTakesTheReaderToTheEndAndTheyFollow() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 3100)
+        surface.sets = []
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        // Rows below fold by as much as the card grows: the reader's rows
+        // can't stay where they were, and the end is as far as they go.
+        card.lands()
+        engine.cardFrameChanged(card)
+        XCTAssertEqual(surface.sets.map { $0.y }, [3200])
+        XCTAssertEqual(engine.mode, .browsing)
+        runScheduled()
+        XCTAssertEqual(engine.mode, .following)
+        surface.layOut(contentHeight: 4050)
+        XCTAssertEqual(surface.contentOffsetY, 3250, "a reply streaming in later is followed")
+    }
+
+    func testACardGrowingAboveTheReaderWhileRowsBelowShrinkStillMovesThem() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        card.lands()
+        // The same pass folds a finished turn's steps below the reader: the
+        // content shrank, though the card above them grew.
+        surface.layOut(contentHeight: 3927)
+        XCTAssertEqual(surface.contentOffsetY, 2227)
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testAGrowthAboveAReaderNearTheEndLandsWhileRowsBelowShrink() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 3100)
+        XCTAssertEqual(engine.mode, .browsing, "100 pt from the end")
+        surface.sets = []
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        // Its frame reports first: the move goes as far as the old end.
+        card.lands()
+        engine.cardFrameChanged(card)
+        XCTAssertEqual(surface.sets.map { $0.y }, [3200])
+        // The same pass folds a finished turn's steps below the reader: the
+        // content grew by less than the card did.
+        surface.layOut(contentHeight: 4147)
+        XCTAssertEqual(surface.sets.map { $0.y }, [3200, 3327], "moved by the card's growth")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+        XCTAssertEqual(engine.mode, .browsing)
+        runScheduled()
+        XCTAssertEqual(engine.mode, .following, "left 20 pt from the end, they follow again")
+        XCTAssertEqual(surface.contentOffsetY, 3327)
+    }
+
+    func testAGrowthWhoseFrameReportsAfterAContentSizeThatShrankBelowStillLands() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 3100)
+        surface.sets = []
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        // The pass reports the content size first, grown by less than the
+        // card because rows below folded, then the card's frame.
+        surface.layOut(contentHeight: 4147)
+        XCTAssertTrue(surface.sets.isEmpty)
+        card.lands()
+        engine.cardFrameChanged(card)
+        XCTAssertEqual(surface.sets.map { $0.y }, [3327])
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+        XCTAssertEqual(engine.mode, .browsing)
+        runScheduled()
+        XCTAssertEqual(engine.mode, .following, "20 pt from the end")
+    }
+
+    func testACardShrinkingAboveTheReaderWhileAReplyStreamsBelowMovesThemUp() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: -100, minY: 1000)
+        engine.cardMeasured(card)
+        card.lands()
+        // The same pass lays out more of a reply below the reader: the
+        // content grew, though the card above them shrank.
+        surface.layOut(contentHeight: 4200)
+        XCTAssertEqual(surface.contentOffsetY, 1900, "moved up by the card's shrink")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testAGrowthNearTheEndAndAShrinkAfterItInTheSamePassAddUp() {
+        let (engine, surface) = makeEngine()
+        surface.userScroll(to: 3100)
+        XCTAssertEqual(engine.mode, .browsing, "100 pt from the end")
+        surface.sets = []
+        let growing = FakeMeasuredCard(delta: 227, minY: 1000)
+        let shrinking = FakeMeasuredCard(delta: -150, minY: 1500)
+        engine.cardMeasured(growing)
+        engine.cardMeasured(shrinking)
+        // One pass lands both, their frames reported before the content
+        // size. The growth goes as far as the content's old end and owes
+        // the rest, which the shrink after it more than takes back.
+        growing.lands()
+        engine.cardFrameChanged(growing)
+        shrinking.lands()
+        engine.cardFrameChanged(shrinking)
+        XCTAssertEqual(surface.sets.map { $0.y }, [3200, 3177])
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+        surface.layOut(contentHeight: 4077)
+        XCTAssertEqual(surface.contentOffsetY, 3177, "moved by both")
+        runScheduled()
+        XCTAssertEqual(engine.mode, .browsing, "still 100 pt from the end")
+    }
+
+    func testCardsMeasuredDuringAFlingWaitForItToRest() {
+        let (engine, surface) = browsingReader()
+        surface.isDecelerating = true
+        surface.contentOffsetY = 1900
+        engine.surfaceScrolled()
+        let above = FakeMeasuredCard(delta: 227, minY: 1000)
+        let below = FakeMeasuredCard(delta: 100, minY: 3000)
+        engine.cardMeasured(above)
+        engine.cardMeasured(below)
+        XCTAssertEqual(above.heightsTaken + below.heightsTaken, 0, "no height changes under a fling")
+
+        // The check after a tick finds the fling still running.
+        runScheduled()
+        XCTAssertEqual(above.heightsTaken, 0)
+
+        // The last tick can still report the deceleration; the check after
+        // it finds the rest.
+        surface.contentOffsetY = 1800
+        engine.surfaceScrolled()
+        XCTAssertFalse(scheduled.isEmpty)
+        surface.isDecelerating = false
+        runScheduled()
+        XCTAssertEqual(above.heightsTaken, 1)
+        XCTAssertEqual(below.heightsTaken, 1)
+
+        above.lands()
+        below.lands()
+        surface.layOut(contentHeight: 4327)
+        XCTAssertEqual(surface.contentOffsetY, 2027, "moved by the card above the reader only")
+    }
+
+    func testACardMeasuredUnderAFingerWaitsForTheLift() {
+        let (engine, surface) = browsingReader()
+        surface.isTracking = true
+        engine.userDragBegan()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        XCTAssertEqual(card.heightsTaken, 0)
+        surface.contentOffsetY = 1950
+        engine.surfaceScrolled()
+        surface.isTracking = false
+        engine.userDragEnded()
+        XCTAssertEqual(card.heightsTaken, 0, "not inside the gesture callback")
+        runScheduled()
+        XCTAssertEqual(card.heightsTaken, 1)
+
+        card.lands()
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2177)
+    }
+
+    func testFollowingTakesACardsHeightAtOnceAndPinsAsBefore() {
+        let (engine, surface) = makeEngine()
+        XCTAssertTrue(engine.isFollowingLatest)
+        let card = FakeMeasuredCard(delta: 300, minY: 100)
+        engine.cardMeasured(card)
+        XCTAssertEqual(card.heightsTaken, 1)
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+        card.lands()
+        surface.layOut(contentHeight: 4300)
+        XCTAssertEqual(surface.contentOffsetY, 3500, "the pin, with nothing added to it")
+    }
+
+    func testAJumpToTheTopDropsAGrowthStillWaiting() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        engine.explicitTopRequested()
+        XCTAssertEqual(surface.contentOffsetY, 0)
+        card.lands()
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 0, "the growth was owed to the place the reader left")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testAJumpToAMessageDropsAGrowthStillWaiting() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        engine.explicitMessageRequested(id: "m5")
+        XCTAssertTrue(engine.cardShifts.isEmpty, "the growth was owed to the place the reader leaves")
+        card.lands()
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2000, "the jump places the reader, not the card")
+    }
+
+    func testADragDropsAnAnnouncedGrowth() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        surface.userScroll(to: 1500)
+        surface.sets = []
+        card.lands()
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 1500, "the reader took over")
+        XCTAssertTrue(surface.sets.isEmpty)
+    }
+
+    func testAnAnnouncedGrowthWaitsForTheLayoutThatLandsIt() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        // An inset change re-lays out before the growth lands.
+        surface.layOut(contentHeight: 4000)
+        XCTAssertEqual(surface.contentOffsetY, 2000)
+        XCTAssertFalse(engine.cardShifts.isEmpty)
+        card.lands()
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2227)
+    }
+
+    func testAnAnnouncedGrowthThatNeverLandsIsDropped() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        clock += ChatScrollEngine.cardGrowthDeadline + 0.1
+        card.lands()
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2000)
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testTwoCardsAboveTheReaderAddUp() {
+        let (engine, surface) = browsingReader()
+        let first = FakeMeasuredCard(delta: 227, minY: 1000)
+        let second = FakeMeasuredCard(delta: 381, minY: 1500)
+        engine.cardMeasured(first)
+        engine.cardMeasured(second)
+        first.lands()
+        second.lands()
+        surface.layOut(contentHeight: 4608)
+        XCTAssertEqual(surface.contentOffsetY, 2608)
+    }
+
+    func testTwoCardsLandingInSeparatePassesMoveTheReaderTwice() {
+        let (engine, surface) = browsingReader()
+        let first = FakeMeasuredCard(delta: 227, minY: 1000)
+        let second = FakeMeasuredCard(delta: 381, minY: 1500)
+        engine.cardMeasured(first)
+        engine.cardMeasured(second)
+        first.lands()
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2227, "the first card's growth; the second still waits")
+        second.lands()
+        surface.layOut(contentHeight: 4608)
+        XCTAssertEqual(surface.contentOffsetY, 2608)
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testACardReportingTwiceBeforeALayoutMovesTheReaderOnce() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        // Its page reports again before the layout lands the first height:
+        // 381 taller than its frame, still at 280.
+        card.pendingGrowth = 381
+        engine.cardMeasured(card)
+        XCTAssertEqual(card.heightsTaken, 2)
+        XCTAssertEqual(engine.cardShifts.count, 1, "one shift, from the card's height before the first")
+        card.lands()
+        surface.layOut(contentHeight: 4381)
+        XCTAssertEqual(surface.contentOffsetY, 2381, "the card grew by 381 once")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testACardReportingBackToItsHeightBeforeALayoutMovesNobody() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        card.pendingGrowth = 0
+        engine.cardMeasured(card)
+        XCTAssertTrue(engine.cardShifts.isEmpty, "the card keeps its height")
+        // A reply streaming in below the reader.
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2000)
+        XCTAssertTrue(surface.sets.isEmpty)
+    }
+
+    func testACardReportingAgainAfterItsGrowthLandedMovesTheReaderAgain() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        card.lands()
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2227)
+        card.pendingGrowth = 154
+        engine.cardMeasured(card)
+        card.lands()
+        surface.layOut(contentHeight: 4381)
+        XCTAssertEqual(surface.contentOffsetY, 2381, "the second growth, from the height the first landed")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testGrowthBelowTheReaderNeverPassesForACardAboveThem() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        // A reply streaming in grows the content below the reader first.
+        surface.layOut(contentHeight: 4300)
+        XCTAssertEqual(surface.contentOffsetY, 2000, "nothing above the reader has grown")
+        XCTAssertTrue(surface.sets.isEmpty)
+        card.lands()
+        surface.layOut(contentHeight: 4527)
+        XCTAssertEqual(surface.contentOffsetY, 2227, "the card's own growth, once it lands")
+    }
+
+    func testACardWhoseFrameReportsAfterTheContentSizeStillMovesTheReader() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2000, "the content grew; the card hasn't reported its frame yet")
+        card.lands()
+        engine.cardFrameChanged(card)
+        XCTAssertEqual(surface.contentOffsetY, 2227)
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testACardNotLaidOutYetTakesItsHeightPlainly() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        card.stackFrame = nil
+        engine.cardMeasured(card)
+        XCTAssertEqual(card.heightsTaken, 1)
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2000)
+    }
+
+    func testTheReaderMovesByWhatTheCardGrewNotWhatItAnnounced() {
+        let (engine, surface) = browsingReader()
+        let card = FakeMeasuredCard(delta: 200, minY: 1000, height: 44)
+        engine.cardMeasured(card)
+        // A picture's height comes from its layout: 190, not the 200 it
+        // was expected to take.
+        card.stackFrame?.size.height = 234
+        surface.layOut(contentHeight: 4190)
+        XCTAssertEqual(surface.contentOffsetY, 2190)
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testCardsWaitingWhenTheChatLeavesTakeTheirHeights() {
+        let (engine, surface) = browsingReader()
+        surface.isDecelerating = true
+        surface.contentOffsetY = 1900
+        engine.surfaceScrolled()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        XCTAssertEqual(card.heightsTaken, 0)
+        engine.viewDisappeared()
+        XCTAssertEqual(card.heightsTaken, 1, "kept with the view, it doesn't wait for a rest that never comes")
+        XCTAssertTrue(engine.cardShifts.isEmpty, "nobody to keep still")
+    }
+
+    func testACardGoneBeforeItsGrowthLandsIsDropped() {
+        let (engine, surface) = browsingReader()
+        var card: FakeMeasuredCard? = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card!)
+        // Its row left the lazy stack before the pass that would land it.
+        card = nil
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2000)
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testACardGoneBeforeTheFlingRestsIsSkipped() {
+        let (engine, surface) = browsingReader()
+        surface.isDecelerating = true
+        surface.contentOffsetY = 1900
+        engine.surfaceScrolled()
+        var card: FakeMeasuredCard? = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card!)
+        // Its row left the lazy stack.
+        card = nil
+        surface.isDecelerating = false
+        runScheduled()
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 1900, "nothing announced for a card that is gone")
+    }
+
+    func testASessionSwitchForgetsTheWaitingCards() {
+        let (engine, surface) = browsingReader()
+        surface.isDecelerating = true
+        surface.contentOffsetY = 1900
+        engine.surfaceScrolled()
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        surface.isDecelerating = false
+        engine.renderedSessionChanged(
+            to: keyB,
+            identity: identity("b"),
+            viaNotification: false,
+            viewportTransitionGeneration: 2
+        )
+        runScheduled()
+        XCTAssertEqual(card.heightsTaken, 0)
+    }
+
+    func testACardMeasuredInTheBackgroundKeepsItsRoomUntilTheAppIsBack() {
+        let (engine, surface) = browsingReader()
+        engine.setPaused(true)
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        runScheduled()
+        XCTAssertEqual(card.heightsTaken, 0, "the background leaves the offset alone, so the card waits")
+
+        engine.setPaused(false)
+        XCTAssertEqual(card.heightsTaken, 0, "it takes its height at the rest check")
+        runScheduled()
+        XCTAssertEqual(card.heightsTaken, 1)
+        card.lands()
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2227, "moved by the growth above them")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testACardAboveTheReaderWhileEarlierMessagesLoadStillMovesThem() {
+        let (engine, surface) = browsingReader()
+        engine.olderPageBackfillRequested(sessionKey: keyA)
+        XCTAssertNotNil(engine.prependAnchor)
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        card.lands()
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2227, "a request still loading holds nothing yet")
+        // Nothing came back: there is no hold to put the reader back.
+        engine.prependAnchorDischarged(matching: keyA)
+        XCTAssertNil(engine.prependAnchor)
+        XCTAssertEqual(surface.contentOffsetY, 2227)
+    }
+
+    func testALandedPageOfEarlierMessagesTakesOverAGrowthStillWaiting() {
+        let (engine, surface) = browsingReader()
+        engine.olderPageBackfillRequested(sessionKey: keyA)
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        engine.transcriptChanged(
+            messages: Self.messages(-5..<10),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        // The page and the card's growth land in one pass, the card's
+        // frame reported after the content size.
+        surface.layOut(contentHeight: 4827)
+        XCTAssertEqual(surface.contentOffsetY, 2827, "the hold keeps the reader's distance from the bottom")
+        card.lands()
+        engine.cardFrameChanged(card)
+        XCTAssertEqual(surface.contentOffsetY, 2827, "the hold has the card's growth in it already")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testACardAboveTheReaderOnceAPageOfEarlierMessagesStopsHoldingMovesThem() {
+        let (engine, surface) = browsingReader()
+        engine.olderPageBackfillRequested(sessionKey: keyA)
+        engine.transcriptChanged(
+            messages: Self.messages(-5..<10),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertNotNil(engine.prependAnchor?.landedAt)
+        // Its hold lapses with no layout or scroll to clear it.
+        clock += ChatScrollEngine.prependSettleLimit + ChatScrollEngine.prependHoldDuration + 0.1
+        let card = FakeMeasuredCard(delta: 227, minY: 1000)
+        engine.cardMeasured(card)
+        XCTAssertEqual(engine.cardShifts.count, 1, "nothing holds the reader's rows any more")
+        card.lands()
+        surface.layOut(contentHeight: 4227)
+        XCTAssertEqual(surface.contentOffsetY, 2227, "moved by the growth above them")
+        XCTAssertNil(engine.prependAnchor)
+    }
+
+    // MARK: - Pictures and failures arriving in their rows (#1238)
+
+    func testAPictureArrivingAboveTheReaderWaitsForTheFlingAndMovesThemWithIt() {
+        let (engine, surface) = browsingReader()
+        surface.isDecelerating = true
+        surface.contentOffsetY = 1900
+        engine.surfaceScrolled()
+        let arrival = ChatRowArrival()
+        arrival.stackFrame = CGRect(x: 0, y: 1000, width: 300, height: 44)
+        var shown = 0
+        arrival.arrive(rowHeight: 244, engine: engine) { shown += 1 }
+        XCTAssertEqual(shown, 0, "the loading line stays under the fling")
+
+        surface.isDecelerating = false
+        runScheduled()
+        XCTAssertEqual(shown, 1)
+        // The row grows with the picture in it, its frame reported before
+        // the content size.
+        arrival.stackFrame = CGRect(x: 0, y: 1000, width: 300, height: 244)
+        XCTAssertEqual(surface.contentOffsetY, 2100, "moved by the row's growth")
+        surface.layOut(contentHeight: 4200)
+        XCTAssertEqual(surface.contentOffsetY, 2100, "once")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testAPictureArrivingTwiceBeforeALayoutMovesTheReaderOnce() {
+        let (engine, surface) = browsingReader()
+        let arrival = ChatRowArrival()
+        arrival.stackFrame = CGRect(x: 0, y: 1000, width: 300, height: 44)
+        var shown = 0
+        arrival.arrive(rowHeight: 244, engine: engine) { shown += 1 }
+        // Another arrives before the row is laid out with the first.
+        arrival.arrive(rowHeight: 344, engine: engine) { shown += 1 }
+        XCTAssertEqual(shown, 2)
+        XCTAssertEqual(engine.cardShifts.count, 1, "one shift, from the row's height before the first")
+        arrival.stackFrame = CGRect(x: 0, y: 1000, width: 300, height: 344)
+        surface.layOut(contentHeight: 4300)
+        XCTAssertEqual(surface.contentOffsetY, 2300, "the row grew by 300 once")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testAPictureArrivingTwiceDuringAFlingMovesTheReaderOnceItRests() {
+        let (engine, surface) = browsingReader()
+        surface.isDecelerating = true
+        surface.contentOffsetY = 1900
+        engine.surfaceScrolled()
+        let arrival = ChatRowArrival()
+        arrival.stackFrame = CGRect(x: 0, y: 1000, width: 300, height: 44)
+        var shown = 0
+        arrival.arrive(rowHeight: 244, engine: engine) { shown += 1 }
+        // Its row left and came back under the same fling, and the picture
+        // arrived again from memory.
+        arrival.rowDisappeared()
+        arrival.arrive(rowHeight: 244, engine: engine) { shown += 1 }
+        XCTAssertEqual(shown, 0)
+
+        surface.isDecelerating = false
+        runScheduled()
+        XCTAssertEqual(shown, 1)
+        XCTAssertEqual(engine.cardShifts.count, 1, "its growth waits for the layout")
+        arrival.stackFrame = CGRect(x: 0, y: 1000, width: 300, height: 244)
+        XCTAssertEqual(surface.contentOffsetY, 2100, "moved by the row's growth")
+        surface.layOut(contentHeight: 4200)
+        XCTAssertEqual(surface.contentOffsetY, 2100, "once")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testAPictureWhoseRowLeftTheScreenIsDropped() {
+        let (engine, surface) = browsingReader()
+        surface.isDecelerating = true
+        surface.contentOffsetY = 1900
+        engine.surfaceScrolled()
+        let arrival = ChatRowArrival()
+        arrival.stackFrame = CGRect(x: 0, y: 1000, width: 300, height: 44)
+        var shown = 0
+        arrival.arrive(rowHeight: 244, engine: engine) { shown += 1 }
+        arrival.rowDisappeared()
+        surface.isDecelerating = false
+        runScheduled()
+        XCTAssertEqual(shown, 0, "the row's task loads it again when the row is back")
+        surface.layOut(contentHeight: 4200)
+        XCTAssertEqual(surface.contentOffsetY, 1900, "nothing announced")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testAPictureWhoseRowAlreadyHoldsItsSizeShowsAtOnce() {
+        let (engine, surface) = browsingReader()
+        surface.isDecelerating = true
+        surface.contentOffsetY = 1900
+        engine.surfaceScrolled()
+        let arrival = ChatRowArrival()
+        // Its placeholder took the picture's remembered size.
+        arrival.stackFrame = CGRect(x: 0, y: 1000, width: 300, height: 244)
+        var shown = 0
+        arrival.arrive(rowHeight: 244, engine: engine) { shown += 1 }
+        XCTAssertEqual(shown, 1, "nothing will move")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testARowLaidOutWithItsLoadingLineTakesAPictureFromMemoryOnlyThroughItsArrival() {
+        let (engine, surface) = browsingReader()
+        let arrival = ChatRowArrival()
+        XCTAssertTrue(arrival.holds(244), "on the row's first frame, what memory holds shows at once")
+        // Laid out with its loading line before another row of the same
+        // picture showed it.
+        arrival.stackFrame = CGRect(x: 0, y: 1000, width: 300, height: 44)
+        XCTAssertFalse(arrival.holds(244), "the row keeps its loading line")
+        XCTAssertTrue(arrival.holds(44.3), "what keeps the row's height may show")
+        var shown = 0
+        arrival.arrive(rowHeight: 244, engine: engine) { shown += 1 }
+        XCTAssertEqual(shown, 1)
+        XCTAssertEqual(engine.cardShifts.count, 1, "announced above the reader like a load")
+        arrival.stackFrame = CGRect(x: 0, y: 1000, width: 300, height: 244)
+        XCTAssertEqual(surface.contentOffsetY, 2200, "moved by the row's growth")
+        XCTAssertTrue(arrival.holds(244))
+    }
+
+    func testAPictureOutsideAChatShowsAtOnce() {
+        let arrival = ChatRowArrival()
+        arrival.stackFrame = CGRect(x: 0, y: 1000, width: 300, height: 44)
+        var shown = 0
+        arrival.arrive(rowHeight: 244, engine: nil) { shown += 1 }
+        XCTAssertEqual(shown, 1)
+        arrival.arrive(rowHeight: nil, engine: nil) { shown += 1 }
+        XCTAssertEqual(shown, 2, "and so does a failure")
+    }
+
+    func testAFailureAboveTheReaderWaitsForTheFlingAndMovesThemByWhatItsLayoutTook() {
+        let (engine, surface) = browsingReader()
+        surface.isDecelerating = true
+        surface.contentOffsetY = 1900
+        engine.surfaceScrolled()
+        let arrival = ChatRowArrival()
+        // A placeholder at the picture's remembered size.
+        arrival.stackFrame = CGRect(x: 0, y: 1000, width: 300, height: 244)
+        var shown = 0
+        arrival.arrive(rowHeight: nil, engine: engine) { shown += 1 }
+        XCTAssertEqual(shown, 0, "the placeholder stays under the fling")
+
+        surface.isDecelerating = false
+        runScheduled()
+        XCTAssertEqual(shown, 1)
+        XCTAssertEqual(engine.cardShifts.count, 1, "announced, though only its layout knows by how much")
+        // Its label laid out, 202 shorter.
+        arrival.stackFrame = CGRect(x: 0, y: 1000, width: 300, height: 42)
+        XCTAssertEqual(surface.contentOffsetY, 1698, "moved by what the row took")
+        surface.layOut(contentHeight: 3798)
+        XCTAssertEqual(surface.contentOffsetY, 1698, "once")
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testAFailureKeepingTheRowsHeightMovesNobody() {
+        let (engine, surface) = browsingReader()
+        let arrival = ChatRowArrival()
+        arrival.stackFrame = CGRect(x: 0, y: 1000, width: 300, height: 44)
+        var shown = 0
+        arrival.arrive(rowHeight: nil, engine: engine) { shown += 1 }
+        XCTAssertEqual(shown, 1, "at rest it shows at once")
+        // Its label took the loading line's height; a reply streams in below.
+        surface.layOut(contentHeight: 4100)
+        XCTAssertEqual(surface.contentOffsetY, 2000)
+        clock += ChatScrollEngine.cardGrowthDeadline + 0.1
+        surface.layOut(contentHeight: 4200)
+        XCTAssertTrue(engine.cardShifts.isEmpty, "the shift lapses")
+        XCTAssertEqual(surface.contentOffsetY, 2000)
+        XCTAssertTrue(surface.sets.isEmpty)
+    }
+
+    func testAFailureOnScreenShowsAtOnceWithNothingAnnounced() {
+        let (engine, _) = browsingReader()
+        let arrival = ChatRowArrival()
+        arrival.stackFrame = CGRect(x: 0, y: 2100, width: 300, height: 244)
+        var shown = 0
+        arrival.arrive(rowHeight: nil, engine: engine) { shown += 1 }
+        XCTAssertEqual(shown, 1)
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testAFailureInARowNotLaidOutYetShowsAtOnce() {
+        let (engine, _) = browsingReader()
+        let arrival = ChatRowArrival()
+        var shown = 0
+        arrival.arrive(rowHeight: nil, engine: engine) { shown += 1 }
+        XCTAssertEqual(shown, 1)
+        XCTAssertTrue(engine.cardShifts.isEmpty)
+    }
+
+    func testAReplyPictureFitsTheRowsWidthUpToItsCeiling() {
+        XCTAssertEqual(ChatRowArrival.fittedHeight(of: CGSize(width: 1200, height: 800), inWidth: 300, maxHeight: 360), 200)
+        XCTAssertEqual(ChatRowArrival.fittedHeight(of: CGSize(width: 100, height: 1000), inWidth: 300, maxHeight: 360), 360)
+        XCTAssertEqual(
+            ChatRowArrival.fittedHeight(of: CGSize(width: 1200, height: 800), inWidth: 0, maxHeight: 360), 0,
+            "a row without a width yet has no growth to announce"
+        )
+    }
+
     // MARK: - Background
 
     func testPausedEngineLeavesTheOffsetAloneAndCatchesUpOnReturn() {
@@ -1317,5 +2608,337 @@ final class ChatScrollEngineTests: XCTestCase {
             viewportTransitionGeneration: 2
         )
         XCTAssertNil(engine.rowFrame(for: "m5"))
+    }
+
+    // MARK: - Long replies stop at their start (#365)
+
+    /// Session "a" at its end with the hold switched on, after a send of
+    /// m10: the user's message is laid out at stack 3500...3580 (content
+    /// 3518...3598), so the hold stops at 3598.
+    private func sendIntoHold() -> (ChatScrollEngine, FakeChatScrollSurface) {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        engine.transcriptChanged(
+            messages: Self.messages(0..<11),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        engine.explicitLatestRequested(animated: false, armsReplyHold: true)
+        surface.layOut(contentHeight: 4200)
+        engine.rowFramesChanged(["m10": ChatScrollRowFrame(minY: 3500, maxY: 3580, order: 10)])
+        XCTAssertEqual(surface.contentOffsetY, 3400)
+        XCTAssertTrue(engine.replyHoldArmed)
+        return (engine, surface)
+    }
+
+    /// The offsets the engine wrote never went up: the hold is a stop.
+    private func assertNeverMovedUp(_ surface: FakeChatScrollSurface, file: StaticString = #filePath, line: UInt = #line) {
+        let offsets = surface.sets.map(\.y)
+        XCTAssertEqual(offsets, offsets.sorted(), "an offset went up", file: file, line: line)
+    }
+
+    func testALongReplyStopsAtItsStart() {
+        let (engine, surface) = sendIntoHold()
+        surface.sets = []
+        // Still on screen: following as before.
+        surface.layOut(contentHeight: 4300)
+        XCTAssertEqual(surface.contentOffsetY, 3500)
+        // The reply reaches the top: the bottom of the user's message is at
+        // the viewport top, and following stops there.
+        surface.layOut(contentHeight: 4420)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertTrue(engine.isFollowingLatest, "within the near-bottom distance it is still following")
+        surface.layOut(contentHeight: 4700)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertEqual(engine.mode, .browsing)
+        XCTAssertTrue(engine.showsJumpToLatest)
+        XCTAssertTrue(engine.replyHoldArmed, "armed until the reader is below the reply's start")
+        // The rest of the reply arrives below without moving the reader.
+        surface.layOut(contentHeight: 6000)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        assertNeverMovedUp(surface)
+        XCTAssertEqual(surface.sets.count, 2)
+    }
+
+    /// Chips appearing under a reply that just fits push the bottom past
+    /// the stop: following stops there, as for the reply's own growth.
+    func testABottomBarGrowingPastTheStopStopsThere() {
+        let (engine, surface) = sendIntoHold()
+        surface.layOut(contentHeight: 4380)
+        XCTAssertEqual(surface.contentOffsetY, 3580)
+        surface.sets = []
+        surface.insetBottom = 52
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertTrue(engine.isFollowingLatest, "within the near-bottom distance it is still following")
+        assertNeverMovedUp(surface)
+    }
+
+    /// Nightly 2026-10-26 (hosted): a newly appended row's estimate put the
+    /// max past the stop, its measured height shrank the content under it,
+    /// and SwiftUI clamped the reader back to the bottom, following again.
+    /// The next growth stops at the reply's start again, not at the end.
+    func testAStopUndoneByAShrinkingEstimateStopsAgain() {
+        let (engine, surface) = sendIntoHold()
+        surface.sets = []
+        surface.layOut(contentHeight: 4700)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertEqual(engine.mode, .browsing)
+        // Measured: the reply still fits. SwiftUI clamps to the new bottom.
+        surface.layOut(contentHeight: 4300)
+        surface.contentOffsetY = 3500
+        engine.surfaceScrolled()
+        XCTAssertEqual(engine.mode, .following)
+        // The reply grows past the screen for real.
+        surface.layOut(contentHeight: 4700)
+        XCTAssertEqual(surface.contentOffsetY, 3598, "stops at the reply's start again")
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    func testABigChunkStopsAtTheReplyStartWithoutGoingPastIt() {
+        let (engine, surface) = sendIntoHold()
+        surface.sets = []
+        // One layout pass carries the reply well past a screen.
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertEqual(engine.mode, .browsing)
+        assertNeverMovedUp(surface)
+    }
+
+    func testWithTheSettingOffAReplyIsFollowedToItsEnd() {
+        let (engine, surface) = sendIntoHold()
+        engine.holdsRepliesAtStart = { false }
+        surface.layOut(contentHeight: 6000)
+        XCTAssertEqual(surface.contentOffsetY, 5200)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testTheJumpToLatestGoesPastTheHoldAndFollowsTheEnd() {
+        let (engine, surface) = sendIntoHold()
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        engine.explicitLatestRequested(animated: false)
+        XCTAssertEqual(surface.contentOffsetY, 4400)
+        surface.layOut(contentHeight: 6000)
+        XCTAssertEqual(surface.contentOffsetY, 5200)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testAReaderBackAtTheEndFollowsTheRestOfTheReply() {
+        let (engine, surface) = sendIntoHold()
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        // Read down to the end while it still streams: following again,
+        // to the end this time.
+        surface.userScroll(to: 4400)
+        XCTAssertTrue(engine.isFollowingLatest)
+        surface.sets = []
+        surface.layOut(contentHeight: 6000)
+        XCTAssertEqual(surface.contentOffsetY, 5200)
+        XCTAssertTrue(engine.isFollowingLatest)
+        assertNeverMovedUp(surface)
+    }
+
+    func testATurnStartedElsewhereStopsAtItsStartToo() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        // Another device sent m10; no send here.
+        engine.transcriptChanged(
+            messages: Self.messages(0..<11),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertTrue(engine.replyHoldArmed)
+        surface.layOut(contentHeight: 4200)
+        engine.rowFramesChanged(["m10": ChatScrollRowFrame(minY: 3500, maxY: 3580, order: 10)])
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    func testOpeningAChatDoesNotArmTheHold() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        XCTAssertFalse(engine.replyHoldArmed)
+        engine.rowFramesChanged(["m8": ChatScrollRowFrame(minY: 3000, maxY: 3080, order: 8)])
+        surface.layOut(contentHeight: 5000)
+        XCTAssertEqual(surface.contentOffsetY, 4200)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testAUserMessageNotLaidOutYetFollowsAsBefore() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.transcriptChanged(
+            messages: Self.messages(0..<11),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        engine.explicitLatestRequested(animated: false, armsReplyHold: true)
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 4400)
+        // Its frame arrives with the reader already below it: no move up.
+        engine.rowFramesChanged(["m10": ChatScrollRowFrame(minY: 3500, maxY: 3580, order: 10)])
+        surface.sets = []
+        surface.layOut(contentHeight: 6000)
+        XCTAssertEqual(surface.contentOffsetY, 5200)
+        XCTAssertFalse(engine.replyHoldArmed)
+        assertNeverMovedUp(surface)
+    }
+
+    func testTheTitleTapDisarmsTheHold() {
+        let (engine, _) = sendIntoHold()
+        engine.explicitTopRequested()
+        XCTAssertFalse(engine.replyHoldArmed)
+    }
+
+    func testASessionSwitchDisarmsTheHold() {
+        let (engine, _) = sendIntoHold()
+        engine.renderedSessionChanged(
+            to: keyB,
+            identity: identity("b"),
+            viaNotification: false,
+            viewportTransitionGeneration: 2
+        )
+        XCTAssertFalse(engine.replyHoldArmed)
+    }
+
+    // MARK: - An unread chat opens at its latest reply (#365)
+
+    func testAnUnreadReplyOffScreenLandsAtItsFirstRow() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        events = []
+        engine.replyStartLandingRequested()
+        XCTAssertEqual(scheduled.count, 1)
+        scheduled.forEach { $0() }
+        XCTAssertEqual(events.last, .revealRow(id: "m9"))
+        XCTAssertEqual(engine.mode, .browsing)
+        XCTAssertTrue(engine.replyHoldArmed)
+        withExtendedLifetime(surface) {}
+    }
+
+    func testAnUnreadReplyLaidOutLandsWhereTheHoldStops() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.rowFramesChanged(["m8": ChatScrollRowFrame(minY: 2500, maxY: 2580, order: 8)])
+        engine.replyStartLandingRequested()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 2598)
+        XCTAssertEqual(engine.mode, .browsing)
+        // The notification's handoff ends after the landing: it stays.
+        engine.notificationHandoffFinished()
+        XCTAssertEqual(surface.contentOffsetY, 2598)
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    func testAShortUnreadReplyStaysAtTheEnd() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.rowFramesChanged(["m8": ChatScrollRowFrame(minY: 3600, maxY: 3680, order: 8)])
+        engine.replyStartLandingRequested()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        XCTAssertTrue(engine.isFollowingLatest)
+        XCTAssertTrue(engine.replyHoldArmed, "the reply may still be running")
+    }
+
+    func testAReaderWhoScrolledBeforeTheLandingKeepsTheirPlace() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.replyStartLandingRequested()
+        surface.userScroll(to: 1000)
+        events = []
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 1000)
+        XCTAssertFalse(events.contains { if case .revealRow = $0 { return true }; return false })
+    }
+
+    func testALandingSwitchedOffBeforeItRunsDoesNothing() {
+        let (engine, surface) = makeEngine()
+        var on = true
+        engine.holdsRepliesAtStart = { on }
+        engine.replyStartLandingRequested()
+        on = false
+        events = []
+        scheduled.forEach { $0() }
+        XCTAssertTrue(engine.isFollowingLatest)
+        XCTAssertFalse(events.contains { if case .revealRow = $0 { return true }; return false })
+        withExtendedLifetime(surface) {}
+    }
+
+    func testALeftChatForgetsItsLanding() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.rowFramesChanged(["m8": ChatScrollRowFrame(minY: 2500, maxY: 2580, order: 8)])
+        engine.replyStartLandingRequested()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(surface.contentOffsetY, 2598)
+        engine.viewDisappeared()
+        // A later notification for this chat takes it to the end again.
+        engine.notificationHandoffBegan()
+        engine.notificationHandoffFinished()
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testALeftChatKeepsAnArmedHold() {
+        let (engine, surface) = sendIntoHold()
+        engine.viewDisappeared()
+        XCTAssertTrue(engine.replyHoldArmed)
+        // Back with the reply still running: it stops at its start.
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+    }
+
+    func testALandingBeforeTheScrollViewIsFoundLandsWhenItIs() {
+        let surface = FakeChatScrollSurface()
+        let engine = ChatScrollEngine(
+            now: { [unowned self] in self.clock },
+            schedule: { [unowned self] _, body in self.scheduled.append(body) }
+        )
+        engines.append(engine)
+        engine.onEvent = { [unowned self] event in self.events.append(event) }
+        engine.holdsRepliesAtStart = { true }
+        surface.engine = engine
+        engine.renderedSessionChanged(to: keyA, identity: identity("a"), viaNotification: false, viewportTransitionGeneration: 1)
+        engine.transcriptChanged(messages: Self.messages(0..<10), transcriptRevision: 1, viewportTransitionGeneration: 1, isInitialSync: true)
+        engine.replyStartLandingRequested()
+        scheduled.forEach { $0() }
+        events = []
+        engine.attach(surface)
+        XCTAssertEqual(events.last, .revealRow(id: "m9"))
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    func testABackgroundedLandingLandsOnResume() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.setPaused(true)
+        engine.replyStartLandingRequested()
+        events = []
+        scheduled.forEach { $0() }
+        XCTAssertFalse(events.contains { if case .revealRow = $0 { return true }; return false })
+        engine.setPaused(false)
+        XCTAssertEqual(events.last, .revealRow(id: "m9"))
+        XCTAssertEqual(engine.mode, .browsing)
+        withExtendedLifetime(surface) {}
+    }
+
+    func testANotificationOpenGoesPastAnArmedHold() {
+        let (engine, surface) = sendIntoHold()
+        engine.notificationHandoffBegan()
+        XCTAssertFalse(engine.replyHoldArmed)
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 4400)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    func testTheLandingWaitsForTheSetting() {
+        let (engine, surface) = makeEngine()
+        engine.replyStartLandingRequested()
+        XCTAssertTrue(scheduled.isEmpty)
+        XCTAssertEqual(surface.contentOffsetY, 3200)
     }
 }

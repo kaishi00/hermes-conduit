@@ -69,6 +69,14 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(VoiceChatFinder.matches(from: ["ok": true]).isEmpty)
     }
 
+    func testChatSearchLeavesOutKanbanWorkersStoredBeforeTheTag() {
+        let matches = VoiceChatFinder.matches(from: ["results": [
+            ["session_id": "w", "source": "cli", "preview": "work kanban task t_9f2c", "title": "work kanban task t_9f2c"],
+            ["session_id": "c", "source": "cli", "preview": "Plan the garden", "title": "Garden"],
+        ]])
+        XCTAssertEqual(matches.map(\.sessionID), ["c"])
+    }
+
     func testChatSearchQueryIsWordsOnly() {
         XCTAssertEqual(VoiceChatFinder.searchQuery("  \"GPU\" set-up: drivers*  "), "GPU set up drivers")
         XCTAssertEqual(VoiceChatFinder.searchQuery("??"), "")
@@ -82,9 +90,9 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceChatFinder.fallbackWords("GPU"), [], "a single word was already tried")
         XCTAssertEqual(
             VoiceChatFinder.path(query: "GPU setup", profile: "work"),
-            "/api/sessions/search?q=GPU%20setup&limit=\(VoiceChatFinder.resultLimit)&profile=work"
+            "/api/sessions/search?q=GPU%20setup&limit=15&exclude_sources=kanban,oneshot,tool&profile=work"
         )
-        XCTAssertEqual(VoiceChatFinder.path(query: "x", profile: "default"), "/api/sessions/search?q=x&limit=\(VoiceChatFinder.resultLimit)")
+        XCTAssertEqual(VoiceChatFinder.path(query: "x", profile: "default"), "/api/sessions/search?q=x&limit=15&exclude_sources=kanban,oneshot,tool")
     }
 
     func testTitleFallbackFindsListedChatsNewestFirst() {

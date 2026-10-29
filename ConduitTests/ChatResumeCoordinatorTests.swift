@@ -601,6 +601,25 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         )
     }
 
+    func testPendingDecisionIncludesAnInputCardWaitingOnTheUser() throws {
+        var prompt = try XCTUnwrap(InputPromptActivity.from(
+            requestId: "srq-1", method: "vault.code",
+            params: ["session_id": .string("s1"), "site": .string("example.com")]
+        ))
+        let waiting = ChatMessage(id: "code", role: .inputPrompt, content: "", timestamp: "", inputPrompt: prompt)
+        XCTAssertEqual(
+            ChatResumeCoordinator.pendingClarifyMessageID(in: [clarifyMessage("question", status: .pending), waiting]),
+            "code"
+        )
+        XCTAssertEqual(PendingDecisionKind(message: waiting), .input)
+        prompt.status = .submitted
+        let sent = ChatMessage(id: "sent", role: .inputPrompt, content: "", timestamp: "", inputPrompt: prompt)
+        XCTAssertEqual(
+            ChatResumeCoordinator.pendingClarifyMessageID(in: [clarifyMessage("question", status: .pending), sent]),
+            "question"
+        )
+    }
+
     private func clarifyMessage(
         _ id: String,
         status: ClarifyQuestion.Status

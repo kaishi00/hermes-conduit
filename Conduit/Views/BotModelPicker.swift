@@ -14,6 +14,7 @@ struct BotModelPicker: View {
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @State private var providers: [ProviderInfo]?
     @State private var loadFailed = false
+    @State private var query = ""
 
     var body: some View {
         List {
@@ -33,7 +34,10 @@ struct BotModelPicker: View {
                     Text(AppLocalization.string("Hermes has no models set up yet."))
                         .foregroundStyle(.secondary)
                 }
-                ForEach(providers, id: \.name) { option in
+                if !ModelSearchQuery(query).isEmpty {
+                    searchResults(providers)
+                }
+                ForEach(ModelSearchQuery(query).isEmpty ? providers : [], id: \.name) { option in
                     Section {
                         ForEach(option.models, id: \.id) { item in
                             row(
@@ -56,6 +60,7 @@ struct BotModelPicker: View {
                     .frame(maxWidth: .infinity)
             }
         }
+        .searchable(text: $query, prompt: Text(AppLocalization.string("Search providers or models")))
         .navigationTitle(AppLocalization.string("Model"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -68,15 +73,41 @@ struct BotModelPicker: View {
         }
     }
 
-    private func row(title: String, isSelected: Bool, select: @escaping () -> Void) -> some View {
+    /// Matches across providers, each naming its provider: several often
+    /// serve the same model.
+    @ViewBuilder
+    private func searchResults(_ providers: [ProviderInfo]) -> some View {
+        let matches = modelSearchMatches(in: providers, query: query)
+        if matches.isEmpty {
+            Text(verbatim: AppLocalization.string("Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”."))
+                .foregroundStyle(.secondary)
+        }
+        ForEach(matches) { match in
+            row(
+                title: match.model.label ?? match.model.id,
+                detail: match.model.label == nil ? nil : match.model.id,
+                providerTitle: match.provider.title,
+                isSelected: match.provider.matches(provider) && match.model.id == model
+            ) {
+                provider = match.provider.name
+                model = match.model.id
+            }
+        }
+    }
+
+    private func row(title: String, detail: String? = nil, providerTitle: String? = nil, isSelected: Bool, select: @escaping () -> Void) -> some View {
         Button {
             Haptics.selection()
             select()
             dismiss()
         } label: {
             HStack {
-                Text(verbatim: title)
-                    .foregroundStyle(.primary)
+                if let providerTitle {
+                    ModelSearchResultText(title: title, detail: detail, provider: providerTitle)
+                } else {
+                    Text(verbatim: title)
+                        .foregroundStyle(.primary)
+                }
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")

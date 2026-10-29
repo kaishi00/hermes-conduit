@@ -71,6 +71,9 @@ final class GPTLiveSession {
     private let startTimeout: Duration
     private let reconnectGrace: Duration
     private var peer: GPTLivePeer?
+    /// Kept across peers so a mute set before the call connects (a muted
+    /// call from Hermes) reaches the microphone before it captures.
+    private var isMicrophoneEnabled = true
     private var connectTask: Task<Void, Never>?
     private var startWatchdog: Task<Void, Never>?
     /// Runs while the connection is interrupted; fails the call if it
@@ -115,6 +118,7 @@ final class GPTLiveSession {
         state = .connecting
         let peer = makePeer()
         self.peer = peer
+        if !isMicrophoneEnabled { peer.setMicrophoneEnabled(false) }
         peer.onMessage = { [weak self, weak peer] text in
             guard let self, let peer, self.peer === peer else { return }
             self.received(text)
@@ -168,6 +172,7 @@ final class GPTLiveSession {
     }
 
     func setMicrophoneEnabled(_ enabled: Bool) {
+        isMicrophoneEnabled = enabled
         peer?.setMicrophoneEnabled(enabled)
     }
 

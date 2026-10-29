@@ -11,6 +11,7 @@
 //
 
 import Foundation
+import Observation
 
 enum CapabilitiesStoreError: LocalizedError, Equatable {
     case notConnected
@@ -46,45 +47,46 @@ struct PluginInstallOutcome: Equatable {
 }
 
 @MainActor
-final class CapabilitiesStore: ObservableObject {
+@Observable
+final class CapabilitiesStore {
     // Skills
-    @Published private(set) var officialSkills: [OfficialSkill] = []
-    @Published private(set) var skillInstalls: [String: CapabilityInstallState] = [:]
+    private(set) var officialSkills: [OfficialSkill] = []
+    private(set) var skillInstalls: [String: CapabilityInstallState] = [:]
 
     // Tools
     /// Tool name -> calls over the last year; nil until read.
-    @Published private(set) var toolCalls: [String: Int]?
+    private(set) var toolCalls: [String: Int]?
 
     // Connectors
-    @Published private(set) var servers: [ConnectorServer] = []
-    @Published private(set) var connectorCatalog: [ConnectorCatalogEntry] = []
-    @Published private(set) var connectorsLoaded = false
-    @Published private(set) var connectorsError: String?
-    @Published private(set) var probes: [String: ConnectorProbe] = [:]
-    @Published private(set) var probing: Set<String> = []
-    @Published private(set) var connectorInstalls: [String: CapabilityInstallState] = [:]
+    private(set) var servers: [ConnectorServer] = []
+    private(set) var connectorCatalog: [ConnectorCatalogEntry] = []
+    private(set) var connectorsLoaded = false
+    private(set) var connectorsError: String?
+    private(set) var probes: [String: ConnectorProbe] = [:]
+    private(set) var probing: Set<String> = []
+    private(set) var connectorInstalls: [String: CapabilityInstallState] = [:]
 
     // Plugins
-    @Published private(set) var plugins: [AgentPluginRow] = []
-    @Published private(set) var pluginCatalog: [PluginCatalogEntry] = []
-    @Published private(set) var pluginsLoaded = false
-    @Published private(set) var pluginsError: String?
-    @Published private(set) var pluginBusy: Set<String> = []
+    private(set) var plugins: [AgentPluginRow] = []
+    private(set) var pluginCatalog: [PluginCatalogEntry] = []
+    private(set) var pluginsLoaded = false
+    private(set) var pluginsError: String?
+    private(set) var pluginBusy: Set<String> = []
     /// A plugin change Hermes applies only after a gateway restart.
-    @Published var pluginsNeedRestart = false
+    var pluginsNeedRestart = false
 
-    private weak var requester: (any DashboardJSONRequester)?
+    @ObservationIgnored private weak var requester: (any DashboardJSONRequester)?
     private(set) var profile = "default"
     /// Bumped on every profile or dashboard switch: work started before it
     /// commits nothing.
-    private var generation = 0
+    @ObservationIgnored private var generation = 0
     /// Bumped by every load of a list and every change made to it here: a
     /// load commits only if nothing newer touched its list meanwhile, so a
     /// refresh that answers late can't bring back an older list or undo a
     /// switch just flipped.
-    private var skillsEpoch = 0
-    private var connectorsEpoch = 0
-    private var pluginsEpoch = 0
+    @ObservationIgnored private var skillsEpoch = 0
+    @ObservationIgnored private var connectorsEpoch = 0
+    @ObservationIgnored private var pluginsEpoch = 0
 
     /// A connector's probe stays fresh this long, as on Desktop.
     static let probeLifetime: TimeInterval = 300
@@ -452,10 +454,6 @@ final class CapabilitiesStore: ObservableObject {
 
     func clearConnectorInstallFailure(_ name: String) {
         if case .failed = connectorInstalls[name] { connectorInstalls[name] = nil }
-    }
-
-    func clearSkillInstallFailure(_ identifier: String) {
-        if case .failed = skillInstalls[identifier] { skillInstalls[identifier] = nil }
     }
 
     /// Starts a server's OAuth sign-in; the person finishes it in the

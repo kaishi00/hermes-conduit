@@ -25,7 +25,7 @@ def render(selection: dict) -> str:
     lines = [
         "### Hosted CI selection",
         "",
-        "PR and main runs build once and run the curated smoke classes below",
+        "PR and push runs build once and run the curated smoke classes below",
         "(`scripts/smoke-suite.json`). Every unit class (in balanced shards,",
         "`scripts/hosted-suite.json`), the timing families and the complete UI",
         "suite run in the nightly workflow.",

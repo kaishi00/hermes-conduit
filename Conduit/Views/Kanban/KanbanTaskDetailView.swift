@@ -29,7 +29,7 @@ struct KanbanTaskDetailView: View {
         var status: String
     }
 
-    @EnvironmentObject private var store: KanbanStore
+    @Environment(KanbanStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
@@ -336,12 +336,12 @@ struct KanbanTaskDetailView: View {
                     // Show the new assignee now rather than at the next poll.
                     Task { await loadDetail(force: true) }
                 }
-                    .environmentObject(store)
+                    .environment(store)
                     .presentationDetents([.medium])
             }
             .sheet(isPresented: $showModelSheet) {
                 KanbanModelOverrideSheet(value: $modelOverrideDraft)
-                    .environmentObject(store)
+                    .environment(store)
                     .presentationDetents([.medium, .large])
             }
             .onChange(of: showModelSheet) { wasOpen, nowOpen in
@@ -1051,7 +1051,7 @@ struct KanbanTaskDetailView: View {
     private var workerLogLink: some View {
         NavigationLink {
             KanbanWorkerLogScreen(taskID: displayedTaskID)
-                .environmentObject(store)
+                .environment(store)
         } label: {
             HStack {
                 Label("Worker Log", systemImage: "doc.text.magnifyingglass")
@@ -1718,7 +1718,7 @@ enum KanbanNoteAndRequeueFlow {
 /// reclaim_first=true (upstream drawer behavior): switching profiles releases
 /// a running worker claim first and resets the failure streak.
 struct KanbanReassignSheet: View {
-    @EnvironmentObject private var store: KanbanStore
+    @Environment(KanbanStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let taskID: String
     let currentAssignee: String?

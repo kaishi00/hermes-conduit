@@ -3,7 +3,7 @@
 //  Conduit
 //
 //  Restart Gateway's confirmation and progress, shared by the chat's Gateway
-//  sheet and Settings > Gateway (AppState+GatewayRestart.swift).
+//  sheet and Settings > Connection (AppState+GatewayRestart.swift).
 //
 
 import SwiftUI

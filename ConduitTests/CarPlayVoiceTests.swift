@@ -375,6 +375,20 @@ extension CarPlayVoiceTemplateFactoryTests {
         XCTAssertEqual(list.pinned.count + list.recent.count, CarPlayBrowse.maximumChats)
     }
 
+    func testChatListPinnedChatsFollowThePhonesOrder() {
+        let sessions = (0..<5).map { session("s\($0)", activity: TimeInterval($0)) }
+        let pinnedIDs: Set<String> = ["s1", "s2", "s4"]
+        let list = CarPlayBrowse.chatList(
+            from: sessions,
+            isPinned: { pinnedIDs.contains($0.id) },
+            arrangePinned: { rows in
+                PinnedChatOrder.arrange(rows, profile: { _ in "default" }, ids: { [$0.id] }, order: { _ in ["s1", "s4"] })
+            }
+        )
+        XCTAssertEqual(list.pinned.map(\.sessionID), ["s2", "s1", "s4"], "issue 1354: a chat the order doesn't name leads")
+        XCTAssertEqual(list.recent.map(\.sessionID), ["s3", "s0"])
+    }
+
     func testChatListOpensWithNewVoiceChat() throws {
         var newChats = 0
         var opened: [String] = []
@@ -1854,6 +1868,42 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertEqual(harness.coordinator.observedVoiceMode, .classic)
     }
 
+    func testLocalLiveIsACarPlayModeAndItsHandsFreeOptionIsListedAsClassic() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+
+        harness.coordinator.selectVoiceMode(.localLive)
+        XCTAssertTrue(harness.appState.isLocalLiveEnabled)
+        XCTAssertTrue(harness.appState.isLocalLiveAgent, "picked in the car, as Settings' Local saves it")
+        XCTAssertEqual(harness.coordinator.observedVoiceMode, .localLive)
+        XCTAssertEqual(CarPlayBrowse.modeRows(current: .localLive).filter(\.isSelected).map(\.title), ["Local Live"])
+
+        // Classic's hands-free option on the speech server runs on Local
+        // Live's controller in the car too, and is listed as Classic, as on
+        // the phone.
+        harness.appState.setLocalLiveAgent(false)
+        XCTAssertEqual(CarPlayVoiceMode.current(in: harness.appState), .localLive)
+        XCTAssertEqual(CarPlayVoiceMode.listed(in: harness.appState), .classic)
+        XCTAssertEqual(harness.coordinator.observedVoiceMode, .localLive)
+
+        // Classic is already what the list shows: picking it changes nothing.
+        harness.coordinator.selectVoiceMode(.classic)
+        XCTAssertTrue(harness.appState.isLocalLiveEnabled)
+
+        // Local picked from there moves to agent mode.
+        harness.coordinator.selectVoiceMode(.localLive)
+        XCTAssertTrue(harness.appState.isLocalLiveAgent)
+        XCTAssertEqual(CarPlayVoiceMode.listed(in: harness.appState), .localLive)
+
+        harness.coordinator.selectVoiceMode(.classic)
+        XCTAssertFalse(harness.appState.isLocalLiveEnabled)
+        XCTAssertEqual(harness.coordinator.observedVoiceMode, .classic)
+    }
+
+    func testEachCarPlayModeSavesTheSettingsModeOfTheSameName() {
+        XCTAssertEqual(CarPlayVoiceMode.all.map(\.choice), [.classic, .gemini, .qwen, .gpt, .grok, .local])
+    }
+
     func testSentTurnPlaysTheStatusSoundUnlessTurnedOff() async throws {
         let harness = makeHarness()
         let defaults = makeScratchDefaults("CarPlaySounds")
@@ -2781,6 +2831,38 @@ final class CarPlayVoicePhoneAttachTests: XCTestCase {
         }
     }
 
+    /// #1376: a call from Hermes on Local Live opens Local Live when its
+    /// answer chose a live opening (agent mode: the fast model says why
+    /// Hermes called); otherwise classic voice, which was queued the news.
+    func testHermesCallOnLocalLiveOpensWhatItsAnswerChose() async {
+        for agent in [true, false] {
+            let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+            addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+                defaults.removePersistentDomain(forName: suite)
+            }
+            harness.appState.activeSessionId = "session-S"
+            harness.controller.beginVoiceTurn(sessionID: "session-S")
+            await harness.controller.startListening()
+            harness.appState.setLocalLiveEnabled(true)
+            harness.appState.setLocalLiveAgent(agent)
+            XCTAssertEqual(harness.appState.usesLocalLiveAgent(profile: harness.appState.activeProfile), agent)
+            if harness.appState.usesLocalLiveAgent(profile: harness.appState.activeProfile) {
+                harness.appState.pendingHermesCall = HermesCallOpening(kind: .done, title: "Build", result: "Green")
+            }
+
+            let opened = await harness.appState.openVoiceConversation(
+                PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .hermesCall)
+            )
+
+            XCTAssertTrue(opened)
+            XCTAssertEqual(harness.appState.showLocalLiveSheet, agent)
+            XCTAssertEqual(harness.appState.showVoiceSheet, !agent)
+            harness.appState.closeLocalLiveConversation()
+            harness.appState.closeVoiceConversation()
+            harness.appState.pendingHermesCall = nil
+        }
+    }
+
     /// The same continuation while an assistant turn is IN FLIGHT: phone
     /// presentation attaches instead of rejecting with "Stop the current
     /// response" merely because the live session already owns the turn.
@@ -3361,5 +3443,69 @@ extension CarPlayVoiceCoordinatorTests {
         }
         XCTAssertEqual(harness.activations.last, .error)
         XCTAssertEqual(harness.appState.pinSyncNotice?.message, message)
+    }
+
+    /// A live call picked from the chat list doesn't wait on the phone
+    /// showing its chat: a slow open left the car on Ready, and the pick
+    /// looked like it did nothing (#1362).
+    func testALiveCallPickedFromTheChatListStartsWhileThePhoneIsSlowToOpenIt() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        harness.appState.gptLiveController = GPTLiveConversationController(
+            makeSession: { FakeGPTLiveSessionControl() },
+            availability: { try await FakeGPTLiveClient().availability() },
+            briefing: { "[rules]" },
+            supervisor: harness.appState.voiceBackgroundJobSupervisor,
+            requestPermission: { true }
+        )
+        harness.coordinator.selectVoiceMode(.gptLive)
+        await harness.coordinator.waitForPresentation()
+        var held: CheckedContinuation<AppState.SessionOpenOutcome, Never>?
+        harness.coordinator.chatOpener = { _, _ in
+            await withCheckedContinuation { held = $0 }
+        }
+        harness.coordinator.liveChatOpenWait = .milliseconds(20)
+        let row = CarPlayChatRow(sessionID: "slow", storedSessionID: nil, title: "Slow", detail: "")
+
+        await harness.coordinator.performOpenChat(row, generation: harness.coordinator.connectionGeneration)
+
+        XCTAssertNotNil(held, "the phone is still opening the chat")
+        XCTAssertTrue(harness.appState.gptLiveController.isActive, "the call started anyway")
+        XCTAssertTrue(harness.activations.contains(.processing), "\(harness.activations)")
+        held?.resume(returning: .opened)
+        harness.appState.closeGPTLiveConversation()
+        harness.coordinator.handleDisconnect()
+    }
+
+    /// Classic Voice talks in the open chat, so it waits for the open, with
+    /// the car on Thinking meanwhile; an open another navigation took over
+    /// leaves the car on Ready, not Thinking (#1362).
+    func testAClassicChatPickShowsThinkingWhileTheChatOpens() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        var held: CheckedContinuation<AppState.SessionOpenOutcome, Never>?
+        var opens = 0
+        harness.coordinator.chatOpener = { _, _ in
+            opens += 1
+            return await withCheckedContinuation { held = $0 }
+        }
+        let row = CarPlayChatRow(sessionID: "picked", storedSessionID: nil, title: "Picked", detail: "")
+
+        let pick = Task { @MainActor in
+            await harness.coordinator.performOpenChat(row, generation: harness.coordinator.connectionGeneration)
+        }
+        for _ in 0..<500 where held == nil { await Task.yield() }
+        XCTAssertEqual(harness.activations.last, .processing, "\(harness.activations)")
+
+        held?.resume(returning: .superseded)
+        held = nil
+        for _ in 0..<500 where opens < 2 || held == nil { await Task.yield() }
+        held?.resume(returning: .superseded)
+        await pick.value
+
+        XCTAssertEqual(opens, 2, "the driver's pick is tried once more")
+        XCTAssertEqual(harness.activations.last, .ready, "\(harness.activations)")
     }
 }

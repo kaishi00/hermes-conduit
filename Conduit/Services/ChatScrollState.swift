@@ -19,6 +19,9 @@ struct ChatMessageScrollTarget: Identifiable, Equatable {
     /// Where this row sits in its turn's run of thinking and tool steps, so
     /// the run can draw as one card. Nil for every other row.
     var step: ChatStepPlacement? = nil
+    /// On a reply: the run of steps right above it, when that run has
+    /// thinking (its menu's Show thinking). Nil for every other row.
+    var stepsAbove: ChatStepGroup? = nil
 
     /// SwiftUI keeps the existing source-row identity for rendering and
     /// controls. Only scroll targeting uses the source-independent ID.
@@ -151,9 +154,13 @@ struct ChatMessageScrollTargetCache: Equatable {
             start -= 1
         }
         var i = start
+        var runAbove: ChatStepGroup?
         while i < targets.count {
             guard targets[i].isStep else {
                 if targets[i].step != nil { targets[i].step = nil }
+                let above = targets[i].message.role == .assistant && runAbove?.hasThinking == true ? runAbove : nil
+                if targets[i].stepsAbove != above { targets[i].stepsAbove = above }
+                runAbove = nil
                 i += 1
                 continue
             }
@@ -168,7 +175,9 @@ struct ChatMessageScrollTargetCache: Equatable {
             for k in i..<end {
                 let placement = ChatStepPlacement(group: group, index: k - i)
                 if targets[k].step != placement { targets[k].step = placement }
+                if targets[k].stepsAbove != nil { targets[k].stepsAbove = nil }
             }
+            runAbove = group
             i = end
         }
     }

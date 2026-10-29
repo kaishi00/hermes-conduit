@@ -146,6 +146,8 @@ struct MainView: View {
                 AgentSettingsBanner(sync: appState.agentSettings)
                 // A newer Conduit plugin for this dashboard's host.
                 NotifierPluginUpdateBanner()
+                // Send the report of a crash or freeze? (CrashReportOffer.swift)
+                CrashReportBanner()
                 // Calendar changes Hermes asked for (AppState+PhoneSync.swift);
                 // a call's screen shows them over the call.
                 if !appState.isVoiceCallScreenPresented {
@@ -174,7 +176,7 @@ struct MainView: View {
                 .environmentObject(appState)
         }
         .sheet(isPresented: $appState.showWorkspaceSheet) {
-            WorkspaceBrowserSheet()
+            WorkspaceSheet()
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
                 .environmentObject(appState)
@@ -343,7 +345,6 @@ struct MainView: View {
                 persistProfileMainModel: { provider, model, reasoning in
                     await appState.setProfileMainModel(provider: provider, model: model, reasoning: reasoning)
                 },
-                saveDefaultProfileName: { appState.saveDefaultProfileName($0) },
                 reconnect: {
                     await appState.reconnect()
                     return appState.isConnected
@@ -400,6 +401,13 @@ struct MainView: View {
             guard !useV2Shell, let page else { return }
             appState.settingsLinkRequest = nil
             openSettings(at: page)
+        }
+        // A file path tapped in a reply: V2 shows a chat's in its
+        // Artifacts; a group room (no Artifacts) and the drawer shell
+        // show the Folder on its own.
+        .onChange(of: appState.workspaceReveal?.id) { _, id in
+            guard id != nil, !useV2Shell || appState.activeRoomSurface != nil else { return }
+            appState.showWorkspaceSheet = true
         }
     }
 
@@ -480,13 +488,18 @@ struct MainView: View {
         NavigationStack {
             ZStack {
                 ConduitBackdrop(drifts: true)
-                if appState.activeRoomSurface != nil {
-                    // Keyed by room: another room starts with its own draft.
-                    GroupChatView()
-                        .id(appState.activeRoomSurface?.room.roomID)
-                } else {
-                    ChatView()
+                Group {
+                    if appState.activeRoomSurface != nil {
+                        // Keyed by room: another room starts with its own draft.
+                        GroupChatView()
+                            .id(appState.activeRoomSurface?.room.roomID)
+                    } else {
+                        ChatView()
+                    }
                 }
+                // The same readable column as V2's chat on a wide window;
+                // the backdrop still fills it.
+                .readableChatColumn()
             }
             .overlay(alignment: .leading) {
                 if !isPersistentSidebarActive {

@@ -185,7 +185,7 @@ struct PinnedReplyBar: View {
                 Button {
                     showAll()
                 } label: {
-                    Label(AppLocalization.string("All pinned replies"), systemImage: "pin")
+                    Label(AppLocalization.string("Pinned replies"), systemImage: "pin")
                 }
             }
             .accessibilityElement(children: .ignore)
@@ -197,7 +197,7 @@ struct PinnedReplyBar: View {
                 unpin(pin)
             }
             .accessibilityAction(named: PinnedReplyLabelEditor.actionTitle(for: pin)) { label(pin) }
-            .accessibilityAction(named: AppLocalization.string("All pinned replies")) { showAll() }
+            .accessibilityAction(named: AppLocalization.string("Pinned replies")) { showAll() }
             .accessibilityIdentifier("chat.pinnedReplyBar")
             // Pins added, removed or reordered (earlier messages loaded):
             // back to the latest, so the index never names another reply.
@@ -237,22 +237,51 @@ private struct PinnedReplyBarIndicator: View {
 
 /// Every pinned reply of the profile, a section per chat. A tap opens the
 /// chat at the reply, or at the passage a pin holds; a pin can be labelled
-/// from here (#1147).
+/// from here (#1147). Opened from a chat, it starts on that chat's pins,
+/// with All chats a tap away and that chat's section first (#1267).
 struct PinnedRepliesSheet: View {
+    enum Scope: Hashable {
+        case thisChat
+        case allChats
+    }
+
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var labelingPin: PinnedReply?
+    /// Whether it was opened from the open chat, which then leads.
+    private let fromOpenChat: Bool
+    @State private var scope: Scope
+    /// Set once the filter has shown, so it stays while the sheet is up:
+    /// unpinning this chat's last pin leaves This chat empty rather than
+    /// switching to every chat's pins.
+    @State private var keepsScope = false
+
+    init(fromOpenChat: Bool = false) {
+        self.fromOpenChat = fromOpenChat
+        _scope = State(initialValue: fromOpenChat ? .thisChat : .allChats)
+    }
 
     var body: some View {
-        let sections = PinnedReplies.overview(appState.activePinnedReplies)
+        let all = appState.activePinnedReplies
+        let openChat: Set<String> = fromOpenChat ? Set(appState.openChatPinnedReplies.map(\.id)) : []
+        // Shown when both sides have pins (with none in this chat, or none
+        // anywhere else, the two would show the same list or nothing), then
+        // kept until the sheet closes.
+        let showsScope = keepsScope || (!openChat.isEmpty && openChat.count < all.count)
+        let pins = showsScope && scope == .thisChat ? all.filter { openChat.contains($0.id) } : all
+        let sections = PinnedReplies.overview(pins, firstPins: openChat)
         NavigationStack {
             ZStack {
                 ConduitBackdrop()
                 List {
                     if sections.isEmpty {
+                        // This chat's last pin gone while others remain.
+                        let thisChatOnly = showsScope && scope == .thisChat && !all.isEmpty
                         ContentUnavailableView(
-                            AppLocalization.string("No pinned replies"),
+                            thisChatOnly
+                                ? AppLocalization.string("No pins in this chat")
+                                : AppLocalization.string("No pinned replies"),
                             systemImage: "pin",
                             description: Text(AppLocalization.string("Long-press a reply and choose Pin for the selected text or Pin reply for all of it. It stays at the top of its chat and shows here."))
                         )
@@ -276,9 +305,23 @@ struct PinnedRepliesSheet: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
-                ConduitSheetHeader(title: AppLocalization.string("Pinned replies"), close: { dismiss() })
+                VStack(spacing: 8) {
+                    ConduitSheetHeader(title: AppLocalization.string("Pinned replies"), close: { dismiss() })
+                    if showsScope {
+                        Picker(AppLocalization.string("Show pins from"), selection: $scope) {
+                            Text(AppLocalization.string("This chat")).tag(Scope.thisChat)
+                            Text(AppLocalization.string("All chats")).tag(Scope.allChats)
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 4)
+                        .onChange(of: scope) { _, _ in Haptics.selection() }
+                        .accessibilityIdentifier("pinnedReplies.scope")
+                    }
+                }
             }
         }
+        .onAppear { if showsScope { keepsScope = true } }
         .pinnedReplyLabelEditor($labelingPin) { pin, label in
             appState.setPinnedReplyLabel(pin, to: label)
         }

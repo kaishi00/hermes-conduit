@@ -13,7 +13,7 @@ import WebKit
 struct LoginView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
-    @StateObject private var flow = LoginFlowModel()
+    @State private var flow = LoginFlowModel()
     /// Non-nil presents Add a dashboard, filled in from the seed.
     @State private var addDashboard: LoginSeed?
     /// The Connection Setup assistant answered on the dashboards list, which

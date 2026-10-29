@@ -130,8 +130,58 @@ extension SessionNestingModelTests {
         XCTAssertFalse(shows(.recent, nil))
         XCTAssertTrue(shows(.all, at(day: 1, hour: 0)))
         XCTAssertTrue(shows(.all, nil))
-        XCTAssertEqual(ProjectChatsInChats.stored(nil), .hidden)
-        XCTAssertEqual(ProjectChatsInChats.stored("bogus"), .hidden)
-        XCTAssertEqual(ProjectChatsInChats.stored("recent"), .recent)
+        XCTAssertEqual(ProjectChatsInChats.stored(nil), .recent)
+        XCTAssertEqual(ProjectChatsInChats.stored("bogus"), .recent)
+        XCTAssertEqual(ProjectChatsInChats.stored("hidden"), .hidden)
+    }
+
+    /// Recent is the default for a new install; one signed in before
+    /// keeps the Off it had, once, and a choice saved on any device wins.
+    /// The default stays on the device: the synced choice is never written
+    /// (#1317).
+    func testProjectChatsDefaultSettlesOnceAndKeepsOlderInstallsOff() {
+        let suite = "ChatListSectionsTests.projectChats.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        ProjectChatsInChats.settleDefault(in: defaults, existingInstall: true)
+        XCTAssertEqual(ProjectChatsInChats.stored(in: defaults), .hidden)
+        XCTAssertEqual(ProjectChatsInChats.deviceDefault(in: defaults), .hidden)
+        XCTAssertNil(defaults.object(forKey: ProjectChatsInChats.key))
+        // A choice synced from another device wins over the default.
+        defaults.set(ProjectChatsInChats.all.rawValue, forKey: ProjectChatsInChats.key)
+        XCTAssertEqual(ProjectChatsInChats.stored(in: defaults), .all)
+
+        defaults.removePersistentDomain(forName: suite)
+        ProjectChatsInChats.settleDefault(in: defaults, existingInstall: false)
+        XCTAssertEqual(ProjectChatsInChats.stored(in: defaults), .recent)
+        // Signing in later doesn't make it an older install.
+        ProjectChatsInChats.settleDefault(in: defaults, existingInstall: true)
+        XCTAssertEqual(ProjectChatsInChats.stored(in: defaults), .recent)
+        XCTAssertNil(defaults.object(forKey: ProjectChatsInChats.key))
+    }
+
+    /// Filter > Projects keeps each profile's hidden projects apart, and a
+    /// pinned chat stays listed.
+    func testHiddenChatProjectsArePerProfileAndSparePinnedChats() {
+        var stored: Any? = HiddenChatProjects.setting(["work", HiddenChatProjects.noProject], profile: "default", in: nil)
+        stored = HiddenChatProjects.setting(["home-lab"], profile: "coder", in: stored)
+        XCTAssertEqual(HiddenChatProjects.ids(in: stored, profile: "default"), ["work", HiddenChatProjects.noProject])
+        XCTAssertEqual(HiddenChatProjects.ids(in: stored, profile: "coder"), ["home-lab"])
+        XCTAssertEqual(HiddenChatProjects.ids(in: stored, profile: "other"), [])
+
+        stored = HiddenChatProjects.setting([], profile: "coder", in: stored)
+        XCTAssertEqual((stored as? [String: [String]])?.keys.sorted(), ["default"])
+        XCTAssertEqual(HiddenChatProjects.ids(in: "garbage", profile: "default"), [])
+
+        let hidden: Set<String> = ["work", HiddenChatProjects.noProject]
+        XCTAssertTrue(HiddenChatProjects.hides(projectID: "work", pinned: false, hidden: hidden))
+        XCTAssertTrue(HiddenChatProjects.hides(projectID: nil, pinned: false, hidden: hidden))
+        XCTAssertFalse(HiddenChatProjects.hides(projectID: "work", pinned: true, hidden: hidden))
+        XCTAssertFalse(HiddenChatProjects.hides(projectID: "music", pinned: false, hidden: hidden))
+        // Needs approval lists a hidden project's wait; nothing else spares it.
+        XCTAssertFalse(HiddenChatProjects.hides(projectID: "work", pinned: false, listedWait: true, hidden: hidden))
+        XCTAssertFalse(HiddenChatProjects.hides(projectID: nil, pinned: false, listedWait: true, hidden: hidden))
+        XCTAssertTrue(HiddenChatProjects.hides(projectID: "work", pinned: false, listedWait: false, hidden: hidden))
     }
 }

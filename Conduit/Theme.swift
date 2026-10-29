@@ -496,6 +496,15 @@ struct ConduitBackdrop: View {
     }
 
     var body: some View {
+        backdrop
+            // A bar whose content fades out under it draws a copy behind
+            // that content, so the fade shows the backdrop rather than
+            // cutting through it (`V2LegacyEdgeBar`).
+            .preference(key: ConduitBackdropBehindFade.self,
+                        value: ConduitBackdropBehindFade.Request(drifts: drifts, glowTint: glowTint))
+    }
+
+    private var backdrop: some View {
         // Only the two drifting circles live inside the timeline; the base
         // colour and bottom shade never change between ticks.
         ZStack {
@@ -571,6 +580,22 @@ struct ConduitBackdrop: View {
         colorScheme == .dark
             ? Color(red: 0.045, green: 0.052, blue: 0.072)
             : Color(red: 0.94, green: 0.95, blue: 0.98)
+    }
+}
+
+/// A backdrop inside content that fades out under a bar (`V2LegacyEdgeBar`,
+/// a mask): the fade cuts through it too, so the bar draws the same
+/// backdrop behind the faded content, and the text fades out over it.
+struct ConduitBackdropBehindFade: PreferenceKey {
+    struct Request: Equatable {
+        let drifts: Bool
+        let glowTint: Color?
+    }
+
+    static var defaultValue: Request? = nil
+
+    static func reduce(value: inout Request?, nextValue: () -> Request?) {
+        value = value ?? nextValue()
     }
 }
 
@@ -741,19 +766,6 @@ extension View {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
                 }
-        }
-    }
-
-    @ViewBuilder
-    func conduitGlassButtonStyle(prominent: Bool = false) -> some View {
-        if #available(iOS 26.0, *) {
-            if prominent {
-                self.buttonStyle(.glassProminent)
-            } else {
-                self.buttonStyle(.glass)
-            }
-        } else {
-            self.buttonStyle(.plain)
         }
     }
 }

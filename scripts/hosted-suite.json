@@ -2,7 +2,7 @@
   "_comment": [
     "The nightly workflow's shape (CI v5, docs/CI.md).",
     "",
-    "PR and push-to-main runs (ci.yml) run only the smoke classes from",
+    "PR and push runs (ci.yml) run only the smoke classes from",
     "smoke-suite.json. The nightly workflow (nightly.yml) runs everything:",
     "every unit class EXCEPT nightly_only_unit, split into unit_shards balanced",
     "jobs; nightly_only_unit with three repeats; and the whole UI suite in",

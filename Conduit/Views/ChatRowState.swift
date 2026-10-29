@@ -24,6 +24,10 @@ struct ChatRowState: Equatable {
     /// own part.
     var reactionsAvailable = false
     var latestAssistantMessageID: String?
+    /// The newest reply, while it answers the last message sent: /retry
+    /// sends that message again, so a reply with a message after it (a
+    /// stopped or unanswered turn) offers no Retry.
+    var retryableReplyID: String?
     var readAloudUnavailable = false
     var displayPreferences = ProfileDisplayPreferences()
     /// A call card finds its call through AppState; this redraws it when
@@ -32,9 +36,6 @@ struct ChatRowState: Equatable {
     /// Each live card's last row: earlier rows with that live name show
     /// that it was updated below.
     var latestLiveRows: [String: String] = [:]
-    /// The open chat's messages that have a Pulse card, by Hermes' message
-    /// id (PulseFeed.swift): they show a Pulse mark that opens it.
-    var pulseCards: [Int: Int] = [:]
     /// Replies can be pinned here (#918), and the rows that are.
     var canPinReplies = false
     var pinnedMessageIDs: Set<String> = []
@@ -51,6 +52,8 @@ struct ChatRowState: Equatable {
     var stepSummariesAsked: Set<String> = []
     /// A run's menu can ask Hermes to explain it.
     var canExplainStepRuns = false
+    /// Replies Hermes wrote on its own, with why (Predictive follow-ups).
+    var followUpReasons: [String: String] = [:]
 
     init() {}
 
@@ -66,11 +69,11 @@ struct ChatRowState: Equatable {
         canQuoteIntoComposer = appState.canQuoteIntoComposer()
         reactionsAvailable = appState.reactionsAvailable
         latestAssistantMessageID = appState.messages.last(where: { $0.role == .assistant })?.id
+        retryableReplyID = AppState.retryableReplyID(in: appState.messages)
         readAloudUnavailable = appState.readAloudUnavailableReason != nil
         displayPreferences = appState.displayPreferences
         voiceCallLinksRevision = appState.voiceCallChatLinksRevision
         latestLiveRows = RichCard.latestLiveRows(appState.messages)
-        pulseCards = appState.pulseCards(forChat: appState.activeSessionId)
         canPinReplies = appState.canPinReplies
         pinnedMessageIDs = appState.openChatPinnedMessageIDs
         teammateReplies = BotTeammateMessages.teammateReplies(
@@ -83,6 +86,7 @@ struct ChatRowState: Equatable {
         stepSummaries = appState.stepSummaries[scope] ?? [:]
         stepSummariesAsked = Set(appState.stepSummaryRequested.keys.lazy.filter { $0.scope == scope }.map(\.toolID))
         canExplainStepRuns = appState.client != nil && !(appState.activeSessionId ?? "").isEmpty && !isOffline
+        followUpReasons = appState.predictive.followUpReasons
     }
 
     /// `AppState.canReact(to:)`, from these values alone.

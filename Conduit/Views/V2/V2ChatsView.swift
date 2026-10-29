@@ -7,8 +7,9 @@
 //  and, behind the folder toggle, Projects. The filters are a native
 //  pull-down menu and combine (Unread and Chat lists unread
 //  chats, Starred narrows either to starred ones); the active ones show as
-//  a gold chip in the search field. Rows keep the old drawer's swipes and
-//  context menu, plus Star.
+//  a gold chip in the search field. Filter ▸ Projects leaves the projects
+//  you untick out. Rows keep the old drawer's swipes and context menu, plus
+//  Star.
 //
 
 import SwiftUI
@@ -217,6 +218,7 @@ struct V2FilterSelection: Equatable {
         sessions: [SessionSummary],
         cronSessions: [SessionSummary],
         category: (SessionSummary) -> SessionSource,
+        hasVoiceCalls: (SessionSummary) -> Bool = { _ in false },
         hasStatus: (V2SessionFilter, SessionSummary) -> Bool
     ) -> [SessionSummary] {
         let kinds = Set(sources.compactMap(\.sessionSource))
@@ -235,7 +237,9 @@ struct V2FilterSelection: Equatable {
             let chats = sessions.filter { session in
                 guard !session.isArchived else { return false }
                 let source = category(session)
-                return source != .cron && kinds.contains(source)
+                // A chat a call was kept with, or started from, is under
+                // Voice too, so every call is listed there.
+                return source != .cron && (kinds.contains(source) || (kinds.contains(.voice) && hasVoiceCalls(session)))
             }
             listed = kinds.contains(.cron)
                 ? Self.mergedByRecency(chats, cronSessions.filter { !$0.isArchived })
@@ -278,6 +282,7 @@ struct V2ChatsView: View, Equatable {
     private let appState: AppState
     @StateObject private var updates: V2ShownUpdates
     @Environment(\.v2Shell) private var shell
+    @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var searchText = ""
@@ -303,6 +308,9 @@ struct V2ChatsView: View, Equatable {
     @State private var showArchivedSessions = false
     /// Every pinned reply of the profile (#918).
     @State private var showPinnedReplies = false
+    /// Reorder pinned chats, from a pinned row's menu or the Pinned header
+    /// (issue 1354).
+    @State private var pinnedOrderTarget: PinnedChatsOrderTarget?
     @State private var showProjectCreator = false
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingRename: SessionSummary?
@@ -335,7 +343,61 @@ struct V2ChatsView: View, Equatable {
     }
 
     private var projectChats: ProjectChatsInChats {
-        ProjectChatsInChats.stored(updates.defaults.string(forKey: ProjectChatsInChats.key))
+        ProjectChatsInChats.stored(in: updates.defaults)
+    }
+
+    /// Filter ▸ Projects: projects belong to one profile, so All lists
+    /// every project's chats.
+    private var filtersProjects: Bool {
+        appState.supportsProjects && !appState.isAllProfilesChatsOn
+    }
+
+    /// The projects Filter ▸ Projects leaves out, for the profile in use.
+    /// Only the ones listed now count: a deleted project's leftover id
+    /// hides nothing, and until the projects load every chat would look
+    /// like one in no project, so nothing is hidden yet.
+    private var hiddenProjects: Set<String> {
+        let projects = filterProjects
+        guard filtersProjects, !projects.isEmpty else { return [] }
+        let stored = HiddenChatProjects.ids(in: updates.defaults.object(forKey: HiddenChatProjects.key), profile: appState.activeProfile)
+        guard !stored.isEmpty else { return [] }
+        return stored.intersection(Set(projects.map(\.id)).union([HiddenChatProjects.noProject]))
+    }
+
+    private func setHiddenProjects(_ ids: Set<String>) {
+        updates.set(
+            HiddenChatProjects.setting(ids, profile: appState.activeProfile, in: updates.defaults.object(forKey: HiddenChatProjects.key)),
+            forKey: HiddenChatProjects.key
+        )
+    }
+
+    /// The projects Filter ▸ Projects lists: Home's chats are the ones in
+    /// no project, so it stands for those.
+    private var filterProjects: [ProjectSummary] {
+        appState.projects.filter { !$0.isHome }
+    }
+
+    /// How many of the listed choices are hidden.
+    private var hiddenProjectCount: Int {
+        hiddenProjects.count
+    }
+
+    /// The list is empty because of hidden projects: with them shown, the
+    /// selection would list something. Asked only of an empty list.
+    private var hidesEverything: Bool {
+        guard !isSearching, hiddenProjectCount > 0 else { return false }
+        return !uncachedFilterRows(selection, searching: false, hidingProjects: false).isEmpty
+    }
+
+    /// Something narrows the list: a filter, or a hidden project. The
+    /// Projects page lists every project, so hidden ones don't count there.
+    private var narrowsList: Bool {
+        !selection.isEmpty || shownHiddenProjectCount > 0
+    }
+
+    /// Hidden projects as the bar reports them: none on the Projects page.
+    private var shownHiddenProjectCount: Int {
+        showingProjects ? 0 : hiddenProjectCount
     }
 
     private var mainButtonNewChat: Bool {
@@ -364,7 +426,7 @@ struct V2ChatsView: View, Equatable {
         self.appState = appState
         _updates = StateObject(wrappedValue: V2ShownUpdates(appState, defaultsKeys: [
             Self.presentationKey, Self.filterKey, Self.expandedNestsKey, V2MainButtonPreference.key,
-            ProjectChatsInChats.key,
+            ProjectChatsInChats.key, HiddenChatProjects.key,
         ]))
     }
 
@@ -379,6 +441,11 @@ struct V2ChatsView: View, Equatable {
     /// No chat covers the list: none is open, or a wide window shows the
     /// list beside it.
     private var listInView: Bool { appState.showSidebar || shell.isSplit }
+
+    /// The list, or a project's page pushed over it, shows on the selected
+    /// tab: their rows' Running and Needs approval follow the live
+    /// registry. Split, a project's page stays beside the open chat.
+    private var showsLiveRows: Bool { shell.isTabActive && shell.showsChatRows && listInView }
 
     /// Projects belong to one profile, so All shows chats only.
     private var showingProjects: Bool { sessionPresentationRaw == "projects" && !appState.isAllProfilesChatsOn }
@@ -407,12 +474,7 @@ struct V2ChatsView: View, Equatable {
     /// The listed chats and cron runs: the profile in use's, or in All
     /// every included profile's. Worked out once per render.
     private var listed: (sessions: [SessionSummary], cron: [SessionSummary]) {
-        renderMemo.listed {
-            // Pulse's own chat stays behind the Pulse screen, in All too.
-            let sessions = appState.chatListSessions
-            let chats = appState.pulseHomeChat == nil ? sessions : sessions.filter { !appState.isPulseHomeChat($0) }
-            return (chats, appState.chatListCronSessions)
-        }
+        renderMemo.listed { (appState.chatListSessions, appState.chatListCronSessions) }
     }
 
     private var savedSelection: V2FilterSelection {
@@ -470,8 +532,6 @@ struct V2ChatsView: View, Equatable {
                 }
             }
                 .withAllProfilesChip()
-                .withoutScrollEdge()
-                .modifier(V2LegacyScrollEdge())
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()
@@ -503,6 +563,10 @@ struct V2ChatsView: View, Equatable {
             PinnedRepliesSheet()
                 .environmentObject(appState)
         }
+        .sheet(item: $pinnedOrderTarget) { target in
+            PinnedChatsOrderSheet(profile: target.profile)
+                .environmentObject(appState)
+        }
         .sheet(item: $repairContext) { context in
             ConnectionRepairSetupSheet(context: context)
                 .environmentObject(appState)
@@ -530,12 +594,12 @@ struct V2ChatsView: View, Equatable {
             await appState.loadSessionCatalogIfNeeded()
         }
         // Running and Needs approval follow the gateway's live registry
-        // while the list is on screen; a hidden tab or a conversation
-        // pushed over the list stops polling. The poll slows down while
-        // nothing on the list changes (PollCadence). Split, the list stays
-        // on screen beside the open chat.
-        .task(id: "\(appState.activeProfile)|\(isShown)|\(listInView)") {
-            guard isShown, listInView else { return }
+        // while the list or a project's page is on screen; a hidden tab or
+        // a conversation pushed over them stops polling. The poll slows
+        // down while nothing on the list changes (PollCadence). Split, the
+        // list column stays on screen beside the open chat (#1353).
+        .task(id: "\(appState.activeProfile)|\(showsLiveRows)") {
+            guard showsLiveRows else { return }
             await appState.runChatListPolling()
         }
         // All reads every profile's chats on its own, slower poll.
@@ -629,10 +693,6 @@ struct V2ChatsView: View, Equatable {
             .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
             .macTooltip(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
 
-            if appState.showsPulseScreen {
-                V2PulseButton()
-            }
-
             NavigationLink(value: V2Route.artifacts) {
                 V2CapsuleIcon(systemImage: "square.grid.2x2")
             }
@@ -646,9 +706,12 @@ struct V2ChatsView: View, Equatable {
             }
 
             // The gold button beside the tabs makes new chats instead
-            // (Settings > Appearance): voice takes New chat's place here.
+            // (Settings > Appearance): voice takes New chat's place here,
+            // unless a chat beside the list shows its own.
             if mainButtonNewChat {
-                V2VoiceButton(context: .home, style: .capsule)
+                if !shell.hasChatVoiceBeside {
+                    V2VoiceButton(context: .home, style: .capsule)
+                }
             } else if appState.isAllProfilesChatsOn && appState.allProfilesIncluded.count > 1 {
                 newChatInProfileMenu
             } else {
@@ -806,7 +869,7 @@ struct V2ChatsView: View, Equatable {
 
     private func filterIcon(waitingApprovalCount: Int) -> some View {
         V2CapsuleIcon(
-            systemImage: selection.isEmpty
+            systemImage: !narrowsList
                 ? "line.3.horizontal.decrease"
                 : "line.3.horizontal.decrease.circle.fill",
             dot: waitingApprovalCount > 0 ? Color.conduitAttention : nil
@@ -839,6 +902,12 @@ struct V2ChatsView: View, Equatable {
                 Section(AppLocalization.string("Sources")) {
                     ForEach(sourceFilters, id: \.self) { option in
                         filterToggle(option)
+                    }
+                }
+
+                if filtersProjects, !filterProjects.isEmpty {
+                    Section {
+                        projectsFilterMenu
                     }
                 }
 
@@ -910,6 +979,53 @@ struct V2ChatsView: View, Equatable {
         .menuActionDismissBehavior(option == .all ? .automatic : .disabled)
     }
 
+    /// Filter ▸ Projects: every project ticked to start, one tick each, and
+    /// the menu stays open while picking. All leaves it as it is, so a
+    /// project hidden here stays hidden until it's ticked again.
+    private var projectsFilterMenu: some View {
+        let hidden = hiddenProjects
+        let home = appState.projects.first(where: \.isHome)?.title
+        return Menu {
+            Button {
+                Haptics.selection()
+                setHiddenProjects([])
+            } label: {
+                Label(AppLocalization.string("Show all projects"), systemImage: "eye")
+            }
+            .disabled(hiddenProjectCount == 0)
+
+            Section {
+                projectToggle(
+                    HiddenChatProjects.noProject,
+                    title: home ?? AppLocalization.string("Not in a project"),
+                    symbol: home == nil ? "tray" : "house",
+                    hidden: hidden
+                )
+                ForEach(filterProjects) { project in
+                    projectToggle(project.id, title: project.title, symbol: "folder", hidden: hidden)
+                }
+            }
+        } label: {
+            Label(AppLocalization.string("Projects"), systemImage: "folder")
+        }
+        .menuActionDismissBehavior(.disabled)
+    }
+
+    private func projectToggle(_ id: String, title: String, symbol: String, hidden: Set<String>) -> some View {
+        Toggle(isOn: Binding(
+            get: { !hidden.contains(id) },
+            set: { shown in
+                var changed = hiddenProjects
+                if shown { changed.remove(id) } else { changed.insert(id) }
+                Haptics.selection()
+                setHiddenProjects(changed)
+            }
+        )) {
+            Label(title, systemImage: symbol)
+        }
+        .menuActionDismissBehavior(.disabled)
+    }
+
     private var statusFilters: [V2SessionFilter] {
         V2SessionFilter.menuCases.filter { $0.isStatus && (!$0.isLive || appState.liveSessionStatusAvailable) }
     }
@@ -924,11 +1040,27 @@ struct V2ChatsView: View, Equatable {
         return fixed + others.map { V2SessionFilter.source($0) }
     }
 
-    /// The chosen filters' names, or All.
+    /// The chosen filters' names, or All, and what Filter ▸ Projects
+    /// hides: how many projects, and Home's chats by name, since those are
+    /// in no project.
     private func selectionTitles(separator: String) -> String {
-        selection.isEmpty
-            ? V2SessionFilter.all.title
-            : selection.ordered.map(\.title).joined(separator: separator)
+        let hidden = showingProjects ? [] : hiddenProjects
+        let names = selection.isEmpty && hidden.isEmpty
+            ? [V2SessionFilter.all.title]
+            : selection.ordered.map(\.title)
+        var parts = names
+        if hidden.contains(HiddenChatProjects.noProject) {
+            if let home = appState.projects.first(where: \.isHome)?.title {
+                parts.append(AppLocalization.string("\(home) hidden"))
+            } else {
+                parts.append(AppLocalization.string("Chats outside projects hidden"))
+            }
+        }
+        let projectCount = hidden.subtracting([HiddenChatProjects.noProject]).count
+        if projectCount > 0 {
+            parts.append(AppLocalization.string("\(projectCount) projects hidden"))
+        }
+        return parts.joined(separator: separator)
     }
 
     /// The chosen filters' names as VoiceOver reads them.
@@ -948,7 +1080,8 @@ struct V2ChatsView: View, Equatable {
                 cronSessions: listed.cron,
                 source: source,
                 category: category,
-                isPinned: appState.isSessionPinned
+                isPinned: appState.isSessionPinned,
+                hasVoiceCalls: hasVoiceCalls
             )
         }
     }
@@ -959,29 +1092,52 @@ struct V2ChatsView: View, Equatable {
         renderMemo.category(session.nestingIDs.joined(separator: "\u{1F}")) { appState.sessionCategory(for: session) }
     }
 
+    /// A chat with calls, listed under Voice; the calls' chats are worked
+    /// out once per render.
+    private func hasVoiceCalls(_ session: SessionSummary) -> Bool {
+        let filter = renderMemo.voiceCallChats { appState.voiceCallChatFilter() }
+        return filter(session)
+    }
+
     private func filterRows(_ selection: V2FilterSelection, searching: Bool) -> [SessionSummary] {
         renderMemo.filterRows(selection.rawValue, searching: searching) {
             uncachedFilterRows(selection, searching: searching)
         }
     }
 
-    private func uncachedFilterRows(_ selection: V2FilterSelection, searching: Bool) -> [SessionSummary] {
-        guard !selection.isEmpty else {
+    private func uncachedFilterRows(_ selection: V2FilterSelection, searching: Bool, hidingProjects: Bool = true) -> [SessionSummary] {
+        let rows: [SessionSummary]
+        if selection.isEmpty {
             // Read once, not once per row.
             let projectChats = self.projectChats
-            return V2ChatsView.allRows(
+            rows = V2ChatsView.allRows(
                 sourceRows(nil),
                 searching: searching,
                 inMainList: { mainListShows($0, projectChats: projectChats) }
             )
+        } else {
+            rows = selection.rows(
+                everything: sourceRows(nil),
+                sessions: listed.sessions,
+                cronSessions: listed.cron,
+                category: category,
+                hasVoiceCalls: hasVoiceCalls,
+                hasStatus: hasStatus
+            )
         }
-        return selection.rows(
-            everything: sourceRows(nil),
-            sessions: listed.sessions,
-            cronSessions: listed.cron,
-            category: category,
-            hasStatus: hasStatus
-        )
+        // A search looks through every chat, a hidden project's too, and
+        // Needs approval lists every wait, as the amber dot counts them.
+        let hidden = hidingProjects ? hiddenProjects : []
+        guard !searching, !hidden.isEmpty else { return rows }
+        let listsWaits = selection.contains(.needsApproval)
+        return rows.filter { session in
+            !HiddenChatProjects.hides(
+                projectID: appState.knownProjectID(for: session),
+                pinned: appState.isSessionPinned(session),
+                listedWait: listsWaits && hasStatus(.needsApproval, session),
+                hidden: hidden
+            )
+        }
     }
 
     private func hasStatus(_ filter: V2SessionFilter, _ session: SessionSummary) -> Bool {
@@ -1074,7 +1230,7 @@ struct V2ChatsView: View, Equatable {
         guard isSearching, !contentSearch.hits.isEmpty else { return [] }
         let known = appState.activeProfileSessions + appState.activeProfileCronSessions
             + (appState.isAllProfilesChatsOn ? listed.sessions.filter(appState.isOtherProfileRow) : [])
-        let rows = SessionContentSearch.rows(
+        return SessionContentSearch.rows(
             hits: contentSearch.hits,
             listed: displayed,
             known: known,
@@ -1082,22 +1238,18 @@ struct V2ChatsView: View, Equatable {
             activeProfile: appState.isAllProfilesChatsOn ? appState.activeProfile : "",
             owner: { session in appState.isAllProfilesChatsOn ? appState.rowProfile(session) : "" }
         )
-        // Pulse's chat stays behind the Pulse screen, message matches too.
-        guard appState.showsPulseScreen, let home = appState.pulseHomeChat else { return rows }
-        return rows.filter { row in
-            row.session.map { !appState.isPulseHomeChat($0) }
-                ?? (row.hit.sessionID != home && appState.canonicalSessionID(for: row.hit.sessionID) != home)
-        }
     }
 
+    /// Pinned in the order the person set (issue 1354), then Recent.
     private func nestedSections(_ displayed: [SessionSummary]) -> (pinned: [SessionNesting.Node], recent: [SessionNesting.Node]) {
-        SessionNesting.sections(
+        let sections = SessionNesting.sections(
             displayed,
             query: searchText,
             statusFilterActive: selection.flattens,
             isPinned: appState.isSessionPinned,
             parentKeyOf: appState.sessionNestingParentKey
         )
+        return (appState.arrangePinnedNodes(sections.pinned), sections.recent)
     }
 
     // MARK: - Sessions list
@@ -1176,7 +1328,9 @@ struct V2ChatsView: View, Equatable {
             if layout.emptyState && !contentSearch.isSearching {
                 // Only a catalog Hermes answered says "No Sessions": right
                 // after a sign-in the list is empty until its first read
-                // lands, and a failed read says it failed.
+                // lands, and a failed read says it failed. Hidden projects
+                // are worked out once: it walks the catalog again.
+                let hidesEverything = self.hidesEverything
                 SessionListPlaceholderView(
                     placeholder: SessionListPlaceholder.resolve(
                         hasRows: false,
@@ -1185,10 +1339,14 @@ struct V2ChatsView: View, Equatable {
                         isRefreshing: appState.isRefreshingSessionCatalog,
                         filteredOutRows: !listed.sessions.isEmpty || !listed.cron.isEmpty
                     ),
-                    emptyTitle: selection.emptyStateFilter.emptyTitle,
-                    emptyDescription: isSearching
-                        ? AppLocalization.string("Try a different search.")
-                        : selection.emptyStateFilter.emptyDescription,
+                    emptyTitle: hidesEverything
+                        ? AppLocalization.string("No chats to show")
+                        : selection.emptyStateFilter.emptyTitle,
+                    emptyDescription: hidesEverything
+                        ? AppLocalization.string("The chats here are hidden in Filter > Projects. Tick them again to show them.")
+                        : isSearching
+                            ? AppLocalization.string("Try a different search.")
+                            : selection.emptyStateFilter.emptyDescription,
                     retry: { Task { await appState.refreshSessionCatalog() } }
                 )
                 .listRowBackground(Color.clear)
@@ -1286,10 +1444,17 @@ struct V2ChatsView: View, Equatable {
     ) -> some View {
         Section {
             if !isCollapsed(section) {
-                listRows(V2ChatsListItem.items(nodes, expanded: expanded, scope: rowScope))
+                listRows(
+                    V2ChatsListItem.items(nodes, expanded: expanded, scope: rowScope),
+                    movesPinned: section == .pinned && dragsPinned
+                )
             }
         } header: {
-            collapsibleHeader(section, count: nodes.count)
+            if section == .pinned {
+                pinnedHeader(nodes.map(\.session))
+            } else {
+                collapsibleHeader(section, count: nodes.count)
+            }
         }
     }
 
@@ -1330,10 +1495,14 @@ struct V2ChatsView: View, Equatable {
     ) -> some View {
         Section {
             if !isProfileCollapsed(profile) {
-                listRows(V2ChatsListItem.items(nodes, expanded: expanded, scope: rowScope))
+                // Its pinned chats lead it, and move among themselves.
+                listRows(V2ChatsListItem.items(nodes, expanded: expanded, scope: rowScope), movesPinned: dragsPinned)
             }
         } header: {
             profileSectionHeader(profile, count: nodes.count)
+                .reorderPinnedChatsMenu(isOn: nodes.filter { appState.isSessionPinned($0.session) }.count > 1) {
+                    pinnedOrderTarget = PinnedChatsOrderTarget(profile: profile)
+                }
         }
     }
 
@@ -1434,6 +1603,17 @@ struct V2ChatsView: View, Equatable {
         }
     }
 
+    /// The Pinned header, whose touch-and-hold menu (and VoiceOver action)
+    /// reorders the profile in use's pinned chats; in All's mixed section
+    /// it offers that once the profile in use has two pins there.
+    private func pinnedHeader(_ pinned: [SessionSummary]) -> some View {
+        let own = pinned.filter { !appState.isOtherProfileRow($0) }.count
+        return collapsibleHeader(.pinned, count: pinned.count)
+            .reorderPinnedChatsMenu(isOn: own > 1) {
+                pinnedOrderTarget = PinnedChatsOrderTarget(profile: appState.activeProfile)
+            }
+    }
+
     /// Opens the section holding a conversation opened from elsewhere (a
     /// notification, a widget, a new chat), so returning to the list shows
     /// its row; a section closed while it stays open stays closed, and a
@@ -1519,8 +1699,11 @@ struct V2ChatsView: View, Equatable {
                 snippet: row.hit.snippet,
                 isUnread: row.session.map { appState.isSessionUnread($0) } ?? false,
                 isStarred: row.session.map { appState.isSessionStarred($0) } ?? false,
-                isSelected: row.openID == appState.activeSessionId && row.hit.profile == nil
-                    && !(row.session.map(appState.isOtherProfileRow) ?? false)
+                selection: .chat(
+                    isActive: row.openID == appState.activeSessionId && row.hit.profile == nil
+                        && !(row.session.map(appState.isOtherProfileRow) ?? false),
+                    beside: openBeside
+                )
             )
         }
         .buttonStyle(.plain)
@@ -1585,8 +1768,10 @@ struct V2ChatsView: View, Equatable {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            if !selection.isEmpty {
+            if narrowsList {
                 Button {
+                    // The chip names hidden projects too, so it clears them.
+                    if shownHiddenProjectCount > 0 { setHiddenProjects([]) }
                     select(.empty)
                 } label: {
                     HStack(spacing: 4) {
@@ -1629,6 +1814,7 @@ struct V2ChatsView: View, Equatable {
         .frame(minHeight: minHeight)
         .conduitGlassSurface(cornerRadius: minHeight / 2)
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: selection)
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: hiddenProjectCount)
         .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
     }
 
@@ -1655,10 +1841,26 @@ struct V2ChatsView: View, Equatable {
     }
 
     /// One List row per item, so the List builds only the rows on screen.
-    private func listRows(_ items: [V2ChatsListItem]) -> some View {
+    /// `movesPinned`: the section's pinned chats move by dragging, a hold
+    /// then a move (issue 1354); a hold that stays still opens the menu,
+    /// and a swipe starts before either.
+    private func listRows(_ items: [V2ChatsListItem], movesPinned: Bool = false) -> some View {
         // Read once, not once per row. A search or a filter looks through
         // project chats whatever the setting, so it names them too.
         let namesProjects = isSearching || !selection.isEmpty || projectChats != .hidden
+        let movable: [Bool] = movesPinned ? items.map { item in
+            guard case .session(let node) = item.kind else { return false }
+            return appState.isSessionPinned(node.session) && !appState.isSavedChatRow(node.session)
+        } : []
+        let movableIDs = Set(zip(items, movable).compactMap { item, canMove in canMove ? item.id : nil })
+        let shown: [SessionSummary] = zip(items, movable).compactMap { item, canMove in
+            guard canMove, case .session(let node) = item.kind else { return nil }
+            return node.session
+        }
+        let move: ((IndexSet, Int) -> Void)? = shown.count > 1 ? { source, destination in
+            guard let offsets = PinnedChatOrder.movableOffsets(fromOffsets: source, toOffset: destination, movable: movable) else { return }
+            appState.movePinnedChats(shown, fromOffsets: offsets.source, toOffset: offsets.destination)
+        } : nil
         return ForEach(items) { item in
             V2ChatsRow(
                 item: item,
@@ -1666,9 +1868,18 @@ struct V2ChatsView: View, Equatable {
                 profileBadge: profileBadge(for:),
                 onRename: { sessionPendingRename = $0 },
                 onDelete: { sessionPendingDeletion = $0 },
+                onReorderPinned: { pinnedOrderTarget = PinnedChatsOrderTarget(profile: appState.rowProfile($0)) },
                 setExpanded: setExpanded
             )
+            .moveDisabled(!movableIDs.contains(item.id))
         }
+        .onMove(perform: move)
+    }
+
+    /// Pinned chats move by dragging while the list shows all of them: not
+    /// during a search or under a filter, whose rows are a lookup.
+    private var dragsPinned: Bool {
+        !isSearching && (showingProjects || selection.isEmpty)
     }
 
     /// "3 jobs · 1 running · 1 to approve": the count names jobs when every
@@ -1723,12 +1934,12 @@ struct V2ChatsView: View, Equatable {
     }
 
     private var projectsList: some View {
-        let pinned = SidebarPinnedSessions.forProjectsView(
+        let pinned = appState.arrangePinned(SidebarPinnedSessions.forProjectsView(
             sourceRows(nil),
             query: searchText,
             isPinned: appState.isSessionPinned,
             matches: sessionMatches
-        )
+        ), session: { $0 })
         return List {
             if barStacked == false {
                 searchField
@@ -1740,10 +1951,10 @@ struct V2ChatsView: View, Equatable {
             if !pinned.isEmpty {
                 Section {
                     if !isCollapsed(.pinned) {
-                        listRows(pinned.map(V2ChatsListItem.leaf))
+                        listRows(pinned.map(V2ChatsListItem.leaf), movesPinned: dragsPinned)
                     }
                 } header: {
-                    collapsibleHeader(.pinned, count: pinned.count)
+                    pinnedHeader(pinned)
                 }
             }
 
@@ -1811,12 +2022,15 @@ struct V2ChatsView: View, Equatable {
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if appState.isProjectEditable(project) {
-                Button(role: .destructive) {
+                // Not a destructive role: that removes the row before the
+                // confirmation is answered, and on a Mac it can blank the list (#1364).
+                Button {
                     Haptics.warning()
                     projectPendingDeletion = project
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
+                .tint(.red)
                 .disabled(appState.isProjectMutationInFlight)
                 Button {
                     Haptics.selection()
@@ -1934,6 +2148,7 @@ private struct V2ChatsRow: View {
     @EnvironmentObject private var updates: V2ShownUpdates
     private var appState: AppState { updates.appState }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.v2OpenBeside) private var openBeside
     let item: V2ChatsListItem
     /// The project a listed project chat sits in, named before its preview.
     let projectTitle: String?
@@ -1941,6 +2156,8 @@ private struct V2ChatsRow: View {
     let profileBadge: (SessionSummary) -> V2ProfileBadge?
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
+    /// Opens Reorder pinned chats from a pinned row's menu.
+    let onReorderPinned: (SessionSummary) -> Void
     /// Opens or closes the nest with this key.
     let setExpanded: (String, Bool) -> Void
 
@@ -1989,7 +2206,7 @@ private struct V2ChatsRow: View {
                 status: appState.v2RowStatus(for: session),
                 isUnread: signals.isUnread,
                 isStarred: appState.isSessionStarred(session),
-                isSelected: session.id == appState.activeSessionId && !appState.isOtherProfileRow(session),
+                selection: selection(session),
                 icon: appState.sessionCategory(for: session),
                 hasNestBelow: hasChildren,
                 profileBadge: profileBadge(session)
@@ -1997,6 +2214,7 @@ private struct V2ChatsRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
+        .v2SelectedTrait(selection(session))
         .v2ListRow(divider: !hasChildren, dividerInset: V2SessionRow.iconTextInset)
         .sessionActions(
             appState: appState,
@@ -2004,7 +2222,8 @@ private struct V2ChatsRow: View {
             nest: SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread),
             isSavedRow: appState.isSavedChatRow(session),
             onRename: { onRename(session) },
-            onDelete: { onDelete(session) }
+            onDelete: { onDelete(session) },
+            onReorderPinned: { onReorderPinned(session) }
         )
     }
 
@@ -2049,6 +2268,7 @@ private struct V2ChatsRow: View {
         let status = appState.v2RowStatus(for: session)
         let isUnread = appState.isSessionUnread(session)
         let isStarred = appState.isSessionStarred(session)
+        let rowSelection = selection(session, faintAlone: false)
         return Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
@@ -2079,6 +2299,7 @@ private struct V2ChatsRow: View {
             }
             .padding(.trailing, 16)
             .frame(minHeight: 36)
+            .v2RowSelection(rowSelection)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -2094,6 +2315,18 @@ private struct V2ChatsRow: View {
         ].compactMap { $0 }.joined(separator: ", ")))
         .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
         .accessibilityAddTraits(.isButton)
+        .v2SelectedTrait(rowSelection)
+    }
+
+    /// The open chat's mark: a phone's faint shade, or beside the chat on a
+    /// split window the highlight. Another profile's row in All is never
+    /// the open chat, whatever its id.
+    private func selection(_ session: SessionSummary, faintAlone: Bool = true) -> V2RowSelection {
+        .chat(
+            isActive: appState.isOpenChatRow(session),
+            beside: openBeside,
+            faintAlone: faintAlone
+        )
     }
 }
 
@@ -2113,7 +2346,8 @@ extension View {
         isSavedRow: Bool = false,
         onRename: @escaping () -> Void,
         onDelete: @escaping () -> Void,
-        onChanged: @escaping () -> Void = {}
+        onChanged: @escaping () -> Void = {},
+        onReorderPinned: (() -> Void)? = nil
     ) -> some View {
         modifier(V2SessionActions(
             appState: appState,
@@ -2123,7 +2357,8 @@ extension View {
             isSavedRow: isSavedRow,
             onRename: onRename,
             onDelete: onDelete,
-            onChanged: onChanged
+            onChanged: onChanged,
+            onReorderPinned: onReorderPinned
         ))
     }
 }
@@ -2139,6 +2374,7 @@ private struct V2SessionActions: ViewModifier {
     let onRename: () -> Void
     let onDelete: () -> Void
     let onChanged: () -> Void
+    let onReorderPinned: (() -> Void)?
 
     func body(content: Content) -> some View {
         content
@@ -2150,7 +2386,8 @@ private struct V2SessionActions: ViewModifier {
                         nest: nest,
                         onRename: onRename,
                         onDelete: onDelete,
-                        onChanged: onChanged
+                        onChanged: onChanged,
+                        onReorderPinned: onReorderPinned
                     )
                 }
             }
@@ -2196,12 +2433,15 @@ private struct V2SessionActions: ViewModifier {
                     .tint(.orange)
                     .disabled(appState.isSessionMutationInFlight(session))
 
-                    Button(role: .destructive) {
+                    // Not a destructive role: that removes the row before the
+                    // confirmation is answered, and on a Mac it can blank the list (#1364).
+                    Button {
                         Haptics.warning()
                         onDelete()
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
+                    .tint(.red)
                     .disabled(appState.isSessionMutationInFlight(session))
                 }
             }
@@ -2318,9 +2558,11 @@ final class V2ChatsRenderMemo {
     private var categories: [String: SessionSource] = [:]
     private var filtered: [String: [SessionSummary]] = [:]
     private var listed: (sessions: [SessionSummary], cron: [SessionSummary])?
+    private var voiceCallChats: ((SessionSummary) -> Bool)?
 
     func reset() {
         listed = nil
+        voiceCallChats = nil
         sources.removeAll(keepingCapacity: true)
         categories.removeAll(keepingCapacity: true)
         filtered.removeAll(keepingCapacity: true)
@@ -2337,6 +2579,13 @@ final class V2ChatsRenderMemo {
         if let listed { return listed }
         let made = make()
         listed = made
+        return made
+    }
+
+    func voiceCallChats(_ make: () -> (SessionSummary) -> Bool) -> (SessionSummary) -> Bool {
+        if let voiceCallChats { return voiceCallChats }
+        let made = make()
+        voiceCallChats = made
         return made
     }
 

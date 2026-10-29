@@ -463,10 +463,7 @@ struct LiveVoiceCallSheet: View {
                 // A mode that keeps refusing (a plan's limit, a provider's
                 // outage) needn't end the conversation (#964).
                 if let modeSwitch {
-                    VoiceModeMenu(modeSwitch: modeSwitch) {
-                        LiveVoiceCallButtonFace(symbol: "arrow.triangle.swap", title: AppLocalization.string("Switch voice"))
-                    }
-                    .accessibilityLabel(Text(verbatim: AppLocalization.string("Switch voice")))
+                    LiveVoiceCallModeMenuButton(modeSwitch: modeSwitch)
                 }
             } else {
                 LiveVoiceCallButton(
@@ -712,15 +709,14 @@ struct LiveVoiceCallButton: View {
 }
 
 /// A call button's round glyph and caption, for a button or a menu.
-struct LiveVoiceCallButtonFace: View {
+struct LiveVoiceCallButtonFace<Icon: View>: View {
     let symbol: String
     let title: String
-    var style: LiveVoiceCallButton.Style = .normal
-
-    @ScaledMetric(relativeTo: .title3) private var scaledDiameter: CGFloat = 62
-    /// Capped so five buttons still fit across a phone at the largest
-    /// text sizes; the glyph inside keeps scaling.
-    private var diameter: CGFloat { min(scaledDiameter, 66) }
+    /// The round glyph, or a control around it.
+    let icon: Icon
+    /// True when `icon` is its own control, named for VoiceOver: the
+    /// caption is then only for the eye.
+    var iconIsControl = false
 
     var body: some View {
         VStack(spacing: 6) {
@@ -734,6 +730,7 @@ struct LiveVoiceCallButtonFace: View {
                 // A fifth of the width can't hold larger titles;
                 // touch and hold shows the name large.
                 .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                .accessibilityHidden(iconIsControl)
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
@@ -741,9 +738,49 @@ struct LiveVoiceCallButtonFace: View {
             Label { Text(verbatim: title) } icon: { Image(systemName: symbol) }
         }
     }
+}
 
-    @ViewBuilder
-    private var icon: some View {
+extension LiveVoiceCallButtonFace where Icon == LiveVoiceCallButtonIcon {
+    init(symbol: String, title: String, style: LiveVoiceCallButton.Style = .normal) {
+        self.init(symbol: symbol, title: title, icon: LiveVoiceCallButtonIcon(symbol: symbol, style: style))
+    }
+}
+
+/// A call button that opens the voice mode menu. Only the round glyph is the
+/// menu's label: on iOS 26 a menu draws its label's glass over the whole
+/// label, so with the caption inside, the button became a large rounded
+/// slab that clipped its caption.
+struct LiveVoiceCallModeMenuButton: View {
+    let modeSwitch: VoiceModeSwitch
+
+    private static let symbol = "arrow.triangle.swap"
+
+    var body: some View {
+        let title = AppLocalization.string("Switch voice")
+        LiveVoiceCallButtonFace(
+            symbol: Self.symbol,
+            title: title,
+            icon: VoiceModeMenu(modeSwitch: modeSwitch) {
+                LiveVoiceCallButtonIcon(symbol: Self.symbol)
+                    .contentShape(Circle())
+            }
+            .accessibilityLabel(Text(verbatim: title)),
+            iconIsControl: true
+        )
+    }
+}
+
+/// A call button's round glyph.
+struct LiveVoiceCallButtonIcon: View {
+    let symbol: String
+    var style: LiveVoiceCallButton.Style = .normal
+
+    @ScaledMetric(relativeTo: .title3) private var scaledDiameter: CGFloat = 62
+    /// Capped so five buttons still fit across a phone at the largest
+    /// text sizes; the glyph inside keeps scaling.
+    private var diameter: CGFloat { min(scaledDiameter, 66) }
+
+    var body: some View {
         let glyph = Image(systemName: symbol)
             .font(.title3.weight(.semibold))
             .frame(width: diameter, height: diameter)

@@ -22,6 +22,9 @@ enum WatchCallAnswer {
     /// HermesCallWaiting.asksFirstLead: an answer that asks Hermes to say
     /// more before the user chooses.
     static let asksFirstLead = "Before I choose:"
+    /// HermesCallWaiting.mayLeaveBlankNote: under a form's question, which
+    /// "skip" leaves blank (plugin 0.82).
+    static let mayLeaveBlankNote = "(They may leave it blank: answer skip when they want to.)"
 
     /// Whether the model's `name` call answers the call from Hermes rather
     /// than a background job: a question always (the Watch's jobs take
@@ -136,6 +139,7 @@ enum WatchCallAnswer {
             body += "\n\(number + 1). \(choice)"
         }
         if choices.isEmpty { body += "\n(No choices: they answer in their own words.)" }
+        if question["may_leave_blank"] as? Bool == true { body += "\n" + mayLeaveBlankNote }
         return body.replacingOccurrences(of: "</question>", with: "</ question>", options: .caseInsensitive)
     }
 }

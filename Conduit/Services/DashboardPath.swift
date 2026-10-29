@@ -5,9 +5,29 @@ enum DashboardPath {
         value.addingPercentEncoding(withAllowedCharacters: queryComponentAllowedCharacters)
     }
 
-    static func withProfile(_ path: String, profile: String) -> String {
+    /// Hermes 0.22.3+ runs a plugin request whose `?profile=` names a
+    /// profile other than the one the dashboard started with in that
+    /// profile's own plugin host, which carries no WebSockets and none of the
+    /// dashboard's state. A plugin that reports `dashboard-profiles` takes
+    /// the profile as `?conduit_profile=` instead on the routes that need the
+    /// dashboard (voice and Watch calls, chat takeover, Desktop views,
+    /// predictions), so they stay there: a workaround until Hermes carries
+    /// them (#1336).
+    static let conduitProfileParameter = "conduit_profile"
+    static let dashboardProfilesCapability = "dashboard-profiles"
+
+    /// A socket's profile query: `?profile=` as these sockets always sent it,
+    /// or `?conduit_profile=`, which leaves out the dashboard's own profile
+    /// as `withProfile` does.
+    static func socketProfileItems(_ profile: String, parameter: String) -> [URLQueryItem] {
+        guard parameter != "profile" else { return [URLQueryItem(name: parameter, value: profile)] }
+        guard !profile.isEmpty, profile != "default" else { return [] }
+        return [URLQueryItem(name: parameter, value: profile)]
+    }
+
+    static func withProfile(_ path: String, profile: String, parameter: String = "profile") -> String {
         guard profile != "default" else { return path }
-        return withExplicitProfile(path, profile: profile)
+        return withExplicitProfile(path, profile: profile, parameter: parameter)
     }
 
     /// Hermes' `PATCH /api/sessions/{id}` reads the owning profile from the
@@ -21,12 +41,12 @@ enum DashboardPath {
         return scoped
     }
 
-    static func withExplicitProfile(_ path: String, profile: String) -> String {
+    static func withExplicitProfile(_ path: String, profile: String, parameter: String = "profile") -> String {
         guard !profile.isEmpty,
               let encoded = encodedQueryComponent(profile) else {
             return path
         }
-        return "\(path)\(path.contains("?") ? "&" : "?")profile=\(encoded)"
+        return "\(path)\(path.contains("?") ? "&" : "?")\(parameter)=\(encoded)"
     }
 
     private static let queryComponentAllowedCharacters: CharacterSet = {

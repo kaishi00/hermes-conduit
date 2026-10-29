@@ -571,7 +571,90 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertNotEqual(appState.errorMessage, AppLocalization.string("Connect to Hermes to start a conversation."))
     }
 
+    // MARK: - A new chat in the list (issue 1454)
+
+    func testANewChatStaysListedWhileOpenUntilHermesListsIt() async {
+        let other = makeSession(id: "other-stored", alternateIDs: [], title: "Older chat")
+        var catalog = [other]
+        let appState = makeConnectedAppState(catalog: { catalog }) { _, _ in }
+
+        let created = await appState.createNewSession()
+        XCTAssertEqual(created, "created-runtime")
+        // Hermes lists a chat once its first message is stored: a read
+        // before then keeps the open chat's row instead of dropping it.
+        await appState.loadSessions()
+        XCTAssertEqual(appState.sessions.map(\.id), ["created-stored", "other-stored"])
+        XCTAssertTrue(appState.isOpenChatRow(appState.sessions[0]), "marked open beside the chat, though open by its runtime id")
+        XCTAssertFalse(appState.isOpenChatRow(other))
+
+        // Listed by Hermes: its own row, title and all, takes over.
+        catalog = [makeSession(id: "created-stored", alternateIDs: [], title: "Trip plans"), other]
+        await appState.loadSessions()
+        XCTAssertEqual(appState.sessions.map(\.title), ["Trip plans", "Older chat"])
+        XCTAssertNil(appState.newChatAwaitingListing)
+        XCTAssertTrue(appState.isOpenChatRow(appState.sessions[0]), "Hermes' row, under the stored id the create confirmed")
+    }
+
+    func testANewChatLeftEmptyLeavesTheList() async {
+        let other = makeSession(id: "other-stored", alternateIDs: [], title: "Older chat")
+        let appState = makeConnectedAppState(catalog: { [other] }) { _, _ in }
+
+        await appState.createNewSession()
+        appState.activeSessionId = other.id
+        await appState.loadSessions()
+
+        XCTAssertEqual(appState.sessions.map(\.id), ["other-stored"], "Hermes has no row for a chat left empty")
+        XCTAssertNil(appState.newChatAwaitingListing)
+    }
+
+    func testANewChatBelongsToTheProjectItStartedIn() {
+        let awaiting = NewChatAwaitingListing(ids: ["rt", "st"], profile: "default", cwd: "/repo/app/")
+        let project = ProjectSummary(id: "p", title: "App", primaryPath: "/repo/app", isHome: false, sessionCount: 0, previewSessions: [])
+        let other = ProjectSummary(id: "q", title: "Web", primaryPath: "/repo/web", isHome: false, sessionCount: 0, previewSessions: [])
+        let home = ProjectSummary(id: "home", title: "Home", primaryPath: nil, isHome: true, sessionCount: 0, previewSessions: [])
+        XCTAssertTrue(awaiting.isIn(project))
+        XCTAssertFalse(awaiting.isIn(other))
+        XCTAssertFalse(awaiting.isIn(home))
+        let plain = NewChatAwaitingListing(ids: ["rt"], profile: "default", cwd: nil)
+        XCTAssertTrue(plain.isIn(home), "a plain chat lands in Home")
+        XCTAssertFalse(plain.isIn(project))
+        XCTAssertTrue(awaiting.matches(makeSession(id: "st", alternateIDs: [])))
+        XCTAssertTrue(awaiting.matches(makeSession(id: "lineage-tip", alternateIDs: ["rt"])))
+        XCTAssertFalse(awaiting.matches(makeSession(id: "other", alternateIDs: [])))
+    }
+
+    func testANewChatGoesOnTopOfItsFoldersLaneOnAProjectPage() {
+        let created = makeSession(id: "st", alternateIDs: ["rt"], title: "New conversation")
+        let older = makeSession(id: "older", alternateIDs: [], title: "Older")
+        let worktree = ProjectSessionLane(id: "wt", title: "voice-v2", sessions: [older], path: "/repo/app/.worktrees/voice-v2")
+        let root = ProjectSessionLane(id: "root", title: "app", sessions: [older], path: "/repo/app")
+        let awaiting = NewChatAwaitingListing(ids: ["rt", "st"], profile: "default", cwd: "/repo/app")
+
+        let placed = awaiting.lanes([worktree, root], with: created, newLaneID: "p-new")
+        XCTAssertEqual(placed.map(\.id), ["wt", "root"])
+        XCTAssertEqual(placed[0].sessions.map(\.id), ["older"], "never under a worktree's lane")
+        XCTAssertEqual(placed[1].sessions.map(\.id), ["st", "older"])
+
+        // A lane Hermes names by its folder alone (no separate path).
+        let labelled = ProjectSessionLane(id: "label", title: "/repo/app/", sessions: [older])
+        XCTAssertEqual(awaiting.lanes([labelled], with: created, newLaneID: "p-new")[0].sessions.map(\.id), ["st", "older"])
+
+        // No lane is its folder: a Recent lane on top.
+        let recent = awaiting.lanes([worktree], with: created, newLaneID: "p-new")
+        XCTAssertEqual(recent.map(\.id), ["p-new", "wt"])
+        XCTAssertEqual(recent[0].sessions.map(\.id), ["st"])
+
+        // A plain chat on Home's page.
+        let plain = NewChatAwaitingListing(ids: ["rt", "st"], profile: "default", cwd: nil)
+        XCTAssertEqual(plain.lanes([root], with: created, newLaneID: "home-new").map(\.id), ["home-new", "root"])
+
+        // Listed by Hermes, by any of its ids: shown once.
+        let listed = ProjectSessionLane(id: "root", title: "app", sessions: [makeSession(id: "lineage", alternateIDs: ["st"])], path: "/repo/app")
+        XCTAssertEqual(awaiting.lanes([listed], with: created, newLaneID: "p-new"), [listed])
+    }
+
     private func makeConnectedAppState(
+        catalog: @escaping @MainActor () -> [SessionSummary] = { [] },
         onPrompt: @escaping @MainActor (String, String) -> Void
     ) -> AppState {
         let defaults = makeScratchDefaults("ArchiveThenSendTests")
@@ -579,7 +662,7 @@ final class SessionRenameTests: XCTestCase {
             defaults: defaults,
             loadSavedConnection: false,
             chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
-                loadCatalog: { _, _ in [] },
+                loadCatalog: { _, _ in catalog() },
                 openSession: { _, sessionID, _ in
                     SessionResumeResult(
                         sessionId: sessionID,

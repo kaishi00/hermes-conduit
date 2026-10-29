@@ -44,7 +44,7 @@ enum ChatStepSummaries {
     }
 
     /// Whether a finished run gets an automatic summary, counted like the
-    /// folded line's "N steps": the steps Settings > Display shows, enough
+    /// folded line's "N steps": the steps Settings > Chat shows (thoughts shown on request aside), enough
     /// to fold and no more than the limit.
     static func isAsked(
         _ run: [ChatMessage],

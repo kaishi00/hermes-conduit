@@ -46,6 +46,10 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     var onEvent: (@MainActor (GeminiLiveProtocol.ServerEvent) -> Void)?
     var onStateChange: (@MainActor (State) -> Void)?
     var onConnectionReplaced: (@MainActor () -> Void)?
+    /// Privacy-safe steps for the call's trace: the turn detection the
+    /// server applied and when it heard the user start and stop, with
+    /// microphone levels (#1418), never what anyone said.
+    var onTrace: (@MainActor (String) -> Void)?
     /// The speech server wants Hermes' reply to `text`.
     var onTurn: (@MainActor (_ turnID: String, _ text: String) -> Void)?
     /// The server moved on from a turn; its reply is no longer wanted.
@@ -97,6 +101,10 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     private var connectionID = UUID()
     /// The connection's capture, upsampled as one stream.
     private var inputUpsampler = GrokInputUpsampler()
+    /// The user's turns as the server's turn detector heard them, for the trace.
+    private var turnTrace = LiveTurnTrace()
+    /// Whether this connection already traced dropping microphone audio.
+    private var tracedAudioDrop = false
     private var receiveTask: Task<Void, Never>?
     private var connectTask: Task<Void, Never>?
     private var setupTimeoutTask: Task<Void, Never>?
@@ -204,7 +212,18 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         if wantsResponse, let create = try? LocalLiveProtocol.encode(GrokLiveProtocol.responseCreate) {
             texts.append(create)
         }
-        enqueue(texts, isAudio: message.isAudio, onSent: onSent, onFailure: onFailure)
+        let queued = enqueue(texts, isAudio: message.isAudio, onSent: onSent, onFailure: onFailure)
+        // Only audio the server gets counts toward the turn's levels.
+        if queued, let onTrace, case .audio(let pcm16) = message, let step = turnTrace.add(pcm16) { onTrace(step) }
+    }
+
+    /// The user stopped the reply: the server stops it, and one that shuts
+    /// its microphone while its reply plays opens it again, which it can't
+    /// tell from the audio that follows (#1325). It goes out on the
+    /// connection's writer, ahead of the microphone audio after the tap.
+    func cancelResponse() {
+        guard state == .ready, let text = try? LocalLiveProtocol.encode(LocalLiveProtocol.responseCancel) else { return }
+        enqueue([text], onSent: nil, onFailure: nil)
     }
 
     // MARK: Turns
@@ -247,10 +266,13 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         send(.textTurn(text), onSent: nil, onFailure: nil)
     }
 
-    private func enqueue(_ texts: [String], isAudio: Bool = false, onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
+    /// False when nothing went to the writer: no socket, or audio dropped
+    /// behind a full queue.
+    @discardableResult
+    private func enqueue(_ texts: [String], isAudio: Bool = false, onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) -> Bool {
         guard !texts.isEmpty, let socket else {
             if texts.isEmpty { onSent?() } else { onFailure?() }
-            return
+            return false
         }
         let id = connectionID
         let writer: LiveVoiceSocketWriter
@@ -269,7 +291,14 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             // A closed writer's frames belong to a connection already gone.
             if !(error is CancellationError) { self?.connectionFailed(id, error: error) }
         }
-        if !queued { onFailure?() }
+        if !queued {
+            if isAudio, !tracedAudioDrop {
+                tracedAudioDrop = true
+                onTrace?("Microphone audio dropped: the connection fell behind")
+            }
+            onFailure?()
+        }
+        return queued
     }
 
     // MARK: Connection
@@ -353,6 +382,8 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         readinessCheck = nil
         readinessResponseOpen = false
         responseHadTranscript = false
+        turnTrace.reset()
+        tracedAudioDrop = false
         receiveTask = Task { [weak self] in await self?.receiveLoop(socket, id: id) }
         // A server that neither confirms the session nor closes would leave
         // the call connecting forever.
@@ -480,8 +511,15 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             }
             // A refused response.create or similar: the call goes on.
             localLiveLogger.notice("Local Live error event: \(message, privacy: .private)")
+        case .turnDetection(let summary):
+            onTrace?("Turn detection: \(summary)")
+        case .speechStarted:
+            if let onTrace { onTrace(turnTrace.speechStarted()) }
+        case .speechStopped:
+            if let onTrace { onTrace(turnTrace.speechStopped()) }
         case .responseStarted:
             if readinessResponseOpen { return }
+            onTrace?("Reply started")
             responseHadTranscript = false
         case .responseDone:
             guard readinessResponseOpen else { return }
@@ -498,8 +536,10 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         case .outputTranscriptDone(let text):
             if readinessResponseOpen { return }
             if !responseHadTranscript { onEvent?(.outputTranscription(text)) }
-        case .inputTranscriptSnapshot(_, let text):
-            // The server sends each utterance's transcript once, when it is done.
+        case .inputTranscriptSnapshot(_, let text, let stage):
+            // The server sends each utterance's transcript once, when it is
+            // done; a draft one marks in progress is replaced by it.
+            guard stage != .draft else { return }
             onEvent?(.inputTranscription(text))
         case .event(let event):
             if readinessResponseEnding, case .turnComplete = event { return }

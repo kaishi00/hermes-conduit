@@ -66,4 +66,40 @@ extension ComposerFullEditorTests {
             .start
         )
     }
+
+    /// #1309: from the tap that starts it until its last words are in, a
+    /// dictation keeps Send's slot.
+    func testADictationHoldsSendsSlotFromStartUntilItsWordsAreIn() {
+        XCTAssertTrue(ComposerDictation.holdsSendSlot(isDictating: false, isStarting: true), "coming up")
+        XCTAssertTrue(ComposerDictation.holdsSendSlot(isDictating: true, isStarting: false), "listening or settling")
+        XCTAssertFalse(ComposerDictation.holdsSendSlot(isDictating: false, isStarting: false), "over: Send is back")
+    }
+
+    func testTheStopInSendsSlotStopsCancelsFinishesOrWaits() {
+        func face(capturing: Bool = false, starting: Bool = false, transcribing: Bool = false, canEnd: Bool = false) -> ComposerDictation.SlotFace {
+            ComposerDictation.slotFace(isCapturing: capturing, isStarting: starting, isTranscribing: transcribing, settleCanEnd: canEnd)
+        }
+        XCTAssertEqual(face(capturing: true), .stop)
+        XCTAssertEqual(face(starting: true), .cancelStart)
+        XCTAssertEqual(face(), .transcribing, "within the usual settle: its last words are still coming")
+        XCTAssertEqual(face(canEnd: true), .finishing, "past the usual settle with words in the draft: Done ends it there")
+        XCTAssertEqual(face(transcribing: true, canEnd: true), .transcribing, "none of its words are in yet: nothing to tap")
+    }
+
+    /// The Stop's tap policy: stop, call off, or wait; never a new
+    /// dictation and never a send. Return and the big voice button call the
+    /// same `tapSlot()`.
+    func testTheStopsTapStopsCallsOffOrWaits() {
+        XCTAssertEqual(ComposerDictation.slotTap(.stop), .stop)
+        XCTAssertEqual(ComposerDictation.slotTap(.cancelStart), .cancelStart)
+        XCTAssertEqual(ComposerDictation.slotTap(.finishing), .cancelStart, "a slow settle ends at once, keeping the draft's words")
+        XCTAssertEqual(ComposerDictation.slotTap(.transcribing), .nothing)
+    }
+
+    /// Both Apple engines' settles (Speech 1.5 s, SpeechAnalyzer 3 s) end
+    /// on their own before Done could cut them short; only a slower one
+    /// (Hermes) offers Done.
+    func testSettleGraceOutlastsTheAppleSettles() {
+        XCTAssertGreaterThan(ComposerDictationService.settleGrace, .seconds(3))
+    }
 }

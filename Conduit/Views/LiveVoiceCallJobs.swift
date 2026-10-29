@@ -417,9 +417,9 @@ struct LiveVoiceJobResultSheet: View {
 }
 
 /// What Hermes waits on the user for during a live call, with the chat's
-/// buttons: an approval or question in the call's own chat (its cards, as
-/// Classic voice shows them), else one a job of the call waits on. A spoken
-/// answer works too. Observes the app only here, so the rest of the call
+/// buttons: an approval, question or input request in the call's own chat
+/// (its cards, as Classic voice shows them), else one a job of the call
+/// waits on. A spoken answer works too, except for an input request. Observes the app only here, so the rest of the call
 /// doesn't redraw with it.
 struct LiveVoiceWaitingPanel: View {
     @ObservedObject var jobs: VoiceBackgroundJobSupervisor
@@ -522,6 +522,16 @@ struct LiveVoiceJobWaitingCard: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(picked.isEmpty)
+                }
+                // One of a form's questions, as its field may be.
+                if question.mayLeaveBlank {
+                    Button {
+                        picked = []
+                        send { await jobs.answerJobQuestion(job.id, answer: nil) }
+                    } label: {
+                        Text("Leave blank")
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
         }

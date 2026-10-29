@@ -72,6 +72,21 @@ final class NotificationE2ETests: XCTestCase {
         XCTAssertEqual(answer, "08c9b2cf01c5f94ed56658fc2a8b90d25b0361ab943f9efa4a857f3c44409b27")
     }
 
+    func testTheRoutingPayloadCarriesNoDisplayText() {
+        guard case .verified(let opened) = NotificationE2E.evaluate(delivered(), records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now) else {
+            return XCTFail("the plugin's envelope should verify")
+        }
+        var content = opened.content
+        content.merge(["title_label": "response.ready", "session_title": "Deploy", "headline": "Report finished"]) { $1 }
+        let routing = NotificationE2E.Verified(record: opened.record, envelope: opened.envelope, type: "response.ready", content: content).routingPayload
+        for banner in ["title", "body", "title_label", "session_title", "headline"] {
+            XCTAssertNil(routing[banner], banner)
+        }
+        XCTAssertEqual(routing["type"] as? String, "response.ready")
+        XCTAssertEqual(routing["gateway_id"] as? String, Self.gatewayID)
+        XCTAssertEqual(routing["session_id"] as? String, "sess-1")
+    }
+
     func testPluginSealedPushOpensAndRoutesFromVerifiedDataOnly() throws {
         guard case .verified(let verified) = NotificationE2E.evaluate(delivered(), records: [record], knownGatewayIDs: [], keysProvisioned: false, now: now) else {
             return XCTFail("the plugin's envelope should verify")
@@ -238,6 +253,19 @@ final class NotificationE2ETests: XCTestCase {
 
         let legacy = PushNotificationService.respondBody(requestID: "conduit-push-abc123def456", answer: "Yes", relayGatewayID: "another-gateway")
         XCTAssertEqual(try PushNotificationService.sealedRespondBody(legacy, requestID: "conduit-push-abc123def456", installationID: Self.installationID, records: [record]), legacy)
+    }
+
+    func testAFormsBlankFieldGoesEmptyWhereTheRelayTakesIt() throws {
+        // Sealed, any relay passes it on; in plaintext only a relay with
+        // clarify-skip (0.18) takes an empty answer.
+        XCTAssertEqual(PushNotificationService.blankAnswer(sealed: true, relayCapabilities: nil), "")
+        XCTAssertEqual(PushNotificationService.blankAnswer(sealed: false, relayCapabilities: ["decisions", "clarify-skip"]), "")
+        XCTAssertEqual(PushNotificationService.blankAnswer(sealed: false, relayCapabilities: ["decisions"]), PushNotificationService.leftBlankAnswer)
+        XCTAssertEqual(PushNotificationService.blankAnswer(sealed: false, relayCapabilities: nil), PushNotificationService.leftBlankAnswer)
+        XCTAssertNil(PushNotificationService.decisionAnswerError(""))
+        let body = PushNotificationService.respondBody(requestID: "conduit-push-abc123def456", answer: "", questionID: "q1", relayGatewayID: Self.gatewayID)
+        let sealed = try PushNotificationService.sealedRespondBody(body, requestID: "conduit-push-abc123def456", installationID: Self.installationID, records: [record])
+        XCTAssertTrue(sealed["answer"]?.hasPrefix("e2e1.") == true, "A blank is sealed like any answer")
     }
 
     func testNewRecordsHaveFreshRandomKeys() {

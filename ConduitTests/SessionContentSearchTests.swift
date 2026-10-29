@@ -87,11 +87,11 @@ final class SessionContentSearchTests: XCTestCase {
     func testPathCarriesQueryLimitAndNamedProfile() {
         XCTAssertEqual(
             SessionContentSearch.path(query: "recycling pickup", profile: "work"),
-            "/api/sessions/search?q=recycling%20pickup&limit=\(SessionContentSearch.resultLimit)&profile=work"
+            "/api/sessions/search?q=recycling%20pickup&limit=60&exclude_sources=kanban,oneshot,tool&profile=work"
         )
         XCTAssertEqual(
             SessionContentSearch.path(query: "recycling", profile: "default"),
-            "/api/sessions/search?q=recycling&limit=\(SessionContentSearch.resultLimit)"
+            "/api/sessions/search?q=recycling&limit=60&exclude_sources=kanban,oneshot,tool"
         )
     }
 
@@ -143,6 +143,26 @@ final class SessionContentSearchTests: XCTestCase {
         XCTAssertEqual(hits?.first?.lastActive, 1_800_000_000)
         XCTAssertEqual(hits?.last?.title, "Bins")
         XCTAssertEqual(hits?.last?.lastActive, 1_800_000_100)
+    }
+
+    func testHitsLeaveOutKanbanWorkersStoredBeforeTheTag() {
+        let response: [String: Any] = ["results": [
+            ["session_id": "w", "source": "cli", "preview": "work kanban task t_9f2c", "snippet": "x"],
+            ["session_id": "w2", "source": "local", "preview": "Work Kanban Task t_1", "snippet": "x"],
+            // A chat that says more, another source, or an older host
+            // without previews is kept.
+            ["session_id": "c", "source": "cli", "preview": "work kanban task t_1 and then fix it", "snippet": "x"],
+            ["session_id": "t", "source": "telegram", "preview": "work kanban task t_1", "snippet": "x"],
+            ["session_id": "o", "source": "cli", "snippet": "x"],
+        ]]
+        XCTAssertEqual(SessionContentSearch.hits(from: response, query: "x")?.map(\.sessionID), ["c", "t", "o"])
+    }
+
+    func testHitsKeepTwentyRealChatsBehindLegacyWorkers() {
+        let workers: [[String: Any]] = (0..<30).map { ["session_id": "w\($0)", "source": "cli", "preview": "work kanban task t_\($0)", "snippet": "x"] }
+        let chats: [[String: Any]] = (0..<25).map { ["session_id": "c\($0)", "source": "cli", "preview": "Task list \($0)", "snippet": "x"] }
+        let hits = SessionContentSearch.hits(from: ["results": workers + chats], query: "task")
+        XCTAssertEqual(hits?.map(\.sessionID), (0..<20).map { "c\($0)" })
     }
 
     func testABodyThatIsNotASearchResponseHasNoHits() {

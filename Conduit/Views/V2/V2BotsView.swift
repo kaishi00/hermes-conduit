@@ -49,7 +49,6 @@ struct V2BotsView: View {
             .padding(.top, 4)
             .padding(.bottom, 8)
             .frame(minHeight: 52)
-            .modifier(V2LegacyScrollEdge())
             .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {

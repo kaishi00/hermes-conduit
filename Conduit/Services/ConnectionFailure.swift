@@ -11,6 +11,7 @@
 //
 
 import Foundation
+import Security
 
 /// The semantic failure categories the login/connection pipeline can produce.
 enum ConnectionFailure: Equatable {
@@ -29,6 +30,14 @@ enum ConnectionFailure: Equatable {
     case tlsUntrusted
     case tlsBadDate
     case tlsFailure
+    /// The certificate chain may be trusted, but the certificate doesn't
+    /// name the address Conduit connected to (an IP typed where the
+    /// certificate lists a name, or the other way round).
+    case tlsHostnameMismatch
+    /// iOS refuses the server certificate itself whatever authority issued
+    /// it: Apple's TLS certificate rules (validity, extended key usage, key
+    /// size, signature hash).
+    case tlsNotStandardsCompliant
 
     // Authentication stages.
     case authenticationRejected
@@ -42,6 +51,9 @@ enum ConnectionFailure: Equatable {
     case loginRequired
     case cloudflareTokenRejected
     case sessionTicketFailure
+    /// The native sign-in's page (ASWebAuthenticationSession) failed or
+    /// didn't start. Not a cancellation: the user didn't close it.
+    case signInPageFailed
 
     // Server-side responses.
     case dashboardUnavailable
@@ -77,6 +89,9 @@ enum ConnectionFailureClassifier {
         if let bridgeError = error as? DashboardTicketBridgeError {
             return classify(bridgeError)
         }
+        if let nativeError = error as? NativeOAuthError {
+            return classify(nativeError)
+        }
         if error is DashboardSignInError {
             // Discovery answered, but with no sign-in Conduit can use.
             return .unexpectedServerResponse
@@ -90,7 +105,7 @@ enum ConnectionFailureClassifier {
         // for bridged errors.
         let nsError = error as NSError
         if nsError.domain == NSURLErrorDomain {
-            return classify(URLError(URLError.Code(rawValue: nsError.code)))
+            return classify(URLError(URLError.Code(rawValue: nsError.code), userInfo: nsError.userInfo))
         }
         return .unknown
     }
@@ -133,6 +148,22 @@ enum ConnectionFailureClassifier {
         }
     }
 
+    /// Native (PKCE) sign-in failures, so Repair's Sign In to Reconnect and
+    /// Settings' Sign In Again name them as the login screen does. Its
+    /// requests are discovery-like: a 401/403 is never bad credentials.
+    static func classify(_ nativeError: NativeOAuthError) -> ConnectionFailure {
+        switch nativeError {
+        case .browserFailed:
+            return .signInPageFailed
+        case .requestFailed(let status):
+            return classifyHTTPStatus(status, stage: .providerDiscovery)
+        case .invalidURL, .callbackMalformed, .stateMismatch, .tokenResponseMalformed:
+            return .unexpectedServerResponse
+        case .randomGenerationFailed, .listenerFailed, .callbackRejected, .tokenStorageFailed, .timedOut:
+            return .unknown
+        }
+    }
+
     /// A refused dashboard WebSocket upgrade: the server wants a browser
     /// sign-in first (3xx). The remedy is a sign-in, never a password.
     static func classify(_ handshakeError: DashboardSocketHandshakeError) -> ConnectionFailure {
@@ -164,11 +195,11 @@ enum ConnectionFailureClassifier {
             // unknown one.
             return .unexpectedServerResponse
         case .serverCertificateHasBadDate, .serverCertificateNotYetValid:
-            return .tlsBadDate
+            return TLSTrustDiagnosis.failure(for: urlError) ?? .tlsBadDate
         case .serverCertificateUntrusted, .serverCertificateHasUnknownRoot:
-            return .tlsUntrusted
+            return TLSTrustDiagnosis.failure(for: urlError) ?? .tlsUntrusted
         case .secureConnectionFailed:
-            return .tlsFailure
+            return TLSTrustDiagnosis.failure(for: urlError) ?? .tlsFailure
         default:
             return .unknown
         }
@@ -196,6 +227,55 @@ enum ConnectionFailureClassifier {
             return .dashboardUnavailable
         }
         return .unexpectedServerResponse
+    }
+}
+
+/// Names which check iOS failed on a refused server certificate (issue
+/// #129), so the copy can say "wrong name" or "rules iOS won't accept"
+/// instead of a blanket "not trusted". Reads the peer trust URLSession left
+/// on the error, already evaluated by the system; nothing here changes what
+/// is accepted.
+enum TLSTrustDiagnosis {
+    /// Security's policy check names, as they appear in a trust result's
+    /// per-certificate details.
+    static let hostnameChecks: Set<String> = ["SSLHostname"]
+    static let standardsChecks: Set<String> = [
+        "ValidityPeriodMaximums", "SystemTrustValidityPeriod", "ExtendedKeyUsage",
+        "KeySize", "WeakKeySize", "SystemTrustedWeakKey",
+        "SignatureHashAlgorithms", "WeakSignature", "SystemTrustedWeakHash"
+    ]
+    static let dateChecks: Set<String> = ["TemporalValidity"]
+
+    static func failure(for urlError: URLError) -> ConnectionFailure? {
+        guard let value = (urlError as NSError).userInfo[NSURLErrorFailingURLPeerTrustErrorKey] else {
+            return nil
+        }
+        let object = value as CFTypeRef
+        // A CF type can't be checked with `as?` (it always succeeds), so the
+        // type ID is the check and the cast after it can't fail.
+        guard CFGetTypeID(object) == SecTrustGetTypeID() else { return nil }
+        return failure(for: object as! SecTrust)
+    }
+
+    /// The trust is read as already evaluated; SecTrustCopyResult doesn't
+    /// go back to the network for one that has been.
+    static func failure(for trust: SecTrust) -> ConnectionFailure? {
+        guard let result = SecTrustCopyResult(trust) as? [String: Any],
+              let details = result["TrustResultDetails"] as? [[String: Any]] else {
+            return nil
+        }
+        return failure(forFailedChecks: Set(details.flatMap { $0.keys }))
+    }
+
+    /// The most specific failure first: a wrong name or a certificate iOS
+    /// refuses outright is the fix to make even when the root is also
+    /// untrusted, since trusting the root wouldn't be enough.
+    static func failure(forFailedChecks checks: Set<String>) -> ConnectionFailure? {
+        guard !checks.isEmpty else { return nil }
+        if !checks.isDisjoint(with: hostnameChecks) { return .tlsHostnameMismatch }
+        if !checks.isDisjoint(with: standardsChecks) { return .tlsNotStandardsCompliant }
+        if !checks.isDisjoint(with: dateChecks) { return .tlsBadDate }
+        return .tlsUntrusted
     }
 }
 
@@ -301,11 +381,14 @@ extension ConnectionFailure {
         case .tlsUntrusted: return AppLocalization.string("Secure connection failed")
         case .tlsBadDate: return AppLocalization.string("Certificate date problem")
         case .tlsFailure: return AppLocalization.string("Secure connection failed")
+        case .tlsHostnameMismatch: return AppLocalization.string("Certificate doesn’t match the address")
+        case .tlsNotStandardsCompliant: return AppLocalization.string("Certificate not accepted by iOS")
         case .authenticationRejected: return AppLocalization.string("Login failed")
         case .rateLimited: return AppLocalization.string("Too many login attempts")
         case .loginRequired: return AppLocalization.string("Sign-in required")
         case .cloudflareTokenRejected: return AppLocalization.string("Cloudflare rejected the service token")
         case .sessionTicketFailure: return AppLocalization.string("Could not start the session")
+        case .signInPageFailed: return AppLocalization.string("Sign-in page didn’t open")
         case .dashboardUnavailable: return AppLocalization.string("Dashboard unavailable")
         case .unexpectedServerResponse: return AppLocalization.string("Unexpected response")
         case .unknown: return AppLocalization.string("Couldn’t connect")
@@ -332,6 +415,10 @@ extension ConnectionFailure {
             return AppLocalization.string("The dashboard certificate is expired or not yet valid. Check the certificate dates and this device’s date and time.")
         case .tlsFailure:
             return AppLocalization.string("Conduit could not establish a secure connection to the dashboard. The server’s TLS certificate may be misconfigured.")
+        case .tlsHostnameMismatch:
+            return AppLocalization.string("Conduit reached the server, but its TLS certificate isn’t issued for this address. Connect with a name or IP address the certificate lists, or add this address to the certificate.")
+        case .tlsNotStandardsCompliant:
+            return AppLocalization.string("iOS refuses this server certificate, whichever authority issued it. Apple requires a validity of 825 days or less, the serverAuth extended key usage, an RSA key of at least 2048 bits (or ECC 256 bits) and a SHA-2 signature.")
         case .authenticationRejected:
             return AppLocalization.string("Hermes rejected that username or password. Check your dashboard credentials and try again.")
         case .rateLimited:
@@ -342,6 +429,8 @@ extension ConnectionFailure {
             return AppLocalization.string("Cloudflare Access did not accept the configured service token. Verify the Client ID / Secret and that the token is allowed by a Service Auth policy for this Access application, or turn off \"Use Cloudflare Access service token\" to sign in interactively.")
         case .sessionTicketFailure:
             return AppLocalization.string("Signing in succeeded, but Conduit could not start a Hermes session. The dashboard may be busy, restarting, or it did not accept the new session — try again.")
+        case .signInPageFailed:
+            return AppLocalization.string("The sign-in page couldn’t open. Please try again.")
         case .dashboardUnavailable:
             return AppLocalization.string("The dashboard is reachable but reported a server error. It may be restarting or unhealthy — try again in a moment.")
         case .unexpectedServerResponse:
@@ -358,10 +447,11 @@ extension ConnectionFailure {
         case .invalidAddress: return .start
         case .insecureTransport: return .dashboard
         case .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline: return .network
-        case .tlsUntrusted, .tlsBadDate, .tlsFailure: return .tls
+        case .tlsUntrusted, .tlsBadDate, .tlsFailure, .tlsHostnameMismatch, .tlsNotStandardsCompliant: return .tls
         case .authenticationRejected: return .credentials
         case .rateLimited: return nil
         case .loginRequired: return nil
+        case .signInPageFailed: return nil
         case .cloudflareTokenRejected: return .cloudflare
         case .sessionTicketFailure, .dashboardUnavailable, .unexpectedServerResponse: return .dashboard
         case .unknown: return nil

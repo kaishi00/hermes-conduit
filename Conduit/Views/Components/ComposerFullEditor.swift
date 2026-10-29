@@ -13,11 +13,20 @@ import SwiftUI
 struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: View>: View {
     @Binding var text: String
     let placeholder: String
+    var fieldIdentifier = "composer.fullEditor.field"
     let enabled: Bool
     /// Every change made while the editor has focus, with the new text:
     /// typing, or dictation writing the draft.
     let onUserEdit: (String) -> Void
     let onCollapse: () -> Void
+    /// Return key sends, as in the inline composer: whether Send (or
+    /// dictation's Stop in its place) can act now, and the action itself,
+    /// which reports whether it did anything.
+    let canSubmitFromReturn: Bool
+    let onSubmitFromReturn: () -> Bool
+    /// Files dropped on the editor go to the composer's attachments, as
+    /// on the chat itself (#1408). Nil takes no drops.
+    var onDropFiles: (([NSItemProvider]) -> Void)? = nil
     /// The staged attachments, so what Send will include stays visible
     /// and removable here.
     @ViewBuilder let attachments: () -> Attachments
@@ -26,7 +35,7 @@ struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: 
     @ViewBuilder let dictateButton: () -> DictateButton
     @ViewBuilder let actionButton: () -> ActionButton
 
-    @FocusState private var isFocused: Bool
+    @State private var isFocused = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -58,18 +67,19 @@ struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: 
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
-                // Return always inserts a newline here, whatever the
-                // Return-sends preference: this is the long-form editor,
-                // and Send is the button.
-                TextEditor(text: $text)
-                    .font(.body)
-                    .scrollContentBackground(.hidden)
-                    .focused($isFocused)
-                    .accessibilityLabel(Text(placeholder))
-                    .disabled(!enabled)
-                    .onChange(of: text) { _, newText in
-                        if isFocused { onUserEdit(newText) }
-                    }
+                ReturnKeyTextEditor(
+                    text: $text,
+                    isFocused: $isFocused,
+                    enabled: enabled,
+                    accessibilityLabel: placeholder,
+                    accessibilityIdentifier: fieldIdentifier,
+                    textInsets: UIEdgeInsets(top: 8, left: 5, bottom: 8, right: 5),
+                    canSubmitFromReturn: canSubmitFromReturn,
+                    onSubmitFromReturn: onSubmitFromReturn
+                )
+                .onChange(of: text) { _, newText in
+                    if isFocused { onUserEdit(newText) }
+                }
             }
             .padding(.horizontal, 16)
 
@@ -82,6 +92,9 @@ struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: 
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
+        }
+        .attachmentDropTarget(isEnabled: onDropFiles != nil) { providers in
+            onDropFiles?(providers)
         }
         .task {
             // After the sheet has settled; focus set while it is still

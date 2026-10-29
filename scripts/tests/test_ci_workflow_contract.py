@@ -5,9 +5,9 @@ again (e.g. passing observation files positionally when the script requires
 --observations).
 
 CI v5 shape (docs/CI.md): GitHub-hosted CI is the merge gate, and it is light.
-A PR or push to main runs the cheap Linux validation and ONE macOS `smoke` job
+A PR or a push runs the cheap Linux validation and ONE macOS `smoke` job
 that compiles the app (without its Watch app and extensions unless the plan
-job's ui-spec says otherwise, incrementally from main's last build) and every
+job's ui-spec says otherwise, incrementally from an earlier build) and every
 test target once, then runs the curated unit smoke classes and the curated UI
 smoke classes (scripts/smoke-suite.json) on that build and simulator.
 nightly.yml runs every other unit class in balanced shards
@@ -91,8 +91,8 @@ def _job_keys(path):
 
 
 def _assert_cache_round_trip(tc, text, saver, label):
-    """A job restores the newest main build's DerivedData before building and
-    saves its own after the tests, only from main and only after a successful
+    """A job restores the newest DerivedData it can reach before building and
+    saves its own after the tests, never a PR's and only after a successful
     build, with the same path list (a different list is a different cache)."""
     tc.assertIn("uses: actions/cache/restore@v5", text, label)
     tc.assertIn("uses: actions/cache/save@v5", text, label)
@@ -133,7 +133,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_one_macos_job_per_run(self):
         """Runner queueing (5 concurrent macOS jobs per account) was CI v4's
-        bottleneck: a PR or main run gets exactly one macOS job."""
+        bottleneck: a PR or push run gets exactly one macOS job."""
         jobs = _job_keys(WORKFLOW)
         self.assertEqual(jobs, ["plan", "self-test", "smoke", "ci-gate"], jobs)
         self.assertEqual(self._workflow_text().count("runs-on: macos-"), 1)
@@ -164,11 +164,54 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("check-plugin-version.py", plan)
         self.assertIn("check-feature-map.py", plan)
 
+    def test_the_smoke_skip_builds_for_anything_the_app_or_ci_reads(self):
+        step = _step_text(self._job_text("plan"), "Does the change need the macOS build")
+        self.assertIn("git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD", step,
+                      "a rename must count by both names")
+        greps = re.findall(r"grep -E(v?) '([^']+)'", step)
+        self.assertEqual([flag for flag, _ in greps], ["v", "", ""])
+        docs, builds, app_markdown = (re.compile(pattern) for _, pattern in greps)
+        # The same-change skip builds for Markdown in an app or test folder,
+        # since the change id counts Markdown only by its words.
+        # core.quotePath=false keeps a non-ASCII name unquoted, so it matches.
+        for path in ("Conduit/Resources/Help.md", "ConduitTests/x.md", "Shared/a/b.md",
+                     "Conduit/Resources/日本語.md", '"Conduit/a\\"b.md"'):
+            self.assertTrue(app_markdown.search(path), path)
+        for path in ("docs/FEATURE_MAP.md", "README.md", "Conduit/App.swift"):
+            self.assertFalse(app_markdown.search(path), path)
+        # The review plan counts the same Markdown as code (both reviewers).
+        review = _read(os.path.join(REPO_ROOT, ".github", "workflows", "opencode-review.yml"))
+        code_config = re.search(r"code_config='([^']+)'", review).group(1)
+        self.assertIn("|^(Conduit[^/]*|Shared)/.*\\.md$|", code_config)
+        # ...and the same-change branch is gated on it and on a non-empty diff.
+        self.assertIn("&& changed=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD) && [ -n \"$changed\" ] \\\n"
+                      "            && ! printf '%s\\n' \"$changed\" | grep -E '^\"?(Conduit[^/]*|Shared)/.*\\.md\"?$' >/dev/null; then\n"
+                      "            repo=", step)
+        # The lookup takes only a passing Smoke job on another of the PR's
+        # commits, built as this PR's merge commit, with a non-empty id.
+        self.assertIn('select(.name == "Smoke" and .conclusion == "success")', step)
+        self.assertIn('[ "$sha" != "$PR_HEAD" ] || continue', step)
+        self.assertIn('[ -n "$now" ] && [ "$now" = "$(change_id "$passed")" ]', step)
+        self.assertEqual(2, step.count("[ \"$(git rev-parse -q --verify 'HEAD^2' || true)\" = \"$PR_HEAD\" ]"))
+
+        def skips(*paths):
+            return all(docs.search(p) for p in paths) and not any(builds.search(p) for p in paths)
+
+        self.assertTrue(skips("README.md", "docs/FEATURE_MAP.md", "designs/x.md", "LICENSE",
+                              "opencode.json", ".coderabbit.yaml", ".github/workflows/opencode-review.yml"))
+        for path in (".github/workflows/ci.yml", "Conduit/Resources/Help.md", "Shared/notes.md",
+                     "ConduitWatch/README.md", "ConduitTests/fixture.md", "scripts/ci-gate.py",
+                     "project.yml", "Conduit/App.swift"):
+            self.assertFalse(skips("README.md", path), path)
+        # A Swift file moved to docs/ lists its old name too, so it builds.
+        self.assertFalse(skips("Conduit/X.swift", "docs/X.md"))
+
     def test_the_feature_map_check_knows_the_pr_and_its_base(self):
         """On a PR, an entry it edits names it on its Checked line: the step
         passes the PR's number and the base's map (HEAD^1 of the merge commit),
-        and for a PR into pulse, main's map where the PR meets main, so the
-        entries a merge of main brings in keep main's Checked lines."""
+        and for a PR into pulse or linked-rooms, main's maps where the PR and
+        its base meet main, so the entries a merge of main brings in keep
+        main's Checked lines."""
         step = _step_text(self._job_text("plan"), "Feature map paths exist")
         self.assertIn("PR_NUMBER: ${{ github.event.pull_request.number }}", step)
         self.assertIn("git show HEAD^1:docs/FEATURE_MAP.md", step)
@@ -278,11 +321,13 @@ class WorkflowContractTests(unittest.TestCase):
                        "ConduitWidgets", "ConduitLocationPush"):
             self.assertIn(f"- target: {target}", spec)
 
-    def test_smoke_job_builds_incrementally_and_main_saves_the_full_build(self):
-        """The smoke job restores the newest main build's DerivedData before
-        building, and saves its own only on pushes to main (always the full
-        app there), after a successful build, with the same path list (a
-        different list is a different cache)."""
+    def test_smoke_job_builds_incrementally_and_pushes_save_the_full_build(self):
+        """The smoke job restores the newest DerivedData it can reach (main's,
+        and on a PR into pulse or linked-rooms that branch's) before
+        building, and saves its own only on pushes (to main, and in pulse's
+        and linked-rooms' copies to that branch; always the full app there),
+        after a successful build, with the same path list (a different list
+        is a different cache)."""
         text = self._job_text("smoke")
         _assert_cache_round_trip(self, text, "steps.cache-key.outputs.kind == 'full'", "smoke")
         self.assertIn("&& github.event_name == 'push'\n", text)
@@ -364,6 +409,9 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("name: CI Gate", gate)
         self.assertIn('--plan "${{ needs.plan.result }}"', gate)
         self.assertIn('--smoke "${{ needs.smoke.result }}"', gate)
+        # Without it every legitimately skipped smoke job fails the gate.
+        self.assertIn('--smoke-needed "${{ needs.plan.outputs.smoke }}"', gate)
+        self.assertIn("if: needs.plan.outputs.smoke != 'false'", self._job_text("smoke"))
         self.assertNotIn("needs.unit.", gate)
         self.assertNotIn("needs.ui-smoke.", gate)
 

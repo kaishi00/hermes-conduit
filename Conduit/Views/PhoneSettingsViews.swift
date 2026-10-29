@@ -67,6 +67,9 @@ struct PhoneSettingsPage: View {
             }
         }
         .navigationTitle("Calendar & phone")
+        // Sharing turns on after its consent sheet, so the rows it reveals
+        // animate on the value rather than in a setter.
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: preferences.isOn)
         .onAppear(perform: load)
         .sheet(isPresented: $showsConsent) {
             PhoneSharingConsentSheet(profile: appState.activeProfile, host: hostLabel) {
@@ -296,11 +299,6 @@ struct PhoneSettingsPage: View {
             Text("Their nickname and company go too, when the contact has them.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            if appState.pulseBringsUpBirthdays {
-                Text("With Pulse and its memory on, it brings up their birthdays two weeks ahead, the day before and on the day.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             if choices.contacts {
                 ForEach(engine.people) { person in
                     PhonePersonRow(person: person) { relation in
@@ -450,7 +448,8 @@ struct PhoneSettingsPage: View {
                     showsTurnOff = true
                     return
                 }
-                choices = next
+                // Animated: Reminders and the details switch reveal rows.
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { choices = next }
                 applyIfOn()
             }
         )

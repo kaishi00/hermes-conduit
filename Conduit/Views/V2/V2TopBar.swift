@@ -6,7 +6,7 @@
 //  profile pictures, and an optional trailing capsule of controls. When the
 //  profiles don't fit beside the controls, they get a full-width row of
 //  their own and the controls move under it. No large title; the bar floats
-//  over a soft blurred scroll edge.
+//  over the soft scroll edge its screen draws under it (`v2EdgeBar`).
 //
 
 import SwiftUI
@@ -21,7 +21,6 @@ struct V2TopBar<Trailing: View, LowerLeading: View>: View {
     private let trailing: (Bool) -> Trailing
     /// Leads the second row when the bar stacks (Chats: the filter pill).
     private let lowerLeading: LowerLeading
-    private var drawsScrollEdge = true
     /// Chats: an All chip leads the profiles, for every profile's chats in
     /// one list.
     private var leadsWithAllChip = false
@@ -64,9 +63,6 @@ struct V2TopBar<Trailing: View, LowerLeading: View>: View {
         .padding(.top, 4)
         .padding(.bottom, 8)
         .frame(minHeight: 52)
-        .background {
-            if drawsScrollEdge { V2ScrollEdgeBackground() }
-        }
         .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
         .sheet(isPresented: $showProfileManager) {
             ProfilePickerSheet()
@@ -106,14 +102,6 @@ extension V2TopBar where Trailing == EmptyView, LowerLeading == EmptyView {
 }
 
 extension V2TopBar {
-    /// For a header that stacks more controls under the bar and draws one
-    /// soft edge behind all of them (Tasks).
-    func withoutScrollEdge() -> Self {
-        var bar = self
-        bar.drawsScrollEdge = false
-        return bar
-    }
-
     /// The Chats bar: an All chip before the profiles.
     func withAllProfilesChip() -> Self {
         var bar = self
@@ -125,60 +113,100 @@ extension V2TopBar {
 extension View {
     /// Pins `bar` to a screen edge, with this view's lists scrolling under
     /// it and fading out beneath it. On iOS 26 it is a `safeAreaBar`, so the
-    /// lists draw the system's soft scroll edge under it; before, it is a
-    /// `safeAreaInset`, and the bar draws `V2ScrollEdgeBackground` itself
-    /// (`V2LegacyScrollEdge`).
+    /// lists draw the system's soft scroll edge under it; before, and on a
+    /// Mac, it is a `safeAreaInset`, and the lists fade out under it
+    /// themselves (`V2LegacyEdgeBar`).
     @ViewBuilder
     func v2EdgeBar<Bar: View>(_ edge: VerticalEdge, @ViewBuilder bar: () -> Bar) -> some View {
         let content = bar()
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), V2SystemScrollEdge.isUsed {
             scrollEdgeEffectStyle(.soft, for: edge == .top ? .top : .bottom)
                 .safeAreaBar(edge: edge, spacing: 0) { content }
         } else {
-            safeAreaInset(edge: edge, spacing: 0) { content }
+            modifier(V2LegacyEdgeBar(edge: edge, bar: content))
         }
     }
 }
 
-/// Before iOS 26, the fading material behind a bar that lists scroll
-/// under. iOS 26 draws its own soft edge there (`v2EdgeBar`), which
-/// costs less than our blur under a gradient mask on every scroll frame.
-struct V2LegacyScrollEdge: ViewModifier {
-    var edge: VerticalEdge = .top
+/// Whether bars use the system's scroll edge (iOS 26's `safeAreaBar`).
+/// Not when the iPad app runs on a Mac (`isiOSAppOnMac`; Conduit ships no
+/// Catalyst build): there, at some window sizes, a chat's composer bar drew
+/// a hard edge well above the composer and hid the transcript under it
+/// (#1357), so bars keep Conduit's own inset and fade.
+enum V2SystemScrollEdge {
+    static let isUsed = !ProcessInfo.processInfo.isiOSAppOnMac
+}
 
-    @ViewBuilder
+/// Before iOS 26, and on a Mac, a bar over the content's edge, with the
+/// content fading out under it: its text turns transparent toward the
+/// edge, over the bar's height, so the backdrop shows through as it does
+/// under iOS 26's soft edge. A material behind the bar instead drew a
+/// lighter box around a Mac's composer, as wide as the chat's column.
+struct V2LegacyEdgeBar<Bar: View>: ViewModifier {
+    let edge: VerticalEdge
+    let bar: Bar
+
+    /// Where the bar is, in the window's space: the content's frame starts
+    /// above or below it depending on the safe area, so the fade goes by
+    /// the bar's own frame.
+    @State private var barFrame: CGRect = .zero
+
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content
-        } else {
-            content.background { V2ScrollEdgeBackground(edge: edge) }
-        }
-    }
-}
-
-/// The soft edge content scrolls under: a material that fades out away
-/// from the screen edge, so the bar reads without a hard line.
-struct V2ScrollEdgeBackground: View {
-    /// The screen edge the bar sits on.
-    var edge: VerticalEdge = .top
-
-    var body: some View {
-        Rectangle()
-            .fill(.ultraThinMaterial)
+        content
             .mask {
-                LinearGradient(
-                    stops: [
-                        .init(color: .black, location: 0),
-                        .init(color: .black.opacity(0.85), location: 0.55),
-                        .init(color: .clear, location: 1)
-                    ],
-                    startPoint: edge == .top ? .top : .bottom,
-                    endPoint: edge == .top ? .bottom : .top
-                )
+                GeometryReader { proxy in
+                    fade(in: proxy.frame(in: .global))
+                }
+                // The whole area the content draws in: a transcript still
+                // scrolls under the navigation bar and the window's edges.
+                .ignoresSafeArea()
             }
-            .ignoresSafeArea(edges: edge == .top ? .top : .bottom)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+            .safeAreaInset(edge: edge, spacing: 0) {
+                // A stack, so an empty bar still reports its frame.
+                VStack(spacing: 0) { bar }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                        barFrame = frame
+                    }
+            }
+            // The screen's backdrop fades with its content, so the same
+            // backdrop goes behind it: the fade shows it, not the window.
+            .backgroundPreferenceValue(ConduitBackdropBehindFade.self) { request in
+                if let request {
+                    ConduitBackdrop(drifts: request.drifts, glowTint: request.glowTint)
+                }
+            }
+    }
+
+    /// Opaque away from the bar, fading out to clear across it, and clear
+    /// past it (under the home indicator). With no bar (a chat's composer
+    /// that isn't floating), the content draws as it is.
+    @ViewBuilder
+    private func fade(in area: CGRect) -> some View {
+        if barFrame.height > 0 {
+            let gradient = LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black.opacity(0.15), location: 0.45),
+                    .init(color: .black, location: 1)
+                ],
+                startPoint: edge == .top ? .top : .bottom,
+                endPoint: edge == .top ? .bottom : .top
+            )
+            .frame(height: barFrame.height)
+            VStack(spacing: 0) {
+                if edge == .bottom {
+                    Color.black.frame(height: max(0, barFrame.minY - area.minY))
+                    gradient
+                } else {
+                    Spacer().frame(height: max(0, barFrame.minY - area.minY))
+                    gradient
+                    Color.black
+                }
+            }
+            .frame(width: area.width, height: area.height, alignment: .top)
+        } else {
+            Color.black
+        }
     }
 }
 
@@ -328,9 +356,12 @@ struct V2ProfileStrip: View {
         let name = appState.profileDisplayName(profile)
         let isSelected = !allSelected && profile == appState.activeProfile
         return Button {
-            if isSelected {
+            // While a switch runs, every chip is a pick the shell keeps for
+            // when it ends (`V2QueuedProfilePick`), the one on screen too.
+            let switching = appState.isProfileSwitching || shell.isPickingProfile
+            if isSelected, !switching {
                 onManage()
-            } else if allSelected, profile == appState.activeProfile {
+            } else if allSelected, profile == appState.activeProfile, !switching {
                 // Back to this profile's own list: nothing to switch.
                 Haptics.selection()
                 appState.setAllProfilesChatsOn(false)
@@ -379,13 +410,14 @@ struct V2ProfileStrip: View {
             .frame(minWidth: 44, minHeight: 44)
             .contentShape(Rectangle())
         }
+        // Tappable while a switch runs: the shell keeps the tap for when
+        // it ends (`V2QueuedProfilePick`).
         .buttonStyle(PressableButtonStyle())
-        .disabled(!isSelected && appState.isProfileSwitching)
         .modifier(DashboardSwitchMenu(enabled: profile == appState.activeProfile))
         .accessibilityIdentifier(isSelected ? "sidebar.workspace" : "v2.profile.\(profile)")
         .accessibilityLabel(AppLocalization.string("\(name) profile"))
         .accessibilityValue(unread ? AppLocalization.string("Unread") : "")
-        .accessibilityHint(isSelected ? AppLocalization.string("Manage profiles") : AppLocalization.string("Switches to this profile"))
+        .accessibilityHint(isSelected && !(appState.isProfileSwitching || shell.isPickingProfile) ? AppLocalization.string("Manage profiles") : AppLocalization.string("Switches to this profile"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -397,6 +429,9 @@ struct V2ProfileStrip: View {
         let shown = Array(appState.allProfilesIncluded.prefix(3))
         return Button {
             Haptics.selection()
+            // The last tap wins: a profile kept for after a running switch
+            // no longer goes.
+            shell.dropQueuedProfilePick()
             if isSelected {
                 onChooseAll()
             } else {
@@ -539,7 +574,7 @@ struct V2CapsuleIcon: View {
 }
 
 /// The root screens' backdrop: drifting while its tab is on screen, its warm
-/// glow in the active profile's color.
+/// glow in the active profile's color, or in `glowProfile`'s when given.
 struct V2Backdrop: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2Shell) private var shell
@@ -547,13 +582,16 @@ struct V2Backdrop: View {
     /// A tab root's backdrop (Chats, Bots): it also holds still while a chat
     /// or page is pushed over the root, which draws its own.
     var isTabRoot = false
+    /// The profile whose color the glow takes instead of the active one: the
+    /// open chat's, so a Bot Chat glows in its bot's color.
+    var glowProfile: String?
 
     var body: some View {
         // A capsule tab hidden behind the selected one holds still.
         let covered = isTabRoot && shell.isRootCovered
         ConduitBackdrop(
             drifts: drifts && shell.isTabActive && !covered,
-            glowTint: appState.profileGlowTint(appState.activeProfile)
+            glowTint: appState.profileGlowTint(glowProfile ?? appState.activeProfile)
         )
     }
 }

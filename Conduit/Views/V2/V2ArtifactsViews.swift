@@ -8,7 +8,8 @@
 //  and every bot's Bot Chat; a chat's … menu opens the same list for that
 //  chat alone. The host's notifier plugin reads them (plugin 0.40+).
 //  Tapping opens the viewer the chat itself uses: Quick Look for files, the
-//  full-screen page for HTML, Safari for links.
+//  full-screen page for HTML, Safari for links. Beside the list, the
+//  Folder tab browses the chat's folder or a project's (V2WorkspaceViews).
 //
 
 import ImageIO
@@ -29,15 +30,27 @@ enum ArtifactScope: Equatable {
     }
 }
 
-/// The page pushed from the Chats bar.
+/// The page pushed from the Chats bar: Artifacts, and the Folder tab for
+/// the projects' folders.
 struct V2ArtifactsPage: View {
     @EnvironmentObject private var appState: AppState
+    @State private var tab: ArtifactsTab = .made
 
     var body: some View {
         ZStack {
             V2Backdrop(drifts: false)
-            ArtifactsList(scope: .profile, chatIsOpen: false) { item in
-                appState.showArtifactInChat(item, chatIsOpen: false)
+            VStack(spacing: 0) {
+                ArtifactsTabPicker(tab: $tab)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                switch tab {
+                case .made:
+                    ArtifactsList(scope: .profile, chatIsOpen: false) { item in
+                        appState.showArtifactInChat(item, chatIsOpen: false)
+                    }
+                case .folder:
+                    WorkspaceFolderView(includesChat: false)
+                }
             }
         }
         .navigationTitle(Text("Artifacts"))
@@ -48,30 +61,65 @@ struct V2ArtifactsPage: View {
     }
 }
 
-/// The open chat's artifacts, from its … menu.
-struct ChatArtifactsSheet: View {
+/// The open chat's artifacts and its folder, from its … menu, a file path
+/// tapped in a reply, or beside the chat on a wide window (`inPanel`).
+struct ChatArtifactsContent: View {
     @EnvironmentObject private var appState: AppState
-    @Environment(\.dismiss) private var dismiss
-    /// Read once: the open chat's ids when the sheet opened.
+    /// Read once: the open chat's ids when it opened.
     let sessionIDs: [String]
+    @Binding var tab: ArtifactsTab
+    /// Beside the chat rather than in a sheet of its own: no navigation bar
+    /// of its own, so the list's search is a field in the list.
+    var inPanel = false
+    let showInChat: (ArtifactItem) -> Void
 
     var body: some View {
-        NavigationStack {
-            Group {
+        VStack(spacing: 0) {
+            ArtifactsTabPicker(tab: $tab)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+            switch tab {
+            case .made:
                 if sessionIDs.isEmpty {
                     ContentUnavailableView {
                         Label("No Artifacts Yet", systemImage: "square.grid.2x2")
                     } description: {
                         Text("Files, pages and links from this chat show up here once Hermes has saved it.")
                     }
+                    .frame(maxHeight: .infinity)
                 } else {
-                    ArtifactsList(scope: .chat(sessionIDs), chatIsOpen: true) { item in
-                        dismiss()
-                        appState.showArtifactInChat(item, chatIsOpen: true)
-                    }
+                    ArtifactsList(scope: .chat(sessionIDs), chatIsOpen: true, inPanel: inPanel, showInChat: showInChat)
                 }
+            case .folder:
+                WorkspaceFolderView(includesChat: true, handlesReveals: true)
             }
-            .navigationTitle(Text("In This Chat"))
+        }
+    }
+}
+
+/// The open chat's artifacts, from its … menu, in a sheet.
+struct ChatArtifactsSheet: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+    /// Read once: the open chat's ids when the sheet opened.
+    let sessionIDs: [String]
+    @State var tab: ArtifactsTab
+    /// The tab now showing, so a later open knows whether to switch.
+    var onTabChange: (ArtifactsTab) -> Void = { _ in }
+
+    init(sessionIDs: [String], tab: ArtifactsTab = .made, onTabChange: @escaping (ArtifactsTab) -> Void = { _ in }) {
+        self.sessionIDs = sessionIDs
+        _tab = State(initialValue: tab)
+        self.onTabChange = onTabChange
+    }
+
+    var body: some View {
+        NavigationStack {
+            ChatArtifactsContent(sessionIDs: sessionIDs, tab: $tab) { item in
+                dismiss()
+                appState.showArtifactInChat(item, chatIsOpen: true)
+            }
+            .navigationTitle(tab == .made ? Text("In This Chat") : Text("Folder"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -81,6 +129,7 @@ struct ChatArtifactsSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .onChange(of: tab) { _, now in onTabChange(now) }
     }
 }
 
@@ -92,6 +141,9 @@ private struct ArtifactsList: View {
     let scope: ArtifactScope
     /// A chat's own sheet: rows give the time rather than the chat's name.
     let chatIsOpen: Bool
+    /// Beside the chat: the search is a field in the list and the Show
+    /// Missing Files toggle a chip, since the chat's bar isn't the list's.
+    var inPanel = false
     let showInChat: (ArtifactItem) -> Void
 
     @AppStorage(ArtifactsClient.showMissingKey) private var showMissing = false
@@ -137,29 +189,9 @@ private struct ArtifactsList: View {
     private var nextBefore: ArtifactFeed.Cursor? { feed?.nextCursor }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: []) {
-                chips
-                    .padding(.bottom, 6)
-                content
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .searchable(text: $query, prompt: Text("Search names and chats"))
-        .refreshable { await reload() }
-        .toolbar {
-            if appState.supportsArtifacts {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Toggle("Show Missing Files", isOn: $showMissing)
-                    } label: {
-                        Label("More", systemImage: "ellipsis.circle")
-                    }
-                }
-            }
-        }
+        list
+        .modifier(ArtifactsListChrome(inPanel: inPanel, query: $query, showMissing: $showMissing,
+                                      offersMissing: appState.supportsArtifacts))
         .task(id: currentKey) {
             // Typing settles before the host is asked.
             if loadedKey != nil, currentKey.query != loadedKey?.query {
@@ -180,6 +212,24 @@ private struct ArtifactsList: View {
         } message: {
             Text(verbatim: missing?.path ?? "")
         }
+    }
+
+    private var list: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: []) {
+                if inPanel {
+                    ArtifactsInlineSearch(query: $query)
+                        .padding(.bottom, 6)
+                }
+                chips
+                    .padding(.bottom, 6)
+                content
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 24)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .refreshable { await reload() }
     }
 
     // MARK: - Chips
@@ -209,6 +259,22 @@ private struct ArtifactsList: View {
                     }
                     .buttonStyle(PressableButtonStyle())
                     .accessibilityAddTraits(isOn ? .isSelected : [])
+                }
+                if inPanel, appState.supportsArtifacts {
+                    Button {
+                        Haptics.selection()
+                        showMissing.toggle()
+                    } label: {
+                        Label("Show Missing Files", systemImage: showMissing ? "checkmark.circle.fill" : "circle")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(showMissing ? Color.conduitAccent : Color.primary.opacity(0.75))
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 36)
+                            .background(Color.primary.opacity(0.06), in: Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    .accessibilityAddTraits(showMissing ? .isSelected : [])
                 }
             }
             .padding(.vertical, 4)
@@ -811,4 +877,62 @@ private enum ArtifactThumbnailCache {
         cache.countLimit = 300
         return cache
     }()
+}
+
+/// The list's search and its Show Missing Files toggle: in the navigation
+/// bar of the page or sheet it fills, or (beside the chat, `inPanel`) in
+/// the list itself.
+private struct ArtifactsListChrome: ViewModifier {
+    let inPanel: Bool
+    @Binding var query: String
+    @Binding var showMissing: Bool
+    let offersMissing: Bool
+
+    func body(content: Content) -> some View {
+        if inPanel {
+            content
+        } else {
+            content
+                .searchable(text: $query, prompt: Text("Search names and chats"))
+                .toolbar {
+                    if offersMissing {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Menu {
+                                Toggle("Show Missing Files", isOn: $showMissing)
+                            } label: {
+                                Label("More", systemImage: "ellipsis.circle")
+                            }
+                        }
+                    }
+                }
+        }
+    }
+}
+
+/// The list's search beside the chat.
+private struct ArtifactsInlineSearch: View {
+    @Binding var query: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField(AppLocalization.string("Search names and chats"), text: $query)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(AppLocalization.string("Clear search"))
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 40)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
 }

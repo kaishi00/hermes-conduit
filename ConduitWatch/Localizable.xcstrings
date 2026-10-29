@@ -12856,6 +12856,88 @@
           }
         }
       }
+    },
+    "Your Watch couldn't get a network connection for the call. Keep your iPhone nearby with Bluetooth on, or join Wi-Fi on the Watch, and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Watch hat keine Netzwerkverbindung für den Anruf bekommen. Halte dein iPhone mit eingeschaltetem Bluetooth in der Nähe oder verbinde die Watch mit einem WLAN und versuche es erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu Watch no pudo conectarse a la red para la llamada. Mantén el iPhone cerca con el Bluetooth activado, o conecta el Watch a una red Wi-Fi, y vuelve a intentarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ta Watch n'a pas pu obtenir de connexion réseau pour l'appel. Garde ton iPhone à proximité avec le Bluetooth activé, ou connecte la Watch à un réseau Wi-Fi, puis réessaie."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch kamu tidak mendapat koneksi jaringan untuk panggilan ini. Dekatkan iPhone dengan Bluetooth menyala, atau sambungkan Watch ke Wi-Fi, lalu coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo Watch non è riuscito a ottenere una connessione di rete per la chiamata. Tieni l'iPhone vicino con il Bluetooth attivo, oppure connetti il Watch a una rete Wi-Fi, e riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch で通話用のネットワーク接続を確立できませんでした。Bluetooth をオンにした iPhone を近くに置くか、Watch を Wi-Fi に接続してから、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch가 통화에 필요한 네트워크 연결을 얻지 못했어요. Bluetooth를 켠 iPhone을 가까이 두거나 Watch를 Wi-Fi에 연결한 뒤 다시 시도해 주세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój Watch nie uzyskał połączenia sieciowego dla rozmowy. Trzymaj iPhone'a w pobliżu z włączonym Bluetooth albo połącz Watch z Wi-Fi i spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu Watch não conseguiu uma conexão de rede para a chamada. Mantenha o iPhone por perto com o Bluetooth ligado, ou conecte o Watch a uma rede Wi-Fi, e tente de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch не удалось подключиться к сети для звонка. Держите iPhone рядом с включённым Bluetooth или подключите Watch к Wi-Fi и попробуйте снова."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch'un arama için ağ bağlantısı kuramadı. iPhone'unu Bluetooth açık şekilde yakında tut ya da Watch'u bir Wi-Fi ağına bağla ve yeniden dene."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Watch 无法为通话建立网络连接。请让 iPhone 在附近并打开蓝牙，或让 Watch 连接 Wi-Fi，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Watch 無法為通話建立網路連線。請讓 iPhone 在附近並開啟藍牙，或讓 Watch 連接 Wi-Fi，然後再試一次。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

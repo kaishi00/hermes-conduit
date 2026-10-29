@@ -2,15 +2,15 @@
 //  NativeOAuth.swift
 //  Conduit
 //
-//  Hermes brokered OAuth for native iOS clients: SFSafariViewController,
+//  Hermes brokered OAuth for native iOS clients: ASWebAuthenticationSession,
 //  loopback callback, PKCE, Keychain tokens, refresh, and bearer REST.
 //
 
+import AuthenticationServices
 import CryptoKit
 import Foundation
 import Network
 import OSLog
-import SafariServices
 import Security
 import SwiftUI
 import UIKit
@@ -60,6 +60,7 @@ enum NativeOAuthError: LocalizedError, Equatable {
     case tokenResponseMalformed
     case tokenStorageFailed
     case timedOut
+    case browserFailed
     case requestFailed(status: Int)
 
     var errorDescription: String? {
@@ -73,6 +74,7 @@ enum NativeOAuthError: LocalizedError, Equatable {
         case .tokenResponseMalformed: return AppLocalization.string("The dashboard returned invalid authentication tokens.")
         case .tokenStorageFailed: return AppLocalization.string("Could not save this dashboard.")
         case .timedOut: return AppLocalization.string("Sign-in timed out. Please try again.")
+        case .browserFailed: return AppLocalization.string("The sign-in page couldn’t open. Please try again.")
         case .requestFailed(let status): return AppLocalization.string("Dashboard sign-in failed (HTTP \(String(status))).")
         }
     }
@@ -361,7 +363,6 @@ final class NativeOAuthAPIClient {
     private static func errorDetail(_ data: Data) -> String? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         return json["detail"] as? String ?? json["error"] as? String ?? json["message"] as? String
-            ?? DashboardTicketBridgeError.structuredDetail(json["detail"])
     }
 }
 
@@ -590,7 +591,7 @@ final class NativeOAuthLoopbackServer: @unchecked Sendable {
     func start(timeout: TimeInterval = 5 * 60) async throws -> UInt16 {
         try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
-                queue.async {
+                queue.async { [self] in
                     if let result = self.terminalResult {
                         switch result {
                         case .failure(let error): continuation.resume(throwing: error)
@@ -829,7 +830,7 @@ final class NativeOAuthLoginModel: ObservableObject {
     ) async throws -> NativeOAuthLoginResult {
         // A previous exchange may already have succeeded while its first
         // ticket mint failed transiently. Reuse that durable grant before
-        // opening Safari and only reauthorize after confirmed rejection.
+        // opening the browser and only reauthorize after confirmed rejection.
         if let existing = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID),
            let existingSession = NativeOAuthSession(
             baseURL: baseURL,
@@ -872,6 +873,9 @@ final class NativeOAuthLoginModel: ObservableObject {
         )
         let code = try await server.waitForCallback()
         nativeOAuthLogger.notice("OAuth stage: callback validated")
+        // The browser has done its part; let the sheet close it now rather
+        // than leave the loopback page up through the token exchange.
+        authorizeURL = nil
         let client = NativeOAuthAPIClient(baseURL: baseURL, cloudflareAccess: cloudflareAccess)
         let previousTokens = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID)
         let tokens = try await client.exchange(code: code, verifier: pkce.verifier)
@@ -897,6 +901,18 @@ final class NativeOAuthLoginModel: ObservableObject {
     }
 }
 
+/// Whether the native sign-in browser starts private (ephemeral) each time.
+/// A remembered identity-provider session can show only a re-authentication
+/// page (Pocket ID offers just the passkey there); a private page shows the
+/// full sign-in page, with a login code for example.
+enum NativeOAuthBrowserPreference {
+    static let privateSignInKey = "conduit.nativeOAuth.privateSignIn"
+
+    static var privateSignIn: Bool {
+        UserDefaults.standard.bool(forKey: privateSignInKey)
+    }
+}
+
 struct NativeOAuthSignInSheet: View {
     let baseURL: String
     let cloudflareAccess: CloudflareAccessCredentials?
@@ -908,10 +924,11 @@ struct NativeOAuthSignInSheet: View {
     @StateObject private var model = NativeOAuthLoginModel()
 
     var body: some View {
-        // Keep one representable alive while authorizeURL changes and Safari
-        // covers this sheet. Visibility changes are not OAuth cancellation.
-        SafariAuthenticationView(
+        // Keep one representable alive while authorizeURL changes and the
+        // browser covers this sheet. Visibility changes are not OAuth cancellation.
+        WebAuthenticationView(
             url: model.authorizeURL,
+            privateSignIn: NativeOAuthBrowserPreference.privateSignIn,
             operation: {
                 try await model.run(
                     baseURL: baseURL,
@@ -935,7 +952,7 @@ struct NativeOAuthSignInSheet: View {
 }
 
 /// Owns the operation until the representable is actually dismantled, not
-/// merely covered by Safari or its password UI.
+/// merely covered by the browser or its password UI.
 @MainActor
 final class NativeOAuthPresentationTask {
     private var task: Task<Void, Never>?
@@ -973,8 +990,9 @@ final class NativeOAuthPresentationTask {
     deinit { task?.cancel() }
 }
 
-private struct SafariAuthenticationView: UIViewControllerRepresentable {
+private struct WebAuthenticationView: UIViewControllerRepresentable {
     let url: URL?
+    let privateSignIn: Bool
     let operation: @MainActor () async throws -> NativeOAuthLoginResult
     let onSuccess: @MainActor (NativeOAuthLoginResult) -> Void
     let onError: @MainActor (Error) -> Void
@@ -984,35 +1002,60 @@ private struct SafariAuthenticationView: UIViewControllerRepresentable {
         NativeOAuthPresentationTask()
     }
 
-    func makeUIViewController(context: Context) -> SafariPresenterViewController {
-        let controller = SafariPresenterViewController(onCancel: {
+    func makeUIViewController(context: Context) -> WebAuthenticationPresenterViewController {
+        let controller = WebAuthenticationPresenterViewController(privateSignIn: privateSignIn, onCancel: {
             nativeOAuthLogger.notice("OAuth stage: user cancelled browser")
             context.coordinator.cancel()
             onCancel()
+        }, onFailure: { error in
+            context.coordinator.cancel()
+            onError(error)
         })
         context.coordinator.start(operation: operation, onSuccess: onSuccess, onError: onError)
         return controller
     }
 
-    func updateUIViewController(_ controller: SafariPresenterViewController, context: Context) {
+    func updateUIViewController(_ controller: WebAuthenticationPresenterViewController, context: Context) {
         controller.setAuthorizeURL(url)
     }
 
     static func dismantleUIViewController(
-        _ controller: SafariPresenterViewController,
+        _ controller: WebAuthenticationPresenterViewController,
         coordinator: NativeOAuthPresentationTask
     ) {
         nativeOAuthLogger.notice("OAuth stage: sign-in view removed")
         coordinator.cancel()
+        controller.closeBrowser()
     }
 
-    final class SafariPresenterViewController: UIViewController, SFSafariViewControllerDelegate {
-        private var url: URL?
-        private let onCancel: () -> Void
-        private var safariViewController: SFSafariViewController?
+    /// Shows the authorize URL in an ASWebAuthenticationSession. By default it
+    /// is not ephemeral, so it keeps the identity provider's session (shared
+    /// with Safari where iOS allows) and its passkeys work, unlike the
+    /// sign-in WebView; NativeOAuthBrowserPreference.privateSignIn makes it
+    /// ephemeral for a fresh page with every sign-in method. Hermes only
+    /// accepts a loopback redirect, so the code still arrives through NativeOAuthLoopbackServer;
+    /// the session's callback scheme never matches, and Conduit closes the
+    /// browser itself once the callback arrives or the sign-in sheet goes away.
+    final class WebAuthenticationPresenterViewController: UIViewController,
+        ASWebAuthenticationPresentationContextProviding {
+        /// A scheme Hermes never redirects to, so the session only finishes
+        /// when the user cancels or Conduit closes it.
+        static let unusedCallbackScheme = "conduit-native-oauth-loopback"
 
-        init(onCancel: @escaping () -> Void) {
+        private var url: URL?
+        private let privateSignIn: Bool
+        private let onCancel: () -> Void
+        private let onFailure: (Error) -> Void
+        private var session: ASWebAuthenticationSession?
+        /// Set once the browser has closed for any reason (Conduit closed
+        /// it, the user cancelled, or it failed), so a late update or
+        /// appearance never opens a second one.
+        private var ended = false
+
+        init(privateSignIn: Bool, onCancel: @escaping () -> Void, onFailure: @escaping (Error) -> Void) {
+            self.privateSignIn = privateSignIn
             self.onCancel = onCancel
+            self.onFailure = onFailure
             super.init(nibName: nil, bundle: nil)
         }
 
@@ -1035,32 +1078,70 @@ private struct SafariAuthenticationView: UIViewControllerRepresentable {
         }
 
         func setAuthorizeURL(_ url: URL?) {
+            guard let url else {
+                // The model clears the URL once the loopback callback has
+                // arrived: the browser is no longer needed.
+                if self.url != nil { closeBrowser() }
+                return
+            }
             self.url = url
-            presentSafariIfReady()
+            startSessionIfReady()
         }
 
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
-            presentSafariIfReady()
+            startSessionIfReady()
         }
 
-        private func presentSafariIfReady() {
-            guard let url, viewIfLoaded?.window != nil,
-                  safariViewController == nil, presentedViewController == nil else { return }
-            let configuration = SFSafariViewController.Configuration()
-            configuration.entersReaderIfAvailable = false
-            configuration.barCollapsingEnabled = false
-            let safari = SFSafariViewController(url: url, configuration: configuration)
-            safari.delegate = self
-            safari.modalPresentationStyle = .fullScreen
-            safariViewController = safari
-            present(safari, animated: true) {
-                nativeOAuthLogger.notice("OAuth stage: Safari presented")
+        func closeBrowser() {
+            ended = true
+            guard let session else { return }
+            session.cancel()
+            self.session = nil
+        }
+
+        func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+            view.window ?? ASPresentationAnchor()
+        }
+
+        private func startSessionIfReady() {
+            guard let url, viewIfLoaded?.window != nil, session == nil, !ended else { return }
+            let session = ASWebAuthenticationSession(
+                url: url,
+                callbackURLScheme: Self.unusedCallbackScheme
+            ) { [weak self] _, error in
+                DispatchQueue.main.async {
+                    guard let self, !self.ended else { return }
+                    self.ended = true
+                    self.session = nil
+                    if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
+                        self.onCancel()
+                    } else if let error {
+                        nativeOAuthLogger.error("OAuth stage: browser session failed: \(error.localizedDescription, privacy: .public)")
+                        self.onFailure(NativeOAuthError.browserFailed)
+                    } else {
+                        // Hermes never redirects to the session's callback
+                        // scheme, so an end without an error is the page
+                        // going away: treat it as the user closing it.
+                        self.onCancel()
+                    }
+                }
             }
-        }
-
-        func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
-            onCancel()
+            session.presentationContextProvider = self
+            session.prefersEphemeralWebBrowserSession = privateSignIn
+            self.session = session
+            if session.start() {
+                nativeOAuthLogger.notice("OAuth stage: browser session presented")
+            } else {
+                nativeOAuthLogger.error("OAuth stage: browser session did not start")
+                ended = true
+                self.session = nil
+                // This can run inside SwiftUI's update pass (setAuthorizeURL),
+                // so report it on the next turn, as the completion does.
+                DispatchQueue.main.async { [onFailure] in
+                    onFailure(NativeOAuthError.browserFailed)
+                }
+            }
         }
     }
 }

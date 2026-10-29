@@ -39,24 +39,30 @@ enum PastedRemoteImage {
 struct ComposerPasteTextView: UIViewRepresentable {
     /// One line of body text plus the text insets at the current text size,
     /// so a large Text Size doesn't clip the first line.
-    static var minimumHeight: CGFloat { minimumHeight(for: nil) }
+    static var minimumHeight: CGFloat { minimumHeight(for: .preferredFont(forTextStyle: .body)) }
     /// About four lines at large text sizes, never under the original
     /// 160 pt, and capped so the composer can't cover the chat.
-    static var maximumHeight: CGFloat { maximumHeight(for: nil) }
+    static var maximumHeight: CGFloat { maximumHeight(for: .preferredFont(forTextStyle: .body)) }
 
-    /// The bounds for a text view's own traits, the same source its
-    /// `adjustsFontForContentSizeCategory` font scales from.
-    static func minimumHeight(for traits: UITraitCollection?) -> CGFloat {
-        max(44, ceil(bodyLineHeight(for: traits)) + 16)
+    /// The bounds for the text view's own font (`bodyFont`).
+    static func minimumHeight(for font: UIFont) -> CGFloat {
+        max(44, ceil(font.lineHeight) + 16)
     }
 
-    static func maximumHeight(for traits: UITraitCollection?) -> CGFloat {
-        min(max(160, ceil(bodyLineHeight(for: traits)) * 4 + 16), 280)
+    static func maximumHeight(for font: UIFont) -> CGFloat {
+        min(max(160, ceil(font.lineHeight) * 4 + 16), 280)
     }
 
-    private static func bodyLineHeight(for traits: UITraitCollection?) -> CGFloat {
-        UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits).lineHeight
+    /// Body text at the view's environment size, which a wide window's
+    /// chat column steps up (`readableChatColumn`) from `base`, grown by
+    /// point size where the system draws it no larger, as an iPad app on a
+    /// Mac appears to (`UIFont.preferredFont(forTextStyle:in:from:)`).
+    static func bodyFont(in sizeCategory: ContentSizeCategory, from base: DynamicTypeSize?) -> UIFont {
+        UIFont.preferredFont(forTextStyle: .body, in: sizeCategory, from: base)
     }
+
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
 
     @Binding var text: String
     @Binding var isFocused: Bool
@@ -65,6 +71,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
     let onPastedImage: (PastedImage) -> Void
     let onPastedImageError: (String) -> Void
     let editorIdentity: UUID
+    /// Files dropped or pasted on the field that are staged as attachments
+    /// (`AttachmentDrop.stagesAsFiles`), on the main thread.
+    var onDroppedFiles: (([NSItemProvider]) -> Void)? = nil
     /// Generation of INTENTIONAL programmatic composer replacements (draft
     /// restore, prefill, session handoff, slash insertion, clear after send).
     /// ComposerBar advances it only through `replaceComposerText(_:)`.
@@ -107,8 +116,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
     func makeUIView(context: Context) -> ImagePasteTextView {
         let view = ImagePasteTextView()
         view.delegate = context.coordinator
-        view.font = .preferredFont(forTextStyle: .body)
-        view.adjustsFontForContentSizeCategory = true
+        // Set here and on each text size change below rather than
+        // adjusted by UIKit, which would undo the Mac's point-size growth.
+        view.font = Self.bodyFont(in: sizeCategory, from: columnBaseTextSize)
         view.backgroundColor = .clear
         view.textColor = .label
         view.tintColor = .systemOrange
@@ -128,6 +138,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         }
         view.onPastedImage = onPastedImage
         view.onPastedImageError = onPastedImageError
+        view.onDroppedFiles = onDroppedFiles
         view.returnKeySends = returnKeySends
         view.canSubmitFromReturn = canSubmitFromReturn
         view.onSubmitFromReturn = onSubmitFromReturn
@@ -140,14 +151,16 @@ struct ComposerPasteTextView: UIViewRepresentable {
 
     func updateUIView(_ uiView: ImagePasteTextView, context: Context) {
         TranscriptPerf.note(.composerUpdateUIView)
-        // Text Size changed while the app was open: the font follows on its
-        // own, the height bounds need re-reading. Checked by category so the
-        // hot update path doesn't look up fonts.
-        let category = uiView.traitCollection.preferredContentSizeCategory
+        // Text Size changed while the app was open, or a wide column
+        // stepped it: the font and the height bounds follow. Checked by
+        // category so the hot update path doesn't look up fonts.
+        let category = UIContentSizeCategory(sizeCategory)
         if uiView.boundsContentSizeCategory != category {
             uiView.boundsContentSizeCategory = category
-            uiView.minimumReportedHeight = Self.minimumHeight(for: uiView.traitCollection)
-            uiView.maximumReportedHeight = Self.maximumHeight(for: uiView.traitCollection)
+            let font = Self.bodyFont(in: sizeCategory, from: columnBaseTextSize)
+            uiView.font = font
+            uiView.minimumReportedHeight = Self.minimumHeight(for: font)
+            uiView.maximumReportedHeight = Self.maximumHeight(for: font)
             uiView.setNeedsLayout()
         }
         context.coordinator.parent = self
@@ -171,11 +184,12 @@ struct ComposerPasteTextView: UIViewRepresentable {
         }
         uiView.onPastedImage = onPastedImage
         uiView.onPastedImageError = onPastedImageError
+        uiView.onDroppedFiles = onDroppedFiles
         uiView.returnKeySends = returnKeySends
         uiView.canSubmitFromReturn = canSubmitFromReturn
         uiView.onSubmitFromReturn = onSubmitFromReturn
         if isFocused, !uiView.isFirstResponder { uiView.becomeFirstResponder() }
-        if !isFocused, uiView.isFirstResponder { uiView.resignFirstResponder() }
+        if !isFocused, uiView.isFirstResponder { _ = uiView.resignFirstResponder() }
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
@@ -325,6 +339,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
                 textView.onContentHeightChange = nil
                 textView.onPastedImage = nil
                 textView.onPastedImageError = nil
+                textView.onDroppedFiles = nil
                 textView.returnKeySends = false
                 textView.canSubmitFromReturn = false
                 textView.onSubmitFromReturn = nil
@@ -397,9 +412,10 @@ struct ComposerPasteTextView: UIViewRepresentable {
     }
 }
 
-final class ImagePasteTextView: UITextView {
+final class ImagePasteTextView: ReturnKeyTextView {
     var onPastedImage: ((PastedImage) -> Void)?
     var onPastedImageError: ((String) -> Void)?
+    var onDroppedFiles: (([NSItemProvider]) -> Void)?
     var onContentHeightChange: ((CGFloat) -> Void)?
     var editorIdentity: UUID?
     var minimumReportedHeight: CGFloat = 44
@@ -407,147 +423,6 @@ final class ImagePasteTextView: UITextView {
     var boundsContentSizeCategory: UIContentSizeCategory?
     var maximumReportedHeight: CGFloat = 160
     private var lastReportedHeight: CGFloat = 0
-
-    // Hardware-keyboard Return shortcut. pressesBegan only classifies the
-    // keystroke; the send-vs-newline policy lives in ComposerReturnKey and
-    // the actual composer action stays in ComposerBar. The software
-    // keyboard's Return key does not produce UIPress events, so it keeps its
-    // existing newline behavior untouched.
-    var returnKeySends = false
-    var canSubmitFromReturn = false
-    var onSubmitFromReturn: (() -> Bool)?
-    /// Ground-truth Shift state folded from the keyboard's own Shift press
-    /// events. Some Bluetooth keyboards report chord modifiers with a lag on
-    /// the event/key modifier surfaces, so the physical Shift press itself is
-    /// tracked as well. Left and right Shift are tracked independently so a
-    /// released key cannot clear a still-held second Shift.
-    private var heldShiftKeys: Set<UIKeyboardHIDUsage> = []
-    private var hardwareShiftHeld: Bool { !heldShiftKeys.isEmpty }
-
-    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        foldHardwareShift(presses, pressed: true)
-        var forwarding = presses
-        if let returnPress = presses.first(where: { Self.isReturnKeyPress($0) }) {
-            let shiftPressed = hardwareShiftHeld
-                || Self.shiftIsPressed(event: event, key: returnPress.key)
-                || Self.shiftIsHeld(in: event?.allPresses ?? [])
-            // Consume only the Return press, and only when the composer
-            // actually acted. Every other case (setting off, Shift-Return,
-            // marked text / IME composition, non-submittable composer,
-            // declined callback) is forwarded with the remaining presses so
-            // UIKit's normal text-input behavior is preserved.
-            if handleReturnKeyPress(shiftPressed: shiftPressed) {
-                forwarding.remove(returnPress)
-            }
-        }
-        if !forwarding.isEmpty {
-            super.pressesBegan(forwarding, with: event)
-        }
-    }
-
-    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        foldHardwareShift(presses, pressed: false)
-        // Forward the original set: UIKit tracks press lifecycle across the
-        // whole sequence, not just the keys this shortcut cares about.
-        super.pressesEnded(presses, with: event)
-    }
-
-    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        // A cancelled sequence (e.g. the system ends chord tracking) must
-        // release tracked Shift state exactly like a normal key-up, or the
-        // shortcut would keep believing Shift is held.
-        foldHardwareShift(presses, pressed: false)
-        // Forward the original set: UIKit tracks press lifecycle across the
-        // whole sequence, not just the keys this shortcut cares about.
-        super.pressesCancelled(presses, with: event)
-    }
-
-    /// Whether any currently-down Shift press exists anywhere in the press
-    /// event. Covers keyboards that deliver the Shift key-down in a separate,
-    /// later event than Return, where the per-press modifiers and the local
-    /// fold would not yet show the chord.
-    static func shiftIsHeld(in presses: Set<UIPress>) -> Bool {
-        presses.contains { press in
-            press.key?.keyCode == .keyboardLeftShift || press.key?.keyCode == .keyboardRightShift
-        }
-    }
-
-    override func resignFirstResponder() -> Bool {
-        // A focus change mid-chord means the key-up will go to a different
-        // responder; drop the tracked Shift so the next plain Return is not
-        // misread as Shift-Return.
-        heldShiftKeys.removeAll()
-        return super.resignFirstResponder()
-    }
-
-    /// Folds physical Shift presses into the tracked chord state. Cancellations
-    /// are treated like key-ups: the press is no longer held either way.
-    private func foldHardwareShift(_ presses: Set<UIPress>, pressed: Bool) {
-        heldShiftKeys = Self.updatedShiftState(
-            heldShiftKeys,
-            keyCodes: Set(presses.compactMap { $0.key?.keyCode }),
-            isPressed: pressed
-        )
-    }
-
-    /// Pure Shift-chord state transition over key codes, extracted so the
-    /// begin/end/cancel bookkeeping is unit-testable without synthesizing
-    /// UIPress events. Unknown key codes are ignored; cancellations and
-    /// key-ups both release their keys.
-    static func updatedShiftState(
-        _ held: Set<UIKeyboardHIDUsage>,
-        keyCodes: Set<UIKeyboardHIDUsage>,
-        isPressed: Bool
-    ) -> Set<UIKeyboardHIDUsage> {
-        let shiftCodes: Set<UIKeyboardHIDUsage> = [.keyboardLeftShift, .keyboardRightShift]
-        let touched = keyCodes.intersection(shiftCodes)
-        return isPressed ? held.union(touched) : held.subtracting(touched)
-    }
-
-    /// Applies the Return shortcut policy for one Return key press and
-    /// reports whether the press was consumed as a submit. While the text
-    /// view holds IME marked text, Return belongs to the composition and the
-    /// shortcut always declines. Consumption additionally requires the
-    /// composer's callback to report that it acted; anything else returns
-    /// false so the caller forwards the press. Internal so tests can drive
-    /// the exact pressesBegan branch without synthesizing UIPress or UIKey
-    /// events (neither exposes an initializer).
-    @discardableResult
-    func handleReturnKeyPress(shiftPressed: Bool) -> Bool {
-        handleReturnKeyPress(shiftPressed: shiftPressed, hasMarkedText: markedTextRange != nil)
-    }
-
-    /// Test seam for the same decision path with the marked-text state passed
-    /// explicitly, since a live IME composition cannot be synthesized in unit
-    /// tests.
-    func handleReturnKeyPress(shiftPressed: Bool, hasMarkedText: Bool) -> Bool {
-        let decision = ComposerReturnKey.decision(
-            returnKeySends: returnKeySends,
-            shiftPressed: shiftPressed,
-            hasMarkedText: hasMarkedText,
-            canSubmit: canSubmitFromReturn
-        )
-        guard decision == .submit, let onSubmit = onSubmitFromReturn else { return false }
-        return onSubmit()
-    }
-
-    /// Pure keystroke classification for hardware Return presses. Covers the
-    /// main Return key plus the keypad/alternate Enter keys on extended
-    /// keyboards, so every physical Enter variant behaves consistently.
-    static func isReturnKeyPress(_ press: UIPress) -> Bool {
-        guard let keyCode = press.key?.keyCode else { return false }
-        return keyCode == .keyboardReturnOrEnter
-            || keyCode == .keyboardReturn
-            || keyCode == .keypadEnter
-    }
-
-    /// Shift detection for a Return press. UIPressesEvent and UIKey can
-    /// report modifiers independently, so both sources are consulted; either
-    /// reporting Shift means the user wants a newline.
-    static func shiftIsPressed(event: UIPressesEvent?, key: UIKey?) -> Bool {
-        (event?.modifierFlags.contains(.shift) ?? false)
-            || (key?.modifierFlags.contains(.shift) ?? false)
-    }
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
@@ -594,6 +469,9 @@ final class ImagePasteTextView: UITextView {
 
     override func canPaste(_ itemProviders: [NSItemProvider]) -> Bool {
         if itemProviders.contains(where: { canLoadImageProvider($0) }) {
+            return true
+        }
+        if onDroppedFiles != nil, AttachmentDrop.stagesAsFiles(itemProviders) {
             return true
         }
         return super.canPaste(itemProviders)
@@ -652,6 +530,16 @@ final class ImagePasteTextView: UITextView {
     }
 
     override func paste(itemProviders: [NSItemProvider]) {
+        // Dropped files (Finder, Files) attach as picked files do; words
+        // and links among them go into the text, and a lone image keeps
+        // the image paste below.
+        if let onDroppedFiles, AttachmentDrop.stagesAsFiles(itemProviders) {
+            let files = AttachmentDrop.files(in: itemProviders)
+            DispatchQueue.main.async { onDroppedFiles(files) }
+            let words = itemProviders.filter { !AttachmentDrop.takes($0) }
+            if !words.isEmpty { super.paste(itemProviders: words) }
+            return
+        }
         guard let provider = itemProviders.first(where: { canLoadImageProvider($0) }) else {
             super.paste(itemProviders: itemProviders)
             return

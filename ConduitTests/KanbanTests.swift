@@ -1,4 +1,3 @@
-import Combine
 import XCTest
 @testable import Conduit
 
@@ -379,15 +378,13 @@ final class KanbanTests: XCTestCase {
         XCTAssertEqual(store.loadedBoardSlug, "alpha")
         let boardBefore = store.board
 
-        var changes = 0
-        let subscription = store.objectWillChange.sink { changes += 1 }
+        let changes = observeAllState(of: store)
         await store.poll()
-        subscription.cancel()
 
         // Loading on, then off. The unchanged boards, board, profiles,
         // projects and orchestration aren't written again: each write would
         // redraw the whole board.
-        XCTAssertEqual(changes, 2)
+        XCTAssertEqual(changes.finish().count, 2)
         XCTAssertEqual(store.board, boardBefore)
         XCTAssertFalse(store.isLoading)
     }
@@ -401,13 +398,11 @@ final class KanbanTests: XCTestCase {
         let message = store.errorMessage
         XCTAssertTrue(message?.contains("dashboard unreachable") == true)
 
-        var changes = 0
-        let subscription = store.objectWillChange.sink { changes += 1 }
+        let changes = observeAllState(of: store)
         await store.poll()
-        subscription.cancel()
 
         // The same failure leaves the message as it is; the board stays.
-        XCTAssertEqual(changes, 2)
+        XCTAssertEqual(changes.finish().count, 2)
         XCTAssertEqual(store.errorMessage, message)
         XCTAssertEqual(store.loadedBoardSlug, "alpha")
     }
@@ -421,13 +416,11 @@ final class KanbanTests: XCTestCase {
         let message = store.errorMessage
         XCTAssertNotNil(message)
 
-        var seen: [String?] = []
-        let subscription = store.$errorMessage.dropFirst().sink { seen.append($0) }
+        let seen = ObservedValues { store.errorMessage }
         await store.selectBoard(slug: "beta")
-        subscription.cancel()
 
         // The switch starts without the old error; its own failure then shows.
-        XCTAssertEqual(seen, [nil, message])
+        XCTAssertEqual(seen.finish(), [nil, message])
     }
 
     // MARK: - Mutation reconciliation vs passive poll ordering
@@ -689,44 +682,6 @@ final class KanbanTests: XCTestCase {
         let boardCall = try XCTUnwrap(requester.calls.last(where: { $0.path.contains("/api/plugins/kanban/board") && !$0.path.contains("/boards") }))
         XCTAssertTrue(boardCall.path.hasSuffix("/board?board=alpha"), "server-current must be pinned before GET /board: \(boardCall.path)")
         XCTAssertEqual(store.loadedBoardSlug, "alpha")
-    }
-
-    func testFindTaskLooksOnTheLoadedBoardFirstThenTheOthers() async throws {
-        var responses = standardKanbanResponses()
-        responses["/api/plugins/kanban/tasks/t9?board=beta"] = ["task": ["id": "t9", "title": "On beta", "status": "blocked"]]
-        let notHere = DashboardTicketBridgeError.http(status: 404, detail: "not found")
-        let requester = MockKanbanRequester(responsesByPath: responses, errorsByPath: [
-            "/api/plugins/kanban/tasks/t9?board=default": notHere,
-            "/api/plugins/kanban/tasks/gone?board=default": notHere,
-            "/api/plugins/kanban/tasks/gone?board=beta": notHere,
-            "/api/plugins/kanban/tasks/gone?board=alpha": notHere
-        ])
-        let store = makeStore(requester: requester)
-        await store.refresh()
-        XCTAssertEqual(store.loadedBoardSlug, "default")
-
-        let found = try await store.findTask(id: "t9")
-        XCTAssertEqual(found?.board, "beta")
-        XCTAssertEqual(found?.task.title, "On beta")
-        let asked = requester.calls.map(\.path).filter { $0.hasPrefix("/api/plugins/kanban/tasks/t9") }
-        XCTAssertEqual(asked, ["/api/plugins/kanban/tasks/t9?board=default", "/api/plugins/kanban/tasks/t9?board=beta"])
-
-        let missing = try await store.findTask(id: "gone")
-        XCTAssertNil(missing)
-
-        // One board's failure doesn't hide the task on another board...
-        requester.errorsByPath["/api/plugins/kanban/tasks/t9?board=default"] = DashboardTicketBridgeError.http(status: 503, detail: "down")
-        let pastFailure = try await store.findTask(id: "t9")
-        XCTAssertEqual(pastFailure?.board, "beta")
-
-        // ...but when no board has it, the failure is the answer, not a missing task.
-        requester.errorsByPath["/api/plugins/kanban/tasks/gone?board=default"] = DashboardTicketBridgeError.http(status: 503, detail: "down")
-        do {
-            _ = try await store.findTask(id: "gone")
-            XCTFail("a failed read must throw")
-        } catch DashboardTicketBridgeError.http(let status, _) {
-            XCTAssertEqual(status, 503)
-        }
     }
 
     func testDotSegmentIdentifiersFailBeforeTransport() async throws {
@@ -1008,4 +963,25 @@ private func standardKanbanResponses(boardSlug: String = "default") -> [String: 
         ],
         "/api/plugins/kanban/dispatch": [:]
     ]
+}
+
+/// Every write to the store's observed state, as objectWillChange counted.
+@MainActor
+private func observeAllState(of store: KanbanStore) -> ObservedValues<Void> {
+    ObservedValues {
+        _ = store.boards
+        _ = store.currentServerBoardSlug
+        _ = store.board
+        _ = store.profiles
+        _ = store.projects
+        _ = store.orchestration
+        _ = store.selectedBoardSlug
+        _ = store.loadedBoardSlug
+        _ = store.isLoading
+        _ = store.isMutating
+        _ = store.errorMessage
+        _ = store.mutationErrorMessage
+        _ = store.liveInvalidation
+        _ = store.liveStreamConnected
+    }
 }

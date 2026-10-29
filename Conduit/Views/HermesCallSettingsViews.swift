@@ -143,8 +143,10 @@ struct HermesCallSettingsSection: View {
     @FocusState private var rulesFocused: Bool
     /// This iPhone's own setting, not the host's.
     @AppStorage(HermesNativeCalls.ringsKey) private var ringsLikeCall = true
+    @ObservedObject private var notifications = PushNotificationService.shared
     @State private var loadFailed = false
     @State private var saveTask: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(model: HermesCallSettingsModel, startTestCall: (() -> Void)? = nil, startWatch: ((String) -> Void)? = nil) {
         self.model = model
@@ -157,9 +159,11 @@ struct HermesCallSettingsSection: View {
 
     /// Saved once the user stops tapping, so a stepper run is one save.
     /// Saves go one at a time, so the newest change lands last; one the host
-    /// didn't take puts back what it holds.
+    /// didn't take puts back what it holds. Animated, so the rows a toggle
+    /// reveals slide in rather than pop.
     private func change(_ edit: (inout HermesCallSettings) -> Void) {
-        edit(&draft)
+        let animation = ConduitMotion.ease(reduceMotion: reduceMotion)
+        withAnimation(animation) { edit(&draft) }
         let previous = saveTask
         previous?.cancel()
         let settings = draft
@@ -174,7 +178,9 @@ struct HermesCallSettingsSection: View {
             guard !Task.isCancelled else { return }
             saveTask = nil
             // What the host holds now, including saves since this edit.
-            if !saved, let hostSettings = current() ?? editTimeSettings { draft = hostSettings }
+            if !saved, let hostSettings = current() ?? editTimeSettings {
+                withAnimation(animation) { draft = hostSettings }
+            }
         }
     }
 
@@ -221,6 +227,12 @@ struct HermesCallSettingsSection: View {
                         Text("On this iPhone and your Apple Watch. Off, a “Hermes wants to talk” notification comes instead: tap Talk to answer.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if ringsLikeCall, notifications.watchRingsForAnotherIPhone {
+                            Label(AppLocalization.string("Your Apple Watch rings for Conduit on another iPhone, so a call you answer on the Watch goes there. If the Watch is with this iPhone now, pair each of your profiles with this iPhone in Settings > Notifications to move it here."), systemImage: "applewatch.slash")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .accessibilityIdentifier("hermesCalls.watchElsewhere")
+                        }
                     }
                     Toggle("Call when I ask", isOn: binding(\.whenAsked))
                     Text("Say “call me when it's done” during a live call, or ask Hermes in a chat to call you. Hermes calls about that job once the call has ended; if it finishes while you're still talking, you hear about it in the call instead.")

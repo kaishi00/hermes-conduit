@@ -59,6 +59,10 @@ enum VoiceChatFinder {
     static let searchPath = "/api/sessions/search"
     /// Matches a search hands the model: enough to pick from, few enough to read out.
     static let resultLimit = 5
+    /// Rows asked of Hermes for those five: a worker stored before the
+    /// `kanban` tag passes the source filter and is dropped after (matches),
+    /// so a query its prompt matches ("task") mustn't crowd real chats out.
+    static let searchLimit = resultLimit * 3
     static let maximumQueryCharacters = 200
     static let maximumSnippetCharacters = 160
 
@@ -103,7 +107,12 @@ enum VoiceChatFinder {
 
     static func path(query: String, profile: String) -> String {
         let encoded = DashboardPath.encodedQueryComponent(query) ?? ""
-        return DashboardPath.withProfile("\(searchPath)?q=\(encoded)&limit=\(resultLimit)", profile: profile)
+        // Kanban workers, tool integrations and one-shot runs aren't chats
+        // (see SessionSource.hermesInternalSources), so voice never finds them.
+        return DashboardPath.withProfile(
+            "\(searchPath)?q=\(encoded)&limit=\(searchLimit)&exclude_sources=\(SessionSource.nonChatExcludedSources)",
+            profile: profile
+        )
     }
 
     /// The search response's chats, in Hermes' order.
@@ -114,6 +123,8 @@ enum VoiceChatFinder {
             let id = (text(row["session_id"]) ?? text(row["id"]) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !id.isEmpty, seen.insert(id).inserted else { return nil }
+            // A worker stored before the `kanban` tag (SessionContentSearch.hits).
+            guard !SessionSource.isLegacyKanbanWorker(source: text(row["source"]), preview: text(row["preview"])) else { return nil }
             let title = (text(row["title"]) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let active = epoch(row["last_active"]) ?? epoch(row["session_started"]) ?? epoch(row["started_at"])
             return VoiceChatMatch(

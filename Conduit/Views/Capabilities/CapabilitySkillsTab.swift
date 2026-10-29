@@ -12,7 +12,7 @@ import SwiftUI
 struct CapabilitySkillsTab: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     let query: String
     let refresh: () async -> Void
     @AppStorage("capabilities.skills.mostUsedFirst") private var mostUsedFirst = true
@@ -218,7 +218,7 @@ private struct CapabilitySkillRow: View {
 
 private struct OfficialSkillRow: View {
     let skill: OfficialSkill
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     let reload: () async -> Void
 
     private var state: CapabilityInstallState? { store.skillInstalls[skill.identifier] }
@@ -270,7 +270,7 @@ struct CapabilitySkillDetailPage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     let name: String
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     @State private var document: SkillFrontmatter?
     @State private var loadError: String?
 
@@ -340,7 +340,7 @@ struct OfficialSkillDetailPage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     let skill: OfficialSkill
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     let reload: () async -> Void
     @State private var document: SkillFrontmatter?
     @State private var loadError: String?

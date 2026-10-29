@@ -367,20 +367,18 @@ struct KanbanView: View {
 
     init(columnsLayout: Bool = false) {
         self.columnsLayout = columnsLayout
-        _store = StateObject(wrappedValue: KanbanStore())
+        _store = State(initialValue: KanbanStore())
     }
 
     /// Tests host the real board over a store whose service they supply.
     init(columnsLayout: Bool, store: KanbanStore) {
         self.columnsLayout = columnsLayout
-        _store = StateObject(wrappedValue: store)
+        _store = State(initialValue: store)
     }
 
     @EnvironmentObject private var appState: AppState
-    @StateObject private var store: KanbanStore
+    @State private var store: KanbanStore
     @State private var selectedTask: KanbanTask?
-    /// The task request being opened (AppState.kanbanTaskOpenRequest).
-    @State private var openingRequest: UUID?
     @State private var showNewTask = false
     @State private var newTaskStatus = "todo"
     @State private var newTaskContext: KanbanBoardContextStamp?
@@ -476,55 +474,6 @@ struct KanbanView: View {
         lastBulkOutcome = nil
         bulkNoticeState.clear()
         showBulkFailures = false
-    }
-
-    /// Opens the task a request names, on whichever board holds it, once
-    /// a board has loaded and shows; says so when no board has it. A load
-    /// that fails while the request waits drops it, so it never opens
-    /// later (an error left from before doesn't), and so do leaving Tasks
-    /// and a switch to another dashboard. A newer request wins: an
-    /// older lookup that finishes later changes nothing.
-    private func openRequestedTask() {
-        guard shell.isTabActive, let request = appState.kanbanTaskOpenRequest, openingRequest != request.id else { return }
-        guard request.dashboardID == appState.activeDashboardID else {
-            appState.kanbanTaskOpenRequest = nil
-            return
-        }
-        // Waits out a load in flight too: an earlier request's board switch
-        // landing later would leave this task's sheet reading the wrong board.
-        guard store.loadedBoardSlug != nil, !store.isLoading else { return }
-        openingRequest = request.id
-        Task {
-            defer {
-                if appState.kanbanTaskOpenRequest?.id == request.id { appState.kanbanTaskOpenRequest = nil }
-            }
-            // Still the request, on its dashboard, with Tasks showing: one left behind opens nothing.
-            let current = {
-                appState.kanbanTaskOpenRequest?.id == request.id && appState.activeDashboardID == request.dashboardID
-                    && shell.isTabActive
-            }
-            do {
-                let found = try await store.findTask(id: request.taskID)
-                guard current() else { return }
-                guard let found else {
-                    store.showMutationError(KanbanServiceError.invalidResponse(
-                        AppLocalization.string("Couldn't find Kanban task \(request.taskID) on your boards.")))
-                    return
-                }
-                if found.board != store.loadedBoardSlug {
-                    // Checked again after the lookup: a newer request mustn't have its board switched under it.
-                    guard current() else { return }
-                    await store.selectBoard(slug: found.board, includeArchived: includeArchived)
-                    // The switch failed: its own error shows, and the old board's sheet would read the wrong board.
-                    guard current(), store.loadedBoardSlug == found.board else { return }
-                }
-                selectedTask = found.task
-            } catch is CancellationError {
-                return
-            } catch {
-                if current() { store.showMutationError(error) }
-            }
-        }
     }
 
     /// Prune selected IDs against the authoritative loaded board (polling
@@ -646,7 +595,7 @@ struct KanbanView: View {
                     description: Text(errorMessage)
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let board = store.board {
+            } else if store.board != nil {
                 if visibleColumns.isEmpty {
                     ContentUnavailableView("No Columns", systemImage: "rectangle.3.group")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -705,26 +654,26 @@ struct KanbanView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(item: $selectedTask) { task in
             KanbanTaskDetailView(task: task)
-                .environmentObject(store)
+                .environment(store)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showNewTask) {
             KanbanTaskComposerView(initialStatus: newTaskStatus, expectedContext: newTaskContext)
-                .environmentObject(store)
+                .environment(store)
                 .environmentObject(appState)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showOrchestrationSettings) {
             KanbanOrchestrationSettingsSheet()
-                .environmentObject(store)
+                .environment(store)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showProfileRouting) {
             KanbanProfileRoutingScreen()
-                .environmentObject(store)
+                .environment(store)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
@@ -734,14 +683,14 @@ struct KanbanView: View {
             // no loaded metadata exists.
             if let board = loadedBoardMetadata {
                 KanbanBoardEditorView(mode: .settings(board: board), includeArchived: includeArchived)
-                    .environmentObject(store)
+                    .environment(store)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
         }
         .sheet(isPresented: $showNewBoard) {
             KanbanBoardEditorView(mode: .create, includeArchived: includeArchived)
-                .environmentObject(store)
+                .environment(store)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
@@ -752,7 +701,7 @@ struct KanbanView: View {
                 tenantFilter: $tenantFilter,
                 groupRunningByProfile: $groupRunningByProfile
             )
-            .environmentObject(store)
+            .environment(store)
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
         }
@@ -883,24 +832,6 @@ struct KanbanView: View {
         // prune ghost selections against it (never transfer by index).
         .onChange(of: store.board) { _, _ in
             pruneSelectionAgainstBoard()
-        }
-        // A task to show (a Pulse card's), once the board is up and showing.
-        .onChange(of: appState.kanbanTaskOpenRequest, initial: true) { _, _ in openRequestedTask() }
-        .onChange(of: store.loadedBoardSlug) { _, _ in openRequestedTask() }
-        .onChange(of: shell.isTabActive) { _, isActive in
-            // Leaving Tasks before the task could open drops the request, so it never opens unasked later.
-            if !isActive, let request = appState.kanbanTaskOpenRequest, openingRequest != request.id {
-                appState.kanbanTaskOpenRequest = nil
-            }
-            openRequestedTask()
-        }
-        .onChange(of: store.isLoading) { wasLoading, isLoading in
-            // A load that just failed with no board to show: the request can't open.
-            if wasLoading, !isLoading, store.loadedBoardSlug == nil, store.errorMessage != nil,
-               appState.kanbanTaskOpenRequest != nil, openingRequest != appState.kanbanTaskOpenRequest?.id {
-                appState.kanbanTaskOpenRequest = nil
-            }
-            openRequestedTask()
         }
         // V2 keeps a visited Tasks tab mounted behind the selected one: the
         // board listens and polls only while it shows and the app is on

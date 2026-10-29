@@ -31,6 +31,9 @@ final class HermesVoiceGateway: VoiceGatewayService {
     }
 
     let profile: String
+    /// The query parameter naming `profile` on the speech server's sockets
+    /// (DashboardPath.conduitProfileParameter).
+    let profileParameter: String
     let bridge: DashboardTicketBridge
     let baseURL: String
     /// Who speaks replies, read when each reply's stream opens so a change
@@ -49,6 +52,7 @@ final class HermesVoiceGateway: VoiceGatewayService {
         bridge: DashboardTicketBridge,
         baseURL: String,
         profile: String,
+        profileParameter: String = "profile",
         speechOutput: @escaping @MainActor () -> VoiceSpeechOutput = { .hermes },
         makeOnDeviceSpeech: FallbackSpeechStream.OpenOnDevice? = nil,
         fallsBackToOnDeviceSpeech: Bool = false
@@ -57,6 +61,7 @@ final class HermesVoiceGateway: VoiceGatewayService {
         self.baseURL = (try? ConnectionURLPolicy.normalizedBaseURL(baseURL))
             ?? baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         self.profile = profile
+        self.profileParameter = profileParameter
         self.speechOutput = speechOutput
         self.makeOnDeviceSpeech = makeOnDeviceSpeech
         self.fallsBackToOnDeviceSpeech = fallsBackToOnDeviceSpeech

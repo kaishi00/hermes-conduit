@@ -1,8 +1,8 @@
 {
   "_comment": [
-    "The PR / push-to-main smoke selection (CI v5, docs/CI.md).",
+    "The PR and push smoke selection (CI v5, docs/CI.md).",
     "",
-    "Every PR and every push to main runs ONE macOS job (ci.yml's `smoke`): it",
+    "Every PR and every push runs ONE macOS job (ci.yml's `smoke`): it",
     "builds once, then runs the `unit` classes below as one xcodebuild invocation",
     "(no retry) and the `ui` classes as one invocation (one targeted retry), on",
     "the same build and booted simulator. It answers 'does this build, and is",

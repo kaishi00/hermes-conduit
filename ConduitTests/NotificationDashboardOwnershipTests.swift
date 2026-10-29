@@ -156,6 +156,18 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
         XCTAssertEqual(nested?.dashboardID, dashboardB)
     }
 
+    func testTheBotsNameRidesBesideTheProfileItRoutesBy() throws {
+        let named = try XCTUnwrap(PushNotificationService.parseNotificationTarget(from: ["body": ["conduit": [
+            "session_id": "runtime-1", "profile": "default", "profile_name": " Nova ",
+        ]]]))
+        XCTAssertEqual(named.profile, "default")
+        XCTAssertEqual(named.profileName, "Nova")
+        let unnamed = try XCTUnwrap(PushNotificationService.parseNotificationTarget(from: ["conduit": [
+            "session_id": "runtime-1", "profile": "default", "profile_name": "  ",
+        ]]))
+        XCTAssertNil(unnamed.profileName)
+    }
+
     // MARK: - Fail-closed integration
 
     private func makeAppState(registry: SavedDashboardRegistry) -> AppState {
@@ -533,55 +545,6 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertEqual(outcome, .retry)
         XCTAssertEqual(appState.activeDashboardID, dashboardA)
         XCTAssertNil(appState.errorMessage)
-    }
-
-    func testPulseQuietForTodayIsOwnedAsATapOnThePushIs() {
-        let savedA = SavedDashboard(id: dashboardA, label: "VPS", normalizedURL: "https://vps.tailnet.ts.net")
-        let savedB = SavedDashboard(id: dashboardB, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
-        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
-        appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
-        appState.recordRelayGatewayID("gw-2", for: dashboardB, profile: "default")
-        // The host in use, by its gateway, whatever dashboard the pairing was bound to.
-        XCTAssertEqual(appState.pulseQuietOwnership(PulseQuietTarget(dashboardID: dashboardB.uuidString, gatewayID: "gw-1")),
-                       .route)
-        // Another saved dashboard's push switches to it first, which only a tap with Conduit open does.
-        XCTAssertEqual(appState.pulseQuietOwnership(PulseQuietTarget(dashboardID: dashboardB.uuidString, gatewayID: "gw-2")),
-                       .switchFirst(dashboardID: dashboardB))
-        // A dashboard no longer saved, or a push Conduit couldn't place with two saved: nothing goes quiet.
-        XCTAssertEqual(appState.pulseQuietOwnership(PulseQuietTarget(dashboardID: UUID().uuidString, gatewayID: "gw-9")),
-                       .failClosed(.unrecognizedDashboard))
-        XCTAssertEqual(appState.pulseQuietOwnership(nil), .failClosed(.unscopedPush))
-        // The gateways a saved dashboard still pairs through: the extension offers the button for no other.
-        XCTAssertEqual(appState.knownRelayGatewayIDs, ["gw-1", "gw-2"])
-        appState.removeDashboard(dashboardB)
-        XCTAssertEqual(appState.knownRelayGatewayIDs, ["gw-1"])
-    }
-
-    func testPulseQuietForTodayRetryDuringACallWaitsForItToEnd() async {
-        let savedA = SavedDashboard(id: dashboardA, label: "VPS", normalizedURL: "https://vps.tailnet.ts.net")
-        let savedB = SavedDashboard(id: dashboardB, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
-        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
-        appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
-        appState.recordRelayGatewayID("gw-2", for: dashboardB, profile: "default")
-        appState.showVoiceSheet = true
-        let target = PulseQuietTarget(dashboardID: dashboardB.uuidString, gatewayID: "gw-2")
-        let notifications = PushNotificationService.shared
-        defer { _ = notifications.takePendingPulseQuiet(target) }
-        let attempt = notifications.pulseQuietAttempt
-
-        // Another saved dashboard's push, retried with Conduit open: a call keeps
-        // Conduit where it is, and the retry waits for the call to end, saying
-        // so over the screen (the composer's error line doesn't show during a call).
-        let quieted = await appState.quietPulseForToday(target, switching: true, wait: .zero)
-
-        XCTAssertFalse(quieted)
-        XCTAssertEqual(appState.activeDashboardID, dashboardA)
-        XCTAssertEqual(appState.pinSyncNotice?.message,
-                       AppLocalization.string("Pulse goes quiet in the other workspace when the call ends."))
-        XCTAssertNil(appState.errorMessage, "nothing stale for the composer to show later")
-        XCTAssertTrue(appState.isVoiceCallInProgress)
-        XCTAssertEqual(notifications.pendingPulseQuiet, target)
-        XCTAssertEqual(notifications.pulseQuietAttempt, attempt + 1)
     }
 
     func testRelayGatewayIDsAreKeptPerDashboardAndForgottenWithIt() {

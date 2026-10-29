@@ -165,7 +165,7 @@ struct V2SessionRow: View {
     var isUnread = false
     var isPinned = false
     var isStarred = false
-    var isSelected = false
+    var selection = V2RowSelection.none
     /// Project pages draw the status glyph ahead of the title, in the unread
     /// column, instead of ahead of the preview.
     var leadingGlyph = false
@@ -246,16 +246,13 @@ struct V2SessionRow: View {
         .padding(.bottom, hasNestBelow ? 4 : 13)
         .padding(.trailing, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            if isSelected {
-                Color.primary.opacity(0.05)
-            }
-        }
+        .v2RowSelection(selection)
         .contentShape(Rectangle())
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(title))
         .accessibilityValue(Text(accessibilityValue))
+        .v2SelectedTrait(selection)
     }
 
     /// The glyph before the preview. Beside an icon that already names the
@@ -318,7 +315,7 @@ struct V2ContentMatchRow: View {
     let snippet: SessionSearchSnippet
     var isUnread = false
     var isStarred = false
-    var isSelected = false
+    var selection = V2RowSelection.none
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -365,16 +362,13 @@ struct V2ContentMatchRow: View {
         .padding(.vertical, 9)
         .padding(.trailing, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            if isSelected {
-                Color.primary.opacity(0.05)
-            }
-        }
+        .v2RowSelection(selection)
         .contentShape(Rectangle())
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(title))
         .accessibilityValue(Text(accessibilityValue))
+        .v2SelectedTrait(selection)
     }
 
     private var accessibilityValue: String {
