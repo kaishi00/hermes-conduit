@@ -612,9 +612,10 @@ extension ImageGalleryViewController: UIPageViewControllerDataSource, UIPageView
 extension ImageGalleryViewController: UIGestureRecognizerDelegate {
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard gestureRecognizer === dismissPan else {
-            // A tap on the bar's buttons is theirs.
+            // A tap on the bar's buttons is theirs; one on its shade or
+            // titles shows or hides the bar.
             let point = gestureRecognizer.location(in: topBar)
-            return chromeHidden || !topBar.bounds.contains(point)
+            return chromeHidden || !(topBar.hitTest(point, with: nil) is UIControl)
         }
         // Only an up or down drag of a picture that isn't zoomed in: a
         // zoomed one pans, and a sideways drag pages.

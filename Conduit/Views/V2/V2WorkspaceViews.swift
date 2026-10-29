@@ -959,6 +959,8 @@ struct WorkspaceFileSheet: View {
     let entry: WorkspaceEntry
 
     @State private var showsSource = false
+    /// A Markdown file's pictures, which a tapped one pages through.
+    @State private var imageGallery = ImageGallerySource()
     @State private var editing = false
     @State private var draft = ""
     @State private var saving = false
@@ -1075,8 +1077,13 @@ struct WorkspaceFileSheet: View {
                         VStack(alignment: .leading, spacing: 12) {
                             metadata(preview)
                             if WorkspaceFileKind(name: shown.name) == .markdown, !showsSource, explorer.viewedLine == nil {
+                                // Draws web pictures only (no gateway media here).
+                                let _ = imageGallery.update { [text = preview.text] in
+                                    ChatImageGallery.markdownItems(text, resolver: nil, recognizesGatewayMedia: false)
+                                }
                                 MarkdownText(source: preview.text)
                                     .frame(maxWidth: .infinity, alignment: .leading)
+                                    .environment(\.imageGallery, imageGallery)
                             } else {
                                 WorkspaceCodeText(text: preview.text, highlight: explorer.viewedLine)
                             }
