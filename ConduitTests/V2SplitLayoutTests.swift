@@ -194,36 +194,39 @@ extension SidebarLayoutTests {
     }
 
     func testChatColumnWidensWithTheWindowUpToItsCap() {
-        // A phone, and a narrower window, keep the 760 pt column.
-        for width: CGFloat in [375, 760, 950] {
-            XCTAssertEqual(ReadableWidth.chat(available: width), ReadableWidth.chat, "\(width) pt keeps 760 pt.")
+        // A phone, and an iPad beside the list, keep the 760 pt column.
+        for width: CGFloat in [375, 760, 1001, 1056] {
+            XCTAssertEqual(ReadableWidth.chat(available: width, systemGrowsTextStyles: true), ReadableWidth.chat, "\(width) pt keeps 760 pt.")
         }
-        // A wider window widens it with the window: an iPad beside the
-        // list a little, its whole window and a Mac's more.
-        XCTAssertEqual(ReadableWidth.chat(available: 1001), 800)
-        XCTAssertEqual(ReadableWidth.chat(available: 1376), 1100)
-        XCTAssertGreaterThan(ReadableWidth.chat(available: 1300), ReadableWidth.chat(available: 1200))
+        // A wider window widens it with the window.
+        XCTAssertEqual(ReadableWidth.chat(available: 1057, systemGrowsTextStyles: true), 761)
+        XCTAssertEqual(ReadableWidth.chat(available: 1376, systemGrowsTextStyles: true), 990)
+        XCTAssertGreaterThan(ReadableWidth.chat(available: 1300, systemGrowsTextStyles: true), ReadableWidth.chat(available: 1200, systemGrowsTextStyles: true))
         // A maximized window stops at the cap.
-        for width: CGFloat in [1750, 2240, 3000] {
-            XCTAssertEqual(ReadableWidth.chat(available: width), ReadableWidth.chatMax, "\(width) pt stops at the cap.")
+        for width: CGFloat in [1445, 1800, 3000] {
+            XCTAssertEqual(ReadableWidth.chat(available: width, systemGrowsTextStyles: true), ReadableWidth.chatMax, "\(width) pt stops at the cap.")
         }
-        XCTAssertEqual(ReadableWidth.margin(available: 2240, maxWidth: ReadableWidth.chat(available: 2240)), 420)
+        XCTAssertEqual(ReadableWidth.margin(available: 1800, maxWidth: ReadableWidth.chat(available: 1800, systemGrowsTextStyles: true)), 380)
+        // A Mac's takes most of the window, up to where its text stops
+        // growing (760 x 1.5 x 2.2).
+        XCTAssertEqual(ReadableWidth.chat(available: 1001, systemGrowsTextStyles: false), 800)
+        XCTAssertEqual(ReadableWidth.chat(available: 2240, systemGrowsTextStyles: false), 1792)
+        XCTAssertEqual(ReadableWidth.chat(available: 4000, systemGrowsTextStyles: false), 2508, accuracy: 0.001)
+        XCTAssertEqual(ReadableWidth.settings(available: 2240, systemGrowsTextStyles: false), 1792)
     }
 
     func testChatTextStepsUpWithTheColumn() {
         // A phone, and an iPad beside the list, keep the system's size.
-        for width: CGFloat in [375, 1001, 1056] {
-            XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chat(available: width), base: ReadableWidth.chat), 0, "\(width) pt keeps the size.")
+        for width: CGFloat in [375, 1001, 1056, 1180] {
+            XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chat(available: width, systemGrowsTextStyles: true), base: ReadableWidth.chat), 0, "\(width) pt keeps the size.")
         }
         // Each step once the column holds as many words a line at it.
         XCTAssertEqual(ReadableWidth.textSteps(column: 850, base: ReadableWidth.chat), 1)
         XCTAssertEqual(ReadableWidth.textSteps(column: 938, base: ReadableWidth.chat), 1)
         XCTAssertEqual(ReadableWidth.textSteps(column: 939, base: ReadableWidth.chat), 2)
-        // An iPad's whole window with the list hidden, and a maximized Mac.
-        XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chat(available: 1376), base: ReadableWidth.chat), 2)
-        XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chat(available: 1800), base: ReadableWidth.chat), 3)
-        // Past three steps the column widens on at the largest size.
-        XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chatMax, base: ReadableWidth.chat), 3)
+        // An iPad's whole window with the list hidden, and a maximized one.
+        XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chat(available: 1376, systemGrowsTextStyles: true), base: ReadableWidth.chat), 2)
+        XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chat(available: 1800, systemGrowsTextStyles: true), base: ReadableWidth.chat), 3)
         // From the system's size: never past the largest standard size, and
         // none at an accessibility size.
         XCTAssertEqual(ReadableWidth.textSteps(column: 1040, base: ReadableWidth.chat, from: .large), 3)
@@ -234,78 +237,88 @@ extension SidebarLayoutTests {
 
     func testSettingsColumnWidensAndStepsItsText() {
         // A sheet, and an iPad's window beside nothing wider, keep 720 pt.
-        for width: CGFloat in [375, 720, 900] {
-            XCTAssertEqual(ReadableWidth.settings(available: width), ReadableWidth.settings, "\(width) pt keeps 720 pt.")
-            XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.settings(available: width), base: ReadableWidth.settings), 0)
+        for width: CGFloat in [375, 720, 1000] {
+            XCTAssertEqual(ReadableWidth.settings(available: width, systemGrowsTextStyles: true), ReadableWidth.settings, "\(width) pt keeps 720 pt.")
+            XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.settings(available: width, systemGrowsTextStyles: true), base: ReadableWidth.settings), 0)
         }
-        XCTAssertEqual(ReadableWidth.settings(available: 1050), 840)
-        XCTAssertEqual(ReadableWidth.textSteps(column: 840, base: ReadableWidth.settings), 1)
+        XCTAssertEqual(ReadableWidth.settings(available: 1200, systemGrowsTextStyles: true), 864)
+        XCTAssertEqual(ReadableWidth.textSteps(column: 864, base: ReadableWidth.settings), 1)
         // A maximized window stops at the cap, three steps up.
-        XCTAssertEqual(ReadableWidth.settings(available: 1800), ReadableWidth.settingsMax)
+        XCTAssertEqual(ReadableWidth.settings(available: 1800, systemGrowsTextStyles: true), ReadableWidth.settingsMax)
         XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.settingsMax, base: ReadableWidth.settings), 3)
     }
 
     func testColumnsSetTheirTextForTheirContent() {
         // A maximized chat steps its own text and its transcript, and is
         // the base for the cards inside it.
-        let chat = ReadableWidth.columnText(column: ReadableWidth.chatMax, base: ReadableWidth.chat, scalesChatText: true, size: .large)
+        let chat = ReadableWidth.columnText(column: ReadableWidth.chatMax, base: ReadableWidth.chat, scalesChatText: true, size: .large, systemGrowsTextStyles: true)
         XCTAssertEqual(chat.size, .xxxLarge)
         XCTAssertEqual(chat.chatSteps, 3)
-        XCTAssertEqual(chat.base, .large)
+        XCTAssertEqual(chat.text, ColumnText(base: .large))
         // Settings steps its own text; no transcript takes the steps.
-        let settings = ReadableWidth.columnText(column: ReadableWidth.settingsMax, base: ReadableWidth.settings, scalesChatText: false, size: .large)
+        let settings = ReadableWidth.columnText(column: ReadableWidth.settingsMax, base: ReadableWidth.settings, scalesChatText: false, size: .large, systemGrowsTextStyles: true)
         XCTAssertEqual(settings.size, .xxxLarge)
         XCTAssertEqual(settings.chatSteps, 0)
-        XCTAssertEqual(settings.base, .large)
+        XCTAssertEqual(settings.text, ColumnText(base: .large))
         // A fixed column (a call, a list alone) changes nothing and is no base.
-        let fixed = ReadableWidth.columnText(column: 2000, base: nil, scalesChatText: false, size: .large)
+        let fixed = ReadableWidth.columnText(column: 2000, base: nil, scalesChatText: false, size: .large, systemGrowsTextStyles: true)
         XCTAssertEqual(fixed.size, .large)
         XCTAssertEqual(fixed.chatSteps, 0)
-        XCTAssertNil(fixed.base)
+        XCTAssertNil(fixed.text)
         // An accessibility size stays as the user set it.
-        let accessible = ReadableWidth.columnText(column: ReadableWidth.chatMax, base: ReadableWidth.chat, scalesChatText: true, size: .accessibility2)
+        let accessible = ReadableWidth.columnText(column: ReadableWidth.chatMax, base: ReadableWidth.chat, scalesChatText: true, size: .accessibility2, systemGrowsTextStyles: true)
         XCTAssertEqual(accessible.size, .accessibility2)
         XCTAssertEqual(accessible.chatSteps, 0)
-        XCTAssertEqual(accessible.base, .accessibility2)
+        XCTAssertEqual(accessible.text, ColumnText(base: .accessibility2))
     }
 
-    func testMacColumnsSetTextStylesInPoints() {
-        // Where the system grows text styles, nothing is set in points.
-        let iOS = ReadableWidth.columnText(column: ReadableWidth.chatMax, base: ReadableWidth.chat, scalesChatText: true, size: .large, systemGrowsTextStyles: true)
-        XCTAssertNil(iOS.pointSized)
-        // A Mac draws every size alike: a stepped column sets its size.
-        let mac = ReadableWidth.columnText(column: ReadableWidth.settingsMax, base: ReadableWidth.settings, scalesChatText: false, size: .large, systemGrowsTextStyles: false)
-        XCTAssertEqual(mac.pointSized, .xxxLarge)
-        // A stepping column at its narrowest still sets the system's size,
-        // and one past where the steps stop sets that size, so text never
-        // draws smaller as the system's size rises; a fixed column sets nothing.
-        let narrow = ReadableWidth.columnText(column: ReadableWidth.chat, base: ReadableWidth.chat, scalesChatText: true, size: .large, systemGrowsTextStyles: false)
-        XCTAssertEqual(narrow.pointSized, .large)
-        let largest = ReadableWidth.columnText(column: ReadableWidth.chatMax, base: ReadableWidth.chat, scalesChatText: true, size: .xxxLarge, systemGrowsTextStyles: false)
-        XCTAssertEqual(largest.pointSized, .xxxLarge)
+    func testMacColumnsGrowTheirTextByScale() {
+        // A Mac draws every size alike: no steps, a scale with the column
+        // from 1.5 times its base width, up to 2.2.
+        let wide = ReadableWidth.columnText(column: 1792, base: ReadableWidth.chat, scalesChatText: true, size: .large, systemGrowsTextStyles: false)
+        XCTAssertEqual(wide.size, .large)
+        XCTAssertEqual(wide.chatSteps, 0)
+        XCTAssertEqual(wide.text, ColumnText(base: .large, scale: 1.57))
+        let narrow = ReadableWidth.columnText(column: 1040, base: ReadableWidth.chat, scalesChatText: true, size: .large, systemGrowsTextStyles: false)
+        XCTAssertEqual(narrow.text, ColumnText(base: .large, scale: 1))
+        let widest = ReadableWidth.columnText(column: 4000, base: ReadableWidth.settings, scalesChatText: false, size: .large, systemGrowsTextStyles: false)
+        XCTAssertEqual(widest.text, ColumnText(base: .large, scale: 2.2))
         let fixed = ReadableWidth.columnText(column: 2000, base: nil, scalesChatText: false, size: .large, systemGrowsTextStyles: false)
-        XCTAssertNil(fixed.pointSized)
+        XCTAssertNil(fixed.text)
 
         XCTAssertTrue(ScaledFont.systemGrowsTextStyles(drawn: ChatTypography.standardBodySizes))
         XCTAssertFalse(ScaledFont.systemGrowsTextStyles(drawn: Array(repeating: 17, count: 7)))
+
+        // Transcript, cards' UIKit text and text styles all grow by the scale.
+        let column = ColumnText(base: .large, scale: 1.5)
+        XCTAssertEqual(ChatTextAppearance(size: .default).widened(steps: 0, in: column).widthScale, 1.5, accuracy: 0.0001)
+        let subheadline = UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)).pointSize
+        XCTAssertEqual(UIFont.preferredFont(forTextStyle: .subheadline, in: .large, from: column).pointSize, subheadline * 1.5, accuracy: 0.001)
+        XCTAssertEqual(ScaledFont.caption.font(in: column), Font.system(size: 18, weight: .regular, design: .default))
+        XCTAssertNotEqual(
+            ChatTextAppearance(size: .default).widened(steps: 0, in: column).cacheIdentity,
+            ChatTextAppearance(size: .default).cacheIdentity
+        )
     }
 
-    func testScaledFontIsTheTextStyleUnlessPointSized() {
+    func testScaledFontIsTheTextStyleUnlessScaled() {
         XCTAssertEqual(ScaledFont.caption.font(), Font.caption)
         XCTAssertEqual(ScaledFont.subheadline.weight(.semibold).font(), Font.subheadline.weight(.semibold))
         XCTAssertEqual(ScaledFont.footnote.monospaced().font(), Font.footnote.monospaced())
         XCTAssertEqual(ScaledFont.caption2.monospacedDigit().font(), Font.caption2.monospacedDigit())
+        XCTAssertEqual(ScaledFont.system(.title, design: .rounded).font(), Font.system(.title, design: .rounded))
+        // A column that only steps (iOS) keeps the text style.
+        XCTAssertEqual(ScaledFont.caption.font(in: ColumnText(base: .large)), Font.caption)
 
         XCTAssertEqual(ScaledFont.points(.body, at: .xxxLarge), 23)
         XCTAssertEqual(ScaledFont.points(.caption, at: .xLarge), 14)
         XCTAssertEqual(ScaledFont.points(.title2, at: .large), 22)
         XCTAssertNil(ScaledFont.points(.body, at: .accessibility1))
-        XCTAssertEqual(ScaledFont.caption.font(pointSizedAt: .xxxLarge), Font.system(size: 18, weight: .regular, design: .default))
-        XCTAssertEqual(ScaledFont.headline.font(pointSizedAt: .xLarge), Font.system(size: 19, weight: .semibold, design: .default))
-        XCTAssertEqual(ScaledFont.caption.monospaced().font(pointSizedAt: .xxxLarge), Font.system(size: 18, weight: .regular, design: .monospaced))
-        XCTAssertEqual(ScaledFont.system(.body, design: .rounded, weight: .bold).font(pointSizedAt: .xLarge), Font.system(size: 19, weight: .bold, design: .rounded))
-        XCTAssertEqual(ScaledFont.footnote.monospacedDigit().font(pointSizedAt: .large), Font.system(size: 13, weight: .regular, design: .default).monospacedDigit())
-        XCTAssertEqual(ScaledFont.system(.title, design: .rounded).font(), Font.system(.title, design: .rounded))
+        let doubled = ColumnText(base: .large, scale: 2)
+        XCTAssertEqual(ScaledFont.headline.font(in: doubled), Font.system(size: 34, weight: .semibold, design: .default))
+        XCTAssertEqual(ScaledFont.caption.monospaced().font(in: doubled), Font.system(size: 24, weight: .regular, design: .monospaced))
+        XCTAssertEqual(ScaledFont.system(.body, design: .rounded, weight: .bold).font(in: doubled), Font.system(size: 34, weight: .bold, design: .rounded))
+        XCTAssertEqual(ScaledFont.footnote.monospacedDigit().font(in: doubled), Font.system(size: 26, weight: .regular, design: .default).monospacedDigit())
         // Every text style has iOS's seven standard sizes.
         for (style, points) in ScaledFont.standardPoints {
             XCTAssertEqual(points.count, ChatTypography.standardDynamicTypeSizes.count, "\(style)")
@@ -316,7 +329,7 @@ extension SidebarLayoutTests {
         let traits = UITraitCollection(preferredContentSizeCategory: .large)
         let base = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits)
         // Two steps from the default size: body text grows as 17 pt to 21.
-        let stepped = ChatTextAppearance(size: .default).widened(steps: 2, from: .large)
+        let stepped = ChatTextAppearance(size: .default).widened(steps: 2, in: ColumnText(base: .large))
         XCTAssertEqual(stepped.widthScale, 21.0 / 17, accuracy: 0.0001)
         // By point size, not by resolving at the larger Dynamic Type size,
         // which an iPad app on a Mac ignores (#1393 did nothing there).
@@ -331,7 +344,7 @@ extension SidebarLayoutTests {
             accuracy: 0.001
         )
         // The user's chat text size still multiplies.
-        let larger = ChatTextAppearance(size: .larger).widened(steps: 2, from: .large)
+        let larger = ChatTextAppearance(size: .larger).widened(steps: 2, in: ColumnText(base: .large))
         XCTAssertEqual(
             ChatTypography.font(for: .body, appearance: larger, compatibleWith: traits).pointSize,
             base.pointSize * 21 / 17 * ChatTextSize.larger.scale,
@@ -349,7 +362,7 @@ extension SidebarLayoutTests {
         XCTAssertEqual(ChatTypography.widthScale(steps: 2, from: .xxxLarge), 1)
         XCTAssertEqual(ChatTypography.widthScale(steps: 2, from: .accessibility2), 1)
         XCTAssertEqual(ReadableWidth.chatTextGrowth, [19.0 / 17, 21.0 / 17, 23.0 / 17])
-        XCTAssertEqual(ChatTextAppearance(size: .default).widened(steps: 2, from: .accessibility2), ChatTextAppearance(size: .default))
+        XCTAssertEqual(ChatTextAppearance(size: .default).widened(steps: 2, in: ColumnText(base: .accessibility2)), ChatTextAppearance(size: .default))
         XCTAssertEqual(ChatTypography.lowered(.extraExtraLarge, by: 2), .large)
         XCTAssertEqual(ChatTypography.lowered(.accessibilityMedium, by: 2), .accessibilityMedium)
         // In-column cards' UIKit text: nothing added where the system sizes
@@ -371,14 +384,14 @@ extension SidebarLayoutTests {
             XCTAssertEqual(17 * ChatTypography.missingGrowth(at: stepped, from: base, drawn: mac), expected, accuracy: 0.001, "\(base) + \(steps)")
         }
         XCTAssertEqual(
-            UIFont.preferredFont(forTextStyle: .subheadline, in: .extraExtraExtraLarge, from: .large).pointSize,
+            UIFont.preferredFont(forTextStyle: .subheadline, in: .extraExtraExtraLarge, from: ColumnText(base: .large)).pointSize,
             UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: UITraitCollection(preferredContentSizeCategory: .extraExtraExtraLarge)).pointSize,
             accuracy: 0.001
         )
         // Caches tell the steps apart; no steps keeps today's keys.
         XCTAssertEqual(ChatTextAppearance(size: .default).cacheIdentity, ChatTextSize.default.cacheIdentity)
         XCTAssertNotEqual(stepped.cacheIdentity, ChatTextAppearance(size: .default).cacheIdentity)
-        XCTAssertNotEqual(stepped.cacheIdentity, ChatTextAppearance(size: .default).widened(steps: 2, from: .xLarge).cacheIdentity)
+        XCTAssertNotEqual(stepped.cacheIdentity, ChatTextAppearance(size: .default).widened(steps: 2, in: ColumnText(base: .xLarge)).cacheIdentity)
         XCTAssertEqual(ChatTypography.dimension(10, appearance: stepped), 10 * 21 / 17, accuracy: 0.001)
     }
 

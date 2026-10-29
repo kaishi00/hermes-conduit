@@ -54,15 +54,15 @@ struct ComposerPasteTextView: UIViewRepresentable {
     }
 
     /// Body text at the view's environment size, which a wide window's
-    /// chat column steps up (`readableChatColumn`) from `base`, grown by
-    /// point size where the system draws it no larger, as an iPad app on a
-    /// Mac appears to (`UIFont.preferredFont(forTextStyle:in:from:)`).
-    static func bodyFont(in sizeCategory: ContentSizeCategory, from base: DynamicTypeSize?) -> UIFont {
-        UIFont.preferredFont(forTextStyle: .body, in: sizeCategory, from: base)
+    /// chat column steps up (`readableChatColumn`), grown by point size
+    /// where the system draws it no larger, as an iPad app on a Mac does
+    /// (`UIFont.preferredFont(forTextStyle:in:from:)`).
+    static func bodyFont(in sizeCategory: ContentSizeCategory, from column: ColumnText?) -> UIFont {
+        UIFont.preferredFont(forTextStyle: .body, in: sizeCategory, from: column)
     }
 
     @Environment(\.sizeCategory) private var sizeCategory
-    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
+    @Environment(\.columnText) private var columnText
 
     @Binding var text: String
     @Binding var isFocused: Bool
@@ -118,7 +118,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         view.delegate = context.coordinator
         // Set here and on each text size change below rather than
         // adjusted by UIKit, which would undo the Mac's point-size growth.
-        view.font = Self.bodyFont(in: sizeCategory, from: columnBaseTextSize)
+        view.font = Self.bodyFont(in: sizeCategory, from: columnText)
         view.backgroundColor = .clear
         view.textColor = .label
         view.tintColor = .systemOrange
@@ -152,12 +152,14 @@ struct ComposerPasteTextView: UIViewRepresentable {
     func updateUIView(_ uiView: ImagePasteTextView, context: Context) {
         TranscriptPerf.note(.composerUpdateUIView)
         // Text Size changed while the app was open, or a wide column
-        // stepped it: the font and the height bounds follow. Checked by
-        // category so the hot update path doesn't look up fonts.
+        // stepped or scaled it: the font and the height bounds follow.
+        // Checked by category and column so the hot update path doesn't
+        // look up fonts.
         let category = UIContentSizeCategory(sizeCategory)
-        if uiView.boundsContentSizeCategory != category {
+        if uiView.boundsContentSizeCategory != category || uiView.boundsColumnText != columnText {
             uiView.boundsContentSizeCategory = category
-            let font = Self.bodyFont(in: sizeCategory, from: columnBaseTextSize)
+            uiView.boundsColumnText = columnText
+            let font = Self.bodyFont(in: sizeCategory, from: columnText)
             uiView.font = font
             uiView.minimumReportedHeight = Self.minimumHeight(for: font)
             uiView.maximumReportedHeight = Self.maximumHeight(for: font)
@@ -419,8 +421,9 @@ final class ImagePasteTextView: ReturnKeyTextView {
     var onContentHeightChange: ((CGFloat) -> Void)?
     var editorIdentity: UUID?
     var minimumReportedHeight: CGFloat = 44
-    /// The Text Size the height bounds were last read at.
+    /// The Text Size and column the height bounds were last read at.
     var boundsContentSizeCategory: UIContentSizeCategory?
+    var boundsColumnText: ColumnText?
     var maximumReportedHeight: CGFloat = 160
     private var lastReportedHeight: CGFloat = 0
 

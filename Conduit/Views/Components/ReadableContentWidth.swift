@@ -3,11 +3,10 @@
 //  Conduit
 //
 //  Conduit's screens were drawn for a phone. On a wide window (an iPad, a
-//  landscape iPhone) a chat's lines, Settings' cards and a call's captions
+//  Mac, a landscape iPhone) a chat's lines, Settings' cards and a call's captions
 //  would otherwise run the whole width of the window.
 //
 
-import OSLog
 import SwiftUI
 
 extension View {
@@ -23,16 +22,16 @@ extension View {
     }
 
     /// A chat's column: `ReadableWidth.chat(available:)` wide, its text a
-    /// size or more larger as the column grows (`ReadableWidth.textSteps`),
+    /// size or more larger as the column grows (`ReadableWidth.columnText`),
     /// so a maximized window shows bigger text rather than longer lines.
     func readableChatColumn() -> some View {
-        modifier(ReadableContentWidth(maxWidth: ReadableWidth.chat(available:), textBase: ReadableWidth.chat, scalesChatText: true))
+        modifier(ReadableContentWidth(maxWidth: { ReadableWidth.chat(available: $0) }, textBase: ReadableWidth.chat, scalesChatText: true))
     }
 
     /// Settings' column: `ReadableWidth.settings(available:)` wide, its
-    /// text stepping up with it as a chat's does.
+    /// text growing with it as a chat's does.
     func readableSettingsColumn() -> some View {
-        modifier(ReadableContentWidth(maxWidth: ReadableWidth.settings(available:), textBase: ReadableWidth.settings))
+        modifier(ReadableContentWidth(maxWidth: { ReadableWidth.settings(available: $0) }, textBase: ReadableWidth.settings))
     }
 }
 
@@ -41,36 +40,54 @@ enum ReadableWidth {
     /// A chat's transcript and composer: the narrowest its column gets on a
     /// wide window. A wider window widens it (`chat(available:)`).
     static let chat: CGFloat = 760
-    /// The widest a chat's column gets, however wide the window: past
-    /// 1040 pt its text, at the largest standard size, runs longer lines
-    /// rather than leave most of a big window empty.
-    static let chatMax: CGFloat = 1400
+    /// The widest a chat's column gets, however wide the window, on an
+    /// iPhone or iPad (a Mac's: `macTextBase`).
+    static let chatMax: CGFloat = 1040
     /// The share of the chat's width its column takes between those two.
-    static let chatShare: CGFloat = 0.8
+    static let chatShare: CGFloat = 0.72
     /// Settings' pages: the narrowest their column gets on a wide window.
     /// A wider window widens it (`settings(available:)`).
     static let settings: CGFloat = 720
-    /// The widest Settings' column gets, its text three steps up past
-    /// 975 pt.
-    static let settingsMax: CGFloat = 1300
+    /// The widest Settings' column gets on an iPhone or iPad: room for its
+    /// text's three steps.
+    static let settingsMax: CGFloat = 980
     /// A Chats or Bots list shown on its own on a wide window, the list
     /// beside the chat hidden (`V2ChatListPreference`).
     static let list: CGFloat = 720
     /// A voice call's captions and controls.
     static let call: CGFloat = 640
 
+    /// On a Mac, which draws text styles at one size, a column's text grows
+    /// by point size in proportion to the column (`columnText`) rather than
+    /// by steps: its lines hold this many times a phone's words before the
+    /// text grows (a Mac's own text is smaller, and its window wider)...
+    static let macLineGrowth: CGFloat = 1.5
+    /// ...and grow until the text is this many times its size, the margins
+    /// past that.
+    static let macMaxTextScale: CGFloat = 2.2
+    /// The share of the window a Mac's column takes.
+    static let macShare: CGFloat = 0.8
+
     /// A chat's column for `available` points of width: the phone's
-    /// 760 pt column on a narrower window, growing with a wider one (an
-    /// iPad's whole window, a maximized Mac) up to `chatMax`, so the text
-    /// doesn't sit in a narrow strip in the middle of it.
-    static func chat(available: CGFloat) -> CGFloat {
-        min(chatMax, max(chat, (available * chatShare).rounded(.down)))
+    /// 760 pt column on an iPad beside the list, growing with a maximized
+    /// Mac or iPad window up to `chatMax`, so the text doesn't sit in a
+    /// narrow strip in the middle of it. On a Mac it takes most of the
+    /// window, its text growing with it.
+    static func chat(available: CGFloat, systemGrowsTextStyles: Bool = ScaledFont.systemGrowsTextStyles()) -> CGFloat {
+        width(available: available, base: chat, max: chatMax, systemGrowsTextStyles: systemGrowsTextStyles)
     }
 
     /// Settings' column for `available` points of width, growing with a
     /// maximized window as a chat's does, up to `settingsMax`.
-    static func settings(available: CGFloat) -> CGFloat {
-        min(settingsMax, max(settings, (available * chatShare).rounded(.down)))
+    static func settings(available: CGFloat, systemGrowsTextStyles: Bool = ScaledFont.systemGrowsTextStyles()) -> CGFloat {
+        width(available: available, base: settings, max: settingsMax, systemGrowsTextStyles: systemGrowsTextStyles)
+    }
+
+    private static func width(available: CGFloat, base: CGFloat, max cap: CGFloat, systemGrowsTextStyles: Bool) -> CGFloat {
+        if systemGrowsTextStyles {
+            return min(cap, max(base, (available * chatShare).rounded(.down)))
+        }
+        return min(base * macLineGrowth * macMaxTextScale, max(base, (available * macShare).rounded(.down)))
     }
 
     /// How many text sizes a column of `column` points steps up from the
@@ -96,27 +113,28 @@ enum ReadableWidth {
 
     /// What a column `column` points wide sets for its content at the
     /// system's `size`: the Dynamic Type size its own text draws at, the
-    /// steps a chat's transcript takes (none outside a chat), the system's
-    /// size as the column's base (nil in a column that doesn't step its
-    /// text, `base` nil, so a fixed column inside a stepped one keeps its
-    /// base), and, where the system doesn't grow text styles (a Mac), the
-    /// stepped size for `scaledFont` to set in points (in any stepping
-    /// column, so a larger system size never draws smaller).
+    /// steps a chat's transcript takes (none outside a chat), and what its
+    /// UIKit text and `scaledFont` grow from (nil in a column that doesn't
+    /// step its text, `base` nil, so a fixed column inside a stepped one
+    /// keeps the stepped one's). Where the system doesn't grow text styles
+    /// (a Mac), no steps: the text grows by point size with the column
+    /// instead, from `macLineGrowth` times its base width.
     static func columnText(
         column: CGFloat,
         base: CGFloat?,
         scalesChatText: Bool,
         size: DynamicTypeSize,
         systemGrowsTextStyles: Bool = ScaledFont.systemGrowsTextStyles()
-    ) -> (size: DynamicTypeSize, chatSteps: Int, base: DynamicTypeSize?, pointSized: DynamicTypeSize?) {
-        guard let base else { return (size, 0, nil, nil) }
+    ) -> (size: DynamicTypeSize, chatSteps: Int, text: ColumnText?) {
+        guard let base else { return (size, 0, nil) }
+        guard systemGrowsTextStyles else {
+            let scale = min(macMaxTextScale, max(1, column / (base * macLineGrowth)))
+            return (size, 0, ColumnText(base: size, scale: (scale * 100).rounded() / 100))
+        }
         let steps = textSteps(column: column, base: base, from: size)
         let sizes = ChatTypography.standardDynamicTypeSizes
         let boosted = sizes.firstIndex(of: size).map { sizes[min(sizes.count - 1, $0 + steps)] } ?? size
-        // Any stepping column, steps or none, so text never shrinks as the
-        // system's size rises past where the steps stop.
-        let pointSized = systemGrowsTextStyles ? nil : boosted
-        return (boosted, scalesChatText ? steps : 0, size, pointSized)
+        return (boosted, scalesChatText ? steps : 0, ColumnText(base: size))
     }
 
     /// The body text growth each step brings at the default size
@@ -149,7 +167,7 @@ private struct ReadableContentWidth: ViewModifier {
         // not lay its rows out twice.
         GeometryReader { proxy in
             let column = maxWidth(proxy.size.width)
-            let text = ReadableWidth.columnText(column: column, base: textBase, scalesChatText: scalesChatText, size: dynamicTypeSize)
+            let layout = ReadableWidth.columnText(column: column, base: textBase, scalesChatText: scalesChatText, size: dynamicTypeSize)
             content
                 .safeAreaPadding(.horizontal, ReadableWidth.margin(available: proxy.size.width, maxWidth: column))
                 // Centered for content narrower than the window too; the
@@ -159,73 +177,20 @@ private struct ReadableContentWidth: ViewModifier {
                 // through Dynamic Type; transcript text, which resolves
                 // UIKit fonts, by the steps' scale from the system's size
                 // (ChatTextAppearance.widened).
-                .dynamicTypeSize(text.size)
-                .environment(\.chatWidthTextSteps, text.chatSteps)
+                .dynamicTypeSize(layout.size)
+                .environment(\.chatWidthTextSteps, layout.chatSteps)
                 // Only in a column that steps its text: nil elsewhere, and a
-                // fixed column inside one keeps its base.
-                .transformEnvironment(\.chatColumnBaseTextSize) { base in
-                    if let columnBase = text.base { base = columnBase }
+                // fixed column inside one keeps the stepped one's.
+                .transformEnvironment(\.columnText) { columnText in
+                    if let text = layout.text { columnText = text }
                 }
-                // Where the system draws every size alike (a Mac): text
-                // styles in points (`scaledFont`), the column's plain text
-                // included.
-                .modifier(PointSizedColumnText(size: text.pointSized))
-                .onChange(of: text.size, initial: true) { _, _ in
-                    if let textBase {
-                        let steps = ReadableWidth.textSteps(column: column, base: textBase, from: dynamicTypeSize)
-                        MacTextStepsReport.noteOnce(column: scalesChatText ? "chat" : "settings", steps: steps, from: dynamicTypeSize)
-                    }
+                // On a Mac, the column's plain text grows in points too
+                // (`scaledFont` sets the rest). Transformed rather than a
+                // branch, so a resize keeps the column's views (and a
+                // chat's scroll position).
+                .transformEnvironment(\.font) { font in
+                    if let text = layout.text, text.scale != 1 { font = ScaledFont.body.font(in: text) }
                 }
         }
-    }
-}
-
-/// A column's text where the system doesn't grow text styles: body text
-/// for what sets no font, and the stepped size for `scaledFont`. Nothing
-/// changes without a `size`, so a fixed column inside a stepped one keeps
-/// the stepped column's.
-private struct PointSizedColumnText: ViewModifier {
-    let size: DynamicTypeSize?
-
-    func body(content: Content) -> some View {
-        // Transformed rather than a branch, so crossing a step keeps the
-        // column's views (and a chat's scroll position).
-        content
-            .transformEnvironment(\.font) { font in
-                if let size { font = ScaledFont.body.font(pointSizedAt: size) }
-            }
-            .transformEnvironment(\.pointSizedText) { pointSized in
-                if let size { pointSized = size }
-            }
-    }
-}
-
-/// What a Mac does with a column's text steps, logged once a launch when
-/// the first column that steps its text lays out, steps or none: an iPad
-/// app there may draw every Dynamic Type size alike, which left #1393's
-/// steps doing nothing, and no build of ours can be probed on the Mac
-/// itself. `log show --predicate 'category == "ReadableWidth"'` reads it.
-@MainActor
-enum MacTextStepsReport {
-    private static let log = Logger(subsystem: "com.milim.relay", category: "ReadableWidth")
-    private static var noted = false
-
-    static func noteOnce(column: String, steps: Int, from base: DynamicTypeSize, onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac) {
-        guard onMac, !noted else { return }
-        noted = true
-        // Off SwiftUI's update pass: the measuring hosts a view of its own.
-        Task { @MainActor in measure(column: column, steps: steps, from: base) }
-    }
-
-    private static func measure(column: String, steps: Int, from base: DynamicTypeSize) {
-        let uikit = [UIContentSizeCategory.large, .extraExtraExtraLarge].map {
-            Double(UIFont.preferredFont(forTextStyle: .body, compatibleWith: UITraitCollection(preferredContentSizeCategory: $0)).pointSize)
-        }
-        let swiftUI = [DynamicTypeSize.large, .xxxLarge].map {
-            // Text style: measures what the system does with the style itself.
-            UIHostingController(rootView: Text(verbatim: "Conduit").font(.body).dynamicTypeSize($0))
-                .sizeThatFits(in: CGSize(width: 1000, height: 1000)).height.native
-        }
-        log.notice("\(column, privacy: .public) column: text steps \(steps, privacy: .public) from \(String(describing: base), privacy: .public): UIKit body \(uikit[0], privacy: .public) to \(uikit[1], privacy: .public) pt, SwiftUI body line \(swiftUI[0], privacy: .public) to \(swiftUI[1], privacy: .public) pt")
     }
 }

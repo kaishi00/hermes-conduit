@@ -19,10 +19,10 @@ struct ToolResultBodyView: View {
     /// The column's text size, which a wide window steps up
     /// (`readableChatColumn`), as the raw Input and Output below follow.
     @Environment(\.sizeCategory) private var sizeCategory
-    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
+    @Environment(\.columnText) private var columnText
 
     private var monospaced: UIFont {
-        .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnBaseTextSize).pointSize, weight: .regular)
+        .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnText).pointSize, weight: .regular)
     }
 
     var body: some View {

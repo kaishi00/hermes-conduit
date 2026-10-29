@@ -5,9 +5,9 @@
 //  The app's text styles, set with `.scaledFont(.caption)` rather than
 //  `.font(.caption)`. Everywhere the system sizes them by Dynamic Type, they
 //  are exactly the text style. On a Mac, which draws every text style at its
-//  default size whatever size the view asks for, a wide column that steps
-//  its text up (`readableChatColumn`, `readableSettingsColumn`) has them set
-//  in points instead, at iOS's size for the stepped one.
+//  default size whatever size the view asks for, a wide column that grows
+//  its text (`readableChatColumn`, `readableSettingsColumn`) has them set in
+//  points instead, iOS's size for the system's times the column's scale.
 //
 
 import SwiftUI
@@ -57,13 +57,14 @@ struct ScaledFont: Equatable {
         return font
     }
 
-    /// The font, in points at iOS's size for `size` when there is one
-    /// (`pointSizedText`), else the text style itself.
-    func font(pointSizedAt size: DynamicTypeSize? = nil) -> Font {
+    /// The font: in a column that grows its text by a scale (a Mac's,
+    /// `columnText`), iOS's size for the column's base in points times
+    /// it, else the text style itself.
+    func font(in column: ColumnText? = nil) -> Font {
         var font: Font
-        if let size, let points = Self.points(style, at: size) {
+        if let column, column.scale != 1, let points = Self.points(style, at: column.base) {
             font = .system(
-                size: points,
+                size: points * column.scale,
                 weight: weight ?? (style == .headline ? .semibold : .regular),
                 design: monospacedFamily ? .monospaced : design ?? .default
             )
@@ -127,8 +128,8 @@ struct ScaledFont: Equatable {
 }
 
 extension View {
-    /// `font`'s text style, or iOS's size for the stepped one in points
-    /// where the system doesn't grow it (`pointSizedText`).
+    /// `font`'s text style, or in points where a column grows its text
+    /// by a scale (`columnText`).
     func scaledFont(_ font: ScaledFont) -> some View {
         modifier(ScaledFontModifier(font: font))
     }
@@ -136,23 +137,9 @@ extension View {
 
 private struct ScaledFontModifier: ViewModifier {
     let font: ScaledFont
-    @Environment(\.pointSizedText) private var pointSizedText
+    @Environment(\.columnText) private var columnText
 
     func body(content: Content) -> some View {
-        content.font(font.font(pointSizedAt: pointSizedText))
-    }
-}
-
-private struct PointSizedTextEnvironmentKey: EnvironmentKey {
-    static let defaultValue: DynamicTypeSize? = nil
-}
-
-extension EnvironmentValues {
-    /// The Dynamic Type size a column stepped its text up to, where the
-    /// system doesn't draw it (a Mac): `scaledFont` sets text styles in
-    /// points at iOS's size for it. Nil everywhere else.
-    var pointSizedText: DynamicTypeSize? {
-        get { self[PointSizedTextEnvironmentKey.self] }
-        set { self[PointSizedTextEnvironmentKey.self] = newValue }
+        content.font(font.font(in: columnText))
     }
 }

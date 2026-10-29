@@ -33,14 +33,14 @@ struct GroupChatView: View {
     @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
     @AppStorage(ChatTypography.fontStylePreferenceKey) private var chatFontStyleRaw = ChatFontStyle.standard.rawValue
     @Environment(\.chatWidthTextSteps) private var chatWidthTextSteps
-    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
+    @Environment(\.columnText) private var columnText
 
     private var chatTextSize: ChatTextAppearance {
         ChatTextAppearance(
             size: ChatTypography.resolve(rawValue: chatTextSizeRaw),
             style: ChatTypography.resolveStyle(rawValue: chatFontStyleRaw)
         )
-        .widened(steps: chatWidthTextSteps, from: columnBaseTextSize ?? .large)
+        .widened(steps: chatWidthTextSteps, in: columnText)
     }
 
     var body: some View {
@@ -531,7 +531,7 @@ struct GroupRoomTitle: View {
 /// session and permanent grants aren't offered for a room member's turn.
 struct GroupApprovalCard: View {
     @Environment(\.sizeCategory) private var sizeCategory
-    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
+    @Environment(\.columnText) private var columnText
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let approval: GroupPendingApproval
     let memberName: String
@@ -579,7 +579,7 @@ struct GroupApprovalCard: View {
             if !approval.command.isEmpty {
                 ApprovalCommandBox(
                     maxHeight: ApprovalCommandBox<EmptyView>.maxLines
-                        * UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnBaseTextSize).lineHeight
+                        * UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnText).lineHeight
                 ) {
                     Text(verbatim: ApprovalDisplayText.revealingHidden(approval.command))
                         .scaledFont(.caption.monospaced())
