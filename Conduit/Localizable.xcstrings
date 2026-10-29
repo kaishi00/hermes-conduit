@@ -371937,7 +371937,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "自分に聞く"
+            "value" : "私に聞く"
           }
         },
         "ko" : {
@@ -372891,19 +372891,19 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Antwortet"
+            "value" : "Beantwortet von"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Responde"
+            "value" : "Respondido por"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Répond"
+            "value" : "Répondu par"
           }
         },
         "id" : {
@@ -372915,7 +372915,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Risponde"
+            "value" : "Risposto da"
           }
         },
         "ja" : {
@@ -372933,19 +372933,19 @@
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Odpowiada"
+            "value" : "Odpowiedź od"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Responde"
+            "value" : "Respondido por"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Отвечает"
+            "value" : "Отвечает профиль"
           }
         },
         "tr" : {

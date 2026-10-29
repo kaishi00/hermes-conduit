@@ -512,6 +512,15 @@ struct LinkAsksSection: View {
                 ForEach(shown) { link in
                     linkRules(link)
                 }
+                // A read again that failed leaves the rules up and says so.
+                if let loadError {
+                    Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                    Button(AppLocalization.string("Try again")) { Task { await load(key) } }
+                        .buttonStyle(.settings)
+                        .disabled(changingID != nil)
+                }
             } else if let loadError {
                 Label(loadError, systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote)
