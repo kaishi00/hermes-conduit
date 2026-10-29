@@ -100,7 +100,7 @@ extension ComposerAttachmentPolicyTests {
             return XCTFail("the padded paste wasn't staged")
         }
         defer { ComposerBar.discardStagedFile(padded) }
-        XCTAssertEqual(PastedText.titlePreview(in: [padded], limit: 20), "Stack trace\nxxxxxxx")
+        XCTAssertEqual(PastedText.titlePreview(in: [padded], limit: 20), "Stack trace\nxxxx")
     }
 }
 
