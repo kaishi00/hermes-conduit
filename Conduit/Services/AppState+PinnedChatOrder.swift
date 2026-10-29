@@ -19,7 +19,9 @@ extension AppState {
             profile: { rowProfile(session($0)) },
             ids: { SessionPinSync.pinIDs(for: session($0)) },
             order: { order.ids(profile: $0) },
-            mixed: order.mixed
+            // All grouped by profile splits the rows per profile, each in
+            // its own order: the mix is for the mixed section only.
+            mixed: allProfilesGroupsByProfile ? [] : order.mixed
         )
     }
 
