@@ -1047,6 +1047,65 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testALongPastesTitlePreviewIsDroppedWhenTheGatewayRefusesTheKey() async throws {
+        // A message holding a long paste carries Desktop's `title_preview`
+        // (#1515). A Hermes from before it refuses unknown keys with 4000:
+        // the prompt is resent once without it, and later sends leave it out.
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete")
+
+        func nextRequest(_ phase: String, after send: () -> Void) async throws -> [String: Any] {
+            let sent = Gate()
+            socket.onSend = { sent.signal() }
+            send()
+            try await sent.wait(phase)
+            return try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+            )
+        }
+        func deliver(_ response: [String: Any]) throws {
+            socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
+        }
+
+        var submitTask: Task<PromptSubmissionOutcome, Error>?
+        let first = try await nextRequest("the prompt.submit with a title preview") {
+            submitTask = Task { try await client.sendPrompt("sess-1", text: "@file:a.txt", titlePreview: "Stack trace") }
+        }
+        var params = try XCTUnwrap(first["params"] as? [String: Any])
+        XCTAssertEqual(params["title_preview"] as? String, "Stack trace")
+
+        let firstID = try XCTUnwrap(first["id"] as? Int)
+        let retry = try await nextRequest("the resend without title_preview") {
+            try? deliver([
+                "jsonrpc": "2.0", "id": firstID,
+                "error": [
+                    "code": 4000,
+                    "message": "invalid params for prompt.submit: title_preview: Extra inputs are not permitted"
+                ]
+            ])
+        }
+        params = try XCTUnwrap(retry["params"] as? [String: Any])
+        XCTAssertNil(params["title_preview"])
+        XCTAssertEqual(params["text"] as? String, "@file:a.txt")
+        try deliver(["jsonrpc": "2.0", "id": try XCTUnwrap(retry["id"] as? Int), "result": ["status": "streaming"]])
+        let outcome = try await awaitResult(of: try XCTUnwrap(submitTask), "the resent prompt.submit response")
+        XCTAssertEqual(outcome, .accepted)
+
+        let later = try await nextRequest("a later prompt.submit with a title preview") {
+            submitTask = Task { try await client.sendPrompt("sess-1", text: "@file:b.txt", titlePreview: "More") }
+        }
+        params = try XCTUnwrap(later["params"] as? [String: Any])
+        XCTAssertNil(params["title_preview"])
+        try deliver(["jsonrpc": "2.0", "id": try XCTUnwrap(later["id"] as? Int), "result": ["status": "streaming"]])
+        _ = try await awaitResult(of: try XCTUnwrap(submitTask), "the later prompt.submit response")
+        client.disconnect()
+    }
+
     func testQueueMarksQueuedAndNeverResendsWithoutIt() async throws {
         // Queue (#842) carries `queued: true`: Hermes keeps the message as
         // the next turn. A gateway that refuses the key fails the send

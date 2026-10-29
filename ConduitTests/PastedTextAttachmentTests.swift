@@ -94,3 +94,30 @@ extension ComposerAttachmentPolicyTests {
         XCTAssertNil(PastedText.titlePreview(in: [picture]))
     }
 }
+
+extension ComposerAttachmentPolicyTests {
+    func testAPasteStaysInTheFieldWhereTheComposerCantTakeFiles() {
+        XCTAssertTrue(PastedText.chatComposerTakesPaste(enabled: true, waitsForChat: false))
+        // Locked, or a chat on its way whose waiting message is words only.
+        XCTAssertFalse(PastedText.chatComposerTakesPaste(enabled: false, waitsForChat: false))
+        XCTAssertFalse(PastedText.chatComposerTakesPaste(enabled: true, waitsForChat: true))
+        XCTAssertTrue(PastedText.roomComposerTakesPaste(canStoreFiles: true, disbanded: false))
+        XCTAssertFalse(PastedText.roomComposerTakesPaste(canStoreFiles: false, disbanded: false))
+        XCTAssertFalse(PastedText.roomComposerTakesPaste(canStoreFiles: true, disbanded: true))
+    }
+
+    func testAPastesSizeIsCheckedBeforeItIsWritten() {
+        XCTAssertTrue(PastedText.fits(String(repeating: "x", count: 1024 * 1024), limitMegabytes: 1))
+        XCTAssertFalse(PastedText.fits(String(repeating: "x", count: 1024 * 1024 + 1), limitMegabytes: 1))
+    }
+
+    func testTheChipReadsOnlyTheStartOfAPaste() {
+        let pasted = "\n\nFirst line\n" + String(repeating: "more\n", count: 10_000)
+        guard case .staged(let attachment) = PastedText.stage(pasted, limitMegabytes: 16) else {
+            return XCTFail("the paste wasn't staged")
+        }
+        defer { ComposerBar.discardStagedFile(attachment) }
+        XCTAssertEqual(PastedText.chipPreview(of: attachment), "First line")
+        XCTAssertEqual(PastedText.prefix(of: attachment, limit: 12), "\n\nFirst line")
+    }
+}

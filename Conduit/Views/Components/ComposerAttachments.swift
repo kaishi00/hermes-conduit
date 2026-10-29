@@ -468,7 +468,7 @@ struct ComposerAttachmentChip: View {
             if isPastedText {
                 let attachment = attachment
                 pastedPreview = await Task.detached(priority: .utility) {
-                    PastedText.text(of: attachment).map { PastedText.preview(of: $0) }
+                    PastedText.chipPreview(of: attachment)
                 }.value
                 return
             }

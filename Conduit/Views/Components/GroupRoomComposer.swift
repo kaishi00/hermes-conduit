@@ -979,41 +979,77 @@ struct GroupRoomComposer: View {
         }
     }
 
-    /// A long paste goes in as a text attachment, uploaded to the room's
-    /// files like any other. On a plugin that can't store them it stays in
-    /// the field as before. False leaves the paste to the field.
+    /// A long paste goes in as a text attachment, written off the main
+    /// actor and uploaded to the room's files like any other. Where the
+    /// room can't store files it stays in the field as before
+    /// (`PastedText.roomComposerTakesPaste`). False leaves the paste to the
+    /// field.
     private func attachLongPaste(_ pasted: String) -> Bool {
-        guard appState.canAttachRoomFiles, surface?.room.isDisbanded == false else { return false }
-        let outcome = PastedText.stage(pasted, limitMegabytes: GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes))
-        if case .failed = outcome { return false }
+        guard PastedText.roomComposerTakesPaste(
+            canStoreFiles: appState.canAttachRoomFiles,
+            disbanded: surface?.room.isDisbanded != false
+        ) else { return false }
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+        let roomID = surface?.room.roomID
         composerError = nil
-        finishImport([outcome], roomID: surface?.room.roomID)
+        guard PastedText.fits(pasted, limitMegabytes: limit) else {
+            finishImport([.tooLarge(PastedText.displayName)], roomID: roomID)
+            return true
+        }
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) {
+                PastedText.stage(pasted, limitMegabytes: limit)
+            }.value
+            if case .failed = outcome, appState.activeRoomSurface?.room.roomID == roomID {
+                // The file couldn't be written: the words go in the field
+                // after all, so the paste isn't lost.
+                draft = PastedText.joined(draft, with: pasted)
+                return
+            }
+            finishImport([outcome], roomID: roomID)
+        }
         return true
     }
 
     /// The sheet behind a pasted text's chip: edits replace its file, and
-    /// Paste as text moves it into the field, after what was typed.
+    /// Paste as text moves it into the field, after what was typed. Clearing
+    /// all its text removes it, as × does.
     private func pastedTextActions(for id: String) -> PastedTextActions {
         PastedTextActions(
             save: { edited in
-                guard let index = attachments.firstIndex(where: { $0.id == id }) else { return }
-                let old = attachments[index]
+                guard let old = attachments.first(where: { $0.id == id }) else { return }
                 guard !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    attachments.remove(at: index)
+                    attachments.removeAll { $0.id == id }
                     ComposerBar.discardStagedFile(old)
                     return
                 }
                 let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
-                switch PastedText.restage(old, with: edited, limitMegabytes: limit) {
-                case .staged(let updated):
-                    attachments[index] = updated
-                    ComposerBar.discardStagedFile(old)
-                case .tooLarge(let name):
-                    composerError = GroupRoomFilesClient.tooLargeMessage(names: [name], preference: attachmentLimitMegabytes)
+                guard PastedText.fits(edited, limitMegabytes: limit) else {
+                    composerError = GroupRoomFilesClient.tooLargeMessage(names: [PastedText.displayName], preference: attachmentLimitMegabytes)
                     Haptics.error()
-                case .failed(let name):
-                    composerError = AppLocalization.string("Could not prepare \(name) for upload.")
-                    Haptics.error()
+                    return
+                }
+                Task {
+                    let outcome = await Task.detached(priority: .userInitiated) {
+                        PastedText.restage(old, with: edited, limitMegabytes: limit)
+                    }.value
+                    switch outcome {
+                    case .staged(let updated):
+                        // Removed or sent meanwhile: the edit has nothing
+                        // left to replace.
+                        guard let index = attachments.firstIndex(where: { $0.id == id && $0.uri == old.uri }) else {
+                            ComposerBar.discardStagedFile(updated)
+                            return
+                        }
+                        attachments[index] = updated
+                        ComposerBar.discardStagedFile(old)
+                    case .tooLarge(let name):
+                        composerError = GroupRoomFilesClient.tooLargeMessage(names: [name], preference: attachmentLimitMegabytes)
+                        Haptics.error()
+                    case .failed(let name):
+                        composerError = AppLocalization.string("Could not prepare \(name) for upload.")
+                        Haptics.error()
+                    }
                 }
             },
             insertAsText: { pasted in

@@ -22,6 +22,25 @@ enum PastedText {
         text.utf16.count > characterThreshold
     }
 
+    /// Whether a chat composer takes a long paste as an attachment: not
+    /// while it's locked, nor while its chat is on its way, whose waiting
+    /// message is words only. Otherwise the paste stays in the field.
+    static func chatComposerTakesPaste(enabled: Bool, waitsForChat: Bool) -> Bool {
+        enabled && !waitsForChat
+    }
+
+    /// Whether a room's composer does: only on a plugin that stores the
+    /// room's files, and never in a disbanded room.
+    static func roomComposerTakesPaste(canStoreFiles: Bool, disbanded: Bool) -> Bool {
+        canStoreFiles && !disbanded
+    }
+
+    /// Checked before the paste is staged, so one over the limit gets its
+    /// notice at once.
+    static func fits(_ text: String, limitMegabytes: Int) -> Bool {
+        AttachmentSizeLimit.allows(byteCount: Int64(text.utf8.count), megabytes: limitMegabytes)
+    }
+
     /// Desktop's name for a saved paste, `pasted_content_<stamp>_<hex>.txt`,
     /// which its chat reads as pasted content rather than a file.
     static func filename(now: Date = Date()) -> String {
@@ -85,20 +104,31 @@ enum PastedText {
         return String(decoding: data, as: UTF8.self)
     }
 
-    /// The start of a message's first paste, for Hermes to title a new
-    /// chat from (Desktop's `title_preview`, 1,000 characters): without it
-    /// a message that is only a paste is titled from its file's name. Only
-    /// the start of the file is read.
-    static func titlePreview(in attachments: [Attachment], limit: Int = 1_000) -> String? {
-        guard let paste = attachments.first(where: { isPastedText($0) }),
-              let url = URL(string: paste.uri), url.isFileURL,
+    /// The first `limit` characters of the staged file, reading only the
+    /// start of it.
+    static func prefix(of attachment: Attachment, limit: Int) -> String? {
+        guard let url = URL(string: attachment.uri), url.isFileURL,
               let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         // Four bytes a character at most, and one more character's worth,
         // so a character cut at the end is past the limit.
         guard let data = try? handle.read(upToCount: (limit + 1) * 4), !data.isEmpty else { return nil }
-        let preview = String(String(decoding: data, as: UTF8.self).prefix(limit))
+        return String(String(decoding: data, as: UTF8.self).prefix(limit))
+    }
+
+    /// The start of a message's first paste, for Hermes to title a new
+    /// chat from (Desktop's `title_preview`, 1,000 characters): without it
+    /// a message that is only a paste is titled from its file's name.
+    static func titlePreview(in attachments: [Attachment], limit: Int = 1_000) -> String? {
+        guard let paste = attachments.first(where: { isPastedText($0) }),
+              let preview = prefix(of: paste, limit: limit) else { return nil }
         return preview.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : preview
+    }
+
+    /// The chip's line: the first words of the paste's first 2,000
+    /// characters.
+    static func chipPreview(of attachment: Attachment) -> String? {
+        prefix(of: attachment, limit: 2_000).map { preview(of: $0) }
     }
 
     /// The first words of a paste, for its chip.
@@ -157,8 +187,18 @@ struct PastedTextSheet: View {
                 } else if original == nil {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if actions == nil {
+                    // Its upload has started: read and select, not edit.
+                    ScrollView {
+                        Text(text)
+                            .scaledFont(.body)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                    }
                 } else {
-                    TextEditor(text: actions == nil ? .constant(text) : $text)
+                    TextEditor(text: $text)
                         .scaledFont(.body)
                         .padding(.horizontal, 12)
                         .accessibilityIdentifier("composer.pastedText.editor")

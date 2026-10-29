@@ -2455,47 +2455,78 @@ struct ComposerBar: View, Equatable {
     }
 
     /// A paste past `PastedText.characterThreshold` goes in as a text
-    /// attachment. Where the composer can't take files (locked, or a chat
-    /// on its way, whose waiting message is words only) it stays in the
-    /// field as before. False leaves the paste to the field.
+    /// attachment, written off the main actor. Where the composer can't
+    /// take files it stays in the field as before
+    /// (`PastedText.chatComposerTakesPaste`). False leaves the paste to the
+    /// field.
     private func attachLongPaste(_ pasted: String) -> Bool {
-        guard appState.composerIsEnabled, !appState.composerWaitsForChat else { return false }
+        guard PastedText.chatComposerTakesPaste(
+            enabled: appState.composerIsEnabled,
+            waitsForChat: appState.composerWaitsForChat
+        ) else { return false }
         let limitMegabytes = attachmentLimitMegabytes
-        switch PastedText.stage(pasted, limitMegabytes: limitMegabytes) {
-        case .staged(let attachment):
-            composerErrorMessage = nil
-            attachments.append(attachment)
-            Haptics.light()
+        composerErrorMessage = nil
+        guard PastedText.fits(pasted, limitMegabytes: limitMegabytes) else {
+            reportImportProblems(oversized: [PastedText.displayName], failed: [], limitMegabytes: limitMegabytes)
             return true
-        case .tooLarge(let name):
-            reportImportProblems(oversized: [name], failed: [], limitMegabytes: limitMegabytes)
-            return true
-        case .failed:
-            return false
         }
+        let origin = asyncAttachmentContext
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) {
+                PastedText.stage(pasted, limitMegabytes: limitMegabytes)
+            }.value
+            guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else {
+                if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
+                return
+            }
+            if case .staged(let attachment) = outcome {
+                attachments.append(attachment)
+                Haptics.light()
+            } else {
+                // The file couldn't be written: the words go in the field
+                // after all, so the paste isn't lost.
+                replaceComposerText(PastedText.joined(text, with: pasted), cursorAtEnd: true)
+            }
+        }
+        return true
     }
 
     /// The sheet behind a pasted text's chip: edits replace its file, and
-    /// Paste as text moves it into the field, after what was typed.
+    /// Paste as text moves it into the field, after what was typed. Clearing
+    /// all its text removes it, as × does.
     private func pastedTextActions(for id: String) -> PastedTextActions {
         PastedTextActions(
             save: { edited in
-                guard let index = attachments.firstIndex(where: { $0.id == id }) else { return }
-                let old = attachments[index]
+                guard let old = attachments.first(where: { $0.id == id }) else { return }
                 guard !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    attachments.remove(at: index)
+                    attachments.removeAll { $0.id == id }
                     Self.discardStagedFile(old)
                     return
                 }
                 let limitMegabytes = attachmentLimitMegabytes
-                switch PastedText.restage(old, with: edited, limitMegabytes: limitMegabytes) {
-                case .staged(let updated):
-                    attachments[index] = updated
-                    Self.discardStagedFile(old)
-                case .tooLarge(let name):
-                    reportImportProblems(oversized: [name], failed: [], limitMegabytes: limitMegabytes)
-                case .failed(let name):
-                    reportImportProblems(oversized: [], failed: [name], limitMegabytes: limitMegabytes)
+                guard PastedText.fits(edited, limitMegabytes: limitMegabytes) else {
+                    reportImportProblems(oversized: [PastedText.displayName], failed: [], limitMegabytes: limitMegabytes)
+                    return
+                }
+                Task {
+                    let outcome = await Task.detached(priority: .userInitiated) {
+                        PastedText.restage(old, with: edited, limitMegabytes: limitMegabytes)
+                    }.value
+                    switch outcome {
+                    case .staged(let updated):
+                        // Removed or sent meanwhile: the edit has nothing
+                        // left to replace.
+                        guard let index = attachments.firstIndex(where: { $0.id == id && $0.uri == old.uri }) else {
+                            Self.discardStagedFile(updated)
+                            return
+                        }
+                        attachments[index] = updated
+                        Self.discardStagedFile(old)
+                    case .tooLarge(let name):
+                        reportImportProblems(oversized: [name], failed: [], limitMegabytes: limitMegabytes)
+                    case .failed(let name):
+                        reportImportProblems(oversized: [], failed: [name], limitMegabytes: limitMegabytes)
+                    }
                 }
             },
             insertAsText: { pasted in
