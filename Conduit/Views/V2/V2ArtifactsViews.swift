@@ -580,6 +580,10 @@ private struct ArtifactsList: View {
             return
         }
         Haptics.light()
+        if item.kind == .image {
+            openImage(item, path: path)
+            return
+        }
         openingID = item.id
         let token = UUID()
         openToken = token
@@ -624,6 +628,21 @@ private struct ArtifactsList: View {
                 return
             }
         }
+    }
+
+    /// A picture opens among the list's pictures, in the order they show,
+    /// and swipes to the next one.
+    private func openImage(_ item: ArtifactItem, path: String) {
+        let tapped = galleryItem(item, path: path)
+        let images = ArtifactsClient.days(items).flatMap(\.items).compactMap { other -> ImageGalleryItem? in
+            guard other.kind == .image, other.exists, let path = other.path else { return nil }
+            return other.id == item.id ? tapped : galleryItem(other, path: path)
+        }
+        ImageGallery.open(tapped, in: ImageGallerySource { images })
+    }
+
+    private func galleryItem(_ item: ArtifactItem, path: String) -> ImageGalleryItem {
+        .hostFile(path: path, title: item.name, resolver: resolver(for: item))
     }
 
     private func openFailed(_ item: ArtifactItem, tooLarge: Bool = false) {

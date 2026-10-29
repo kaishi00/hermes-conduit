@@ -2857,22 +2857,25 @@ split · Read Aloud and live read-back · chat list previews and quotes
 Gateway files Conduit downloads to show or hand to the share sheet: where the
 copy goes and when it is removed.
 
-**Siblings:** a chat's media and file previews · the Artifacts page's opener ·
-the gateway media resolver · the Folder's Quick Look and Share or Save
+**Siblings:** a chat's media and file previews · the picture viewer · the
+Artifacts page's opener · the gateway media resolver · the Folder's Quick Look
+and Share or Save
 
 **Code**
 - Media previews: `Conduit/Views/Components/MediaPreviewPresenter.swift` (stage, stagingRoot, removeDirectory), `Conduit/Views/Components/MarkdownText.swift`, `Conduit/Views/Components/GatewayMediaDataURLResolver.swift`, `Conduit/Views/V2/V2ArtifactsViews.swift`
 - Folder: `Conduit/Views/V2/V2WorkspaceViews.swift` (quickLook), through the media preview presenter
+- Picture viewer: `Conduit/Views/Components/ImageGalleryViewer.swift` (ImageGalleryFile, ImageGalleryViewController.finish)
 - Tests: `ConduitTests/MarkdownLargeDocumentTests+MediaPreview.swift`
 
 **Rulings**
 - Each download goes in a folder of its own, removed when the preview or share sheet that asked for it closes, or when it is dismissed or switched to another file while still downloading; a previous run's leftovers are swept at launch (2026-10-24, #1220, from #1002).
 - The Folder opens files through the media preview presenter, so its copies follow the same rule; the workspace browser's own download folder is gone (2026-10-27, #1399).
+- The picture viewer fetches each picture into a folder of its own the same way, and removes every one it fetched when it closes, including one still arriving then; a photo on the device or a copy kept on the phone is shown in place and stays (2026-10-29, #PRNUM).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-27, #1399; #1220.
+**Checked:** 2026-10-29, #PRNUM (the picture viewer's copies); 2026-10-27, #1399; #1220.
 
 ## Review labels
 
@@ -3093,6 +3096,43 @@ pictures load)
 - Past 4,000 remembered sizes the memo starts again (no LRU), so pictures grow once more until each loads again.
 
 **Checked:** 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
+
+## The picture viewer
+
+A picture tapped full screen: swiped left and right through the pictures
+around it, closed with a swipe down, zoomed with a pinch or a double tap, and
+shared or saved from its Share button.
+
+**Siblings:** chats, project chats and Bot Chat (attachments, reply pictures,
+tool pictures) · the saved-chat copy · call job result sheets and the cards a
+voice model shows · group rooms · the Artifacts page, a chat's Artifacts sheet
+and the panel beside the chat · the Folder tab · iPhone, iPad and Mac (the
+same viewer; keys and a trackpad on an iPad or Mac) · Quick Look, which still
+opens videos, audio and documents · README.md · text that describes it (the
+pictures' VoiceOver hint "Opens full screen with save and share")
+
+**Code**
+- Viewer and presenting it: `Conduit/Views/Components/ImageGalleryViewer.swift` (ImageGalleryViewController, ImageGalleryPageController, ImageGallery, ImageGallerySource, the `imageGallery` environment value), `Conduit/Views/Components/MediaPreviewPresenter.swift` (presentGallery)
+- What a chat lists: `Conduit/Views/Components/ImageGalleryItems.swift` (ChatImageGallery, the item makers), set in `Conduit/Services/AppState.swift` (chatImageGallery, savedChatImageGallery) and `Conduit/Views/ChatView.swift`
+- Taps: `Conduit/Views/ChatView.swift` (UserImageAttachmentPreview), `Conduit/Views/Components/MarkdownText.swift` (RemoteMarkdownImage.openImage)
+- Other lists: `Conduit/Views/GroupChatView.swift` (GroupRoomImageGallery), `Conduit/Views/LiveVoiceCallJobs.swift` (both sheets), `Conduit/Views/V2/V2ArtifactsViews.swift` (openImage), `Conduit/Views/V2/V2WorkspaceViews.swift` (openImage)
+- Tests: `ConduitTests/MarkdownLargeDocumentTests+ImageGallery.swift`
+
+**Rulings**
+- Pictures page in Conduit's own viewer, not Quick Look: Quick Look shows one file and has no swipe down. Videos, audio and documents still open in Quick Look; a picture never pages to one (2026-10-29, #PRNUM, Eric asked for both gestures).
+- A picture pages through the pictures of what it was tapped in, in the order they show: a chat's (each message's pictures in its text, then the ones it attaches, then a tool's), the saved copy's, a room's, a job result's or card's, the Artifacts list's as filtered, or the Folder's (the search's names, else the file's folder, else Recently Changed). Each picture is listed once, where it first shows. One its list doesn't have (a reply still streaming) opens alone (2026-10-29, #PRNUM).
+- The list is read when a picture is tapped, never while scrolling: each screen holds one source, so no row redraws for it. Each picture fetches its original only as its page comes near (its own, then its neighbours), the way its row opened it alone: the photo on this device, the copy kept on the phone, then Hermes; a picture in a list fetches as Artifacts and the Folder open a file. The row's own copy shows until the original is in, and stays if the original can't be had (2026-10-29, #PRNUM).
+- A swipe down (or up) of a picture that isn't zoomed in drags it, fading the backdrop; past a fifth of the screen or flung it closes, short of that it springs back. A zoomed picture pans instead, and its edge hands a sideways swipe on to the next. One finger only: two are a pinch. A trackpad's two-finger swipe does the same; on a keyboard the arrows page and Escape closes; VoiceOver pages with a three-finger swipe and closes with the escape gesture (2026-10-29, #PRNUM).
+- A single tap shows or hides the bar (Done, the name, "3 / 12", Share); Share opens once the picture's original is in (2026-10-29, #PRNUM).
+- Copies fetched for the viewer are removed when it closes, as every preview's are (see Files prepared for preview and Save to Files).
+
+**Open gaps**
+- Not checked on a device yet: the swipe down beside the pager's own pan, the zoomed edge handing on to the next page, and the trackpad swipe on a Mac.
+- A reply still streaming isn't listed: its pictures open alone until it settles.
+- An animated GIF plays at up to 120 frames, drawn at 1,024 px; Quick Look played every frame.
+- The Folder pages through its listed files only: a folder not opened in the tree isn't listed.
+
+**Checked:** 2026-10-29, #PRNUM.
 
 ## Cards drawn in web pages
 

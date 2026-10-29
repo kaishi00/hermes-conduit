@@ -740,8 +740,27 @@ struct WorkspaceFolderView: View {
                 page = OpenPage(name: entry.name, html: html)
             }
         case .quickLook:
-            quickLook(entry)
+            if GatewayMediaKind(path: entry.name) == .image {
+                openImage(entry)
+            } else {
+                quickLook(entry)
+            }
         }
+    }
+
+    /// A picture opens among the pictures listed with it, and swipes to
+    /// the next one: the search's names, else its folder's files, else
+    /// Recently Changed.
+    private func openImage(_ entry: WorkspaceEntry) {
+        let resolver = resolver
+        let item = { (entry: WorkspaceEntry) in
+            ImageGalleryItem.hostFile(path: entry.path, title: entry.name, resolver: resolver)
+        }
+        let searched = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : explorer.search?.names
+        let lists = [searched].compactMap { $0 } + Array(explorer.entries.values) + [explorer.recent]
+        let listed = lists.first { $0.contains { $0.path == entry.path } } ?? [entry]
+        let images = listed.filter { !$0.isDirectory && GatewayMediaKind(path: $0.name) == .image }
+        ImageGallery.open(item(entry), in: ImageGallerySource { images.map(item) })
     }
 
     private func share(_ entry: WorkspaceEntry) {
