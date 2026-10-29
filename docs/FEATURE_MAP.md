@@ -2665,7 +2665,9 @@ whole plan. [docs/PLAN_CARD.md](PLAN_CARD.md) is the design.
 chats and Bot Chat (one chat screen) · group rooms (no plan) · the `todo`
 tool result in the transcript, which draws the same items · VoiceOver's
 reading of the line and its new-plan announcement · iPhone, iPad and Mac
-(the keyboard rule differs on a Mac)
+(the keyboard rule differs on a Mac and with a hardware keyboard) · the
+classic shell (never reports the composer's focus, so the line never
+keeps to itself there)
 
 **Code**
 - Model: `Conduit/Services/ChatCardsModel.swift` (present, announcement, planRetired), `Conduit/Services/AgentPlan.swift` (AgentPlanTranscript, AgentPlanWindow)
@@ -2683,6 +2685,7 @@ reading of the line and its new-plan announcement · iPhone, iPad and Mac
 **Open gaps**
 - The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
 - Two announcements within 450 ms race on the pulse (#1135 review).
+- With a hardware keyboard the line opens even if the on-screen keyboard is summoned; the check is for a connected keyboard, not a visible one (#1511 review).
 
 **Checked:** 2026-10-29, #1511.
 
