@@ -2686,7 +2686,7 @@ watches back; see Where you are, for Pulse)
 
 **Code**
 - Phone: `Conduit/Phone/PhoneSyncEngine.swift` (pass; approveFromCard on the `pulse` branch), `Conduit/Phone/PhoneSyncModels.swift` (PhoneSyncPause)
-- Alarms: `Conduit/Phone/PhoneAlarmSource.swift` (PhoneAlarmSources.system: AlarmKit, or unsupported before iOS 26 and on a Vision Pro)
+- Alarms: `Conduit/Phone/PhoneAlarmSource.swift` (PhoneAlarmSources.system: AlarmKit, or unsupported before iOS 26 and where AlarmKit isn't loaded, as on a Vision Pro)
 - Health: `Conduit/Health/HealthSyncEngine.swift`, `Conduit/Health/HealthSyncModels.swift` (HealthSyncPause)
 - Location: `Conduit/Location/LocationSyncEngine.swift` (send, LocationSyncPause; `spotsReplied` on the `pulse` branch), `Conduit/Location/LocationSharingController.swift` (sendNow: keeps the batch on `.failed`; `spot_entries` and `spots_room` in the batch on the `pulse` branch), `ConduitLocationPush/LocationPushService.swift` (a locate answered from the push extension)
 - Which 409 means what: `Conduit/Services/HostKeyConflict.swift`
@@ -2696,7 +2696,7 @@ watches back; see Where you are, for Pulse)
 
 **Rulings**
 - Only a 409 that says the host lost this phone's key (`unknown_key`, `bad_seal`) clears the key and sets up again; any other 409 keeps it (2026-10-19, #906; 2026-10-20, #1025).
-- The iPad app on a Vision Pro has no AlarmKit though it reports iOS 26: alarms are unsupported there, as before iOS 26, and AlarmKit is only read when used (2026-10-29, #1474, a launch crash since #596).
+- The iPad app on a Vision Pro has no AlarmKit though it reports iOS 26: alarms are unsupported wherever `AlarmManager.shared`'s symbol isn't bound, as before iOS 26, and AlarmKit is only read when used (2026-10-29, #1474, a launch crash since #596).
 - A store written by a newer plugin (409 `schema`) pauses with the "update the Conduit plugin" message, keeps the key and keeps what waits to be sent (2026-10-24, #1196).
 - A later refusal, timeout or 404 replaces that plugin-update pause with its own message, as for any other pause (2026-10-24, #1196).
 - A change approved on a Pulse suggestion's card (Add, or Undo after its question) is applied by the app that tapped it without the phone's own card, once the host has it and for 15 minutes from the tap; that app exchanges at once, and again to report it, and when that exchange doesn't get the change, the Pulse screen says the phone tries again on its next one, or, when the phone doesn't share its calendar, that the change waits for a device that does. Another device, or the same one later, shows the phone's card as for any change (2026-10-27, notifier #417, #1356).
