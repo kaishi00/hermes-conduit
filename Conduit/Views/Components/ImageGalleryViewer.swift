@@ -410,6 +410,13 @@ final class ImageGalleryViewController: UIViewController {
         for prefetch in ImageGallery.prefetchOrder(around: newIndex, count: items.count) {
             startLoading(prefetch)
         }
+        // Copies fetched for pages paged well past go now, so a long list
+        // of large photos doesn't fill the phone; one paged back to is
+        // fetched again (its picture usually still decoded).
+        for (far, file) in files where abs(far - newIndex) > 1 && file.ownedDirectory != nil {
+            MediaPreviewPresenter.removeDirectory(file.ownedDirectory)
+            files[far] = nil
+        }
     }
 
     @objc private func close() {
@@ -668,6 +675,8 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
         failureLabel.textColor = UIColor.white.withAlphaComponent(0.75)
         failureLabel.font = .preferredFont(forTextStyle: .body)
         failureLabel.adjustsFontForContentSizeCategory = true
+        failureLabel.numberOfLines = 0
+        failureLabel.textAlignment = .center
         failureLabel.isHidden = true
         failureLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(failureLabel)
@@ -676,6 +685,8 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
             spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             failureLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             failureLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            failureLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            failureLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
         ])
 
         let doubleTap = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
