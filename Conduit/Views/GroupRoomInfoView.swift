@@ -457,7 +457,7 @@ struct RoomAgentChoicesView: View {
         case "helps":
             return AppLocalization.string("What helps the room, but nothing sensitive: no health, money, passwords, or what others told you in private.")
         case "ask":
-            return AppLocalization.string("Before it shares anything personal, it says it'll check with you.")
+            return AppLocalization.string("Before it shares anything personal, it asks you in Conduit.")
         case "nothing":
             return AppLocalization.string("It shares nothing personal about you, even when asked.")
         default:

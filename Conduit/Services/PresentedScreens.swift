@@ -38,6 +38,27 @@ struct PresentedMapsTarget: Equatable {
     }
 }
 
+/// The room a room's ask comes from (Linked Rooms, Ask me first): your agent
+/// in a room with other people's agents asks before it shares something
+/// personal about you.
+struct PresentedRoom: Equatable {
+    let id: String
+    let name: String
+
+    init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+
+    init?(json: Any?) {
+        guard let entry = json as? [String: Any],
+              let id = (entry["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty
+        else { return nil }
+        let name = (entry["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.init(id: id, name: String(name.prefix(80)))
+    }
+}
+
 /// Something Hermes put on the screen of the user's voice call with
 /// `conduit_show`: a table, steps, a chart. Shown once, never answered.
 struct PresentedCard: Identifiable, Equatable {
@@ -93,9 +114,14 @@ struct PresentedConfirm: Identifiable, Equatable {
     let expiresAt: Date?
     /// A Go confirmation: confirming opens Apple Maps here.
     let maps: PresentedMapsTarget?
+    /// A room's ask: the preview is what your agent would share there, and
+    /// Say instead answers with what to say, never by opening the room's
+    /// hidden chat.
+    let room: PresentedRoom?
 
     init(id: String, title: String, preview: String, actionLabel: String,
-         spokenYes: [String] = [], sessionID: String? = nil, expiresAt: Date? = nil, maps: PresentedMapsTarget? = nil) {
+         spokenYes: [String] = [], sessionID: String? = nil, expiresAt: Date? = nil, maps: PresentedMapsTarget? = nil,
+         room: PresentedRoom? = nil) {
         self.id = id
         self.title = title
         self.preview = preview
@@ -104,6 +130,7 @@ struct PresentedConfirm: Identifiable, Equatable {
         self.sessionID = sessionID
         self.expiresAt = expiresAt
         self.maps = maps
+        self.room = room
     }
 
     init?(json: Any) {
@@ -126,7 +153,8 @@ struct PresentedConfirm: Identifiable, Equatable {
                 .map { String($0.prefix(40)) },
             sessionID: session,
             expiresAt: expires,
-            maps: PresentedMapsTarget(json: entry["maps"])
+            maps: PresentedMapsTarget(json: entry["maps"]),
+            room: PresentedRoom(json: entry["room"])
         )
     }
 
@@ -206,9 +234,13 @@ final class PresentedScreensSync: ObservableObject {
     /// comparisons and steps (plugin 0.46+). "media-cards": photos, videos,
     /// audio and contacts; "live-cards": statuses and cards kept up to date
     /// under a live name (plugin 0.47+); "text-drafts": Send text for a
-    /// contact card's message (plugin 0.67+).
+    /// contact card's message (plugin 0.67+). "room-asks": a room's asks,
+    /// answered with Share, Say instead (with the words) or Don't share
+    /// (plugin 0.118+, Linked Rooms).
     static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
-                           "text-drafts"]
+                           "text-drafts", "room-asks"]
+    /// The longest Say instead the host keeps.
+    static let maxEditText = 2_000
     /// Card ids remembered as seen, so a card is shown at most once.
     private static let maxSeenCards = 200
     private static let resultsKey = "conduit.presentedScreens.results.v1"
@@ -323,12 +355,18 @@ final class PresentedScreensSync: ObservableObject {
 
     /// Records the user's answer and takes the confirmation off screen; the
     /// next sync reports it.
-    func answer(_ prompt: PresentedConfirm, outcome: PresentedConfirmOutcome, via source: PresentedConfirmAnswerSource) {
+    /// `editText` is a room's ask's Say instead: what the agent says there.
+    func answer(_ prompt: PresentedConfirm, outcome: PresentedConfirmOutcome, via source: PresentedConfirmAnswerSource,
+                editText: String? = nil) {
         // The first answer wins: a second tap lands on a panel already gone.
         guard let scope, prompts.contains(where: { $0.id == prompt.id }) else { return }
         prompts.removeAll { $0.id == prompt.id }
         var list = results(for: scope).filter { ($0["id"] as? String) != prompt.id }
-        list.append(["id": prompt.id, "outcome": outcome.rawValue, "via": source.rawValue])
+        var result: [String: Any] = ["id": prompt.id, "outcome": outcome.rawValue, "via": source.rawValue]
+        if outcome == .edit, let text = editText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            result["edit_text"] = String(text.prefix(Self.maxEditText))
+        }
+        list.append(result)
         setResults(Array(list.suffix(Self.maxResults)), for: scope)
     }
 
@@ -393,6 +431,8 @@ enum PresentVoiceTool {
         var entry: [String: Any] = ["id": prompt.id, "title": prompt.title, "preview": String(prompt.preview.prefix(600)),
                                     "action": prompt.actionLabel]
         if !prompt.spokenYes.isEmpty { entry["confirming_phrases"] = prompt.spokenYes }
+        // Your agent asks before it shares this in a room with other people's agents.
+        if let room = prompt.room { entry["room"] = room.name }
         return entry
     }
 
