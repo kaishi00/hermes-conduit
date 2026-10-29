@@ -83,13 +83,13 @@ extension ConnectionFailureTests {
         let deepBody = try XCTUnwrap(CrashReportUpload.body(fromPayloadJSON: deep))
         let deepDiagnostic = try XCTUnwrap(deepBody["diagnostic"] as? [String: Any])
         let deepTree = try XCTUnwrap((deepDiagnostic["crashDiagnostics"] as? [[String: Any]])?.first?["callStackTree"] as? [String: Any])
-        var frame = (deepTree["callStacks"] as? [[String: Any]])?.first?["callStackRootFrames"] as? [Any]
-        var depth = 0
-        while let next = (frame?.first as? [String: Any])?["subFrames"] as? [Any], !next.isEmpty {
-            depth += 1
-            frame = next
+        var frames = (deepTree["callStacks"] as? [[String: Any]])?.first?["callStackRootFrames"] as? [Any]
+        var kept = 0
+        while let frame = frames?.first as? [String: Any] {
+            kept += 1
+            frames = frame["subFrames"] as? [Any]
         }
-        XCTAssertEqual(depth, CrashReportUpload.maxFrameDepth, "kept to the first levels")
+        XCTAssertEqual(kept, CrashReportUpload.maxFrameDepth, "kept to the first levels, the root counted")
 
         XCTAssertEqual(CrashReportUpload.kind(ofPayloadJSON: diagnosticJSON(crashes: 0, hangs: 2)), .hang)
         XCTAssertNil(CrashReportUpload.kind(ofPayloadJSON: diagnosticJSON(crashes: 0, hangs: 0, cpu: 1)))

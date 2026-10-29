@@ -146,23 +146,23 @@ enum CrashReportUpload {
                 pick(thread, threadKeys) { key, frames in
                     guard key == "callStackRootFrames" else { return frames }
                     let roots: [Any] = (frames as? [Any]) ?? []
-                    return roots.map { keptFrame($0, depth: 0) }
+                    return roots.map { keptFrame($0, level: 1) }
                 }
             }
         }
     }
 
     /// A stack that overflowed can nest thousands of frames: the first 256
-    /// levels are kept, so the walk stays well inside a thread's stack and
-    /// under the relay's limit.
+    /// frame levels are kept, so the walk stays well inside a thread's stack
+    /// and under the relay's 512.
     static let maxFrameDepth = 256
 
-    private static func keptFrame(_ frame: Any, depth: Int) -> Any {
+    private static func keptFrame(_ frame: Any, level: Int) -> Any {
         pick(frame, frameKeys) { key, value in
             guard key == "subFrames" else { return value }
-            guard depth < maxFrameDepth else { return [Any]() }
+            guard level < maxFrameDepth else { return [Any]() }
             let children: [Any] = (value as? [Any]) ?? []
-            return children.map { keptFrame($0, depth: depth + 1) }
+            return children.map { keptFrame($0, level: level + 1) }
         }
     }
 
