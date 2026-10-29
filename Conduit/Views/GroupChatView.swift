@@ -17,6 +17,8 @@ struct GroupChatView: View {
     /// Following the latest event, or browsing history (GroupRoomFollow).
     /// The flag decides scrolling; the published copy draws the button.
     @State private var followFlag = GroupRoomFollowFlag()
+    /// The room's pictures, which a tapped one pages through.
+    @State private var imageGallery = ImageGallerySource()
     @State private var isFollowingLatest = true
     /// Bumped by the jump-to-latest button; the transcript scrolls on it.
     @State private var latestJumps = 0
@@ -136,6 +138,7 @@ struct GroupChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 let rendered = self.visibleEvents
+                let _ = imageGallery.update { GroupRoomImageGallery.items(in: rendered) }
                 LazyVStack(spacing: 14) {
                     ForEach(Array(rendered.enumerated()), id: \.element.id) { index, event in
                         // A member's run of replies shows its picture and
@@ -189,6 +192,7 @@ struct GroupChatView: View {
                     }
                 }
                 .coordinateSpace(.named(GroupRoomFollow.coordinateSpaceName))
+                .environment(\.imageGallery, imageGallery)
                 .background { GroupRoomScrollLocator(flag: followFlag, isFollowing: $isFollowingLatest) }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -671,6 +675,20 @@ struct GroupEventRow: View {
         guard previous.isMemberMessage, next.isMemberMessage else { return false }
         let key = previous.actor.id.trimmingCharacters(in: .whitespacesAndNewlines)
         return !key.isEmpty && key == next.actor.id.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// The pictures in a room's messages, in order. Rooms draw web pictures
+/// only: their Markdown has no gateway resolver.
+enum GroupRoomImageGallery {
+    @MainActor
+    static func items(in events: [GroupEvent]) -> [ImageGalleryItem] {
+        let items = events.filter(\.isChatMessage).flatMap { event -> [ImageGalleryItem] in
+            let text = GroupMessageParts(event.messageText ?? "").text
+            let shown = event.isUserMessage ? (GroupRoomReplyQuote.parse(text)?.message ?? text) : text
+            return ChatImageGallery.markdownItems(shown, resolver: nil, recognizesGatewayMedia: false)
+        }
+        return ImageGallery.deduplicated(items)
     }
 }
 

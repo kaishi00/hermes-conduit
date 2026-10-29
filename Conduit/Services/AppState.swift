@@ -662,6 +662,21 @@ final class AppState: ObservableObject {
 
     private var cachedGatewayMediaResolver: (profile: String, resolver: GatewayMediaDataURLResolver)?
 
+    /// The open chat's pictures, which a tapped one pages through in the
+    /// viewer. One instance, so the rows reading it never redraw for it;
+    /// the list is read only when a picture is tapped.
+    lazy var chatImageGallery = ImageGallerySource { [weak self] in
+        guard let self else { return [] }
+        return ChatImageGallery.items(in: self.messages, resolver: self.gatewayMediaResolver)
+    }
+
+    /// The saved copy's pictures (#99), the same way.
+    lazy var savedChatImageGallery = ImageGallerySource { [weak self] in
+        guard let self else { return [] }
+        return ChatImageGallery.items(in: self.offlineChatPresentation?.displayedMessages ?? [],
+                                      resolver: self.gatewayMediaResolver)
+    }
+
     /// A stable resolver for another profile's media (a Live Voice job that
     /// ran there), cached so views read the same instance on every pass.
     func gatewayMediaResolver(for profile: String) -> GatewayMediaDataURLResolver {

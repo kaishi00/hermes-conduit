@@ -740,12 +740,38 @@ struct WorkspaceFolderView: View {
                 page = OpenPage(name: entry.name, html: html)
             }
         case .quickLook:
-            quickLook(entry)
+            if GatewayMediaKind(path: entry.name) == .image {
+                openImage(entry)
+            } else {
+                quickLook(entry)
+            }
         }
     }
 
+    /// A picture opens among the pictures listed with it, and swipes to
+    /// the next one: the search's names, else its folder's files, else
+    /// Recently Changed.
+    private func openImage(_ entry: WorkspaceEntry) {
+        let resolver = resolver
+        let item = { (entry: WorkspaceEntry) in
+            ImageGalleryItem.hostFile(path: entry.path, title: entry.name, resolver: resolver)
+        }
+        let searched = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : explorer.search?.names
+        let lists = [searched].compactMap { $0 } + Array(explorer.entries.values) + [explorer.recent]
+        let listed = lists.first { $0.contains { $0.path == entry.path } } ?? [entry]
+        let images = listed.filter { !$0.isDirectory && GatewayMediaKind(path: $0.name) == .image }
+        if !ImageGallery.open(item(entry), in: ImageGallerySource { images.map(item) }) {
+            failure = AppLocalization.string("This file couldn't be opened.")
+        }
+    }
+
+    /// A picture's viewer has Share (Save Image, Copy, Save to Files) too.
     private func share(_ entry: WorkspaceEntry) {
-        quickLook(entry)
+        if GatewayMediaKind(path: entry.name) == .image {
+            openImage(entry)
+        } else {
+            quickLook(entry)
+        }
     }
 
     /// Quick Look, which also offers Share and Save to Files.
@@ -933,6 +959,8 @@ struct WorkspaceFileSheet: View {
     let entry: WorkspaceEntry
 
     @State private var showsSource = false
+    /// A Markdown file's pictures, which a tapped one pages through.
+    @State private var imageGallery = ImageGallerySource()
     @State private var editing = false
     @State private var draft = ""
     @State private var saving = false
@@ -1049,8 +1077,13 @@ struct WorkspaceFileSheet: View {
                         VStack(alignment: .leading, spacing: 12) {
                             metadata(preview)
                             if WorkspaceFileKind(name: shown.name) == .markdown, !showsSource, explorer.viewedLine == nil {
+                                // Draws web pictures only (no gateway media here).
+                                let _ = imageGallery.update { [text = preview.text] in
+                                    ChatImageGallery.markdownItems(text, resolver: nil, recognizesGatewayMedia: false)
+                                }
                                 MarkdownText(source: preview.text)
                                     .frame(maxWidth: .infinity, alignment: .leading)
+                                    .environment(\.imageGallery, imageGallery)
                             } else {
                                 WorkspaceCodeText(text: preview.text, highlight: explorer.viewedLine)
                             }
