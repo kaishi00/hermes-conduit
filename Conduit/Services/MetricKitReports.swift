@@ -262,8 +262,10 @@ struct MetricKitReportStore {
 
     /// `json` with every container at `maxDepth` emptied, so a crash from a
     /// stack overflow is kept (its frames deeper than about 245 levels go)
-    /// rather than refused. It scans the bytes once, without recursing.
+    /// rather than refused. It scans the bytes once, without recursing, and
+    /// returns a payload with nothing that deep as it came.
     static func shallowed(_ json: Data, maxDepth: Int = maxJSONDepth) -> Data {
+        var emptiedAny = false
         var out = Data()
         out.reserveCapacity(json.count)
         var depth = 0
@@ -291,7 +293,10 @@ struct MetricKitReportStore {
                 depth += 1
                 if keep {
                     out.append(byte)
-                    if depth == maxDepth { emptiedDepth = depth }
+                    if depth == maxDepth {
+                        emptiedDepth = depth
+                        emptiedAny = true
+                    }
                 }
             case UInt8(ascii: "}"), UInt8(ascii: "]"):
                 if emptiedDepth == depth { emptiedDepth = 0 }
@@ -301,7 +306,7 @@ struct MetricKitReportStore {
                 if keep { out.append(byte) }
             }
         }
-        return out
+        return emptiedAny ? out : json
     }
 
     private static func hash(_ data: Data) -> String {
