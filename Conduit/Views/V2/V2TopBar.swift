@@ -203,32 +203,6 @@ struct V2LegacyEdgeBar<Bar: View>: ViewModifier {
     }
 }
 
-/// The soft edge content scrolls under: a material that fades out away
-/// from the screen edge, so the bar reads without a hard line.
-struct V2ScrollEdgeBackground: View {
-    /// The screen edge the bar sits on.
-    var edge: VerticalEdge = .top
-
-    var body: some View {
-        Rectangle()
-            .fill(.ultraThinMaterial)
-            .mask {
-                LinearGradient(
-                    stops: [
-                        .init(color: .black, location: 0),
-                        .init(color: .black.opacity(0.85), location: 0.55),
-                        .init(color: .clear, location: 1)
-                    ],
-                    startPoint: edge == .top ? .top : .bottom,
-                    endPoint: edge == .top ? .bottom : .top
-                )
-            }
-            .ignoresSafeArea(edges: edge == .top ? .top : .bottom)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-    }
-}
-
 /// Profile pictures in a row. The selected one sits in a glass capsule with
 /// its name; the others are dimmed, with a gold dot when that profile has
 /// unread conversations. Tapping the selected one opens the profile manager

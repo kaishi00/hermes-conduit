@@ -126,7 +126,6 @@ struct V2ConversationScreen: View {
         .onChange(of: appState.activeSessionId) { _, _ in
             sidePanelIDs = appState.activeChatArtifactSessionIDs
         }
-        .modifier(V2FadingBarBackdrop())
         .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
             composerExpanded = expanded
         }
@@ -407,25 +406,6 @@ struct ChatSidePanel: View {
             }
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
-    }
-}
-
-/// Before iOS 26, a fading material behind the navigation bar, so the
-/// transcript fades out under the header instead of ending at a line.
-/// iOS 26 gets its soft scroll edge on the transcript itself (ChatView).
-private struct V2FadingBarBackdrop: ViewModifier {
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content
-        } else {
-            content.overlay(alignment: .top) {
-                // Zero height at the top of the content: ignoring the safe
-                // area grows it up over exactly the navigation bar.
-                V2ScrollEdgeBackground()
-                    .frame(height: 0)
-            }
-        }
     }
 }
 

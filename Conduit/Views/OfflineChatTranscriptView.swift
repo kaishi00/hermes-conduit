@@ -71,7 +71,7 @@ struct OfflineChatTranscriptView: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
             }
-            .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
+            .modifier(V2SoftTopScrollEdge(isOn: composerFloats, underChatHeader: true))
             .defaultScrollAnchor(.bottom)
             // A different saved conversation starts at its own latest row.
             .id(presentation.displayedSessionID)

@@ -553,7 +553,7 @@ struct ChatView: View {
         .id(transcriptScrollID)
         // The open chat's pinned replies (#918), over the transcript's top.
         .safeAreaInset(edge: .top, spacing: 0) { pinnedReplyBar }
-        .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
+        .modifier(V2SoftTopScrollEdge(isOn: composerFloats, underChatHeader: true))
         .onTapGesture {
             UIApplication.shared.sendAction(
                 #selector(UIResponder.resignFirstResponder),
@@ -4910,7 +4910,7 @@ private struct PendingNewChatView: View {
             .padding(.horizontal, 18)
             .padding(.top, 18)
         }
-        .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
+        .modifier(V2SoftTopScrollEdge(isOn: composerFloats, underChatHeader: true))
         .accessibilityIdentifier("pending-new-chat")
     }
 }
@@ -5048,15 +5048,48 @@ private struct ConduitBreathingTimeline<Content: View>: View {
 
 /// V2 (iOS 26): the transcript (or a pushed page's list) fades out under the
 /// header instead of the navigation bar's edge ending it at a line.
+/// A chat's transcript (`underChatHeader`) fades out under the chat's header
+/// before iOS 26 too: its text turns transparent across the navigation bar,
+/// as under a bar's fade (`V2LegacyEdgeBar`), rather than a material
+/// drawn behind the header.
 struct V2SoftTopScrollEdge: ViewModifier {
     let isOn: Bool
+    var underChatHeader = false
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *), isOn {
-            content.scrollEdgeEffectStyle(.soft, for: .top)
+        if #available(iOS 26.0, *) {
+            if isOn {
+                content.scrollEdgeEffectStyle(.soft, for: .top)
+            } else {
+                content
+            }
         } else {
-            content
+            if isOn && underChatHeader {
+                content.mask { headerFade }
+            } else {
+                content
+            }
+        }
+    }
+
+    /// Opaque below the navigation bar, fading out to clear across it.
+    private var headerFade: some View {
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black.opacity(0.15), location: 0.45),
+                        .init(color: .black, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: proxy.safeAreaInsets.top)
+                Color.black
+            }
+            .ignoresSafeArea()
         }
     }
 }
