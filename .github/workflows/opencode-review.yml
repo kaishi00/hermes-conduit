@@ -169,12 +169,14 @@ jobs:
           # config), the notifier's skills/ (instructions its agent loads), its
           # data files the plugin reads (channels.yaml, the BIP-39 word list,
           # upstream/contract.yml) and manifests that declare code, targets
-          # or dependencies. A rename
+          # or dependencies, and Markdown under an app or test folder
+          # (Conduit*/, Shared/), which may ship in the app and always builds
+          # in CI too. A rename
           # counts by both names. So does a file list that didn't load, so
           # every reviewer runs.
           files=$(gh api --paginate "$repo/pulls/$PR_NUMBER/files" \
             --jq '.[] | .filename, (.previous_filename // empty)') || files=''
-          code_config='^\.github/|^skills/|^(opencode\.json|\.coderabbit\.ya?ml|channels\.yaml|bip39_english\.txt|upstream/contract\.yml)$|(^|/)((requirements|constraints)[^/]*\.txt|package(-lock)?\.json|[^/]*lock\.ya?ml|pyproject\.toml|plugin\.yaml|manifest\.json|project[^/]*\.yml)$'
+          code_config='^\.github/|^skills/|^(Conduit[^/]*|Shared)/.*\.md$|^(opencode\.json|\.coderabbit\.ya?ml|channels\.yaml|bip39_english\.txt|upstream/contract\.yml)$|(^|/)((requirements|constraints)[^/]*\.txt|package(-lock)?\.json|[^/]*lock\.ya?ml|pyproject\.toml|plugin\.yaml|manifest\.json|project[^/]*\.yml)$'
           if [ -z "$files" ] || grep -Eq "$code_config" <<<"$files" \
             || grep -Evq '\.(md|txt|json|ya?ml|toml)$' <<<"$files"; then
             pick "$ALL_REVIEWERS" "Reviewing with every reviewer."

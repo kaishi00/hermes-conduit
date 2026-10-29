@@ -222,7 +222,7 @@ jobs:
           spec=project.yml
           if [ "$EVENT" = "pull_request" ] && [ -n "$PR_HEAD" ] \
             && [ "$(git rev-parse -q --verify 'HEAD^2' || true)" = "$PR_HEAD" ] \
-            && changed=$(git diff --no-renames --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
+            && changed=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
             # grep reads all its input (no -q): stopping at the first match could
             # kill printf with SIGPIPE, which pipefail would read as "no match".
             if ! printf '%s\n' "$changed" | grep -E '^(ConduitWatch|ConduitWidgets|ConduitNotificationService|ConduitLocationPush|ConduitShareExtension|Shared)/|^project(-tests)?\.yml$|^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$' >/dev/null; then
@@ -243,9 +243,9 @@ jobs:
         # as a PR that isn't up to date with main always could; main's own run
         # after the merge still builds and catches two PRs that break
         # together. A file under an app or test folder (Markdown included)
-        # always builds, and a rename counts by both names. Fails closed like the step above: any push, anything but
-        # this PR's merge commit, an unreadable or empty diff, or a lookup
-        # that fails builds.
+        # always builds, and a rename counts by both names. Fails closed like
+        # the step above: any push, anything but this PR's merge commit, an
+        # unreadable or empty diff, or a lookup that fails builds.
         id: needs-build
         env:
           EVENT: ${{ github.event_name }}
@@ -259,7 +259,7 @@ jobs:
           why=''
           if [ "$EVENT" = "pull_request" ] && [ -n "$PR_HEAD" ] \
             && [ "$(git rev-parse -q --verify 'HEAD^2' || true)" = "$PR_HEAD" ] \
-            && changed=$(git diff --no-renames --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
+            && changed=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
             # grep reads all its input (no -q), as in the step above.
             if ! printf '%s\n' "$changed" \
               | grep -Ev '\.md$|^docs/|^LICENSE$|^opencode\.json$|^\.coderabbit\.ya?ml$|^\.github/' >/dev/null \
@@ -268,8 +268,12 @@ jobs:
               why="the change is only docs and config"
             fi
           fi
+          # The change id counts Markdown by its words, so Markdown under an
+          # app or test folder (which may ship in the app) always builds.
           if [ "$smoke" = true ] && [ "$EVENT" = "pull_request" ] && [ -n "$PR_NUMBER" ] \
-            && [ "$(git rev-parse -q --verify 'HEAD^2' || true)" = "$PR_HEAD" ]; then
+            && [ "$(git rev-parse -q --verify 'HEAD^2' || true)" = "$PR_HEAD" ] \
+            && changed=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD) && [ -n "$changed" ] \
+            && ! printf '%s\n' "$changed" | grep -E '^"?(Conduit[^/]*|Shared)/.*\.md"?$' >/dev/null; then
             repo="repos/$GITHUB_REPOSITORY"
             change_id() {
               local diff
