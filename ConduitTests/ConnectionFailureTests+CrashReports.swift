@@ -41,7 +41,7 @@ extension ConnectionFailureTests {
                     "className": "NSString",
                 ],
             ],
-            "callStackTree": ["callStacks": [["threadAttributed": true, "callStackRootFrames": [["binaryName": "Conduit", "offsetIntoBinaryTextSegment": 1234, "subFrames": [["binaryName": "SwiftUI", "offsetIntoBinaryTextSegment": 99, "symbol": "x"]]]]]]]],
+            "callStackTree": ["callStacks": [["threadAttributed": true, "callStackRootFrames": [["binaryName": "Conduit", "offsetIntoBinaryTextSegment": 1234, "subFrames": [["binaryName": "SwiftUI", "offsetIntoBinaryTextSegment": 99, "symbol": "x"]]]]]]],
         ]
         let hang: [String: Any] = [
             "diagnosticMetaData": ["appBuildVersion": "236", "hangDuration": "8 sec"],
