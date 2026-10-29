@@ -80,7 +80,6 @@ struct ColumnDivider: View {
                 // divider sits above the columns (zIndex) to take it.
                 Rectangle()
                     .fill(isActive ? Color.conduitAccent.opacity(0.18) : Color.clear)
-                    .frame(width: isActive ? 5 : Self.gripWidth)
                     .frame(width: Self.gripWidth)
                     .contentShape(Rectangle())
                     .onHover { isHovering = $0 }
@@ -103,10 +102,11 @@ struct ColumnDivider: View {
             }
             .accessibilityAction(named: Text("Reset width")) { reset() }
             .onChange(of: dragStart == nil) { _, ended in
-                guard ended, let width = live else { return }
-                stored = Double(width)
-                live = nil
+                if ended { commit() }
             }
+            // Gone mid-drag (a rotation, a window crossing the split): the
+            // gesture's end never comes.
+            .onDisappear { commit() }
     }
 
     /// Measured in the window, so the line moving with the column doesn't
@@ -118,6 +118,13 @@ struct ColumnDivider: View {
                 start = from
                 live = widths.dragged(from: from, by: value.translation.width * direction, room: room)
             }
+    }
+
+    /// Stores the dragged width, once, and hands the layout back to it.
+    private func commit() {
+        guard let width = live else { return }
+        stored = Double(width)
+        live = nil
     }
 
     private func set(_ newWidth: CGFloat) {

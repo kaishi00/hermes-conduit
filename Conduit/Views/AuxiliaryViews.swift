@@ -3461,9 +3461,11 @@ private struct AppearanceSettingsDetail: View {
                     Text("Keep Sessions, Cron, and Kanban visible beside the current conversation when the window is wide enough.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    Text("Drag the line beside the list to make it wider or narrower.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    if iPadPersistentSidebar {
+                        Text("Drag the line beside the list to make it wider or narrower.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }.navigationTitle("Appearance")

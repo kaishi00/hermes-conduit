@@ -430,8 +430,6 @@ struct V2Shell: View {
     @AppStorage(V2SplitLayout.listWidths.key) private var storedListWidth = Double(V2SplitLayout.listWidths.standard)
     /// The list's width while its line is dragged (`ColumnDivider`).
     @State private var draggedListWidth: CGFloat?
-    /// Artifacts open beside the chat keeps its room when the list widens.
-    @AppStorage(ChatSidePanel.key) private var sidePanelOpen = false
 
     /// Whether the visible tab shows the conversation.
     private var conversationVisible: Bool {
@@ -486,7 +484,7 @@ struct V2Shell: View {
         GeometryReader { proxy in
             let canSplit = V2SplitLayout.isSplit(width: proxy.size.width)
             let split = V2SplitLayout.isSplit(width: proxy.size.width, showsList: chatListBeside)
-            let list = V2SplitLayout.ListColumn(window: proxy.size.width, stored: storedListWidth, dragged: draggedListWidth, keepsSidePanel: sidePanelOpen)
+            let list = V2SplitLayout.ListColumn(window: proxy.size.width, stored: storedListWidth, dragged: draggedListWidth)
             tabs(split: split, canSplit: canSplit, list: list)
                 .environment(\.v2Shell, V2ShellContext(pickProfile: { pickProfile($0) }, dropQueuedProfilePick: { queuedProfilePick = V2QueuedProfilePick() }, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit, isPickingProfile: isPickingProfile)))
         }
@@ -1100,9 +1098,11 @@ enum V2SplitLayout {
     static let listWidths = ColumnWidth(key: "conduit.v2.chatListWidth", standard: listWidth, minimum: listWidth, maximum: 560)
 
     /// The list's column in a window: the user's width, less when the
-    /// window leaves the chat beside it less than its least width. With
-    /// Artifacts open beside the chat, the chat also keeps the panel's
-    /// standard width, so widening the list never takes the panel away.
+    /// window leaves the chat beside it less than its least width. A
+    /// window with room for Artifacts beside a chat at the list's standard
+    /// width keeps that room whatever the list's width, open or not, so
+    /// widening the list never takes the panel away and the list doesn't
+    /// jump as a chat or the panel opens.
     /// `dragged`: the width while the line is dragged, already within the
     /// room.
     struct ListColumn: Equatable {
@@ -1110,11 +1110,20 @@ enum V2SplitLayout {
         /// The widest the list can be in this window.
         let room: CGFloat
 
-        init(window: CGFloat, stored: Double, dragged: CGFloat? = nil, keepsSidePanel: Bool = false) {
-            let keeping = V2SplitLayout.minimumChatWidth + (keepsSidePanel ? ChatSidePanel.widths.standard + 1 : 0)
+        init(window: CGFloat, stored: Double, dragged: CGFloat? = nil) {
+            let keeping = V2SplitLayout.chatKeeps(window: window)
             width = dragged ?? V2SplitLayout.listWidths.resolved(stored, window: window, keeping: keeping)
             room = window - keeping - 1
         }
+    }
+
+    /// What the chat beside the list keeps in a window: its least width,
+    /// and Artifacts' standard width too where the panel fits beside a
+    /// chat at the list's standard width.
+    static func chatKeeps(window: CGFloat) -> CGFloat {
+        ChatSidePanel.fits(width: window - listWidth - 1)
+            ? minimumChatWidth + ChatSidePanel.widths.standard + 1
+            : minimumChatWidth
     }
 
     static func isSplit(width: CGFloat) -> Bool {

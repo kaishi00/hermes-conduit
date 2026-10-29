@@ -3621,17 +3621,19 @@ The line between a wide window's list and its chat, and between the chat
 and Artifacts beside it, drags the column's width (#1487).
 
 **Siblings:** the Chats list column · the Bots list column · Settings
-beside the list (it opens in the chat's column) · Artifacts beside a chat ·
+beside the list (it opens in the chat's column) · a group room beside the
+list (the list drags; a room has no Artifacts) · Artifacts beside a chat ·
 the drawer shell's persistent sidebar (Appearance, V2 off) · the tab bar
 under the list (Voice beside the tabs) · the chat's readable column (it
 measures the room left to it: not needed) · hiding the list (#1164: the
 width comes back with the list) · Settings > Appearance > Layout's caption
-in both shells · not needed: README.md (it doesn't describe the split
+in both shells (the drawer shell's only while its persistent sidebar is
+on) · not needed: README.md (it doesn't describe the split
 layout)
 
 **Code**
 - Widths and the line: `Conduit/Views/Components/ColumnDivider.swift` (ColumnWidth: resolved, dragged; ColumnDivider)
-- List: `Conduit/Views/V2/V2Shell.swift` (V2SplitLayout.listWidths, V2SplitLayout.ListColumn, sizedTabs, tabs, splitColumns)
+- List: `Conduit/Views/V2/V2Shell.swift` (V2SplitLayout.listWidths, V2SplitLayout.ListColumn, V2SplitLayout.chatKeeps, sizedTabs, tabs, splitColumns)
 - Artifacts: `Conduit/Views/V2/V2ConversationScreen.swift` (ChatSidePanel.widths, sidePanelWidth)
 - Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent, persistentSidebarWidth), `Conduit/Views/SidebarLayout.swift` (SidebarLayoutMetrics.persistentSidebarWidths)
 - Caption: `Conduit/Views/AuxiliaryViews.swift` (Layout)
@@ -3641,7 +3643,7 @@ layout)
 - Both lines drag: the list (375 to 560 pt; it can't go under the tab bar's width) and Artifacts (300 to 720 pt, standard 340 pt); the drawer shell's sidebar 320 to 520 pt. A double-click or double-tap resets a line; VoiceOver adjusts it by 40 pt or resets it (Eric, 2026-10-29, #1492, issue 1487).
 - Each width is kept per device, as hiding the list is, not synced. A window smaller than a width needs gives the column what's left beside the chat's least width (430 pt); a window splits, and Artifacts shows, at the standard width whatever the user's, so a widened column never takes them away (2026-10-29, #1492).
 - Under a widened list the tab bar keeps its width, centered under the list's column (2026-10-29, #1492).
-- While Artifacts is open, the list's room leaves the chat the panel's standard width too, so widening the list never hides the panel; a window without room for both keeps the list at its least width (2026-10-29, #1492, from review).
+- A window with room for Artifacts beside a chat at the list's standard width keeps that room whatever the list's width, the panel open or not: widening the list never hides the panel or its toggle, and the list doesn't jump as a chat or the panel opens. An iPad in landscape (1180 pt) gets a list up to 408 pt; a maximized Mac the full 560 pt (2026-10-29, #1492, from review).
 - A drag lays the column out at its live width and stores it once, when the drag ends or is cancelled: every defaults write redraws each `@AppStorage` view (2026-10-29, #1492, from review).
 
 **Open gaps**

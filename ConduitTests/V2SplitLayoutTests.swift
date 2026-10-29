@@ -43,6 +43,7 @@ extension SidebarLayoutTests {
         XCTAssertEqual(V2SplitLayout.ListColumn(window: 1440, stored: 500).width, 500)
         // A smaller window gives the list what's left beside the chat.
         XCTAssertEqual(V2SplitLayout.ListColumn(window: 900, stored: 500).width, 900 - V2SplitLayout.minimumChatWidth - 1)
+        XCTAssertEqual(V2SplitLayout.ListColumn(window: 1146, stored: Double(list.maximum)).width, list.maximum)
         // Never below the standard width the tab bar needs, nor past its
         // most, nor anything but the standard width for an unreadable value.
         XCTAssertEqual(V2SplitLayout.ListColumn(window: 806, stored: 500).width, V2SplitLayout.listWidth)
@@ -70,15 +71,20 @@ extension SidebarLayoutTests {
         XCTAssertEqual(panel.resolved(300, window: 1440, keeping: V2SplitLayout.minimumChatWidth), 300)
         XCTAssertEqual(panel.resolved(700, window: 1000, keeping: V2SplitLayout.minimumChatWidth), 1000 - V2SplitLayout.minimumChatWidth - 1)
 
-        // With Artifacts open, a widened list leaves the chat room for the
-        // panel: on an iPad Air in landscape (1180 pt), a list dragged to
-        // its most still leaves a chat the panel fits beside.
-        let besidePanel = V2SplitLayout.ListColumn(window: 1180, stored: Double(list.maximum), keepsSidePanel: true)
-        XCTAssertTrue(ChatSidePanel.fits(width: 1180 - besidePanel.width - 1))
-        XCTAssertTrue(ChatSidePanel.fits(width: 1180 - besidePanel.room - 1))
-        XCTAssertEqual(V2SplitLayout.ListColumn(window: 1180, stored: Double(list.maximum)).width, list.maximum)
-        // On a window with no room for both, the list keeps its least width.
-        XCTAssertEqual(V2SplitLayout.ListColumn(window: 900, stored: 500, keepsSidePanel: true).width, list.minimum)
+        // A window with room for Artifacts beside a chat at the list's
+        // standard width keeps it, the panel open or not: on an iPad Air in
+        // landscape (1180 pt), a list dragged to its most still leaves a
+        // chat the panel fits beside, so its toggle stays.
+        let ipad = V2SplitLayout.ListColumn(window: 1180, stored: Double(list.maximum))
+        XCTAssertGreaterThan(ipad.width, list.minimum)
+        XCTAssertTrue(ChatSidePanel.fits(width: 1180 - ipad.width - 1))
+        XCTAssertTrue(ChatSidePanel.fits(width: 1180 - ipad.room - 1))
+        // A maximized Mac has room for the widest list and the panel.
+        XCTAssertEqual(V2SplitLayout.ListColumn(window: 1440, stored: Double(list.maximum)).width, list.maximum)
+        // Too small for the panel anyway: the list keeps only the chat's
+        // least width.
+        XCTAssertEqual(V2SplitLayout.chatKeeps(window: 1000), V2SplitLayout.minimumChatWidth)
+        XCTAssertFalse(ChatSidePanel.fits(width: 1000 - V2SplitLayout.listWidth - 1))
         // A drag under way lays the list out at the dragged width.
         XCTAssertEqual(V2SplitLayout.ListColumn(window: 1440, stored: 400, dragged: 450).width, 450)
 
