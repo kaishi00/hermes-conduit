@@ -474,7 +474,12 @@ struct V2ChatsView: View, Equatable {
     /// The listed chats and cron runs: the profile in use's, or in All
     /// every included profile's. Worked out once per render.
     private var listed: (sessions: [SessionSummary], cron: [SessionSummary]) {
-        renderMemo.listed { (appState.chatListSessions, appState.chatListCronSessions) }
+        renderMemo.listed {
+            // Pulse's own chat stays behind the Pulse screen, in All too.
+            let sessions = appState.chatListSessions
+            let chats = appState.pulseHomeChat == nil ? sessions : sessions.filter { !appState.isPulseHomeChat($0) }
+            return (chats, appState.chatListCronSessions)
+        }
     }
 
     private var savedSelection: V2FilterSelection {
@@ -694,6 +699,10 @@ struct V2ChatsView: View, Equatable {
             .disabled(appState.isAllProfilesChatsOn)
             .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
             .macTooltip(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
+
+            if appState.showsPulseScreen {
+                V2PulseButton()
+            }
 
             NavigationLink(value: V2Route.artifacts) {
                 V2CapsuleIcon(systemImage: "square.grid.2x2")
@@ -1232,7 +1241,7 @@ struct V2ChatsView: View, Equatable {
         guard isSearching, !contentSearch.hits.isEmpty else { return [] }
         let known = appState.activeProfileSessions + appState.activeProfileCronSessions
             + (appState.isAllProfilesChatsOn ? listed.sessions.filter(appState.isOtherProfileRow) : [])
-        return SessionContentSearch.rows(
+        let rows = SessionContentSearch.rows(
             hits: contentSearch.hits,
             listed: displayed,
             known: known,
@@ -1240,6 +1249,12 @@ struct V2ChatsView: View, Equatable {
             activeProfile: appState.isAllProfilesChatsOn ? appState.activeProfile : "",
             owner: { session in appState.isAllProfilesChatsOn ? appState.rowProfile(session) : "" }
         )
+        // Pulse's chat stays behind the Pulse screen, message matches too.
+        guard appState.showsPulseScreen, let home = appState.pulseHomeChat else { return rows }
+        return rows.filter { row in
+            row.session.map { !appState.isPulseHomeChat($0) }
+                ?? (row.hit.sessionID != home && appState.canonicalSessionID(for: row.hit.sessionID) != home)
+        }
     }
 
     /// Pinned in the order the person set (issue 1354), then Recent.
