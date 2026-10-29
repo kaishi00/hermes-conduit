@@ -283,7 +283,7 @@ final class CrashReportOffer: ObservableObject {
     }
 
     /// Not now: the reports the card asked about aren't offered again; one
-    /// that came in meanwhile is, next time.
+    /// that came in meanwhile is offered next.
     func dismiss() {
         if case .asking = state { queue.remove(shown) }
         if state == .failed { queue.remove(shown) }
