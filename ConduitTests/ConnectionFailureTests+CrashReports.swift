@@ -78,8 +78,8 @@ extension ConnectionFailureTests {
 
         // A stack that overflowed: deeper than the walk goes.
         let levels = 400
-        let frames = String(repeating: "{\"subFrames\":[", count: levels) + "{\"binaryName\":\"Conduit\"}" + String(repeating: "]}", count: levels)
-        let deep = Data("{\"crashDiagnostics\":[{\"callStackTree\":{\"callStacks\":[{\"callStackRootFrames\":[\(frames)]}]}}]}".utf8)
+        let nested = String(repeating: "{\"subFrames\":[", count: levels) + "{\"binaryName\":\"Conduit\"}" + String(repeating: "]}", count: levels)
+        let deep = Data("{\"crashDiagnostics\":[{\"callStackTree\":{\"callStacks\":[{\"callStackRootFrames\":[\(nested)]}]}}]}".utf8)
         let deepBody = try XCTUnwrap(CrashReportUpload.body(fromPayloadJSON: deep))
         let deepDiagnostic = try XCTUnwrap(deepBody["diagnostic"] as? [String: Any])
         let deepTree = try XCTUnwrap((deepDiagnostic["crashDiagnostics"] as? [[String: Any]])?.first?["callStackTree"] as? [String: Any])
