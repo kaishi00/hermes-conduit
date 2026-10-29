@@ -31,14 +31,14 @@ struct GroupChatView: View {
     @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
     @AppStorage(ChatTypography.fontStylePreferenceKey) private var chatFontStyleRaw = ChatFontStyle.standard.rawValue
     @Environment(\.chatWidthTextSteps) private var chatWidthTextSteps
-    @Environment(\.sizeCategory) private var columnSizeCategory
+    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
 
     private var chatTextSize: ChatTextAppearance {
         ChatTextAppearance(
             size: ChatTypography.resolve(rawValue: chatTextSizeRaw),
             style: ChatTypography.resolveStyle(rawValue: chatFontStyleRaw)
         )
-        .widened(steps: chatWidthTextSteps, category: columnSizeCategory)
+        .widened(steps: chatWidthTextSteps, from: columnBaseTextSize)
     }
 
     var body: some View {

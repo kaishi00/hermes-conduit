@@ -318,14 +318,14 @@ struct ChatView: View {
 
     /// A wide window's column steps its text up (`readableChatColumn`).
     @Environment(\.chatWidthTextSteps) private var chatWidthTextSteps
-    @Environment(\.sizeCategory) private var columnSizeCategory
+    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
 
     private var chatTextSize: ChatTextAppearance {
         ChatTextAppearance(
             size: chatTextSizeOverride ?? ChatTypography.resolve(rawValue: chatTextSizeRaw),
             style: chatTextSizeOverride == nil ? ChatTypography.resolveStyle(rawValue: chatFontStyleRaw) : .standard
         )
-        .widened(steps: chatTextSizeOverride == nil ? chatWidthTextSteps : 0, category: columnSizeCategory)
+        .widened(steps: chatTextSizeOverride == nil ? chatWidthTextSteps : 0, from: columnBaseTextSize)
     }
 
     var body: some View {
