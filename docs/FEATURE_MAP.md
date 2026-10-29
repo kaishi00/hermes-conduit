@@ -3197,7 +3197,7 @@ profiles line)
 - Spoken jobs: `Conduit/Services/AppState.swift` (voiceJobProfileTarget, watchJobProfileNames: a profile is matched by the name Conduit shows too)
 - Siri and Shortcuts: `Conduit/Intents/StartVoiceConversationIntent.swift` (ConduitProfileEntityQuery), fed by AppState's persistSiriProfileNames
 - Pushes: `notifier/session_titles.py` (bot_name, _bot_name), `Shared/Notifications/NotificationCopy.swift` (named), `ConduitNotificationService/NotificationService.swift`, `Shared/NotificationE2E.swift` (NotificationSharedSettings.mainProfileNames, activeDashboardID), `Conduit/Services/AppState+HermesCalls.swift` (shareMainProfileNamesWithNotifications)
-- Bot Chat labels: `Conduit/Services/AppState.swift` (botConversationTitle, isIDOnlyBotLabel, renameCapturedBotChatLabels), `Conduit/Services/AppState+Widgets.swift` (publishWidgetSnapshot)
+- Bot Chat labels: `Conduit/Services/AppState.swift` (botConversationTitle, renameCapturedBotChatLabels), `Conduit/Services/AppState+Widgets.swift` (publishWidgetSnapshot)
 - Tests: `ConduitTests/BotModeTests.swift` (testABotTitleNamesItsProfileEverywhere, testAnUnnamedMainBotIsHermes, testADeviceNameNamesAProfileOnlyWithoutBotLooks), `ConduitTests/NotificationCopyTests.swift` (testTheMainBotGoesByItsConduitName), `ConduitTests/ProfileDiscoveryTests.swift` (display names, device names)
 
 **Rulings**

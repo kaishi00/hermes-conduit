@@ -10047,18 +10047,11 @@ final class AppState: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         // The main bot by its name now, not one saved before a rename.
         if BotManagement.isDefaultProfile(name) { return mainName }
-        if !label.isEmpty, !isIDOnlyBotLabel(label, profile: name) { return label }
+        // A label that is only the id (saved before #1448) names it as the id does.
+        if !label.isEmpty, label != name { return label }
         return name.isEmpty
             ? AppLocalization.string("New conversation")
             : String(name.prefix(1)).uppercased() + String(name.dropFirst())
-    }
-
-    /// A Bot Chat label that is only the profile id, in any case (saved
-    /// before #1448, or the main bot's "Default" saved before #1457), is no
-    /// label: the bot is named as Conduit names it now.
-    static func isIDOnlyBotLabel(_ label: String, profile: String) -> Bool {
-        label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            == profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     /// Registers a Bot Mode reference's identity so the conversation resolves

@@ -78,6 +78,8 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: "atlas", sessionID: "s1")), "Atlas",
                        "and so does one saved with the id as its label")
         XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: "Scout", sessionID: "s1")), "Scout")
+        XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: "ATLAS", sessionID: "s1")), "ATLAS",
+                       "a title that only recases the id is still the bot's title")
         XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "default", label: "Default", sessionID: "s1")), "Hermes",
                        "the main bot's label saved before #1457 gives way to its Conduit name")
         XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "default", label: nil, sessionID: "s1"), mainName: "Jarvis"), "Jarvis")
