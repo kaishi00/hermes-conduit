@@ -64,6 +64,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 - Tasks board for Hermes' Kanban tasks
 - Bots and their Bot Chats, with each bot's model, skills, tools and MCP servers, pictures Hermes can generate, and @mentions that bring another bot in; gateway-hosted group chats with @mentions, files and approvals
 - Scheduled jobs: review runs, run now, edit, mute their notifications, delete
+- Pulse (beta): once you turn it on, Hermes brings things up on its own (a morning brief, follow-ups on what you said you'd do, deadlines and birthdays) as cards you can act on, rate or put off, and learns what's worth raising
 
 **Your phone, if you allow it**
 
