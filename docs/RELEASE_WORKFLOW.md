@@ -52,7 +52,10 @@ it compiles the app and runs a curated slice (`docs/CI.md`, CI v5) — and is
 workflow on the release branch** (Actions > Nightly > Run workflow, pick the
 branch, or `gh workflow run nightly.yml --ref <release-branch>`): the complete
 unit suite, the timing/dormancy repeats and the complete UI suite on the exact
-release head. Every job must pass. A Nightly run on a different SHA certifies
+release head. Every job must pass. A job GitHub never gave a runner is rerun
+by `nightly-rerun.yml` and counts once that attempt passes it; it had run no
+test before. A job that ran and failed is never rerun, so it decides the run.
+A Nightly run on a different SHA certifies
 nothing, and neither does one from before a rebase. There is no separate
 release workflow.
 

@@ -42,6 +42,8 @@ def unacquired(name):
 class NightlyRerunTests(unittest.TestCase):
     def setUp(self):
         if shutil.which("jq") is None:
+            if os.environ.get("CI"):
+                self.fail("jq is missing on CI, so the rerun decision went untested")
             self.skipTest("jq not installed")
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp)

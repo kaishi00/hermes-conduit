@@ -34,7 +34,8 @@ jobs:
           set -euo pipefail
           jobs=$(gh api "repos/$REPO/actions/runs/$RUN_ID/attempts/$ATTEMPT/jobs?per_page=100" --jq '.jobs')
           # A job that ran and lost has a runner and steps; one GitHub never
-          # placed has neither.
+          # placed has neither. Every unacquired job is also lost, so the two
+          # counts match only when nothing that ran lost.
           lost=$(jq -r '[.[] | select(.conclusion != "success" and .conclusion != "skipped")] | length' <<<"$jobs")
           unacq=$(jq -c '[.[] | select(.conclusion == "cancelled" and (.runner_id // 0) == 0 and (.steps | length) == 0)]' <<<"$jobs")
           unacquired=$(jq -r 'length' <<<"$unacq")
