@@ -638,7 +638,9 @@ private struct ArtifactsList: View {
             guard other.kind == .image, other.exists, let path = other.path else { return nil }
             return other.id == item.id ? tapped : galleryItem(other, path: path)
         }
-        ImageGallery.open(tapped, in: ImageGallerySource { images })
+        if !ImageGallery.open(tapped, in: ImageGallerySource { images }) {
+            openFailed(item)
+        }
     }
 
     private func galleryItem(_ item: ArtifactItem, path: String) -> ImageGalleryItem {

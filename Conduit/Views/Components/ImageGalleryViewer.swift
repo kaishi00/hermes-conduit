@@ -191,8 +191,8 @@ final class ImageGalleryViewController: UIViewController {
     private let placeholderIndex: Int
     /// Pictures decoded already, so a page the pager makes again (a swipe
     /// away and back) shows its picture without decoding it again.
-    private let decoded: NSCache<NSURL, UIImage> = {
-        let cache = NSCache<NSURL, UIImage>()
+    private let decoded: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
         cache.totalCostLimit = 96 * 1024 * 1024
         return cache
     }()
@@ -202,7 +202,7 @@ final class ImageGalleryViewController: UIViewController {
         options: [.interPageSpacing: 16]
     )
     private let backdrop = UIView()
-    private let topBar = UIView()
+    private let topBar = ImageGalleryBarView()
     private let topShade = CAGradientLayer()
     private let doneButton = UIButton(type: .system)
     private let shareButton = UIButton(type: .system)
@@ -407,12 +407,14 @@ final class ImageGalleryViewController: UIViewController {
             failed[newIndex] = nil
             madePages(newIndex).forEach { $0.showLoading() }
         }
-        for prefetch in ImageGallery.prefetchOrder(around: newIndex, count: items.count) {
-            startLoading(prefetch)
-        }
+        startLoading(newIndex)
+        // Neighbours once this page's original is in, so a tap doesn't
+        // start three large downloads at once.
+        if loads[newIndex] == nil { startNeighbours(of: newIndex) }
         // Copies fetched for pages paged well past go now, so a long list
         // of large photos doesn't fill the phone; one paged back to is
-        // fetched again (its picture usually still decoded).
+        // fetched again (its decode is kept under its id, so it shows at
+        // once if still cached).
         for (far, file) in files where abs(far - newIndex) > 1 && file.ownedDirectory != nil {
             MediaPreviewPresenter.removeDirectory(file.ownedDirectory)
             files[far] = nil
@@ -437,7 +439,7 @@ final class ImageGalleryViewController: UIViewController {
     // MARK: Pages
 
     private func page(at index: Int) -> ImageGalleryPageController {
-        let page = ImageGalleryPageController(index: index, title: items[index].title, decoded: decoded)
+        let page = ImageGalleryPageController(index: index, id: items[index].id, title: items[index].title, decoded: decoded)
         pages.add(page)
         // The row's copy first: it stays if the original can't be had.
         if index == placeholderIndex, let placeholder {
@@ -445,7 +447,8 @@ final class ImageGalleryViewController: UIViewController {
         }
         if let file = files[index] {
             page.show(file: file)
-        } else if let tooLarge = failed[index] {
+        } else if let tooLarge = failed[index], !ImageGallery.fetchesAgain(afterFailure: tooLarge) {
+            // One fetched again when paged to keeps its spinner meanwhile.
             page.showFailure(tooLarge: tooLarge)
         }
         return page
@@ -457,6 +460,12 @@ final class ImageGalleryViewController: UIViewController {
 
     private func madePages(_ index: Int) -> [ImageGalleryPageController] {
         pages.allObjects.filter { $0.index == index }
+    }
+
+    private func startNeighbours(of index: Int) {
+        for neighbour in ImageGallery.prefetchOrder(around: index, count: items.count).dropFirst() {
+            startLoading(neighbour)
+        }
     }
 
     private func startLoading(_ index: Int) {
@@ -481,6 +490,7 @@ final class ImageGalleryViewController: UIViewController {
                 self.failed[index] = tooLarge
                 self.madePages(index).forEach { $0.showFailure(tooLarge: tooLarge) }
             }
+            if index == self.index { self.startNeighbours(of: index) }
         }
     }
 
@@ -553,6 +563,15 @@ final class ImageGalleryViewController: UIViewController {
 
 /// The viewer's own view: VoiceOver's escape closes it, and a three-finger
 /// swipe pages.
+/// The top bar takes only its buttons' touches: a swipe, pinch or double
+/// tap that starts over its shade or titles reaches the picture beneath.
+private final class ImageGalleryBarView: UIView {
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hit = super.hitTest(point, with: event)
+        return hit is UIControl ? hit : nil
+    }
+}
+
 private final class ImageGalleryRootView: UIView {
     var onEscape: (() -> Void)?
     var onPage: ((Int) -> Bool)?
@@ -631,9 +650,12 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
     private let failureLabel = UILabel()
     private var shownFile: URL?
     private var decodeTask: Task<Void, Never>?
-    private let decoded: NSCache<NSURL, UIImage>
+    private let decoded: NSCache<NSString, UIImage>
+    /// The picture's id: its decode outlives the copy it came from.
+    private let id: String
 
-    init(index: Int, title: String, decoded: NSCache<NSURL, UIImage>) {
+    init(index: Int, id: String, title: String, decoded: NSCache<NSString, UIImage>) {
+        self.id = id
         self.index = index
         self.pictureTitle = title
         self.decoded = decoded
@@ -737,7 +759,7 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
         shownFile = file.url
         failureLabel.isHidden = true
         let url = file.url
-        if let image = decoded.object(forKey: url as NSURL) {
+        if let image = decoded.object(forKey: id as NSString) {
             spinner.stopAnimating()
             imageView.image = image
             if !isZoomedIn { layoutPicture() }
@@ -759,7 +781,7 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
                 // An animated picture's size is one frame's: count them all.
                 let frames = max(image.images?.count ?? 1, 1)
                 let cost = Int(image.size.width * image.scale * image.size.height * image.scale) * 4 * frames
-                self.decoded.setObject(image, forKey: url as NSURL, cost: cost)
+                self.decoded.setObject(image, forKey: self.id as NSString, cost: cost)
                 self.imageView.image = image
                 if !self.isZoomedIn { self.layoutPicture() }
             } else if self.imageView.image == nil {

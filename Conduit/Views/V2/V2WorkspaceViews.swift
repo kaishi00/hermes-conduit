@@ -760,7 +760,9 @@ struct WorkspaceFolderView: View {
         let lists = [searched].compactMap { $0 } + Array(explorer.entries.values) + [explorer.recent]
         let listed = lists.first { $0.contains { $0.path == entry.path } } ?? [entry]
         let images = listed.filter { !$0.isDirectory && GatewayMediaKind(path: $0.name) == .image }
-        ImageGallery.open(item(entry), in: ImageGallerySource { images.map(item) })
+        if !ImageGallery.open(item(entry), in: ImageGallerySource { images.map(item) }) {
+            failure = AppLocalization.string("This file couldn't be opened.")
+        }
     }
 
     /// A picture's viewer has Share (Save Image, Copy, Save to Files) too.
