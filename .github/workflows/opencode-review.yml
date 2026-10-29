@@ -13,13 +13,20 @@ concurrency:
   # later push supersedes that review and is reviewed itself); any other label,
   # or any label on an own-branch or trusted contributor's PR, gets one group
   # per run, so it can't cancel anything. The trusted list here and in the
-  # job's if must match.
+  # plan job's if must match.
   group: opencode-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}${{ github.event.action == 'labeled' && (github.event.label.name != 'run-review' || github.event.pull_request.head.repo.full_name == github.repository || contains(fromJSON('["malaiwah"]'), github.event.pull_request.user.login)) && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 jobs:
-  review:
-    name: review (${{ matrix.reviewer }})
+  # Picks who reviews, so a run that needn't call a model ends here on one
+  # runner. It waits a minute first: a push in that minute cancels this run
+  # (the concurrency group above) before any model is called. Then it skips
+  # the review when the PR's change is the same as one a reviewer already
+  # passed (merging main, a rerun, re-adding run-review), and gives a PR that
+  # only touches docs and config files (Markdown, text, JSON, YAML, TOML,
+  # docs/; not workflows) to GLM-5.3 alone. A manual run always reviews.
+  plan:
+    name: plan
     # The reviewer is an agent holding the review secrets, and a PR's title,
     # body and diff all reach its prompt. PRs from this repository's own
     # branches (people with push access) get it on every push, and so do fork
@@ -37,14 +44,94 @@ jobs:
         ((github.event.action == 'labeled' && github.event.label.name == 'run-review') ||
          (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'run-review'))))
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pull-requests: read
+    outputs:
+      reviewers: ${{ steps.pick.outputs.reviewers }}
+    steps:
+      - name: Debounce (wait for rapid commits to settle)
+        if: github.event_name == 'pull_request_target'
+        run: sleep 60
+      - name: Pick reviewers
+        id: pick
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_FILE: opencode-review.yml
+          ALL_REVIEWERS: >-
+            [{"reviewer": "Claude Haiku 5.5", "model": "anthropic/claude-haiku-5-5"},
+             {"reviewer": "GLM-5.3", "model": "zai-custom/glm-5.3"}]
+          DOCS_REVIEWER: GLM-5.3
+        run: |
+          case "$PR_NUMBER" in
+            '' | *[!0-9]*) echo "pr_number must be a PR number, not '$PR_NUMBER'" >&2; exit 1 ;;
+          esac
+          repo="repos/$GITHUB_REPOSITORY"
+          pick() {
+            echo "reviewers=$(jq -c . <<<"$1")" >> "$GITHUB_OUTPUT"
+            echo "$2" | tee -a "$GITHUB_STEP_SUMMARY"
+          }
+          pr=$(gh api "$repo/pulls/$PR_NUMBER")
+          head=$(jq -r .head.sha <<<"$pr")
+          base=$(jq -r .base.ref <<<"$pr")
+          head_ref=$(jq -r .head.ref <<<"$pr")
+
+          # The PR's change as the reviewers see it: its diff from where it
+          # meets the base. patch-id ignores line numbers and the base's own
+          # changes, so merging main doesn't change it. An empty id (a diff too
+          # large for the compare API) never matches, so that PR is reviewed.
+          change_id() {
+            gh api -H 'Accept: application/vnd.github.diff' "$repo/compare/$base...$1" 2>/dev/null \
+              | git patch-id --stable | cut -d' ' -f1 || true
+          }
+
+          if [ "$EVENT_NAME" = pull_request_target ]; then
+            # The newest successful run on one of this PR's commits whose
+            # review job passed. A run this job skipped has no passing review
+            # job, so it never stands in for a review.
+            commits=$(gh api --paginate "$repo/pulls/$PR_NUMBER/commits" --jq '.[].sha') || commits=''
+            reviewed=''
+            while read -r run_id run_sha; do
+              [ -n "$run_id" ] || continue
+              grep -qx "$run_sha" <<<"$commits" || continue
+              passed=$(gh api "$repo/actions/runs/$run_id/jobs" \
+                --jq '[.jobs[] | select((.name | startswith("review (")) and .conclusion == "success")] | length')
+              if [ "$passed" -gt 0 ]; then reviewed=$run_sha; break; fi
+            done < <(gh api -X GET "$repo/actions/workflows/$WORKFLOW_FILE/runs" \
+              -f event=pull_request_target -f status=success -f branch="$head_ref" -F per_page=30 \
+              --jq '.workflow_runs[] | "\(.id) \(.head_sha)"')
+            if [ -n "$reviewed" ]; then
+              now=$(change_id "$head")
+              if [ -n "$now" ] && [ "$now" = "$(change_id "$reviewed")" ]; then
+                pick '[]' "Skipped: $head changes the same as $reviewed, which was reviewed."
+                exit 0
+              fi
+            fi
+          fi
+
+          # Workflows count as code: they run with this repo's secrets. So does
+          # a file list that didn't load, so every reviewer runs.
+          files=$(gh api --paginate "$repo/pulls/$PR_NUMBER/files" --jq '.[].filename') || files=''
+          if [ -z "$files" ] || grep -q '^\.github/workflows/' <<<"$files" \
+            || grep -Evq '(^docs/|\.(md|txt|json|ya?ml|toml)$)' <<<"$files"; then
+            pick "$ALL_REVIEWERS" "Reviewing with every reviewer."
+          else
+            pick "$(jq -c --arg r "$DOCS_REVIEWER" 'map(select(.reviewer == $r))' <<<"$ALL_REVIEWERS")" \
+              "Docs and config only: reviewing with $DOCS_REVIEWER."
+          fi
+
+  review:
+    name: review (${{ matrix.reviewer }})
+    needs: plan
+    if: needs.plan.outputs.reviewers != '[]'
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - reviewer: Claude Haiku 5.5
-            model: anthropic/claude-haiku-5-5
-          - reviewer: GLM-5.3
-            model: zai-custom/glm-5.3
+        include: ${{ fromJSON(needs.plan.outputs.reviewers) }}
     # No id-token: opencode uses the run's token (USE_GITHUB_TOKEN), not OIDC.
     permissions:
       contents: read
