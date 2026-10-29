@@ -203,10 +203,10 @@ struct PinnedChatOrder: Equatable {
     }
 
     /// The mixed order a drag leaves in All's mixed Pinned section: `rows`
-    /// moved as `onMove` reports it, where the first of them was, among the
-    /// saved keys of chats not shown (a profile left out of All for now),
-    /// which keep their places. A row the mix didn't name was shown on top,
-    /// so then the rows go first.
+    /// moved as `onMove` reports it, written into the places the mix held
+    /// them in, so a chat not shown (a profile left out of All for now)
+    /// keeps its place. Rows the mix didn't name were shown on top, so the
+    /// rows past its places go first.
     static func mixedOrder<Row>(
         moving rows: [Row],
         fromOffsets source: IndexSet,
@@ -218,14 +218,18 @@ struct PinnedChatOrder: Equatable {
     ) -> [String] {
         var moved = rows
         moved.move(fromOffsets: source, toOffset: destination)
-        let rowKeys = rows.map { row in Set(ids(row).map { key(profile: profile(row), id: $0) }) }
-        let shownKeys = rowKeys.reduce(into: Set<String>()) { $0.formUnion($1) }
-        let named = Set(mixed)
-        let start = rowKeys.allSatisfy { !$0.isDisjoint(with: named) }
-            ? mixed.firstIndex(where: shownKeys.contains) ?? mixed.count
-            : 0
-        let unshown = mixed.filter { !shownKeys.contains($0) }
-        return Array(unshown.prefix(start)) + moved.map { key(profile: profile($0), id: pinID($0)) } + unshown.dropFirst(start)
+        let movedKeys = moved.map { key(profile: profile($0), id: pinID($0)) }
+        let shownKeys = rows.reduce(into: Set<String>()) { keys, row in
+            let owner = profile(row)
+            keys.formUnion(ids(row).map { key(profile: owner, id: $0) })
+        }
+        let places = mixed.indices.filter { shownKeys.contains(mixed[$0]) }
+        let lead = max(0, movedKeys.count - places.count)
+        var result = mixed
+        for (place, placed) in zip(places, movedKeys.dropFirst(lead)) { result[place] = placed }
+        // A chat's older key beyond its rows' places goes.
+        let stale = Set(places.dropFirst(movedKeys.count - lead))
+        return Array(movedKeys.prefix(lead)) + result.indices.filter { !stale.contains($0) }.map { result[$0] }
     }
 
     /// Where a move lands among the rows that can move, when a List section

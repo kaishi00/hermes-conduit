@@ -2562,7 +2562,7 @@ Settings caption · CarPlay's chat list · the chat pickers (the Home Screen
 widget's and the Share extension's) · README.md
 
 **Code**
-- Order: `Conduit/Models/PinnedChatOrder.swift` (arrange, interleave, orders, mixedOrder, movableOffsets), `Conduit/Services/AppState+PinnedChatOrder.swift` (arrangePinned, movePinnedChats, pinnedChatsForOrdering, pinnedChatOrderSlot), `Conduit/Services/AppState.swift` (pinnedChatOrder, setPinnedChatOrder, setPinnedChatMixedOrder, dropFromPinnedChatOrder from storePins and removePinnedState)
+- Order: `Conduit/Models/PinnedChatOrder.swift` (arrange, interleave, orders, mixedOrder, movableOffsets), `Conduit/Services/AppState+PinnedChatOrder.swift` (arrangePinned, movePinnedChats, pinnedChatsForOrdering, pinnedChatOrderSlot), `Conduit/Services/AppState.swift` (pinnedChatOrder, setPinnedChatOrder, setPinnedChatMixedOrder, dropFromPinnedChatOrder from storePins and removePinnedState; sign-out and a new server clear both stored orders)
 - Chats list: `Conduit/Views/V2/V2ChatsView.swift` (nestedSections, listRows' movesPinned, dragsPinned, pinnedHeader, projectsList, V2SessionActions' onReorderPinned)
 - Sheet and menu: `Conduit/Views/PinnedChatsOrderSheet.swift` (reorderPinnedChatsMenu for the Pinned headers), `Conduit/Views/SidebarView.swift` (SessionActionMenuItems' onReorderPinned; the classic drawer's nestedSessionSections, projectsViewPinnedSessions and pinnedHeader)
 - CarPlay: `Conduit/CarPlay/CarPlayBrowseTemplates.swift` (chatList's arrangePinned), `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (chatList, chatsObservation)
