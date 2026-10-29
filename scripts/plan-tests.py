@@ -1068,15 +1068,16 @@ _TOP_DECL_RE = re.compile(
     r"^(?:(?:@\w+(?:\([^)]*\))?|public|internal|fileprivate|private|final|open)\s+)*"
     r"(?:class|extension)\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 _TEST_FUNC_RE = re.compile(
-    r"^\s+(?:(?:@\w+(?:\([^)]*\))?|override|public|internal|open|nonisolated)\s+)*"
+    r"^(?:    |\t)(?:(?:@\w+(?:\([^)]*\))?|override|public|internal|open|nonisolated)\s+)*"
     r"func\s+(test[A-Za-z0-9_]*)\s*\(\s*\)")
 
 
 def discover_test_methods(repo_root: str, target: str, classes: set) -> dict:
     """The test methods each of `classes` declares in `target`, in its body or
     in an extension of it, as {class: set(method)}. A declaration starts a
-    body at column 0 and a `}` at column 0 ends it (the repo's formatting);
-    only parameterless `test...` methods count, as XCTest runs only those."""
+    body at column 0 and a `}` at column 0 ends it (the repo's formatting).
+    Only parameterless `test...` methods at the body's own level count:
+    XCTest runs only those, and a nested type's are not the class's."""
     found = {name: set() for name in classes}
     root = os.path.join(repo_root, target)
     for path in _swift_files(root) if os.path.isdir(root) else []:
@@ -1292,6 +1293,18 @@ def cmd_smoke(args) -> int:
                 problems.append(
                     f"smoke suite lists {test!r} in {target}, but {cls} has no "
                     f"test method {method}()")
+    # The timing families run with repeats at night; on every PR's shared
+    # runner they flake (docs/CI.md).
+    nightly_only_pinned = _nightly_only(_resolve_in_repo(args.repo_root, args.hosted_suite))
+    if nightly_only_pinned is None:
+        warn(f"hosted suite {args.hosted_suite} unreadable: the pinned tests "
+             f"aren't checked against the nightly-only timing families")
+    else:
+        for test in unit:
+            if test.split("/")[0] in nightly_only_pinned:
+                problems.append(
+                    f"smoke suite pins {test!r}, from a nightly-only timing family "
+                    f"(hosted-suite.json nightly_only_unit)")
     for name in contracts:
         if name not in unit_inventory:
             problems.append(
@@ -1313,7 +1326,7 @@ def cmd_smoke(args) -> int:
     # The change's own unit classes join the same invocation (no extra
     # fixed cost), cheapest first within the budget. Timing families stay
     # nightly-only whatever changed.
-    changed_unit, changed_skipped = [], []
+    changed_unit, changed_skipped, replaced = [], [], []
     changed = []
     if args.changed_files:
         try:
@@ -1376,7 +1389,8 @@ def cmd_smoke(args) -> int:
         changed_unit.sort()
         changed_skipped.sort()
         # A changed class runs whole, so its pinned tests would only repeat.
-        unit = [t for t in unit if t.split("/")[0] not in changed_unit] + changed_unit
+        replaced = [t for t in curated_unit if t.split("/")[0] in changed_unit]
+        unit = [t for t in unit if t not in replaced] + changed_unit
         if changed_unit:
             print(f"changed unit classes added: {', '.join(changed_unit)} "
                   f"(~{spent:.0f}s of {changed_budget:.0f}s)")
@@ -1391,7 +1405,8 @@ def cmd_smoke(args) -> int:
     ui_classes = {t.split("/")[0] for t in ui}
     delegated_unit = len(discovery["unit"]) - len(unit_classes)
     delegated_ui = len(discovery["ui"]) - len(ui_classes)
-    print(f"smoke selection: {len(curated_unit)} of {max_unit} pinned unit tests, "
+    print(f"smoke selection: {len(curated_unit) - len(replaced)} of {max_unit} pinned unit tests"
+          f"{f' ({len(replaced)} more run in their whole changed class)' if replaced else ''}, "
           f"{len(contracts)} source contract classes, {len(changed_unit)} changed "
           f"classes; {len(ui)} of {max_ui} pinned UI tests")
     print(f"not in the smoke set: {delegated_unit} unit + "
@@ -1403,6 +1418,7 @@ def cmd_smoke(args) -> int:
             "schema_version": 1,
             "unit": unit,
             "curated_unit": curated_unit,
+            "replaced_unit": replaced,
             "source_contracts": list(contracts),
             "max_unit_tests": max_unit,
             "max_ui_tests": max_ui,

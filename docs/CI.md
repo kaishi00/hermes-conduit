@@ -50,7 +50,9 @@ the stem's family, `<Stem><Topic>Tests` (a change to `AppState.swift` or
 `AppState+Composer.swift` reaches `AppStateChatResumeTests`), also cheapest
 first. The rest are named in a notice and the step summary. A changed class
 runs whole, in place of any tests pinned from it.
-Timing families are never added. Most red nights from 2026-10-19 to 10-22
+Timing families are never added, and neither are changed UI classes: UI
+tests take 36-150 s each, so a UI test a PR adds or edits first runs at
+night. Most red nights from 2026-10-19 to 10-22
 were tests a PR had added or edited and never run before merge; 2026-10-24's
 was an `AppState.swift` change (#1154) that broke `AppStateChatResumeTests`.
 

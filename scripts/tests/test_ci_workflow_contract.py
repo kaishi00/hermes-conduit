@@ -709,10 +709,10 @@ class SmokeSelectionTests(unittest.TestCase):
         }
         self.assertLessEqual(timing_families, nightly_only)
         self.assertFalse(
-            nightly_only & set(suite.get("unit") or []),
+            nightly_only & {t.split("/")[0] for t in suite.get("unit") or []},
             "a nightly-only timing family must not be in the smoke set")
         self.assertFalse(nightly_only & set(suite.get("source_contracts") or []))
-        self.assertFalse(nightly_only & set(suite.get("ui") or []))
+        self.assertFalse(nightly_only & {t.split("/")[0] for t in suite.get("ui") or []})
 
     def test_a_nonexistent_class_fails_the_selection(self):
         with open(SMOKE_SUITE, encoding="utf-8") as fh:
@@ -768,6 +768,27 @@ class SmokeSelectionTests(unittest.TestCase):
                 self.assertNotEqual(proc.returncode, 0)
                 self.assertIn("over its cap", proc.stdout)
                 self.assertIn(cap, proc.stdout)
+
+    def test_a_pinned_timing_family_test_fails_the_selection(self):
+        with open(os.path.join(SCRIPTS_DIR, "hosted-suite.json"), encoding="utf-8") as fh:
+            family = json.load(fh)["nightly_only_unit"][0]
+        method = None
+        for dirpath, _, files in os.walk(os.path.join(REPO_ROOT, "ConduitTests")):
+            for f in files:
+                with open(os.path.join(dirpath, f), encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
+                m = re.search(r"^(?:final )?class " + family + r"\b.*?^    func (test\w+)\(\)",
+                              text, re.M | re.S)
+                if m:
+                    method = m.group(1)
+        self.assertTrue(method, family)
+
+        def mutate(suite):
+            suite["unit"] = list(suite["unit"])[:-1] + [f"{family}/{method}"]
+
+        proc = self._run_smoke_with(mutate)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("nightly-only timing family", proc.stdout)
 
     def test_a_missing_cap_fails_the_selection(self):
         def mutate(suite):
@@ -916,6 +937,8 @@ class SmokeSelectionTests(unittest.TestCase):
         self.assertIn("BotModeTests", doc["unit"])
         self.assertFalse([t for t in doc["unit"] if t.startswith("BotModeTests/")])
         self.assertTrue([t for t in doc["curated_unit"] if t.startswith("BotModeTests/")])
+        self.assertEqual(doc["replaced_unit"],
+                         [t for t in doc["curated_unit"] if t.startswith("BotModeTests/")])
 
     def test_a_changed_app_file_adds_its_namesake_tests(self):
         proc, doc = self._changed_selection(

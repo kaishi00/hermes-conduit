@@ -22,6 +22,8 @@ def _count(value) -> str:
 def render(selection: dict) -> str:
     unit = list(selection.get("unit") or [])
     ui = list(selection.get("ui") or [])
+    replaced = list(selection.get("replaced_unit") or [])
+    pinned_run = [t for t in (selection.get("curated_unit") or unit) if t not in replaced]
     lines = [
         "### Hosted CI selection",
         "",
@@ -32,7 +34,9 @@ def render(selection: dict) -> str:
         "`scripts/hosted-suite.json`), the timing families and the complete UI",
         "suite run in the nightly workflow.",
         "",
-        f"- pinned unit tests: **{len(selection.get('curated_unit') or [])}**; unit classes"
+        f"- pinned unit tests run: **{len(pinned_run)}**"
+        + (f" ({len(replaced)} more run in their whole changed class)" if replaced else "")
+        + "; unit classes"
         f" this run reaches, whole or in part: {len({t.split('/')[0] for t in unit})}"
         f" of {_count(selection.get('inventory_unit'))}",
         f"- pinned UI tests: **{len(ui)}**, from {len({t.split('/')[0] for t in ui})} of "
@@ -40,7 +44,7 @@ def render(selection: dict) -> str:
         f"- classes left to the nightly run: {_count(selection.get('delegated_unit'))} unit"
         f" + {_count(selection.get('delegated_ui'))} UI",
         "",
-        "Unit: " + ", ".join(selection.get("curated_unit") or unit),
+        "Unit: " + ", ".join(pinned_run),
         "",
         "Source contracts: " + ", ".join(selection.get("source_contracts") or []),
         "",

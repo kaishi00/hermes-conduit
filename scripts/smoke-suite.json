@@ -27,7 +27,7 @@
     "    and the photo control 68 s), which run nightly.",
     "  - never add the nightly-only timing families (hosted-suite.json",
     "    nightly_only_unit) - they run with repeats at night and must not",
-    "    re-litigate on every PR;",
+    "    re-litigate on every PR (plan-tests.py smoke fails a pinned one);",
     "  - every test here must exist in the right target: scripts/plan-tests.py",
     "    smoke fails otherwise, so a rename cannot silently shrink PR coverage.",
     "",
