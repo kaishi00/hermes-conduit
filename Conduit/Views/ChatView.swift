@@ -3218,8 +3218,8 @@ private struct MessageTimestampLabel: View {
 /// An activity card's caption with its time on the right (#1440); the
 /// card's text runs the full width below the row. The time keeps its one
 /// line and is laid out first, so a long caption wraps beside it (a raw
-/// time Hermes sent that doesn't parse truncates rather than taking the
-/// row), and at the accessibility text
+/// time that doesn't parse truncates only past the row's width), and at
+/// the accessibility text
 /// sizes the time goes under the caption, as on VoiceJobLinkCard.
 private struct CardHeaderCaption<Caption: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
