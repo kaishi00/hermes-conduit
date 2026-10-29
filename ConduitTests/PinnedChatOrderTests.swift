@@ -121,6 +121,38 @@ extension SessionNestingModelTests {
         XCTAssertEqual(pinArranged(pinned, [:], mixed: mixed), ["h2", "h1", "w1", "w2"])
     }
 
+    @MainActor
+    func testPinnedOrderMixedIsSavedOnlyForADragAcrossProfiles() {
+        let suite = "PinnedChatOrderTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite) ?? .standard
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.profiles = ["default", "work"]
+        func chat(_ id: String, _ profile: String) -> SessionSummary {
+            SessionSummary(
+                id: id, alternateIds: [], title: id, model: "Hermes", updatedLabel: "now",
+                profile: profile, source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+            )
+        }
+        let d1 = chat("d1", "default"), d2 = chat("d2", "default"), w1 = chat("w1", "work")
+        appState.movePinnedChats([d1, d2], fromOffsets: [1], toOffset: 0)
+        XCTAssertEqual(appState.pinnedChatOrder.ids(profile: "default"), ["d2", "d1"])
+        XCTAssertTrue(appState.pinnedChatOrder.mixed.isEmpty, "one profile's drag leaves All's mix alone")
+
+        // d2 can't move (a saved row), so it isn't among the shown rows, but
+        // it keeps its place in the mix.
+        appState.movePinnedChats(
+            [d1, w1], fromOffsets: [1], toOffset: 0,
+            section: ([d2, d1, w1], [2], 0)
+        )
+        let key = PinnedChatOrder.key(profile:id:)
+        XCTAssertEqual(appState.pinnedChatOrder.mixed, [key("work", "w1"), key("default", "d2"), key("default", "d1")])
+
+        appState.toggleSessionPinned(d1)
+        appState.toggleSessionPinned(d1)
+        XCTAssertEqual(appState.pinnedChatOrder.mixed, [key("work", "w1"), key("default", "d2")], "an unpinned chat leaves the mix")
+    }
+
     func testPinnedOrderMovesSkipNestRowsAndStayAboveRecentChats() {
         // pinned a, its "3 jobs" line, an open job, pinned b, then a recent chat.
         let movable = [true, false, false, true, false]
