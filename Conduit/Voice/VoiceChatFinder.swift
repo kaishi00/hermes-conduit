@@ -119,6 +119,8 @@ enum VoiceChatFinder {
             let id = (text(row["session_id"]) ?? text(row["id"]) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !id.isEmpty, seen.insert(id).inserted else { return nil }
+            // A worker stored before the `kanban` tag (SessionContentSearch.hits).
+            guard !SessionSource.isLegacyKanbanWorker(source: text(row["source"]), preview: text(row["preview"])) else { return nil }
             let title = (text(row["title"]) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let active = epoch(row["last_active"]) ?? epoch(row["session_started"]) ?? epoch(row["started_at"])
             return VoiceChatMatch(

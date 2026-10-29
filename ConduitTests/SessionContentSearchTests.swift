@@ -145,6 +145,19 @@ final class SessionContentSearchTests: XCTestCase {
         XCTAssertEqual(hits?.last?.lastActive, 1_800_000_100)
     }
 
+    func testHitsLeaveOutKanbanWorkersStoredBeforeTheTag() {
+        let response: [String: Any] = ["results": [
+            ["session_id": "w", "source": "cli", "preview": "work kanban task t_9f2c", "snippet": "x"],
+            ["session_id": "w2", "source": "local", "preview": "Work Kanban Task t_1", "snippet": "x"],
+            // A chat that says more, another source, or an older host
+            // without previews is kept.
+            ["session_id": "c", "source": "cli", "preview": "work kanban task t_1 and then fix it", "snippet": "x"],
+            ["session_id": "t", "source": "telegram", "preview": "work kanban task t_1", "snippet": "x"],
+            ["session_id": "o", "source": "cli", "snippet": "x"],
+        ]]
+        XCTAssertEqual(SessionContentSearch.hits(from: response, query: "x")?.map(\.sessionID), ["c", "t", "o"])
+    }
+
     func testABodyThatIsNotASearchResponseHasNoHits() {
         XCTAssertNil(SessionContentSearch.hits(from: ["detail": "Not Found"], query: "x"))
         XCTAssertEqual(SessionContentSearch.hits(from: ["results": []], query: "x"), [])

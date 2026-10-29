@@ -244,6 +244,9 @@ enum SessionContentSearch {
         return rows.compactMap { row -> SessionContentSearchHit? in
             let id = (text(row["session_id"]) ?? text(row["id"]) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !id.isEmpty, seen.insert(id).inserted else { return nil }
+            // A worker stored before Hermes tagged them `kanban` passes the
+            // source filter; newer hosts send the row's preview to tell one.
+            guard !SessionSource.isLegacyKanbanWorker(source: text(row["source"]), preview: text(row["preview"])) else { return nil }
             let root = text(row["lineage_root"])?.trimmingCharacters(in: .whitespacesAndNewlines)
             return SessionContentSearchHit(
                 sessionID: id,
