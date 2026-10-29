@@ -2,6 +2,8 @@ name: opencode-review
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, labeled]
+  pull_request:
+    types: [opened, synchronize]
   workflow_dispatch:
     inputs:
       pr_number:
