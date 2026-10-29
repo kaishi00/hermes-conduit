@@ -532,7 +532,6 @@ struct V2ChatsView: View, Equatable {
                 }
             }
                 .withAllProfilesChip()
-                .withoutScrollEdge()
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()

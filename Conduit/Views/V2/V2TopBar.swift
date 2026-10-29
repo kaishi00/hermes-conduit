@@ -6,7 +6,7 @@
 //  profile pictures, and an optional trailing capsule of controls. When the
 //  profiles don't fit beside the controls, they get a full-width row of
 //  their own and the controls move under it. No large title; the bar floats
-//  over a soft blurred scroll edge.
+//  over the soft scroll edge its screen draws under it (`v2EdgeBar`).
 //
 
 import SwiftUI
@@ -21,7 +21,6 @@ struct V2TopBar<Trailing: View, LowerLeading: View>: View {
     private let trailing: (Bool) -> Trailing
     /// Leads the second row when the bar stacks (Chats: the filter pill).
     private let lowerLeading: LowerLeading
-    private var drawsScrollEdge = true
     /// Chats: an All chip leads the profiles, for every profile's chats in
     /// one list.
     private var leadsWithAllChip = false
@@ -64,9 +63,6 @@ struct V2TopBar<Trailing: View, LowerLeading: View>: View {
         .padding(.top, 4)
         .padding(.bottom, 8)
         .frame(minHeight: 52)
-        .background {
-            if drawsScrollEdge { V2ScrollEdgeBackground() }
-        }
         .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
         .sheet(isPresented: $showProfileManager) {
             ProfilePickerSheet()
@@ -106,14 +102,6 @@ extension V2TopBar where Trailing == EmptyView, LowerLeading == EmptyView {
 }
 
 extension V2TopBar {
-    /// For a header that stacks more controls under the bar and draws one
-    /// soft edge behind all of them (Tasks).
-    func withoutScrollEdge() -> Self {
-        var bar = self
-        bar.drawsScrollEdge = false
-        return bar
-    }
-
     /// The Chats bar: an All chip before the profiles.
     func withAllProfilesChip() -> Self {
         var bar = self

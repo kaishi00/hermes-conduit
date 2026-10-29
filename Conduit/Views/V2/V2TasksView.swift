@@ -63,7 +63,7 @@ struct V2TasksView: View {
         // at a hard line below the control.
         .v2EdgeBar(.top) {
             VStack(spacing: 2) {
-                V2TopBar().withoutScrollEdge()
+                V2TopBar()
                 V2SegmentedControl(
                     selection: segment,
                     options: [

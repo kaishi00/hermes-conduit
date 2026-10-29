@@ -3502,7 +3502,7 @@ them: a chat's composer bar, the tab bar's clearance, and the list headers.
 
 **Siblings:** the chat composer bar (chats, project chats, Bot Chat) · group
 rooms' composer bar · the tab bar's clearance under the Chats, Bots and Tasks
-lists and Settings' pages · the Chats, Bots, Tasks and Capabilities headers ·
+lists and Settings' pages · the Chats, Bots, Tasks and Capabilities headers and Settings' home header ·
 iPhone, iPad and Mac · iOS 26 and earlier · text: no Settings caption or doc
 describes them
 
@@ -3510,11 +3510,11 @@ describes them
 - Bar and fade: `Conduit/Views/V2/V2TopBar.swift` (v2EdgeBar, V2SystemScrollEdge, V2LegacyEdgeBar)
 - Composer bars: `Conduit/Views/ChatView.swift` (bottomBar, whose height change tells the scroll engine, see Following the latest message), `Conduit/Views/GroupChatView.swift` (bottomBar)
 - Tab bar: `Conduit/Views/V2/V2Shell.swift` (tabBarClearance, V2TabBarClearance)
-- Headers: `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2BotsView.swift`, `Conduit/Views/V2/V2TasksView.swift`, `Conduit/Views/CapabilitiesView.swift` (v2EdgeBar(.top))
+- Headers: `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2BotsView.swift`, `Conduit/Views/V2/V2TasksView.swift`, `Conduit/Views/CapabilitiesView.swift` (v2EdgeBar(.top)), Settings' home header in `Conduit/Views/AuxiliaryViews.swift` (SettingsView, v2EdgeBar(.top)) with `Conduit/Views/V2/V2SettingsTab.swift` (homeHeader)
 
 **Rulings**
 - On iOS 26 a bar is a `safeAreaBar` with the system's soft scroll edge. Before iOS 26, and on a Mac, it is a `safeAreaInset`, and the content under it fades out itself (see below). A bar and its fade read the same switch (`V2SystemScrollEdge.isUsed`), so they always agree (2026-10-27, #1397: on macOS 27 the composer bar's edge hid the transcript well above the composer, #1357).
-- Where Conduit draws the fade (before iOS 26, and on a Mac), the content fades its own text out to transparent across the bar's height (a mask, `V2LegacyEdgeBar`), and no bar draws a material behind it: the backdrop shows through, as under iOS 26's soft edge. A material behind the bar drew a lighter box around a Mac's composer, as wide as the chat's column, and full width it would still have been a lighter band (Eric, 2026-10-29, #1468). The tab bar has no fade of its own either: each list fades under its clearance, so it stays the list's width (the bar's own material, across the window, covered the chat beside the list: 2026-10-28, #1444, #1439).
+- Where Conduit draws the fade (before iOS 26, and on a Mac), the content fades its own text out to transparent across the bar's height (a mask, `V2LegacyEdgeBar`), and no bar draws a material behind it (V2TopBar drew one on every system, under Settings' home header too, a box on a wide window): the backdrop shows through, as under iOS 26's soft edge. A material behind the bar drew a lighter box around a Mac's composer, as wide as the chat's column, and full width it would still have been a lighter band (Eric, 2026-10-29, #1468). The tab bar has no fade of its own either: each list fades under its clearance, so it stays the list's width (the bar's own material, across the window, covered the chat beside the list: 2026-10-28, #1444, #1439).
 
 **Open gaps**
 - The Mac fallback isn't confirmed on macOS 27; it waits on the reporter's TestFlight check (#1357).

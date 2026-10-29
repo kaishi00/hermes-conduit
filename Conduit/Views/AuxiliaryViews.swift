@@ -593,7 +593,9 @@ struct SettingsView: View {
         NavigationStack(path: $path) {
             SettingsHome(snapshot: snapshot, path: $path, v2Layout: homeHeader != nil)
                 .toolbar(.hidden, for: .navigationBar)
-                .safeAreaInset(edge: .top, spacing: 0) {
+                // The page scrolls under the header and fades out beneath
+                // it, as the lists do under theirs.
+                .v2EdgeBar(.top) {
                     if let homeHeader {
                         homeHeader
                     } else {
