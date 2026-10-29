@@ -268,8 +268,12 @@ jobs:
               why="the change is only docs and config"
             fi
           fi
+          # The change id counts Markdown by its words, so Markdown under an
+          # app or test folder (which may ship in the app) always builds.
           if [ "$smoke" = true ] && [ "$EVENT" = "pull_request" ] && [ -n "$PR_NUMBER" ] \
-            && [ "$(git rev-parse -q --verify 'HEAD^2' || true)" = "$PR_HEAD" ]; then
+            && [ "$(git rev-parse -q --verify 'HEAD^2' || true)" = "$PR_HEAD" ] \
+            && changed=$(git diff --no-renames --name-only HEAD^1 HEAD) && [ -n "$changed" ] \
+            && ! printf '%s\n' "$changed" | grep -E '^(Conduit[^/]*|Shared)/.*\.md$' >/dev/null; then
             repo="repos/$GITHUB_REPOSITORY"
             change_id() {
               local diff

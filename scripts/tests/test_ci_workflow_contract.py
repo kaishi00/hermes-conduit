@@ -169,8 +169,20 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("git diff --no-renames --name-only HEAD^1 HEAD", step,
                       "a rename must count by both names")
         greps = re.findall(r"grep -E(v?) '([^']+)'", step)
-        self.assertEqual([flag for flag, _ in greps], ["v", ""])
-        docs, builds = (re.compile(pattern) for _, pattern in greps)
+        self.assertEqual([flag for flag, _ in greps], ["v", "", ""])
+        docs, builds, app_markdown = (re.compile(pattern) for _, pattern in greps)
+        # The same-change skip builds for Markdown in an app or test folder,
+        # since the change id counts Markdown only by its words.
+        for path in ("Conduit/Resources/Help.md", "ConduitTests/x.md", "Shared/a/b.md"):
+            self.assertTrue(app_markdown.search(path), path)
+        for path in ("docs/FEATURE_MAP.md", "README.md", "Conduit/App.swift"):
+            self.assertFalse(app_markdown.search(path), path)
+        # The lookup takes only a passing Smoke job on another of the PR's
+        # commits, built as this PR's merge commit, with a non-empty id.
+        self.assertIn('select(.name == "Smoke" and .conclusion == "success")', step)
+        self.assertIn('[ "$sha" != "$PR_HEAD" ] || continue', step)
+        self.assertIn('[ -n "$now" ] && [ "$now" = "$(change_id "$passed")" ]', step)
+        self.assertEqual(2, step.count("[ \"$(git rev-parse -q --verify 'HEAD^2' || true)\" = \"$PR_HEAD\" ]"))
 
         def skips(*paths):
             return all(docs.search(p) for p in paths) and not any(builds.search(p) for p in paths)
@@ -387,6 +399,9 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("name: CI Gate", gate)
         self.assertIn('--plan "${{ needs.plan.result }}"', gate)
         self.assertIn('--smoke "${{ needs.smoke.result }}"', gate)
+        # Without it every legitimately skipped smoke job fails the gate.
+        self.assertIn('--smoke-needed "${{ needs.plan.outputs.smoke }}"', gate)
+        self.assertIn("if: needs.plan.outputs.smoke != 'false'", self._job_text("smoke"))
         self.assertNotIn("needs.unit.", gate)
         self.assertNotIn("needs.ui-smoke.", gate)
 

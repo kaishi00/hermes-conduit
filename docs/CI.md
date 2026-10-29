@@ -481,12 +481,17 @@ same as at an earlier commit of it whose smoke job passed:
 `scripts/pr-change-id.py` hashes the PR's diff from its base without hunk
 headers or blob ids, and its Markdown by the words the PR adds and removes, so
 merging main or resolving a feature map conflict keeps it. That merge commit
-is then never built on the PR, which is the ruling (Eric, 2026-10-29, #1467:
-resolving a feature map conflict shouldn't rerun CI); main's own run after
+is then never built on the PR, which is the ruling for any merge of main
+that keeps the change id, not only a feature map conflict (Eric, 2026-10-29,
+#1467: the same exposure as a PR that never merged main); main's own run after
 the merge still builds, and catches two PRs that break together, as it does
 for any PR that wasn't up to date. The review plan in
 `opencode-review.yml` hashes the same way with an inline copy of the script,
-and `scripts/tests/test_pr_change_id.py` holds the two to the same ids. Pushes always build, and every lookup
+and `scripts/tests/test_pr_change_id.py` holds the two to the same ids. A passing Smoke counts whatever PR it ran for (GitHub can't say which PR
+a run belonged to), so a commit that passed in a PR into `pulse` or
+`linked-rooms` counts for a PR into `main` from the same branch; Markdown
+under an app or test folder always builds, since the id counts Markdown
+only by its words. Pushes always build, and every lookup
 that fails builds too.
 
 Branch protection must require **CI Gate** (and nothing else from this
