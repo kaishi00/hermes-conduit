@@ -290,4 +290,13 @@ extension GatewayRestartTests {
         cards.transcriptChanged([todoRow("t1", output: result([("1", "A", "pending")]))], for: rotated)
         XCTAssertTrue(cards.planExpanded, "a card the user opened stays open across a runtime id change")
     }
+
+    /// Issue 1510: a Mac's composer keeps focus between messages and it has
+    /// no on-screen keyboard, so the line still opens into the card there.
+    func testThePlanKeepsToItsLineOnlyUnderAnOnScreenKeyboard() {
+        XCTAssertTrue(ChatPlanDock.keepsToLine(composerFocused: true, onMac: false))
+        XCTAssertFalse(ChatPlanDock.keepsToLine(composerFocused: false, onMac: false))
+        XCTAssertFalse(ChatPlanDock.keepsToLine(composerFocused: true, onMac: true))
+        XCTAssertFalse(ChatPlanDock.keepsToLine(composerFocused: false, onMac: true))
+    }
 }

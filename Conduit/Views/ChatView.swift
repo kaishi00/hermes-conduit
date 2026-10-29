@@ -588,7 +588,12 @@ struct ChatView: View {
     @ViewBuilder
     private var planDock: some View {
         if appState.showsChatCards {
-            ChatPlanDock(cards: appState.chatCards, isCompact: composerTyping)
+            ChatPlanDock(
+                cards: appState.chatCards,
+                isCompact: ChatPlanDock.keepsToLine(
+                    composerFocused: composerTyping, onMac: ProcessInfo.processInfo.isiOSAppOnMac
+                )
+            )
         }
     }
 
