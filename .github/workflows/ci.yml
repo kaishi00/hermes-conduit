@@ -68,10 +68,17 @@ jobs:
     name: Plan & validate
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      # The smoke job's runs on this PR's earlier commits (Does the change
+      # need the macOS build).
+      actions: read
+      pull-requests: read
     outputs:
       unit-csv: "${{ steps.smoke.outputs.unit-csv }}"
       ui-csv: "${{ steps.smoke.outputs.ui-csv }}"
       ui-spec: "${{ steps.spec.outputs.ui-spec }}"
+      smoke: "${{ steps.needs-build.outputs.smoke }}"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -225,6 +232,71 @@ jobs:
           echo "ui-spec=$spec" >> "$GITHUB_OUTPUT"
           echo "- smoke project: \`$spec\`" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Does the change need the macOS build
+        # A PR skips the smoke job, and CI Gate passes it on this step's word,
+        # when it changes only what the app build and the smoke tests never
+        # read (Markdown, docs/, LICENSE, review config, .github/ other than
+        # this workflow), or when its change (scripts/pr-change-id.py) is the
+        # same as at an earlier commit of it whose smoke job passed: merging
+        # main, or resolving a feature map conflict, doesn't rebuild. main's
+        # own run after the merge still builds and catches two PRs that break
+        # together. Fails closed like the step above: any push, anything but
+        # this PR's merge commit, an unreadable or empty diff, or a lookup
+        # that fails builds.
+        id: needs-build
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.base_ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          smoke=true
+          why=''
+          if [ "$EVENT" = "pull_request" ] && [ -n "$PR_HEAD" ] \
+            && [ "$(git rev-parse -q --verify 'HEAD^2' || true)" = "$PR_HEAD" ] \
+            && changed=$(git diff --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
+            # grep reads all its input (no -q), as in the step above.
+            if ! printf '%s\n' "$changed" \
+              | grep -Ev '\.md$|^docs/|^LICENSE$|^opencode\.json$|^\.coderabbit\.ya?ml$|^\.github/' >/dev/null \
+              && ! printf '%s\n' "$changed" | grep -E '^\.github/workflows/ci\.yml$' >/dev/null; then
+              smoke=false
+              why="the change is only docs and config"
+            fi
+          fi
+          if [ "$smoke" = true ] && [ "$EVENT" = "pull_request" ] && [ -n "$PR_NUMBER" ] \
+            && [ "$(git rev-parse -q --verify 'HEAD^2' || true)" = "$PR_HEAD" ]; then
+            repo="repos/$GITHUB_REPOSITORY"
+            change_id() {
+              local diff
+              diff=$(gh api -H 'Accept: application/vnd.github.diff' "$repo/compare/$BASE_REF...$1") || diff=''
+              python3 scripts/pr-change-id.py <<<"$diff"
+            }
+            # The newest of the PR's last 20 commits whose smoke job passed.
+            commits=$(gh api --paginate "$repo/pulls/$PR_NUMBER/commits" --jq '.[].sha') || commits=''
+            passed=''
+            for sha in $(tail -n 20 <<<"$commits" | tac); do
+              [ "$sha" != "$PR_HEAD" ] || continue
+              runs=$(gh api -X GET "$repo/actions/workflows/ci.yml/runs" \
+                -f event=pull_request -f head_sha="$sha" --jq '.workflow_runs[].id') || runs=''
+              for run_id in $runs; do
+                ok=$(gh api "$repo/actions/runs/$run_id/jobs" \
+                  --jq '[.jobs[] | select(.name == "Smoke" and .conclusion == "success")] | length') || ok=0
+                if [ "$ok" -gt 0 ]; then passed=$sha; break 2; fi
+              done
+            done
+            if [ -n "$passed" ]; then
+              now=$(change_id "$PR_HEAD")
+              if [ -n "$now" ] && [ "$now" = "$(change_id "$passed")" ]; then
+                smoke=false
+                why="the change is the same as at $passed, whose smoke job passed"
+              fi
+            fi
+          fi
+          echo "smoke=$smoke" >> "$GITHUB_OUTPUT"
+          echo "- smoke job: \`$smoke\`${why:+ ($why)}" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Smoke selection summary
         run: |
           set -euo pipefail
@@ -255,6 +327,7 @@ jobs:
     # then the unit smoke classes and the UI smoke classes on them.
     name: Smoke
     needs: plan
+    if: needs.plan.outputs.smoke != 'false'
     runs-on: macos-26
     # 75: the UI smoke job alone needed 45 (a stalled first attempt plus the
     # one targeted retry ran past 30 minutes, which GitHub reports as
@@ -555,4 +628,5 @@ jobs:
           python3 scripts/ci-gate.py \
             --plan "${{ needs.plan.result }}" \
             --smoke "${{ needs.smoke.result }}" \
+            --smoke-needed "${{ needs.plan.outputs.smoke }}" \
             --self-test "${{ needs.self-test.result }}"
