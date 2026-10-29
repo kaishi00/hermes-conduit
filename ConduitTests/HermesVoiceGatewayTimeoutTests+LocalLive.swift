@@ -736,7 +736,15 @@ extension VoiceConversationControllerTests {
         runner.observe(.messageComplete(sessionId: "rt-1", messageId: "m3", content: "Now.\n| b |", reasoning: nil))
         XCTAssertEqual(Array(script.spoken.suffix(2)), ["t3:Now.\n", "t3:" + LocalLiveTurnRunner.onScreenLine],
                        "a line already ended: no extra pause")
-        XCTAssertEqual(script.done, ["t1", "t2", "t3"])
+
+        // A card stands for the tables, but a file the reply attached still shows.
+        runner.start(turnID: "t4", text: "And the report?")
+        await localLiveSettle(until: { script.submitted.count == 4 })
+        runner.observe(.toolStart(sessionId: "rt-1", toolName: PresentedCard.toolName, toolInput: nil))
+        runner.observe(.messageComplete(sessionId: "rt-1", messageId: "m4", content: "It's up.\nMEDIA:/r.pdf\n| c |", reasoning: nil))
+        XCTAssertEqual(script.shown.last, "MEDIA:/r.pdf")
+        XCTAssertEqual(Array(script.spoken.suffix(2)), ["t4:It's up.\n", "t4:" + LocalLiveTurnRunner.onScreenLine])
+        XCTAssertEqual(script.done, ["t1", "t2", "t3", "t4"])
     }
 
     func testSpokenVisualSplitterGivesTheSameResultHoweverTheReplyIsSplit() {
@@ -799,6 +807,73 @@ extension VoiceConversationControllerTests {
             let parts = split(every: size)
             XCTAssertEqual(parts.0, whole.0, "split every \(size)")
             XCTAssertEqual(parts.1, whole.1, "split every \(size)")
+        }
+    }
+
+    func testSpokenVisualSplitterLeavesFileTagsUnsaid() {
+        // Ernest's Local voice call on the farm (2026-10-28): his reply was
+        // a text_to_speech file tag, which the speech server read out.
+        let reply = "Here's your briefing.\nMEDIA:/opt/data/cache/audio/tts_20261028_111922_603221.mp3\nSocial media: fine, and MEDIA:/tmp/b.pdf too [[audio_as_voice]]"
+        func split(every size: Int) -> String {
+            var splitter = SpokenVisualSplitter()
+            var said = ""
+            var index = reply.startIndex
+            while index < reply.endIndex {
+                let end = reply.index(index, offsetBy: size, limitedBy: reply.endIndex) ?? reply.endIndex
+                said += splitter.feed(String(reply[index..<end]))
+                index = end
+            }
+            return said + splitter.finish()
+        }
+        let whole = split(every: reply.count)
+        XCTAssertFalse(whole.contains("MEDIA"), whole)
+        XCTAssertFalse(whole.contains("/opt/"), whole)
+        XCTAssertFalse(whole.contains("[["), whole)
+        XCTAssertTrue(whole.hasPrefix("Here's your briefing.\nSocial media: fine, and"), whole)
+        for size in 1...9 {
+            XCTAssertEqual(split(every: size), whole, "split every \(size)")
+        }
+        XCTAssertEqual(SpokenMediaTagFilter.filter("MEDIA:/opt/data/cache/audio/tts_1.mp3"), "", "only a tag: nothing said")
+        XCTAssertEqual(SpokenMediaTagFilter.filter("Call me Medina, not media."), "Call me Medina, not media.")
+        // The files go on the call's screen, as the chat shows them.
+        var splitter = SpokenVisualSplitter()
+        _ = splitter.feed(reply) + splitter.finish()
+        XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/opt/data/cache/audio/tts_20261028_111922_603221.mp3\nMEDIA:/tmp/b.pdf")
+        // A tag written as a link is said by its label, and its file goes on
+        // the screen as a file, not as a link.
+        splitter.reset()
+        XCTAssertEqual(splitter.feed("See [the report](MEDIA:/r.pdf) now.\n") + splitter.finish(), "See the report now.\n")
+        XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/r.pdf")
+        splitter.reset()
+        XCTAssertEqual(splitter.feed("See [the report](media:/r.pdf) now.\n") + splitter.finish(), "See the report now.\n")
+        XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/r.pdf")
+        // A reply the call cuts off for its own line keeps its files.
+        splitter.reset()
+        _ = splitter.feed("Here you go.\nMEDIA:/r.pdf\nAnd then")
+        splitter.dropSpeech()
+        XCTAssertEqual(splitter.fileMarkdown, "MEDIA:/r.pdf")
+        XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/r.pdf")
+        // An image of Hermes' own on its line is a file as well.
+        splitter.reset()
+        _ = splitter.feed("![chart](MEDIA:/tmp/a.png)\nDone.") + splitter.finish()
+        XCTAssertEqual(splitter.fileMarkdown, "MEDIA:/tmp/a.png")
+        // One with words after it is said, and its file shown.
+        splitter.reset()
+        XCTAssertEqual(splitter.feed("![chart](MEDIA:/tmp/a.png) Here it is.\n") + splitter.finish(), "chart Here it is.\n")
+        XCTAssertEqual(splitter.fileMarkdown, "MEDIA:/tmp/a.png")
+        // Windows line ends read as lines, however they arrive.
+        let crlf = "Here you go.\r\nMEDIA:/r.pdf\r\nDone."
+        let scalars = Array(crlf.unicodeScalars)
+        for size in [1, 2, scalars.count] {
+            splitter.reset()
+            var said = ""
+            for start in stride(from: 0, to: scalars.count, by: size) {
+                var piece = String.UnicodeScalarView()
+                piece.append(contentsOf: scalars[start..<min(start + size, scalars.count)])
+                said += splitter.feed(String(piece))
+            }
+            XCTAssertEqual(said + splitter.finish(), "Here you go.\nDone.", "split every \(size)")
+            XCTAssertEqual(splitter.fileMarkdown, "MEDIA:/r.pdf")
         }
     }
 

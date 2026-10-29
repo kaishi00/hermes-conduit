@@ -4011,11 +4011,16 @@ enum MessageNormalizer {
             records = []
         }
 
-        // Kanban workers' transcripts aren't chats (SessionSource.hermesKanbanSource):
-        // every list built here leaves them out, whatever the server filtered
-        // (the `session.list` fallback, project lanes and previews included).
+        // Kanban workers, tool integrations and one-shot runs aren't chats
+        // (SessionSource.hermesInternalSources), nor are workers stored
+        // before Hermes tagged them: every list built here leaves them out,
+        // whatever the server filtered (the `session.list` fallback, project
+        // lanes and previews included).
         let chats = records.filter {
-            $0.objectValue?["source"]?.stringValue?.lowercased() != SessionSource.hermesKanbanSource
+            let obj = $0.objectValue
+            let source = obj?["source"]?.stringValue
+            return !SessionSource.isHermesInternalSource(source)
+                && !SessionSource.isLegacyKanbanWorker(source: source, preview: obj?["preview"]?.stringValue)
         }
         return chats.enumerated().map { index, item in
             let obj = item.objectValue ?? [:]

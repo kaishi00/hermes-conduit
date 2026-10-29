@@ -3,7 +3,8 @@
 //  Conduit
 //
 //  Drops what a persona writes but nobody should hear: emoji and narrated
-//  actions in single asterisks or underscores ("*sets down the gavel*").
+//  actions in single asterisks or underscores ("*sets down the gavel*"),
+//  and Hermes' `MEDIA:` file tags (SpokenMediaTagFilter).
 //  Hermes' own speech cleanup strips the markers but keeps the words, so the
 //  action would still be read aloud. Hermes' `@session:<id>` chat links
 //  are said as the chat's name (HermesSessionReference). The chat
@@ -22,6 +23,7 @@ struct SpokenTextFilter {
 
     private var pending: [Character] = []
     private var sessionReferences = SessionReferenceSpeechFilter()
+    private var mediaTags = SpokenMediaTagFilter()
     /// The last character released, so a marker at the start of the next
     /// delta still knows whether it sits inside a word (snake_case).
     private var before: Character?
@@ -30,17 +32,18 @@ struct SpokenTextFilter {
         pending = []
         before = nil
         sessionReferences.reset()
+        mediaTags.reset()
     }
 
     /// Speakable text that can be released now.
     mutating func feed(_ text: String) -> String {
-        pending.append(contentsOf: sessionReferences.feed(text))
+        pending.append(contentsOf: sessionReferences.feed(mediaTags.feed(text)))
         return drain(final: false)
     }
 
     /// Everything still held, at the end of the reply.
     mutating func finish() -> String {
-        pending.append(contentsOf: sessionReferences.finish())
+        pending.append(contentsOf: sessionReferences.feed(mediaTags.finish()) + sessionReferences.finish())
         let text = drain(final: true)
         reset()
         return text

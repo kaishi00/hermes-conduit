@@ -2530,6 +2530,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The note a live model gets for a typed exchange. Quiet by design:
     /// someone who typed may not want it read out (#363).
     static func chatContextPrompt(typed: String?, reply: String) -> String {
+        // Named before the clip, so a clip never cuts a path in two.
+        let reply = GatewayMediaTags.namingFiles(in: reply)
         let clippedReply = reply.count > maximumChatContextReplyCharacters
             ? String(reply.prefix(maximumChatContextReplyCharacters)) + "\n[…]"
             : reply
@@ -2950,6 +2952,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Hermes' reply in the attached chat, for the live model. Written for
     /// the model, not shown as UI copy, so not localized.
     static func threadReplyPrompt(result: String) -> String {
+        // Named before the clip, so a tag is never cut in half.
+        let result = GatewayMediaTags.namingFiles(in: result)
         let clipped = result.count > maximumResultCharacters
             ? String(result.prefix(maximumResultCharacters)) + "\n[…]"
             : result
@@ -2963,12 +2967,15 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A chat reply handed to the live model, fenced as data: the chat's
     /// text can't close the block and pass as instructions.
     static func replyBlock(_ reply: String) -> String {
-        let fenced = reply.replacingOccurrences(of: "</latest_reply>", with: "</ latest_reply>", options: .caseInsensitive)
+        // An attached file is named, not given by its path, which the model
+        // would read out.
+        let fenced = GatewayMediaTags.namingFiles(in: reply).replacingOccurrences(of: "</latest_reply>", with: "</ latest_reply>", options: .caseInsensitive)
         return "<latest_reply>\n\(fenced)\n</latest_reply>"
     }
 
     /// The hand-back submitted to the voice conversation's own session.
     static func completionPrompt(title: String, result: String) -> String {
+        let result = GatewayMediaTags.namingFiles(in: result)
         let clipped: String
         if result.count > maximumResultCharacters {
             clipped = String(result.prefix(maximumResultCharacters)) + "\n[…]"

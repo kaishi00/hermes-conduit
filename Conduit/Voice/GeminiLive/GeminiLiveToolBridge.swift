@@ -1125,7 +1125,8 @@ final class GeminiLiveToolBridge {
             switch job.status {
             case .finished:
                 if let text = job.result?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
-                    result["result"] = Self.clipped(text)
+                    // An attached file is named, not given by its path.
+                    result["result"] = Self.clipped(GatewayMediaTags.namingFiles(in: text))
                 } else {
                     result["result"] = VoiceBackgroundJobSupervisor.finishedNotice(job.title)
                 }
