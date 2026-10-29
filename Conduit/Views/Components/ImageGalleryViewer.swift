@@ -26,8 +26,8 @@ struct ImageGalleryItem: Identifiable {
     let id: String
     /// The name it is shared and saved under, shown above it.
     let title: String
-    /// Fetches the original to a file; nil when it can't be had.
-    let load: @MainActor () async -> ImageGalleryFile?
+    /// Fetches the original to a file.
+    let load: @MainActor () async -> ImageGalleryLoad
 
     static func mediaID(path: String) -> String { "path:\(path)" }
     static func webID(_ url: String) -> String { "web:\(url)" }
@@ -37,6 +37,23 @@ struct ImageGalleryItem: Identifiable {
             return "inline:\(ref.sessionId)|\(ref.rowId)|\(ref.index)"
         }
         return "attachment:\(attachment.uri)"
+    }
+}
+
+/// What fetching a picture's original came to.
+enum ImageGalleryLoad: Sendable {
+    case file(ImageGalleryFile)
+    /// Larger than the phone downloads.
+    case tooLarge
+    case unavailable
+
+    init(_ file: ImageGalleryFile?) {
+        self = file.map(ImageGalleryLoad.file) ?? .unavailable
+    }
+
+    var file: ImageGalleryFile? {
+        if case .file(let file) = self { return file }
+        return nil
     }
 }
 
@@ -176,8 +193,9 @@ final class ImageGalleryViewController: UIViewController {
     private lazy var dismissPan = UIPanGestureRecognizer(target: self, action: #selector(dismissPanned(_:)))
 
     private var files: [Int: ImageGalleryFile] = [:]
-    private var loads: [Int: Task<ImageGalleryFile?, Never>] = [:]
-    private var failed: Set<Int> = []
+    private var loads: [Int: Task<ImageGalleryLoad, Never>] = [:]
+    /// Pages whose original couldn't be had, and whether it was too large.
+    private var failed: [Int: Bool] = [:]
     /// Every page made, including the pager's neighbours ready offscreen,
     /// so a picture arriving reaches the page about to show it.
     private let pages = NSHashTable<ImageGalleryPageController>.weakObjects()
@@ -322,13 +340,20 @@ final class ImageGalleryViewController: UIViewController {
             topBar.topAnchor.constraint(equalTo: view.topAnchor),
             topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            topBar.bottomAnchor.constraint(equalTo: guide.topAnchor, constant: 56),
+            // As tall as its titles need at large text sizes, 56 pt at least.
+            topBar.bottomAnchor.constraint(greaterThanOrEqualTo: guide.topAnchor, constant: 56),
+            topBar.bottomAnchor.constraint(greaterThanOrEqualTo: titles.bottomAnchor, constant: 8),
+            titles.topAnchor.constraint(greaterThanOrEqualTo: guide.topAnchor, constant: 4),
             doneButton.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 6),
             doneButton.centerYAnchor.constraint(equalTo: guide.topAnchor, constant: 26),
             shareButton.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -6),
             shareButton.centerYAnchor.constraint(equalTo: doneButton.centerYAnchor),
             titles.centerXAnchor.constraint(equalTo: guide.centerXAnchor),
-            titles.centerYAnchor.constraint(equalTo: doneButton.centerYAnchor),
+            {
+                let centred = titles.centerYAnchor.constraint(equalTo: doneButton.centerYAnchor)
+                centred.priority = .defaultHigh
+                return centred
+            }(),
             titles.leadingAnchor.constraint(greaterThanOrEqualTo: doneButton.trailingAnchor, constant: 8),
             titles.trailingAnchor.constraint(lessThanOrEqualTo: shareButton.leadingAnchor, constant: -8),
         ])
@@ -357,6 +382,9 @@ final class ImageGalleryViewController: UIViewController {
         counterLabel.text = items.count > 1 ? "\(newIndex + 1) / \(items.count)" : nil
         counterLabel.isHidden = items.count < 2
         shareButton.isEnabled = files[newIndex] != nil
+        // A picture that failed (a dropped connection) is tried again each
+        // time it is paged to; meanwhile it keeps its message.
+        if failed[newIndex] == false { failed[newIndex] = nil }
         for prefetch in ImageGallery.prefetchOrder(around: newIndex, count: items.count) {
             startLoading(prefetch)
         }
@@ -384,8 +412,8 @@ final class ImageGalleryViewController: UIViewController {
         pages.add(page)
         if let file = files[index] {
             page.show(file: file)
-        } else if failed.contains(index) {
-            page.showFailure()
+        } else if let tooLarge = failed[index] {
+            page.showFailure(tooLarge: tooLarge)
         } else if index == self.index, let placeholder {
             page.show(placeholder: placeholder)
         }
@@ -401,24 +429,26 @@ final class ImageGalleryViewController: UIViewController {
     }
 
     private func startLoading(_ index: Int) {
-        guard !closed, files[index] == nil, loads[index] == nil, !failed.contains(index) else { return }
+        guard !closed, files[index] == nil, loads[index] == nil, failed[index] == nil else { return }
         let load = items[index].load
         let task = Task { @MainActor in await load() }
         loads[index] = task
         Task { @MainActor [weak self] in
-            let file = await task.value
+            let outcome = await task.value
             guard let self, !self.closed else {
-                MediaPreviewPresenter.removeDirectory(file?.ownedDirectory)
+                MediaPreviewPresenter.removeDirectory(outcome.file?.ownedDirectory)
                 return
             }
             self.loads[index] = nil
-            if let file {
+            if let file = outcome.file {
                 self.files[index] = file
                 self.madePages(index).forEach { $0.show(file: file) }
                 if index == self.index { self.shareButton.isEnabled = true }
             } else {
-                self.failed.insert(index)
-                self.madePages(index).forEach { $0.showFailure() }
+                let tooLarge: Bool
+                if case .tooLarge = outcome { tooLarge = true } else { tooLarge = false }
+                self.failed[index] = tooLarge
+                self.madePages(index).forEach { $0.showFailure(tooLarge: tooLarge) }
             }
         }
     }
@@ -455,14 +485,15 @@ final class ImageGalleryViewController: UIViewController {
             if pan.state == .ended,
                ImageGallery.dragCloses(translation: translation, velocity: velocity, height: view.bounds.height) {
                 let distance = view.bounds.height * (translation < 0 ? -1 : 1)
-                UIView.animate(withDuration: 0.22, delay: 0, options: .curveEaseOut) {
+                UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.22, delay: 0, options: .curveEaseOut) {
                     page.dragOffset(CGPoint(x: 0, y: distance))
                     self.backdrop.alpha = 0
                 } completion: { _ in
                     self.dismiss(animated: false)
                 }
             } else {
-                UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0) {
+                UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.3, delay: 0,
+                               usingSpringWithDamping: 0.85, initialSpringVelocity: 0) {
                     page.dragOffset(.zero)
                     self.backdrop.alpha = 1
                 }
@@ -689,9 +720,12 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
         }
     }
 
-    func showFailure() {
+    func showFailure(tooLarge: Bool = false) {
         loadViewIfNeeded()
         spinner.stopAnimating()
+        failureLabel.text = tooLarge
+            ? AppLocalization.string("Too large to open on this phone")
+            : AppLocalization.string("Image unavailable")
         // The row's own copy stays if the original can't be had.
         failureLabel.isHidden = imageView.image != nil
     }
@@ -729,9 +763,10 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
 
 /// Decodes a picture for the viewer, off the main actor.
 enum ImageGalleryDecoder {
-    /// Frames an animated picture keeps, and the size they're drawn at.
+    /// Frames an animated picture keeps, and the most its frames take
+    /// decoded together: the pager holds three pages at once.
     static let maxAnimatedFrames = 120
-    static let animatedMaxPixelSize: CGFloat = 1024
+    static let animatedMaxBytes = 32 * 1024 * 1024
 
     static func image(at url: URL, maxPixelSize: CGFloat) -> UIImage? {
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
@@ -745,21 +780,39 @@ enum ImageGalleryDecoder {
         guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
         let count = CGImageSourceGetCount(source)
         guard count > 1 else { return nil }
+        let kept = min(count, maxAnimatedFrames)
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceShouldCache: false,
-            kCGImageSourceThumbnailMaxPixelSize: animatedMaxPixelSize,
+            kCGImageSourceThumbnailMaxPixelSize: animatedMaxPixelSize(source, frames: kept),
         ]
         var frames: [UIImage] = []
         var duration: Double = 0
-        for frame in 0..<min(count, maxAnimatedFrames) {
+        for frame in 0..<kept {
             guard let image = CGImageSourceCreateThumbnailAtIndex(source, frame, options as CFDictionary) else { continue }
             frames.append(UIImage(cgImage: image))
             duration += frameDuration(source, frame)
         }
         guard frames.count > 1 else { return frames.first }
         return UIImage.animatedImage(with: frames, duration: duration)
+    }
+
+    /// The longer side each of `frames` frames is drawn at, so together
+    /// they stay within `animatedMaxBytes`, and never above 1,024 px.
+    static func animatedMaxPixelSize(_ source: CGImageSource, frames: Int) -> CGFloat {
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        let width = CGFloat((properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue ?? 1024)
+        let height = CGFloat((properties?[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue ?? 1024)
+        return animatedMaxPixelSize(width: width, height: height, frames: frames)
+    }
+
+    static func animatedMaxPixelSize(width: CGFloat, height: CGFloat, frames: Int) -> CGFloat {
+        let longest = max(width, height, 1)
+        let pixels = max(width * height, 1)
+        let budget = CGFloat(animatedMaxBytes) / 4 / CGFloat(max(frames, 1))
+        let scale = min(1, (budget / pixels).squareRoot())
+        return max(64, min(1024, (longest * scale).rounded(.down)))
     }
 
     private static func frameDuration(_ source: CGImageSource, _ index: Int) -> Double {

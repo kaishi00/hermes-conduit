@@ -763,8 +763,13 @@ struct WorkspaceFolderView: View {
         ImageGallery.open(item(entry), in: ImageGallerySource { images.map(item) })
     }
 
+    /// A picture's viewer has Share (Save Image, Copy, Save to Files) too.
     private func share(_ entry: WorkspaceEntry) {
-        quickLook(entry)
+        if GatewayMediaKind(path: entry.name) == .image {
+            openImage(entry)
+        } else {
+            quickLook(entry)
+        }
     }
 
     /// Quick Look, which also offers Share and Save to Files.

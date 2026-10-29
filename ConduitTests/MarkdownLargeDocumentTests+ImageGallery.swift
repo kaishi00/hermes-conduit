@@ -64,7 +64,7 @@ extension MarkdownLargeDocumentTests {
 
     @MainActor
     func testGalleryPlacesTheTappedPictureAndFallsBackToItAlone() {
-        let item = { (id: String) in ImageGalleryItem(id: id, title: id) { nil } }
+        let item = { (id: String) in ImageGalleryItem(id: id, title: id) { .unavailable } }
         let listed = [item("a"), item("b"), item("a"), item("c")]
 
         let placed = ImageGallery.placing(item("c"), in: listed)
@@ -108,6 +108,8 @@ extension MarkdownLargeDocumentTests {
         XCTAssertTrue(ChatImageGallery.mayHoldPictures("media:/root/a.png"))
         XCTAssertTrue(ChatImageGallery.mayHoldPictures("::preview{file=\"/root/a.png\"}"))
         XCTAssertFalse(ChatImageGallery.mayHoldPictures("Just words, no pictures."))
+        XCTAssertFalse(ChatImageGallery.mayHoldPictures("See https://example.com/docs for more."),
+                       "a link to a page alone doesn't parse the message")
     }
 
     func testSwipeDownClosesPastAFifthOrWhenFlung() {
@@ -117,6 +119,43 @@ extension MarkdownLargeDocumentTests {
         XCTAssertTrue(ImageGallery.dragCloses(translation: -220, velocity: -300, height: 800), "upwards too, as Photos")
         XCTAssertFalse(ImageGallery.dragCloses(translation: 200, velocity: -1400, height: 800), "flung back towards the middle")
         XCTAssertFalse(ImageGallery.dragCloses(translation: 8, velocity: 2000, height: 800), "a twitch is not a swipe")
+    }
+
+    func testAnimatedPicturesStayWithinTheirMemoryBudget() {
+        let frames = 120
+        let side = ImageGalleryDecoder.animatedMaxPixelSize(width: 1024, height: 768, frames: frames)
+        let drawn = side * side * 768 / 1024 * 4 * CGFloat(frames)
+        XCTAssertLessThanOrEqual(drawn, CGFloat(ImageGalleryDecoder.animatedMaxBytes))
+        XCTAssertEqual(ImageGalleryDecoder.animatedMaxPixelSize(width: 200, height: 200, frames: 4), 200,
+                       "a small GIF keeps its own size")
+    }
+
+    @MainActor
+    func testViewerRemovesItsCopiesWhenItCloses() async throws {
+        let first = try XCTUnwrap(MediaPreviewPresenter.stage(data: Data([1, 2, 3]), filename: "first.png"))
+        let late = try XCTUnwrap(MediaPreviewPresenter.stage(data: Data([4]), filename: "late.png"))
+        let (gate, _) = AsyncStream<Void>.makeStream()
+        let items = [
+            ImageGalleryItem(id: "first", title: "first.png") {
+                .file(ImageGalleryFile(url: first.file, ownedDirectory: first.directory))
+            },
+            // Still arriving when the viewer closes: it ends with the close.
+            ImageGalleryItem(id: "late", title: "late.png") {
+                for await _ in gate {}
+                return .file(ImageGalleryFile(url: late.file, ownedDirectory: late.directory))
+            },
+        ]
+        let viewer = ImageGalleryViewController(items: items, startingAt: 0, placeholder: nil)
+        viewer.loadViewIfNeeded()
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: first.directory.path), "the shown picture's copy stays while open")
+
+        viewer.finish()
+        for _ in 0..<40 where FileManager.default.fileExists(atPath: late.directory.path) {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: first.directory.path), "closing removes what it fetched")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: late.directory.path), "and a copy that lands after the close")
     }
 
     func testViewerFetchesThePageThenItsNeighbours() {

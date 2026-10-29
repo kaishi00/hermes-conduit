@@ -21,24 +21,24 @@ extension ImageGalleryItem {
         let keptKey = resolver?.imageCacheKey(for: attachment)
         return ImageGalleryItem(id: attachmentID(attachment), title: attachment.name.isEmpty ? filename : attachment.name) {
             if let local = localFile(attachment.uri) {
-                return ImageGalleryFile(url: local, ownedDirectory: nil)
+                return .file(ImageGalleryFile(url: local, ownedDirectory: nil))
             }
             // The original kept on the phone (#652).
             if let keptKey, let kept = TranscriptImageCache.cachedFile(for: keptKey, touch: true) {
-                return ImageGalleryFile(url: kept, ownedDirectory: nil)
+                return .file(ImageGalleryFile(url: kept, ownedDirectory: nil))
             }
-            guard let resolver else { return nil }
+            guard let resolver else { return .unavailable }
             var dataURL = attachment.uri.hasPrefix("/") ? await resolver.dataURL(for: attachment.uri) : nil
             if dataURL == nil, let inline = attachment.inlineImage {
                 dataURL = await resolver.inlineImageDataURL(inline)
             }
-            guard let dataURL else { return nil }
+            guard let dataURL else { return .unavailable }
             // A picture known only from its message has no file name to
             // borrow an extension from; the share sheet needs one.
             let named = (filename as NSString).pathExtension.isEmpty
                 ? "\(filename).\(TranscriptImageCache.fileExtension(forDataURL: dataURL))"
                 : filename
-            return await ImageGalleryFile.staged(dataURL: dataURL, filename: named)
+            return ImageGalleryLoad(await ImageGalleryFile.staged(dataURL: dataURL, filename: named))
         }
     }
 
@@ -58,9 +58,15 @@ extension ImageGalleryItem {
         guard let destination = WebFallbackImageDestination.resolve(url) else { return nil }
         let fallback = alt.isEmpty ? "image" : alt
         return ImageGalleryItem(id: webID(url), title: alt.isEmpty ? destination.lastPathComponent : alt) {
-            guard let (data, response) = await MediaPreviewPresenter.boundedDownload(destination) else { return nil }
-            let name = MediaPreviewPresenter.filename(for: destination, response: response, fallback: fallback)
-            return await ImageGalleryFile.staged(data: data, filename: name)
+            switch await MediaPreviewPresenter.boundedDownloadResult(destination) {
+            case .downloaded(let data, let response):
+                let name = MediaPreviewPresenter.filename(for: destination, response: response, fallback: fallback)
+                return ImageGalleryLoad(await ImageGalleryFile.staged(data: data, filename: name))
+            case .tooLarge:
+                return .tooLarge
+            case .failed:
+                return .unavailable
+            }
         }
     }
 
@@ -70,10 +76,10 @@ extension ImageGalleryItem {
                              dataURL: ((String) async -> String?)?) -> ImageGalleryItem {
         ImageGalleryItem(id: mediaID(path: path), title: title) {
             if let keptKey, let kept = TranscriptImageCache.cachedFile(for: keptKey, touch: true) {
-                return ImageGalleryFile(url: kept, ownedDirectory: nil)
+                return .file(ImageGalleryFile(url: kept, ownedDirectory: nil))
             }
-            guard let dataURL, let value = await dataURL(path) else { return nil }
-            return await ImageGalleryFile.staged(dataURL: value, filename: path)
+            guard let dataURL, let value = await dataURL(path) else { return .unavailable }
+            return ImageGalleryLoad(await ImageGalleryFile.staged(dataURL: value, filename: path))
         }
     }
 
@@ -84,14 +90,14 @@ extension ImageGalleryItem {
         ImageGalleryItem(id: mediaID(path: path), title: title) {
             switch await resolver.file(for: path) {
             case .downloaded(let download):
-                return ImageGalleryFile(download)
+                return .file(ImageGalleryFile(download))
             case .tooLarge:
-                return nil
+                return .tooLarge
             case .unavailable:
                 break
             }
-            guard !Task.isCancelled, let dataURL = await resolver.dataURL(for: path) else { return nil }
-            return await ImageGalleryFile.staged(dataURL: dataURL, filename: title)
+            guard !Task.isCancelled, let dataURL = await resolver.dataURL(for: path) else { return .unavailable }
+            return ImageGalleryLoad(await ImageGalleryFile.staged(dataURL: dataURL, filename: title))
         }
     }
 
@@ -154,10 +160,12 @@ enum ChatImageGallery {
 
     /// Cheap check before parsing a whole message: every picture a block
     /// draws comes from a `MEDIA:` tag, a `![…](…)` image, a preview
-    /// directive or a bare web address.
+    /// directive or a bare web address of a picture. A link to a page
+    /// alone doesn't parse the message.
     static func mayHoldPictures(_ source: String) -> Bool {
-        source.contains("![") || source.contains("://")
+        source.contains("![") || source.contains("::preview")
             || source.range(of: "MEDIA:", options: .caseInsensitive) != nil
-            || source.contains("::preview")
+            || (source.contains("://") && source.range(of: #"\.(png|jpe?g|gif|webp)\b"#,
+                                                       options: [.regularExpression, .caseInsensitive]) != nil)
     }
 }
