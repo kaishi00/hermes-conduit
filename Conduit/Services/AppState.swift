@@ -22794,6 +22794,32 @@ final class AppState: ObservableObject {
         return outcome == .opened
     }
 
+    /// Opens a room's chat (RoomChats.swift), in `profile`'s own store: one
+    /// in another profile than the dashboard's opens under that profile's
+    /// scope, as a Bot Chat does, without switching.
+    func openRoomChatSession(
+        _ chatID: String,
+        profile: String,
+        agentName: String,
+        title: String
+    ) async -> RoomChatOpenOutcome {
+        let scoped = profilesMatch(profile, activeProfile) ? nil : profile
+        if let scoped {
+            noteBotChatSession(chatID, profile: scoped, label: agentName)
+        }
+        let result = await performSessionOpenNotingRefusal(
+            chatID,
+            reusing: nil,
+            conversationProfile: scoped,
+            preferredTitle: title
+        )
+        switch result.outcome {
+        case .opened: return .opened
+        case .superseded: return .superseded
+        case .failed: return result.refused ? .gone : .failed
+        }
+    }
+
     /// Creates the bot's ONE forever chat (lookup confirmed absence): hidden,
     /// titled "Bot Chat", following the profile's current config. The eager
     /// `session.title` write materializes the lazy row BEFORE any open, so a

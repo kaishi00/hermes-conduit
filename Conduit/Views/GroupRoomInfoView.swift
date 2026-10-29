@@ -31,6 +31,7 @@ struct GroupRoomInfoSheet: View {
                 if let room = appState.activeRoomSurface?.room {
                     memberSection(room)
                 }
+                roomChatSection
                 if appState.canLeaveActiveRoom {
                     Section {
                         Button(role: .destructive) {
@@ -131,6 +132,47 @@ struct GroupRoomInfoSheet: View {
 }
 
 extension GroupRoomInfoSheet {
+    /// Each of your agents in a room with other people's opens a private
+    /// chat about it, or asks there for its notes (C5b).
+    @ViewBuilder
+    private var roomChatSection: some View {
+        let agents = appState.activeRoomChatAgents
+        if !agents.isEmpty {
+            Section {
+                ForEach(agents, id: \.profile) { agent in
+                    Button {
+                        openRoomChat(with: agent, wrapUp: false)
+                    } label: {
+                        Label(RoomChatText.ask(agent.name), systemImage: "bubble.left.and.text.bubble.right")
+                    }
+                    .disabled(working)
+                    Button {
+                        openRoomChat(with: agent, wrapUp: true)
+                    } label: {
+                        Label(RoomChatText.wrapUp(agent.name), systemImage: "checklist")
+                    }
+                    .disabled(working)
+                }
+            } header: {
+                Text(verbatim: RoomChatText.sectionTitle)
+            } footer: {
+                Text(verbatim: RoomChatText.footer)
+            }
+        }
+    }
+
+    private func openRoomChat(with agent: RoomChatAgent, wrapUp: Bool) {
+        working = true
+        Task { @MainActor in
+            let failure = await appState.openRoomChat(with: agent, wrapUp: wrapUp)
+            working = false
+            if let failure {
+                Haptics.error()
+                refusal = (RoomChatText.failureTitle, failure)
+            }
+        }
+    }
+
     private var openRoomKey: String? {
         appState.activeRoomSurface.map { $0.copy?.id ?? $0.room.roomID }
     }
