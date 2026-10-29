@@ -3719,7 +3719,7 @@ card shows when the app is next opened), the widgets and the share extension
 - MetricKit may hold diagnostics back on a device that doesn't share analytics with developers.
 - App Store Connect's privacy label doesn't yet list Crash Data and Performance Data (not linked, not tracked), which the privacy manifest now declares; the maintainer updates it before the next App Store submission.
 
-**Checked:** 2026-10-29, #1478.
+**Checked:** 2026-10-29, #1481.
 
 ## Feature map rules
 
