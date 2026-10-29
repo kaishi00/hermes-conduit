@@ -3118,7 +3118,7 @@ nightly partition, which runs everything Smoke leaves out · docs/CI.md
 - Lists and caps: `scripts/smoke-suite.json`; validation and the change's own classes: `scripts/plan-tests.py` (`smoke`)
 - Workflow steps: `.github/workflows/ci.yml` (the plan job's selection, the Smoke job's unit and UI steps)
 - UI retry: `scripts/smoke-retry-classes.py`; step summary: `scripts/smoke-summary.py`
-- Nightly partition: `scripts/hosted-suite.json`, `.github/workflows/nightly.yml`
+- Nightly partition: `scripts/hosted-suite.json`, `.github/workflows/nightly.yml`; the app-only overlay its unit shards build: `project-tests.yml`
 - Tests: `scripts/tests/test_ci_workflow_contract.py`, `scripts/tests/test_smoke_job_runner.py`, `scripts/tests/test_hosted_ci.py`
 - Docs: `docs/CI.md`
 
@@ -3126,12 +3126,13 @@ nightly partition, which runs everything Smoke leaves out · docs/CI.md
 - Smoke pins single tests (Class/testMethod), never whole classes, under `max_unit_tests` (70) and `max_ui_tests` (4); `plan-tests.py smoke` fails a whole-class entry, a test its class doesn't declare, a pinned nightly-only timing family and a list over its cap. Add coverage by swapping a test; raising a cap is a deliberate change with its reason in the PR (Eric, 2026-10-29, #1508: whole classes let unit smoke grow from 195 s to 240 s with the list unchanged).
 - The source contracts and the change's own unit classes run whole; a changed class runs in place of the tests pinned from it (2026-10-29, #1508).
 - Everything Smoke leaves out runs every night; the nightly run is the exhaustive authority (CI v5, #739).
+- Smoke builds the full app (`project.yml`) on every PR and push, from the cache main's latest merge saved; the app-only overlay (`project-tests.yml`) is built only by the nightly unit shards and the App Store screenshots capture job (`.github/workflows/app-store-screenshots.yml`). An app-only PR build restored only nightly's cache and recompiled the day's main: 682 s to a finished build against 537 s, medians of 275 runs 2026-10-22..29 (2026-10-29, #1513).
 
 **Open gaps**
 - A changed UI test class doesn't join Smoke: a UI test a PR adds or edits first runs at night. UI tests are the slow ones (36-150 s each) and the list is capped at 4 (2026-10-29, #1508).
 - A changed unit class with no timing baseline is charged 3 s of `changed_budget_s`, and `scripts/test-timings.json` was last seeded in August, so a PR adding several slow new classes isn't held to the budget (2026-10-29, #1508).
 
-**Checked:** 2026-10-29, #1508.
+**Checked:** 2026-10-29, #1513 (Smoke builds the full app); #1508.
 
 ## Settings connection page
 

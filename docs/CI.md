@@ -73,20 +73,18 @@ an artifact hop.
 
 What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
 
-- **The app without its Watch app and extensions.** The smoke job generates
-  the project from `project-tests.yml`, an xcodegen overlay of `project.yml`
-  whose only change is that the Conduit target no longer embeds the Apple
-  Watch app and the app extensions. No test runs them, and the Watch app
-  is a second platform compiled from scratch. The smoke job builds the full
-  app instead when the PR touches those targets' sources (`ConduitWatch/`,
-  `ConduitWidgets/`, `ConduitNotificationService/`, `ConduitLocationPush/`,
-  `ConduitShareExtension/`, `Shared/`, `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` or either project
-  spec). `Conduit/Localizable.xcstrings` is left
-  out on purpose: the app target compiles the same catalog in the slim build,
-  and nearly every PR edits it. Every push to `main`, `pulse` or `linked-rooms`
-  builds the full app too, as do the nightly timing and UI jobs and TestFlight
-  archives. The plan job makes that choice (`ui-spec`). The nightly unit
-  shards always build `project-tests.yml`.
+- **The full app on every PR, from main's latest build.** The smoke job
+  builds `project.yml`, the app as shipped with its Watch app and
+  extensions, on every PR and push. From 2026-10-15 to 10-29 a PR that
+  didn't touch those targets built `project-tests.yml` instead, an xcodegen
+  overlay of `project.yml` whose only change is that the Conduit target no
+  longer embeds the Watch app and the app extensions. But the only cache of
+  that build is the one nightly unit shard 1 saves, so such a PR recompiled
+  everything main had merged since the night: over 275 green Smoke runs from
+  2026-10-22 to 10-29 its build finished after 682 s (median), against 537 s
+  for a PR building the full app from the latest merge's cache, Watch app
+  included. A full build also catches a Watch or extension compile error
+  before merge. The nightly unit shards still build `project-tests.yml`.
 - **Incremental builds from an earlier build.** Builds on `main` save their
   DerivedData to the Actions cache after the tests, keyed by project kind,
   Xcode build and runner image (`dd-v1-<kind>-<xcode>-<image>-<sha>`): the
@@ -99,8 +97,7 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   building (from the same runner
   image if there is one, otherwise from any image with the same Xcode build,
   which happens while GitHub rolls out a new image), so a PR recompiles only
-  what it changed. A PR's slim build therefore starts from last night's
-  `main`, and a full build from the latest merge. Xcode trusts a restored build only when each input's file
+  what it changed since main's latest merge. Xcode trusts a restored build only when each input's file
   info matches exactly, and a fresh checkout stamps every file with the clone
   time, so `ci-build-for-testing.sh` first gives every tracked file (and the
   generated project) a timestamp derived from its content
@@ -225,7 +222,6 @@ The CI v5 shape of `.github/workflows/ci.yml` (every PR, and every push to
                  |                                   the build)
    plan-tests.py smoke  -> unit-csv / ui-csv
    plan-tests.py hosted -> nightly partition check
-   ui-spec              -> project.yml or project-tests.yml
                  |
                  v
    smoke (ONE macOS job)
@@ -249,7 +245,7 @@ nightly-only families) and `ui` (one job per UI shard).
 
 | Job | Runner | Purpose |
 |---|---|---|
-| `plan` | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1` and, on a PR into `pulse` or `linked-rooms` that merges main, main's maps where the PR and its base meet main, so the entries a merge of main brings in keep main's Checked lines (if GitHub can't say whether the PR merges main or give those maps, it warns and checks without them, so those entries fail as the PR's edits until a re-run); its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage during that lookup only warns), cheap CI-tooling tests, the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`), the **nightly partition** check (`plan-tests.py hosted`), the smoke build's project (`ui-spec`), and whether the PR needs the smoke job at all (`smoke`, below). |
+| `plan` | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1` and, on a PR into `pulse` or `linked-rooms` that merges main, main's maps where the PR and its base meet main, so the entries a merge of main brings in keep main's Checked lines (if GitHub can't say whether the PR merges main or give those maps, it warns and checks without them, so those entries fail as the PR's edits until a re-run); its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage during that lookup only warns), cheap CI-tooling tests, the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`), the **nightly partition** check (`plan-tests.py hosted`), and whether the PR needs the smoke job at all (`smoke`, below). |
 | `self-test` | ubuntu | CI-tooling regression suites (planner tests, destination lookup, gate/contract tests, the bash wrapper tests the plan job skips) in one job, concurrent with `smoke`. |
 | `smoke` (`Smoke`) | macos-26 | The only macOS job: restores main's build cache (on a PR into `pulse` or `linked-rooms`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no retry) and the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache on pushes to `main`, `pulse` or `linked-rooms`. |
 | `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating `plan`, `smoke` and `self-test` via `scripts/ci-gate.py`. |

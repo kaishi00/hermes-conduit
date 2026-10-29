@@ -4,9 +4,8 @@ name: CI
 # purpose (see docs/CI.md):
 #
 #   PR / push (this file)   the cheap Linux validation, then ONE macOS job that
-#                           compiles the app (without its Watch app and
-#                           extensions unless a PR touches them, see the plan
-#                           job's ui-spec) and all test targets once, and runs
+#                           compiles the full app and all test targets once,
+#                           incrementally from main's latest build, and runs
 #                           the pinned unit smoke tests and the pinned UI
 #                           smoke tests (scripts/smoke-suite.json) on that
 #                           build and simulator.
@@ -20,8 +19,7 @@ name: CI
 #                        plugin version, CI-tooling tests, the smoke selection
 #                        (scripts/smoke-suite.json) and the nightly partition
 #                        (scripts/hosted-suite.json), both validated against
-#                        the discovered inventory, and the smoke build's
-#                        project (ui-spec).
+#                        the discovered inventory.
 #   self-test  (ubuntu)  the CI-tooling suites, bash wrapper tests included.
 #   smoke      (macos)   builds its test products while its simulator boots in
 #                        the background, then runs the unit smoke tests (one
@@ -77,7 +75,6 @@ jobs:
     outputs:
       unit-csv: "${{ steps.smoke.outputs.unit-csv }}"
       ui-csv: "${{ steps.smoke.outputs.ui-csv }}"
-      ui-spec: "${{ steps.spec.outputs.ui-spec }}"
       smoke: "${{ steps.needs-build.outputs.smoke }}"
     steps:
       - uses: actions/checkout@v7
@@ -204,34 +201,6 @@ jobs:
             echo "- timing families (nightly only): $(jq -r '.nightly_unit_csv' ci-artifacts/hosted.json)"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Choose the smoke project
-        # The smoke job builds project-tests.yml (the app without its Watch
-        # app and extensions, which no test runs) unless the change could
-        # break those targets: their own folders, the shared code they
-        # compile, the project spec, or any push. Then it builds the whole
-        # app as shipped.
-        id: spec
-        env:
-          EVENT: ${{ github.event_name }}
-          PR_HEAD: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          # Fails closed: anything but GitHub's merge commit for this PR (its
-          # second parent, HEAD^2, is the PR head) or an unreadable or empty
-          # diff builds the full app.
-          spec=project.yml
-          if [ "$EVENT" = "pull_request" ] && [ -n "$PR_HEAD" ] \
-            && [ "$(git rev-parse -q --verify 'HEAD^2' || true)" = "$PR_HEAD" ] \
-            && changed=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
-            # grep reads all its input (no -q): stopping at the first match could
-            # kill printf with SIGPIPE, which pipefail would read as "no match".
-            if ! printf '%s\n' "$changed" | grep -E '^(ConduitWatch|ConduitWidgets|ConduitNotificationService|ConduitLocationPush|ConduitShareExtension|Shared)/|^project(-tests)?\.yml$|^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$' >/dev/null; then
-              spec=project-tests.yml
-            fi
-          fi
-          echo "ui-spec=$spec" >> "$GITHUB_OUTPUT"
-          echo "- smoke project: \`$spec\`" >> "$GITHUB_STEP_SUMMARY"
-
       - name: Does the change need the macOS build
         # A PR skips the smoke job, and CI Gate passes it on this step's word,
         # when it changes only what the app build and the smoke tests never
@@ -353,15 +322,15 @@ jobs:
         # runner image preferred, so ci-build-for-testing.sh recompiles only
         # what changed since. A new Xcode starts clean.
         id: cache-key
-        env:
-          SPEC: ${{ needs.plan.outputs.ui-spec }}
         run: |
           set -euo pipefail
+          # The full app, as every push to main builds and saves it: a PR
+          # recompiles only what changed since main's latest merge. The
+          # app-only build (project-tests.yml, kind slim) is nightly's.
           kind=full
-          if [ "$SPEC" = project-tests.yml ]; then kind=slim; fi
           xcode=$(xcodebuild -version | awk 'NR==1 {v=$2} /Build version/ {b=$3} END {print v "-" b}')
           prefix="dd-v1-$kind-$xcode-${ImageVersion:-image}"
-          echo "build cache: $prefix (spec $SPEC, runner image ${ImageOS:-?} ${ImageVersion:-?})"
+          echo "build cache: $prefix (runner image ${ImageOS:-?} ${ImageVersion:-?})"
           echo "kind=$kind" >> "$GITHUB_OUTPUT"
           echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
           echo "xcode-prefix=dd-v1-$kind-$xcode" >> "$GITHUB_OUTPUT"
@@ -384,8 +353,7 @@ jobs:
         run: brew install xcodegen
 
       - name: Generate Xcode project
-        # project.yml or project-tests.yml, chosen by the plan job.
-        run: xcodegen generate --spec "${{ needs.plan.outputs.ui-spec }}"
+        run: xcodegen generate --spec project.yml
 
       - name: Build and boot the simulator in parallel
         id: build
@@ -585,14 +553,13 @@ jobs:
       - name: Save the build cache
         # Pushes' builds only. A PR restores the newest it can reach: main's,
         # and on a PR into pulse or linked-rooms (each runs its own copy of
-        # this workflow) that branch's too, never another branch's. A push
-        # always builds project.yml, so this saves the full app; the app-only
-        # (slim) build PRs restore is saved by nightly unit shard 1 on main.
+        # this workflow) that branch's too, never another branch's. Smoke
+        # always builds the full app (project.yml); the app-only (slim) build
+        # the nightly unit shards restore is saved by nightly unit shard 1.
         # After the tests, so a test failure still saves a good build.
         if: >-
           always() && steps.build.outcome == 'success'
           && steps.cache.outputs.cache-hit != 'true'
-          && steps.cache-key.outputs.kind == 'full'
           && github.event_name == 'push'
         uses: actions/cache/save@v5
         with:
