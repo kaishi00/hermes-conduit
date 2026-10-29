@@ -713,19 +713,28 @@ final class AppState: ObservableObject {
     /// The dashboard a connection currently belongs to (the selected target).
     var activeDashboardID: UUID? { savedDashboardRegistry.activeDashboardID }
     @Published private(set) var defaultProfileName: String {
-        didSet { persistSiriProfileNames() }
+        didSet {
+            persistSiriProfileNames()
+            stampMainBotConduitName()
+        }
     }
     /// Each profile's `display_name` set in Hermes, when it has one (#1046):
     /// "Coding Assistant" for `coding-agent`. Names only; routing keeps the
     /// profile id.
     @Published private(set) var profileHermesNames: [String: String] = [:] {
-        didSet { persistSiriProfileNames() }
+        didSet {
+            persistSiriProfileNames()
+            stampMainBotConduitName()
+        }
     }
     /// Each profile's bot title (`ui_meta['hermes-bots'].title`), the name
     /// Edit Bot, the Profiles sheet and Hermes Desktop rename it with. It
     /// wins over `display_name`, as on Desktop and in the bot's pushes.
     @Published private(set) var profileBotTitles: [String: String] = [:] {
-        didSet { persistSiriProfileNames() }
+        didSet {
+            persistSiriProfileNames()
+            stampMainBotConduitName()
+        }
     }
     @Published private(set) var profileAvatarURLs: [String: URL] {
         // Also bumped when a photo's bytes change under the same URL, so the
@@ -1588,6 +1597,7 @@ final class AppState: ObservableObject {
     /// is durably persisted client-side.
     @Published private(set) var botRoster: [BotProfile] = [] {
         didSet {
+            stampMainBotConduitName()
             invalidateBotOwnershipCache()
             publishWidgetSnapshot()
         }
@@ -10019,7 +10029,7 @@ final class AppState: ObservableObject {
                 label: reference.botLabel
             )
             activeSessionId = reference.sessionID
-            activeSessionTitle = Self.botConversationTitle(for: reference)
+            activeSessionTitle = Self.botConversationTitle(for: reference, mainName: profileDisplayName("default"))
         }
         publishWidgetSnapshot()
     }
@@ -10030,10 +10040,13 @@ final class AppState: ObservableObject {
     /// wire title: that constant is an identity used for the exact-title lookup,
     /// not a user-facing string, and it would tell the user nothing about which
     /// bot they are looking at.
-    static func botConversationTitle(for reference: SessionReference) -> String {
+    /// `mainName` names the main bot, as AppState.profileDisplayName does.
+    static func botConversationTitle(for reference: SessionReference, mainName: String = ProfileAppearanceStore.defaultName) -> String {
         let label = reference.botLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let name = (reference.botName ?? reference.scopeProfile)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        // The main bot by its name now, not one saved before a rename.
+        if BotManagement.isDefaultProfile(name) { return mainName }
         // A label that is only the id (saved before #1448) names it as the id does.
         if !label.isEmpty, label != name { return label }
         return name.isEmpty
@@ -10061,7 +10074,7 @@ final class AppState: ObservableObject {
         guard reference.kind == .bot else { return }
         // Same resolver as the relaunch path, so a Bot Chat cannot show one
         // title when restored and another when re-adopted.
-        activeSessionTitle = Self.botConversationTitle(for: reference)
+        activeSessionTitle = Self.botConversationTitle(for: reference, mainName: profileDisplayName("default"))
     }
 
     private func persistActiveSessionTitles() {
@@ -12374,6 +12387,20 @@ final class AppState: ObservableObject {
         if let baseURL = connection?.baseUrl { prepareDashboardBridge(for: baseURL) }
     }
 
+    /// Names the roster's main bot by its Conduit name, so Bots, rooms, the
+    /// widget and Artifacts call it what the rest of Conduit does (Eric
+    /// 2026-10-28). Guarded, so a roster already stamped isn't written again.
+    private func stampMainBotConduitName() {
+        guard let index = botRoster.firstIndex(where: { BotManagement.isDefaultProfile($0.name) }) else { return }
+        let name = profileDisplayName("default")
+        guard botRoster[index].conduitName != name else { return }
+        botRoster[index].conduitName = name
+        // An open main Bot Chat follows a name that changed elsewhere (Desktop's title).
+        if let open = activeBotChatProfile, BotManagement.isDefaultProfile(open), activeSessionTitle != name {
+            activeSessionTitle = name
+        }
+    }
+
     /// Gateway profile IDs remain stable; this is only the label used for
     /// presentation in the chat and profile picker: the profile's bot title,
     /// else its Hermes `display_name`, else its id. The main profile goes by
@@ -12488,6 +12515,9 @@ final class AppState: ObservableObject {
 
     func saveDefaultProfileName(_ name: String) {
         defaultProfileName = profileAppearanceStore.saveDefaultName(name, dashboardID: activeDashboardID)
+        // The main bot's open Bot Chats go by it too (#1457); a name cleared
+        // hands them back to the roster's label.
+        renameCapturedBotChatLabels(for: "default", to: defaultProfileName == ProfileAppearanceStore.defaultName ? "" : defaultProfileName)
         publishWidgetSnapshot()
         // A call ringing on the Watch shows it.
         shareWatchCallVoices()
@@ -22382,10 +22412,19 @@ final class AppState: ObservableObject {
         // The main profile goes by its Conduit name, so a rename here is
         // that name too.
         if metaPersisted, patch.keys.contains("title"), botOpenFenceIsCurrent(epoch: epoch, client: client) {
+            // saveDefaultProfileName renames the main bot's Bot Chats itself,
+            // from the title as written: the roster refresh comes later.
             if BotManagement.isDefaultProfile(bot.name) {
+                var titles = profileBotTitles
+                titles[bot.name] = title.isEmpty || title == bot.name ? nil : title
+                if titles != profileBotTitles {
+                    profileBotTitles = titles
+                    profileAppearanceStore.saveBotTitles(titles, dashboardID: activeDashboardID)
+                }
                 saveDefaultProfileName(title)
+            } else {
+                renameCapturedBotChatLabels(for: bot.name, to: title)
             }
-            renameCapturedBotChatLabels(for: bot.name, to: title)
         }
         if removing, metaPersisted {
             do {
@@ -23231,10 +23270,12 @@ final class AppState: ObservableObject {
               let scope = ChatResumeStore.rpcProfileName(profile) else { return }
         botChatSessionProfiles[sessionID] = scope
         invalidateBotOwnershipCache()
-        // A label that is only the profile id (saved before #1448) is no
-        // label: the roster's displayLabel names the bot instead.
+        // A label that is only the profile id is no label: the roster's
+        // displayLabel names the bot instead.
+        // The main bot's label follows its Conduit name (the roster's), so
+        // one saved before a rename isn't kept.
         if let label = label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty,
-           label != profile.trimmingCharacters(in: .whitespacesAndNewlines) {
+           label != profile.trimmingCharacters(in: .whitespacesAndNewlines), !BotManagement.isDefaultProfile(profile) {
             botChatSessionLabels[sessionID] = label
         }
     }

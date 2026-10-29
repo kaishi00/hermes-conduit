@@ -1098,7 +1098,7 @@ docs/privacy: what the relay gets for each kind, and what end-to-end encryption 
 - A registration update landing after a relay move is dropped rather than written onto the new registration (#865 follow-up, #1191); the move itself has no test seam (it registers through URLSession.shared).
 - No app on main turns `room_invite` on, so room invites reach no phone yet: on the `linked-rooms` branch, C3c turns it on, with the invite push's copy in the App Language, its tap to the join card and Settings > Notifications' Room invites (see Linked Rooms).
 
-**Checked:** 2026-10-28, #1448 (an unnamed profile's id capitalized in the subtitle and in Bot Chat pushes, notifier #445); #1427 (a pick or reminder for a kind of shop walking past comes near pushes time-sensitive as a place's does, notifier #435); #1425 (the notification Hermes writes with `conduit_notify`, notifier #438, closing issue #1415's last gap; the relay, calls and encryption needed no change); #1416 (Show in notifications with Chat names and the profile subtitle, issue #1415, with notifier #436 for the relay's plain copy; the Watch mirrors it, and calls, encryption and decision cards needed no change); 2026-10-27, at #1383, carrying #1379 from the `pulse` branch (a Pulse push's level and private ones, with notifier #424: the extension's private line in the App Language; other pushes, the relay's plain copy, encryption and Settings > Notifications needed no change); #1381 with notifier #425 (room invite pushes, which the relay sends only to a Conduit that turns them on, and no reply or failure push for your agents' turns in rooms hosted elsewhere; the app's side waits for C3c on the `linked-rooms` branch); 2026-10-26, #1297 (a notification tapped during a call no longer switches and opens once the call ends, the gap #1292 recorded, kept across a relaunch, with a notice over the call's screen too, and so does one whose Bot Mode check fails during the call; the extension, the relay's copy, encryption and Settings needed no change); #1290 (the hold covers replies queued ahead of a follow-up); #1291 (queued pushes go out before a cron job's worker exits, notifier #389, issue #388); #1292 (Pulse pushes' Quiet for today button, from #1285 on the `pulse` branch, and a push tapped during a call, found in #1286's review; see Pulse); #1281 (a Predictive follow-up holds its chat's push); 2026-10-25, #1257 (a Bot Chat's push names its bot; `profile_name` for calls, the relay's plain copy and the Live Activity; notifier #372); the morning brief's push at notifier #357, carried in #1237; 2026-10-24, at #1213 (inline rotation, the shield and the Watch's row and footer; a pairing rotates at most once per run, a Rotate tap during a rotation joins it, and a verified key the Keychain refused stays pending and is shown as such; fork CI #85); #1212 (MEDIA tags in pushes, answer cards and the call screen); keys and padlock at #1197, carried in #1217 (fork CI #82); the registration update race at #1191; its relay registration error log redacted (bare hosts) at #1219.
+**Checked:** 2026-10-28, #1457 (the main bot's pushes take its Conduit name, see Profile names); 2026-10-28, #1448 (an unnamed profile's id capitalized in the subtitle and in Bot Chat pushes, notifier #445); #1427 (a pick or reminder for a kind of shop walking past comes near pushes time-sensitive as a place's does, notifier #435); #1425 (the notification Hermes writes with `conduit_notify`, notifier #438, closing issue #1415's last gap; the relay, calls and encryption needed no change); #1416 (Show in notifications with Chat names and the profile subtitle, issue #1415, with notifier #436 for the relay's plain copy; the Watch mirrors it, and calls, encryption and decision cards needed no change); 2026-10-27, at #1383, carrying #1379 from the `pulse` branch (a Pulse push's level and private ones, with notifier #424: the extension's private line in the App Language; other pushes, the relay's plain copy, encryption and Settings > Notifications needed no change); #1381 with notifier #425 (room invite pushes, which the relay sends only to a Conduit that turns them on, and no reply or failure push for your agents' turns in rooms hosted elsewhere; the app's side waits for C3c on the `linked-rooms` branch); 2026-10-26, #1297 (a notification tapped during a call no longer switches and opens once the call ends, the gap #1292 recorded, kept across a relaunch, with a notice over the call's screen too, and so does one whose Bot Mode check fails during the call; the extension, the relay's copy, encryption and Settings needed no change); #1290 (the hold covers replies queued ahead of a follow-up); #1291 (queued pushes go out before a cron job's worker exits, notifier #389, issue #388); #1292 (Pulse pushes' Quiet for today button, from #1285 on the `pulse` branch, and a push tapped during a call, found in #1286's review; see Pulse); #1281 (a Predictive follow-up holds its chat's push); 2026-10-25, #1257 (a Bot Chat's push names its bot; `profile_name` for calls, the relay's plain copy and the Live Activity; notifier #372); the morning brief's push at notifier #357, carried in #1237; 2026-10-24, at #1213 (inline rotation, the shield and the Watch's row and footer; a pairing rotates at most once per run, a Rotate tap during a rotation joins it, and a verified key the Keychain refused stays pending and is shown as such; fork CI #85); #1212 (MEDIA tags in pushes, answer cards and the call screen); keys and padlock at #1197, carried in #1217 (fork CI #82); the registration update race at #1191; its relay registration error log redacted (bare hosts) at #1219.
 
 ## Pulse
 
@@ -1383,7 +1383,7 @@ and README.md's bots line)
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
 - The group picture switch guard has no test: it needs a ready DashboardTicketBridge double and a room switch mid-request (#1191).
 
-**Checked:** 2026-10-28, #1448 (an unnamed bot shows its id capitalized); 2026-10-28, #1413 (a rename here names the profile everywhere, see Profile names); 2026-10-27, at #1395 (the editor's Model page gained search with each match's provider; saving unchanged); 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
+**Checked:** 2026-10-28, #1457 (the main bot goes by its Conduit name, see Profile names); 2026-10-28, #1448 (an unnamed bot shows its id capitalized); 2026-10-28, #1413 (a rename here names the profile everywhere, see Profile names); 2026-10-27, at #1395 (the editor's Model page gained search with each match's provider; saving unchanged); 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
 
 ## Opening a Bot Chat
 
@@ -1408,7 +1408,7 @@ same stored-id open)
 **Open gaps**
 - The new-bot fix (#1300) was read from Conduit's and Hermes' code, not reproduced on a device; a tester confirms it on the next build.
 
-**Checked:** 2026-10-28, #1448 (a restored Bot Chat names an unnamed bot by its id capitalized, also when saved with the id as its label); 2026-10-26, #1300.
+**Checked:** 2026-10-28, #1457 (the main bot goes by its Conduit name, see Profile names); 2026-10-28, #1448 (a restored Bot Chat names an unnamed bot by its id capitalized, also when saved with the id as its label); 2026-10-26, #1300.
 
 ## Bot mentions and teammate messages
 
@@ -2959,11 +2959,12 @@ notifier's copies of both
 - Two reviewers gate merges, and both repos run the same pair: GLM-5.3 on Z.ai at reasoning effort max (2026-10-28, #1458, Eric: the full model is faster than Flash; GLM-5.3-Flash before that), and Claude Haiku 5.5 on the Anthropic API at effort high, set in opencode.json (2026-10-28, #1421, Eric; Muse Spark 1.3 on Command Code before that, #1335).
 - Both repos give the reviewers the same prompt apart from their focus areas: bugs the PR introduces first, a concrete failure for each finding, the four severities defined, and REQUEST_CHANGES on any critical or major finding (2026-10-28, #1421, Eric asked for a review of the prompt).
 - A provider whose id is in the models.dev catalog (`anthropic` is, as `commandcode` was) whitelists the one model it reviews with. Otherwise opencode titles each session with the newest small model in that catalog, which was Gemini 3.8 Flash, a call Eric didn't want (2026-10-27, #1391 and notifier #428, Eric asked why Gemini Flash was being called).
+- Reviews run when a PR opens, on every push, on reopen and on the run-review label, drafts included; marking a draft ready doesn't rerun them, since that head was already reviewed (2026-10-29, #1465 and notifier #453, Eric asked why reviews reran after draft to ready).
 
 **Open gaps**
 - The workflow runs main's config, so a change to either file is first exercised by the review after it merges.
 
-**Checked:** 2026-10-28, #1458.
+**Checked:** 2026-10-29, #1465.
 
 ## Settings connection page
 
@@ -3183,8 +3184,8 @@ profile through `profileDisplayName` (sidebar, profile switcher and chips,
 All profiles, chat placeholders, call screens, voice settings, widgets) ·
 Siri and Shortcuts' profile picker (`conduit.knownProfileNames.v1`) ·
 spoken "for <name>, …" jobs on the phone and the Watch (`voiceJobProfileTarget`, `watchJobProfileNames`) ·
-the Bots list and Bot Chats (`displayLabel`; a rename replaces the label an open Bot Chat captured) · pushes and calls from Hermes,
-named by the notifier's `bot_name` in the same order · the Watch's caller
+the Bots list and Bot Chats, rooms, the widget and Artifacts (`displayLabel`; the main bot's carries its Conduit name, `conduitName`; a rename replaces the label an open Bot Chat captured) · pushes and calls from Hermes,
+named by the notifier's `bot_name` in the same order, the main bot's by its Conduit name on the phone (`NotificationCopy.named`, from `NotificationSharedSettings.mainProfileNames`) · the Watch's caller
 name (`mainProfileNamesByDashboard`) · the text that describes them (the
 rename sheet's message, the Profiles row caption in Settings, README.md's
 profiles line)
@@ -3193,25 +3194,29 @@ profiles line)
 - Names: `Conduit/Services/AppState.swift` (profileDisplayName, adoptProfileBotTitles, adoptProfileHermesNames, renameProfile, saveDefaultProfileName, updateBot), `Conduit/Services/ProfileAppearanceStore.swift` (the main profile's name, device names, and each dashboard's remembered titles and display names)
 - Profiles sheet: `Conduit/Views/ProfilePickerSheet.swift` (ProfilePickerRow's editMenu and rename alert)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (ProfileSettingsDetail: every profile's name)
-- Bots: `Conduit/Services/BotModeModels.swift` (BotProfile.displayLabel), `Conduit/Views/BotEditorSheet.swift`
+- Bots: `Conduit/Services/BotModeModels.swift` (BotProfile.displayLabel, conduitName), `Conduit/Services/AppState.swift` (stampMainBotConduitName), `Conduit/Views/BotEditorSheet.swift`
 - Spoken jobs: `Conduit/Services/AppState.swift` (voiceJobProfileTarget, watchJobProfileNames: a profile is matched by the name Conduit shows too)
 - Siri and Shortcuts: `Conduit/Intents/StartVoiceConversationIntent.swift` (ConduitProfileEntityQuery), fed by AppState's persistSiriProfileNames
-- Pushes: `notifier/session_titles.py` (bot_name)
-- Tests: `ConduitTests/BotModeTests.swift` (testABotTitleNamesItsProfileEverywhere, testADeviceNameNamesAProfileOnlyWithoutBotLooks), `ConduitTests/ProfileDiscoveryTests.swift` (display names, device names)
+- Pushes: `notifier/session_titles.py` (bot_name, _bot_name), `Shared/Notifications/NotificationCopy.swift` (named), `ConduitNotificationService/NotificationService.swift`, `Shared/NotificationE2E.swift` (NotificationSharedSettings.mainProfileNames, activeDashboardID), `Conduit/Services/AppState+HermesCalls.swift` (shareMainProfileNamesWithNotifications)
+- Bot Chat labels: `Conduit/Services/AppState.swift` (botConversationTitle, renameCapturedBotChatLabels), `Conduit/Services/AppState+Widgets.swift` (publishWidgetSnapshot)
+- Tests: `ConduitTests/BotModeTests.swift` (testABotTitleNamesItsProfileEverywhere, testAnUnnamedMainBotIsHermes, testADeviceNameNamesAProfileOnlyWithoutBotLooks), `ConduitTests/NotificationCopyTests.swift` (testTheMainBotGoesByItsConduitName), `ConduitTests/ProfileDiscoveryTests.swift` (display names, device names)
 
 **Rulings**
 - A profile goes by its bot title (`ui_meta['hermes-bots'].title`), else its Hermes `display_name`, else its id, as on Desktop and in its pushes. A listing that only knows `display_name` (`/api/profiles`) never undoes a title (Eric 2026-10-28, #1413, issue #1409).
-- The main profile goes by its Conduit name, kept on the device per dashboard, and by its bot's name only while it has none (#1257). Renaming it on the Profiles sheet or in Settings > Edit profile sets that name; renaming the main bot in Edit Bot sets it too, so the rename shows. A rename on the card or in Settings doesn't reach the main bot's title, so Bots and Desktop keep theirs (2026-10-28, #1413).
+- The main profile goes by its Conduit name, kept on the device per dashboard, and by its bot's name only while it has none (#1257). Renaming it on the Profiles sheet or in Settings > Edit profile sets that name; renaming the main bot in Edit Bot sets it too, so the rename shows. A rename on the card or in Settings doesn't reach the main bot's title, so Desktop keeps its (2026-10-28, #1413).
+- The main bot goes by its Conduit name in Bot Mode too: Bots, Bot Chats, rooms, the widget, Artifacts and its pushes, "Hermes" while nobody named it, not "Default". The notifier names an unnamed main bot "Hermes"; the Notification Service Extension swaps in a name given on the phone, renaming a chat title that is only the bot's name (Eric 2026-10-28, #1457, notifier #446; replaces "Bots keep theirs" from #1413).
 - Renaming any other profile, on its card or in Settings > Edit profile, writes its bot title the way Edit Bot does (compare-and-swap on ui_meta, retried once on a conflict), so Bots and Desktop show it, and its id, chats and settings stay. An empty name goes back to Hermes' name (2026-10-28, #1413).
-- A profile with neither title nor display name (or one that is only its id) goes by its id capitalized everywhere, Bots, Bot Chats, rooms, the widget, Artifacts and its pushes included (`displayLabel`, the notifier's `_bot_name`) (Eric 2026-10-28, #1448).
+- A profile with neither title nor display name (or one that is only its id) goes by its id capitalized everywhere, Bots, Bot Chats, rooms, the widget, Artifacts and its pushes included (`displayLabel`, the notifier's `_bot_name`) (Eric 2026-10-28, #1448), except the main profile, which is "Hermes" (#1457).
 - Titles and display names are remembered per saved dashboard, so one server's names never label another's profiles (2026-10-28, #1413).
 - Every profile is renamed from its Profiles card, Bot Mode or not: people who never open Bots still need it (Eric 2026-10-28, #1413).
 - A gateway without bot looks (`botModePhase == .gatewayUnsupported`) has nowhere to keep another profile's name, so the name stays on the device per dashboard, as photos there do, and comes first until the roster says the gateway keeps bot looks (at launch and offline too); from then its title and display name name the profile, and a roster that answers drops the device names, so they don't come back offline (2026-10-28, #1413).
 
 **Open gaps**
-- None known.
+- A pairing without notification keys gets the relay's plain copy, which the extension delivers as written, so its pushes name the main bot by its bot's name or "Hermes", not a name given only on the phone (#1457: the relay never sees that name).
+- A push carries no Bot Chat marker, so a regular main-profile chat titled exactly the bot's name, "Hermes" or "Default" is renamed in its push as the Bot Chat is (#1457). A marker from the notifier would let the extension rename only Bot Chats.
+- A plugin older than #1257 sends no `profile_name`, so with a phone name its titled main bot's Bot Chat push keeps the bot's title over the phone name as subtitle (#1457).
 
-**Checked:** 2026-10-28, #1448 (an unnamed profile goes by its id capitalized in Bots, rooms, the widget, Artifacts and pushes); 2026-10-28, #1413.
+**Checked:** 2026-10-28, #1457 (the main bot goes by its Conduit name in Bot Mode and its pushes); 2026-10-28, #1448 (an unnamed profile goes by its id capitalized in Bots, rooms, the widget, Artifacts and pushes); 2026-10-28, #1413.
 
 ## Settings rows a toggle reveals
 
@@ -3482,7 +3487,7 @@ Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 - Hermes' `session_search` (Classic voice, Hermes-run turns, every Hermes channel) can recall a legacy worker's transcript: it hides workers by the `kanban` source, which Hermes' retag never gave these. It's Hermes' recall, not a list Conduit draws; filtering it in the plugin (`transform_tool_result`) for every channel is the maintainer's call (#1464 review).
 - A legacy worker saved as the last chat (picked before #1461) still reopens on a return: Hermes resumes it, so nothing retires the saved pointer until another chat is opened. It opens as a readable chat, not an error (#1461 review).
 
-**Checked:** 2026-10-29, #1464 (search and find chat leave out legacy workers by their preview, notifier #452); 2026-10-29, #1463 (the Watch's find chat leaves out `tool` and `oneshot` too, notifier #450); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1461 (`tool` and `oneshot` sessions and legacy workers left out, issue #1459); 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
+**Checked:** 2026-10-29, #1464 (search and find chat leave out legacy workers by their preview, notifier #452); 2026-10-29, #1463 (the Watch's find chat leaves out `tool` and `oneshot` too, notifier #450); 2026-10-28, #1457 (the main bot's last chat takes its Conduit name and is listed once by its chat, see Profile names); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1461 (`tool` and `oneshot` sessions and legacy workers left out, issue #1459); 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
 
 ## Bars lists scroll under
 

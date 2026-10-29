@@ -84,6 +84,39 @@ enum NotificationCopy {
         return phoneTitle(for: label)
     }
 
+    /// The push's content with the main bot named as Conduit names it
+    /// (AppState.profileDisplayName, Eric 2026-10-28): the name given it in
+    /// Conduit, `mainName`, wins over its bot's name, and an unnamed one is
+    /// "Hermes", not "Default". The host titles a Bot Chat with the bot's
+    /// name, so a chat title that is only that name is renamed with it.
+    static let mainBotName = "Hermes"
+
+    /// The name given the main profile on a push's dashboard: the one its
+    /// key was made for, else the dashboard open in the app.
+    static func mainName(dashboardID: String?, activeDashboardID: String?, names: [String: String]) -> String? {
+        (dashboardID ?? activeDashboardID).flatMap(UUID.init(uuidString:)).flatMap { names[$0.uuidString] }
+    }
+
+    static func named(_ content: [String: Any], mainName: String?) -> [String: Any] {
+        let profile = nonEmpty(content["profile"])?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard profile == "default" else { return content }
+        // "Default" or "Hermes" names it no more than an unnamed main bot.
+        let given = (nonEmpty(content["profile_name"])?.trimmingCharacters(in: .whitespacesAndNewlines))
+            .flatMap { ["default", mainBotName.lowercased()].contains($0.lowercased()) ? nil : $0 }
+        let renamed = (mainName?.trimmingCharacters(in: .whitespacesAndNewlines))
+            .flatMap { $0.isEmpty || $0 == mainBotName ? nil : $0 }
+        let name = renamed ?? given ?? mainBotName
+        // An older plugin titles an unnamed main bot's chat "Default".
+        let hostNames = given.map { [$0] } ?? ["Default", mainBotName]
+        var content = content
+        if renamed != nil || given != nil { content["profile_name"] = name } else { content.removeValue(forKey: "profile_name") }
+        if let chat = nonEmpty(content["session_title"])?.trimmingCharacters(in: .whitespacesAndNewlines),
+           hostNames.contains(where: { $0.caseInsensitiveCompare(chat) == .orderedSame }) {
+            content["session_title"] = name
+        }
+        return content
+    }
+
     /// Which profile the push came from (#1415): its bot's name
     /// (`profile_name`, unless it is only the id), else its id capitalized, left out for an unnamed default
     /// profile and when the title already ends with it (a Bot Chat's).
