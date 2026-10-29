@@ -23143,7 +23143,7 @@ final class AppState: ObservableObject {
         // The main bot's label follows its Conduit name (the roster's), so
         // one saved before a rename isn't kept.
         if let label = label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty,
-           !Self.isIDOnlyBotLabel(label, profile: profile), !BotManagement.isDefaultProfile(profile) {
+           label != profile.trimmingCharacters(in: .whitespacesAndNewlines), !BotManagement.isDefaultProfile(profile) {
             botChatSessionLabels[sessionID] = label
         }
     }
