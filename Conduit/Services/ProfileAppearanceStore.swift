@@ -84,7 +84,9 @@ final class ProfileAppearanceStore {
     }
 
     /// Every dashboard's main profile name, by dashboard UUID string: the
-    /// Apple Watch names a call with them (HermesCallerName).
+    /// Apple Watch names a call with them (HermesCallerName), and the
+    /// Notification Service Extension the main bot's pushes
+    /// (NotificationSharedSettings.mainProfileNames).
     func defaultNamesByDashboard() -> [String: String] {
         defaultNames().reduce(into: [String: String]()) { result, entry in
             let name = entry.value.trimmingCharacters(in: .whitespacesAndNewlines)

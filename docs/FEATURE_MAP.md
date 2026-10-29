@@ -3212,6 +3212,7 @@ profiles line)
 
 **Open gaps**
 - A pairing without notification keys gets the relay's plain copy, which the extension delivers as written, so its pushes name the main bot by its bot's name or "Hermes", not a name given only on the phone (#1457: the relay never sees that name).
+- A push carries no Bot Chat marker, so a regular main-profile chat titled exactly the bot's name, "Hermes" or "Default" is renamed in its push as the Bot Chat is (#1457). A marker from the notifier would let the extension rename only Bot Chats.
 
 **Checked:** 2026-10-28, #1457 (the main bot goes by its Conduit name in Bot Mode and its pushes); 2026-10-28, #1448 (an unnamed profile goes by its id capitalized in Bots, rooms, the widget, Artifacts and pushes); 2026-10-28, #1413.
 

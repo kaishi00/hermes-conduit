@@ -179,6 +179,10 @@ final class NotificationCopyTests: XCTestCase {
         let chat: [String: Any] = ["title_label": "response.ready", "session_title": "Groceries", "profile": "default"]
         let named = NotificationCopy.preview(NotificationCopy.named(chat, mainName: "Jarvis"))
         XCTAssertEqual(named.title, "Groceries", "another chat keeps its title")
+        // A push carries no Bot Chat marker, so a chat titled only the bot's
+        // name reads as its Bot Chat (an open gap in the feature map).
+        let lookalike: [String: Any] = ["title_label": "response.ready", "session_title": "Hermes", "profile": "default"]
+        XCTAssertEqual(NotificationCopy.named(lookalike, mainName: "Jarvis")["session_title"] as? String, "Jarvis")
         XCTAssertEqual(named.subtitle, "Jarvis", "and says which bot, as for a bot named in Hermes")
         XCTAssertNil(NotificationCopy.preview(NotificationCopy.named(chat, mainName: nil)).subtitle)
         let hostNamed: [String: Any] = ["title_label": "response.ready", "session_title": "Groceries", "profile": "default", "profile_name": "Hermes"]
