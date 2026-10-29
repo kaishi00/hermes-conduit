@@ -179,9 +179,9 @@ struct PinnedChatOrder: Equatable {
 
     /// The orders a drag leaves: `rows` as shown, moved the way a List's
     /// `onMove` reports it. Each moved row's profile, and each profile in
-    /// `alsoSaving`, gets its shown rows in their new places, then any of
-    /// its saved ids not shown (a pinned chat not listed right now) in their
-    /// old order.
+    /// `alsoSaving`, gets its shown rows in their new order, around its
+    /// saved ids not shown (a pinned chat not listed right now), which keep
+    /// their places.
     static func orders<Row>(
         moving rows: [Row],
         fromOffsets source: IndexSet,
@@ -199,9 +199,8 @@ struct PinnedChatOrder: Equatable {
         moved.move(fromOffsets: source, toOffset: destination)
         var result: [String: [String]] = [:]
         for owner in movedProfiles {
-            let shown = moved.filter { profile($0) == owner }
-            let shownIDs = shown.reduce(into: Set<String>()) { $0.formUnion(ids($1)) }
-            result[owner] = shown.map(pinID) + order(owner).filter { !shownIDs.contains($0) }
+            let shown = moved.filter { profile($0) == owner }.map { (key: pinID($0), keys: ids($0)) }
+            result[owner] = replacing(order(owner), with: shown)
         }
         return result
     }
@@ -223,26 +222,31 @@ struct PinnedChatOrder: Equatable {
     ) -> [String] {
         var moved = rows
         moved.move(fromOffsets: source, toOffset: destination)
-        func keys(_ row: Row) -> Set<String> {
+        let shown = moved.map { row in
             let owner = profile(row)
-            return Set(ids(row).map { key(profile: owner, id: $0) })
+            return (key: key(profile: owner, id: pinID(row)), keys: Set(ids(row).map { key(profile: owner, id: $0) }))
         }
-        let named = Set(mixed)
-        // The named rows in their new order, each after the unnamed rows
-        // dropped above it; the last group follows the last named row.
+        return replacing(mixed, with: shown)
+    }
+
+    /// `saved` with the shown rows in their new order: the rows it names
+    /// take the places it held them in, so an entry not shown keeps its
+    /// place; a row it doesn't name goes just before the named row it was
+    /// dropped above, or after the last one.
+    private static func replacing(_ saved: [String], with shown: [(key: String, keys: Set<String>)]) -> [String] {
+        let named = Set(saved)
         var placed: [String] = []
         var unnamedBefore: [[String]] = [[]]
-        for row in moved {
-            let rowKey = key(profile: profile(row), id: pinID(row))
-            if keys(row).isDisjoint(with: named) {
-                unnamedBefore[unnamedBefore.count - 1].append(rowKey)
+        for row in shown {
+            if row.keys.isDisjoint(with: named) {
+                unnamedBefore[unnamedBefore.count - 1].append(row.key)
             } else {
-                placed.append(rowKey)
+                placed.append(row.key)
                 unnamedBefore.append([])
             }
         }
-        guard !placed.isEmpty else { return unnamedBefore[0] + mixed }
-        let shownKeys = rows.reduce(into: Set<String>()) { $0.formUnion(keys($1)) }
+        guard !placed.isEmpty else { return unnamedBefore[0] + saved }
+        let shownKeys = shown.reduce(into: Set<String>()) { $0.formUnion($1.keys) }
         var result: [String] = []
         var next = 0
         func placeNext() {
@@ -250,9 +254,9 @@ struct PinnedChatOrder: Equatable {
             next += 1
             if next == placed.count { result += unnamedBefore[next] }
         }
-        for saved in mixed {
-            if !shownKeys.contains(saved) {
-                result.append(saved)
+        for entry in saved {
+            if !shownKeys.contains(entry) {
+                result.append(entry)
             } else if next < placed.count {
                 placeNext()
             }

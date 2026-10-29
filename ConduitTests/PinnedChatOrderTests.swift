@@ -78,7 +78,7 @@ extension SessionNestingModelTests {
     func testPinnedOrderDragKeepsPinsNotShown() {
         let rows = [PinRow(id: "a"), PinRow(id: "b")]
         let saved = ["default": ["hidden", "a", "b"]]
-        XCTAssertEqual(pinOrders(rows, moving: [0], to: 2, saved: saved), ["default": ["b", "a", "hidden"]])
+        XCTAssertEqual(pinOrders(rows, moving: [0], to: 2, saved: saved), ["default": ["hidden", "b", "a"]], "a pin not shown keeps its place")
     }
 
     func testPinnedOrderDragInAllChangesOnlyTheMovedProfile() {
