@@ -108,12 +108,14 @@ struct PinnedChatOrder: Equatable {
             slotsByProfile[owner, default: []].append(index)
         }
         var arranged = rows
+        var ordered = Set<String>()
         for owner in profiles {
             let saved = order(owner)
             guard !saved.isEmpty, let slots = slotsByProfile[owner], slots.count > 1 else { continue }
             var rankOf: [String: Int] = [:]
             for (rank, id) in saved.enumerated() where rankOf[id] == nil { rankOf[id] = rank }
             let ranked = slots.map { slot in (slot: slot, rank: ids(rows[slot]).compactMap { rankOf[$0] }.min()) }
+            if ranked.contains(where: { $0.rank != nil }) { ordered.insert(owner) }
             let sorted = ranked.enumerated().sorted { lhs, rhs in
                 switch (lhs.element.rank, rhs.element.rank) {
                 case let (left?, right?) where left != right: return left < right
@@ -126,18 +128,20 @@ struct PinnedChatOrder: Equatable {
                 arranged[slot] = rows[source.element.slot]
             }
         }
-        return interleave(arranged, profile: profile, ids: ids, mixed: mixed)
+        return interleave(arranged, profile: profile, ids: ids, mixed: mixed, ordered: ordered)
     }
 
     /// Which profile holds each place, from the mixed order: rows it names
     /// in its order, after the rows it doesn't (a chat pinned since goes on
     /// top). Each profile's rows then fill its places in the order they
-    /// came, which is that profile's own order.
+    /// came, which is the profile's own order; a profile that has none
+    /// (`ordered` doesn't name it) puts the rows the mix doesn't name first.
     private static func interleave<Row>(
         _ rows: [Row],
         profile: (Row) -> String,
         ids: (Row) -> Set<String>,
-        mixed: [String]
+        mixed: [String],
+        ordered: Set<String>
     ) -> [Row] {
         guard !mixed.isEmpty else { return rows }
         var rankOf: [String: Int] = [:]
@@ -155,7 +159,14 @@ struct PinnedChatOrder: Equatable {
             }
         }
         var queues: [String: [Row]] = [:]
-        for row in rows { queues[profile(row), default: []].append(row) }
+        for index in rows.indices.filter({ ranks[$0] == nil }) + rows.indices.filter({ ranks[$0] != nil }) {
+            let owner = profile(rows[index])
+            guard !ordered.contains(owner) else { continue }
+            queues[owner, default: []].append(rows[index])
+        }
+        for row in rows where ordered.contains(profile(row)) {
+            queues[profile(row), default: []].append(row)
+        }
         var taken: [String: Int] = [:]
         return places.map { place in
             let owner = profile(rows[place])

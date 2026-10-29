@@ -119,6 +119,9 @@ extension SessionNestingModelTests {
         // A chat pinned since goes on top.
         let pinned = [PinRow(id: "h2", profile: "home")] + rows
         XCTAssertEqual(pinArranged(pinned, [:], mixed: mixed), ["h2", "h1", "w1", "w2"])
+        // Also when home has no order of its own and h1 is more recent.
+        let later = rows + [PinRow(id: "h2", profile: "home")]
+        XCTAssertEqual(pinArranged(later, [:], mixed: mixed), ["h2", "h1", "w1", "w2"])
     }
 
     @MainActor
