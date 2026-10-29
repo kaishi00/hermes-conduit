@@ -88,7 +88,8 @@ struct V2ConversationScreen: View {
     private var fitsSidePanel: Bool { ChatSidePanel.fits(width: screenWidth) }
     /// As wide as the user dragged it, less on a window without the room.
     private var sidePanelWidth: CGFloat {
-        draggedSidePanelWidth ?? ChatSidePanel.widths.resolved(storedSidePanelWidth, window: screenWidth, keeping: V2SplitLayout.minimumChatWidth)
+        // A width dragged as the window narrows goes through the same bounds.
+        ChatSidePanel.widths.resolved(draggedSidePanelWidth.map { Double($0) } ?? storedSidePanelWidth, window: screenWidth, keeping: V2SplitLayout.minimumChatWidth)
     }
     private var showsSidePanel: Bool {
         sidePanelOpen && fitsSidePanel && appState.activeRoomSurface == nil

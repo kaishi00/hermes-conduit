@@ -66,6 +66,9 @@ struct ColumnDivider: View {
     /// The width the drag began at, which `commit` compares with, as the
     /// gesture state is reset by then.
     @State private var dragBegan: CGFloat?
+    /// The pointer's travel when the drag was recognized (its least
+    /// distance), left out so the line doesn't jump to catch up.
+    @State private var dragSlop: CGFloat = 0
     @State private var isHovering = false
 
     private static let gripWidth: CGFloat = 12
@@ -118,9 +121,12 @@ struct ColumnDivider: View {
         DragGesture(minimumDistance: 4, coordinateSpace: .global)
             .updating($dragStart) { value, start, _ in
                 let from = start ?? width
-                if start == nil { dragBegan = from }
+                if start == nil {
+                    dragBegan = from
+                    dragSlop = value.translation.width
+                }
                 start = from
-                live = widths.dragged(from: from, by: value.translation.width * direction, room: room)
+                live = widths.dragged(from: from, by: (value.translation.width - dragSlop) * direction, room: room)
             }
     }
 
@@ -136,8 +142,12 @@ struct ColumnDivider: View {
         stored = Double(width)
     }
 
+    /// A step that can't move the line (at a bound, or a window showing
+    /// less than the stored width) keeps the stored width.
     private func set(_ newWidth: CGFloat) {
-        stored = Double(widths.dragged(from: newWidth, by: 0, room: room))
+        let width = widths.dragged(from: newWidth, by: 0, room: room)
+        guard abs(width - self.width) >= 1 else { return }
+        stored = Double(width)
     }
 
     private func reset() {

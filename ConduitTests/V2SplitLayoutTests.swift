@@ -87,6 +87,8 @@ extension SidebarLayoutTests {
         XCTAssertFalse(ChatSidePanel.fits(width: 1000 - V2SplitLayout.listWidth - 1))
         // A drag under way lays the list out at the dragged width.
         XCTAssertEqual(V2SplitLayout.ListColumn(window: 1440, stored: 400, dragged: 450).width, 450)
+        // A window that narrows mid-drag still leaves the chat its room.
+        XCTAssertEqual(V2SplitLayout.ListColumn(window: 900, stored: 400, dragged: 550).width, 900 - V2SplitLayout.minimumChatWidth - 1)
 
         // The drawer shell's persistent sidebar drags the same way, from
         // the width it turns persistent at.

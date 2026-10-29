@@ -1112,8 +1112,10 @@ enum V2SplitLayout {
 
         init(window: CGFloat, stored: Double, dragged: CGFloat? = nil) {
             let keeping = V2SplitLayout.chatKeeps(window: window)
-            width = dragged ?? V2SplitLayout.listWidths.resolved(stored, window: window, keeping: keeping)
             room = window - keeping - 1
+            // A window that narrows mid-drag still leaves the chat its room.
+            width = dragged.map { max(V2SplitLayout.listWidths.minimum, min($0, room)) }
+                ?? V2SplitLayout.listWidths.resolved(stored, window: window, keeping: keeping)
         }
     }
 

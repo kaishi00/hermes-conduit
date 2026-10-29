@@ -137,8 +137,8 @@ struct MainView: View {
     private var isPersistentSidebarActive: Bool { !useV2Shell && sidebarPresentation == .persistent }
 
     private var persistentSidebarWidth: CGFloat {
-        draggedSidebarWidth ?? SidebarLayoutMetrics.persistentSidebarWidths.resolved(
-            storedSidebarWidth,
+        SidebarLayoutMetrics.persistentSidebarWidths.resolved(
+            draggedSidebarWidth.map { Double($0) } ?? storedSidebarWidth,
             window: availableWindowWidth,
             keeping: SidebarLayoutMetrics.minimumChatWidth
         )
