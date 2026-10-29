@@ -240,9 +240,8 @@ enum SessionContentSearch {
     }
 
     /// The response's conversations in Hermes' order, one per id, the first
-    /// `resultLimit` of them. Nil when
-    /// the body isn't a search response at all (a host answering the path
-    /// with something else).
+    /// `resultLimit` of them. Nil when the body isn't a search response at
+    /// all (a host answering the path with something else).
     static func hits(from response: [String: Any], query: String) -> [SessionContentSearchHit]? {
         guard let rows = response["results"] as? [[String: Any]] else { return nil }
         var seen = Set<String>()
