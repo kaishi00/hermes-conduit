@@ -224,7 +224,7 @@ extension AppState {
     }
 
     private func openRoomChatFailure(with agent: RoomChatAgent, wrapUp: Bool) async -> String? {
-        guard canOpenRoomChats, isConnected, let client, let surface = activeRoomSurface else {
+        guard canOpenRoomChats, isConnected, client != nil, let surface = activeRoomSurface else {
             return RoomLinksClient.message(for: HermesError.notConnected)
         }
         // Another profile's chat opens after a switch to it, which would end the call.
@@ -233,10 +233,12 @@ extension AppState {
         }
         let roomID = surface.room.roomID
         let routes = roomChatsClient
+        // A new chat and its title go through the client in use when they're made, scoped by the profile in
+        // use then: a kept chat in another profile is opened after a switch to it, which replaces the client.
         let opener = RoomChatOpener(
             chats: { profile in try await routes.chats(profile: profile) },
             create: { [weak self] profile in
-                guard let self else { throw HermesError.notConnected }
+                guard let self, let client = self.client else { throw HermesError.notConnected }
                 let scoped = self.profilesMatch(profile, self.activeProfile) ? nil : profile
                 let created = try await self.createRoomChatSession(using: client, profile: scoped)
                 if let returned = created.profile, !self.profilesMatch(returned, profile) {
@@ -248,7 +250,7 @@ extension AppState {
                 try await routes.open(roomID: roomID, chatID: chatID, profile: profile)
             },
             title: { [weak self] runtimeID, profile, title in
-                guard let self else { throw HermesError.notConnected }
+                guard let self, let client = self.client else { throw HermesError.notConnected }
                 // To the id it runs under, as a Bot Chat's title goes.
                 try await self.titleRoomChatSession(runtimeID, title: title, using: client,
                                                      profile: self.profilesMatch(profile, self.activeProfile) ? nil : profile)
