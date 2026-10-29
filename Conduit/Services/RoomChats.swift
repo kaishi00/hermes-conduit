@@ -261,10 +261,12 @@ extension AppState {
                 guard let self else { return false }
                 // A chat still settling on screen, or with a turn running, takes it into its composer, to
                 // send: Wrap Up never steers, queues or interrupts by the busy setting.
+                let shown = self.errorMessage
                 if await self.submitComposer(text: text, onBusy: {}) { return true }
-                // Never over a draft the chat already has: the banner says Wrap Up wasn't sent.
+                // Never over a draft the chat already has: the banner says Wrap Up wasn't sent, unless a send
+                // that failed has said why.
                 if self.composerDraftStore.hasDraft(for: self.composerDraftKeyOnScreen) {
-                    self.errorMessage = RoomChatText.wrapUpBlockedByDraft
+                    if self.errorMessage == shown { self.errorMessage = RoomChatText.wrapUpBlockedByDraft }
                 } else {
                     self.prefillComposer(text)
                 }
