@@ -175,17 +175,17 @@ class WorkflowContractTests(unittest.TestCase):
         # since the change id counts Markdown only by its words.
         # core.quotePath=false keeps a non-ASCII name unquoted, so it matches.
         for path in ("Conduit/Resources/Help.md", "ConduitTests/x.md", "Shared/a/b.md",
-                     "Conduit/Resources/日本語.md"):
+                     "Conduit/Resources/日本語.md", '"Conduit/a\\"b.md"'):
             self.assertTrue(app_markdown.search(path), path)
         for path in ("docs/FEATURE_MAP.md", "README.md", "Conduit/App.swift"):
             self.assertFalse(app_markdown.search(path), path)
         # The review plan counts the same Markdown as code (both reviewers).
         review = _read(os.path.join(REPO_ROOT, ".github", "workflows", "opencode-review.yml"))
         code_config = re.search(r"code_config='([^']+)'", review).group(1)
-        self.assertIn("|" + app_markdown.pattern + "|", code_config)
+        self.assertIn("|^(Conduit[^/]*|Shared)/.*\\.md$|", code_config)
         # ...and the same-change branch is gated on it and on a non-empty diff.
         self.assertIn("&& changed=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD) && [ -n \"$changed\" ] \\\n"
-                      "            && ! printf '%s\\n' \"$changed\" | grep -E '^(Conduit[^/]*|Shared)/.*\\.md$' >/dev/null; then\n"
+                      "            && ! printf '%s\\n' \"$changed\" | grep -E '^\"?(Conduit[^/]*|Shared)/.*\\.md\"?$' >/dev/null; then\n"
                       "            repo=", step)
         # The lookup takes only a passing Smoke job on another of the PR's
         # commits, built as this PR's merge commit, with a non-empty id.

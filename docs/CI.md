@@ -491,8 +491,8 @@ and `scripts/tests/test_pr_change_id.py` holds the two to the same ids. A
 passing Smoke counts whatever PR it ran for (GitHub can't say which PR a run
 belonged to), so a commit that passed in a PR into `pulse` or `linked-rooms`
 counts for a PR into `main` from the same branch; Markdown under an app or
-test folder always builds, since the id counts Markdown only by its words. Pushes always build, and every lookup
-that fails builds too.
+test folder always builds, since the id counts Markdown only by its words.
+Pushes always build, and every lookup that fails builds too.
 
 Branch protection must require **CI Gate** (and nothing else from this
 workflow): the jobs behind it are implementation detail, and any job that can
