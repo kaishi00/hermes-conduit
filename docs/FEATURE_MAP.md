@@ -125,12 +125,13 @@ several details only the user can give (notifier 0.82).
 - Most questions stay multiple choice: only several questions with one to type in make a form. A form sends once something in it is filled in, and its blank fields go to Hermes as skipped (Eric 2026-10-26, #1294, notifier #391).
 - An approval one of your agents' turns waits for in a room someone else hosts is answered only on your own Hermes, once or deny, never by the room's host. Its notification goes out as for any chat, named by the agent's hidden chat for the room, which the chat card's `approval.respond` can't reach (4001 on Hermes c73cbcc4), so the plugin's list names that `session_key` and the answer goes through POST /rooms/approvals/answer. A call from Hermes about one answers it as about any other approval, since `calls.follow_approval` answers Hermes' own queue by that key (2026-10-27, notifier #416).
 - "Skip" leaves only a form's question blank. Only a choice the words name whole ("Pass") is picked instead, not one inside them ("leave it blank" beside a choice called Blank), and a question or a negation ("don't skip it") is an answer; the phone and the plugin read it the same way (2026-10-26, #1294, notifier #391).
+- On the chat card, here, on Classic voice's screen and on a live call's screen (VoiceApprovalPanel, which LiveVoiceWaitingPanel shows, draws the same cards), the card's caption and its time share the top row, the time on the right on one line (a long caption wraps beside it), and the description or question runs the card's full width below, never in a column beside the time; at the accessibility text sizes the time goes under the caption (2026-10-29, #1507, issue #1440).
 
 **Open gaps**
 - Group rooms: the card's failure line shows the error text raw, while the chat card reveals hidden characters in its error and expiry text (#951 follow-up).
 - Your agents' approvals in rooms other people host have no card in the app yet, and their notification opens a hidden chat the app doesn't show, whose card couldn't answer them. C3 (on `linked-rooms`) adds the card, matched to the notification by its `session_key`; until then `hermes conduit-push rooms approvals`, `approve` and `deny` answer them, as does a call from Hermes about one.
 
-**Checked:** 2026-10-29, #1497 (a linked person's ask to its owner in the siblings, notifier #465); 2026-10-29, #1485 (a room's ask to its owner in the siblings; the call-screen confirmation's panel and overlay listed in Code); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files); 2026-10-27, #1351 (your agents' approvals in rooms other people host, notifier #416); 2026-10-26, #1301 (the jump button goes to input cards too); 2026-10-26, #1294 (clarify forms: a field for each question and one Send, blanks skipped on every transport, "skip" by voice; notifier #391); 2026-10-26, #1247 (the Watch broker's grant answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, the table and the Watch row, at #1182, carried in #1235; 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
+**Checked:** 2026-10-29, #1507 (the chat card's time top right, its description or question full width below, #1440); 2026-10-29, #1497 (a linked person's ask to its owner in the siblings, notifier #465); 2026-10-29, #1485 (a room's ask to its owner in the siblings; the call-screen confirmation's panel and overlay listed in Code); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files); 2026-10-27, #1351 (your agents' approvals in rooms other people host, notifier #416); 2026-10-26, #1301 (the jump button goes to input cards too); 2026-10-26, #1294 (clarify forms: a field for each question and one Send, blanks skipped on every transport, "skip" by voice; notifier #391); 2026-10-26, #1247 (the Watch broker's grant answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, the table and the Watch row, at #1182, carried in #1235; 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
 
 ## Passwords, logins and codes Hermes asks for
 
@@ -166,6 +167,7 @@ these prompts)
 - Never asked or answered by voice: Local Live and a voice job's notice say Hermes waits and where, the other live modes only show the card on the call screen, and Classic voice shows it too, but no listening window opens for it and nothing asks for the value aloud. A live call's open microphone and Classic's barge-in still hear the room, so a user who reads a code out loud is heard like any other speech (2026-10-26, #1301).
 - A website login names the exact origin it is saved for, its title the origin's own host, or the origin itself when it has none (never a separately sent site name), and goes as JSON `{identifier, password}`, the identifier trimmed and the password as typed (spaces alone are no password, as on the other cards); a code drops the spaces and dashes a site groups it with. As in Hermes Desktop: the code is shown as typed, Don't save and Skip answer empty, and the code request's `hint` is not shown (Hermes always sends it empty) (2026-10-26, #1299, #1301).
 - No password or username autofill type on the login card: iOS would offer to save the site's login under Conduit's own domain. The code field offers a code from a text message or email (2026-10-26, #1301).
+- On the chat card, here, on Classic voice's screen and on a live call's screen (VoiceApprovalPanel, which LiveVoiceWaitingPanel shows, draws the same card), the card's caption and its time share the top row, the time on the right on one line (a long caption wraps beside it), and the title runs the card's full width below, never in a column beside the time; at the accessibility text sizes the time goes under the caption (2026-10-29, #1507, issue #1440).
 
 **Open gaps**
 - Notification: none for any of these. Hermes gives plugins no hook on server requests, and `browser_vault` can't tell before it runs whether it will ask (a saved authenticator key fills codes itself).
@@ -174,7 +176,7 @@ these prompts)
 - A voice job waiting on one shows no card on the call screen or Classic voice's screen: the job keeps only that it needs input, so the call says to open it in Conduit (waitingNotice). The same goes for Watch calls, which have no card at all.
 - The minimised call bar shows no card, as for approvals and questions; opening the call shows it. A call from Hermes is never about one: the plugin calls only for approvals and questions.
 
-**Checked:** 2026-10-28, #1452 (open requests move with a socket kept across a profile switch); 2026-10-26, #1301 (website logins and codes, #1299).
+**Checked:** 2026-10-29, #1507 (the card's time top right, its title full width below, #1440); 2026-10-28, #1452 (open requests move with a socket kept across a profile switch); 2026-10-26, #1301 (website logins and codes, #1299).
 
 ## Voice follow-ups
 
@@ -553,7 +555,7 @@ Hermes · Resume Call · memory at call end (notifier)
 **Code**
 - Recording and saving: `Conduit/Voice/VoiceHistory.swift` (VoiceTranscriptRecorder, VoiceTranscriptSaveRequest, VoiceCallChatLink, VoiceTranscriptOutbox, VoiceCallCheckpoint)
 - In the app: `Conduit/Services/AppState.swift` (chatCallReconnectWindow, isArchivedVoiceChat, saveWatchVoiceCall, checkpointVoiceCall)
-- The call's card in its chat: `Conduit/Views/VoiceChatCallTranscriptSheet.swift`
+- The call's card in its chat: `Conduit/Views/ChatView.swift` (VoiceCallMarkerCard), `Conduit/Views/VoiceChatCallTranscriptSheet.swift`
 - Watch: `Conduit/Watch/WatchDirectBroker.swift`, `ConduitWatch/WatchDirectCallModel.swift` (trimTranscript), `ConduitWatch/WatchBridgeCallModel.swift` (trimTranscript), `Shared/WatchVoice/WatchVoiceWire.swift` (DirectTranscript)
 - Notifier: `notifier/dashboard/api/voice_calls.py` (/voice/sessions, /voice/chat-calls, /voice/archive), `notifier/voice_archive.py`
 - Background time: `Conduit/Services/BackgroundTaskHold.swift` (`AppState.beginVoiceTranscriptBackgroundTask`, the Watch broker's revoke and late revoke)
@@ -567,11 +569,12 @@ Hermes · Resume Call · memory at call end (notifier)
 - Ending a call runs Hermes' session-end hooks and memory commit; a call kept with its chat writes memory under the chat (2026-10-06, notifier #46; 2026-10-13, notifier #98).
 - A call's turns stay in memory until the host has them; each capture starts after the last line it took, and rescans only when the engine changed a line before it (2026-10-24, #1222, from #1004).
 - A Watch call, in every voice mode, keeps only the newest 40 KB of its transcript while it runs, the most its saved call can carry. Lines still in use (an open line, the user turn a tool call answers) and a single newest turn over 40 KB are kept whole; the saved call clips them (2026-10-24, #1221).
+- The call's card in its chat keeps its start time on the short detail line under the title, so a long title ("Started from" a chat) has the card's width (2026-10-29, #1507, issue #1440).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445 (a call's jobs leave Desktop's list once answered); 2026-10-26, #1247 (the closing transcript save and the Watch broker's revokes keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for a call kept with its first request's chat; Qwen joins the shared save path (`qwen-live` history), at #1182, carried in #1235; 2026-10-24, at #1222 (capture cursor); at #1221, for the Watch's transcript tail; at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review); at #1220: quiet checkpoints, and a saved turn's cut closes a long fence with one as long, within the plugin's limit.
+**Checked:** 2026-10-29, #1507 (the call card's start time under its title, #1440); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445 (a call's jobs leave Desktop's list once answered); 2026-10-26, #1247 (the closing transcript save and the Watch broker's revokes keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for a call kept with its first request's chat; Qwen joins the shared save path (`qwen-live` history), at #1182, carried in #1235; 2026-10-24, at #1222 (capture cursor); at #1221, for the Watch's transcript tail; at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review); at #1220: quiet checkpoints, and a saved turn's cut closes a long fence with one as long, within the plugin's limit.
 
 ## Voice in the chats list
 
@@ -3027,6 +3030,28 @@ notifier's copies of both
 
 **Checked:** 2026-10-29, #1502 (Eric ruled that Markdown under an app or test folder gets both reviewers); 2026-10-29, #1469 (Markdown under an app or test folder counts as code for reviews and always builds in CI; notifier #456); #1467 (the change id hashes any bytes and a failing one counts as no match; the notifier's data files count as code, notifier #455; CI's copy of the change id is in Code, held to the review's by a test); #1466.
 
+## Nightly reruns
+
+A scheduled Nightly whose only losses are jobs GitHub never gave a macOS runner reruns
+those jobs by itself.
+
+**Siblings:** the Nightly workflow it follows (its name and its matrices) ·
+docs/CI.md's workflow table and the Nightly paragraph · docs/RELEASE_WORKFLOW.md's
+rule that every job of a candidate's dispatched Nightly passes
+
+**Code**
+- Rerun: `.github/workflows/nightly-rerun.yml`, `scripts/tests/test_nightly_rerun.py` (the decision against fixture job lists, and that it still follows Nightly's name and `fail-fast: false` matrices)
+- Nightly: `.github/workflows/nightly.yml`
+- Docs: `docs/CI.md`, `docs/RELEASE_WORKFLOW.md`
+
+**Rulings**
+- A job counts as never placed when it is `cancelled` with no runner and no steps (GitHub's "not acquired by Runner of type hosted"). The run reruns its failed jobs only when every job that didn't pass is one of those, at most twice, so a test that ran and failed is never retried. Only scheduled runs rerun: a dispatched run, such as a release candidate's, keeps its own result, so the release rule is unchanged (2026-10-29, #1506, after Nightly lost 2 jobs on 10-28 and 3 on 10-29 to macOS arm64 capacity).
+
+**Open gaps**
+- The failure email for the first attempt still goes out. The two-rerun cap assumes GitHub fires `workflow_run` for each rerun attempt; the first live rerun shows it.
+
+**Checked:** 2026-10-29, #1506.
+
 ## Settings connection page
 
 The page with the server, Reconnect, Restart Gateway, Cloudflare Access,
@@ -3228,18 +3253,19 @@ notifier's live read of the setting for chats already open
 
 **Code**
 - Setting: `Conduit/Views/AuxiliaryViews.swift` (ChatSettingsDetail fields, `display.memory_notifications`), `Conduit/Models/Models.swift` (ProfileDisplayPreferences.showReviews), `Conduit/Services/AppState.swift` (loadProfileDisplayPreferences, setProfileSetting)
-- Row: `Conduit/Services/StreamEventParser.swift` (`review.summary`), `Conduit/Services/HermesClient.swift` (reviewActivity), `Conduit/Services/AppState.swift` (the review cache, mergeCachedReviews), `Conduit/Views/ChatView.swift` (SELF-IMPROVEMENT REVIEW, drawnMessageScrollTargets), `Conduit/Views/ChatActivityRows.swift` (ChatMessageScrollTarget.drawsRow, isReview), `Conduit/Views/OfflineChatTranscriptView.swift` (the offline copy)
+- Row: `Conduit/Services/StreamEventParser.swift` (`review.summary`), `Conduit/Services/HermesClient.swift` (reviewActivity), `Conduit/Services/AppState.swift` (the review cache, mergeCachedReviews), `Conduit/Views/ChatView.swift` (SELF-IMPROVEMENT REVIEW, ReviewSummaryCard, and ModelChangeSummaryCard and CardHeaderCaption, which share its layout, drawnMessageScrollTargets), `Conduit/Views/ChatActivityRows.swift` (ChatMessageScrollTarget.drawsRow, isReview), `Conduit/Views/OfflineChatTranscriptView.swift` (the offline copy)
 - Tests: `ConduitTests/AppStateChatResumeTests.swift` (testReviewRowsFollowTheSelfImprovementSetting)
 - Notifier: `notifier/review_notices.py`, `notifier/tests/test_review_notices.py`
 
 **Rulings**
 - A changed setting reaches chats already open at their next review, with no restart: the dashboard reads it only when it builds a chat's agent, so the plugin reads it again from the chat's profile before each review. Hermes' messaging platforms need nothing, its gateway reads it every turn (2026-10-25, notifier #373, #1260).
 - Never show hides the rows a chat already has too, live and in the offline copy (from the setting last read for that profile, kept on the phone, until the dashboard answers; Settings then reads Never show), without deleting them: they come back when the setting does. Anything but "off" (or a YAML false) shows them, as Hermes reads it (2026-10-25, #1260; Eric's rule to close gaps in the same change).
+- On the review row, as on the Model updated card beside it, the card's caption and its time share the top row, the time on the right on one line (a long caption wraps beside it), and the summary runs the card's full width below, never in a column beside the time; at the accessibility text sizes the time goes under the caption (2026-10-29, #1507, issue #1440).
 
 **Open gaps**
 - None.
 
-**Checked:** 2026-10-26, #1282 (display settings kept on the phone, so the offline copy follows Never show from launch); 2026-10-25, #1260.
+**Checked:** 2026-10-29, #1507 (caption and time on the row's top line, summary full width below, #1440); 2026-10-26, #1282 (display settings kept on the phone, so the offline copy follows Never show from launch); 2026-10-25, #1260.
 
 ## Profile glow color
 
@@ -3691,7 +3717,7 @@ on top
 **Open gaps**
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-10-29, #1503: on a Mac, a column takes 80% of the window and its text, text styles through `scaledFont` included, grows by point size with it. Earlier 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text; 2026-10-27, #1393; 2026-10-26, #1320.
+**Checked:** 2026-10-29, #1503: on a Mac, a column takes 80% of the window and its text, text styles through `scaledFont` included, grows by point size with it. Earlier 2026-10-29, #1507 (the listed cards' text moved below their caption row, sizes unchanged); 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text; 2026-10-27, #1393; 2026-10-26, #1320.
 
 ## A split window's columns fill the window
 
