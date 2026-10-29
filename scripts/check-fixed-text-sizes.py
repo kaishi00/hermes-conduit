@@ -28,7 +28,7 @@ points (ScaledFont.swift), which only `scaledFont` sees. Any `.font(` whose
 argument names a text style is reported, unless the comment lines just
 above say why it must stay a Font (`// Text style: <reason>`, such as a
 `Text` joined with `+`, which needs `Text`'s own `font`). It reads one line at a
-time, so a `.font(` whose style starts the next line isn't seen.
+time, so a `.font(` whose argument starts the next line isn't seen.
 
 Usage: check-fixed-text-sizes.py [--repo-root DIR]
 """
@@ -42,8 +42,9 @@ SOURCE_DIRS = ("Conduit",)
 TEXT_START = re.compile(r"\bText\s*\(")
 FIXED_SIZE = re.compile(r"\.system\(size:\s*\d")
 EXEMPTION = "// Fixed size:"
-TEXT_STYLE_FONT = re.compile(
-    r"\.font\(\s*(?:[^()]*?\?\s*(?:[^()]*?:\s*)?)?(?:Font)?(?:\.system\()?\.(?:caption2?|footnote|subheadline|body|callout|"
+FONT_CALL = re.compile(r"\.font\(")
+TEXT_STYLE = re.compile(
+    r"(?:Font)?(?:\.system\()?\.(?:caption2?|footnote|subheadline|body|callout|"
     r"title[23]?|headline|largeTitle)\b")
 TEXT_STYLE_EXEMPTION = "// Text style:"
 
@@ -97,6 +98,46 @@ def find_problems(sources):
     return problems
 
 
+def font_argument(code, start):
+    """The argument of the call whose parenthesis opens at `start`, up to
+    its closing one, or the rest of the line."""
+    depth = 0
+    for end in range(start, len(code)):
+        if code[end] == "(":
+            depth += 1
+        elif code[end] == ")":
+            depth -= 1
+            if depth == 0:
+                return code[start + 1:end]
+    return code[start + 1:]
+
+
+def branches(argument):
+    """A ternary's two branches, split at its top-level `?` and `:`, or
+    the argument itself."""
+    depth, question = 0, None
+    for index, char in enumerate(argument):
+        if char in "([":
+            depth += 1
+        elif char in ")]":
+            depth -= 1
+        elif depth == 0 and char == "?" and question is None:
+            question = index
+        elif depth == 0 and char == ":" and question is not None:
+            return [argument[question + 1:index], argument[index + 1:]]
+    return [argument]
+
+
+def sets_text_style(code):
+    """Whether a `.font(` on this line takes a text style, alone or as
+    either branch of a ternary."""
+    for match in FONT_CALL.finditer(code):
+        argument = font_argument(code, match.end() - 1)
+        if any(TEXT_STYLE.match(branch.strip()) for branch in branches(argument)):
+            return True
+    return False
+
+
 def find_text_style_fonts(sources):
     """sources: {path: text}. Returns ["path:line: ..."] for each text style
     set with `.font(` rather than `.scaledFont(`."""
@@ -105,7 +146,7 @@ def find_text_style_fonts(sources):
         lines = text.splitlines()
         for index, line in enumerate(lines):
             code = line.split("//", 1)[0]
-            if TEXT_STYLE_FONT.search(code) and not stated_reason(lines, index, TEXT_STYLE_EXEMPTION):
+            if sets_text_style(code) and not stated_reason(lines, index, TEXT_STYLE_EXEMPTION):
                 problems.append(
                     f"{path}:{index + 1}: a text style set with .font( stays one size on a Mac; "
                     "use .scaledFont(, or say why with "

@@ -96,8 +96,11 @@ class TextStyleFontTests(unittest.TestCase):
         Text("D").font(.system(.largeTitle, design: .rounded))
         label.font(.body)
         Text("E").font(flag ? someFont : .caption)
+        Text("F").font(isBold(x) ? .body : .caption)
+        Text("G").font(flag ? .system(size: 12) : .caption)
+        Text("H").font(flag ? Font.custom("X", size: 12) : .caption)
         """)
-        self.assertEqual([problem.split(":")[1] for problem in found], ["3", "4", "5", "6", "7", "8"])
+        self.assertEqual([problem.split(":")[1] for problem in found], ["3", "4", "5", "6", "7", "8", "9", "10", "11"])
 
     def test_scaled_fonts_fixed_sizes_and_other_fonts_pass(self):
         self.assertEqual(style_problems("""
