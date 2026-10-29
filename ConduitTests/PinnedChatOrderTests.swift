@@ -145,6 +145,9 @@ extension SessionNestingModelTests {
         // Also when home has no order of its own and h1 is more recent.
         let later = rows + [PinRow(id: "h2", profile: "home")]
         XCTAssertEqual(pinArranged(later, [:], mixed: mixed), ["h2", "h1", "w1", "w2"])
+        // Home's own list, with no order of its own, follows recent activity.
+        let homeOnly = [PinRow(id: "h1", profile: "home"), PinRow(id: "h2", profile: "home")]
+        XCTAssertEqual(pinArranged(homeOnly, [:], mixed: mixed), ["h1", "h2"])
     }
 
     @MainActor

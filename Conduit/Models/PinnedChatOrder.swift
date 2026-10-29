@@ -143,7 +143,8 @@ struct PinnedChatOrder: Equatable {
         mixed: [String],
         ordered: Set<String>
     ) -> [Row] {
-        guard !mixed.isEmpty else { return rows }
+        // One profile's rows (its own list, CarPlay) follow its order alone.
+        guard !mixed.isEmpty, Set(rows.map(profile)).count > 1 else { return rows }
         var rankOf: [String: Int] = [:]
         for (rank, key) in mixed.enumerated() where rankOf[key] == nil { rankOf[key] = rank }
         let ranks = rows.map { row in
