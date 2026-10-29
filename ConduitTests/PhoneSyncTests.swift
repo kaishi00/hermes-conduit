@@ -1248,6 +1248,19 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(SpokenApprovals.answer("send it", waiting: presented)?.target, .presented(id: "p_1"))
         XCTAssertEqual(SpokenApprovals.answer("no", waiting: presented)?.approve, false)
         XCTAssertEqual(SpokenApprovals.answer("don't send it", waiting: presented)?.approve, false, "A no-led phrase never confirms")
+        // A Link's ask with an answer takes "share it"; their question waits for the panel, so a "no"
+        // or a chat question's answer isn't taken by it.
+        let linkShare = PresentedConfirm(id: "p_2", title: "Free on 2026-11-22?", preview: "Busy 10:00-11:00.",
+                                         actionLabel: "Share", spokenYes: ["share it"],
+                                         link: PresentedLink(id: "l", name: "Laifu", share: true))
+        let linkQuestion = PresentedConfirm(id: "p_3", title: "Laifu's Hermes asks", preview: "Tent?", actionLabel: "Share",
+                                            link: PresentedLink(id: "l", name: "Laifu", share: false))
+        XCTAssertEqual(SpokenApprovals.Waiting.spoken([linkShare, linkQuestion]).map(\.id), ["p_2"])
+        let shared = SpokenApprovals.Waiting(presented: SpokenApprovals.Waiting.spoken([linkShare]))
+        XCTAssertEqual(SpokenApprovals.answer("share it", waiting: shared)?.approve, true)
+        let question = SpokenApprovals.Waiting(presented: SpokenApprovals.Waiting.spoken([linkQuestion]))
+        XCTAssertEqual(question.count, 0, "nothing holds back the chat question's answer")
+        XCTAssertNil(SpokenApprovals.answer("no", waiting: question))
 
         // A change already waiting when the user last spoke or typed wasn't
         // asked for in the reply this yes answers: it answers nothing, so a

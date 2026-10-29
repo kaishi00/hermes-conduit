@@ -77,10 +77,12 @@ struct PresentedLink: Equatable {
         self.share = share
     }
 
-    /// Any Link the host names makes it a Link's ask; one that doesn't say
-    /// there's something to share has nothing to Share.
+    /// Any Link the host names makes it a Link's ask, even one that can't be
+    /// read; one that doesn't say there's something to share has nothing
+    /// to Share.
     init?(json: Any?) {
-        guard let entry = json as? [String: Any] else { return nil }
+        guard let json, !(json is NSNull) else { return nil }
+        let entry = json as? [String: Any] ?? [:]
         let id = (entry["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let name = (entry["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         self.init(id: id, name: String(name.prefix(80)), share: entry["share"] as? Bool == true)

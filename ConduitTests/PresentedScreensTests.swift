@@ -248,6 +248,10 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertTrue(PresentVoiceTool.note(for: question).contains("they type their answer on the panel"))
         // A Link that doesn't say there's something to share has nothing to Share.
         XCTAssertEqual(PresentedConfirm(json: ["id": "p3", "title": "Asks", "link": ["id": "l"]])?.canConfirm, false)
+        // A Link that can't be read is still a Link's ask, with nothing to Share.
+        XCTAssertEqual(PresentedConfirm(json: ["id": "p5", "title": "Asks", "link": "lnk_1"])?.link,
+                       PresentedLink(id: "", name: "", share: false))
+        XCTAssertNil(PresentedConfirm(json: ["id": "p6", "title": "Send?", "link": NSNull()])?.link)
         XCTAssertNil(PresentedConfirm(json: ["id": "p4", "title": "Send?"])?.link)
         XCTAssertEqual(PresentedConfirm(json: ["id": "p4", "title": "Send?"])?.canConfirm, true)
 
