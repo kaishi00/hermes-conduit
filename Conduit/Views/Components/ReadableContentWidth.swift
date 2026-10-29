@@ -41,7 +41,8 @@ enum ReadableWidth {
     /// wide window. A wider window widens it (`chat(available:)`).
     static let chat: CGFloat = 760
     /// The widest a chat's column gets, however wide the window, on an
-    /// iPhone or iPad (a Mac's: `macTextBase`).
+    /// iPhone or iPad (a Mac's: its base times `macLineGrowth` and
+    /// `macMaxTextScale`).
     static let chatMax: CGFloat = 1040
     /// The share of the chat's width its column takes between those two.
     static let chatShare: CGFloat = 0.72

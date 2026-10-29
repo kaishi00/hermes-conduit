@@ -525,6 +525,11 @@ struct ComposerBar: View, Equatable {
         let _ = TranscriptPerf.note(.composerBarBody)
         composerWithRequestHandlers
         .onAppear {
+            // The state starts at the system's line; a wide Mac column's is
+            // taller, so the first frame doesn't jump once it measures.
+            if composerTextHeight < restingTextHeight {
+                composerTextHeight = restingTextHeight
+            }
             if loadedDraftKey == nil {
                 loadDraft(for: activeDraftKey)
             }
