@@ -549,7 +549,9 @@ final class ImagePasteTextView: ReturnKeyTextView {
             return
         }
         guard let provider = itemProviders.first(where: { canLoadImageProvider($0) }) else {
-            pasteWords(itemProviders)
+            // Words dropped or put here by a keyboard action stay words; a
+            // long paste is the Paste command's (`paste(_:)`).
+            super.paste(itemProviders: itemProviders)
             return
         }
 
@@ -578,50 +580,6 @@ final class ImagePasteTextView: ReturnKeyTextView {
         }
 
         loadImageObject(from: provider, editorIdentity: pasteEditorIdentity)
-    }
-
-    /// Words pasted through the item-provider route (the keyboard's Paste
-    /// among them): a long one is offered as an attachment, as `paste(_:)`
-    /// offers it, and anything the composer doesn't take goes into the
-    /// field as before. Drops come this way too, and dropped words stay
-    /// words (`AttachmentDrop`), so only the clipboard's own text counts.
-    private func pasteWords(_ itemProviders: [NSItemProvider]) {
-        guard onLongTextPaste != nil, itemProviders.count == 1,
-              let provider = itemProviders.first,
-              provider.canLoadObject(ofClass: NSString.self) else {
-            super.paste(itemProviders: itemProviders)
-            return
-        }
-        let pasteEditorIdentity = editorIdentity
-        // The existential spelled out, as for UIImage below.
-        provider.loadObject(ofClass: NSString.self) { [weak self] (object: NSItemProviderReading?, _: Error?) in
-            let pasted = (object as? NSString).map { $0 as String }
-            DispatchQueue.main.async {
-                guard let self, self.editorIdentity == pasteEditorIdentity else { return }
-                if let pasted, PastedText.becomesAttachment(pasted), self.isEditable,
-                   Self.isTheClipboardsText(pasted),
-                   self.onLongTextPaste?(pasted) == true {
-                    return
-                }
-                self.pasteProvidersIntoField(itemProviders)
-            }
-        }
-    }
-
-    /// Whether long words are what the clipboard holds: a paste of them,
-    /// not a drag. The clipboard is read only for a long text, once its
-    /// metadata says it holds words, so an ordinary drop never reads it; a
-    /// long drop may, and a drag of exactly the clipboard's text counts as
-    /// its paste.
-    static func isTheClipboardsText(_ text: String) -> Bool {
-        let pasteboard = UIPasteboard.general
-        guard pasteboard.hasStrings else { return false }
-        return pasteboard.string == text
-    }
-
-    /// The field's own paste, from outside the override.
-    private func pasteProvidersIntoField(_ itemProviders: [NSItemProvider]) {
-        super.paste(itemProviders: itemProviders)
     }
 
     private func loadImageObject(

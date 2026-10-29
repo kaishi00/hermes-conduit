@@ -440,25 +440,6 @@ final class ComposerPasteTextViewTests: XCTestCase {
         }
     }
 
-    func testALongPasteOfTheClipboardsTextIsOfferedAsAnAttachment() async {
-        await withClearedGeneralPasteboard {
-            let view = ImagePasteTextView()
-            view.isEditable = true
-            let long = String(repeating: "log line\n", count: 400)
-            UIPasteboard.general.string = long
-            let offered = expectation(description: "the long paste is offered")
-            view.onLongTextPaste = { pasted in
-                XCTAssertEqual(pasted, long)
-                offered.fulfill()
-                return true
-            }
-
-            view.paste(itemProviders: [NSItemProvider(object: NSString(string: long))])
-
-            await fulfillment(of: [offered], timeout: 5.0)
-        }
-    }
-
     func testCanPasteAcceptsImageItemProvider() {
         let view = ImagePasteTextView()
         let provider = NSItemProvider()
