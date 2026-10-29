@@ -3579,12 +3579,12 @@ one-column screens they match (Tasks, a list shown alone, a phone)
 - The backdrop: `Conduit/Theme.swift` (ConduitBackdrop ignores the safe area)
 
 **Rulings**
-- Each column's backdrop stays inside its column sideways, so the glows don't cross the divider, and runs under the window's safe areas: the home indicator, and a landscape status bar or sensor at the side. Clipped at the safe area, every split tab showed black bars along the bottom and the right of an iPhone Duo's inner screen while Tasks filled it (2026-10-29, #PRNUM, a tester's report).
+- Each column's backdrop stays inside its column sideways, so the glows don't cross the divider, and runs under the window's safe areas: the home indicator, and a landscape status bar or sensor at the side. Clipped at the safe area, every split tab showed black bars along the bottom and the right of an iPhone Duo's inner screen while Tasks filled it (2026-10-29, #1472, a tester's report).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-29, #PRNUM.
+**Checked:** 2026-10-29, #1472.
 
 ## Voice on a profile the dashboard didn't start with
 
