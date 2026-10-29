@@ -150,9 +150,15 @@ struct V2LegacyEdgeBar<Bar: View>: ViewModifier {
     /// above or below it depending on the safe area, so the fade goes by
     /// the bar's own frame.
     @State private var barFrame: CGRect = .zero
+    /// Inside another bar's faded content (a list's header under the tab
+    /// bar's clearance): the outermost bar draws the backdrop.
+    @Environment(\.conduitBackdropIsBehindFade) private var isInsideFade
 
     func body(content: Content) -> some View {
         content
+            // The screen's backdrop stays out of the mask (it would fade
+            // too, showing the window under it) and is drawn behind.
+            .environment(\.conduitBackdropIsBehindFade, true)
             .mask {
                 GeometryReader { proxy in
                     fade(in: proxy.frame(in: .global))
@@ -167,6 +173,12 @@ struct V2LegacyEdgeBar<Bar: View>: ViewModifier {
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
                         barFrame = frame
                     }
+            }
+            .backgroundPreferenceValue(ConduitBackdropBehindFade.self) { request in
+                if !isInsideFade, let request {
+                    ConduitBackdrop(drifts: request.drifts, glowTint: request.glowTint)
+                        .environment(\.conduitBackdropIsBehindFade, false)
+                }
             }
     }
 
