@@ -72,6 +72,31 @@ class ReturnKeyTextView: UITextView {
         (super.keyCommands ?? []) + [Self.returnKeyCommand]
     }
 
+    /// A paste too long for the field (`PastedText.becomesAttachment`),
+    /// offered to the composer to attach instead. True when it took the
+    /// paste; otherwise the words go into the field as usual. Nil keeps
+    /// every paste in the field.
+    var onLongTextPaste: ((String) -> Bool)?
+
+    override func paste(_ sender: Any?) {
+        if takesLongTextPaste() { return }
+        super.paste(sender)
+    }
+
+    override func pasteAndMatchStyle(_ sender: Any?) {
+        if takesLongTextPaste() { return }
+        super.pasteAndMatchStyle(sender)
+    }
+
+    /// Read only once the user has asked to paste, so it never raises the
+    /// "Paste from Other App" prompt by itself.
+    private func takesLongTextPaste() -> Bool {
+        let pasteboard = UIPasteboard.general
+        guard let onLongTextPaste, isEditable, pasteboard.hasStrings, !pasteboard.hasImages,
+              let pasted = pasteboard.string, PastedText.becomesAttachment(pasted) else { return false }
+        return onLongTextPaste(pasted)
+    }
+
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(returnKeyCommandPressed) {
             // Declining hands Return back to the text system: a newline,
@@ -264,6 +289,8 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
     var canSubmitFromReturn: Bool
     /// Sends, and reports whether anything was done.
     var onSubmitFromReturn: () -> Bool
+    /// A long paste, offered as an attachment (`ReturnKeyTextView`).
+    var onLongTextPaste: ((String) -> Bool)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -298,6 +325,7 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         uiView.delegate = nil
         uiView.onSubmitFromReturn = nil
         uiView.canSubmitFromReturn = false
+        uiView.onLongTextPaste = nil
     }
 
     private func configure(_ view: ReturnKeyTextView, context: Context) {
@@ -316,6 +344,7 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         view.returnKeySends = returnKeySends
         view.canSubmitFromReturn = canSubmitFromReturn
         view.onSubmitFromReturn = onSubmitFromReturn
+        view.onLongTextPaste = onLongTextPaste
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: ReturnKeyTextView, context: Context) -> CGSize? {

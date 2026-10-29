@@ -719,14 +719,14 @@ private struct GroupMessageFiles: View {
                         (onAccent ? Color.white.opacity(0.18) : Color.primary.opacity(0.07)),
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                     )
-                Text(file.name)
+                Text(AttachmentTypePolicy.displayName(for: file))
                     .scaledFont(.caption.weight(.medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
             .foregroundStyle(onAccent ? Color.white : Color.primary)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(Text(AppLocalization.string("Attached: \(file.name)")))
+            .accessibilityLabel(Text(AppLocalization.string("Attached: \(AttachmentTypePolicy.displayName(for: file))")))
         }
     }
 }

@@ -766,6 +766,10 @@ struct ComposerBar: View, Equatable {
                     guard currentEditorIdentity == editorIdentity else { return }
                     handleDroppedFiles(providers)
                 },
+                onLongTextPaste: { pasted in
+                    guard currentEditorIdentity == editorIdentity else { return false }
+                    return attachLongPaste(pasted)
+                },
                 programmaticRevision: composerRevision,
                 programmaticCursorAtEnd: composerCursorAtEnd,
                 returnKeySends: returnKeySends,
@@ -845,6 +849,7 @@ struct ComposerBar: View, Equatable {
                 onSubmitFromReturn: { submitFromReturnKey() },
                 // Off while the composer is locked, as on the chat itself.
                 onDropFiles: appState.composerIsEnabled ? { providers in handleDroppedFiles(providers) } : nil,
+                onLongTextPaste: { pasted in attachLongPaste(pasted) },
                 attachments: {
                     // A drop on the editor that left files out says so here,
                     // not only behind the sheet.
@@ -1258,7 +1263,8 @@ struct ComposerBar: View, Equatable {
                 ForEach(attachments) { attachment in
                     ComposerAttachmentChip(
                         attachment: attachment,
-                        canRemove: appState.composerIsEnabled
+                        canRemove: appState.composerIsEnabled,
+                        pastedText: appState.composerIsEnabled ? pastedTextActions(for: attachment.id) : nil
                     ) {
                         attachments.removeAll { $0.id == attachment.id }
                         Self.discardStagedFile(attachment)
@@ -2445,6 +2451,59 @@ struct ComposerBar: View, Equatable {
             name: metadata.name,
             mimeType: metadata.mimeType,
             kind: .image
+        )
+    }
+
+    /// A paste past `PastedText.characterThreshold` goes in as a text
+    /// attachment. Where the composer can't take files (locked, or a chat
+    /// on its way, whose waiting message is words only) it stays in the
+    /// field as before. False leaves the paste to the field.
+    private func attachLongPaste(_ pasted: String) -> Bool {
+        guard appState.composerIsEnabled, !appState.composerWaitsForChat else { return false }
+        let limitMegabytes = attachmentLimitMegabytes
+        switch PastedText.stage(pasted, limitMegabytes: limitMegabytes) {
+        case .staged(let attachment):
+            composerErrorMessage = nil
+            attachments.append(attachment)
+            Haptics.light()
+            return true
+        case .tooLarge(let name):
+            reportImportProblems(oversized: [name], failed: [], limitMegabytes: limitMegabytes)
+            return true
+        case .failed:
+            return false
+        }
+    }
+
+    /// The sheet behind a pasted text's chip: edits replace its file, and
+    /// Paste as text moves it into the field, after what was typed.
+    private func pastedTextActions(for id: String) -> PastedTextActions {
+        PastedTextActions(
+            save: { edited in
+                guard let index = attachments.firstIndex(where: { $0.id == id }) else { return }
+                let old = attachments[index]
+                guard !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    attachments.remove(at: index)
+                    Self.discardStagedFile(old)
+                    return
+                }
+                let limitMegabytes = attachmentLimitMegabytes
+                switch PastedText.restage(old, with: edited, limitMegabytes: limitMegabytes) {
+                case .staged(let updated):
+                    attachments[index] = updated
+                    Self.discardStagedFile(old)
+                case .tooLarge(let name):
+                    reportImportProblems(oversized: [name], failed: [], limitMegabytes: limitMegabytes)
+                case .failed(let name):
+                    reportImportProblems(oversized: [], failed: [name], limitMegabytes: limitMegabytes)
+                }
+            },
+            insertAsText: { pasted in
+                guard let attachment = attachments.first(where: { $0.id == id }) else { return }
+                attachments.removeAll { $0.id == id }
+                Self.discardStagedFile(attachment)
+                replaceComposerText(PastedText.joined(text, with: pasted), cursorAtEnd: true)
+            }
         )
     }
 

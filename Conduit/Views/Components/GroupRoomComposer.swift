@@ -249,6 +249,7 @@ struct GroupRoomComposer: View {
                 canSubmitFromReturn: canSubmitFromReturn,
                 onSubmitFromReturn: { submitFromReturnKey() },
                 onDropFiles: surface?.room.isDisbanded == false ? { providers in importDroppedFiles(providers) } : nil,
+                onLongTextPaste: { pasted in attachLongPaste(pasted) },
                 attachments: {
                     // A drop on the editor that left files out says so here,
                     // not only behind the sheet.
@@ -344,7 +345,8 @@ struct GroupRoomComposer: View {
             accessibilityIdentifier: "room.composer.field",
             maxLines: 6,
             canSubmitFromReturn: canSubmitFromReturn,
-            onSubmitFromReturn: { submitFromReturnKey() }
+            onSubmitFromReturn: { submitFromReturnKey() },
+            onLongTextPaste: { pasted in attachLongPaste(pasted) }
         )
             .background(alignment: .topLeading) {
                 if draft.isEmpty {
@@ -398,7 +400,11 @@ struct GroupRoomComposer: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(attachments) { attachment in
-                    ComposerAttachmentChip(attachment: attachment, canRemove: !isUploading) {
+                    ComposerAttachmentChip(
+                        attachment: attachment,
+                        canRemove: !isUploading,
+                        pastedText: isUploading ? nil : pastedTextActions(for: attachment.id)
+                    ) {
                         attachments.removeAll { $0.id == attachment.id }
                         ComposerBar.discardStagedFile(attachment)
                     }
@@ -971,6 +977,52 @@ struct GroupRoomComposer: View {
             }.value
             finishImport([outcome], roomID: roomID)
         }
+    }
+
+    /// A long paste goes in as a text attachment, uploaded to the room's
+    /// files like any other. On a plugin that can't store them it stays in
+    /// the field as before. False leaves the paste to the field.
+    private func attachLongPaste(_ pasted: String) -> Bool {
+        guard appState.canAttachRoomFiles, surface?.room.isDisbanded == false else { return false }
+        let outcome = PastedText.stage(pasted, limitMegabytes: GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes))
+        if case .failed = outcome { return false }
+        composerError = nil
+        finishImport([outcome], roomID: surface?.room.roomID)
+        return true
+    }
+
+    /// The sheet behind a pasted text's chip: edits replace its file, and
+    /// Paste as text moves it into the field, after what was typed.
+    private func pastedTextActions(for id: String) -> PastedTextActions {
+        PastedTextActions(
+            save: { edited in
+                guard let index = attachments.firstIndex(where: { $0.id == id }) else { return }
+                let old = attachments[index]
+                guard !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    attachments.remove(at: index)
+                    ComposerBar.discardStagedFile(old)
+                    return
+                }
+                let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+                switch PastedText.restage(old, with: edited, limitMegabytes: limit) {
+                case .staged(let updated):
+                    attachments[index] = updated
+                    ComposerBar.discardStagedFile(old)
+                case .tooLarge(let name):
+                    composerError = GroupRoomFilesClient.tooLargeMessage(names: [name], preference: attachmentLimitMegabytes)
+                    Haptics.error()
+                case .failed(let name):
+                    composerError = AppLocalization.string("Could not prepare \(name) for upload.")
+                    Haptics.error()
+                }
+            },
+            insertAsText: { pasted in
+                guard let attachment = attachments.first(where: { $0.id == id }) else { return }
+                attachments.removeAll { $0.id == id }
+                ComposerBar.discardStagedFile(attachment)
+                draft = PastedText.joined(draft, with: pasted)
+            }
+        )
     }
 
     /// One cue per selection: the error and its message when anything was

@@ -137,8 +137,15 @@ enum AttachmentTypePolicy {
         case .image: return "photo"
         case .video: return "film"
         case .document:
+            if PastedText.isPastedText(attachment) { return "doc.plaintext" }
             return attachment.name.lowercased().hasSuffix(".pdf") ? "doc.richtext" : "doc"
         }
+    }
+
+    /// What a file is called on screen: a long paste reads "Pasted text",
+    /// not its generated file name.
+    static func displayName(for attachment: Attachment) -> String {
+        PastedText.isPastedText(attachment) ? PastedText.displayName : attachment.name
     }
 }
 
@@ -390,29 +397,39 @@ enum AttachmentThumbnailLoader {
 struct ComposerAttachmentChip: View {
     let attachment: Attachment
     let canRemove: Bool
+    /// What a long paste's sheet may do (`PastedTextSheet`). Only a pasted
+    /// text's chip opens one; nil shows the paste read-only.
+    var pastedText: PastedTextActions? = nil
     let onRemove: () -> Void
 
     @Environment(\.displayScale) private var displayScale
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var thumbnail: UIImage?
     @State private var byteCount: Int64?
+    @State private var pastedPreview: String?
+    @State private var isShowingPastedText = false
 
     private static let thumbnailSide: CGFloat = 40
 
+    private var isPastedText: Bool { PastedText.isPastedText(attachment) }
+
     var body: some View {
         HStack(spacing: 8) {
-            preview
-            VStack(alignment: .leading, spacing: 1) {
-                Text(attachment.name)
-                    .scaledFont(.caption.weight(.medium))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
-                    .truncationMode(.middle)
-                Text(AttachmentTypePolicy.detailLabel(for: attachment, byteCount: byteCount))
-                    .scaledFont(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+            if isPastedText {
+                Button {
+                    Haptics.selection()
+                    isShowingPastedText = true
+                } label: {
+                    summary
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(PastedText.displayName))
+                .accessibilityValue(Text(pastedPreview ?? ""))
+                .accessibilityHint(Text(AppLocalization.string("Shows the pasted text")))
+                .accessibilityIdentifier("composer.pastedText.chip")
+            } else {
+                summary
             }
-            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? 220 : 140, alignment: .leading)
             Button {
                 Haptics.light()
                 onRemove()
@@ -428,7 +445,7 @@ struct ComposerAttachmentChip: View {
             }
             .buttonStyle(.plain)
             .disabled(!canRemove)
-            .accessibilityLabel(AppLocalization.string("Remove \(attachment.name)"))
+            .accessibilityLabel(AppLocalization.string("Remove \(AttachmentTypePolicy.displayName(for: attachment))"))
         }
         .padding(.leading, 5)
         .padding(.trailing, 8)
@@ -441,15 +458,52 @@ struct ComposerAttachmentChip: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         }
+        .sheet(isPresented: $isShowingPastedText) {
+            PastedTextSheet(attachment: attachment, actions: pastedText)
+        }
         .task(id: attachment.uri) {
             if let url = URL(string: attachment.uri), url.isFileURL {
                 byteCount = AttachmentSizeLimit.fileSize(at: url)
+            }
+            if isPastedText {
+                let attachment = attachment
+                pastedPreview = await Task.detached(priority: .utility) {
+                    PastedText.text(of: attachment).map { PastedText.preview(of: $0) }
+                }.value
+                return
             }
             thumbnail = await AttachmentThumbnailLoader.thumbnail(
                 for: attachment,
                 maxPixelSize: Self.thumbnailSide * displayScale
             )
         }
+    }
+
+    /// The preview, the name, and its type and size; a paste shows its
+    /// first words in place of a type.
+    private var summary: some View {
+        HStack(spacing: 8) {
+            preview
+            VStack(alignment: .leading, spacing: 1) {
+                Text(AttachmentTypePolicy.displayName(for: attachment))
+                    .scaledFont(.caption.weight(.medium))
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                    .truncationMode(.middle)
+                Text(detail)
+                    .scaledFont(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+            }
+            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? 220 : 140, alignment: .leading)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private var detail: String {
+        if isPastedText, let pastedPreview, !pastedPreview.isEmpty {
+            return pastedPreview
+        }
+        return AttachmentTypePolicy.detailLabel(for: attachment, byteCount: byteCount)
     }
 
     private var preview: some View {

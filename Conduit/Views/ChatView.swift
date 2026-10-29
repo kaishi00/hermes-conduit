@@ -2362,7 +2362,7 @@ private struct UserDocumentAttachmentChip: View {
 
     private var chip: some View {
         HStack(spacing: 6) {
-            Label(attachment.name, systemImage: AttachmentTypePolicy.symbolName(for: attachment))
+            Label(AttachmentTypePolicy.displayName(for: attachment), systemImage: AttachmentTypePolicy.symbolName(for: attachment))
                 .lineLimit(1)
             if loading {
                 ProgressView()
@@ -2395,7 +2395,7 @@ private struct UserDocumentAttachmentChip: View {
 
     private func open() {
         if let localFileURL {
-            failed = !MediaPreviewPresenter.shared.present(fileURL: localFileURL, title: attachment.name)
+            failed = !MediaPreviewPresenter.shared.present(fileURL: localFileURL, title: AttachmentTypePolicy.displayName(for: attachment))
             return
         }
         guard !loading, attachment.uri.hasPrefix("/"), let gatewayResolver else { return }
