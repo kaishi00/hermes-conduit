@@ -410,7 +410,8 @@ Main button) · voice in the Chats top bar and a project page's toolbar when
 swapped · the chat's own voice button (Starting a call) · a minimised call's
 way back · the iPad split layout, with the list shown or hidden (#1164) ·
 Tasks and Settings on a wide window · Bots and Bot Chat · group rooms · the
-Main button caption
+Main button caption · a list the user widened (Resizable columns on a split
+window)
 
 **Code**
 - Round button and bar: `Conduit/Views/V2/V2Shell.swift` (voiceButton, tabs, splitColumns' hostsSettings, V2SplitLayout.hasChatVoiceBeside, V2SplitLayout.tabBarUnderList, V2SplitLayout.settingsBesideList, V2MainButtonPreference)
@@ -423,11 +424,12 @@ Main button caption
 - Split, a chat beside the list that shows its own voice button takes voice: the round voice button, and the swapped top bar and project page voice, step aside while it shows; New chat stays. A group room has none, so the list keeps its voice beside one (Eric, 2026-10-26, #1319).
 - The round button's touch-and-hold Recent menu goes with it while a chat is beside the list; the chat's own button offers a call or dictation, not Recent, so closing the chat brings the menu back (2026-10-26, #1319).
 - Split, Settings opens in the chat's column with the Chats list kept beside it, and the bar stays under the list; a chat tapped there opens in Chats. Tasks and a list shown alone have no list column and center the bar under the screen, at the list column's width (Eric, 2026-10-26, #1319; replaces #1169's bar kept at the leading edge).
+- Under a list the user widened, the bar keeps the standard list width, centered under the list's column (2026-10-29, #1492, see Resizable columns on a split window).
 
 **Open gaps**
 - Recent isn't reachable beside a chat on a split window (see Rulings).
 
-**Checked:** 2026-10-26, at #1319.
+**Checked:** 2026-10-29, #1492 (the bar under a widened list); 2026-10-26, at #1319.
 
 ## The open chat in the list beside it
 
@@ -460,7 +462,7 @@ no Settings caption or doc describes it
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1456 (rows match the open chat by its aliases); 2026-10-27, added at #1371.
+**Checked:** 2026-10-29, #1492 (tabs() gained the bar's width under a widened list; what shows beside the list is unchanged); 2026-10-28, #1456 (rows match the open chat by its aliases); 2026-10-27, added at #1371.
 
 ## A new chat in the list
 
@@ -1295,13 +1297,14 @@ group rooms (no Artifacts list) · the notifier's artifacts route · README.md
 - A picture image generation made is listed: the host reads `image_generate`'s result, a saved file as a written image and a hosted one as an image link (2026-10-24, #1218 with notifier #353, plugin 0.71.1, Eric's report: a bot's generated pictures were missing).
 - A Bot Chat is listed though Hermes keeps it hidden: the host reads a chat asked for by id whether hidden or not, and a profile's whole list takes its hidden "Bot Chat" session and the sessions continuing it, while other hidden chats (a group room member's turns) stay out (2026-10-25, #1272 with notifier #376, plugin 0.78.1, Eric's report: a bot's pictures were still missing from both lists).
 - On a window with room for the chat and the panel, ⋯ › Artifacts opens beside the chat instead of in a sheet, with its own search field; a phone keeps the sheet (2026-10-27, #1399).
+- The panel beside the chat drags wider or narrower by the line beside it, kept per device; it shows at its standard width's window as before (Eric, 2026-10-29, #1492, see Resizable columns on a split window).
 - One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
 - A file still opening is dropped when the list moves to another server or profile, and only the latest open clears the spinner. Every reload, including one on a dashboard without artifacts, outdates the request before it (2026-10-24, from #895's review, #1191).
 
 **Open gaps**
 - Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1399 (the panel and the Folder tab); #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
+**Checked:** 2026-10-29, #1492 (the panel's width drags); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1399 (the panel and the Folder tab); #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
 
 ## Workspace files
 
@@ -1340,7 +1343,7 @@ README.md
 **Open gaps**
 - Group rooms have no Artifacts: a path tapped in a room opens the Folder on its own, at the projects' folders.
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1407 with notifier #431 and its follow-up; 2026-10-27, #1399 with notifier #431.
+**Checked:** 2026-10-29, #1492 (ChatSidePanel's width drags; the Folder in it is unchanged); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1407 with notifier #431 and its follow-up; 2026-10-27, #1399 with notifier #431.
 
 ## Bots: create and edit
 
@@ -3620,6 +3623,7 @@ phone)
 **Code**
 - `Conduit/Views/V2/V2Shell.swift` (splitColumns, v2ClippedToColumn)
 - Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent)
+- The line between them: `Conduit/Views/Components/ColumnDivider.swift` (ColumnDivider, which drags a column's width: Resizable columns on a split window)
 - The backdrop: `Conduit/Theme.swift` (ConduitBackdrop ignores the safe area)
 
 **Rulings**
@@ -3628,7 +3632,45 @@ phone)
 **Open gaps**
 - Not seen on a device yet: the simulator suites have no Duo before Xcode 27.1, so a Duo or a split iPad from TestFlight confirms it.
 
-**Checked:** 2026-10-29, #1472.
+**Checked:** 2026-10-29, #1492 (the 1 pt line between the columns is a draggable ColumnDivider above them; the drawer shell's sidebar threshold counts it); 2026-10-29, #1472.
+
+## Resizable columns on a split window
+
+The line between a wide window's list and its chat, and between the chat
+and Artifacts beside it, drags the column's width (#1487).
+
+**Siblings:** the Chats list column · the Bots list column · Settings
+beside the list (it opens in the chat's column) · a group room beside the
+list (the list drags; a room has no Artifacts) · Artifacts beside a chat ·
+the drawer shell's persistent sidebar (Appearance, V2 off) · the tab bar
+under the list (Voice beside the tabs) · the chat's readable column (it
+measures the room left to it: not needed) · hiding the list (#1164: the
+width comes back with the list) · Settings > Appearance > Layout's caption
+in both shells (the drawer shell's only while its persistent sidebar is
+on) · not needed: README.md (it doesn't describe the split
+layout)
+
+**Code**
+- Widths and the line: `Conduit/Views/Components/ColumnDivider.swift` (ColumnWidth: resolved, dragged; ColumnDivider)
+- List: `Conduit/Views/V2/V2Shell.swift` (V2SplitLayout.listWidths, V2SplitLayout.ListColumn, V2SplitLayout.chatKeeps, sizedTabs, tabs, splitColumns)
+- Artifacts: `Conduit/Views/V2/V2ConversationScreen.swift` (ChatSidePanel.widths, sidePanelWidth)
+- Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent, persistentSidebarWidth), `Conduit/Views/SidebarLayout.swift` (SidebarLayoutMetrics.persistentSidebarWidths)
+- Caption: `Conduit/Views/AuxiliaryViews.swift` (Layout)
+- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testDraggedColumnWidthsKeepToTheirBoundsAndTheWindow)
+
+**Rulings**
+- Both lines drag: the list (375 to 560 pt; it can't go under the tab bar's width) and Artifacts (300 to 720 pt, standard 340 pt); the drawer shell's sidebar 320 to 520 pt. A double-click or double-tap resets a line; VoiceOver adjusts it by 40 pt or resets it (Eric, 2026-10-29, #1492, issue 1487).
+- Each width is kept per device, as hiding the list is, not synced. A window smaller than a width needs gives the column what's left beside the chat's least width (430 pt); a window splits, and Artifacts shows, at the standard width whatever the user's, so a widened column never takes them away (2026-10-29, #1492).
+- Under a widened list the tab bar keeps its width, centered under the list's column (2026-10-29, #1492).
+- A window with room for Artifacts beside a chat at the list's standard width keeps that room whatever the list's width, the panel open or not: widening the list never hides the panel or its toggle, and the list doesn't jump as a chat or the panel opens. The list's most is then the window less 772 pt: 408 pt on a 1180 pt iPad in landscape, 422 pt on an 11-inch's 1194 pt, the full 560 pt on a maximized Mac. Artifacts beside the chat then reaches the window less the list and 431 pt: about 373 pt on 1180 pt, 387 pt on 1194 pt (2026-10-29, #1492, from review).
+- A drag lays the column out at its live width and stores it once, when the drag ends or is cancelled: every defaults write redraws each `@AppStorage` view. A press that doesn't move the line (under 4 pt) keeps the stored width, which a smaller window may show less of (2026-10-29, #1492, from review).
+- The caption shows only with the setting that puts a line on a wide window: the list set beside the chat (V2), the persistent sidebar on (the drawer shell); a window too narrow to split still shows it (2026-10-29, #1492, from review).
+
+**Open gaps**
+- No resize cursor on a Mac: a Designed-for-iPad app can't set one from SwiftUI on iOS 17, so the line highlights on hover and a tooltip names it.
+- Not seen on a device yet: a Mac or iPad from TestFlight confirms it.
+
+**Checked:** 2026-10-29, #1492.
 
 ## Voice on a profile the dashboard didn't start with
 

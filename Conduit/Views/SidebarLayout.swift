@@ -21,14 +21,23 @@ enum SidebarPresentation {
 
 /// Centralized metrics for the persistent sidebar layout.
 enum SidebarLayoutMetrics {
-    /// Width of the persistent sidebar column.
+    /// Width of the persistent sidebar column, before the user drags it.
     static let persistentSidebarWidth: CGFloat = 320
+    /// The column's widths as the user drags it (#1487). The layout turns
+    /// persistent at the standard width whatever the user's.
+    static let persistentSidebarWidths = ColumnWidth(
+        key: "conduit.ipadPersistentSidebarWidth",
+        standard: persistentSidebarWidth,
+        minimum: persistentSidebarWidth,
+        maximum: 520
+    )
     /// Minimum width the conversation column keeps beside the persistent
     /// sidebar. Below this the layout falls back to the drawer so Split View,
     /// Stage Manager, and narrow resizable windows stay usable.
     static let minimumChatWidth: CGFloat = 430
     /// Windows narrower than this never activate the persistent layout.
-    static let minimumPersistentLayoutWidth: CGFloat = persistentSidebarWidth + minimumChatWidth
+    /// The 1 pt line between them counts too (#1487).
+    static let minimumPersistentLayoutWidth: CGFloat = persistentSidebarWidth + 1 + minimumChatWidth
 }
 
 enum SidebarLayoutPolicy {
