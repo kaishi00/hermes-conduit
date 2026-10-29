@@ -544,6 +544,8 @@ struct ChatView: View {
             }
             .padding(.horizontal, 18)
             .padding(.top, 18)
+            // Room under a sent message for its reply to stream into (#1436).
+            .modifier(ChatReplyRoomFrame(room: scrollEngine.replyRoom))
             .background {
                 GeometryReader { _ in
                     Color.clear.preference(
@@ -1162,6 +1164,18 @@ private struct ChatRenderedScrollContentPreferenceKey: PreferenceKey {
         nextValue: () -> ChatRenderedScrollContent?
     ) {
         value = nextValue() ?? value
+    }
+}
+
+/// The transcript's content takes at least the height the scroll engine
+/// asks for while a sent message's reply is on its way, so the message can
+/// sit at the top with the reply streaming in under it (ChatReplyRoom).
+/// Observed here alone, so a change re-runs only this frame.
+private struct ChatReplyRoomFrame: ViewModifier {
+    @ObservedObject var room: ChatReplyRoom
+
+    func body(content: Content) -> some View {
+        content.frame(minHeight: room.minContentHeight, alignment: .top)
     }
 }
 

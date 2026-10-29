@@ -116,6 +116,16 @@ final class ChatScrollChrome: ObservableObject {
     @Published fileprivate(set) var inputs = ChatScrollChromeInputs()
 }
 
+/// The least height the transcript's content takes while a sent message's
+/// reply is on its way (#1436): enough for the stop at the reply's start to
+/// be reachable, so the message sits at the top and the reply streams into
+/// the room under it without moving anything. Zero otherwise. On its own
+/// object so only the transcript's frame re-runs for it.
+@MainActor
+final class ChatReplyRoom: ObservableObject {
+    @Published fileprivate(set) var minContentHeight: CGFloat = 0
+}
+
 /// Owns the chat viewport. Three rules replace the old follow-correction
 /// machinery:
 ///
@@ -216,6 +226,11 @@ final class ChatScrollEngine: ObservableObject {
     static let prependSettleLimit: TimeInterval = 5
     /// How long an animated jump to latest suspends pinning.
     static let latestAnimationDuration: TimeInterval = 0.4
+    /// How far below the viewport's top the stop leaves the user's message:
+    /// the transcript's top padding (18), its 1 pt top anchor and one row
+    /// spacing (18), so the message sits where a new chat's first message
+    /// does, and a new chat doesn't move at all (#1436).
+    static let replyStartTopGap: CGFloat = 37
     /// How long after the reader opens or closes a row the engine waits
     /// before checking whether they are still at the bottom: the row
     /// animates open with ConduitMotion.response (a 0.34 s spring).
@@ -239,6 +254,7 @@ final class ChatScrollEngine: ObservableObject {
     var onEvent: (@MainActor (ChatScrollEngineEvent) -> Void)?
     @Published private(set) var renderInputs = ChatScrollRenderInputs()
     let chrome = ChatScrollChrome()
+    let replyRoom = ChatReplyRoom()
     private var renderInputsPublishScheduled = false
 
     private(set) var mode: Mode = .following
@@ -315,7 +331,34 @@ final class ChatScrollEngine: ObservableObject {
     /// elsewhere, or opening a chat with an unread reply; the jump to
     /// latest, the other explicit commands and a session switch disarm it,
     /// and so does a reader already below the reply's start.
-    private(set) var replyHoldArmed = false
+    private(set) var replyHoldArmed = false {
+        didSet {
+            if !replyHoldArmed { replyRoomArmed = false }
+            refreshReplyRoom()
+        }
+    }
+    /// The hold is for a reply still to come (a send, or a turn started
+    /// elsewhere), not one already there (an unread chat opened): the
+    /// transcript makes room under the message for it (`replyRoom`), and the
+    /// first move to the stop animates.
+    private(set) var replyRoomArmed = false {
+        didSet {
+            replyRoomLanding = replyRoomArmed
+            replyRoomLaidOut = false
+            refreshReplyRoom()
+        }
+    }
+    /// The content height `replyRoom` asks for, published on the next turn
+    /// when it changes inside a layout or scroll callback.
+    private(set) var replyRoomMinContentHeight: CGFloat = 0
+    private var replyRoomPublishScheduled = false
+    /// The room has been laid out once: from then on following holds the
+    /// stop even while the content is briefly shorter than it (the room
+    /// catching up with a keyboard or a row shrinking), instead of chasing
+    /// the bottom down and back up.
+    private var replyRoomLaidOut = false
+    /// The first move to the stop after a send is still to come.
+    private var replyRoomLanding = false
     /// The user message the latest turn answers, by id, so a new one (a
     /// turn started on another device) arms the hold.
     private var latestUserRowID: String?
@@ -426,6 +469,7 @@ final class ChatScrollEngine: ObservableObject {
         if relatches {
             relatchIfPastTheBottom(surface)
         }
+        refreshReplyRoom()
         if canPinWhileFollowing(surface) {
             pin(surface)
         }
@@ -562,6 +606,14 @@ final class ChatScrollEngine: ObservableObject {
         defer { surfaceCallbackDepth -= 1 }
         rowFrames = frames
         refreshTrackedMessageVisibility()
+        // The sent message's frame decides the stop and the room under it,
+        // and may arrive after the pass that laid it out.
+        if replyRoomArmed, !isPaused, let surface {
+            refreshReplyRoom()
+            if canPinWhileFollowing(surface), !isDragging {
+                pin(surface)
+            }
+        }
         guard mode == .browsing, !isPaused else { return }
         if prependAnchor?.landedAt != nil, let surface {
             holdPrependAnchor(on: surface)
@@ -1062,6 +1114,7 @@ final class ChatScrollEngine: ObservableObject {
         restoration = nil
         prependAnchor = nil
         replyHoldArmed = armsReplyHold
+        replyRoomArmed = armsReplyHold
         replyStartLandingPending = false
         landedAtReplyStart = false
         cancelDisclosureSettle()
@@ -1176,6 +1229,8 @@ final class ChatScrollEngine: ObservableObject {
         guard mode == .following, !isUserScrolling, restoration == nil else { return }
         latestUserRowID = targets[userIndex].id
         replyHoldArmed = true
+        // The reply is already there: no room under it.
+        replyRoomArmed = false
         landedAtReplyStart = true
         if let hold = replyHoldOffset(on: surface) {
             // The user's message is laid out (the reply is short, or barely
@@ -1514,11 +1569,25 @@ final class ChatScrollEngine: ObservableObject {
 
     private func pin(_ surface: ChatScrollSurface) {
         var target = surface.maxOffsetY
+        var landsAtHold = false
         if let hold = replyHoldOffset(on: surface) {
+            if replyRoomArmed, replyRoomMinContentHeight > 0,
+               surface.contentHeight >= replyRoomMinContentHeight - 0.5 {
+                replyRoomLaidOut = true
+            }
             if surface.contentOffsetY > hold + 0.5 {
                 // Already below the reply's start (the reader came back
                 // down to its end): following goes on to the end.
                 replyHoldArmed = false
+            } else if replyRoomArmed, replyRoomLaidOut,
+                      surface.contentHeight <= max(replyRoomMinContentHeight, replyRoom.minContentHeight) + 0.5 {
+                // The content is no taller than the room under the message:
+                // the reply still fits there. The room may lag a pass behind
+                // a keyboard or bar changing height, or a row shrinking, so
+                // the bottom can sit a little above or below the stop for a
+                // moment; what shows there is empty room, so the reader stays.
+                target = hold
+                landsAtHold = true
             } else if target > hold {
                 // The reply runs past the screen: stop at its start, where
                 // the bottom pin of an earlier pass left off or just past
@@ -1536,18 +1605,68 @@ final class ChatScrollEngine: ObservableObject {
                 }
             }
         }
+        // The sent message's move to the top, once its room is there: one
+        // animated move, after which the reply fills in below.
+        let animates = replyRoomLanding && landsAtHold
+            && target - surface.contentOffsetY > Self.nearBottomTolerance && !prefersReducedMotion()
+        if landsAtHold { replyRoomLanding = false }
         guard abs(surface.contentOffsetY - target) > 0.5 else { return }
+        if animates {
+            latestAnimationUntil = now() + Self.latestAnimationDuration
+            surface.setContentOffsetY(target, animated: true)
+            schedule(Self.latestAnimationDuration) { [weak self] in
+                self?.latestAnimationFinished()
+            }
+            return
+        }
         surface.setContentOffsetY(target, animated: false)
     }
 
     /// Where following stops for the reply the hold is armed for: the
-    /// offset that puts the bottom of the user's latest message at the
-    /// viewport top. Nil while unarmed, switched off, or before that row has
-    /// a frame (following then pins the bottom, as it always did).
+    /// offset that puts the user's latest message at the top of the
+    /// viewport, `replyStartTopGap` below it, with the reply under it (#1436;
+    /// it was the bottom of the message, #1256). A message taller than a
+    /// third of the screen shows only its last third there. Nil while
+    /// unarmed, switched off, or before that row has a frame (following
+    /// then pins the bottom, as it always did).
     private func replyHoldOffset(on surface: ChatScrollSurface) -> CGFloat? {
         guard replyHoldArmed, holdsRepliesAtStart(),
               let id = latestUserRowID, let frame = rowFrames[id] else { return nil }
-        return max(surface.minOffsetY, surface.transcriptOriginY + frame.maxY - surface.insetTop)
+        let visibleHeight = surface.viewportHeight - surface.insetTop - surface.insetBottom
+        let messageTop = surface.transcriptOriginY + frame.minY - surface.insetTop - Self.replyStartTopGap
+        let messageTail = surface.transcriptOriginY + frame.maxY - surface.insetTop - visibleHeight / 3
+        return max(surface.minOffsetY, messageTop, messageTail)
+    }
+
+    /// The content height that makes the stop reachable while the reply
+    /// still fits under the message: the stop plus a screen. Published to
+    /// `replyRoom` at once from a command, on the next turn from inside a
+    /// layout or scroll callback, where SwiftUI can't take a change.
+    ///
+    /// A message without a frame yet keeps the room that is there: a send
+    /// lands in the room the last reply left, and nothing moves until the
+    /// new message's own room is known.
+    private func refreshReplyRoom() {
+        var height: CGFloat = 0
+        if replyRoomArmed, holdsRepliesAtStart() {
+            guard let surface, let hold = replyHoldOffset(on: surface) else { return }
+            height = (hold + surface.viewportHeight - surface.insetBottom).rounded(.up)
+        }
+        guard height != replyRoomMinContentHeight else { return }
+        replyRoomMinContentHeight = height
+        guard isHandlingSurfaceCallback else {
+            replyRoom.minContentHeight = height
+            return
+        }
+        guard !replyRoomPublishScheduled else { return }
+        replyRoomPublishScheduled = true
+        schedule(0) { [weak self] in
+            guard let self else { return }
+            self.replyRoomPublishScheduled = false
+            if self.replyRoom.minContentHeight != self.replyRoomMinContentHeight {
+                self.replyRoom.minContentHeight = self.replyRoomMinContentHeight
+            }
+        }
     }
 
     private func disarmReplyHold() {
@@ -1562,10 +1681,12 @@ final class ChatScrollEngine: ObservableObject {
     private func noteLatestUserRow(arming: Bool) {
         let latest = targetCache.targets.last(where: { $0.message.role == .user })?.id
         guard latest != latestUserRowID else { return }
-        if arming, latestUserRowID != nil, latest != nil {
-            replyHoldArmed = true
-        }
+        let previous = latestUserRowID
         latestUserRowID = latest
+        if arming, previous != nil, latest != nil {
+            replyHoldArmed = true
+            replyRoomArmed = true
+        }
     }
 
     private func pinOrReveal() {
