@@ -562,6 +562,16 @@ struct V2Shell: View {
                 visitedTabs.insert(.settings)
                 selectTab(.settings)
             }
+            .onChange(of: appState.kanbanTaskOpenRequest) { _, request in
+                // Tasks › Board opens the task and clears the request.
+                guard request != nil else { return }
+                guard !appState.isModalSheetPresented else {
+                    appState.kanbanTaskOpenRequest = nil
+                    return
+                }
+                visitedTabs.insert(.tasks)
+                selectTab(.tasks)
+            }
             .onDisappear {
                 // Sign-in replaces the shell; nothing covers the chat there.
                 appState.showSidebar = false

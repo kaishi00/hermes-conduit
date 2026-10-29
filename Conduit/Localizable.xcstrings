@@ -372629,6 +372629,416 @@
           }
         }
       }
+    },
+    "Pulse reminded me: %@\n\nIt came up in the work on a Kanban task. Find the task on the board, and if it's stuck, get it going again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse hat mich erinnert: %@\n\nDas kam bei der Arbeit an einer Kanban-Aufgabe auf. Such die Aufgabe auf dem Board, und wenn sie feststeckt, bring sie wieder in Gang."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse me recordó: %@\n\nSurgió en el trabajo de una tarea de Kanban. Busca la tarea en el tablero y, si está atascada, ponla en marcha de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse m'a rappelé : %@\n\nC'est venu pendant le travail sur une tâche Kanban. Trouve la tâche sur le tableau et, si elle est bloquée, relance-la."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mengingatkan saya: %@\n\nIni muncul saat mengerjakan sebuah tugas Kanban. Cari tugasnya di papan, dan jika macet, jalankan lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mi ha ricordato: %@\n\nÈ emerso durante il lavoro su un'attività Kanban. Trova l'attività nella bacheca e, se è bloccata, rimettila in moto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulseからのリマインダー：%@\n\nカンバンタスクの作業中に出てきたことです。ボードでタスクを見つけて、止まっていたらもう一度動かしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse가 알려 준 일: %@\n\nKanban 태스크 작업 중에 나온 일이야. 보드에서 태스크를 찾아보고, 멈춰 있으면 다시 진행시켜 줘."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mi przypomniał: %@\n\nPojawiło się to przy pracy nad zadaniem Kanban. Znajdź zadanie na tablicy, a jeśli utknęło, uruchom je ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Pulse me lembrou: %@\n\nIsso surgiu no trabalho de uma tarefa do Kanban. Encontre a tarefa no quadro e, se estiver travada, coloque-a para andar de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse напомнил мне: %@\n\nЭто всплыло в работе над задачей Kanban. Найди задачу на доске и, если она застряла, запусти её снова."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse bana hatırlattı: %@\n\nBu bir Kanban görevi üzerinde çalışılırken çıktı. Görevi panoda bul, takıldıysa yeniden yürüt."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提醒我：%@\n\n这是在处理一个看板任务时提到的。在看板上找到这个任务，如果卡住了，就让它重新跑起来。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提醒我：%@\n\n這是在處理一個 Kanban 任務時提到的。在看板上找到這個任務，如果卡住了，就讓它重新跑起來。"
+          }
+        }
+      }
+    },
+    "Pulse reminded me: %@\n\nIt came up in the work on Kanban task %@. Check the task on the board, and if it's stuck, get it going again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse hat mich erinnert: %1$@\n\nDas kam bei der Arbeit an der Kanban-Aufgabe %2$@ auf. Sieh dir die Aufgabe auf dem Board an, und wenn sie feststeckt, bring sie wieder in Gang."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse me recordó: %1$@\n\nSurgió en el trabajo de la tarea de Kanban %2$@. Revisa la tarea en el tablero y, si está atascada, ponla en marcha de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse m'a rappelé : %1$@\n\nC'est venu pendant le travail sur la tâche Kanban %2$@. Regarde la tâche sur le tableau et, si elle est bloquée, relance-la."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mengingatkan saya: %1$@\n\nIni muncul saat mengerjakan tugas Kanban %2$@. Periksa tugasnya di papan, dan jika macet, jalankan lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mi ha ricordato: %1$@\n\nÈ emerso durante il lavoro sull'attività Kanban %2$@. Controlla l'attività nella bacheca e, se è bloccata, rimettila in moto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulseからのリマインダー：%1$@\n\nカンバンタスク %2$@ の作業中に出てきたことです。ボードでタスクを確認して、止まっていたらもう一度動かしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse가 알려 준 일: %1$@\n\nKanban 태스크 %2$@ 작업 중에 나온 일이야. 보드에서 태스크를 확인하고, 멈춰 있으면 다시 진행시켜 줘."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mi przypomniał: %1$@\n\nPojawiło się to przy pracy nad zadaniem Kanban %2$@. Sprawdź zadanie na tablicy, a jeśli utknęło, uruchom je ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Pulse me lembrou: %1$@\n\nIsso surgiu no trabalho da tarefa do Kanban %2$@. Confira a tarefa no quadro e, se estiver travada, coloque-a para andar de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse напомнил мне: %1$@\n\nЭто всплыло в работе над задачей Kanban %2$@. Проверь задачу на доске и, если она застряла, запусти её снова."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse bana hatırlattı: %1$@\n\nBu, %2$@ Kanban görevi üzerinde çalışılırken çıktı. Görevi panoda kontrol et, takıldıysa yeniden yürüt."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提醒我：%1$@\n\n这是在处理看板任务 %2$@ 时提到的。在看板上查看这个任务，如果卡住了，就让它重新跑起来。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提醒我：%1$@\n\n這是在處理 Kanban 任務 %2$@ 時提到的。在看板上查看這個任務，如果卡住了，就讓它重新跑起來。"
+          }
+        }
+      }
+    },
+    "Kanban task %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kanban-Aufgabe %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tarea de Kanban %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tâche Kanban %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tugas Kanban %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attività Kanban %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カンバンタスク %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kanban 태스크 %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zadanie Kanban %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tarefa do Kanban %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Задача Kanban %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kanban görevi %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "看板任务 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kanban 任務 %@"
+          }
+        }
+      }
+    },
+    "Opens the task on the board" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet die Aufgabe auf dem Board"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre la tarea en el tablero"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvre la tâche sur le tableau"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Membuka tugas di papan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apre l'attività nella bacheca"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボードでタスクを開きます"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보드에서 태스크를 엽니다"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otwiera zadanie na tablicy"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre a tarefa no quadro"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открывает задачу на доске"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Görevi panoda açar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在看板上打开这个任务"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在看板上開啟這個任務"
+          }
+        }
+      }
+    },
+    "Couldn't find Kanban task %@ on your boards." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Kanban-Aufgabe %@ wurde auf deinen Boards nicht gefunden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se encontró la tarea de Kanban %@ en tus tableros."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de trouver la tâche Kanban %@ sur tes tableaux."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tugas Kanban %@ tidak ditemukan di papan Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile trovare l'attività Kanban %@ nelle tue bacheche."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カンバンタスク %@ がどのボードにも見つかりませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보드에서 Kanban 태스크 %@을(를) 찾을 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie znaleziono zadania Kanban %@ na Twoich tablicach."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível encontrar a tarefa do Kanban %@ nos seus quadros."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Задача Kanban %@ не найдена ни на одной из ваших досок."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Kanban görevi panolarında bulunamadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你的看板上找不到看板任务 %@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你的看板上找不到 Kanban 任務 %@。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

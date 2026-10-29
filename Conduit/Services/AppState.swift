@@ -2125,6 +2125,9 @@ final class AppState: ObservableObject {
     /// A Settings page a link asked for (`conduit://settings/calls`):
     /// MainView opens Settings there and clears it.
     @Published var settingsLinkRequest: ConduitAppLink.SettingsLink?
+    /// A Kanban task to show (a Pulse card from its worker): the shell
+    /// opens Tasks › Board, and the board opens the task and clears it.
+    @Published var kanbanTaskOpenRequest: KanbanTaskOpenRequest?
     /// Bumped when something that opens a chat needs Settings out of the
     /// way (a widget's New Chat or Talk); MainView owns the sheet.
     @Published private(set) var settingsDismissRequest: UInt64 = 0
