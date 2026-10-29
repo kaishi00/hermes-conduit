@@ -602,16 +602,17 @@ struct SettingsView: View {
                         ConduitSheetHeader(title: AppLocalization.string("Settings"), close: { dismiss() })
                     }
                 }
-                // On a wide window every page keeps to a readable column.
-                // Inside the stack: a margin outside it doesn't reach the
-                // pages it hosts.
-                .readableContentWidth(ReadableWidth.settings)
+                // On a wide window every page keeps to a readable column,
+                // which widens with a maximized window, its text a size or
+                // more larger as it does. Inside the stack: a margin
+                // outside it doesn't reach the pages it hosts.
+                .readableSettingsColumn()
                 // V2's Settings tab: each screen stops above the floating
                 // tab bar and fades under it. Nothing in the sheet.
                 .v2TabBarClearance()
                 .navigationDestination(for: SettingsDestination.self) { destination in
                     destinationView(destination)
-                        .readableContentWidth(ReadableWidth.settings)
+                        .readableSettingsColumn()
                         .v2TabBarClearance()
                 }
         }
