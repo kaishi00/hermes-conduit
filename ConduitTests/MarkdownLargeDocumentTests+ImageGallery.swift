@@ -158,6 +158,23 @@ extension MarkdownLargeDocumentTests {
         XCTAssertFalse(FileManager.default.fileExists(atPath: late.directory.path), "and a copy that lands after the close")
     }
 
+    func testAFailedPictureIsFetchedAgainUnlessTooLarge() {
+        XCTAssertTrue(ImageGallery.fetchesAgain(afterFailure: false), "a dropped connection tries again")
+        XCTAssertFalse(ImageGallery.fetchesAgain(afterFailure: true), "too large stays too large")
+        XCTAssertFalse(ImageGallery.fetchesAgain(afterFailure: nil), "nothing failed")
+    }
+
+    @MainActor
+    func testTheTappedPictureKeepsItsOwnFetch() async {
+        let listed = [ImageGalleryItem(id: "a", title: "listed") { .unavailable }]
+        let tapped = ImageGalleryItem(id: "a", title: "tapped") { .tooLarge }
+        let placed = ImageGallery.placing(tapped, in: listed)
+        XCTAssertEqual(placed.items.first?.title, "tapped")
+        guard case .tooLarge = await placed.items[0].load() else {
+            return XCTFail("the row's own fetch runs")
+        }
+    }
+
     func testViewerFetchesThePageThenItsNeighbours() {
         XCTAssertEqual(ImageGallery.prefetchOrder(around: 0, count: 3), [0, 1])
         XCTAssertEqual(ImageGallery.prefetchOrder(around: 1, count: 3), [1, 2, 0])

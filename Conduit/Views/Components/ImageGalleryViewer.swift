@@ -129,8 +129,10 @@ enum ImageGallery {
     /// Where `item` sits in `items`, which holds each picture once (the
     /// first time it shows): `item` alone when the list doesn't have it.
     static func placing(_ item: ImageGalleryItem, in items: [ImageGalleryItem]) -> (items: [ImageGalleryItem], index: Int) {
-        let unique = deduplicated(items)
+        var unique = deduplicated(items)
         guard let index = unique.firstIndex(where: { $0.id == item.id }) else { return ([item], 0) }
+        // The tapped one fetches the way its row does.
+        unique[index] = item
         return (unique, index)
     }
 
@@ -163,6 +165,13 @@ enum ImageGallery {
     static func backdropAlpha(translation: CGFloat, height: CGFloat) -> CGFloat {
         guard height > 0 else { return 1 }
         return max(0.25, 1 - abs(translation) / (height * 0.6))
+    }
+
+    /// Whether a page that failed is fetched again when paged to: after a
+    /// failure (a dropped connection), yes; when it was too large, no, since
+    /// it would be again. `tooLarge` is nil for a page that hasn't failed.
+    static func fetchesAgain(afterFailure tooLarge: Bool?) -> Bool {
+        tooLarge == false
     }
 
     /// The pages a viewer at `index` fetches: its own, then its neighbours.
@@ -394,7 +403,7 @@ final class ImageGalleryViewController: UIViewController {
         shareButton.isEnabled = files[newIndex] != nil
         // A picture that failed (a dropped connection) is tried again each
         // time it is paged to; meanwhile it keeps its message.
-        if failed[newIndex] == false {
+        if ImageGallery.fetchesAgain(afterFailure: failed[newIndex]) {
             failed[newIndex] = nil
             madePages(newIndex).forEach { $0.showLoading() }
         }
@@ -736,7 +745,9 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
             guard let self, !Task.isCancelled else { return }
             self.spinner.stopAnimating()
             if let image {
-                let cost = Int(image.size.width * image.scale * image.size.height * image.scale) * 4
+                // An animated picture's size is one frame's: count them all.
+                let frames = max(image.images?.count ?? 1, 1)
+                let cost = Int(image.size.width * image.scale * image.size.height * image.scale) * 4 * frames
                 self.decoded.setObject(image, forKey: url as NSURL, cost: cost)
                 self.imageView.image = image
                 if !self.isZoomedIn { self.layoutPicture() }
