@@ -84,7 +84,9 @@ enum ReadableWidth {
 
     /// The body text growth each step brings at the default size
     /// (19, 21 and 23 pt over 17).
-    static let chatTextGrowth: [CGFloat] = [19.0 / 17, 21.0 / 17, 23.0 / 17]
+    static let chatTextGrowth: [CGFloat] = ChatTypography.standardBodySizes
+        .dropFirst(ChatTypography.defaultIndex + 1)
+        .map { $0 / ChatTypography.standardBodySizes[ChatTypography.defaultIndex] }
 
     /// The margin on each side that keeps `available` points of width to
     /// `maxWidth`.

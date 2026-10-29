@@ -170,7 +170,6 @@ extension SidebarLayoutTests {
         // A maximized window stops at the cap, three steps up.
         XCTAssertEqual(ReadableWidth.settings(available: 1800), ReadableWidth.settingsMax)
         XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.settingsMax, base: ReadableWidth.settings), 3)
-        // A chat's steps are the same rule from its 760 pt.
     }
 
     func testWideColumnStepsScaleTranscriptFonts() {
@@ -209,6 +208,13 @@ extension SidebarLayoutTests {
         XCTAssertEqual(ChatTypography.widthScale(steps: 3, from: .xxLarge), 23.0 / 21, accuracy: 0.0001)
         XCTAssertEqual(ChatTypography.widthScale(steps: 2, from: .xxxLarge), 1)
         XCTAssertEqual(ChatTypography.widthScale(steps: 2, from: .accessibility2), 1)
+        // A system that draws the base smaller or larger than iOS (a Mac
+        // drawing every size at the default's 17 pt) grows to the stepped
+        // size, as the column's cards do, never shrinks.
+        XCTAssertEqual(ChatTypography.widthScale(steps: 1, from: .medium, baseBody: 16), 17.0 / 16, accuracy: 0.0001)
+        XCTAssertEqual(ChatTypography.widthScale(steps: 1, from: .medium, baseBody: UIFont.defaultBodySize), 1, accuracy: 0.0001)
+        XCTAssertEqual(ChatTypography.widthScale(steps: 3, from: .large, baseBody: UIFont.defaultBodySize), 23.0 / 17, accuracy: 0.0001)
+        XCTAssertEqual(ReadableWidth.chatTextGrowth, [19.0 / 17, 21.0 / 17, 23.0 / 17])
         XCTAssertEqual(ChatTextAppearance(size: .default).widened(steps: 2, from: .accessibility2), ChatTextAppearance(size: .default))
         XCTAssertEqual(ChatTypography.lowered(.extraExtraLarge, by: 2), .large)
         XCTAssertEqual(ChatTypography.lowered(.accessibilityMedium, by: 2), .accessibilityMedium)

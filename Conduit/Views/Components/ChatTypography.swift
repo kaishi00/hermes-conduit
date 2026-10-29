@@ -276,13 +276,34 @@ enum ChatTypography {
     static let standardBodySizes: [CGFloat] = [14, 15, 16, 17, 19, 21, 23]
 
     /// How much `steps` sizes up from `base` grow body text, stopping at
-    /// the largest standard size. An accessibility size, already larger,
-    /// doesn't grow.
+    /// the largest standard size: from what the system draws at `base` to
+    /// iOS's size at the stepped one (scaled to the system's default
+    /// size), so a Mac that draws every size alike lands where the
+    /// column's cards do (`missingGrowth`). An accessibility size, already
+    /// larger, doesn't grow.
     static func widthScale(steps: Int, from base: DynamicTypeSize) -> CGFloat {
         guard steps > 0, let index = standardDynamicTypeSizes.firstIndex(of: base) else { return 1 }
-        let grown = min(standardBodySizes.count - 1, index + steps)
-        return standardBodySizes[grown] / standardBodySizes[index]
+        return widthScale(steps: steps, from: base, baseBody: drawnBodySizes[index])
     }
+
+    /// Body text's size at each standard size as this system draws it,
+    /// looked up once: the sizes are named, so a Text Size change doesn't
+    /// move them.
+    static let drawnBodySizes: [CGFloat] = standardCategories.map {
+        UIFont.preferredFont(forTextStyle: .body, compatibleWith: UITraitCollection(preferredContentSizeCategory: $0)).pointSize
+    }
+
+    /// `widthScale(steps:from:)` where the system draws body text at
+    /// `base` `baseBody` points.
+    static func widthScale(steps: Int, from base: DynamicTypeSize, baseBody: CGFloat) -> CGFloat {
+        guard steps > 0, let index = standardDynamicTypeSizes.firstIndex(of: base), baseBody > 0 else { return 1 }
+        let grown = min(standardBodySizes.count - 1, index + steps)
+        let target = standardBodySizes[grown] / standardBodySizes[defaultIndex] * UIFont.defaultBodySize
+        return max(1, target / baseBody)
+    }
+
+    /// The default size's place among the standard sizes (`.large`).
+    static let defaultIndex = 3
 
     /// What a standard size's text should grow by that the system didn't
     /// give it: body text there is `body` points against `defaultBody` at
@@ -291,7 +312,7 @@ enum ChatTypography {
     /// as iOS does (and at an accessibility size).
     static func missingGrowth(at category: UIContentSizeCategory, body: CGFloat, defaultBody: CGFloat) -> CGFloat {
         guard let index = standardCategories.firstIndex(of: category), body > 0, defaultBody > 0 else { return 1 }
-        let expected = standardBodySizes[index] / standardBodySizes[3]
+        let expected = standardBodySizes[index] / standardBodySizes[defaultIndex]
         let given = body / defaultBody
         return abs(expected - given) < 0.01 ? 1 : expected / given
     }
@@ -464,5 +485,5 @@ extension UIFont {
     }
 
     /// Body text's size at the default text size, as this system draws it.
-    private static let defaultBodySize = preferredFont(forTextStyle: .body, compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)).pointSize
+    static let defaultBodySize = preferredFont(forTextStyle: .body, compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)).pointSize
 }

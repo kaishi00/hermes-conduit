@@ -13,6 +13,9 @@ import SwiftUI
 import UIKit
 
 class ReturnKeyTextView: UITextView {
+    /// The text size `font` was last set for (ReturnKeyTextEditor).
+    var fontSizeCategory: ContentSizeCategory?
+
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
         inlinePredictionType = Self.inlinePredictionType(onMac: ProcessInfo.processInfo.isiOSAppOnMac)
@@ -263,8 +266,6 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
     func makeUIView(context: Context) -> ReturnKeyTextView {
         let view = ReturnKeyTextView()
         view.delegate = context.coordinator
-        view.font = .preferredFont(forTextStyle: .body)
-        view.adjustsFontForContentSizeCategory = true
         view.backgroundColor = .clear
         view.textColor = .label
         view.tintColor = .systemOrange
@@ -296,6 +297,15 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
     }
 
     private func configure(_ view: ReturnKeyTextView, context: Context) {
+        // Body text at the environment's size, which a wide window's chat
+        // column steps up (`readableChatColumn`), set on each change rather
+        // than adjusted by UIKit, which would undo a Mac's point-size growth
+        // (`UIFont.preferredFont(forTextStyle:in:)`).
+        let sizeCategory = context.environment.sizeCategory
+        if view.fontSizeCategory != sizeCategory {
+            view.fontSizeCategory = sizeCategory
+            view.font = .preferredFont(forTextStyle: .body, in: sizeCategory)
+        }
         if view.isEditable != enabled { view.isEditable = enabled }
         view.accessibilityLabel = accessibilityLabel
         view.accessibilityIdentifier = accessibilityIdentifier
