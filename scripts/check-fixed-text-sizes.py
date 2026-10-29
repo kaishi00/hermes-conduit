@@ -124,7 +124,8 @@ def branches(argument):
             depth -= 1
         elif depth == 0 and argument.startswith("??", index):
             return branches(argument[:index]) + branches(argument[index + 2:])
-        elif depth == 0 and char == "?" and question is None and not argument.startswith("??", index - 1):
+        elif depth == 0 and char == "?" and question is None and argument[index - 1:index].isspace():
+            # A ternary's `?` stands apart; optional chaining's follows a name.
             question = index
         elif depth == 0 and char == ":" and question is not None:
             return branches(argument[question + 1:index]) + branches(argument[index + 1:])
