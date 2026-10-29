@@ -157,6 +157,12 @@ extension SidebarLayoutTests {
         // An iPad's whole window with the list hidden, and a maximized Mac.
         XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chat(available: 1376), base: ReadableWidth.chat), 2)
         XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chat(available: 1800), base: ReadableWidth.chat), 3)
+        // From the system's size: never past the largest standard size, and
+        // none at an accessibility size.
+        XCTAssertEqual(ReadableWidth.textSteps(column: 1040, base: ReadableWidth.chat, from: .large), 3)
+        XCTAssertEqual(ReadableWidth.textSteps(column: 1040, base: ReadableWidth.chat, from: .xxLarge), 1)
+        XCTAssertEqual(ReadableWidth.textSteps(column: 1040, base: ReadableWidth.chat, from: .xxxLarge), 0)
+        XCTAssertEqual(ReadableWidth.textSteps(column: 1040, base: ReadableWidth.chat, from: .accessibility1), 0)
     }
 
     func testSettingsColumnWidensAndStepsItsText() {

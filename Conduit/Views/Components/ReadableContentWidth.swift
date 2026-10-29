@@ -82,6 +82,15 @@ enum ReadableWidth {
         return chatTextGrowth.filter { growth >= $0 }.count
     }
 
+    /// The steps a column can take from the system's `size`: none past the
+    /// largest standard size, so an accessibility size, already larger,
+    /// stays as the user set it.
+    static func textSteps(column: CGFloat, base: CGFloat, from size: DynamicTypeSize) -> Int {
+        let sizes = ChatTypography.standardDynamicTypeSizes
+        guard let index = sizes.firstIndex(of: size) else { return 0 }
+        return min(textSteps(column: column, base: base), sizes.count - 1 - index)
+    }
+
     /// The body text growth each step brings at the default size
     /// (19, 21 and 23 pt over 17).
     static let chatTextGrowth: [CGFloat] = ChatTypography.standardBodySizes
@@ -112,7 +121,7 @@ private struct ReadableContentWidth: ViewModifier {
         // not lay its rows out twice.
         GeometryReader { proxy in
             let column = maxWidth(proxy.size.width)
-            let steps = textBase.map { textSteps(column: column, base: $0) } ?? 0
+            let steps = textBase.map { ReadableWidth.textSteps(column: column, base: $0, from: dynamicTypeSize) } ?? 0
             content
                 .safeAreaPadding(.horizontal, ReadableWidth.margin(available: proxy.size.width, maxWidth: column))
                 // Centered for content narrower than the window too; the
@@ -124,19 +133,17 @@ private struct ReadableContentWidth: ViewModifier {
                 // (ChatTextAppearance.widened).
                 .dynamicTypeSize(Self.boosted(dynamicTypeSize, by: steps))
                 .environment(\.chatWidthTextSteps, scalesChatText ? steps : 0)
-                .environment(\.chatColumnBaseTextSize, dynamicTypeSize)
+                // Only in a column that steps its text: nil elsewhere, and a
+                // fixed column inside one keeps its base.
+                .transformEnvironment(\.chatColumnBaseTextSize) { base in
+                    if textBase != nil { base = dynamicTypeSize }
+                }
                 .onChange(of: steps, initial: true) { _, steps in
-                    if textBase != nil { MacTextStepsReport.noteOnce(steps: steps, from: dynamicTypeSize) }
+                    if textBase != nil {
+                        MacTextStepsReport.noteOnce(column: scalesChatText ? "chat" : "settings", steps: steps, from: dynamicTypeSize)
+                    }
                 }
         }
-    }
-
-    /// The steps the column can take: none past the largest standard size,
-    /// so an accessibility size, already larger, stays as the user set it.
-    private func textSteps(column: CGFloat, base: CGFloat) -> Int {
-        let sizes = Self.standardSizes
-        guard let index = sizes.firstIndex(of: dynamicTypeSize) else { return 0 }
-        return min(ReadableWidth.textSteps(column: column, base: base), sizes.count - 1 - index)
     }
 
     private static var standardSizes: [DynamicTypeSize] { ChatTypography.standardDynamicTypeSizes }
@@ -157,7 +164,7 @@ enum MacTextStepsReport {
     private static let log = Logger(subsystem: "com.milim.relay", category: "ReadableWidth")
     private static var noted = false
 
-    static func noteOnce(steps: Int, from base: DynamicTypeSize, onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac) {
+    static func noteOnce(column: String, steps: Int, from base: DynamicTypeSize, onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac) {
         guard onMac, !noted else { return }
         noted = true
         let uikit = [UIContentSizeCategory.large, .extraExtraExtraLarge].map {
@@ -167,6 +174,6 @@ enum MacTextStepsReport {
             UIHostingController(rootView: Text(verbatim: "Conduit").font(.body).dynamicTypeSize($0))
                 .sizeThatFits(in: CGSize(width: 1000, height: 1000)).height.native
         }
-        log.notice("Text steps \(steps, privacy: .public) from \(String(describing: base), privacy: .public): UIKit body \(uikit[0], privacy: .public) to \(uikit[1], privacy: .public) pt, SwiftUI body line \(swiftUI[0], privacy: .public) to \(swiftUI[1], privacy: .public) pt")
+        log.notice("\(column, privacy: .public) column: text steps \(steps, privacy: .public) from \(String(describing: base), privacy: .public): UIKit body \(uikit[0], privacy: .public) to \(uikit[1], privacy: .public) pt, SwiftUI body line \(swiftUI[0], privacy: .public) to \(swiftUI[1], privacy: .public) pt")
     }
 }
