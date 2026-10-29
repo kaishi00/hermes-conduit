@@ -551,9 +551,11 @@ struct ChatView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .id(transcriptScrollID)
+        // Inside the pinned replies' inset: before iOS 26 the transcript's
+        // fade is a mask, which would fade their card too.
+        .modifier(V2SoftTopScrollEdge(isOn: composerFloats, underChatHeader: true))
         // The open chat's pinned replies (#918), over the transcript's top.
         .safeAreaInset(edge: .top, spacing: 0) { pinnedReplyBar }
-        .modifier(V2SoftTopScrollEdge(isOn: composerFloats, underChatHeader: true))
         .onTapGesture {
             UIApplication.shared.sendAction(
                 #selector(UIResponder.resignFirstResponder),
