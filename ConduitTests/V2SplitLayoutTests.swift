@@ -273,9 +273,13 @@ extension SidebarLayoutTests {
         // A Mac draws every size alike: a stepped column sets its size.
         let mac = ReadableWidth.columnText(column: ReadableWidth.settingsMax, base: ReadableWidth.settings, scalesChatText: false, size: .large, systemGrowsTextStyles: false)
         XCTAssertEqual(mac.pointSized, .xxxLarge)
-        // A column that doesn't step, or a fixed one, sets nothing.
+        // A stepping column at its narrowest still sets the system's size,
+        // and one past where the steps stop sets that size, so text never
+        // draws smaller as the system's size rises; a fixed column sets nothing.
         let narrow = ReadableWidth.columnText(column: ReadableWidth.chat, base: ReadableWidth.chat, scalesChatText: true, size: .large, systemGrowsTextStyles: false)
-        XCTAssertNil(narrow.pointSized)
+        XCTAssertEqual(narrow.pointSized, .large)
+        let largest = ReadableWidth.columnText(column: ReadableWidth.chatMax, base: ReadableWidth.chat, scalesChatText: true, size: .xxxLarge, systemGrowsTextStyles: false)
+        XCTAssertEqual(largest.pointSized, .xxxLarge)
         let fixed = ReadableWidth.columnText(column: 2000, base: nil, scalesChatText: false, size: .large, systemGrowsTextStyles: false)
         XCTAssertNil(fixed.pointSized)
 
@@ -295,6 +299,10 @@ extension SidebarLayoutTests {
         XCTAssertNil(ScaledFont.points(.body, at: .accessibility1))
         XCTAssertEqual(ScaledFont.caption.font(pointSizedAt: .xxxLarge), Font.system(size: 18, weight: .regular, design: .default))
         XCTAssertEqual(ScaledFont.headline.font(pointSizedAt: .xLarge), Font.system(size: 19, weight: .semibold, design: .default))
+        XCTAssertEqual(ScaledFont.caption.monospaced().font(pointSizedAt: .xxxLarge), Font.system(size: 18, weight: .regular, design: .monospaced))
+        XCTAssertEqual(ScaledFont.system(.body, design: .rounded, weight: .bold).font(pointSizedAt: .xLarge), Font.system(size: 19, weight: .bold, design: .rounded))
+        XCTAssertEqual(ScaledFont.footnote.monospacedDigit().font(pointSizedAt: .large), Font.system(size: 13, weight: .regular, design: .default).monospacedDigit())
+        XCTAssertEqual(ScaledFont.system(.title, design: .rounded).font(), Font.system(.title, design: .rounded))
         // Every text style has iOS's seven standard sizes.
         for (style, points) in ScaledFont.standardPoints {
             XCTAssertEqual(points.count, ChatTypography.standardDynamicTypeSizes.count, "\(style)")

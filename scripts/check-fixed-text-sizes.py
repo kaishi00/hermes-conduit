@@ -27,7 +27,8 @@ Mac draws every text style at one size, so a wide column there sets them in
 points (ScaledFont.swift), which only `scaledFont` sees. Any `.font(` whose
 argument names a text style is reported, unless the comment lines just
 above say why it must stay a Font (`// Text style: <reason>`, such as a
-`Text` joined with `+`, which needs `Text`'s own `font`).
+`Text` joined with `+`, which needs `Text`'s own `font`). It reads one line at a
+time, so a `.font(` whose style starts the next line isn't seen.
 
 Usage: check-fixed-text-sizes.py [--repo-root DIR]
 """

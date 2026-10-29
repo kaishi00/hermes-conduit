@@ -97,7 +97,8 @@ enum ReadableWidth {
     /// size as the column's base (nil in a column that doesn't step its
     /// text, `base` nil, so a fixed column inside a stepped one keeps its
     /// base), and, where the system doesn't grow text styles (a Mac), the
-    /// stepped size for `scaledFont` to set in points.
+    /// stepped size for `scaledFont` to set in points (in any stepping
+    /// column, so a larger system size never draws smaller).
     static func columnText(
         column: CGFloat,
         base: CGFloat?,
@@ -109,7 +110,9 @@ enum ReadableWidth {
         let steps = textSteps(column: column, base: base, from: size)
         let sizes = ChatTypography.standardDynamicTypeSizes
         let boosted = sizes.firstIndex(of: size).map { sizes[min(sizes.count - 1, $0 + steps)] } ?? size
-        let pointSized = steps > 0 && !systemGrowsTextStyles ? boosted : nil
+        // Any stepping column, steps or none, so text never shrinks as the
+        // system's size rises past where the steps stop.
+        let pointSized = systemGrowsTextStyles ? nil : boosted
         return (boosted, scalesChatText ? steps : 0, size, pointSized)
     }
 
