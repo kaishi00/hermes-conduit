@@ -13,11 +13,12 @@ import subprocess
 import tempfile
 import unittest
 
-import test_smoke_job_runner as runner
+from _util import SCRIPTS_DIR, workflow_step_script
 
-RERUN = os.path.join(runner.REPO_ROOT, ".github", "workflows", "nightly-rerun.yml")
+WORKFLOWS = os.path.join(os.path.dirname(SCRIPTS_DIR), ".github", "workflows")
+RERUN = os.path.join(WORKFLOWS, "nightly-rerun.yml")
+NIGHTLY = os.path.join(WORKFLOWS, "nightly.yml")
 RERUN_STEP = "Rerun the jobs that never got a runner"
-runner.STEP_WORKFLOWS[RERUN_STEP] = RERUN
 
 # `gh api <jobs url> --jq .jobs` prints the fixture; the POST is recorded.
 STUB_GH = """#!/usr/bin/env bash
@@ -59,7 +60,7 @@ class NightlyRerunTests(unittest.TestCase):
     def _reruns(self, jobs):
         with open(self.env["STUB_JOBS"], "w") as fh:
             json.dump(jobs, fh)
-        result = subprocess.run(["bash", "-c", runner._step_script(RERUN_STEP)],
+        result = subprocess.run(["bash", "-c", workflow_step_script(RERUN, RERUN_STEP)],
                                 env=self.env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         with open(self.env["STUB_LOG"]) as fh:
@@ -91,6 +92,16 @@ class NightlyRerunTests(unittest.TestCase):
             text = fh.read()
         self.assertIn("github.event.workflow_run.conclusion == 'failure'", text)
         self.assertIn("github.event.workflow_run.run_attempt < 3", text)
+
+    def test_follows_the_nightly_workflow(self):
+        # The trigger names Nightly by its `name:`, and a lost job can only
+        # be told from a sibling's failure when no matrix cancels the rest.
+        with open(RERUN, encoding="utf-8") as fh:
+            self.assertIn("workflows: [Nightly]", fh.read())
+        with open(NIGHTLY, encoding="utf-8") as fh:
+            nightly = fh.read()
+        self.assertTrue(nightly.startswith("name: Nightly\n"))
+        self.assertEqual(nightly.count("strategy:"), nightly.count("fail-fast: false"))
 
 
 if __name__ == "__main__":

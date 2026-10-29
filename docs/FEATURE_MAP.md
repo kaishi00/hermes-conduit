@@ -3027,6 +3027,27 @@ notifier's copies of both
 
 **Checked:** 2026-10-29, #1502 (Eric ruled that Markdown under an app or test folder gets both reviewers); 2026-10-29, #1469 (Markdown under an app or test folder counts as code for reviews and always builds in CI; notifier #456); #1467 (the change id hashes any bytes and a failing one counts as no match; the notifier's data files count as code, notifier #455; CI's copy of the change id is in Code, held to the review's by a test); #1466.
 
+## Nightly reruns
+
+A Nightly whose only losses are jobs GitHub never gave a macOS runner reruns
+those jobs by itself.
+
+**Siblings:** the Nightly workflow it follows (its name and its matrices) ·
+docs/CI.md's workflow table and the Nightly paragraph
+
+**Code**
+- Rerun: `.github/workflows/nightly-rerun.yml`, `scripts/tests/test_nightly_rerun.py` (the decision against fixture job lists, and that it still follows Nightly's name and `fail-fast: false` matrices)
+- Nightly: `.github/workflows/nightly.yml`
+- Docs: `docs/CI.md`
+
+**Rulings**
+- A job counts as never placed when it is `cancelled` with no runner and no steps (GitHub's "not acquired by Runner of type hosted"). The run reruns its failed jobs only when every job that didn't pass is one of those, at most twice, so a test that ran and failed is never retried (2026-10-29, #1506, after Nightly lost 2 jobs on 10-28 and 3 on 10-29 to macOS arm64 capacity).
+
+**Open gaps**
+- The failure email for the first attempt still goes out. The two-rerun cap assumes GitHub fires `workflow_run` for each rerun attempt; the first live rerun shows it.
+
+**Checked:** 2026-10-29, #1506.
+
 ## Settings connection page
 
 The page with the server, Reconnect, Restart Gateway, Cloudflare Access,
