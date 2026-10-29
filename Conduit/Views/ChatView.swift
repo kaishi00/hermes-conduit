@@ -588,7 +588,12 @@ struct ChatView: View {
     @ViewBuilder
     private var planDock: some View {
         if appState.showsChatCards {
-            ChatPlanDock(cards: appState.chatCards, isCompact: composerTyping)
+            // composerTyping is V2's focused-composer flag; the classic
+            // shell never sets it, so there the plan never keeps to its line.
+            ChatPlanDock(
+                cards: appState.chatCards,
+                isCompact: ChatPlanDock.keepsToLine(composerFocused: composerTyping)
+            )
         }
     }
 
