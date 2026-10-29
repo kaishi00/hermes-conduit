@@ -105,8 +105,10 @@ class TextStyleFontTests(unittest.TestCase):
         Text("K").font(settings?.emphasized == true ? .body : customFont)
         Text("L").font(flag ? .body ?? fallback : customFont)
         Text("M").font((flag ? customFont : (.caption)))
+        Text("N").font(a ? b ? .body : customFont : customFont)
+        Text("O").font(value == ")" ? .body : customFont)
         """)
-        self.assertEqual([problem.split(":")[1] for problem in found], ["3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17"])
+        self.assertEqual([problem.split(":")[1] for problem in found], ["3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"])
 
     def test_scaled_fonts_fixed_sizes_and_other_fonts_pass(self):
         self.assertEqual(style_problems("""
@@ -119,6 +121,7 @@ class TextStyleFontTests(unittest.TestCase):
         // .font(.caption) in a comment
         Text("\\\\") // .font(.caption) after an escaped backslash
         Text("say \\"hi\\"") // .font(.caption) after escaped quotes
+        Text("A").font(flag ? customFont : otherFont).help("a ? .body : b")
         """), [])
 
     def test_a_stated_reason_exempts_the_font(self):

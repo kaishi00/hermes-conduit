@@ -98,17 +98,31 @@ def find_problems(sources):
     return problems
 
 
+def code_characters(text):
+    """Each (index, character) of `text` outside a string literal."""
+    quoted, escaped = False, False
+    for index, char in enumerate(text):
+        if escaped:
+            escaped = False
+        elif quoted and char == "\\":
+            escaped = True
+        elif char == '"':
+            quoted = not quoted
+        elif not quoted:
+            yield index, char
+
+
 def font_argument(code, start):
     """The argument of the call whose parenthesis opens at `start`, up to
     its closing one, or the rest of the line."""
     depth = 0
-    for end in range(start, len(code)):
-        if code[end] == "(":
+    for end, char in code_characters(code[start:]):
+        if char == "(":
             depth += 1
-        elif code[end] == ")":
+        elif char == ")":
             depth -= 1
             if depth == 0:
-                return code[start + 1:end]
+                return code[start + 1:start + end]
     return code[start + 1:]
 
 
@@ -122,33 +136,34 @@ def branches(argument):
         inner = font_argument(stripped, 0)
         if len(inner) + 2 == len(stripped):
             return branches(inner)
-    depth, question = 0, None
-    for index, char in enumerate(argument):
+    depth, question, nested = 0, None, 0
+    for index, char in code_characters(argument):
         if char in "([":
             depth += 1
         elif char in ")]":
             depth -= 1
-        elif depth == 0 and question is None and argument.startswith("??", index):
-            return branches(argument[:index]) + branches(argument[index + 2:])
-        elif depth == 0 and char == "?" and question is None and argument[index - 1:index].isspace():
+        elif depth == 0 and "??" in argument[index - 1:index + 2]:
+            if question is None:
+                return branches(argument[:index]) + branches(argument[index + 2:])
+        elif depth == 0 and char == "?" and argument[index - 1:index].isspace():
             # A ternary's `?` stands apart; optional chaining's follows a name.
-            question = index
+            if question is None:
+                question = index
+            else:
+                nested += 1
         elif depth == 0 and char == ":" and question is not None:
-            return branches(argument[question + 1:index]) + branches(argument[index + 1:])
+            if nested:
+                # The colon of a ternary nested in the first branch.
+                nested -= 1
+            else:
+                return branches(argument[question + 1:index]) + branches(argument[index + 1:])
     return [argument]
 
 
 def without_comment(line):
     """The line up to a `//` comment outside a string literal."""
-    quoted, escaped = False, False
-    for index, char in enumerate(line):
-        if escaped:
-            escaped = False
-        elif quoted and char == "\\":
-            escaped = True
-        elif char == '"':
-            quoted = not quoted
-        elif not quoted and line.startswith("//", index):
+    for index, _ in code_characters(line):
+        if line.startswith("//", index):
             return line[:index]
     return line
 
