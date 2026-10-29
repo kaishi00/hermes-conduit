@@ -130,7 +130,11 @@ struct PresentedConfirmPanel: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
         .onAppear {
-            AccessibilityNotification.Announcement(AppLocalization.string("Hermes asks: \(prompt.title)")).post()
+            if let name = prompt.room?.name, !name.isEmpty {
+                AccessibilityNotification.Announcement("\(AppLocalization.string("Asked in \(name)")). \(prompt.title)").post()
+            } else {
+                AccessibilityNotification.Announcement(AppLocalization.string("Hermes asks: \(prompt.title)")).post()
+            }
         }
     }
 

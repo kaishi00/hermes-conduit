@@ -433,7 +433,7 @@ enum PresentVoiceTool {
                                     "action": prompt.actionLabel]
         if !prompt.spokenYes.isEmpty { entry["confirming_phrases"] = prompt.spokenYes }
         // Your agent asks before it shares this in a room with other people's agents.
-        if let room = prompt.room { entry["room"] = room.name }
+        if let room = prompt.room { entry["room"] = room.name.isEmpty ? "a room" : room.name }
         return entry
     }
 

@@ -187,6 +187,8 @@ extension AppStateVoiceCapabilityTests {
         // A room without an id is still a room's ask (no Edit into the room's hidden chat).
         XCTAssertEqual(PresentedConfirm(json: ["id": "p2", "title": "Send?", "room": ["name": "No id"]])?.room,
                        PresentedRoom(id: "", name: "No id"))
+        let unnamed = try XCTUnwrap(PresentedConfirm(json: ["id": "p4", "title": "Send?", "room": ["id": "r"]]))
+        XCTAssertEqual(PresentVoiceTool.describe(unnamed)["room"] as? String, "a room")
         XCTAssertNil(PresentedConfirm(json: ["id": "p3", "title": "Send?"])?.room)
         XCTAssertEqual(PresentVoiceTool.describe(prompt)["room"] as? String, "Zoo trip")
 
