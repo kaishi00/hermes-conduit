@@ -38,7 +38,7 @@ struct ShortcutInboxSettingsPage: View {
                     .foregroundStyle(.secondary)
                 if pulseKeepsDeadlines {
                     Text(AppLocalization.string("When “Deadlines from Shortcuts” is on in Pulse's settings, Pulse keeps the deadlines it finds here, like a trial ending or a bill due. Deleting an event deletes them too."))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 if waitingCount > 0 {

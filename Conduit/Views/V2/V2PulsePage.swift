@@ -303,7 +303,7 @@ struct V2PulsePage: View {
                     }
                     if let errorMessage {
                         Text(verbatim: errorMessage)
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.red)
                             .padding(.horizontal, 20)
                     }
@@ -352,14 +352,14 @@ struct V2PulsePage: View {
                         } icon: {
                             Image(systemName: "sparkles")
                         }
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 4)
                         .pulseRow()
                     }
                     if let errorMessage {
                         Text(verbatim: errorMessage)
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.red)
                             .padding(.horizontal, 4)
                             .pulseRow()
@@ -417,7 +417,7 @@ struct V2PulsePage: View {
         if count > 0 || layout.isCaughtUp {
             Text(verbatim: count > 0 ? AppLocalization.string("\(count) new since you last looked")
                                      : AppLocalization.string("You're all caught up"))
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
         }
@@ -425,7 +425,7 @@ struct V2PulsePage: View {
 
     private func sectionHeading(_ title: String) -> some View {
         Text(verbatim: title)
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
             .foregroundStyle(.secondary)
             .padding(.horizontal, 4)
             .padding(.top, 6)
@@ -487,15 +487,15 @@ struct V2PulsePage: View {
         HStack(spacing: 12) {
             HStack(spacing: 12) {
                 Image(systemName: "moon.zzz.fill")
-                    .font(.title3)
+                    .scaledFont(.title3)
                     .foregroundStyle(Color.conduitAccent)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Pulse is quiet")
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                     if let end = page.quietEndsAt {
                         Text(verbatim: PulseQuiet.backText(end))
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -507,7 +507,7 @@ struct V2PulsePage: View {
                     quiet(false)
                 } label: {
                     Text(verbatim: AppLocalization.string("End quiet time"))
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .frame(minHeight: 44)  // a full 44 pt to tap
                 }
                 .buttonStyle(.bordered)
@@ -560,13 +560,13 @@ struct V2PulsePage: View {
                     .foregroundStyle(Color.conduitAccent)
                     .accessibilityHidden(true)
                 Text("Morning brief")
-                    .font(.headline)
+                    .scaledFont(.headline)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityFocused($voiceOverCard, equals: brief.card.id)
                 Spacer(minLength: 0)
                 if let stamp = briefStamp(brief) {
                     Text(verbatim: stamp)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 // Read it, fold it: it stays one row, here and after a relaunch, until it's opened again.
@@ -574,7 +574,7 @@ struct V2PulsePage: View {
                     fold(brief, true)
                 } label: {
                     Image(systemName: "chevron.up")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
@@ -584,7 +584,7 @@ struct V2PulsePage: View {
             }
             if !brief.card.news.isEmpty {
                 Text(brief.card.formattedNews)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(Color.primary.opacity(0.86))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -617,7 +617,7 @@ struct V2PulsePage: View {
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(card.formattedNews)
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                             .strikethrough(card.doneAt != nil)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
@@ -627,7 +627,7 @@ struct V2PulsePage: View {
                             Text(verbatim: card.isAwayForWrongTime
                                 ? PulseDownReason.wrongTime.title + " · " + PulseRest.backText(back)
                                 : PulseRest.backText(back))
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -639,7 +639,7 @@ struct V2PulsePage: View {
             } else {
                 topicLine(card)
                 Text(card.formattedNews)
-                    .font(.body)
+                    .scaledFont(.body)
                     .fixedSize(horizontal: false, vertical: true)
                 sourceLink(card)
                 whyNote(card)
@@ -699,16 +699,16 @@ struct V2PulsePage: View {
                     .foregroundStyle(Color.conduitAccent)
                     .accessibilityHidden(true)
                 Text("Morning brief")
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.primary)
                 Spacer(minLength: 0)
                 if let stamp = briefStamp(brief) {
                     Text(verbatim: stamp)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Image(systemName: "chevron.down")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
             }
@@ -741,7 +741,7 @@ struct V2PulsePage: View {
                 Image(systemName: "chevron.down")
                     .rotationEffect(.degrees(showsCleared ? 180 : 0))
             }
-            .font(.subheadline)
+            .scaledFont(.subheadline)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 16)
             .frame(minHeight: 48)
@@ -761,7 +761,7 @@ struct V2PulsePage: View {
     private func undoBar(_ undo: PulseUndo) -> some View {
         HStack(spacing: 12) {
             Text(verbatim: undo.message)
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .lineLimit(2)
             Spacer(minLength: 0)
             Button(AppLocalization.string("Undo")) {
@@ -774,7 +774,7 @@ struct V2PulsePage: View {
                     }
                 }
             }
-            .font(.subheadline.weight(.semibold))
+            .scaledFont(.subheadline.weight(.semibold))
             .tint(.conduitAccent)
         }
         .padding(.horizontal, 16)
@@ -819,19 +819,19 @@ struct V2PulsePage: View {
             if card.isProposal {
                 // What Add puts on the phone, in the plugin's words from the change itself.
                 Text(verbatim: card.proposal?.line ?? card.title)
-                    .font(.body)
+                    .scaledFont(.body)
                     .foregroundStyle(card.isCleared ? Color.secondary : Color.primary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text(card.formattedNews)
-                    .font(.body)
+                    .scaledFont(.body)
                     .strikethrough(card.doneAt != nil)
                     .foregroundStyle(card.isCleared ? Color.secondary : Color.primary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if !card.quote.isEmpty, !card.isCleared {
                 Text(verbatim: "“\(card.quote)”")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -842,7 +842,7 @@ struct V2PulsePage: View {
             if card.rating == "down", let reason = PulseDownReason(rawValue: card.reason),
                !(card.isAwayForWrongTime && card.isResting) {
                 Text(verbatim: reason.title)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -870,17 +870,17 @@ struct V2PulsePage: View {
                 .frame(width: 8, height: 8)
                 .accessibilityHidden(true)
             Text(verbatim: card.heading)
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(tint)
                 .accessibilityAddTraits(.isHeader)
             if let created = card.createdAt {
                 Text(verbatim: "· " + PulseTopicTint.stamp(created))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             if card.isHeld {
                 Text("For the morning brief")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -891,7 +891,7 @@ struct V2PulsePage: View {
                     }
                 } label: {
                     Text("Why?")
-                        .font(.caption.weight(.medium))
+                        .scaledFont(.caption.weight(.medium))
                 }
                 .buttonStyle(.borderless)
                 .accessibilityValue(expandedWhy.contains(card.id)
@@ -918,7 +918,7 @@ struct V2PulsePage: View {
                     PulseLearnedLine(preference: learned)
                 }
             }
-            .font(.footnote)
+            .scaledFont(.footnote)
             .foregroundStyle(.secondary)
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -946,9 +946,9 @@ struct V2PulsePage: View {
                 Text(verbatim: AppLocalization.string("Kanban task \(task)"))
                     .lineLimit(1)
                 Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
+                    .scaledFont(.caption2.weight(.semibold))
             }
-            .font(.footnote)
+            .scaledFont(.footnote)
             .foregroundStyle(.secondary)
         }
         .buttonStyle(.borderless)
@@ -966,9 +966,9 @@ struct V2PulsePage: View {
                 Text(verbatim: card.chatTitle.isEmpty ? AppLocalization.string("Open the chat") : card.chatTitle)
                     .lineLimit(1)
                 Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
+                    .scaledFont(.caption2.weight(.semibold))
             }
-            .font(.footnote)
+            .scaledFont(.footnote)
             .foregroundStyle(.secondary)
         }
         .buttonStyle(.borderless)
@@ -992,7 +992,7 @@ struct V2PulsePage: View {
                 // the note asks for Done, so Done stays.
                 if untold {
                     Label(Self.untoldNote, systemImage: "exclamationmark.circle")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1011,7 +1011,7 @@ struct V2PulsePage: View {
 
     private func clearedLabel(_ card: PulseCard) -> some View {
         Label(card.clearedTitle, systemImage: card.isResting ? "clock" : "checkmark.circle.fill")
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
             .foregroundStyle(card.isResting ? Color.secondary : Color.green)
     }
 
@@ -1024,7 +1024,7 @@ struct V2PulsePage: View {
                 dismiss(card, false)
             } label: {
                 Text(AppLocalization.string("Put back"))
-                    .font(.footnote.weight(.medium))
+                    .scaledFont(.footnote.weight(.medium))
             }
             .buttonStyle(.borderless)
             .disabled(isBusy(card))
@@ -1035,7 +1035,7 @@ struct V2PulsePage: View {
                 markDone(card, false)
             } label: {
                 Text(AppLocalization.string("Undo"))
-                    .font(.footnote.weight(.medium))
+                    .scaledFont(.footnote.weight(.medium))
             }
             .buttonStyle(.borderless)
             .disabled(isBusy(card))
@@ -1059,7 +1059,7 @@ struct V2PulsePage: View {
                         dismissProposal(card)
                     } label: {
                         Text(AppLocalization.string("Not now"))
-                            .font(.footnote.weight(.semibold))
+                            .scaledFont(.footnote.weight(.semibold))
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -1080,7 +1080,7 @@ struct V2PulsePage: View {
                                 undoCard = card
                             } label: {
                                 Text(AppLocalization.string("Undo"))
-                                    .font(.footnote.weight(.medium))
+                                    .scaledFont(.footnote.weight(.medium))
                             }
                             .buttonStyle(.borderless)
                             .disabled(isBusy(card))
@@ -1092,7 +1092,7 @@ struct V2PulsePage: View {
                     }
                     if !proposal.note.isEmpty, proposal.state == .failed || proposal.state == .changed {
                         Text(verbatim: proposal.note)
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -1114,7 +1114,7 @@ struct V2PulsePage: View {
                     .foregroundStyle(.white)
             }
             .labelStyle(.titleAndIcon)
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
@@ -1141,7 +1141,7 @@ struct V2PulsePage: View {
             Text(verbatim: proposal.stateText)
                 .foregroundStyle(proposal.canUndo ? Color.green : Color.secondary)
         }
-        .font(.footnote.weight(.semibold))
+        .scaledFont(.footnote.weight(.semibold))
         .accessibilityElement(children: .combine)
     }
 
@@ -1208,7 +1208,7 @@ struct V2PulsePage: View {
                     .foregroundStyle(.white)
             }
             .labelStyle(.titleAndIcon)
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
@@ -1226,7 +1226,7 @@ struct V2PulsePage: View {
             markDone(card, true)
         } label: {
             Label(AppLocalization.string("Done"), systemImage: "checkmark.circle")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
@@ -1571,12 +1571,12 @@ struct PulseLearnedLine: View {
                 } icon: {
                     Image(systemName: "sparkles")
                 }
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
             }
             Text(verbatim: preference.subject)
                 .foregroundStyle(.primary)
             Text(verbatim: preference.detail)
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -1636,7 +1636,7 @@ struct PulseLearnedSheet: View {
                                     Text(verbatim: lesson.text)
                                     if let cause = lesson.causeText {
                                         Text(verbatim: cause)
-                                            .font(.caption)
+                                            .scaledFont(.caption)
                                             .foregroundStyle(.secondary)
                                     }
                                 }
@@ -1657,7 +1657,7 @@ struct PulseLearnedSheet: View {
                 }
                 if learned != nil, let errorMessage {
                     Text(verbatim: errorMessage)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                 }
             }
@@ -1836,7 +1836,7 @@ struct PulseLeftOutSheet: View {
                 }
                 if entries != nil, let errorMessage {
                     Text(verbatim: errorMessage)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                 }
             }
@@ -1875,11 +1875,11 @@ struct PulseLeftOutSheet: View {
                     .frame(width: 8, height: 8)
                     .accessibilityHidden(true)
                 Text(verbatim: PulseCardKind.topic(entry.kind))
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(tint)
                 if let created = entry.createdAt {
                     Text(verbatim: "· " + PulseTopicTint.stamp(created))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -1892,24 +1892,24 @@ struct PulseLeftOutSheet: View {
                 } icon: {
                     Image(systemName: "bubble.left")
                 }
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             }
             Text(verbatim: entry.reason)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             // What learning held against it, for one learning kept out.
             if entry.decision == "quieted", let learned = entry.learned {
                 PulseLearnedLine(preference: learned)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
             HStack {
                 Spacer(minLength: 0)
                 if entry.cardID != nil {
                     Label(AppLocalization.string("On the Pulse screen"), systemImage: "checkmark.circle.fill")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .foregroundStyle(.green)
                 } else {
                     Button {
@@ -1917,7 +1917,7 @@ struct PulseLeftOutSheet: View {
                         bringUp(entry)
                     } label: {
                         Label(AppLocalization.string("Bring it up"), systemImage: "arrow.up.circle")
-                            .font(.footnote.weight(.semibold))
+                            .scaledFont(.footnote.weight(.semibold))
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)

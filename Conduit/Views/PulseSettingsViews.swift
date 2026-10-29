@@ -69,10 +69,10 @@ struct PulseSettingsPage: View {
             } else if let loadError {
                 ConduitSettingsSection(title: AppLocalization.string("Pulse"), symbol: "waveform.path.ecg", tint: .conduitAura) {
                     Text("Couldn't read Pulse's settings.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     Text(verbatim: loadError)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.red)
                     Button(AppLocalization.string("Try again")) {
                         Task { await load() }
@@ -83,7 +83,7 @@ struct PulseSettingsPage: View {
                 HStack(spacing: 8) {
                     ProgressView()
                     Text("Loading Pulse…")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 16)
@@ -122,7 +122,7 @@ struct PulseSettingsPage: View {
     private func overviewSection(_ state: PulseState) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Pulse"), symbol: "waveform.path.ecg", tint: .conduitAura) {
             Text("Pulse reads your chats, keeps track of what you and Hermes said you'd do, and brings things up as cards on the Pulse screen.")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Toggle("Pulse", isOn: Binding(
                 get: { state.enabled },
@@ -133,17 +133,17 @@ struct PulseSettingsPage: View {
             if state.enabled {
                 if state.running {
                     Label(AppLocalization.string("Pulse is running on the dashboard."), systemImage: "checkmark.circle")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     Text("The dashboard isn't running Pulse. Restart it after updating the plugin.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.orange)
                 }
             }
             if state.staleBuild {
                 Text("The dashboard is running an older copy of Pulse. Restart it to use the update.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.orange)
             }
             if let chat = state.homeChat {
@@ -154,12 +154,12 @@ struct PulseSettingsPage: View {
                 // Something wrong with the Pulse chat, in the plugin's own
                 // words (English); kept out of Behind the scenes so it shows.
                 Text(verbatim: state.homeProblem)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.orange)
             }
             if let errorMessage {
                 Text(verbatim: errorMessage)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
             }
         }
@@ -168,7 +168,7 @@ struct PulseSettingsPage: View {
     private func homeChatSection(_ state: PulseState) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Pulse chat"), symbol: "pin", tint: .conduitAccent) {
             Text(AppLocalization.string("Pulse sends its reports to a pinned chat titled “\(state.homeTitle)” in the dashboard's default profile."))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Button(AppLocalization.string("Create Pulse chat")) {
                 let title = state.homeTitle
@@ -183,7 +183,7 @@ struct PulseSettingsPage: View {
             if !state.homeProblem.isEmpty {
                 // The plugin's own words, in English.
                 Text(verbatim: state.homeProblem)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.orange)
             }
         }
@@ -211,7 +211,7 @@ struct PulseSettingsPage: View {
                 .disabled(working)
                 .accessibilityIdentifier("settings.pulse.nudge")
                 Text(verbatim: PulseNudge.detail(state.nudge))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             Toggle("Look through your chats", isOn: Binding(
@@ -233,11 +233,11 @@ struct PulseSettingsPage: View {
                     Text("Each look that finds something sends one notification. Things you've asked to hear less often wait for the morning brief instead.")
                 }
             }
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
             if appState.pulseHidesPrivate, let hides = state.privatePushes {
                 Text("A reminder for a place, or one that can't wait, comes as Time Sensitive, at most three a day. While you're busy, Pulse's notifications go quietly to Notification Center.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Hide private reminders on the Lock Screen", isOn: Binding(
                     get: { hides },
@@ -246,7 +246,7 @@ struct PulseSettingsPage: View {
                 .disabled(working)
                 .accessibilityIdentifier("settings.pulse.private")
                 Text("A Pulse notification about a birthday, an anniversary, a gift, a surprise, health or money says only “Pulse has something for you.”, even with Show previews on. Its card shows everything.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -268,7 +268,7 @@ struct PulseSettingsPage: View {
         // Days as the plugin keeps them: in its time zone, Gregorian on the wire.
         let host = PulseQuiet.calendar(zone: state.timeZone)
         Text("Quiet days")
-            .font(.subheadline.weight(.semibold))
+            .scaledFont(.subheadline.weight(.semibold))
         PulseQuietDaysPicker(days: Set(state.quietDays)) { days in
             change(["quiet_days": days]) { $0.quietDays = days }
         }
@@ -308,7 +308,7 @@ struct PulseSettingsPage: View {
             .accessibilityIdentifier("settings.pulse.vacation-end")
         }
         Text("On quiet days and on vacation, Pulse sends nothing on its own: no report and no morning brief, and follow-ups wait for the first brief after. It keeps remembering, and Do it still checks.")
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
     }
 
@@ -338,11 +338,11 @@ struct PulseSettingsPage: View {
         }
         if state.night != nil {
             Text("At night, Pulse's notifications wait for the morning brief unless they can't.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
         Text("During an event on your calendar, while you drive, or while a Focus holds Hermes' calls, Pulse's notifications wait until you're free.")
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
     }
 
@@ -391,7 +391,7 @@ struct PulseSettingsPage: View {
             .accessibilityIdentifier("settings.pulse.note")
             if tooLong {
                 Text(verbatim: limit)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
                     .onAppear { AccessibilityNotification.Announcement(limit).post() }
             }
@@ -413,7 +413,7 @@ struct PulseSettingsPage: View {
                 }
             }
             Text("Pulse reads it before every report, morning brief and reminder. Where it says what to bring up or leave out, it comes before Pulse's own rules.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -459,7 +459,7 @@ struct PulseSettingsPage: View {
             }
             .accessibilityIdentifier("settings.pulse.remembers")
             Text("Pulse keeps short notes on promises, plans and dates, so it can bring them up later. You can remove any of them.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if appState.pulseKeepsInboxDeadlines, let deadlines = state.inboxDeadlines {
                 Toggle("Deadlines from Shortcuts", isOn: Binding(
@@ -486,7 +486,7 @@ struct PulseSettingsPage: View {
                     Text("Pulse forgets the deadlines it kept from your Shortcuts inbox.")
                 }
                 Text("With memory on, Pulse also looks for deadlines in what your Shortcuts automations log, like a trial ending or a bill due, and brings each up a week ahead and the day before. Turning this off forgets the ones it kept.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             if appState.pulseLooksFirst, let lookFirst = state.lookFirst {
@@ -499,7 +499,7 @@ struct PulseSettingsPage: View {
                 Text(verbatim: appState.pulseSuggests
                     ? AppLocalization.string("Before Pulse writes to you, it can check your calendar, reminders, contacts and alarms, look up places in Maps, and search the web when it follows up on a promise. It never changes anything itself: an event or reminder worth adding comes as a suggestion you add with a tap.")
                     : AppLocalization.string("Before Pulse writes to you, it can check your calendar, reminders, contacts and alarms, look up places in Maps, and search the web when it follows up on a promise. It never changes anything on your phone."))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             if appState.pulseReadsWhere, let whereOn = state.whereYouAre {
@@ -510,11 +510,11 @@ struct PulseSettingsPage: View {
                 .disabled(working)
                 .accessibilityIdentifier("settings.pulse.where")
                 Text("Pulse can remind you of what you said you'd do at one of your saved places as you get there or leave, bring up something it saved for that moment, and use where you are when it looks things up. It reads your location only while this is on and Conduit shares it in the background. Each read is listed under When Hermes read your location.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 if whereOn, !state.whereReady {
                     Text("Pulse can't read where you are yet: in Settings > Location, turn on Share in the background, or Resume sharing if it's paused.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.orange)
                 }
                 if whereOn, let walking = state.walkingPast {
@@ -525,15 +525,15 @@ struct PulseSettingsPage: View {
                     .disabled(working)
                     .accessibilityIdentifier("settings.pulse.walking-past")
                     Text("Pulse can ask Conduit to watch for a few kinds of shop near you, like a florist before an anniversary or a shop you said you'd stop at. Conduit searches Apple Maps on this iPhone and tells your gateway the shop's name, when you came near it, how close, how accurate that was and how fast you were moving, never where the shop is. Only while Conduit shares your precise location in the background. Turning this off deletes the shops your gateway kept.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                     if walking, state.whereReady, !location.watchesSpots {
                         Text("This iPhone isn't watching shops: in Settings > Location, share in the background at Precise, and allow Conduit's location Always, with Precise Location on.")
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.orange)
                     } else if walking, state.whereReady, location.places.count >= PulseSpotWatcher.conditionLimit {
                         Text("This iPhone isn't watching shops: your saved places use all the places iOS lets Conduit watch. Remove one in Settings > Location to make room.")
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.orange)
                     }
                 }
@@ -577,7 +577,7 @@ struct PulseSettingsPage: View {
                     .accessibilityIdentifier("settings.pulse.report-now")
                     if let notice {
                         Text(verbatim: notice)
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                     budgetRows(state, budgets: budgets)
@@ -588,7 +588,7 @@ struct PulseSettingsPage: View {
                 .padding(.top, 8)
             } label: {
                 Text("Budgets, memory, next look, time zone, a look through your chats now and recent checks.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
@@ -663,7 +663,7 @@ struct PulseSettingsPage: View {
     private func reportTimes(_ state: PulseState) -> some View {
         let times = draftTimes ?? state.reportTimes
         Text("Looks through your chats at")
-            .font(.subheadline.weight(.semibold))
+            .scaledFont(.subheadline.weight(.semibold))
         ForEach(Array(times.enumerated()), id: \.offset) { index, time in
             HStack(spacing: 10) {
                 DatePicker(
@@ -728,7 +728,7 @@ struct PulseSettingsPage: View {
             .disabled(working)
             .accessibilityIdentifier("settings.pulse.model")
             Text("Pulse's reports, morning brief, follow-ups and memory run on this model. A fast, cheap model is plenty.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
         .task(id: appState.activeDashboardID) {
@@ -771,20 +771,20 @@ struct PulseSettingsPage: View {
         let backfill = state.backfill
         return ConduitSettingsSection(title: AppLocalization.string("Older chats"), symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
             Text("Pulse's memory can read back through older chats, a day's token budget at a time.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if let line = backfillStatus(backfill) {
                 Text(verbatim: line)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
             }
             if backfill.narrow {
                 Text("Other profiles' older chats aren't read yet.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             if !backfill.unreadable.isEmpty {
                 Text(AppLocalization.string("Couldn't read: \(Self.list(backfill.unreadable))"))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.orange)
             }
             switch backfill.phase {
@@ -825,7 +825,7 @@ struct PulseSettingsPage: View {
                     SettingsMetricRow(label: AppLocalization.string("Days needed"), value: estimate.daysNeeded.formatted())
                     if !estimate.unreadable.isEmpty {
                         Text(AppLocalization.string("Couldn't read: \(Self.list(estimate.unreadable))"))
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.orange)
                     }
                     Button(AppLocalization.string("Start")) { backfillStep(.start, days: dayCount) }
@@ -852,20 +852,20 @@ struct PulseSettingsPage: View {
     private func recentChecks(_ state: PulseState) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Pulse's latest checks and reports")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             ForEach(state.recent.prefix(5)) { attempt in
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
                         Text(verbatim: "\(Self.kindTitle(attempt.kind)) · \(attempt.state)")
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                         Spacer(minLength: 8)
                         Text(attempt.at.formatted(.relative(presentation: .named)))
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                     if !attempt.detail.isEmpty {
                         Text(verbatim: attempt.detail)
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(3)
                     }
@@ -1092,7 +1092,7 @@ private struct PulseQuietDaysPicker: View {
                     pick(next.sorted())
                 } label: {
                     Text(verbatim: symbols[index])
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .foregroundStyle(isOn ? Color.white : Color.primary)
                         .background(isOn ? Color.conduitAccent : Color.primary.opacity(0.07), in: Circle())
@@ -1124,12 +1124,12 @@ struct PulseMemoryList: View {
         List {
             if let errorMessage {
                 Text(verbatim: errorMessage)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.red)
             }
             if loaded, items.isEmpty, errorMessage == nil {
                 Text("Pulse doesn't remember anything yet.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
             ForEach(PulseMemoryKind.sorted(items.map(\.kind)), id: \.self) { kind in
@@ -1169,43 +1169,43 @@ struct PulseMemoryList: View {
     private func row(_ item: PulseMemoryItem) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(verbatim: item.text)
-                .font(.subheadline)
+                .scaledFont(.subheadline)
             if !item.evidence.isEmpty {
                 // The chat's own words, or the logged event's.
                 Text(verbatim: "“\(item.evidence)”")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
             if !item.due.isEmpty {
                 Text(AppLocalization.string("Due: \(item.due)"))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             if let yearly = item.everyYearText() {
                 Text(verbatim: yearly)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             if let place = item.place {
                 // Said for a place: it waits for the user to get there or leave.
                 Label(place.text, systemImage: "mappin.and.ellipse")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 if let saved = place.savedText {
                     Text(verbatim: saved)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             if let logged = item.loggedText() {
                 // A deadline from the Shortcuts inbox: who it's from, not a chat.
                 Text(verbatim: logged)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             } else if let mentioned = item.mentionedAt {
                 Text(AppLocalization.string("Last mentioned \(mentioned.formatted(.relative(presentation: .named)))"))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }
