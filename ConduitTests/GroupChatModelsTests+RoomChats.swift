@@ -38,14 +38,17 @@ extension GroupChatModelsTests {
                     if self.failsChats { throw HermesError.invalidResponse }
                     return self.kept
                 },
-                create: { [unowned self] profile, title in
-                    self.log.append("create \(profile) \(title)")
+                create: { [unowned self] profile in
+                    self.log.append("create \(profile)")
                     return "new-chat"
                 },
                 register: { [unowned self] roomID, chatID, profile in
                     self.log.append("register \(roomID) \(chatID) \(profile)")
                     if self.failsRegister { throw HermesError.invalidResponse }
                     return RoomChat(roomID: roomID, chatID: chatID, notesSeq: 7)
+                },
+                title: { [unowned self] chatID, profile, title in
+                    self.log.append("title \(chatID) \(title)")
                 },
                 open: { [unowned self] chatID, profile, title in
                     self.log.append("open \(chatID) \(profile)")
@@ -133,8 +136,9 @@ extension GroupChatModelsTests {
         XCTAssertEqual(outcome, .opened)
         XCTAssertEqual(steps.log, [
             "chats research",
-            "create research \(RoomChatText.chatTitle("Zoo trip"))",
+            "create research",
             "register conduit-9 new-chat research",
+            "title new-chat \(RoomChatText.chatTitle("Zoo trip"))",
             "open new-chat research",
         ])
         XCTAssertEqual(RoomChatText.chatTitle(" Zoo trip "), AppLocalization.string("About \("Zoo trip")"))
@@ -150,9 +154,10 @@ extension GroupChatModelsTests {
                                                  wrapUp: false)
 
         XCTAssertEqual(outcome, .opened)
-        XCTAssertEqual(steps.log.suffix(3), [
-            "create default \(RoomChatText.chatTitle("Zoo trip"))",
+        XCTAssertEqual(steps.log.suffix(4), [
+            "create default",
             "register conduit-9 new-chat default",
+            "title new-chat \(RoomChatText.chatTitle("Zoo trip"))",
             "open new-chat default",
         ])
     }
@@ -189,6 +194,8 @@ extension GroupChatModelsTests {
             XCTFail("the chat wasn't registered")
         } catch {}
         XCTAssertFalse(unregistered.log.contains { $0.hasPrefix("open") })
+        // Nor titled: untitled and unwritten, it's a lazy row Hermes prunes, not a stray chat.
+        XCTAssertFalse(unregistered.log.contains { $0.hasPrefix("title") })
     }
 
     @MainActor

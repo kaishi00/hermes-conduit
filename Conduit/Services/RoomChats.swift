@@ -102,10 +102,13 @@ enum RoomChatOpenOutcome: Equatable {
 struct RoomChatOpener {
     /// The profile's room chats.
     var chats: (_ profile: String) async throws -> [RoomChat]
-    /// A new chat in the profile, titled: the id Hermes keeps it by.
-    var create: (_ profile: String, _ title: String) async throws -> String
+    /// A new chat in the profile: the id Hermes keeps it by. Until it's
+    /// titled or written to it's Hermes' lazy row, which Hermes prunes.
+    var create: (_ profile: String) async throws -> String
     /// The chat is the room's.
     var register: (_ roomID: String, _ chatID: String, _ profile: String) async throws -> RoomChat
+    /// Titles the chat, which writes its row.
+    var title: (_ chatID: String, _ profile: String, _ title: String) async -> Void
     /// Opens the chat on screen.
     var open: (_ chatID: String, _ profile: String, _ title: String) async -> RoomChatOpenOutcome
     /// Sends a message in the chat on screen.
@@ -125,8 +128,11 @@ struct RoomChatOpener {
             outcome = await open(kept.chatID, profile, title)
         }
         if outcome == .gone {
-            let chatID = try await create(profile, title)
+            // Titled only once registered: one your Hermes refused stays a lazy row Hermes prunes, never a
+            // stray chat that doesn't know its room.
+            let chatID = try await create(profile)
             _ = try await register(roomID, chatID, profile)
+            await self.title(chatID, profile, title)
             outcome = await open(chatID, profile, title)
         }
         if outcome == .opened, wrapUp {
@@ -196,11 +202,13 @@ extension AppState {
 
     /// Opens the open room's chat with `agent`, and with `wrapUp` asks it for
     /// notes there. Nil when it opened (or another navigation took over),
-    /// else why not, for Group Info to say; once the room has closed for the
-    /// chat, the app's banner says it instead.
+    /// else why not, for Group Info to say while its room is still open;
+    /// once that room has closed (for the chat, or for another room), the
+    /// app's banner says it instead.
     func openRoomChat(with agent: RoomChatAgent, wrapUp: Bool) async -> String? {
+        let room = activeRoomSurface.map { $0.copy?.id ?? $0.room.roomID }
         let failure = await openRoomChatFailure(with: agent, wrapUp: wrapUp)
-        guard let failure, activeRoomSurface == nil else { return failure }
+        guard let failure, activeRoomSurface.map({ $0.copy?.id ?? $0.room.roomID }) != room else { return failure }
         errorMessage = RoomChatText.failure(failure)
         return nil
     }
@@ -211,21 +219,29 @@ extension AppState {
         }
         let roomID = surface.room.roomID
         let routes = roomChatsClient
+        // The id the new chat runs under, which its title goes to, as a Bot Chat's does.
+        var runtimeIDs: [String: String] = [:]
         let opener = RoomChatOpener(
             chats: { profile in try await routes.chats(profile: profile) },
-            create: { [weak self] profile, title in
+            create: { [weak self] profile in
                 guard let self else { throw HermesError.notConnected }
                 let scoped = self.profilesMatch(profile, self.activeProfile) ? nil : profile
                 let created = try await client.createSession(inProfile: scoped)
                 if let returned = created.profile, !self.profilesMatch(returned, profile) {
                     throw HermesError.invalidResponse
                 }
-                // The title writes the chat's row, so it opens by its stored id.
-                try? await client.setSessionTitle(created.sessionId, title: title, profile: scoped)
-                return created.storedSessionId ?? created.sessionId
+                let chatID = created.storedSessionId ?? created.sessionId
+                runtimeIDs[chatID] = created.sessionId
+                return chatID
             },
             register: { roomID, chatID, profile in
                 try await routes.open(roomID: roomID, chatID: chatID, profile: profile)
+            },
+            title: { [weak self] chatID, profile, title in
+                guard let self else { return }
+                // A title that didn't land leaves the chat as Hermes names it: it still knows its room.
+                try? await client.setSessionTitle(runtimeIDs[chatID] ?? chatID, title: title,
+                                                  profile: self.profilesMatch(profile, self.activeProfile) ? nil : profile)
             },
             open: { [weak self] chatID, profile, title in
                 guard let self else { return .failed }
@@ -235,7 +251,10 @@ extension AppState {
                 guard let self else { return false }
                 // A chat still settling on screen takes it into its composer, to send.
                 if await self.submitComposer(text: text) { return true }
-                self.prefillComposer(text)
+                // Never over a draft the chat already has.
+                if !self.composerDraftStore.hasDraft(for: self.composerDraftKeyOnScreen) {
+                    self.prefillComposer(text)
+                }
                 return false
             }
         )
