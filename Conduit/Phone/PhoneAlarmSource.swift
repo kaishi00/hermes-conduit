@@ -82,10 +82,12 @@ enum PhoneAlarmSources {
     /// `AlarmManager.shared` there jumps to address 0 at launch.
     static func system(
         defaults: UserDefaults = .standard,
-        onVisionOS: Bool = ProcessInfo.processInfo.isiOSAppOnVisionOS
+        onVisionOS: Bool? = nil
     ) -> PhoneAlarmSource {
         #if canImport(AlarmKit)
-        if #available(iOS 26.0, *), !onVisionOS { return AlarmKitPhoneSource(defaults: defaults) }
+        if #available(iOS 26.0, *), !(onVisionOS ?? ProcessInfo.processInfo.isiOSAppOnVisionOS) {
+            return AlarmKitPhoneSource(defaults: defaults)
+        }
         #endif
         return UnsupportedPhoneAlarmSource()
     }
