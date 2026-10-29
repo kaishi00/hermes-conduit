@@ -65,6 +65,7 @@ extension ConnectionFailureTests {
         let encoded = String(decoding: try JSONSerialization.data(withJSONObject: body), as: UTF8.self)
         XCTAssertFalse(encoded.contains("hi?"), "an exception's message and arguments can quote anything")
         XCTAssertFalse(encoded.contains("composedMessage"))
+        XCTAssertFalse(encoded.contains("formatString"), "a format string can be built from anything too")
         XCTAssertTrue(encoded.contains("NSRangeException"))
         XCTAssertTrue(encoded.contains("offsetIntoBinaryTextSegment"))
         XCTAssertNil((body["diagnostic"] as? [String: Any])?["cpuExceptionDiagnostics"], "only crashes and hangs go")

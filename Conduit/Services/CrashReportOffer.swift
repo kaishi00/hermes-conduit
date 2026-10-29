@@ -105,8 +105,8 @@ enum CrashReportUpload {
 
     /// The keys a report keeps, level by level; anything else MetricKit
     /// writes, now or in a later iOS, stays on the phone. An exception's
-    /// composed message and its arguments can quote anything the app held,
-    /// so only its type, name and format string go.
+    /// composed message, arguments and format string can quote anything the
+    /// app held, so only its type and name go.
     private static let diagnosticKeys: Set<String> = ["version", "diagnosticMetaData", "callStackTree"]
     private static let metaKeys: Set<String> = [
         "appVersion", "appBuildVersion", "osVersion", "deviceType", "platformArchitecture",
@@ -114,7 +114,7 @@ enum CrashReportUpload {
         "exceptionType", "exceptionCode", "signal", "terminationReason", "virtualMemoryRegionInfo",
         "hangDuration", "exceptionReason",
     ]
-    private static let exceptionKeys: Set<String> = ["exceptionType", "exceptionName", "className", "formatString"]
+    private static let exceptionKeys: Set<String> = ["exceptionType", "exceptionName", "className"]
     private static let treeKeys: Set<String> = ["callStackPerThread", "callStacks"]
     private static let threadKeys: Set<String> = ["threadAttributed", "callStackRootFrames"]
     private static let frameKeys: Set<String> = [

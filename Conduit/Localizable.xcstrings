@@ -434,7 +434,7 @@
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kirim laporan ke pengembang Conduit? Laporan menunjukkan di mana aplikasi berhenti, tidak pernah pesan Anda."
+            "value" : "Kirim laporan ke pengembang Conduit? Laporan menunjukkan di mana aplikasi berhenti dan tidak pernah menampilkan pesan Anda."
           }
         },
         "it" : {
@@ -458,7 +458,7 @@
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wysłać raport twórcy Conduit? Pokazuje, gdzie aplikacja się zatrzymała, nigdy Twoje wiadomości."
+            "value" : "Wysłać raport twórcy Conduit? Pokazuje, gdzie aplikacja się zatrzymała, i nigdy nie pokazuje Twoich wiadomości."
           }
         },
         "pt-BR" : {
@@ -558,7 +558,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bir çökme ya da donmadan sonra Conduit, o raporun geliştiricisine gönderilip gönderilmeyeceğini bir kez sorar."
+            "value" : "Bir çökme ya da donmadan sonra Conduit, raporun Conduit'in geliştiricisine gönderilip gönderilmeyeceğini bir kez sorar."
           }
         },
         "zh-Hans" : {
