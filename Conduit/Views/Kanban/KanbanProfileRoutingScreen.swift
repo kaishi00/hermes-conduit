@@ -13,7 +13,7 @@ struct KanbanProfileRoutingScreen: View {
                 Section {
                     if store.profiles.isEmpty {
                         Text("No profiles on this Hermes server yet.")
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(store.profiles) { profile in
@@ -43,29 +43,29 @@ struct KanbanProfileRoutingScreen: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Text(profile.name)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                 if profile.isDefault {
                     Text("default")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .foregroundStyle(.secondary)
                 }
                 if profile.descriptionAuto {
                     Label("auto", systemImage: "sparkles")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .foregroundStyle(.orange)
                         .labelStyle(.titleOnly)
                 }
                 Spacer()
                 if profile.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text("undescribed")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .foregroundStyle(.conduitTertiary)
                 }
             }
             let trimmed = profile.description.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
                 Text(trimmed)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
@@ -134,7 +134,7 @@ struct KanbanProfileDescriptionEditorView: View {
                     .accessibilityLabel("Routing description for \(profile.name)")
                 if baseline.isAuto {
                     Label("Automatically generated — review recommended", systemImage: "sparkles")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.orange)
                 }
             } header: {
@@ -174,14 +174,14 @@ struct KanbanProfileDescriptionEditorView: View {
             if let errorMessage {
                 Section {
                     Label(errorMessage, systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                 }
             }
             if let notice {
                 Section {
                     Label(notice, systemImage: "checkmark.circle")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }

@@ -371,7 +371,7 @@ struct ChatWorkingLine: View {
     private var timer: some View {
         if let startedAt {
             Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)
-                .font(.caption.weight(.medium))
+                .scaledFont(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
@@ -392,13 +392,13 @@ struct ChatWorkingLine: View {
 
             AdaptiveStack(spacing: 9) {
                 Text(identity.name)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(lineLimit)
                     .layoutPriority(1)
 
                 Text(phrase)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(Color.conduitAccent)
                     .lineLimit(lineLimit)
                     .contentTransition(.opacity)
@@ -747,7 +747,7 @@ private struct ChatStepRowBody: View {
             Self.single(message, thinkingShown: thinkingShown)
             if let summary {
                 Text(summary)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -843,7 +843,7 @@ private struct ChatStepGroupHeader: View {
                     }
                     if shown < members.count {
                         Text(verbatim: "…")
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                             .foregroundStyle(.secondary)
                             .accessibilityHidden(true)
                     }
@@ -908,7 +908,7 @@ private struct ChatStepGroupHeader: View {
 
     private var chevron: some View {
         Image(systemName: "chevron.down")
-            .font(.caption.weight(.semibold))
+            .scaledFont(.caption.weight(.semibold))
             .foregroundStyle(.conduitTertiary)
             .rotationEffect(.degrees(expanded ? 180 : 0))
             .accessibilityHidden(true)
@@ -921,7 +921,7 @@ private struct ChatStepGroupHeader: View {
             HStack(spacing: ChatStepStyle.iconGap) {
                 stepIcons
                 Text(title.shown)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
                     .lineLimit(1)
@@ -943,7 +943,7 @@ private struct ChatStepGroupHeader: View {
     /// folded, under the count at the top of the open card.
     private func summaryText(_ summary: String) -> some View {
         Text(summary)
-            .font(.subheadline)
+            .scaledFont(.subheadline)
             .foregroundStyle(.primary)
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
@@ -961,7 +961,7 @@ private struct ChatStepGroupHeader: View {
                 }
             }
             Text(title.shown)
-                .font(expanded ? .subheadline.weight(.semibold) : .subheadline)
+                .scaledFont(expanded ? .subheadline.weight(.semibold) : .subheadline)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .accessibilityLabel(title.spoken)
@@ -979,7 +979,7 @@ struct ChatStepLookingBack: View {
             ProgressView()
                 .controlSize(.mini)
             Text(AppLocalization.string("Hermes is looking back…"))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

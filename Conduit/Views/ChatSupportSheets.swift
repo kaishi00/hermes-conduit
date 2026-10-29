@@ -81,13 +81,13 @@ struct GatewayDiagnosticsSheet: View {
             if let version = diagnostics?.version { SettingsMetricRow(label: AppLocalization.string("Version"), value: version) }
             if let pid = diagnostics?.pid { SettingsMetricRow(label: AppLocalization.string("Process"), value: AppLocalization.string("PID \(String(pid))")) }
             if let error = diagnostics?.error {
-                Text(error).font(.footnote).foregroundStyle(.red)
+                Text(error).scaledFont(.footnote).foregroundStyle(.red)
             }
             GatewayRestartStatusView()
             if !running && !appState.activeGatewayRestart.isInProgress {
                 Button { Task { await appState.reconnect() } } label: {
                     Label(AppLocalization.string("Retry connection"), systemImage: "arrow.clockwise")
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 44)
                 }
@@ -125,7 +125,7 @@ struct GatewayDiagnosticsSheet: View {
         if let report = lastConnectionReport {
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(verbatim: report)
-                    .font(.caption.monospaced())
+                    .scaledFont(.caption.monospaced())
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -141,14 +141,14 @@ struct GatewayDiagnosticsSheet: View {
                 .accessibilityValue(copiedTimelineReport == report ? AppLocalization.string("Copied") : "")
                 if copiedTimelineReport == report {
                     Text("Copied")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
             }
         } else {
             Text("No connection has been timed since Conduit opened.")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
     }
@@ -157,15 +157,15 @@ struct GatewayDiagnosticsSheet: View {
         let configuredConnectors = (appState.gatewayDiagnostics?.connectors ?? []).filter { $0.configured != false }
         return ConduitSettingsSection(title: AppLocalization.string("Connectors"), symbol: "point.3.connected.trianglepath.dotted", tint: .conduitAura) {
             if configuredConnectors.isEmpty {
-                Text("No configured connectors were reported.").font(.footnote).foregroundStyle(.secondary)
+                Text("No configured connectors were reported.").scaledFont(.footnote).foregroundStyle(.secondary)
             } else {
                 ForEach(configuredConnectors) { connector in
                     HStack(spacing: 10) {
                         Circle().fill(connectorColor(connector.state)).frame(width: 9, height: 9)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(connector.name).font(.subheadline.weight(.medium))
+                            Text(connector.name).scaledFont(.subheadline.weight(.medium))
                             Text([connector.state, connector.error].compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption).foregroundStyle(.secondary)
+                                .scaledFont(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                     }
@@ -178,11 +178,11 @@ struct GatewayDiagnosticsSheet: View {
         ConduitSettingsSection(title: AppLocalization.string("Recent gateway logs"), symbol: "text.alignleft", tint: .conduitAccent) {
             let lines = appState.gatewayDiagnostics?.logs ?? []
             if lines.isEmpty {
-                Text("No gateway log lines were returned.").font(.footnote).foregroundStyle(.secondary)
+                Text("No gateway log lines were returned.").scaledFont(.footnote).foregroundStyle(.secondary)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(lines.joined(separator: "\n"))
-                        .font(.caption.monospaced())
+                        .scaledFont(.caption.monospaced())
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -235,7 +235,7 @@ struct DelegateAgentsSheet: View {
                 ScrollView {
                     VStack(spacing: 22) {
                         ConduitSettingsSection(title: AppLocalization.string("Delegate agents"), symbol: "person.2", tint: .conduitAccent) {
-                            Text(activeSummary).font(.footnote).foregroundStyle(.secondary)
+                            Text(activeSummary).scaledFont(.footnote).foregroundStyle(.secondary)
                         }
                         if appState.delegateAgents.isEmpty {
                             ContentUnavailableView("No delegate agents", systemImage: "person.2.slash", description: Text("Delegate activity for this conversation will appear here."))
@@ -285,12 +285,12 @@ private struct DelegateAgentCard: View {
                     HStack(spacing: 10) {
                         Circle().fill(statusColor).frame(width: 9, height: 9)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(agent.goal.isEmpty ? AppLocalization.string("Delegate agent") : agent.goal).font(.subheadline.weight(.semibold)).lineLimit(2)
+                            Text(agent.goal.isEmpty ? AppLocalization.string("Delegate agent") : agent.goal).scaledFont(.subheadline.weight(.semibold)).lineLimit(2)
                             Text([agent.model, agent.currentTool, agent.status.label].compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                .scaledFont(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer()
-                        Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption).foregroundStyle(.secondary)
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down").scaledFont(.caption).foregroundStyle(.secondary)
                     }
                 }
                 .tint(.primary)
@@ -300,17 +300,17 @@ private struct DelegateAgentCard: View {
                 }
             }
             if let note {
-                Text(note.text).font(.caption).foregroundStyle(note.isError ? .red : .secondary)
+                Text(note.text).scaledFont(.caption).foregroundStyle(note.isError ? .red : .secondary)
             }
             if expanded {
                 if agent.stream.isEmpty {
                     Text(agent.summary ?? (agent.status.isActive ? AppLocalization.string("Waiting for activity…") : AppLocalization.string("No stream output returned.")))
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .scaledFont(.footnote).foregroundStyle(.secondary)
                 } else {
                     ForEach(agent.stream.suffix(10)) { line in
                         HStack(alignment: .top, spacing: 8) {
                             Text(line.kind == .tool ? "›" : "•").foregroundStyle(line.isError ? .red : .conduitAccent)
-                            Text(line.text).font(.footnote).foregroundStyle(line.isError ? .red : .secondary)
+                            Text(line.text).scaledFont(.footnote).foregroundStyle(line.isError ? .red : .secondary)
                         }
                     }
                 }
@@ -350,7 +350,7 @@ private struct DelegateAgentCard: View {
                 if working {
                     ProgressView().controlSize(.small)
                 } else {
-                    Image(systemName: "ellipsis.circle").font(.body).foregroundStyle(.secondary)
+                    Image(systemName: "ellipsis.circle").scaledFont(.body).foregroundStyle(.secondary)
                 }
             }
             .frame(width: 32, height: 32)
@@ -428,10 +428,10 @@ private struct DelegateAgentTailSheet: View {
                         VStack(alignment: .leading, spacing: 10) {
                             if let tail, tail.available, !tail.text.isEmpty {
                                 if tail.truncated {
-                                    Text("Showing the latest output only.").font(.caption).foregroundStyle(.secondary)
+                                    Text("Showing the latest output only.").scaledFont(.caption).foregroundStyle(.secondary)
                                 }
                                 Text(verbatim: tail.text)
-                                    .font(.caption.monospaced())
+                                    .scaledFont(.caption.monospaced())
                                     .textSelection(.enabled)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -501,15 +501,15 @@ private struct DeviceReportsSection: View {
         ConduitSettingsSection(title: AppLocalization.string("Device reports"), symbol: "chart.bar.doc.horizontal", tint: .conduitAccent) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Usage, network and hang reports iOS makes about once a day. They stay on this device until you share them.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 Text("After a crash or freeze, Conduit asks once whether to send that report to its developer.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 if let summary = loaded?.summary, !summary.isEmpty {
                     // A summary, so it wraps rather than scrolling sideways.
                     Text(verbatim: summary.text)
-                        .font(.caption.monospaced())
+                        .scaledFont(.caption.monospaced())
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -527,7 +527,7 @@ private struct DeviceReportsSection: View {
                     // Reports are stored but the file to share isn't: say so
                     // rather than leave the page looking empty.
                     Text("Couldn't write the device reports file.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                     Button { Task { await load() } } label: {
                         Label("Try again", systemImage: "arrow.clockwise")

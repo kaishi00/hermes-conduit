@@ -820,7 +820,7 @@ struct V2ChatsView: View, Equatable {
                 searchFocused = false
                 withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { barSearchOpen = false }
             }
-            .font(.subheadline.weight(.medium))
+            .scaledFont(.subheadline.weight(.medium))
             .foregroundStyle(Color.conduitAccent)
             .buttonStyle(.plain)
             .frame(minHeight: 44)
@@ -846,7 +846,7 @@ struct V2ChatsView: View, Equatable {
                     .font(.system(size: 14, weight: .semibold))
                     .conduitFixedGlyph()
                 Text(showingProjects ? AppLocalization.string("Projects") : selectionTitles(separator: ", "))
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.down")
@@ -1258,7 +1258,7 @@ struct V2ChatsView: View, Equatable {
         VStack(alignment: .leading, spacing: 10) {
             if let error = appState.errorMessage, !error.isEmpty {
                 Text(error)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1267,7 +1267,7 @@ struct V2ChatsView: View, Equatable {
                 repairContext = appState.beginConnectionRepair()
             } label: {
                 Label("Repair Connection", systemImage: "wrench.and.screwdriver")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 44)
             }
@@ -1524,7 +1524,7 @@ struct V2ChatsView: View, Equatable {
                     .lineLimit(1)
                 if collapsible {
                     Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.bold))
+                        .scaledFont(.caption2.weight(.bold))
                         .conduitFixedGlyph()
                         .rotationEffect(.degrees(collapsed ? 0 : 90))
                 }
@@ -1534,7 +1534,7 @@ struct V2ChatsView: View, Equatable {
                         .monospacedDigit()
                 }
             }
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
             .foregroundStyle(.secondary)
             .textCase(nil)
             .padding(.horizontal, 16)
@@ -1568,7 +1568,7 @@ struct V2ChatsView: View, Equatable {
                 HStack(spacing: 6) {
                     Text(section.title)
                     Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.bold))
+                        .scaledFont(.caption2.weight(.bold))
                         .conduitFixedGlyph()
                         .rotationEffect(.degrees(collapsed ? 0 : 90))
                     Spacer(minLength: 6)
@@ -1577,7 +1577,7 @@ struct V2ChatsView: View, Equatable {
                             .monospacedDigit()
                     }
                 }
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .textCase(nil)
                 .padding(.leading, 16)
@@ -1648,7 +1648,7 @@ struct V2ChatsView: View, Equatable {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
             .foregroundStyle(.secondary)
             .textCase(nil)
             .padding(.leading, 16)
@@ -1752,7 +1752,7 @@ struct V2ChatsView: View, Equatable {
                     searchText = ""
                     searchFocused = false
                 }
-                .font(.subheadline.weight(.medium))
+                .scaledFont(.subheadline.weight(.medium))
                 .foregroundStyle(Color.conduitAccent)
                 .buttonStyle(.plain)
                 .frame(minHeight: 44)
@@ -1765,7 +1765,7 @@ struct V2ChatsView: View, Equatable {
     private func searchCapsule(minHeight: CGFloat) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             if narrowsList {
@@ -1776,10 +1776,10 @@ struct V2ChatsView: View, Equatable {
                 } label: {
                     HStack(spacing: 4) {
                         Text(selectionTitles(separator: " · "))
-                            .font(.footnote.weight(.semibold))
+                            .scaledFont(.footnote.weight(.semibold))
                             .lineLimit(1)
                         Image(systemName: "xmark")
-                            .font(.caption2.weight(.bold))
+                            .scaledFont(.caption2.weight(.bold))
                     }
                     .foregroundStyle(Color.black.opacity(0.85))
                     .padding(.horizontal, 9)
@@ -1792,7 +1792,7 @@ struct V2ChatsView: View, Equatable {
             }
             TextField(searchPrompt, text: $searchText)
                 .textFieldStyle(.plain)
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .submitLabel(.search)
                 .autocorrectionDisabled()
                 .focused($searchFocused)
@@ -2250,11 +2250,11 @@ private struct V2ChatsRow: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
                     .conduitFixedGlyph()
                     .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 Text(summary)
-                    .font(.footnote.weight(.medium))
+                    .scaledFont(.footnote.weight(.medium))
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
@@ -2290,18 +2290,18 @@ private struct V2ChatsRow: View {
                     .padding(.trailing, 6)
                 V2StatusGlyph(status: status == .none ? .source(appState.sessionCategory(for: session)) : status)
                 Text(session.title)
-                    .font(.subheadline.weight(isUnread ? .semibold : .regular))
+                    .scaledFont(.subheadline.weight(isUnread ? .semibold : .regular))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Spacer(minLength: 6)
                 if isStarred {
                     Image(systemName: "star.fill")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .foregroundStyle(Color.conduitAccent)
                         .accessibilityHidden(true)
                 }
                 Text(status.actionWord ?? session.updatedLabel)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(status.actionWord == nil ? Color.primary.opacity(0.45) : status.color)
                     .lineLimit(1)
             }
@@ -2481,11 +2481,11 @@ struct V2ProjectRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
                     Text(project.title)
-                        .font(.body.weight(.semibold))
+                        .scaledFont(.body.weight(.semibold))
                         .lineLimit(1)
                     if project.isAuto {
                         Text("Discovered")
-                            .font(.caption.weight(.medium))
+                            .scaledFont(.caption.weight(.medium))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 1)
@@ -2494,7 +2494,7 @@ struct V2ProjectRow: View {
                 }
                 if let path = project.primaryPath, !path.isEmpty {
                     Text(path)
-                        .font(.footnote.monospaced())
+                        .scaledFont(.footnote.monospaced())
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -2503,14 +2503,14 @@ struct V2ProjectRow: View {
                     HStack(spacing: 5) {
                         V2StatusGlyph(status: .running)
                         Text("\(runningCount) running")
-                            .font(.footnote.weight(.semibold))
+                            .scaledFont(.footnote.weight(.semibold))
                             .foregroundStyle(Color.conduitAccent)
                     }
                 }
             }
             Spacer(minLength: 6)
             Text(String(project.sessionCount))
-                .font(.subheadline.monospacedDigit())
+                .scaledFont(.subheadline.monospacedDigit())
                 .foregroundStyle(Color.primary.opacity(0.45))
         }
         .padding(.vertical, 12)

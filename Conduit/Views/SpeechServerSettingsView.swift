@@ -31,16 +31,16 @@ struct SpeechServerSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Your voice is recognized by a server you run, such as Hugging Face speech-to-speech or the one Hermes Live Voice starts. Hermes connects to it for Conduit, so it can run on another machine on your network.", systemImage: "server.rack")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
 
             if let status, status.pluginMissing {
                 Text(SpeechServerStatus.pluginMissingReason)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
             } else {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Server address").font(.subheadline.weight(.semibold))
+                    Text("Server address").scaledFont(.subheadline.weight(.semibold))
                     TextField(text: $urlDraft, prompt: Text(verbatim: "ws://192.168.1.20:8765/v1/realtime")) {
                         Text("Server address")
                     }
@@ -52,16 +52,16 @@ struct SpeechServerSettingsView: View {
                         .onSubmit { Task { await saveURL() } }
                         .accessibilityIdentifier("voice.speechServer.url")
                     Text("Plain ws:// works for home network and Tailscale addresses. A server on the internet needs wss://.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text("Key").font(.subheadline.weight(.semibold))
+                        Text("Key").scaledFont(.subheadline.weight(.semibold))
                         Spacer()
                         Text(status?.hasKey == true ? AppLocalization.string("Set") : AppLocalization.string("None"))
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                     SecureField("Optional, for a server behind a login", text: $keyDraft)
@@ -90,7 +90,7 @@ struct SpeechServerSettingsView: View {
                     Spacer()
                     if status?.hasKey == true {
                         Button("Remove key", role: .destructive) { Task { await removeKey() } }
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .disabled(isSaving)
                     }
                 }
@@ -98,18 +98,18 @@ struct SpeechServerSettingsView: View {
 
                 if let saveError {
                     Label(saveError, systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.orange)
                         .accessibilityIdentifier("voice.speechServer.saveError")
                 }
                 if let testResult {
                     Label(testResult.message, systemImage: testResult.connected ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(testResult.connected ? .green : .orange)
                         .accessibilityIdentifier("voice.speechServer.testResult")
                 } else if let status, status.configured, !status.available, let reason = status.reason {
                     Label(reason, systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.orange)
                         .accessibilityIdentifier("voice.speechServer.statusReason")
                 }

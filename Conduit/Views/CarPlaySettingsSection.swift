@@ -30,7 +30,7 @@ struct CarPlaySettingsSection: View {
             ))
             .accessibilityIdentifier("voice.carPlayChooseChat")
             Text("CarPlay opens on your pinned and recent chats, with New voice chat at the top. Off: Voice starts as soon as CarPlay opens.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
 
             Toggle("Status sounds", isOn: Binding(
@@ -39,18 +39,18 @@ struct CarPlaySettingsSection: View {
             ))
             .accessibilityIdentifier("voice.carPlaySounds")
             Text("A soft tone when your turn is sent and a low one if Voice fails, in the classic voice mode.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Shortcuts")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                 Text("One tap in the car starts the prompt as a Voice Job and opens a conversation, which speaks the result when the job is done.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 if preferences.shortcuts.isEmpty {
                     Label("No shortcuts yet.", systemImage: "minus.circle")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 ForEach(preferences.shortcuts) { shortcut in
@@ -78,7 +78,7 @@ struct CarPlaySettingsSection: View {
                     }
                 } else {
                     Text("CarPlay shows up to 8 shortcuts.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -94,9 +94,9 @@ struct CarPlaySettingsSection: View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: shortcut.title)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                 Text(verbatim: shortcut.prompt)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }

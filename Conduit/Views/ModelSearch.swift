@@ -74,7 +74,7 @@ struct ModelSearchResultText: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(verbatim: title)
-                .font(.subheadline.weight(.medium))
+                .scaledFont(.subheadline.weight(.medium))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
             HStack(spacing: 4) {
@@ -83,11 +83,11 @@ struct ModelSearchResultText: View {
                 Text(verbatim: provider)
                     .lineLimit(1)
             }
-            .font(.caption.weight(.semibold))
+            .scaledFont(.caption.weight(.semibold))
             .foregroundStyle(.conduitAccent)
             if let detail, !detail.isEmpty, detail != title {
                 Text(verbatim: detail)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }

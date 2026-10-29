@@ -25,6 +25,10 @@ struct ComposerBar: View, Equatable {
     private var appState: AppState { updates.appState }
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The text view's own size, which a wide column grows
+    /// (`ComposerPasteTextView.bodyFont`).
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.columnText) private var columnText
     @State private var text = ""
     @State private var composerTextHeight = ComposerPasteTextView.minimumHeight
     @State private var attachments: [Attachment] = []
@@ -121,10 +125,17 @@ struct ComposerBar: View, Equatable {
     /// to read in place, so the expand icon stays out of the way.
     static let fullEditorThreshold: CGFloat = 80
 
-    static func showsFullEditorButton(measuredHeight: CGFloat) -> Bool {
-        // At large Text Sizes one line alone can reach 80 pt; the icon still
-        // waits for more than a line.
-        measuredHeight >= max(fullEditorThreshold, ComposerPasteTextView.minimumHeight + 20)
+    static func showsFullEditorButton(measuredHeight: CGFloat, restingHeight: CGFloat = ComposerPasteTextView.minimumHeight) -> Bool {
+        // At large Text Sizes, or in a wide column that grows its text, one
+        // line alone can reach 80 pt; the icon still waits for more than a
+        // line.
+        measuredHeight >= max(fullEditorThreshold, restingHeight + 20)
+    }
+
+    /// One line of the text view's own font: what the composer goes back
+    /// to after a send.
+    private var restingTextHeight: CGFloat {
+        ComposerPasteTextView.minimumHeight(for: ComposerPasteTextView.bodyFont(in: sizeCategory, from: columnText))
     }
 
     static func composerDraftKey(for sessionID: String?, profile: String) -> ComposerDraftKey {
@@ -467,7 +478,7 @@ struct ComposerBar: View, Equatable {
             suppressNextTextChangeSuggestions = false
             composerErrorMessage = nil
             if newValue.isEmpty {
-                composerTextHeight = ComposerPasteTextView.minimumHeight
+                composerTextHeight = restingTextHeight
             }
             // Show suggestions when actively typing a slash command prefix
             withAnimation(ConduitMotion.response) {
@@ -884,7 +895,7 @@ struct ComposerBar: View, Equatable {
     }
 
     private var showsFullEditorButton: Bool {
-        Self.showsFullEditorButton(measuredHeight: composerTextHeight)
+        Self.showsFullEditorButton(measuredHeight: composerTextHeight, restingHeight: restingTextHeight)
     }
 
     /// Anything that needs the full composer: focus, a draft, an
@@ -1006,7 +1017,7 @@ struct ComposerBar: View, Equatable {
                     appState.showAgentsSheet = true
                 } label: {
                     Label("\(appState.activeAgents)", systemImage: "person.2")
-                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .scaledFont(.caption.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.conduitAccent)
                         .frame(minWidth: Self.controlSize, minHeight: Self.controlSize)
                         .contentShape(Self.controlHitShape)
@@ -1068,7 +1079,7 @@ struct ComposerBar: View, Equatable {
                 Text(appState.turnState == .unsupportedGateway
                      ? AppLocalization.string("Update this Hermes gateway to recover active turns safely.")
                      : AppLocalization.string("Synchronizing with Hermes before enabling chat controls"))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
                 }
@@ -1076,7 +1087,7 @@ struct ComposerBar: View, Equatable {
 
             if let error = appState.errorMessage, !error.isEmpty {
                 Text(error)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1090,7 +1101,7 @@ struct ComposerBar: View, Equatable {
                     repairContext = appState.beginConnectionRepair()
                 } label: {
                     Label("Repair Connection", systemImage: "wrench.and.screwdriver")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 34)
                 }
@@ -1125,7 +1136,7 @@ struct ComposerBar: View, Equatable {
                         .foregroundStyle(.secondary)
                 }
                 Text(Self.chatTakeoverMessage(takeover))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
@@ -1134,7 +1145,7 @@ struct ComposerBar: View, Equatable {
                     appState.dismissChatTakeover()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
@@ -1151,7 +1162,7 @@ struct ComposerBar: View, Equatable {
                     appState.takeOverChat()
                 } label: {
                     Label("Take over this chat", systemImage: "arrow.down.to.line")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 34)
                 }
@@ -1211,7 +1222,7 @@ struct ComposerBar: View, Equatable {
             ProgressView()
                 .controlSize(.small)
             Text(AppLocalization.string("Compressing…"))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
@@ -1228,7 +1239,7 @@ struct ComposerBar: View, Equatable {
                 .controlSize(.small)
                 .accessibilityHidden(true)
             Text(AppLocalization.string("Sending…"))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
@@ -1245,7 +1256,7 @@ struct ComposerBar: View, Equatable {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
             Text(message)
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.red)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -1255,7 +1266,7 @@ struct ComposerBar: View, Equatable {
                     guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
                     UIApplication.shared.open(url)
                 }
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
             }
         }
         .padding(.horizontal, 14)
@@ -1483,7 +1494,7 @@ struct ComposerBar: View, Equatable {
                 .contentTransition(.symbolEffect(.replace))
             if let actionTitle {
                 Text(actionTitle)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
         }
@@ -1522,7 +1533,7 @@ struct ComposerBar: View, Equatable {
                         .truncationMode(.tail)
                     if appState.runtime.yolo {
                         Image(systemName: "shield.slash.fill")
-                            .font(.caption2.weight(.bold))
+                            .scaledFont(.caption2.weight(.bold))
                             .foregroundStyle(Color.orange)
                     }
                 }
@@ -1542,7 +1553,7 @@ struct ComposerBar: View, Equatable {
                     .layoutPriority(1)
             }
         }
-        .font(.footnote.weight(.semibold))
+        .scaledFont(.footnote.weight(.semibold))
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         // The rest of the chip's width still opens the sheet.
         .background {
@@ -1783,7 +1794,7 @@ struct ComposerBar: View, Equatable {
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(notice)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -1791,7 +1802,7 @@ struct ComposerBar: View, Equatable {
                 appState.dismissComposerNotice()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
@@ -1822,7 +1833,7 @@ struct ComposerBar: View, Equatable {
                     Image(systemName: "phone.arrow.up.right")
                 }
             }
-            .font(.subheadline.weight(.semibold))
+            .scaledFont(.subheadline.weight(.semibold))
             .foregroundStyle(Color.conduitAccent)
             .frame(width: Self.controlSize, height: Self.controlSize)
             .contentShape(Self.controlHitShape)
@@ -2039,7 +2050,7 @@ struct ComposerBar: View, Equatable {
             replaceComposerText("")
             attachments = []
             if clearingReply { replyReference = nil }
-            composerTextHeight = ComposerPasteTextView.minimumHeight
+            composerTextHeight = restingTextHeight
         }
         if reduceMotion {
             updates()
@@ -2242,16 +2253,16 @@ struct ComposerBar: View, Equatable {
     private func replyReferenceChip(_ reference: ComposerReplyReference) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "quote.bubble")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(AppLocalization.string("Replying to \(reference.authorName)"))
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Text(reference.excerpt)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -2265,7 +2276,7 @@ struct ComposerBar: View, Equatable {
                 }
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.body)
+                    .scaledFont(.body)
                     .foregroundStyle(.secondary)
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
@@ -2382,7 +2393,7 @@ struct ComposerBar: View, Equatable {
         replyReference = draft.replyReference
         loadedDraftKey = key
         loadedDraftClearCount = draftStore.clearCount
-        composerTextHeight = ComposerPasteTextView.minimumHeight
+        composerTextHeight = restingTextHeight
         isFocused = false
         isShowingSlashSuggestions = false
     }
@@ -2426,7 +2437,7 @@ struct ComposerBar: View, Equatable {
         rotateAttachmentGeneration()
         editorIdentity = UUID()
         loadDraft(for: destinationKey)
-        composerTextHeight = ComposerPasteTextView.minimumHeight
+        composerTextHeight = restingTextHeight
         isFocused = false
         // A prefill for this chat goes in over its draft; one for a chat
         // left behind is dropped.
@@ -2826,13 +2837,13 @@ private struct SlashSuggestionsOverlay: View {
                                 Text(cmd.name)
                                     .foregroundStyle(.primary)
                             }
-                            .font(.system(.subheadline, design: .monospaced).weight(.semibold))
+                            .scaledFont(.subheadline.monospaced().weight(.semibold))
                             .frame(minWidth: 90, alignment: .leading)
 
                             // Description
                             if !cmd.description.isEmpty {
                                 Text(cmd.description)
-                                    .font(.caption)
+                                    .scaledFont(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }

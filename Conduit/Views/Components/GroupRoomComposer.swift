@@ -263,7 +263,7 @@ struct GroupRoomComposer: View {
                     // not only behind the sheet.
                     if let composerError, !composerError.isEmpty {
                         Label(composerError, systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.red)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -321,10 +321,10 @@ struct GroupRoomComposer: View {
                         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
                         UIApplication.shared.open(url)
                     }
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                 }
             }
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.red)
             .padding(.horizontal, 14)
             .padding(.top, 10)
@@ -337,7 +337,7 @@ struct GroupRoomComposer: View {
 
     private func notice(_ text: String, color: Color) -> some View {
         Text(text)
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(color)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -663,7 +663,7 @@ struct GroupRoomComposer: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 Text(AppLocalization.string("To"))
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
                 ForEach(pickableMembers, id: \.identityKey) { member in
@@ -695,7 +695,7 @@ struct GroupRoomComposer: View {
             HStack(spacing: 5) {
                 GroupMemberAvatar(member: member, name: name, size: 20)
                 Text(name)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .lineLimit(1)
             }
             .padding(.leading, 3)
@@ -773,16 +773,16 @@ struct GroupRoomComposer: View {
     private func replyReferenceChip(_ reference: ComposerReplyReference) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "quote.bubble")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(AppLocalization.string("Replying to \(reference.authorName)"))
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Text(reference.excerpt)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -796,7 +796,7 @@ struct GroupRoomComposer: View {
                 }
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.body)
+                    .scaledFont(.body)
                     .foregroundStyle(.secondary)
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())

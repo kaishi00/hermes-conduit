@@ -72,18 +72,18 @@ struct PresentedConfirmPanel: View {
             } icon: {
                 Image(systemName: "checkmark.shield")
             }
-            .font(.caption.weight(.semibold))
+            .scaledFont(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
 
             Text(verbatim: prompt.title)
-                .font(.title3.weight(.semibold))
+                .scaledFont(.title3.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
 
             if !prompt.preview.isEmpty {
                 ScrollView {
                     Text(preview)
-                        .font(.body)
+                        .scaledFont(.body)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -95,7 +95,7 @@ struct PresentedConfirmPanel: View {
 
             if inCall {
                 Label(spokenHint, systemImage: "waveform")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(Color.conduitAura)
             }
 
@@ -122,7 +122,7 @@ struct PresentedConfirmPanel: View {
                 onEdit()
             } label: {
                 Text("Edit")
-                    .font(.body.weight(.semibold))
+                    .scaledFont(.body.weight(.semibold))
                     .frame(minWidth: 64, minHeight: 44)
                     .padding(.horizontal, 6)
             }
@@ -134,7 +134,7 @@ struct PresentedConfirmPanel: View {
             onAnswer(.declined)
         } label: {
             Text("Not now")
-                .font(.body.weight(.semibold))
+                .scaledFont(.body.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .frame(minHeight: 44)
                 .padding(.horizontal, 8)
@@ -146,7 +146,7 @@ struct PresentedConfirmPanel: View {
             onAnswer(.confirmed)
         } label: {
             Text(verbatim: prompt.actionLabel)
-                .font(.body.weight(.semibold))
+                .scaledFont(.body.weight(.semibold))
                 .foregroundStyle(Color.conduitBackgroundColor)
                 .frame(minWidth: 96, minHeight: 44)
                 .padding(.horizontal, 12)

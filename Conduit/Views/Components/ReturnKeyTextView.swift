@@ -13,8 +13,10 @@ import SwiftUI
 import UIKit
 
 class ReturnKeyTextView: UITextView {
-    /// The text size `font` was last set for (ReturnKeyTextEditor).
+    /// The text size and column `font` was last set for
+    /// (ReturnKeyTextEditor).
     var fontSizeCategory: ContentSizeCategory?
+    var fontColumnText: ColumnText?
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
@@ -256,7 +258,7 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
     var maxLines: Int?
     @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
     @Environment(\.sizeCategory) private var sizeCategory
-    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
+    @Environment(\.columnText) private var columnText
     /// Whether the composer's Send (or dictation's Stop in its place) can
     /// act now; Return falls back to a newline when it can't.
     var canSubmitFromReturn: Bool
@@ -303,9 +305,10 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         // column steps up (`readableChatColumn`), set on each change rather
         // than adjusted by UIKit, which would undo a Mac's point-size growth
         // (`UIFont.preferredFont(forTextStyle:in:)`).
-        if view.fontSizeCategory != sizeCategory {
+        if view.fontSizeCategory != sizeCategory || view.fontColumnText != columnText {
             view.fontSizeCategory = sizeCategory
-            view.font = .preferredFont(forTextStyle: .body, in: sizeCategory, from: columnBaseTextSize)
+            view.fontColumnText = columnText
+            view.font = .preferredFont(forTextStyle: .body, in: sizeCategory, from: columnText)
         }
         if view.isEditable != enabled { view.isEditable = enabled }
         view.accessibilityLabel = accessibilityLabel

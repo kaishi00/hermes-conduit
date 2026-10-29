@@ -85,7 +85,7 @@ struct GeminiLiveSettingsSection: View {
                 ))
             }
             Text(model.provider == .qwenLive ? AppLocalization.string("Qwen Live talks with you while Hermes runs jobs. The permanent API key stays on your server. Your iPhone or Watch connects directly to the provider using a short-lived credential.") : AppLocalization.string("Talk with Gemini Live instead of the Hermes speech pipeline. Hermes still does the work: Gemini starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Gemini answers what Hermes asks you only with what you say, and approves a command only on your yes."))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             LiveVoiceSetupLink(mode: model.provider == .qwenLive ? .qwen : .gemini)
             LiveVoiceConsentRow(mode: model.provider)
@@ -96,7 +96,7 @@ struct GeminiLiveSettingsSection: View {
                         .frame(width: 8, height: 8)
                         .accessibilityHidden(true)
                     Text(status ?? AppLocalization.string("Not checked yet"))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
@@ -125,7 +125,7 @@ struct GeminiLiveSettingsSection: View {
                     Text("Web lookups").foregroundStyle(.secondary)
                 }
                 Text(model.provider == .qwenLive ? AppLocalization.string("Qwen uses Hermes web search. Native search is disabled while function tools are enabled.") : AppLocalization.string("How Gemini answers quick questions like weather or news. Hermes web search uses the search your Hermes server is set up with (SearXNG, Firecrawl…). Google Search has its own quota on your Gemini key. Automatic uses Hermes when it has a search set up, otherwise Google. Applies to the next conversation."))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 if model.provider == .qwenLive {
                     TextField("Voice", text: $voice)
@@ -145,7 +145,7 @@ struct GeminiLiveSettingsSection: View {
                     }
                 }
                 Text(model.provider == .qwenLive ? AppLocalization.string("The voice Qwen speaks with. Applies to the next conversation.") : AppLocalization.string("The voice Gemini speaks with. Applies to the next conversation."))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Use Hermes memory", isOn: Binding(
                     get: { memory },
@@ -155,7 +155,7 @@ struct GeminiLiveSettingsSection: View {
                     }
                 ))
                 Text(model.provider == .qwenLive ? AppLocalization.string("Qwen gets what your Hermes agent remembers about you, from whichever memory Hermes is set up with, and can search it for more. That memory is sent to Alibaba Cloud with the conversation. Applies to the next conversation.") : AppLocalization.string("Gemini gets what your Hermes agent remembers about you, from whichever memory Hermes is set up with, and can search it for more. That memory is sent to Google with the conversation. Applies to the next conversation."))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Use Hermes personality", isOn: Binding(
                     get: { personality },
@@ -165,7 +165,7 @@ struct GeminiLiveSettingsSection: View {
                     }
                 ))
                 Text(model.provider == .qwenLive ? AppLocalization.string("Qwen talks with the personality in this profile's SOUL.md, without reading out actions or emoji. SOUL.md is sent to Alibaba Cloud with the conversation. Applies to the next conversation.") : AppLocalization.string("Gemini talks with the personality in this profile's SOUL.md, without reading out actions or emoji. SOUL.md is sent to Google with the conversation. Applies to the next conversation."))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Talk over it on the speaker", isOn: Binding(
                     get: { speakerBargeIn },
@@ -175,7 +175,7 @@ struct GeminiLiveSettingsSection: View {
                     }
                 ))
                 Text(model.provider == .qwenLive ? AppLocalization.string("Experimental. Keeps the microphone open while Qwen talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Qwen keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation.") : AppLocalization.string("Experimental. Keeps the microphone open while Gemini talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Gemini keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation."))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Save calls to Sessions", isOn: Binding(
                     get: { saveCalls },
@@ -185,7 +185,7 @@ struct GeminiLiveSettingsSection: View {
                     }
                 ))
                 Text("Each call's transcript is saved to your Hermes server's history and shows under Voice in Sessions, where you can read it or resume the call. Needs an up-to-date Hermes notifier plugin. Shared by every live voice mode. Applies to the next conversation.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -383,7 +383,7 @@ struct LiveVoiceQuickHint: View {
         Group {
             if isShown, let thread {
                 Text(AppLocalization.string("Working in \(thread). Say “quick…” for a fast side job."))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
@@ -459,7 +459,7 @@ struct VoiceJobModelSettingsSection: View {
                 Text("Reasoning").foregroundStyle(.secondary)
             }
             Text("The model Hermes uses for background jobs started by voice. A fast model with low reasoning keeps spoken requests quick; your chats keep the profile's model.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
         .task { providers = await settings.loadProviders() }
@@ -610,7 +610,7 @@ struct VoiceReplyModelSettingsSection: View {
                         Text("Reasoning").foregroundStyle(.secondary)
                     }
                     Text("The model Hermes answers you with in a voice conversation. Reasoning is off by default so replies start sooner; typed messages keep the chat's model. Hermes Desktop uses this setting too.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }

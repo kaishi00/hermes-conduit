@@ -313,7 +313,7 @@ struct ModelPickerView: View {
                             editingVisibility = true
                         }
                     }
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .tint(.conduitAccent)
                 }
             }
@@ -422,7 +422,7 @@ struct ModelPickerView: View {
                 .accessibilityLabel(AppLocalization.string("Clear"))
             }
         }
-        .font(.subheadline)
+        .scaledFont(.subheadline)
         .padding(11)
         .background(rowFoundation, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
@@ -461,7 +461,7 @@ struct ModelPickerView: View {
             let matches = searchMatches
             if matches.isEmpty {
                 Text(verbatim: AppLocalization.string("Nothing matches “\(searchQuery.trimmingCharacters(in: .whitespacesAndNewlines))”."))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(16)
@@ -489,17 +489,17 @@ struct ModelPickerView: View {
             case .failed:
                 VStack(alignment: .leading, spacing: 8) {
                     Text(AppLocalization.string("Could not load models."))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     Button(AppLocalization.string("Try Again")) { Task { await loadModels() } }
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .tint(.conduitAccent)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
             case .empty:
                 Text("No models are available from this gateway.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(16)
             case .ready:
@@ -512,7 +512,7 @@ struct ModelPickerView: View {
                 }
                 if shown.isEmpty {
                     Text("All providers are hidden. Tap Edit to restore one.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(16)
                 }
@@ -528,13 +528,13 @@ struct ModelPickerView: View {
     private var modelStatusRows: some View {
         if let modelError {
             Label(modelError, systemImage: "exclamationmark.triangle.fill")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.red)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
         } else if let modelNote {
             Text(modelNote)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
@@ -552,18 +552,18 @@ struct ModelPickerView: View {
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "cube.transparent")
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.conduitAccent)
                         .frame(width: 20)
                         .accessibilityHidden(true)
                     Text(provider.name)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                     Spacer(minLength: 12)
                     Text("\(provider.models.count)")
-                        .font(.caption.monospacedDigit())
+                        .scaledFont(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
                 }
@@ -614,11 +614,11 @@ struct ModelPickerView: View {
                 } else {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(model.id)
-                            .font(.subheadline.weight(.medium))
+                            .scaledFont(.subheadline.weight(.medium))
                             .lineLimit(1)
                         if let label = model.label {
                             Text(label)
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
                         }
@@ -693,7 +693,7 @@ struct ModelPickerView: View {
 
             if let reasoningError {
                 Label(reasoningError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding([.horizontal, .bottom], 16)
@@ -718,7 +718,7 @@ struct ModelPickerView: View {
     /// dark-mode gold, white on the light-mode brown), the rest quiet.
     private func reasoningPillLabel(_ title: String, isSelected: Bool) -> some View {
         Text(title)
-            .font(.subheadline.weight(isSelected ? .semibold : .regular))
+            .scaledFont(.subheadline.weight(isSelected ? .semibold : .regular))
             .foregroundStyle(isSelected ? selectedPillText : Color.primary)
             .padding(.horizontal, 14)
             .frame(minHeight: 36)
@@ -768,7 +768,7 @@ struct ModelPickerView: View {
                         .tint(.conduitAccent)
                         .disabled(true)
                     Text(yoloHelpText)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 // VoiceOver can skim past disabled controls and their separate
@@ -783,12 +783,12 @@ struct ModelPickerView: View {
                 .tint(.conduitAccent)
                 .disabled(writingYolo != nil || switchingRow != nil)
                 Text(yoloHelpText)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
             if let runSettingsError {
                 Label(runSettingsError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -847,7 +847,7 @@ struct ModelPickerView: View {
                     .background(rowFoundation, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 Text("Hiding a provider preserves its individual model choices. These filters stay on this device.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
             .padding(16)
@@ -884,11 +884,11 @@ struct ModelPickerView: View {
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                            .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            .scaledFont(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(provider.name).font(.subheadline.weight(.semibold))
+                            Text(provider.name).scaledFont(.subheadline.weight(.semibold))
                             Text("\(String(visibleModelCount(in: provider))) of \(String(provider.models.count)) shown")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .scaledFont(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                     }
@@ -898,7 +898,7 @@ struct ModelPickerView: View {
                 Button(providerHidden ? AppLocalization.string("Hidden") : AppLocalization.string("Visible")) {
                     toggleProviderVisibility(provider.name)
                 }
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(providerHidden ? Color.secondary : Color.green)
                 .padding(.horizontal, 12).frame(minHeight: 30)
                 .background(providerHidden ? Color.secondary.opacity(0.12) : Color.green.opacity(0.12), in: Capsule())
@@ -916,7 +916,7 @@ struct ModelPickerView: View {
                     Button("Show all") { setAllModels(in: provider, visible: true) }
                     Button("Hide all") { setAllModels(in: provider, visible: false) }
                 }
-                .font(.caption.weight(.semibold)).tint(.conduitAccent)
+                .scaledFont(.caption.weight(.semibold)).tint(.conduitAccent)
                 .padding(.horizontal, 16).padding(.vertical, 8)
 
                 ForEach(shownModels, id: \.id) { model in
@@ -926,10 +926,10 @@ struct ModelPickerView: View {
                         toggleModelVisibility(key)
                     } label: {
                         HStack {
-                            Text(model.id).font(.footnote).lineLimit(2)
+                            Text(model.id).scaledFont(.footnote).lineLimit(2)
                             Spacer()
                             Text(hidden ? AppLocalization.string("Hidden") : AppLocalization.string("Visible"))
-                                .font(.caption.weight(.semibold))
+                                .scaledFont(.caption.weight(.semibold))
                                 .foregroundStyle(hidden ? Color.secondary : Color.green)
                         }
                         .padding(.leading, 36).padding(.trailing, 16).padding(.vertical, 10)
@@ -939,7 +939,7 @@ struct ModelPickerView: View {
                 }
                 if models.count > shownModels.count {
                     Button("Show \(models.count - shownModels.count) more") { showAllModelsFor.insert(provider.name) }
-                        .font(.caption.weight(.semibold)).tint(.conduitAccent)
+                        .scaledFont(.caption.weight(.semibold)).tint(.conduitAccent)
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
                 }
             }

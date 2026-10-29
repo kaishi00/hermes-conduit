@@ -19,29 +19,29 @@ struct ToolResultBodyView: View {
     /// The column's text size, which a wide window steps up
     /// (`readableChatColumn`), as the raw Input and Output below follow.
     @Environment(\.sizeCategory) private var sizeCategory
-    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
+    @Environment(\.columnText) private var columnText
 
     private var monospaced: UIFont {
-        .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnBaseTextSize).pointSize, weight: .regular)
+        .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnText).pointSize, weight: .regular)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let error = presentation.error {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
                     .labelStyle(.titleAndIcon)
             }
             if let notice = presentation.notice {
                 Label(notice, systemImage: "info.circle")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             content
             if let exitCode = presentation.exitCode {
                 Text(AppLocalization.string("Exit code \(String(exitCode))"))
-                    .font(.caption2.monospaced())
+                    .scaledFont(.caption2.monospaced())
                     .foregroundStyle(.secondary)
             }
         }
@@ -64,7 +64,7 @@ struct ToolResultBodyView: View {
                             .strikethrough(item.status == .cancelled)
                             .foregroundStyle(item.status == .completed || item.status == .cancelled ? .secondary : .primary)
                     }
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .padding(.leading, CGFloat(min(item.depth, 6)) * 16)
                     .accessibilityElement(children: .combine)
                     .modifier(SubtaskAccessibilityValue(isSubtask: item.depth > 0))
@@ -120,24 +120,24 @@ struct ToolResultBodyView: View {
         VStack(alignment: .leading, spacing: 1) {
             if !link.title.isEmpty {
                 Text(link.title)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(link.opensPage ? Color.conduitAccent : Color.primary)
                     .lineLimit(2)
             }
             if link.opensPage {
                 Text(URL(string: link.url)?.host ?? link.url)
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.conduitTertiary)
                     .lineLimit(1)
             }
             if let error = link.error {
                 Text(error)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
                     .lineLimit(3)
             } else if let snippet = link.snippet {
                 Text(snippet)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
             }

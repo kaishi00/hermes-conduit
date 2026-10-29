@@ -74,7 +74,7 @@ struct PredictiveRow: View {
     private func continuationChip(_ guess: Predictive.Guess) -> some View {
         Text(verbatim: "…" + guess.text.trimmingCharacters(in: .whitespaces))
             .lineLimit(1)
-            .font(.subheadline)
+            .scaledFont(.subheadline)
             .foregroundStyle(.primary)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
@@ -105,7 +105,7 @@ struct PredictiveRow: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
@@ -122,7 +122,7 @@ struct PredictiveRow: View {
                 store.unfold()
             } label: {
                 Image(systemName: "sparkles")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(Color.conduitAura)
                     .frame(width: 44, height: 32)
                     .background(Capsule().fill(Color.conduitAura.opacity(0.12)))
@@ -167,7 +167,7 @@ struct PredictiveFollowUpTag: View {
                 showsWhy.toggle()
             } label: {
                 Label("Hermes followed up", systemImage: "sparkle")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(Color.conduitAura)
             }
             .buttonStyle(.plain)
@@ -175,7 +175,7 @@ struct PredictiveFollowUpTag: View {
             .accessibilityHint(Text("Hermes wrote this without a new message from you. Shows why."))
             if showsWhy, !why.isEmpty {
                 Text(why)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -200,11 +200,11 @@ struct PredictiveReplyChip: View {
                     .multilineTextAlignment(.leading)
             }
             Image(systemName: "arrow.up")
-                .font(.caption.weight(.bold))
+                .scaledFont(.caption.weight(.bold))
                 .foregroundStyle(Color.conduitAura)
                 .accessibilityHidden(true)
         }
-        .font(.subheadline)
+        .scaledFont(.subheadline)
         .foregroundStyle(.primary)
         .padding(.horizontal, 12)
         .padding(.vertical, 7)

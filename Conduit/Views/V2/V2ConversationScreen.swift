@@ -302,9 +302,9 @@ struct V2ConversationScreen: View {
                         } label: {
                             HStack(spacing: 3) {
                                 Image(systemName: "arrow.turn.left.up")
-                                    .font(.caption2.weight(.bold))
+                                    .scaledFont(.caption2.weight(.bold))
                                 Text(parent.title)
-                                    .font(.caption.weight(.semibold))
+                                    .scaledFont(.caption.weight(.semibold))
                                     .lineLimit(1)
                             }
                             .foregroundStyle(Color.conduitAccent)
@@ -437,7 +437,7 @@ struct ChatSidePanel: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Artifacts")
-                    .font(.headline)
+                    .scaledFont(.headline)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 Button {
@@ -475,9 +475,9 @@ private struct V2ConnectionLine: View {
             let connecting = appState.isRecoveringConnection
             HStack(spacing: 4) {
                 Image(systemName: connecting ? "arrow.triangle.2.circlepath" : "wifi.slash")
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
                 Text(connecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Disconnected"))
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .lineLimit(1)
             }
             .foregroundStyle(connecting ? Color.orange : Color.red)

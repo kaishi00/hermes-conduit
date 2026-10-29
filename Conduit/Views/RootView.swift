@@ -774,13 +774,13 @@ struct ChatTitleControl: View {
     private var titleLabel: some View {
         if compact {
             Text(appState.displayedChatTitle)
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         } else {
             Text(appState.displayedChatTitle)
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .padding(.horizontal, 12)

@@ -139,7 +139,7 @@ struct GPTLiveSettingsSection: View {
                 ))
             }
             Text("Talk with GPT-Live on the ChatGPT subscription your Hermes server is signed in to, instead of the Hermes speech pipeline. Hermes still does the work: GPT-Live hands requests to background jobs on this profile. The sign-in stays on your Hermes server, and it never falls back to API billing. Turning this on turns Gemini Live and Grok Live off.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             LiveVoiceSetupLink(mode: .gpt)
             LiveVoiceConsentRow(mode: .gptLive)
@@ -150,7 +150,7 @@ struct GPTLiveSettingsSection: View {
                         .frame(width: 8, height: 8)
                         .accessibilityHidden(true)
                     Text(status ?? AppLocalization.string("Not checked yet"))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
@@ -178,7 +178,7 @@ struct GPTLiveSettingsSection: View {
                         Text("Voice").foregroundStyle(.secondary)
                     }
                     Text("The voice GPT-Live speaks with. Server default uses the voice set on your Hermes server (voice.gpt_live in the profile's config). The model is set there too. Applies to the next conversation.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     apiSettings
@@ -191,7 +191,7 @@ struct GPTLiveSettingsSection: View {
                     }
                 ))
                 Text("GPT-Live gets what your Hermes agent remembers about you. That memory is sent to OpenAI with the conversation. Applies to the next conversation.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Use Hermes personality", isOn: Binding(
                     get: { personality },
@@ -201,7 +201,7 @@ struct GPTLiveSettingsSection: View {
                     }
                 ))
                 Text("GPT-Live talks with the personality in this profile's SOUL.md. SOUL.md is sent to OpenAI with the conversation. Applies to the next conversation.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Save calls to Sessions", isOn: Binding(
                     get: { saveCalls },
@@ -211,7 +211,7 @@ struct GPTLiveSettingsSection: View {
                     }
                 ))
                 Text("Each call's transcript is saved to your Hermes server's history and shows under Voice in Sessions, where you can read it or resume the call. Needs an up-to-date Hermes notifier plugin. Shared by every live voice mode. Applies to the next conversation.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -240,11 +240,11 @@ struct GPTLiveSettingsSection: View {
         }
         if billing == .api {
             Text("Bills your Hermes server's OpenAI API key per minute of call time, separately from any ChatGPT plan. The call screen shows which one a call is on.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.orange)
         } else {
             Text("Bills the ChatGPT subscription your Hermes server is signed in to. A call never moves to the API key on its own.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -263,7 +263,7 @@ struct GPTLiveSettingsSection: View {
             Text("Voice").foregroundStyle(.secondary)
         }
         Text("The voice GPT-Live speaks with on the API key. Server default uses voice.gpt_live.voice in the profile's config. Applies to the next conversation.")
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
         ConduitMenuPicker(
             value: apiMaxMinutes,
@@ -276,7 +276,7 @@ struct GPTLiveSettingsSection: View {
             Text("Time limit per call").foregroundStyle(.secondary)
         }
         Text("An API-key call says goodbye and ends when it reaches this limit.")
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
         Toggle("Calls from Hermes on the API key", isOn: Binding(
             get: { apiHermesCalls },
@@ -286,7 +286,7 @@ struct GPTLiveSettingsSection: View {
             }
         ))
         Text("When Hermes calls you, the call uses the ChatGPT subscription unless this is on.")
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
     }
 

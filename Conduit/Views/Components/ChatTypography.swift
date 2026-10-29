@@ -138,10 +138,12 @@ struct ChatTextAppearance: Hashable {
     var widthScale: CGFloat = 1
 
     /// This appearance in a column that stepped its text up `steps` sizes
-    /// from `base`, the system's size (`ChatTypography.widthScale`).
-    func widened(steps: Int, from base: DynamicTypeSize) -> ChatTextAppearance {
+    /// from the system's size (`ChatTypography.widthScale`), or on a Mac
+    /// grew it by `column.scale`; nil outside such a column.
+    func widened(steps: Int, in column: ColumnText?) -> ChatTextAppearance {
+        guard let column else { return self }
         var appearance = self
-        appearance.widthScale = ChatTypography.widthScale(steps: steps, from: base)
+        appearance.widthScale = ChatTypography.widthScale(steps: steps, from: column.base) * column.scale
         appearance.widthSteps = appearance.widthScale == 1 ? 0 : steps
         return appearance
     }
@@ -160,7 +162,7 @@ struct ChatTextAppearance: Hashable {
     /// what they were.
     var cacheIdentity: String {
         var identity = style == .standard ? size.cacheIdentity : "\(size.cacheIdentity)-\(style.rawValue)"
-        if widthSteps > 0 { identity += "-w\(widthSteps)x\(Int((widthScale * 1000).rounded()))" }
+        if widthScale != 1 { identity += "-w\(widthSteps)x\(Int((widthScale * 1000).rounded()))" }
         return identity
     }
 }
@@ -437,10 +439,19 @@ private struct ChatWidthTextStepsEnvironmentKey: EnvironmentKey {
     static let defaultValue = 0
 }
 
-/// The system's text size under a column that stepped its environment's
-/// up, which the transcript's and cards' growth start from.
-private struct ChatColumnBaseTextSizeEnvironmentKey: EnvironmentKey {
-    static let defaultValue: DynamicTypeSize? = nil
+/// What a column that steps its text hands the text inside it.
+private struct ColumnTextEnvironmentKey: EnvironmentKey {
+    static let defaultValue: ColumnText? = nil
+}
+
+/// What a column that grows its text with its width (`readableChatColumn`,
+/// `readableSettingsColumn`) hands the text inside it: the system's size
+/// its steps start from, which the transcript's and cards' growth start
+/// from, and on a Mac, which draws text styles at one size, the scale its
+/// text grows by in points instead (1 elsewhere).
+struct ColumnText: Equatable {
+    var base: DynamicTypeSize
+    var scale: CGFloat = 1
 }
 
 extension EnvironmentValues {
@@ -450,9 +461,9 @@ extension EnvironmentValues {
     }
 
     /// Nil outside a column that steps its text.
-    var chatColumnBaseTextSize: DynamicTypeSize? {
-        get { self[ChatColumnBaseTextSizeEnvironmentKey.self] }
-        set { self[ChatColumnBaseTextSizeEnvironmentKey.self] = newValue }
+    var columnText: ColumnText? {
+        get { self[ColumnTextEnvironmentKey.self] }
+        set { self[ColumnTextEnvironmentKey.self] = newValue }
     }
 
     /// The transcript typography this subtree renders content with, size
@@ -468,18 +479,18 @@ extension UIFont {
     /// The text style's font at `sizeCategory`, the view's environment
     /// size: a wide window's chat column steps it up (`readableChatColumn`),
     /// which the app-wide `preferredFont(forTextStyle:)` doesn't see. In a
-    /// column stepped up from `base` (`chatColumnBaseTextSize`), where the
-    /// system draws the stepped size smaller than iOS does (an iPad app on
-    /// a Mac appears to draw every size alike), it grows the rest of the
-    /// way by point size, as the transcript does.
+    /// column stepped up from `column.base` (`columnText`), where the
+    /// system draws the stepped size smaller than iOS does, it grows the
+    /// rest of the way by point size, as the transcript does, and on a Mac
+    /// by the column's scale.
     static func preferredFont(
         forTextStyle style: UIFont.TextStyle,
         in sizeCategory: ContentSizeCategory,
-        from base: DynamicTypeSize? = nil
+        from column: ColumnText? = nil
     ) -> UIFont {
         let category = UIContentSizeCategory(sizeCategory)
         let font = preferredFont(forTextStyle: style, compatibleWith: UITraitCollection(preferredContentSizeCategory: category))
-        let growth = ChatTypography.missingGrowth(at: category, from: base)
+        let growth = ChatTypography.missingGrowth(at: category, from: column?.base) * (column?.scale ?? 1)
         return growth == 1 ? font : font.withSize(font.pointSize * growth)
     }
 }

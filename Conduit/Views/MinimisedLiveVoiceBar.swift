@@ -199,20 +199,20 @@ private struct LiveVoiceBarRow: View {
                             .accessibilityHidden(true)
                     } else {
                         Image(systemName: symbol)
-                            .font(.body.weight(.semibold))
+                            .scaledFont(.body.weight(.semibold))
                             .foregroundStyle(Color.conduitAura)
                             .frame(width: iconWidth)
                             .accessibilityHidden(true)
                     }
                     VStack(alignment: .leading, spacing: 1) {
                         Text(verbatim: thread.map { "\(name) · \($0)" } ?? name)
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                             .lineLimit(1)
                         if usesV2, let startedAt, !isFailed {
                             // The state and how long the call has run.
                             TimelineView(.animation(minimumInterval: 1)) { context in
                                 Text(verbatim: "\(status) · \(V2CallHeaderTitle.clock(max(0, context.date.timeIntervalSince(startedAt))))")
-                                    .font(.caption.monospacedDigit())
+                                    .scaledFont(.caption.monospacedDigit())
                                     .foregroundStyle(.secondary)
                                     .lineLimit(2)
                                     // VoiceOver reads the state without the
@@ -221,7 +221,7 @@ private struct LiveVoiceBarRow: View {
                             }
                         } else {
                             Text(status)
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
                         }
@@ -240,7 +240,7 @@ private struct LiveVoiceBarRow: View {
 
             Button(action: onToggleMute) {
                 Image(systemName: isMuted ? "mic.slash.fill" : "mic.fill")
-                    .font(.body.weight(.semibold))
+                    .scaledFont(.body.weight(.semibold))
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
             }
@@ -249,7 +249,7 @@ private struct LiveVoiceBarRow: View {
 
             Button(action: onEnd) {
                 Image(systemName: "phone.down.fill")
-                    .font(.body.weight(.semibold))
+                    .scaledFont(.body.weight(.semibold))
                     .foregroundStyle(.white)
                     .frame(minWidth: 36, minHeight: 36)
                     .background(Circle().fill(Color.red))

@@ -37,18 +37,18 @@ struct LocalLiveSettingsSection: View {
             Text(agent
                 ? AppLocalization.string("Talk through a speech server you run, with a fast model of your choosing answering right away. Real work goes to Hermes as jobs, with their cards in the call's chat, like the other live modes.")
                 : AppLocalization.string("A hands-free call through a speech server you run, such as Hugging Face speech-to-speech. Everything you say goes to Hermes as a turn in the call's chat, and Hermes' reply is spoken as it is written."))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Text(AppLocalization.string("1. Your speech server"))
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             SpeechServerSettingsView(service: service)
             Text(AppLocalization.string("2. Point the server at Hermes"))
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             SpeechServerVoiceSettingsView(service: service, showsIntro: false)
             if agent {
                 Text(AppLocalization.string("3. Your fast model"))
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                 LocalLiveFrontModelSettingsView(service: service)
             }
         }
@@ -75,12 +75,12 @@ struct LocalLiveFrontModelSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(AppLocalization.string("Any OpenAI-compatible server works, on your network (llama.cpp, Ollama, vLLM, LM Studio) or a hosted one. A small, quick model is best: it only talks and hands the work to Hermes."))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if loaded && status == nil {
                 Text(AppLocalization.string("Update the Conduit plugin on your Hermes host to use a fast model."))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
             } else {
                 field(AppLocalization.string("Server address"), text: $urlDraft, prompt: "http://192.168.1.20:8080/v1",
@@ -89,10 +89,10 @@ struct LocalLiveFrontModelSettingsView: View {
                       identifier: "voice.localLive.frontModel.model", keyboard: .default)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text("Key").font(.subheadline.weight(.semibold))
+                        Text("Key").scaledFont(.subheadline.weight(.semibold))
                         Spacer()
                         Text(status?.hasKey == true ? AppLocalization.string("Set") : AppLocalization.string("None"))
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                     SecureField(AppLocalization.string("Optional, for a hosted model"), text: $keyDraft)
@@ -109,7 +109,7 @@ struct LocalLiveFrontModelSettingsView: View {
                     Spacer()
                     if status?.hasKey == true {
                         Button(AppLocalization.string("Remove key"), role: .destructive) { Task { await removeKey() } }
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .disabled(isSaving)
                     }
                 }
@@ -125,19 +125,19 @@ struct LocalLiveFrontModelSettingsView: View {
     private var statusLine: some View {
         if let saveError {
             Label(saveError, systemImage: "exclamationmark.triangle.fill")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.orange)
         } else if let status {
             if status.available {
                 Label(AppLocalization.string("Calls answer with \(status.model ?? "") and hand the work to Hermes."), systemImage: "checkmark.circle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.green)
                     .accessibilityIdentifier("voice.localLive.frontModel.status")
             } else {
                 // Without one, the call still works: Hermes answers each turn.
                 Label(status.reason ?? AppLocalization.string("No fast model is set, so Hermes answers each turn itself, which is slower to start talking."),
                       systemImage: status.configured ? "exclamationmark.triangle.fill" : "info.circle")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(status.configured ? .orange : .secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("voice.localLive.frontModel.status")
@@ -147,7 +147,7 @@ struct LocalLiveFrontModelSettingsView: View {
 
     private func field(_ title: String, text: Binding<String>, prompt: String, identifier: String, keyboard: UIKeyboardType) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(verbatim: title).font(.subheadline.weight(.semibold))
+            Text(verbatim: title).scaledFont(.subheadline.weight(.semibold))
             TextField(text: text, prompt: Text(verbatim: prompt)) { Text(verbatim: title) }
                 .keyboardType(keyboard)
                 .autocorrectionDisabled()

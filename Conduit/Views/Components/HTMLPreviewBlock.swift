@@ -199,7 +199,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
                         Text("Loading preview…")
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -227,7 +227,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             } icon: {
                 Image(systemName: "chart.xyaxis.line")
             }
-            .font(.caption2.monospaced().weight(.semibold))
+            .scaledFont(.caption2.monospaced().weight(.semibold))
             .foregroundStyle(.secondary)
             // The spinner over a measuring page isn't read out; say it here
             // (before the page loads, the loading row says it). Once
@@ -240,7 +240,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
                     openFullScreen()
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.caption2.weight(.semibold))
+                        .scaledFont(.caption2.weight(.semibold))
                 }
                 .tint(.conduitAccent)
                 .accessibilityLabel(Text("Open full screen"))

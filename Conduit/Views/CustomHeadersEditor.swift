@@ -59,15 +59,15 @@ struct CustomHeadersEditorSheet: View {
             Form {
                 Section {
                     Text(AppLocalization.string("Sent with every request to this server, for reverse proxies such as Pangolin, Traefik, or nginx that check a header. Values stay in Keychain."))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     if let origin {
                         Text(verbatim: origin)
-                            .font(.footnote.monospaced())
+                            .scaledFont(.footnote.monospaced())
                             .foregroundStyle(.secondary)
                     } else {
                         Text(AppLocalization.string("Extra headers are only sent over HTTPS. Enter an https:// server address first."))
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.orange)
                     }
                 }
@@ -108,7 +108,7 @@ struct CustomHeadersEditorSheet: View {
                         }
                         if let problem = problem(for: row) {
                             Text(problem)
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(.red)
                         }
                         Button(role: .destructive) {

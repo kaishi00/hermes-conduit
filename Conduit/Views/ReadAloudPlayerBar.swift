@@ -32,16 +32,16 @@ struct ReadAloudPlayerBar: View {
         HStack(spacing: 6) {
             HStack(spacing: 10) {
                 Image(systemName: "speaker.wave.2.fill")
-                    .font(.body.weight(.semibold))
+                    .scaledFont(.body.weight(.semibold))
                     .foregroundStyle(Color.conduitAccent)
                     .frame(width: iconWidth)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: reading.title)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     Text(status)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -78,7 +78,7 @@ struct ReadAloudControls: View {
     }
 
     private let buttonSide: CGFloat = 44
-    private let symbolFont: Font = .body.weight(.semibold)
+    private let symbolFont: ScaledFont = .body.weight(.semibold)
 
     var body: some View {
         HStack(spacing: 0) {
@@ -98,7 +98,7 @@ struct ReadAloudControls: View {
                 }
             } label: {
                 Text(verbatim: controller.speed.label)
-                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .scaledFont(.caption.weight(.semibold).monospacedDigit())
                     .frame(minWidth: buttonSide, minHeight: buttonSide)
                     .contentShape(Rectangle())
             }
@@ -110,7 +110,7 @@ struct ReadAloudControls: View {
                 controller.togglePause()
             } label: {
                 Image(systemName: controller.isPaused ? "play.fill" : "pause.fill")
-                    .font(symbolFont)
+                    .scaledFont(symbolFont)
                     .frame(minWidth: buttonSide, minHeight: buttonSide)
                     .contentShape(Rectangle())
             }
@@ -124,7 +124,7 @@ struct ReadAloudControls: View {
                 controller.stop()
             } label: {
                 Image(systemName: "stop.fill")
-                    .font(symbolFont)
+                    .scaledFont(symbolFont)
                     .frame(minWidth: buttonSide, minHeight: buttonSide)
                     .contentShape(Rectangle())
             }
