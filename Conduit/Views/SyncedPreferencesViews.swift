@@ -23,7 +23,7 @@ struct SyncedPreferencesSettingsDetail: View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Sync across devices"), symbol: "arrow.triangle.2.circlepath", tint: .conduitAccent) {
                 Text("Your iPhone and iPad share Conduit's preferences through the Conduit plugin on your Hermes host: appearance, chat and voice settings, the order of your pinned chats, CarPlay, and your other saved dashboards (their addresses only).")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 Toggle(AppLocalization.string("Sync with this Hermes"), isOn: Binding(
                     // Holds on while the host is checked, so the tap reads as taken.
@@ -42,7 +42,7 @@ struct SyncedPreferencesSettingsDetail: View {
                 .accessibilityIdentifier("settings.sync.enabled")
                 if !appState.supportsSyncedPreferences {
                     Text("Needs Conduit plugin 0.54 or later on this host.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.orange)
                 } else if controller.isEnabled {
                     SettingsMetricRow(label: AppLocalization.string("Status"), value: statusText, lineLimit: 2)
@@ -59,14 +59,14 @@ struct SyncedPreferencesSettingsDetail: View {
                     .accessibilityIdentifier("settings.sync.now")
                 }
                 Text("Passwords, sign-ins, Cloudflare tokens and custom headers stay on each device, and so does your OK for live voice providers and how GPT-Live is paid for. When two devices change the same setting, the later change wins.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
 
             if appState.supportsSyncedPreferences && controller.isEnabled {
                 ConduitSettingsSection(title: AppLocalization.string("Another host"), symbol: "server.rack", tint: .conduitAura) {
                     Text("Each Hermes profile keeps its own copy. To bring yours to a new host or profile, connect to it and copy this device's settings there.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     Button {
                         confirmingCopy = true
@@ -80,7 +80,7 @@ struct SyncedPreferencesSettingsDetail: View {
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.16))
                     .accessibilityIdentifier("settings.sync.copy")
                     Text("On the host, `hermes conduit-push prefs export` and `prefs import` move the same set between hosts.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }

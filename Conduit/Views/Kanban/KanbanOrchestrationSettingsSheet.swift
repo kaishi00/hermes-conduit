@@ -101,7 +101,7 @@ struct KanbanOrchestrationSettingsSheet: View {
                             }
                             .pickerStyle(.menu)
                             Text(footnote(configured: orchestratorProfile, resolved: store.orchestration?.resolvedOrchestratorProfile ?? ""))
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                         }
 
@@ -114,21 +114,21 @@ struct KanbanOrchestrationSettingsSheet: View {
                             }
                             .pickerStyle(.menu)
                             Text(footnote(configured: defaultAssignee, resolved: store.orchestration?.resolvedDefaultAssignee ?? ""))
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                         }
 
                         if let errorMessage {
                             Section {
                                 Label(errorMessage, systemImage: "exclamationmark.triangle")
-                                    .font(.footnote)
+                                    .scaledFont(.footnote)
                                     .foregroundStyle(.red)
                             }
                         }
                         if let notice {
                             Section {
                                 Label(notice, systemImage: "checkmark.circle")
-                                    .font(.footnote)
+                                    .scaledFont(.footnote)
                                     .foregroundStyle(.secondary)
                             }
                         }

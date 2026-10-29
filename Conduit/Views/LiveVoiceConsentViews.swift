@@ -21,19 +21,19 @@ struct LiveVoiceConsentPanel: View {
         ScrollView {
             VStack(spacing: 16) {
                 Image(systemName: "waveform.badge.mic")
-                    .font(.largeTitle)
+                    .scaledFont(.largeTitle)
                     .foregroundStyle(Color.conduitAccent)
                     .accessibilityHidden(true)
                 Text(AppLocalization.string("Send your voice to \(mode.company)?"))
-                    .font(.title3.weight(.semibold))
+                    .scaledFont(.title3.weight(.semibold))
                     .multilineTextAlignment(.center)
                     .accessibilityAddTraits(.isHeader)
                 Text(AppLocalization.string("During a \(mode.displayName) call, Conduit sends your microphone audio, the transcript, and the context and tool results Hermes adds to \(mode.company). Their terms and privacy policy apply."))
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 Text(AppLocalization.string("Conduit asks once for each provider. You can take it back in Settings > Voice."))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 VStack(spacing: 4) {
@@ -69,7 +69,7 @@ struct LiveVoiceConsentSheet: View {
             ConduitBackdrop()
             VStack(spacing: 0) {
                 Text(verbatim: mode.displayName)
-                    .font(.headline)
+                    .scaledFont(.headline)
                     .accessibilityAddTraits(.isHeader)
                     .padding(.top, 20)
                 LiveVoiceConsentPanel(mode: mode, onAllow: { onAnswer(true) }, onNotNow: { onAnswer(false) })
@@ -95,9 +95,9 @@ struct LiveVoiceConsentRow: View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(AppLocalization.string("Your voice goes to \(mode.company)"))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                 Text(granted ? AppLocalization.string("Allowed") : AppLocalization.string("Asks before the first call"))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)

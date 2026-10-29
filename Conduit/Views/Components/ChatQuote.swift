@@ -313,10 +313,10 @@ struct ReplyReferenceQuoteCard: View {
                     authorName.map { AppLocalization.string("Replying to \($0)") } ?? AppLocalization.string("Replying to"),
                     systemImage: "quote.bubble"
                 )
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(primaryColor)
                 Text(excerpt)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(primaryColor.opacity(0.82))
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)

@@ -92,15 +92,15 @@ struct AgentSettingsBanner: View {
                 .foregroundStyle(Color.conduitAura)
                 .accessibilityHidden(true)
             Text(verbatim: text)
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button(action, action: perform)
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .accessibilityIdentifier(identifier)
             Button(action: close) {
                 Image(systemName: "xmark")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
             .accessibilityLabel(Text(AppLocalization.string("Close")))
@@ -125,7 +125,7 @@ struct AgentSettingsReviewSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Hermes asked to change these settings. Nothing changes until you apply it.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     ForEach(items) { item in
                         row(item)
@@ -159,25 +159,25 @@ struct AgentSettingsReviewSheet: View {
     private func row(_ item: AgentSettingsReviewItem) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(verbatim: item.title)
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             HStack(spacing: 6) {
                 Text(verbatim: item.oldValue)
                     .foregroundStyle(.secondary)
                 Image(systemName: "arrow.right")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
                 Text(verbatim: item.newValue)
                     .fontWeight(.medium)
             }
-            .font(.subheadline)
+            .scaledFont(.subheadline)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(verbatim: AppLocalization.string("From \(item.oldValue) to \(item.newValue)")))
             if !item.request.reason.isEmpty {
                 // The reason is Hermes' own words: shown as a quote, never
                 // as Conduit's.
                 Text(verbatim: "“\(item.request.reason)”")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
             HStack(spacing: 12) {
@@ -224,14 +224,14 @@ struct AgentSettingsModeSection: View {
             if !appState.agentSettingsReview.isEmpty {
                 // Requests whose banner was closed are still here.
                 Button(AppLocalization.string("Review changes from Hermes")) { reviewing = true }
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .accessibilityIdentifier("voice.agentSettingsReview")
             }
             Text(verbatim: mode.summary)
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             Text("Hermes never sees your keys, wake phrase, call permissions or Apple Watch access, and can't change this choice.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
         .sheet(isPresented: $reviewing) {

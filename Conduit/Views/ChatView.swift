@@ -224,7 +224,7 @@ struct ChatView: View {
                     ProgressView()
                         .controlSize(.small)
                     Text("Loading earlier messages")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
                 .accessibilityElement(children: .combine)
@@ -256,7 +256,7 @@ struct ChatView: View {
                     }
                 } label: {
                     Label("Load earlier messages", systemImage: "clock.arrow.circlepath")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .labelStyle(.titleAndIcon)
                 }
                 .buttonStyle(.plain)
@@ -318,14 +318,14 @@ struct ChatView: View {
 
     /// A wide window's column steps its text up (`readableChatColumn`).
     @Environment(\.chatWidthTextSteps) private var chatWidthTextSteps
-    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
+    @Environment(\.columnText) private var columnText
 
     private var chatTextSize: ChatTextAppearance {
         ChatTextAppearance(
             size: chatTextSizeOverride ?? ChatTypography.resolve(rawValue: chatTextSizeRaw),
             style: chatTextSizeOverride == nil ? ChatTypography.resolveStyle(rawValue: chatFontStyleRaw) : .standard
         )
-        .widened(steps: chatTextSizeOverride == nil ? chatWidthTextSteps : 0, from: columnBaseTextSize ?? .large)
+        .widened(steps: chatWidthTextSteps, in: chatTextSizeOverride == nil ? columnText : nil)
     }
 
     var body: some View {
@@ -404,7 +404,7 @@ struct ChatView: View {
         .overlay(alignment: .top) {
             if appState.isOpeningNotificationSession {
                 Label("Opening conversation…", systemImage: "arrow.down.message")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.12))
@@ -1077,7 +1077,7 @@ private struct ChatJumpControls: View {
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
                         .frame(minHeight: 44)
@@ -1480,12 +1480,12 @@ struct TeammateMessageNote: View {
                         size: faceSize
                     )
                     Text(AppLocalization.string("Message from \(name)"))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                     if !inbound.body.isEmpty {
                         Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                            .font(.caption2)
+                            .scaledFont(.caption2)
                             .foregroundStyle(.tertiary)
                             .accessibilityHidden(true)
                     }
@@ -1508,7 +1508,7 @@ struct TeammateMessageNote: View {
             if expanded {
                 // Bots write Markdown; it reads as a reply does.
                 MarkdownText(source: inbound.body)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 9)
@@ -1569,13 +1569,13 @@ struct TeammateReplyNote<Reply: View>: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "arrowshape.turn.up.right")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .accessibilityHidden(true)
                     Text(AppLocalization.string("Replied to \(name)"))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .multilineTextAlignment(.center)
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .foregroundStyle(.tertiary)
                         .accessibilityHidden(true)
                 }
@@ -1674,7 +1674,7 @@ struct UserMessageMoreMenu: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 // A full-size tap target in the footer, as Copy's.
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
@@ -1749,7 +1749,7 @@ struct SteerMessageContent: View, Equatable {
         // baseline: top-align the icon in a box one body line tall.
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: BusyInputMode.steer.symbol)
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.conduitAura)
                 .frame(height: bodyLineHeight)
                 .accessibilityHidden(true)
@@ -1843,7 +1843,7 @@ struct UserMessageContent: View, Equatable {
                 if !voice.transcript.isEmpty {
                     HugsIdealWidth {
                         Text(verbatim: voice.transcript)
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                             .foregroundStyle(.white.opacity(0.88))
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -2048,7 +2048,7 @@ private struct UserImageAttachmentPreview: View {
                     (gatewayLoadFailed || localPreviewFailed) ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached"),
                     systemImage: (gatewayLoadFailed || localPreviewFailed) ? "photo.badge.exclamationmark" : "photo"
                 )
-                .font(.caption.weight(.medium))
+                .scaledFont(.caption.weight(.medium))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
@@ -2242,7 +2242,7 @@ private struct UserImageAttachmentPreview: View {
                 .tint(.white)
             Text("Loading image…")
         }
-        .font(.caption.weight(.medium))
+        .scaledFont(.caption.weight(.medium))
         .foregroundStyle(.white)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -2370,7 +2370,7 @@ private struct UserDocumentAttachmentChip: View {
                     .tint(.white)
             }
         }
-        .font(.caption.weight(.medium))
+        .scaledFont(.caption.weight(.medium))
         .foregroundStyle(.white)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -2481,7 +2481,7 @@ struct SettledAssistantMessageContent: View, Equatable {
                 ConduitAgentMark(identity: identity)
 
                 Text(identity.name)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
                 MessageTimestampLabel(timestamp: message.timestamp)
@@ -2524,7 +2524,7 @@ struct AssistantMessageActions: View {
             copyResponse()
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .frame(width: 34, height: 34)
         }
         .buttonStyle(.plain)
@@ -2619,7 +2619,7 @@ struct AssistantMessageMoreMenu: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .frame(width: 34, height: 34)
                 .contentShape(Rectangle())
         }
@@ -2713,7 +2713,7 @@ struct ReadAloudButton: View {
                     Image(systemName: isPaused ? "play.fill" : isActive ? "stop.fill" : "speaker.wave.2")
                 }
             }
-            .font(.subheadline.weight(.semibold))
+            .scaledFont(.subheadline.weight(.semibold))
             .frame(width: 34, height: 34)
         }
         .buttonStyle(.plain)
@@ -2826,14 +2826,14 @@ struct SystemBubble: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: isRuntimeNotice ? "info.circle" : "terminal")
-                .font(.footnote.weight(.medium))
+                .scaledFont(.footnote.weight(.medium))
                 .foregroundStyle(.conduitAccent)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(isRuntimeNotice ? AppLocalization.string("System") : AppLocalization.string("Command"))
-                        .font(.caption2.weight(.semibold))
+                        .scaledFont(.caption2.weight(.semibold))
                         .foregroundStyle(.conduitAccent)
                         .textCase(.uppercase)
                         .tracking(0.5)
@@ -2867,7 +2867,7 @@ struct SystemBubble: View {
 /// follows `ChatTypography`.)
 private struct ReviewSummaryCard: View {
     @Environment(\.sizeCategory) private var sizeCategory
-    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
+    @Environment(\.columnText) private var columnText
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let activity: ReviewActivity
     let timestamp: String
@@ -2894,13 +2894,13 @@ private struct ReviewSummaryCard: View {
                             .background(Color.conduitAura.opacity(0.14), in: Circle())
                         CardHeaderCaption(timestamp: timestamp) {
                             Text("SELF-IMPROVEMENT REVIEW")
-                                .font(.caption2.weight(.bold))
+                                .scaledFont(.caption2.weight(.bold))
                                 .tracking(0.6)
                                 .foregroundStyle(.secondary)
                         }
                         if !details.isEmpty {
                             Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                                .font(.caption.weight(.semibold))
+                                .scaledFont(.caption.weight(.semibold))
                                 .conduitFixedGlyph()
                                 .foregroundStyle(.secondary)
                                 .frame(width: 28, height: 28)
@@ -2908,7 +2908,7 @@ private struct ReviewSummaryCard: View {
                     }
                     SelectableTextView(
                         text: activity.summary,
-                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText).withTraits(.traitBold),
                         textColor: .label
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -2924,7 +2924,7 @@ private struct ReviewSummaryCard: View {
                     ForEach(Array(details.enumerated()), id: \.offset) { _, detail in
                         SelectableTextView(
                             text: detail,
-                            font: .preferredFont(forTextStyle: .callout, in: sizeCategory, from: columnBaseTextSize),
+                            font: .preferredFont(forTextStyle: .callout, in: sizeCategory, from: columnText),
                             textColor: .secondaryLabel
                         )
                     }
@@ -2937,7 +2937,7 @@ private struct ReviewSummaryCard: View {
                     appState.requestOpenSession(fullSessionId)
                 } label: {
                     Label("Open full review", systemImage: "arrow.up.forward.square")
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 42)
                 }
@@ -2958,7 +2958,7 @@ private struct ReviewSummaryCard: View {
 /// see ReviewSummaryCard.
 private struct ModelChangeSummaryCard: View {
     @Environment(\.sizeCategory) private var sizeCategory
-    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
+    @Environment(\.columnText) private var columnText
     let model: String
     let provider: String
     let timestamp: String
@@ -2973,14 +2973,14 @@ private struct ModelChangeSummaryCard: View {
                     .background(Color.conduitAccent.opacity(0.14), in: Circle())
                 CardHeaderCaption(timestamp: timestamp) {
                     Text("MODEL UPDATED")
-                        .font(.caption2.weight(.bold))
+                        .scaledFont(.caption2.weight(.bold))
                         .tracking(0.6)
                         .foregroundStyle(.secondary)
                 }
             }
             SelectableTextView(
                 text: AppLocalization.string("Model has been changed to \(provider)/\(model)"),
-                font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
+                font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText).withTraits(.traitBold),
                 textColor: .label
             )
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -3052,18 +3052,18 @@ private struct VoiceCallMarkerCard: View {
                 // ("Started from" a chat) keeps the row's width (#1440).
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     HStack(spacing: 8) {
                         Text(detail)
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if let started {
                             Text(started)
-                                .font(.caption2.weight(.medium))
+                                .scaledFont(.caption2.weight(.medium))
                                 .foregroundStyle(Color.conduitAccent.opacity(0.78))
                                 .monospacedDigit()
                                 .lineLimit(1)
@@ -3072,7 +3072,7 @@ private struct VoiceCallMarkerCard: View {
                     }
                 }
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.conduitTertiary)
                     .accessibilityHidden(true)
             }
@@ -3136,13 +3136,13 @@ struct SettledThinkingCardContent: View, Equatable {
                     ChatStepIcon(symbol: ChatStepStyle.thinking.symbol, tint: ChatStepStyle.thinking.tint)
                     AdaptiveStack(spacing: 6) {
                         Text(AppLocalization.string("Thinking"))
-                            .font(.body)
+                            .scaledFont(.body)
                             .foregroundStyle(.secondary)
                         ChatStepTimeLabel(timestamp: message.timestamp, duration: message.stepDuration, grouped: grouped)
                     }
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.down")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.conduitTertiary)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         .accessibilityHidden(true)
@@ -3207,7 +3207,7 @@ private struct MessageTimestampLabel: View {
     var body: some View {
         if let label = MessageTimestampFormatter.displayString(for: timestamp) {
             Text(label)
-                .font(.caption2.weight(.medium))
+                .scaledFont(.caption2.weight(.medium))
                 .foregroundStyle(tone == .supporting ? Color.conduitAccent.opacity(0.78) : Color.conduitAccent.opacity(0.70))
                 .monospacedDigit()
                 .accessibilityLabel(AppLocalization.string("Sent \(label)"))
@@ -3252,7 +3252,7 @@ private struct ChatStepTimeLabel: View {
     var body: some View {
         if let text = ChatStepTiming.text(duration) {
             Text(text)
-                .font(.caption2.weight(.medium))
+                .scaledFont(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .accessibilityLabel(ChatStepTiming.spokenText(duration) ?? text)
@@ -3400,7 +3400,7 @@ private struct SettledToolCardContent: View, Equatable {
                             // instead of squeezing them.
                             AdaptiveStack(spacing: 6) {
                                 Text(stepTitle(delivery, running: running))
-                                    .font(.body)
+                                    .scaledFont(.body)
                                     .foregroundStyle(running ? Color.conduitAccent : Color.primary)
                                     .lineLimit(sizeCategory.isAccessibilityCategory ? nil : 1)
                                 ChatStepTimeLabel(
@@ -3417,7 +3417,7 @@ private struct SettledToolCardContent: View, Equatable {
                                 ?? ChatStepSubject.line(from: tool.input)
                                 ?? ChatStepSubject.line(from: tool.output) {
                                 Text(subject)
-                                    .font(.subheadline)
+                                    .scaledFont(.subheadline)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
@@ -3434,7 +3434,7 @@ private struct SettledToolCardContent: View, Equatable {
                         }
 
                         Image(systemName: "chevron.down")
-                            .font(.caption.weight(.semibold))
+                            .scaledFont(.caption.weight(.semibold))
                             .foregroundStyle(.conduitTertiary)
                             .rotationEffect(.degrees(expanded ? 180 : 0))
                             .accessibilityHidden(true)
@@ -3449,11 +3449,11 @@ private struct SettledToolCardContent: View, Equatable {
                 if expanded {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(tool.name)
-                            .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                            .scaledFont(.caption2.monospaced().weight(.semibold))
                             .foregroundStyle(.conduitTertiary)
                         if let detail = label.detail {
                             Text(detail)
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
                         }
@@ -3549,18 +3549,18 @@ struct ToolCard: View {
 /// One labeled block of a tool's raw input or result, in monospace.
 private struct ToolRawTextSection: View {
     @Environment(\.sizeCategory) private var sizeCategory
-    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
+    @Environment(\.columnText) private var columnText
     let title: String
     let text: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.caption2.bold())
+                .scaledFont(.caption2.bold())
                 .foregroundStyle(.conduitTertiary)
             SelectableTextView(
                 text: ToolCard.truncateForDisplay(text, maxLines: ToolResultPresentation.displayLineLimit),
-                font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnBaseTextSize).pointSize, weight: .regular),
+                font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnText).pointSize, weight: .regular),
                 textColor: .secondaryLabel,
                 maximumNumberOfLines: 0
             )
@@ -3608,7 +3608,7 @@ enum ClarifyCardLayout {
 
 struct ClarifyCard: View {
     @Environment(\.sizeCategory) private var sizeCategory
-    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
+    @Environment(\.columnText) private var columnText
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     @Environment(\.chatRowActions) private var rowActions
@@ -3638,7 +3638,7 @@ struct ClarifyCard: View {
                             .foregroundStyle(.orange)
                         CardHeaderCaption(timestamp: message.timestamp) {
                             Text(statusTitle(for: displayStatus))
-                                .font(.caption2.weight(.bold))
+                                .scaledFont(.caption2.weight(.bold))
                                 .tracking(0.5)
                                 .foregroundStyle(statusColor(for: displayStatus))
                         }
@@ -3655,7 +3655,7 @@ struct ClarifyCard: View {
                     }
                     SelectableTextView(
                         text: layout.headerText(for: clarify),
-                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText).withTraits(.traitBold),
                         textColor: .label
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -3663,7 +3663,7 @@ struct ClarifyCard: View {
 
                 if showsForm {
                     Text("Fill in what you know, and leave the rest blank.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
 
@@ -3687,7 +3687,7 @@ struct ClarifyCard: View {
                     } label: {
                         HStack {
                             Text("Send")
-                                .font(.subheadline.weight(.semibold))
+                                .scaledFont(.subheadline.weight(.semibold))
                             Spacer()
                             Image(systemName: "arrow.up")
                         }
@@ -3703,7 +3703,7 @@ struct ClarifyCard: View {
 
                 if let error = clarify.error, !error.isEmpty {
                     Label(error, systemImage: "exclamationmark.circle")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.red)
                 }
             }
@@ -3811,7 +3811,7 @@ struct ClarifyCard: View {
 /// form's row is a field instead, sent with the card's one Send.
 struct ClarifyQuestionRow: View {
     @Environment(\.sizeCategory) private var sizeCategory
-    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
+    @Environment(\.columnText) private var columnText
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let question: ClarifyQuestion
     var showsTitle: Bool = true
@@ -3831,7 +3831,7 @@ struct ClarifyQuestionRow: View {
                 HStack(alignment: .top, spacing: 6) {
                     SelectableTextView(
                         text: question.question,
-                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText).withTraits(.traitBold),
                         textColor: .label
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -3846,20 +3846,20 @@ struct ClarifyQuestionRow: View {
                 answeredBlock
             case .expired:
                 Text("No longer active")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             case .submitting:
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
                     Text("Locking your answer…")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             case .pending, .error:
                 controls
                 if let error = question.error, !error.isEmpty {
                     Label(error, systemImage: "exclamationmark.circle")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.red)
                 }
             }
@@ -3880,16 +3880,16 @@ struct ClarifyQuestionRow: View {
             // A field left blank says Skipped below instead.
             if !question.isSkipped {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.green)
             }
         case .error:
             Image(systemName: "exclamationmark.circle.fill")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.red)
         case .expired:
             Image(systemName: "clock.badge.xmark")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         case .pending, .submitting:
             EmptyView()
@@ -3901,17 +3901,17 @@ struct ClarifyQuestionRow: View {
         if question.isSkipped {
             // A form's field left blank: Hermes read it as skipped.
             Label(AppLocalization.string("Skipped"), systemImage: "forward")
-                .font(.subheadline.weight(.medium))
+                .scaledFont(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
         } else if let answer = question.resolvedAnswer, !answer.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 Text("YOUR ANSWER")
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
                     .tracking(0.5)
                     .foregroundStyle(.green)
                 SelectableTextView(
                     text: answer,
-                    font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize),
+                    font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText),
                     textColor: .label
                 )
             }
@@ -3922,7 +3922,7 @@ struct ClarifyQuestionRow: View {
             // Answered elsewhere (relay 409): settled, but this device's
             // rejected text must not display as what Hermes received.
             Text("Answered on another device")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -3978,12 +3978,12 @@ struct ClarifyQuestionRow: View {
             } label: {
                 HStack(spacing: 8) {
                     Text(formMenuTitle)
-                        .font(.body)
+                        .scaledFont(.body)
                         .foregroundStyle(hasFormPick ? Color.primary : Color.secondary)
                         .multilineTextAlignment(.leading)
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 14)
@@ -4059,10 +4059,10 @@ struct ClarifyQuestionRow: View {
             } label: {
                 HStack {
                     Text(choice.label)
-                        .font(.body)
+                        .scaledFont(.body)
                     Spacer()
                     Image(systemName: "chevron.right")
-                        .font(.caption)
+                        .scaledFont(.caption)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
@@ -4087,7 +4087,7 @@ struct ClarifyQuestionRow: View {
                 submitCustomAnswer()
             } label: {
                 Image(systemName: "arrow.up")
-                    .font(.subheadline.weight(.bold))
+                    .scaledFont(.subheadline.weight(.bold))
                     .conduitFixedGlyph()
                     .frame(width: 36, height: 36)
             }
@@ -4113,7 +4113,7 @@ struct ClarifyQuestionRow: View {
                             .foregroundStyle(selection.contains(choice.value) ? Color.orange : Color.secondary)
                             .accessibilityHidden(true)
                         Text(choice.label)
-                            .font(.body)
+                            .scaledFont(.body)
                             .foregroundStyle(.primary)
                         Spacer()
                     }
@@ -4138,7 +4138,7 @@ struct ClarifyQuestionRow: View {
             } label: {
                 HStack {
                     Text(confirmTitle)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                     Spacer()
                     Image(systemName: "arrow.up")
                 }
@@ -4165,7 +4165,7 @@ struct ClarifyQuestionRow: View {
                     submitCustomAnswer()
                 } label: {
                     Image(systemName: "arrow.up")
-                        .font(.subheadline.weight(.bold))
+                        .scaledFont(.subheadline.weight(.bold))
                         .conduitFixedGlyph()
                         .frame(width: 36, height: 36)
                 }
@@ -4262,7 +4262,7 @@ private struct ApprovalCommandHeightLayout: Layout {
 
 struct ApprovalCard: View {
     @Environment(\.sizeCategory) private var sizeCategory
-    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
+    @Environment(\.columnText) private var columnText
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     @Environment(\.chatRowActions) private var rowActions
@@ -4283,7 +4283,7 @@ struct ApprovalCard: View {
                             .accessibilityHidden(true)
                         CardHeaderCaption(timestamp: message.timestamp) {
                             Text(statusTitle(for: approval.status))
-                                .font(.caption2.weight(.bold))
+                                .scaledFont(.caption2.weight(.bold))
                                 .tracking(0.5)
                                 .foregroundStyle(statusColor(for: approval.status))
                         }
@@ -4300,14 +4300,14 @@ struct ApprovalCard: View {
                     }
                     SelectableTextView(
                         text: ApprovalDisplayText.revealingHidden(approval.description),
-                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText).withTraits(.traitBold),
                         textColor: .label
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 if !approval.command.isEmpty {
-                    let commandFont = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnBaseTextSize).pointSize, weight: .regular)
+                    let commandFont = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnText).pointSize, weight: .regular)
                     ApprovalCommandBox(maxHeight: ApprovalCommandBox<EmptyView>.maxLines * commandFont.lineHeight) {
                         SelectableTextView(
                             text: ApprovalDisplayText.revealingHidden(approval.command),
@@ -4323,7 +4323,7 @@ struct ApprovalCard: View {
                 if approval.status == .approved || approval.status == .rejected {
                     let text = approval.choice.map { decisionTitle($0) } ?? statusTitle(for: approval.status)
                     Label(text, systemImage: approval.status == .approved ? "checkmark" : "xmark")
-                        .font(.subheadline.weight(.medium))
+                        .scaledFont(.subheadline.weight(.medium))
                         .foregroundStyle(statusColor(for: approval.status))
                 } else if approval.status == .expired {
                     let explanation = approval.error?.isEmpty == false
@@ -4332,7 +4332,7 @@ struct ApprovalCard: View {
                     // The gateway's text can carry the same hidden marks
                     // as the command.
                     Text(verbatim: ApprovalDisplayText.revealingHidden(explanation))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     // Longer translations (German, Russian, French) don't fit
@@ -4365,12 +4365,12 @@ struct ApprovalCard: View {
                             rejectButton(approval)
                         }
                     }
-                    .font(.subheadline.weight(.medium))
+                    .scaledFont(.subheadline.weight(.medium))
                 }
 
                 if approval.status != .expired, let error = approval.error, !error.isEmpty {
                     Label(ApprovalDisplayText.revealingHidden(error), systemImage: "exclamationmark.circle")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.red)
                 }
             }
@@ -4480,7 +4480,7 @@ struct ApprovalCard: View {
 /// cleared, never stored on the message.
 struct InputPromptCard: View {
     @Environment(\.sizeCategory) private var sizeCategory
-    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
+    @Environment(\.columnText) private var columnText
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     @Environment(\.chatRowActions) private var rowActions
@@ -4506,7 +4506,7 @@ struct InputPromptCard: View {
                             .accessibilityHidden(true)
                         CardHeaderCaption(timestamp: message.timestamp) {
                             Text(statusTitle(for: prompt.status))
-                                .font(.caption2.weight(.bold))
+                                .scaledFont(.caption2.weight(.bold))
                                 .tracking(0.5)
                                 .foregroundStyle(statusColor(for: prompt.status))
                         }
@@ -4519,13 +4519,13 @@ struct InputPromptCard: View {
                         }
                     }
                     Text(prompt.title)
-                        .font(.subheadline.weight(.bold))
+                        .scaledFont(.subheadline.weight(.bold))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 if let note = explanation(for: prompt) {
                     Text(note)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -4533,7 +4533,7 @@ struct InputPromptCard: View {
                 if let detail = detail(for: prompt), !detail.isEmpty {
                     SelectableTextView(
                         text: detail,
-                        font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnBaseTextSize).pointSize, weight: .regular),
+                        font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnText).pointSize, weight: .regular),
                         textColor: .label,
                         maximumNumberOfLines: 5
                     )
@@ -4545,16 +4545,16 @@ struct InputPromptCard: View {
                 switch prompt.status {
                 case .submitted:
                     Label(AppLocalization.string("Sent"), systemImage: "checkmark")
-                        .font(.subheadline.weight(.medium))
+                        .scaledFont(.subheadline.weight(.medium))
                         .foregroundStyle(.green)
                 case .skipped:
                     Label(AppLocalization.string("Skipped"), systemImage: "forward")
-                        .font(.subheadline.weight(.medium))
+                        .scaledFont(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                 case .expired:
                     Text(prompt.error.flatMap { $0.isEmpty ? nil : $0 }
                          ?? AppLocalization.string("This request is no longer active."))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 case .pending, .submitting, .error:
                     fields(for: prompt)
@@ -4576,12 +4576,12 @@ struct InputPromptCard: View {
                         .buttonStyle(.bordered)
                         .disabled(!prompt.isAnswerable)
                     }
-                    .font(.subheadline.weight(.medium))
+                    .scaledFont(.subheadline.weight(.medium))
                 }
 
                 if prompt.status == .error, let error = prompt.error, !error.isEmpty {
                     Label(error, systemImage: "exclamationmark.circle")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.red)
                 }
             }
@@ -4869,11 +4869,11 @@ struct StreamingBubble: View {
                 )
 
                 Text(identity.name)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
                 Text(active ? AppLocalization.string("Responding") : AppLocalization.string("Finishing"))
-                    .font(.caption2.weight(.medium))
+                    .scaledFont(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
 
                 Spacer(minLength: 8)
@@ -4935,9 +4935,9 @@ struct EmptyChatState: View {
             )
             VStack(spacing: 6) {
                 Text("Start a conversation")
-                    .font(.title3.weight(.semibold))
+                    .scaledFont(.title3.weight(.semibold))
                 Text("Conduit is ready when you are.")
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }

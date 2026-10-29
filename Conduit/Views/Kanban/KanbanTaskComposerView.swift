@@ -73,7 +73,7 @@ struct KanbanTaskComposerView: View {
                     Section {
                         Label(errorMessage, systemImage: "exclamationmark.triangle")
                             .foregroundStyle(.red)
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                     }
                 }
             }
@@ -167,11 +167,11 @@ struct KanbanTaskComposerView: View {
                 .accessibilityLabel("Workspace path override")
                 if let dir = boardDefaultDir {
                     Text("Leave empty to inherit the board's project directory: \(dir)")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     Text("Leave empty to inherit the board's project directory.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -207,11 +207,11 @@ struct KanbanTaskComposerView: View {
                     .foregroundStyle(.primary)
                 Spacer()
                 Text(draft.modelOverride.label(inheritCopy: AppLocalization.string("Inherit from profile")))
-                    .font(.callout)
+                    .scaledFont(.callout)
                     .foregroundStyle(draft.modelOverride.isInherited ? .secondary : .primary)
                     .lineLimit(1)
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.conduitTertiary)
             }
         }
@@ -227,10 +227,10 @@ struct KanbanTaskComposerView: View {
                     .foregroundStyle(.primary)
                 Spacer()
                 Text(draft.skills.isEmpty ? AppLocalization.string("None") : AppLocalization.string("\(draft.skills.count) selected"))
-                    .font(.callout)
+                    .scaledFont(.callout)
                     .foregroundStyle(draft.skills.isEmpty ? .secondary : .primary)
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.conduitTertiary)
             }
         }
@@ -256,7 +256,7 @@ struct KanbanTaskComposerView: View {
             )
             .accessibilityHint("Bounds how long the Goal Mode worker may loop")
             Text("The worker loops until a judge agrees the goal is met. Leave unlimited only with caution.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -274,7 +274,7 @@ struct KanbanTaskComposerView: View {
                         Text("None")
                             .foregroundStyle(.secondary)
                         Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
+                            .scaledFont(.caption.weight(.semibold))
                             .foregroundStyle(.conduitTertiary)
                     }
                 }
@@ -283,10 +283,10 @@ struct KanbanTaskComposerView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(parentTitle(for: parentID))
-                                .font(.subheadline)
+                                .scaledFont(.subheadline)
                                 .foregroundStyle(.primary)
                             Text(KanbanShortID.of(parentID))
-                                .font(.caption2.monospaced())
+                                .scaledFont(.caption2.monospaced())
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -326,7 +326,7 @@ struct KanbanTaskComposerView: View {
             Label(statusPresentation.displayName, systemImage: statusPresentation.systemImage)
                 .foregroundStyle(statusPresentation.tint)
             Text("The board selection is local to this device; creating this task will not switch Hermes' global board.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         } header: {
             Text("Lands in")
@@ -539,7 +539,7 @@ struct KanbanModelOverrideSheet: View {
             }
             if !isLoadingOptions && providers.isEmpty {
                 Text("No curated model catalog available from Hermes — enter a provider and model below.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
         } header: {
@@ -718,7 +718,7 @@ struct KanbanSkillsPickerSheet: View {
                                         .foregroundStyle(.primary)
                                     if let description = skill.description, !description.isEmpty {
                                         Text(description)
-                                            .font(.caption)
+                                            .scaledFont(.caption)
                                             .foregroundStyle(.secondary)
                                             .lineLimit(2)
                                     }
@@ -834,9 +834,9 @@ struct KanbanParentPickerSheet: View {
                                     .lineLimit(2)
                                 HStack(spacing: 6) {
                                     Text(KanbanShortID.of(task.id))
-                                        .font(.caption2.monospaced())
+                                        .scaledFont(.caption2.monospaced())
                                     Text(KanbanStatusPresentation.forStatus(task.status).displayName)
-                                        .font(.caption2)
+                                        .scaledFont(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
                             }

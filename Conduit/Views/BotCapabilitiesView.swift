@@ -88,7 +88,7 @@ struct BotCapabilitiesView: View {
             Section {
                 if let mcpNotice {
                     Text(verbatim: mcpNotice.text)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(mcpNotice.isError ? Color.red : Color.secondary)
                 }
                 if capabilities.mcpServers.isEmpty {
@@ -163,13 +163,13 @@ struct BotCapabilitiesView: View {
                 Text(verbatim: entry.name)
                 if !entry.description.isEmpty {
                     Text(verbatim: entry.description)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
                 if !entry.requires.isEmpty {
                     Text(AppLocalization.string("Needs \(entry.requires.joined(separator: ", "))"))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -194,7 +194,7 @@ struct BotCapabilitiesView: View {
     private func signInRow(_ name: String) -> some View {
         HStack {
             Text(AppLocalization.string("Needs a sign-in to connect."))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 8)
             if mcpBusy == name {
@@ -277,7 +277,7 @@ struct BotCapabilitiesView: View {
                 Text(verbatim: item.wrappedValue.label ?? item.wrappedValue.name)
                 if !item.wrappedValue.description.isEmpty {
                     Text(verbatim: item.wrappedValue.description)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }

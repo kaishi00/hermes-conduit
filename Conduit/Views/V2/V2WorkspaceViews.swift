@@ -254,12 +254,12 @@ struct WorkspaceFolderView: View {
                         .foregroundStyle(Color.conduitAccent)
                     VStack(alignment: .leading, spacing: 0) {
                         Text(verbatim: root?.title ?? AppLocalization.string("No folder"))
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         if let path = root?.path {
                             Text(verbatim: path)
-                                .font(.caption2)
+                                .scaledFont(.caption2)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .truncationMode(.head)
@@ -267,7 +267,7 @@ struct WorkspaceFolderView: View {
                     }
                     if roots.count > 1 {
                         Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption2.weight(.bold))
+                            .scaledFont(.caption2.weight(.bold))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -281,7 +281,7 @@ struct WorkspaceFolderView: View {
                     actions(in: root.path)
                 } label: {
                     Image(systemName: "plus")
-                        .font(.body.weight(.semibold))
+                        .scaledFont(.body.weight(.semibold))
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
@@ -364,7 +364,7 @@ struct WorkspaceFolderView: View {
                 } icon: {
                     Image(systemName: "arrow.down.circle")
                 }
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 8)
             }
@@ -386,7 +386,7 @@ struct WorkspaceFolderView: View {
                 }
                 if !explorer.truncated.isEmpty {
                     Text("Some folders here hold more than Conduit lists. Search finds the rest.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.top, 12)
                 }
@@ -396,7 +396,7 @@ struct WorkspaceFolderView: View {
 
     private func sectionTitle(_ title: Text) -> some View {
         title
-            .font(.footnote.weight(.bold))
+            .scaledFont(.footnote.weight(.bold))
             .textCase(.uppercase)
             .foregroundStyle(.secondary)
             .padding(.top, 14)
@@ -414,7 +414,7 @@ struct WorkspaceFolderView: View {
                     sectionTitle(Text("Recently Changed"))
                     Spacer()
                     Image(systemName: showsRecent ? "chevron.up" : "chevron.down")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .padding(.top, 8)
                 }
@@ -460,7 +460,7 @@ struct WorkspaceFolderView: View {
                 }
                 if result.truncated {
                     Text("Showing the first matches. Search for something more specific to find the rest.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.top, 12)
                 }
@@ -497,7 +497,7 @@ struct WorkspaceFolderView: View {
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: explorer.expanded.contains(entry.path) ? "chevron.down" : "chevron.right")
-                            .font(.caption.weight(.semibold))
+                            .scaledFont(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .frame(width: 12)
                             .accessibilityHidden(true)
@@ -505,7 +505,7 @@ struct WorkspaceFolderView: View {
                             .foregroundStyle(Color.conduitAccent)
                             .accessibilityHidden(true)
                         Text(verbatim: entry.name)
-                            .font(.body)
+                            .scaledFont(.body)
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -545,13 +545,13 @@ struct WorkspaceFolderView: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: entry.name)
-                        .font(.body)
+                        .scaledFont(.body)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     if !detail.isEmpty {
                         Text(verbatim: detail)
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.head)
@@ -580,13 +580,13 @@ struct WorkspaceFolderView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
                 Text(verbatim: match.name)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 0)
             }
             Text(verbatim: relativeLocation(path: match.path))
-                .font(.caption2)
+                .scaledFont(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.head)
@@ -596,11 +596,11 @@ struct WorkspaceFolderView: View {
                 } label: {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(verbatim: "\(line.number)")
-                            .font(.caption.monospacedDigit())
+                            .scaledFont(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                             .frame(minWidth: 28, alignment: .trailing)
                         Text(Self.highlighted(line))
-                            .font(.caption.monospaced())
+                            .scaledFont(.caption.monospaced())
                             .foregroundStyle(.primary)
                             .lineLimit(2)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -980,7 +980,7 @@ struct WorkspaceFileSheet: View {
             Group {
                 if editing {
                     TextEditor(text: $draft)
-                        .font(.system(.footnote, design: .monospaced))
+                        .scaledFont(.footnote.monospaced())
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .padding(.horizontal, 8)
@@ -1089,7 +1089,7 @@ struct WorkspaceFileSheet: View {
                             }
                             if preview.truncated {
                                 Text("Only the start of this file shows here. Share or Save opens all of it.")
-                                    .font(.footnote)
+                                    .scaledFont(.footnote)
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -1113,13 +1113,13 @@ struct WorkspaceFileSheet: View {
         if let modified = shown.modified { parts.append(WorkspaceFolderView.dateText(modified)) }
         return VStack(alignment: .leading, spacing: 2) {
             Text(verbatim: shown.path)
-                .font(.caption2)
+                .scaledFont(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .truncationMode(.middle)
                 .textSelection(.enabled)
             Text(verbatim: parts.joined(separator: " · "))
-                .font(.caption2)
+                .scaledFont(.caption2)
                 .foregroundStyle(.secondary)
         }
     }
@@ -1160,12 +1160,12 @@ struct WorkspaceCodeText: View {
                 ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(verbatim: "\(index + 1)")
-                            .font(.caption2.monospacedDigit())
+                            .scaledFont(.caption2.monospacedDigit())
                             .foregroundStyle(.tertiary)
                             .frame(minWidth: 30, alignment: .trailing)
                             .accessibilityHidden(true)
                         Text(verbatim: line.isEmpty ? " " : line)
-                            .font(.caption.monospaced())
+                            .scaledFont(.caption.monospaced())
                             .fixedSize(horizontal: true, vertical: false)
                             .textSelection(.enabled)
                     }
@@ -1199,7 +1199,7 @@ struct WorkspaceMoveSheet: View {
             List {
                 Section {
                     Text(verbatim: current)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .truncationMode(.head)

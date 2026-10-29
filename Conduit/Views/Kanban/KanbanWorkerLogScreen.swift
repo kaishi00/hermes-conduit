@@ -59,7 +59,7 @@ struct KanbanWorkerLogScreen: View {
                             // Non-destructive banner: a failed refresh NEVER
                             // evicts the cached log from the screen.
                             Label("Refresh failed: \(refreshError)", systemImage: "exclamationmark.circle")
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                         }
                         if !cachedLog.exists {
@@ -105,7 +105,7 @@ struct KanbanWorkerLogScreen: View {
             }
             Spacer()
         }
-        .font(.caption2)
+        .scaledFont(.caption2)
         .foregroundStyle(.secondary)
     }
 
@@ -114,11 +114,11 @@ struct KanbanWorkerLogScreen: View {
         let rendered = Self.renderTail(log.content)
         if rendered.isEmpty {
             Text("(log is empty)")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.conduitTertiary)
         } else {
             Text(rendered)
-                .font(.system(.caption2, design: .monospaced))
+                .scaledFont(.caption2.monospaced())
                 .textSelection(.enabled)
                 .lineLimit(nil)
                 .frame(maxWidth: .infinity, alignment: .leading)

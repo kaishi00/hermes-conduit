@@ -38,17 +38,17 @@ struct HealthSettingsPage: View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Health data for Hermes"), symbol: "heart.text.square", tint: .pink) {
                 Text("Share Apple Health data with Hermes so your agent can answer questions about your activity, sleep and workouts. It goes straight from this iPhone to your Hermes host, sealed end to end, and never through Conduit's notification relay.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 if !engine.source.isAvailable {
                     Text("Apple Health isn't available on this device.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.orange)
                 } else if preferences.isOn {
                     statusRows
                 } else if !pluginServesHealth {
                     Text("Update the Conduit plugin on your Hermes host to share health data.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.orange)
                 }
             }
@@ -115,33 +115,33 @@ struct HealthSettingsPage: View {
     private var statusRows: some View {
         if let destination = preferences.destination {
             Label(AppLocalization.string("Sharing with \(destination.profile) on \(destination.host)"), systemImage: "checkmark.shield")
-                .font(.subheadline)
+                .scaledFont(.subheadline)
         }
         if engine.isSyncing {
             Label("Syncing…", systemImage: "arrow.triangle.2.circlepath")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         } else if let pause = engine.state.pause {
             Text(pause.message)
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.orange)
         } else if let last = engine.state.lastSync {
             Text(AppLocalization.string("Last synced \(last.formatted(.relative(presentation: .named)))"))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         } else {
             Text("Not synced yet.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
         if let cursor = engine.state.backfillCursor, let start = engine.state.historyStart, cursor > start {
             Text(AppLocalization.string("Bringing in history: back to \(cursor.formatted(date: .abbreviated, time: .omitted)) so far."))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
         if let error = engine.lastError, engine.state.pause == nil {
             Text(error)
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.red)
         }
     }
@@ -159,11 +159,11 @@ struct HealthSettingsPage: View {
                 .accessibilityIdentifier("settings.health.voice.\(mode.storageID)")
             }
             Text("Let a live voice call read your health data when you ask about it, straight from your Hermes host. What it reads goes to the company that runs that voice mode, under its terms. Classic voice is Hermes itself and needs nothing here.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if !voiceReads.entries.isEmpty {
                 Text("Read by voice in the last 7 days")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .padding(.top, 4)
                 ForEach(voiceReads.entries.suffix(20).reversed()) { entry in
                     HStack {
@@ -172,7 +172,7 @@ struct HealthSettingsPage: View {
                         Text(entry.at.formatted(.relative(presentation: .named)))
                             .foregroundStyle(.secondary)
                     }
-                    .font(.caption)
+                    .scaledFont(.caption)
                 }
             }
         }
@@ -210,18 +210,18 @@ struct HealthSettingsPage: View {
                     .disabled(preferences.isOn && categories == [category])
                     .accessibilityIdentifier("settings.health.\(category.rawValue)")
                     Text(category.summary)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                     if category.hasDetailedReadings, categories.contains(category) {
                         Toggle("Include detailed readings", isOn: detailedBinding(category))
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                             .padding(.leading, 28)
                             .accessibilityLabel(AppLocalization.string("Include detailed readings for \(category.title)"))
                     }
                 }
             }
             Text("Hermes gets hourly and daily summaries computed by Apple Health, a summary of each night's sleep, and each workout. Detailed readings add every individual measurement, such as each heart rate reading.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if preferences.isOn {
                 keptOnHostNote
@@ -232,7 +232,7 @@ struct HealthSettingsPage: View {
     /// Narrowing what's shared doesn't delete what the host already has.
     private var keptOnHostNote: some View {
         Text("Unticking a category or shortening the history only stops new uploads. What was already sent stays on the host until you turn off sharing and delete it.")
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
     }
 
@@ -246,7 +246,7 @@ struct HealthSettingsPage: View {
                 Text("Share history from").foregroundStyle(.secondary)
             }
             Text("How far back the first sync reaches. A long history comes in over a few days in the background. Hourly detail covers the last 30 days; older history is daily.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -296,7 +296,7 @@ struct HealthSettingsPage: View {
             }
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -407,13 +407,13 @@ struct HealthSharingConsentSheet: View {
                         .foregroundStyle(.pink)
                         .accessibilityHidden(true)
                     Text("Share health data with Hermes?")
-                        .font(.title2.weight(.semibold))
+                        .scaledFont(.title2.weight(.semibold))
                     Label(AppLocalization.string("Conduit sends the health data you chose to the \(profile) profile on \(host), sealed end to end. It never goes through Conduit's notification relay, and Conduit's developer can't see it."), systemImage: "lock.shield")
                     Label("Your agent reads it when you ask, or when a task needs it. Whatever it reads goes to the AI model provider your Hermes uses, under that provider's terms. If your Hermes is hosted by someone else, such as Hermes Cloud, they can read it too.", systemImage: "sparkles")
                     Label("Health data is never used for advertising and is not stored in iCloud by Conduit.", systemImage: "hand.raised")
                     Label("You can turn sharing off at any time in Settings > Health and delete what was sent from the host.", systemImage: "heart.slash")
                 }
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .padding(20)
             }
             .safeAreaInset(edge: .bottom) {

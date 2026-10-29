@@ -39,13 +39,13 @@ struct PendingComposerSendBubble: View {
 
                 HStack(spacing: 10) {
                     Label("Sends when connected", systemImage: "clock")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                     Button("Edit") {
                         Haptics.selection()
                         appState.editPendingComposerSend()
                     }
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .accessibilityHint(Text("Puts the message back in the composer to change or delete"))
                 }
             }

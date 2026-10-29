@@ -404,11 +404,11 @@ struct ComposerAttachmentChip: View {
             preview
             VStack(alignment: .leading, spacing: 1) {
                 Text(attachment.name)
-                    .font(.caption.weight(.medium))
+                    .scaledFont(.caption.weight(.medium))
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                     .truncationMode(.middle)
                 Text(AttachmentTypePolicy.detailLabel(for: attachment, byteCount: byteCount))
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
             }
@@ -418,7 +418,7 @@ struct ComposerAttachmentChip: View {
                 onRemove()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.callout)
+                    .scaledFont(.callout)
                     .foregroundStyle(.secondary)
                     // A full-size tap target without growing the chip.
                     .frame(width: 44, height: 44)
@@ -461,7 +461,7 @@ struct ComposerAttachmentChip: View {
             } else {
                 Color.primary.opacity(0.06)
                 Image(systemName: AttachmentTypePolicy.symbolName(for: attachment))
-                    .font(.callout)
+                    .scaledFont(.callout)
                     .foregroundStyle(.secondary)
             }
             if attachment.kind == .video, thumbnail != nil {

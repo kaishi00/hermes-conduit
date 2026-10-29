@@ -26,16 +26,16 @@ struct ShortcutInboxSettingsPage: View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Shortcuts inbox"), symbol: "tray.full", tint: .indigo) {
                 Text(AppLocalization.string("What your Shortcuts automations logged with Log to Hermes. Hermes can look these up, and Pulse reads them when it's on. Only this iPhone's events show here, and they're deleted after 30 days."))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 if waitingCount > 0 {
                     Label(AppLocalization.string("\(waitingCount) waiting on this iPhone for the next run"), systemImage: "clock")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.orange)
                     Button(AppLocalization.string("Try Again")) { load(before: nil) }
                         .disabled(isWorking)
@@ -47,7 +47,7 @@ struct ShortcutInboxSettingsPage: View {
                         .frame(maxWidth: .infinity)
                 } else if entries.isEmpty && next == nil {
                     Text(AppLocalization.string("Nothing logged from this iPhone. Add Log to Hermes to an automation in the Shortcuts app."))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(entries) { entry in
@@ -86,11 +86,11 @@ struct ShortcutInboxSettingsPage: View {
                     .frame(width: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: [entry.source, entry.title].compactMap { $0 }.joined(separator: " · "))
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .lineLimit(1)
                     if let text = entry.text {
                         Text(verbatim: text)
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                     }
@@ -102,7 +102,7 @@ struct ShortcutInboxSettingsPage: View {
                             Text(verbatim: amount)
                         }
                     }
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
                 }
             }

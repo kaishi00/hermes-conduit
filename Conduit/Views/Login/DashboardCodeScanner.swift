@@ -39,7 +39,7 @@ struct DashboardCodeScannerSheet: View {
                     VStack(spacing: 16) {
                         camera
                         Text("Point the camera at the code Hermes shows. For an address shown as text, tap it.")
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
@@ -105,7 +105,7 @@ struct DashboardCodeScannerSheet: View {
         .overlay(alignment: .bottom) {
             if showsUnreadable {
                 Text("That code isn't a dashboard address.")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
@@ -120,11 +120,11 @@ struct DashboardCodeScannerSheet: View {
     private func cameraNotice(_ text: String, opensSettings: Bool) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "camera")
-                .font(.title2)
+                .scaledFont(.title2)
                 .foregroundStyle(Color.white.opacity(0.8))
                 .accessibilityHidden(true)
             Text(verbatim: text)
-                .font(.callout)
+                .scaledFont(.callout)
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
