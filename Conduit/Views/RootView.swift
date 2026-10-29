@@ -516,6 +516,9 @@ struct MainView: View {
                         ChatView()
                     }
                 }
+                // A room's composer rests on an iPhone and stays expanded
+                // on a Mac or a wide iPad, as V2's does (#1483).
+                .composerLayoutFromWidth()
                 // The same readable column as V2's chat on a wide window;
                 // the backdrop still fills it.
                 .readableChatColumn()
