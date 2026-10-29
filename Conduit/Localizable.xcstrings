@@ -371245,6 +371245,170 @@
           }
         }
       }
+    },
+    "This room's chat never resets. Remove the attachments to compact it instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Chat dieses Raums wird nie zurückgesetzt. Entferne die Anhänge, um ihn stattdessen zu komprimieren."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El chat de esta sala nunca se reinicia. Quita los archivos adjuntos para compactarlo en su lugar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La discussion de ce salon ne se réinitialise jamais. Retirez les pièces jointes pour la compacter à la place."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrolan ruang ini tidak pernah diatur ulang. Hapus lampirannya untuk memadatkannya sebagai gantinya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La chat di questa stanza non si azzera mai. Rimuovi gli allegati per compattarla invece."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このルームのチャットはリセットされません。代わりに圧縮するには添付ファイルを外してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 방의 채팅은 초기화되지 않아요. 대신 압축하려면 첨부 파일을 빼 주세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czat tego pokoju nigdy się nie resetuje. Usuń załączniki, aby go zamiast tego skompaktować."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O chat desta sala nunca é reiniciado. Remova os anexos para compactá-lo em vez disso."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чат этой комнаты никогда не сбрасывается. Уберите вложения, чтобы сжать его вместо этого."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu odanın sohbeti asla sıfırlanmaz. Bunun yerine sıkıştırmak için ekleri kaldır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个房间的聊天永远不会重置。移除附件即可改为压缩它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這個房間的聊天永遠不會重設。移除附件即可改為壓縮它。"
+          }
+        }
+      }
+    },
+    "A room's chat never resets, so this one is compacted instead: Hermes carries on from a summary with fresh context, and still knows its room. For a separate chat, start one in Chats." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Chat eines Raums wird nie zurückgesetzt, daher wird dieser stattdessen komprimiert: Hermes macht mit einer Zusammenfassung und frischem Kontext weiter und kennt seinen Raum weiterhin. Für einen eigenen Chat starte einen in Chats."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El chat de una sala nunca se reinicia, así que este se compacta en su lugar: Hermes continúa desde un resumen con contexto nuevo y sigue sabiendo cuál es su sala. Para un chat aparte, inicia uno en Chats."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La discussion d'un salon ne se réinitialise jamais, elle est donc compactée à la place : Hermes reprend à partir d'un résumé avec un contexte neuf, et connaît toujours son salon. Pour une discussion séparée, lancez-en une dans Discussions."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrolan ruang tidak pernah diatur ulang, jadi obrolan ini dipadatkan sebagai gantinya: Hermes melanjutkan dari ringkasan dengan konteks baru, dan tetap tahu ruangnya. Untuk obrolan terpisah, mulai satu di Obrolan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La chat di una stanza non si azzera mai, quindi questa viene compattata invece: Hermes riprende da un riepilogo con un contesto nuovo e sa ancora qual è la sua stanza. Per una chat separata, avviane una in Chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ルームのチャットはリセットされないため、代わりに圧縮されます：Hermes は要約から新しいコンテキストで続け、ルームのことも引き続き把握しています。別のチャットにするには、チャットで新しく始めてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "방의 채팅은 초기화되지 않으므로 대신 압축돼요: Hermes는 새 컨텍스트로 요약에서 이어가고, 방도 계속 알고 있어요. 별도 채팅이 필요하면 채팅에서 새로 시작하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czat pokoju nigdy się nie resetuje, więc ten zostaje skompaktowany: Hermes kontynuuje od podsumowania ze świeżym kontekstem i nadal zna swój pokój. Aby mieć osobny czat, rozpocznij go w Czatach."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O chat de uma sala nunca é reiniciado, então este é compactado em vez disso: o Hermes continua a partir de um resumo com contexto novo e ainda sabe qual é a sala. Para um chat separado, comece um em Chats."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чат комнаты никогда не сбрасывается, поэтому он сжимается: Hermes продолжает с краткого изложения со свежим контекстом и по-прежнему знает свою комнату. Для отдельного чата начните новый в Чатах."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir odanın sohbeti asla sıfırlanmaz, bu yüzden bunun yerine sıkıştırılır: Hermes bir özetten taze bağlamla devam eder ve odasını hâlâ bilir. Ayrı bir sohbet için Sohbetler'de yeni bir tane başlat."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "房间的聊天永远不会重置，所以改为压缩：Hermes 会从摘要以全新的上下文继续，并且仍然知道它的房间。如需单独的聊天，请在“聊天”中新建一个。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "房間的聊天永遠不會重設，所以改為壓縮：Hermes 會從摘要以全新的上下文繼續，並且仍然知道它的房間。如需單獨的聊天，請在「聊天」中新建一個。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

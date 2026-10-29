@@ -1238,7 +1238,9 @@ chat, which never forks: there it compacts the same chat instead, so the
 bot starts from a summary with fresh context and the user stays in Bots.
 
 **Siblings:** the composer's `/new` in chats and project chats (starts a new
-chat) · Bot Chat (compacts) · a Bot Chat `/new` with attachments (refused,
+chat) · Bot Chat (compacts) · a room's chat, on `linked-rooms` (compacts with
+its own notice; never a Bot Chat, even in the Bot Chat registry for its
+scope: see Linked Rooms) · a Bot Chat `/new` with attachments (refused,
 the draft kept) · group rooms (no slash commands) · the notice the compaction
 shows (says the chat compacts and keeps its memory and skills) · the `/help`
 text and the slash suggestions' "Start a new conversation" (the general
@@ -1246,7 +1248,7 @@ command, still right outside Bot Chats) · "A new chat that something waits
 on" (a Bot Chat's `/new` opens no chat, so nothing waits on one)
 
 **Code**
-- The guard: `Conduit/Services/AppState.swift` (activeChatIsCanonicalBotChat, isCanonicalForeverChatReset, executeSlashCommand's new/reset/clear case, the attachment refusal in performComposerSubmission)
+- The guard: `Conduit/Services/AppState.swift` (activeChatIsCanonicalBotChat, isCanonicalForeverChatReset, on the branch activeChatIsRoomChat and roomChatSessionIDs, executeSlashCommand's new/reset/clear case, the attachment refusal in performComposerSubmission)
 - Tests: `ConduitTests/AppStateSessionCompressTests.swift`
 
 **Rulings**
@@ -1257,7 +1259,7 @@ on" (a Bot Chat's `/new` opens no chat, so nothing waits on one)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-26, #1310.
+**Checked:** 2026-10-29, #1471 (a room's chat compacts too, on `linked-rooms`); 2026-10-26, #1310.
 
 ## Composer Return key
 
@@ -2619,7 +2621,8 @@ captions, the join card's captions, Settings captions, the invite's share messag
 - Leave and Take Out live in Group Info only, not the room's menu, so both shells and the menu's other callers are unchanged; the Watch and CarPlay don't show rooms over Links (2026-10-28, #1437).
 - An ended copy (ended, or your agents left) can be deleted from its row's swipe and context menu, with plugins that report room-forget too, after "Delete this room? Your copy of it and your agents' chats for it are deleted from your Hermes. The others keep theirs.": each of your agents' hidden chats for it (DELETE /rooms/sessions for every profile in the copy's `yours` and its invite's joined and gone), then the copy (DELETE /rooms/copies); the invites are read again first, since only its invite names your agents that left, so one whose invites can't be read now isn't deleted, whatever its `yours` lists (#1437). A refusal shows the plugin's words and keeps the copy; its ended invite doesn't take its row back. One still going isn't deleted here (2026-10-28, #1419).
 - The join card says when an invite has no places left for your bots; a picked bot the invite no longer lists is unpicked on Join, which says so; a card whose invite a read no longer lists says it isn't on your Hermes any more, with no Join or Decline; and a tapped invite whose dashboard changed while the invites were read tries again, up to 3 times (2026-10-27, #1396, from #1387's review).
-- Group Info of a room with other people's agents offers, for each of your agents still in it, "Ask Kuro about this room" and "Wrap Up with Kuro", with plugins that report room-chats (0.117). Either opens the room's chat for that agent's profile: the one your Hermes keeps for the room (GET /rooms/chats?profile=), else a new chat in that profile, which your Hermes is told about (PUT /rooms/chats) before it's titled "About <room>" and opens, so its first turn knows its room and one your Hermes refused stays Hermes' lazy row, which it prunes. A kept chat Hermes no longer has is replaced; one that didn't open for another reason stays the room's, and the room's notes go on in the new chat from where they were. A new chat Hermes gives no stored id for is never registered or opened. Wrap Up then sends "Wrap up this room for me: …" in it (into the composer while the chat is still settling; with a draft there, the banner says it wasn't sent). A failure shows in Group Info while it's up on its room, else in the app's banner; a gone kept chat's restore error isn't left on screen. A chat in another profile than the dashboard's opens under that profile, as a Bot Chat does (its scope noted in the Bot Chat registry for this launch), without switching, and so takes a Bot Chat's paths there: `/new`, `/reset` and `/clear` compact it rather than start a chat outside the room, and deleting that bot closes it and drops its pins. Nothing written there goes to the room (2026-10-29, #1471, notifier #457).
+- Group Info of a room with other people's agents offers, for each of your agents still in it, "Ask Kuro about this room" and "Wrap Up with Kuro", with plugins that report room-chats (0.117). Either opens the room's chat for that agent's profile: the one your Hermes keeps for the room (GET /rooms/chats?profile=), else a new chat in that profile, which your Hermes is told about (PUT /rooms/chats) before it's titled "About <room>" and opens, so its first turn knows its room and one your Hermes refused stays Hermes' lazy row, which it prunes. A kept chat Hermes no longer has is replaced; one that didn't open for another reason stays the room's, and the room's notes go on in the new chat from where they were. A new chat Hermes gives no stored id for is never registered or opened. Wrap Up then sends "Wrap up this room for me: …" in it (into the composer while the chat is still settling; with a draft there, the banner says it wasn't sent). A failure shows in Group Info while it's up on its room, else in the app's banner; a gone kept chat's restore error isn't left on screen. A chat in another profile than the dashboard's opens under that profile, as a Bot Chat does (its scope noted in the Bot Chat registry for this launch), without switching. A new chat is opened only once its title landed, which writes its row. Nothing written there goes to the room (2026-10-29, #1471, notifier #457).
+- A room's chat is one chat, in any profile: `/new`, `/reset` and `/clear` there compact it, with its own notice ("A room's chat never resets…", no Bot Chat wording), rather than start a chat the room doesn't know, and with attachments are refused, the draft kept. It is never a Bot Chat for `/new`, even when another profile's chat is in the Bot Chat registry for its scope; deleting that bot, which deletes its profile's chats, closes it and drops its pins as for the bot's other chats. Built under the build Eric delegated (2026-10-25), his to change (2026-10-29, #1471).
 
 **Open gaps**
 - On main the app shows none of it, and invites are made and opened with `hermes conduit-push links`. The `linked-rooms` branch has the room screen, Group Info with your agents' choices, Settings > People with host setup, the Links and linking with someone, New Group Chat with linked people and its waiting room, the invite list and the join card, rooms hosted by others and posting in them, and Leave Room, Take Out and who's out. Until then choices for a room hosted elsewhere change after joining only with `hermes conduit-push rooms set`.

@@ -108,8 +108,9 @@ struct RoomChatOpener {
     var create: (_ profile: String) async throws -> (runtimeID: String, storedID: String?)
     /// The chat, by the id Hermes keeps it by, is the room's.
     var register: (_ roomID: String, _ chatID: String, _ profile: String) async throws -> RoomChat
-    /// Titles the chat by the id it runs under, which writes its row.
-    var title: (_ runtimeID: String, _ profile: String, _ title: String) async -> Void
+    /// Titles the chat by the id it runs under, which writes its row, so
+    /// it can be opened by the id Hermes keeps it by.
+    var title: (_ runtimeID: String, _ profile: String, _ title: String) async throws -> Void
     /// Opens the chat on screen.
     var open: (_ chatID: String, _ profile: String, _ title: String) async -> RoomChatOpenOutcome
     /// Sends a message in the chat on screen.
@@ -117,8 +118,8 @@ struct RoomChatOpener {
 
     /// A chat the plugin keeps that Hermes no longer has is replaced by a
     /// new one; one that didn't open for another reason stays the room's.
-    /// Throws when the chats can't be read or the new one can't be made or
-    /// registered: a chat is never made while the room's own may still be
+    /// Throws when the chats can't be read or the new one can't be made,
+    /// registered or titled: a chat is never made while the room's own may still be
     /// there. A new chat Hermes gave no stored id for is never registered
     /// or opened: its runtime id names nothing once the chat closes.
     @MainActor
@@ -135,7 +136,9 @@ struct RoomChatOpener {
             let created = try await create(profile)
             guard let chatID = created.storedID, !chatID.isEmpty else { throw HermesError.invalidResponse }
             _ = try await register(roomID, chatID, profile)
-            await self.title(created.runtimeID, profile, title)
+            // Untitled, it's a lazy row its stored id doesn't open yet: the next try finds it gone and
+            // replaces it, as a Bot Chat whose title didn't land isn't opened either.
+            try await self.title(created.runtimeID, profile, title)
             outcome = await open(chatID, profile, title)
         }
         if outcome == .opened, wrapUp {
@@ -241,10 +244,9 @@ extension AppState {
                 try await routes.open(roomID: roomID, chatID: chatID, profile: profile)
             },
             title: { [weak self] runtimeID, profile, title in
-                guard let self else { return }
-                // To the id it runs under, as a Bot Chat's title goes. A title that didn't land leaves the
-                // chat as Hermes names it: it still knows its room.
-                try? await self.titleRoomChatSession(runtimeID, title: title, using: client,
+                guard let self else { throw HermesError.notConnected }
+                // To the id it runs under, as a Bot Chat's title goes.
+                try await self.titleRoomChatSession(runtimeID, title: title, using: client,
                                                      profile: self.profilesMatch(profile, self.activeProfile) ? nil : profile)
             },
             open: { [weak self] chatID, profile, title in
