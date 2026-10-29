@@ -152,6 +152,8 @@ enum CrashReportUpload {
         }
     }
 
+    /// A root frame is the one that was running and its subFrames lead out
+    /// toward the thread's entry, so the crash site is in the levels kept.
     /// A stack that overflowed can nest thousands of frames: the first 256
     /// frame levels are kept, so the walk stays well inside a thread's stack
     /// and under the relay's 512.
