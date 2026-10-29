@@ -32,7 +32,7 @@ extension ConnectionFailureTests {
             "version": "1.0.0",
             "diagnosticMetaData": [
                 "appVersion": "2.2.1", "appBuildVersion": "236", "osVersion": "iPhone OS 27.2 (24C5)",
-                "deviceType": "iPhone17,2", "exceptionType": 1, "signal": 11,
+                "deviceType": "iPhone17,2", "exceptionType": 1, "signal": 11, "regionFormat": "NZ",
                 "exceptionReason": [
                     "composedMessage": "*** -[NSString substringToIndex:]: Index 9 out of bounds; string length 3 (\"hi?\")",
                     "formatString": "*** -[NSString substringToIndex:]: Index %lu out of bounds; string length %lu",
@@ -41,7 +41,7 @@ extension ConnectionFailureTests {
                     "className": "NSString",
                 ],
             ],
-            "callStackTree": ["callStacks": [["threadAttributed": true, "callStackRootFrames": [["binaryName": "Conduit", "offsetIntoBinaryTextSegment": 1234]]]]],
+            "callStackTree": ["callStacks": [["threadAttributed": true, "callStackRootFrames": [["binaryName": "Conduit", "offsetIntoBinaryTextSegment": 1234, "subFrames": [["binaryName": "SwiftUI", "offsetIntoBinaryTextSegment": 99, "symbol": "x"]]]]]]]],
         ]
         let hang: [String: Any] = [
             "diagnosticMetaData": ["appBuildVersion": "236", "hangDuration": "8 sec"],
@@ -68,6 +68,12 @@ extension ConnectionFailureTests {
         XCTAssertTrue(encoded.contains("NSRangeException"))
         XCTAssertTrue(encoded.contains("offsetIntoBinaryTextSegment"))
         XCTAssertNil((body["diagnostic"] as? [String: Any])?["cpuExceptionDiagnostics"], "only crashes and hangs go")
+        XCTAssertTrue(encoded.contains("SwiftUI"), "nested frames go")
+        XCTAssertFalse(encoded.contains("regionFormat"), "a key not named stays on the phone")
+        XCTAssertFalse(encoded.contains("symbol"))
+
+        let huge: [String: Any] = ["crashDiagnostics": [["callStackTree": ["callStacks": [["callStackRootFrames": [["binaryName": String(repeating: "x", count: 600_000)]]]]]]]]
+        XCTAssertNil(CrashReportUpload.body(fromPayloadJSON: try JSONSerialization.data(withJSONObject: huge)), "too big even trimmed: not offered")
 
         XCTAssertEqual(CrashReportUpload.kind(ofPayloadJSON: diagnosticJSON(crashes: 0, hangs: 2)), .hang)
         XCTAssertNil(CrashReportUpload.kind(ofPayloadJSON: diagnosticJSON(crashes: 0, hangs: 0, cpu: 1)))
@@ -86,15 +92,18 @@ extension ConnectionFailureTests {
 
     func testCrashReportQueueAsksAboutTheNewestFewOnce() {
         let defaults = crashDefaults()
-        let queue = CrashReportQueue(defaults: defaults)
+        let queue = CrashReportQueue(defaults: defaults, build: "240")
         for index in 0..<7 { queue.add("diagnostics-\(index).json") }
         queue.add("diagnostics-6.json")
         XCTAssertEqual(queue.pending, (2..<7).map { "diagnostics-\($0).json" })
         queue.remove(["diagnostics-2.json"])
         XCTAssertEqual(queue.pending.count, 4)
-        defaults.set(true, forKey: CrashReportQueue.unsupportedKey)
+        queue.stopOffering()
         queue.add("diagnostics-9.json")
-        XCTAssertFalse(queue.pending.contains("diagnostics-9.json"), "a relay without the route: nothing more is offered")
+        XCTAssertTrue(queue.pending.isEmpty, "a relay without the route: this build offers nothing more")
+        let next = CrashReportQueue(defaults: defaults, build: "241")
+        next.add("diagnostics-9.json")
+        XCTAssertEqual(next.pending, ["diagnostics-9.json"], "the next build asks again")
     }
 
     func testMetricKitQueuesOnlyARecentCrashOrHang() {
@@ -120,6 +129,8 @@ extension ConnectionFailureTests {
 
     @MainActor
     func testCrashReportOfferSendsOrStopsAsking() async throws {
+        CrashReportStubProtocol.status = 201
+        CrashReportStubProtocol.paths = []
         let directory = crashDirectory()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try diagnosticJSON().write(to: directory.appendingPathComponent("diagnostics-1-2-abc.json"))
@@ -142,16 +153,14 @@ extension ConnectionFailureTests {
         // Send: posted to the relay's route, then thanked.
         defaults = crashDefaults()
         CrashReportQueue(defaults: defaults).add("diagnostics-1-2-abc.json")
-        offer = CrashReportOffer(queue: CrashReportQueue(defaults: defaults), directory: directory, relayURL: relay, session: session)
+        offer = CrashReportOffer(queue: CrashReportQueue(defaults: defaults), directory: directory, relayURL: relay, session: session, thanksFor: .zero)
         offer.refresh()
         CrashReportStubProtocol.status = 201
         CrashReportStubProtocol.paths = []
-        let sending = Task { await offer.send() }
-        try await Task.sleep(for: .milliseconds(500))
-        XCTAssertEqual(offer.state, .sent)
+        await offer.send()
+        XCTAssertEqual(offer.state, .hidden, "thanked, then gone")
         XCTAssertEqual(CrashReportStubProtocol.paths, ["/v1/crash-reports"])
         XCTAssertTrue(CrashReportQueue(defaults: defaults).pending.isEmpty)
-        sending.cancel()
 
         // A refused post keeps the report for Try Again.
         defaults = crashDefaults()
@@ -168,7 +177,7 @@ extension ConnectionFailureTests {
         await offer.send()
         XCTAssertEqual(offer.state, .hidden)
         XCTAssertTrue(CrashReportQueue(defaults: defaults).pending.isEmpty)
-        XCTAssertTrue(defaults.bool(forKey: CrashReportQueue.unsupportedKey))
+        XCTAssertTrue(CrashReportQueue(defaults: defaults).isUnsupported)
     }
 }
 

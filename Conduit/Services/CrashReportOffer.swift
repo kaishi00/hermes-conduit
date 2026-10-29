@@ -5,14 +5,15 @@
 //  After Conduit crashes or freezes, iOS hands it a MetricKit diagnostic on
 //  the next launch (MetricKitReports keeps it). Conduit asks once, on a card
 //  over the main screen, whether to send it to its developer; Send posts it
-//  to Conduit's own relay (`POST /v1/crash-reports`, notifier
-//  relay/src/crash-reports.mjs), whichever relay the user's notifications
-//  use. Not now drops it from the offer; it stays in Diagnostics & logs.
+//  to the developer's relay at push.milim.dev (`POST /v1/crash-reports`,
+//  notifier relay/src/crash-reports.mjs), even when the user's notifications
+//  use another relay. Not now drops it from the offer; it stays in
+//  Diagnostics & logs.
 //
-//  A report is the diagnostic's crashes and hangs as iOS wrote them (call
-//  stacks, exception and termination codes) with the version, build, iOS
-//  version and device model. An Objective-C exception's message and its
-//  arguments are left out: they can quote anything.
+//  A report is the diagnostic's crashes and hangs (call stacks, exception
+//  and termination codes) with the version, build, iOS version and device
+//  model, built from the keys named below only. An Objective-C exception's
+//  message and its arguments are left out: they can quote anything.
 //
 
 import Foundation
@@ -23,9 +24,10 @@ private let crashReportLog = Logger(subsystem: "com.milim.relay", category: "cra
 /// The report a stored MetricKit diagnostic payload sends.
 enum CrashReportUpload {
     static let path = "v1/crash-reports"
-    /// The relay takes 600,000 characters; a payload past this sends only
-    /// its first crash and first hang.
-    static let maxCharacters = 550_000
+    /// The relay takes 600,000 characters; a payload past this many bytes
+    /// sends only its first crash and first hang, and one still past it
+    /// isn't offered.
+    static let maxBytes = 550_000
     /// An older diagnostic isn't offered: it's about a build long gone.
     static let maxAge: TimeInterval = 7 * 86_400
     /// The relay's field pattern: letters, digits, spaces and ()._,:+-.
@@ -55,17 +57,21 @@ enum CrashReportUpload {
     ) -> [String: Any]? {
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let kind = kind(ofPayloadJSON: data) else { return nil }
-        var crashes = ((root["crashDiagnostics"] as? [Any]) ?? []).map(withoutMessages)
-        var hangs = ((root["hangDiagnostics"] as? [Any]) ?? []).map(withoutMessages)
+        var crashes = ((root["crashDiagnostics"] as? [Any]) ?? []).map(kept)
+        var hangs = ((root["hangDiagnostics"] as? [Any]) ?? []).map(kept)
         func diagnostic() -> [String: Any] {
             var object: [String: Any] = ["crashDiagnostics": crashes, "hangDiagnostics": hangs]
             object["timeStampBegin"] = root["timeStampBegin"]
             object["timeStampEnd"] = root["timeStampEnd"]
             return object
         }
-        if let encoded = try? JSONSerialization.data(withJSONObject: diagnostic()), encoded.count > maxCharacters {
+        func fits() -> Bool {
+            ((try? JSONSerialization.data(withJSONObject: diagnostic()))?.count ?? .max) <= maxBytes
+        }
+        if !fits() {
             crashes = Array(crashes.prefix(1))
             hangs = Array(hangs.prefix(1))
+            guard fits() else { return nil }
         }
         // The build that crashed, which may not be the one running now.
         let first = (crashes.first ?? hangs.first) as? [String: Any]
@@ -89,21 +95,70 @@ enum CrashReportUpload {
         }
     }
 
-    /// An exception's composed message and its arguments can quote anything
-    /// the app held; its type, name and format string stay.
-    private static func withoutMessages(_ value: Any) -> Any {
-        switch value {
-        case let object as [String: Any]:
-            var kept: [String: Any] = [:]
-            for (key, child) in object where key != "composedMessage" && key != "arguments" {
-                kept[key] = withoutMessages(child)
+    /// The keys a report keeps, level by level; anything else MetricKit
+    /// writes, now or in a later iOS, stays on the phone. An exception's
+    /// composed message and its arguments can quote anything the app held,
+    /// so only its type, name and format string go.
+    private static let diagnosticKeys: Set<String> = ["version", "diagnosticMetaData", "callStackTree"]
+    private static let metaKeys: Set<String> = [
+        "appVersion", "appBuildVersion", "osVersion", "deviceType", "platformArchitecture",
+        "bundleIdentifier", "isTestFlightApp", "lowPowerModeEnabled",
+        "exceptionType", "exceptionCode", "signal", "terminationReason", "virtualMemoryRegionInfo",
+        "hangDuration", "exceptionReason",
+    ]
+    private static let exceptionKeys: Set<String> = ["exceptionType", "exceptionName", "className", "formatString"]
+    private static let treeKeys: Set<String> = ["callStackPerThread", "callStacks"]
+    private static let threadKeys: Set<String> = ["threadAttributed", "callStackRootFrames"]
+    private static let frameKeys: Set<String> = [
+        "binaryUUID", "binaryName", "offsetIntoBinaryTextSegment", "address", "sampleCount", "subFrames",
+    ]
+
+    private static func kept(_ diagnostic: Any) -> Any {
+        pick(diagnostic, diagnosticKeys) { key, value in
+            switch key {
+            case "diagnosticMetaData": return keptMeta(value)
+            case "callStackTree": return keptTree(value)
+            default: return value
             }
-            return kept
-        case let list as [Any]:
-            return list.map(withoutMessages)
-        default:
+        }
+    }
+
+    private static func keptMeta(_ meta: Any) -> Any {
+        pick(meta, metaKeys) { key, value in
+            if key == "exceptionReason" { return pick(value, exceptionKeys) { $1 } }
             return value
         }
+    }
+
+    private static func keptTree(_ tree: Any) -> Any {
+        pick(tree, treeKeys) { key, value in
+            guard key == "callStacks" else { return value }
+            let threads: [Any] = (value as? [Any]) ?? []
+            return threads.map { thread -> Any in
+                pick(thread, threadKeys) { key, frames in
+                    guard key == "callStackRootFrames" else { return frames }
+                    let roots: [Any] = (frames as? [Any]) ?? []
+                    return roots.map(keptFrame)
+                }
+            }
+        }
+    }
+
+    private static func keptFrame(_ frame: Any) -> Any {
+        pick(frame, frameKeys) { key, value in
+            guard key == "subFrames" else { return value }
+            let children: [Any] = (value as? [Any]) ?? []
+            return children.map(keptFrame)
+        }
+    }
+
+    /// The keys of `object` named in `keys`, each through `child`.
+    private static func pick(_ object: Any, _ keys: Set<String>, _ child: (String, Any) -> Any) -> [String: Any] {
+        var picked: [String: Any] = [:]
+        for (key, value) in (object as? [String: Any]) ?? [:] where keys.contains(key) {
+            picked[key] = child(key, value)
+        }
+        return picked
     }
 
     private static func field(_ value: Any?, fallback: String) -> String {
@@ -120,35 +175,48 @@ enum CrashReportUpload {
 
 /// The report files waiting to be offered, by file name in the MetricKit
 /// store. MetricKitReports adds to it from its queue; the offer reads and
-/// clears it on the main thread. UserDefaults is safe from both.
+/// clears it on the main thread, so each change holds a lock.
 struct CrashReportQueue {
     static let key = "conduit.crashReports.pending"
-    /// Set when Conduit's relay doesn't take reports: nothing more is offered.
-    static let unsupportedKey = "conduit.crashReports.unsupported"
+    /// The build that found the relay taking no reports: that build offers
+    /// none, and the next one asks again.
+    static let unsupportedKey = "conduit.crashReports.unsupportedBuild"
+    private static let lock = NSLock()
     var defaults: UserDefaults = .standard
+    var build: String = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
 
     var pending: [String] { defaults.stringArray(forKey: Self.key) ?? [] }
+    var isUnsupported: Bool { defaults.string(forKey: Self.unsupportedKey) == build }
 
     func add(_ fileName: String) {
-        guard !defaults.bool(forKey: Self.unsupportedKey) else { return }
-        var names = pending
-        guard !names.contains(fileName) else { return }
-        names.append(fileName)
-        // A run of crashes asks about the newest few.
-        defaults.set(Array(names.suffix(5)), forKey: Self.key)
+        guard !isUnsupported else { return }
+        change { names in
+            guard !names.contains(fileName) else { return }
+            names.append(fileName)
+            // A run of crashes asks about the newest few.
+            names = Array(names.suffix(5))
+        }
     }
 
     func remove(_ fileNames: [String]) {
-        let left = pending.filter { !fileNames.contains($0) }
-        defaults.set(left.isEmpty ? nil : left, forKey: Self.key)
+        change { names in names.removeAll { fileNames.contains($0) } }
     }
 
-    func clear() { defaults.removeObject(forKey: Self.key) }
+    func clear() { change { names in names = [] } }
 
-    /// Conduit's relay doesn't take reports: drop these, offer no more.
+    /// Conduit's relay doesn't take reports: drop these, and offer no more
+    /// from this build.
     func stopOffering() {
-        defaults.set(true, forKey: Self.unsupportedKey)
+        defaults.set(build, forKey: Self.unsupportedKey)
         clear()
+    }
+
+    private func change(_ body: (inout [String]) -> Void) {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+        var names = pending
+        body(&names)
+        defaults.set(names.isEmpty ? nil : names, forKey: Self.key)
     }
 }
 
@@ -172,17 +240,21 @@ final class CrashReportOffer: ObservableObject {
     private let directory: URL
     private let relayURL: URL
     private let session: URLSession
+    /// How long the thanks shows before the card goes.
+    private let thanksFor: Duration
 
     init(
         queue: CrashReportQueue = CrashReportQueue(),
         directory: URL = MetricKitReportStore.defaultDirectory,
         relayURL: URL = PushNotificationService.upstreamRelayURL,
-        session: URLSession = .shared
+        session: URLSession = .shared,
+        thanksFor: Duration = .seconds(3)
     ) {
         self.queue = queue
         self.directory = directory
         self.relayURL = relayURL
         self.session = session
+        self.thanksFor = thanksFor
     }
 
     /// Shows the card when reports wait and nothing else is on it.
@@ -225,7 +297,7 @@ final class CrashReportOffer: ObservableObject {
         queue.remove(sent)
         state = failed ? .failed : .sent
         if !failed {
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: thanksFor)
             if state == .sent { state = .hidden }
         }
     }

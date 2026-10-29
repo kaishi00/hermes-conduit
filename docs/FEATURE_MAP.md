@@ -3685,6 +3685,9 @@ send it to its developer, and Send posts it to Conduit's relay.
 Mac too) · Settings > Connection > Diagnostics & logs (its Device reports
 caption, and the shared reports file's `about` line) · the relay's route and
 store (notifier relay) · the privacy policy and the relay README (notifier) ·
+this README's Privacy section · the app's privacy manifest
+(`Conduit/PrivacyInfo.xcprivacy`, crash and performance data, not linked, and
+its test) and App Store Connect's privacy label (the maintainer's) ·
 not needed: the Apple Watch (watchOS has no MetricKit), CarPlay (the phone's
 card shows when the app is next opened), the widgets and the share extension
 (they don't keep MetricKit reports)
@@ -3695,12 +3698,14 @@ card shows when the app is next opened), the widgets and the share extension
 - Card: `Conduit/Views/CrashReportBanner.swift`, shown by `Conduit/Views/RootView.swift` (MainView's top overlay)
 - Settings caption: `Conduit/Views/ChatSupportSheets.swift` (DeviceReportsSection)
 - Relay: `notifier/relay/src/crash-reports.mjs`, `notifier/relay/test/crash-reports.test.mjs`; privacy: `notifier/docs/privacy/index.html`
+- Privacy manifest: `Conduit/PrivacyInfo.xcprivacy`, `ConduitTests/PrivacyManifestTests.swift`
 - Tests: `ConduitTests/ConnectionFailureTests+CrashReports.swift`
 
 **Rulings**
 - Ask once, upload to the relay: Not now drops the report from the offer (it stays in Diagnostics & logs), and nothing is sent without Send (2026-10-29, Eric chose it in the TestFlight crashes thread; #1477, notifier #459).
 - A report is the diagnostic's crashes and hangs only, with the version, build, iOS version and device model; an exception's composed message and arguments are left out, since they can quote anything. It goes to the developer's relay (`push.milim.dev`) even when the user's notifications use another relay, and carries no installation credential (#1477, notifier #459).
-- Only a new crash or hang from the last 7 days is offered, the newest 5 at most. A relay that answers 404 (no `CRASH_REPORTS_TOKEN`) stops the offers on that device (#1477).
+- Only a new crash or hang from the last 7 days is offered, the newest 5 at most, and one too big to send even trimmed to its first crash and hang is not. A relay that answers 404 (no `CRASH_REPORTS_TOKEN`) stops the offers from that build on that device; the next build asks again (#1477).
+- A report is built from named keys only (the diagnostic's metadata, exception and stack frames); a key MetricKit adds later stays on the phone until it's named (#1477).
 
 **Open gaps**
 - A kill for memory (jetsam) leaves no MetricKit diagnostic, so a freeze that ends that way is never offered.
