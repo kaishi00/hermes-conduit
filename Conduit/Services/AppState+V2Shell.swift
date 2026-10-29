@@ -2,7 +2,8 @@
 //  AppState+V2Shell.swift
 //  Conduit
 //
-//  Read-only lookups the V2 navigation shell draws from. They add no state:
+//  Read-only lookups the V2 navigation shell draws from (the classic
+//  drawer's Projects list reads projectsWithUnread too). They add no state:
 //  everything here derives from the catalog, read state and roster AppState
 //  already owns.
 //
@@ -52,6 +53,20 @@ extension AppState {
             for profile in matched where !unread.contains(profile) {
                 if chatReadState.isUnread(session, profile: profile) { unread.insert(profile) }
             }
+        }
+        return unread
+    }
+
+    /// Which projects hold a conversation with a reply the user hasn't
+    /// seen (issue 1496): the chats the project tree lists, as its running
+    /// count reads them, each from its catalog copy when the catalog has one.
+    func projectsWithUnread() -> Set<String> {
+        var unread = Set<String>()
+        for project in projects {
+            let hasUnread = project.previewSessions.contains { preview in
+                isSessionUnread(catalogRow(answeringTo: preview) ?? preview)
+            }
+            if hasUnread { unread.insert(project.id) }
         }
         return unread
     }

@@ -46,7 +46,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 - Attach photos, camera shots and any file, or drag them onto a chat (Finder on a Mac, Files on an iPad); quote a message, react to it, copy it
 - Open a picture full screen and swipe through the chat's pictures (or Artifacts' or a folder's): pinch or double-tap to zoom, swipe down to close, share or save
 - Steer, queue or stop a running turn; context meter; slash commands
-- Branch, pin (in the order you set), archive and delete sessions; project chats; Artifacts browser for every file and page Hermes made
+- Branch, pin (in the order you set), archive and delete sessions; project chats, with a dot on a project that holds an unread reply; Artifacts browser for every file and page Hermes made
 - Browse the chat's folder and your projects' folders beside Artifacts: preview and edit files, search names and contents, make, rename, move and delete files, upload from the phone, and tap a file path in a reply to open it (the folder's search and changes need the plugin)
 - Saved chats open instantly, and you can type while Conduit reconnects
 

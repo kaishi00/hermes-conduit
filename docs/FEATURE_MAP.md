@@ -2553,6 +2553,36 @@ Recent menu) · the Archived sheet · README.md
 
 **Checked:** 2026-10-26, #1328.
 
+## Unread dot on projects
+
+The gold dot on a project in the Projects list while any chat in it has a
+reply the user hasn't seen (issue 1496).
+
+**Siblings:** the V2 Projects list (Chats › Projects) · the iPad and Mac
+list (same view) · the classic drawer's Projects list · a chat row's unread
+dot, which each project's dot follows (the project's page shows the same
+dots on its chats) · the Running line on the same row · Mark as read and
+unread · VoiceOver · the profile strip's dot, the same signal a level up ·
+README.md
+
+**Code**
+- Which projects: `Conduit/Services/AppState+V2Shell.swift` (projectsWithUnread), `Conduit/Services/AppState.swift` (catalogRow: a chat's catalog copy, its own ids before the ids it shares, cached per catalog change)
+- Rows: `Conduit/Views/V2/V2ChatsView.swift` (projectsList, projectRow, V2ProjectRow), `Conduit/Views/SidebarView.swift` (the Projects section, ProjectRow)
+- Read state: `Conduit/Services/ChatReadState.swift` (isUnread), `Conduit/Services/AppState.swift` (isSessionUnread)
+- Docs: `README.md` (Features)
+- Tests: `ConduitTests/ChatReadStateTests.swift` (testProjectDotsMarkEachProjectWithAnUnreadChat)
+
+**Rulings**
+- The dot means an unread reply, read as a chat row reads it (Hermes' shared flag, a mark, or messages past what this device saw), never only that a chat finished: a reply already read leaves no dot. It stays while any chat in the project is unread, so reading one leaves it for the others (issue 1496).
+- The dot sits on the tile's corner, as on a chat row's icon, apart from the Running line: a project can show both.
+- Home gets the dot too, for its chats in no project.
+
+**Open gaps**
+- The dot reads the chats the project tree lists, as the Running line does, so an unread chat beyond the tree's preview of a big project doesn't light it. A chat the catalog also lists reads its copy there, which stays current between loads of the tree.
+- Projects belong to the profile in use; All profiles has no Projects list of its own.
+
+**Checked:** 2026-10-29, #1499.
+
 ## Pinned chats order
 
 The Pinned section in the order the person sets (issue 1354): a pinned chat
