@@ -33,6 +33,16 @@ struct V2ComposerExpandedKey: PreferenceKey {
     }
 }
 
+/// The resting composer bar's height (0 while it is expanded), so the voice
+/// button beside it stays centred on it when the bar grows past the
+/// button, at a large Text Size.
+struct V2RestingComposerHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 /// Whether someone is typing in a resting composer (it has focus), so the
 /// minimised call bar steps aside for the keyboard. Only typing hides it:
 /// a running turn or a notice also expands the composer, and hiding the bar
@@ -49,6 +59,9 @@ struct V2ConversationScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
     @State private var composerExpanded = false
+    /// The last resting bar's height: kept while the composer is expanded,
+    /// so the button doesn't move as it steps aside.
+    @State private var restingComposerHeight: CGFloat = 0
     @AppStorage(V2ChatListPreference.key) private var chatListBeside = V2ChatListPreference.defaultValue
     @AppStorage(ChatVoiceButtonAction.key) private var appChatVoiceButton = ChatVoiceButtonAction.defaultValue.rawValue
     /// A voice message recorded while the big button is held keeps the
@@ -129,6 +142,9 @@ struct V2ConversationScreen: View {
         .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
             composerExpanded = expanded
         }
+        .onPreferenceChange(V2RestingComposerHeightKey.self) { height in
+            if height > 0 { restingComposerHeight = height }
+        }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -161,6 +177,12 @@ struct V2ConversationScreen: View {
         }
     }
 
+    /// The composer's own bottom padding, plus half of what the resting bar
+    /// stands taller than the button, so the two share a centre line.
+    static func voiceButtonBottomPadding(restingComposerHeight: CGFloat) -> CGFloat {
+        10 + max(0, (restingComposerHeight - V2VoiceButton.diameter) / 2)
+    }
+
     private var chatColumn: some View {
         ZStack {
             // A Bot Chat glows in its bot's color, as its working line does;
@@ -178,7 +200,7 @@ struct V2ConversationScreen: View {
                             .allowsHitTesting(!hidesVoiceButton)
                             .accessibilityHidden(hidesVoiceButton)
                             .padding(.trailing, 16)
-                            .padding(.bottom, 10)
+                            .padding(.bottom, Self.voiceButtonBottomPadding(restingComposerHeight: restingComposerHeight))
                             .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: hidesVoiceButton)
                     }
                 }

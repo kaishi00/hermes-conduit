@@ -414,6 +414,12 @@ struct ComposerBar: View, Equatable {
                 composerContent
             }
         }
+        // The voice button beside the resting bar centres on it.
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(key: V2RestingComposerHeightKey.self, value: rests ? proxy.size.height : 0)
+            }
+        }
         // Resting, the voice button keeps its spot on the trailing side.
         .padding(.leading, rests ? 16 : (restsWhenIdle ? 12 : 14))
         // A voice message recorded while the button is held keeps it too.
@@ -726,6 +732,9 @@ struct ComposerBar: View, Equatable {
             if text.isEmpty {
                 Text(appState.composerPlaceholder)
                     .foregroundStyle(.secondary)
+                    // One line in every language: a wrapped placeholder made
+                    // the resting bar taller than the voice button beside it.
+                    .lineLimit(1)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
                     // Gone with the first keystroke. The send button's
