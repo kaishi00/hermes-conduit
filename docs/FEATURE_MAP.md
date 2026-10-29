@@ -1785,7 +1785,7 @@ Settings caption describes it
   resting bar does, rather than sliding it aside while typing; the controls
   row then leaves out its own voice button, and its mic when the big button
   dictates. With an empty draft its Send shows dimmed, not the lock a
-  composer that can't send shows (2026-10-29, #1512).
+  composer that can't send (reconnecting, an offline copy, a chat still being made) shows (2026-10-29, #1512).
 - Only use opens and closes the composer with its animation; the layout
   rule changing (a chat's first measured width, a window resized) switches
   it at once (2026-10-29, #1512).
@@ -3734,7 +3734,7 @@ describes them
 
 **Code**
 - Bar and fade: `Conduit/Views/V2/V2TopBar.swift` (v2EdgeBar, V2SystemScrollEdge, V2LegacyEdgeBar); a screen's backdrop under the fade: `Conduit/Theme.swift` (ConduitBackdrop, ConduitBackdropBehindFade)
-- Composer bars: `Conduit/Views/ChatView.swift` (bottomBar, whose height change tells the scroll engine, see Following the latest message), `Conduit/Views/GroupChatView.swift` (bottomBar)
+- Composer bars: `Conduit/Views/ChatView.swift` (bottomBar, whose height change tells the scroll engine, see Following the latest message), `Conduit/Views/GroupChatView.swift` (bottomBar); the composers in them: `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, resting or expanded per Composer at rest and expanded
 - Tab bar: `Conduit/Views/V2/V2Shell.swift` (tabBarClearance, V2TabBarClearance)
 - Headers: `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2BotsView.swift`, `Conduit/Views/V2/V2TasksView.swift`, `Conduit/Views/CapabilitiesView.swift` (v2EdgeBar(.top)), Settings' home header in `Conduit/Views/AuxiliaryViews.swift` (SettingsView, v2EdgeBar(.top)) with `Conduit/Views/V2/V2SettingsTab.swift` (homeHeader); the Settings sheet's header: `Conduit/Views/Components/ConduitSheetHeader.swift`; a chat's header: `Conduit/Views/ChatView.swift` (V2SoftTopScrollEdge, underChatHeader), also on `Conduit/Views/GroupChatView.swift` and `Conduit/Views/OfflineChatTranscriptView.swift`
 
@@ -3746,7 +3746,7 @@ describes them
 - The Mac fallback isn't confirmed on macOS 27; it waits on the reporter's TestFlight check (#1357).
 - The navigation bar over a chat keeps the system's top edge on a Mac too (`V2SoftTopScrollEdge` in `Conduit/Views/ChatView.swift`; before iOS 26 the transcript fades itself under it, `underChatHeader`): #1357 only showed the bottom. If macOS 27 draws it too tall as well, it moves to the same switch.
 
-**Checked:** 2026-10-29, #1468 (the content fades itself instead of a material behind the bars; Code, Rulings); 2026-10-28, #1455 (carrying #1431; a chat's bar growing keeps a following transcript's end above it; Code); 2026-10-28, #1444; 2026-10-27, #1397.
+**Checked:** 2026-10-29, #1512 (a composer that stays expanded on a Mac or a wide iPad is taller, and the bar takes and reports its height as before; see Composer at rest and expanded); 2026-10-29, #1468 (the content fades itself instead of a material behind the bars; Code, Rulings); 2026-10-28, #1455 (carrying #1431; a chat's bar growing keeps a following transcript's end above it; Code); 2026-10-28, #1444; 2026-10-27, #1397.
 
 ## Readable width on wide windows
 

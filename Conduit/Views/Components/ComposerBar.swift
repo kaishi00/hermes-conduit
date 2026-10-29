@@ -375,18 +375,18 @@ struct ComposerBar: View, Equatable {
     }
 
     /// Beside the big voice button, an empty draft in a chat that takes
-    /// messages shows Send dimmed, not the lock of a composer that can't
+    /// messages (not an offline copy or a chat still being made) shows Send dimmed, not the lock of a composer that can't
     /// send at all.
     private var showsEmptyDraftSend: Bool {
         Self.showsEmptyDraftSend(
             action: action,
             voiceButtonBeside: keepsVoiceButtonBeside,
-            acceptsComposerActions: appState.turnState.acceptsComposerActions
+            composerIsEnabled: appState.composerIsEnabled
         )
     }
 
-    static func showsEmptyDraftSend(action: ComposerAction, voiceButtonBeside: Bool, acceptsComposerActions: Bool) -> Bool {
-        voiceButtonBeside && action == .unavailable && acceptsComposerActions
+    static func showsEmptyDraftSend(action: ComposerAction, voiceButtonBeside: Bool, composerIsEnabled: Bool) -> Bool {
+        voiceButtonBeside && action == .unavailable && composerIsEnabled
     }
 
     private var actionTitle: String? {

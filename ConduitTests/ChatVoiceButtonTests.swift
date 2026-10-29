@@ -105,11 +105,12 @@ extension ComposerFullEditorTests {
         // The big button beside it offers voice, so the slot keeps Send.
         XCTAssertEqual(ComposerBar.trailingControl(action: .unavailable, showsVoiceButton: false), .action)
         // An empty draft shows Send dimmed, not the lock of a composer
-        // that can't send; a reconnecting one keeps the lock.
-        XCTAssertTrue(ComposerBar.showsEmptyDraftSend(action: .unavailable, voiceButtonBeside: true, acceptsComposerActions: true))
-        XCTAssertFalse(ComposerBar.showsEmptyDraftSend(action: .unavailable, voiceButtonBeside: true, acceptsComposerActions: false))
-        XCTAssertFalse(ComposerBar.showsEmptyDraftSend(action: .unavailable, voiceButtonBeside: false, acceptsComposerActions: true))
-        XCTAssertFalse(ComposerBar.showsEmptyDraftSend(action: .send, voiceButtonBeside: true, acceptsComposerActions: true))
+        // that can't send; a reconnecting one, an offline copy or a chat still
+        // being made (composerIsEnabled false) keeps the lock.
+        XCTAssertTrue(ComposerBar.showsEmptyDraftSend(action: .unavailable, voiceButtonBeside: true, composerIsEnabled: true))
+        XCTAssertFalse(ComposerBar.showsEmptyDraftSend(action: .unavailable, voiceButtonBeside: true, composerIsEnabled: false))
+        XCTAssertFalse(ComposerBar.showsEmptyDraftSend(action: .unavailable, voiceButtonBeside: false, composerIsEnabled: true))
+        XCTAssertFalse(ComposerBar.showsEmptyDraftSend(action: .send, voiceButtonBeside: true, composerIsEnabled: true))
         // The row's mic gives way to a big button that dictates.
         XCTAssertFalse(ComposerBar.controlsRowShowsDictate(holdsSendSlot: false, voiceButtonBeside: true, showsRestingDictateButton: false))
         XCTAssertTrue(ComposerBar.controlsRowShowsDictate(holdsSendSlot: false, voiceButtonBeside: true, showsRestingDictateButton: true))
