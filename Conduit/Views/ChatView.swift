@@ -325,7 +325,7 @@ struct ChatView: View {
             size: chatTextSizeOverride ?? ChatTypography.resolve(rawValue: chatTextSizeRaw),
             style: chatTextSizeOverride == nil ? ChatTypography.resolveStyle(rawValue: chatFontStyleRaw) : .standard
         )
-        .widened(steps: chatTextSizeOverride == nil ? chatWidthTextSteps : 0, from: columnBaseTextSize)
+        .widened(steps: chatTextSizeOverride == nil ? chatWidthTextSteps : 0, from: columnBaseTextSize ?? .large)
     }
 
     var body: some View {
@@ -2898,6 +2898,7 @@ struct SystemBubble: View {
 /// follows `ChatTypography`.)
 private struct ReviewSummaryCard: View {
     @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let activity: ReviewActivity
     let timestamp: String
@@ -2928,7 +2929,7 @@ private struct ReviewSummaryCard: View {
                             .foregroundStyle(.secondary)
                         SelectableTextView(
                             text: activity.summary,
-                            font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory).withTraits(.traitBold),
+                            font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
                             textColor: .label
                         )
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2954,7 +2955,7 @@ private struct ReviewSummaryCard: View {
                     ForEach(Array(details.enumerated()), id: \.offset) { _, detail in
                         SelectableTextView(
                             text: detail,
-                            font: .preferredFont(forTextStyle: .callout, in: sizeCategory),
+                            font: .preferredFont(forTextStyle: .callout, in: sizeCategory, from: columnBaseTextSize),
                             textColor: .secondaryLabel
                         )
                     }
@@ -2988,6 +2989,7 @@ private struct ReviewSummaryCard: View {
 /// see ReviewSummaryCard.
 private struct ModelChangeSummaryCard: View {
     @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
     let model: String
     let provider: String
     let timestamp: String
@@ -3007,7 +3009,7 @@ private struct ModelChangeSummaryCard: View {
                     .foregroundStyle(.secondary)
                 SelectableTextView(
                     text: AppLocalization.string("Model has been changed to \(provider)/\(model)"),
-                    font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory).withTraits(.traitBold),
+                    font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
                     textColor: .label
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -3547,6 +3549,7 @@ struct ToolCard: View {
 /// One labeled block of a tool's raw input or result, in monospace.
 private struct ToolRawTextSection: View {
     @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
     let title: String
     let text: String
 
@@ -3557,7 +3560,7 @@ private struct ToolRawTextSection: View {
                 .foregroundStyle(.conduitTertiary)
             SelectableTextView(
                 text: ToolCard.truncateForDisplay(text, maxLines: ToolResultPresentation.displayLineLimit),
-                font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory).pointSize, weight: .regular),
+                font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnBaseTextSize).pointSize, weight: .regular),
                 textColor: .secondaryLabel,
                 maximumNumberOfLines: 0
             )
@@ -3605,6 +3608,7 @@ enum ClarifyCardLayout {
 
 struct ClarifyCard: View {
     @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     @Environment(\.chatRowActions) private var rowActions
@@ -3638,7 +3642,7 @@ struct ClarifyCard: View {
                             .foregroundStyle(statusColor(for: displayStatus))
                         SelectableTextView(
                             text: layout.headerText(for: clarify),
-                            font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory).withTraits(.traitBold),
+                            font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
                             textColor: .label
                         )
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -3807,6 +3811,7 @@ struct ClarifyCard: View {
 /// form's row is a field instead, sent with the card's one Send.
 struct ClarifyQuestionRow: View {
     @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let question: ClarifyQuestion
     var showsTitle: Bool = true
@@ -3826,7 +3831,7 @@ struct ClarifyQuestionRow: View {
                 HStack(alignment: .top, spacing: 6) {
                     SelectableTextView(
                         text: question.question,
-                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory).withTraits(.traitBold),
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
                         textColor: .label
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -3906,7 +3911,7 @@ struct ClarifyQuestionRow: View {
                     .foregroundStyle(.green)
                 SelectableTextView(
                     text: answer,
-                    font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory),
+                    font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize),
                     textColor: .label
                 )
             }
@@ -4257,6 +4262,7 @@ private struct ApprovalCommandHeightLayout: Layout {
 
 struct ApprovalCard: View {
     @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     @Environment(\.chatRowActions) private var rowActions
@@ -4281,7 +4287,7 @@ struct ApprovalCard: View {
                             .foregroundStyle(statusColor(for: approval.status))
                         SelectableTextView(
                             text: ApprovalDisplayText.revealingHidden(approval.description),
-                            font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory).withTraits(.traitBold),
+                            font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
                             textColor: .label
                         )
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -4301,7 +4307,7 @@ struct ApprovalCard: View {
                 }
 
                 if !approval.command.isEmpty {
-                    let commandFont = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory).pointSize, weight: .regular)
+                    let commandFont = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnBaseTextSize).pointSize, weight: .regular)
                     ApprovalCommandBox(maxHeight: ApprovalCommandBox<EmptyView>.maxLines * commandFont.lineHeight) {
                         SelectableTextView(
                             text: ApprovalDisplayText.revealingHidden(approval.command),
@@ -4474,6 +4480,7 @@ struct ApprovalCard: View {
 /// cleared, never stored on the message.
 struct InputPromptCard: View {
     @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     @Environment(\.chatRowActions) private var rowActions
@@ -4526,7 +4533,7 @@ struct InputPromptCard: View {
                 if let detail = detail(for: prompt), !detail.isEmpty {
                     SelectableTextView(
                         text: detail,
-                        font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory).pointSize, weight: .regular),
+                        font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnBaseTextSize).pointSize, weight: .regular),
                         textColor: .label,
                         maximumNumberOfLines: 5
                     )

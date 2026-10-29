@@ -276,15 +276,17 @@ enum ChatTypography {
     static let standardBodySizes: [CGFloat] = [14, 15, 16, 17, 19, 21, 23]
 
     /// How much `steps` sizes up from `base` grow body text, stopping at
-    /// the largest standard size: from what the system draws at `base` to
-    /// iOS's size at the stepped one (scaled to the system's default
-    /// size), so a Mac that draws every size alike lands where the
-    /// column's cards do (`missingGrowth`). An accessibility size, already
-    /// larger, doesn't grow.
+    /// the largest standard size (iOS's growth, whatever the system draws:
+    /// a Mac's appears to be the same at every size). An accessibility
+    /// size, already larger, doesn't grow.
     static func widthScale(steps: Int, from base: DynamicTypeSize) -> CGFloat {
         guard steps > 0, let index = standardDynamicTypeSizes.firstIndex(of: base) else { return 1 }
-        return widthScale(steps: steps, from: base, baseBody: drawnBodySizes[index])
+        let grown = min(standardBodySizes.count - 1, index + steps)
+        return standardBodySizes[grown] / standardBodySizes[index]
     }
+
+    /// The default size's place among the standard sizes (`.large`).
+    static let defaultIndex = 3
 
     /// Body text's size at each standard size as this system draws it,
     /// looked up once: the sizes are named, so a Text Size change doesn't
@@ -293,28 +295,24 @@ enum ChatTypography {
         UIFont.preferredFont(forTextStyle: .body, compatibleWith: UITraitCollection(preferredContentSizeCategory: $0)).pointSize
     }
 
-    /// `widthScale(steps:from:)` where the system draws body text at
-    /// `base` `baseBody` points.
-    static func widthScale(steps: Int, from base: DynamicTypeSize, baseBody: CGFloat) -> CGFloat {
-        guard steps > 0, let index = standardDynamicTypeSizes.firstIndex(of: base), baseBody > 0 else { return 1 }
-        let grown = min(standardBodySizes.count - 1, index + steps)
-        let target = standardBodySizes[grown] / standardBodySizes[defaultIndex] * UIFont.defaultBodySize
-        return max(1, target / baseBody)
-    }
-
-    /// The default size's place among the standard sizes (`.large`).
-    static let defaultIndex = 3
-
-    /// What a standard size's text should grow by that the system didn't
-    /// give it: body text there is `body` points against `defaultBody` at
-    /// the default size, a smaller step than iOS's, as on a Mac, where
-    /// every size appears to draw alike. One where the system grows text
-    /// as iOS does (and at an accessibility size).
-    static func missingGrowth(at category: UIContentSizeCategory, body: CGFloat, defaultBody: CGFloat) -> CGFloat {
-        guard let index = standardCategories.firstIndex(of: category), body > 0, defaultBody > 0 else { return 1 }
-        let expected = standardBodySizes[index] / standardBodySizes[defaultIndex]
-        let given = body / defaultBody
-        return abs(expected - given) < 0.01 ? 1 : expected / given
+    /// What text a column stepped up from `base` to `category` should grow
+    /// by that the system didn't give it: iOS's growth between the two
+    /// over what the system drew (`drawn`, body text at each standard
+    /// size), so it matches the transcript's `widthScale`. One without a
+    /// stepped column, where the system grows text as iOS does, and at an
+    /// accessibility size; never less than one.
+    static func missingGrowth(
+        at category: UIContentSizeCategory,
+        from base: DynamicTypeSize?,
+        drawn: [CGFloat] = ChatTypography.drawnBodySizes
+    ) -> CGFloat {
+        guard let base,
+              let index = standardCategories.firstIndex(of: category),
+              let baseIndex = standardDynamicTypeSizes.firstIndex(of: base),
+              index > baseIndex, drawn[baseIndex] > 0, drawn[index] > 0 else { return 1 }
+        let expected = standardBodySizes[index] / standardBodySizes[baseIndex]
+        let given = drawn[index] / drawn[baseIndex]
+        return max(1, expected / given)
     }
 
     /// `category` moved `steps` sizes down: the system's size under a
@@ -440,9 +438,9 @@ private struct ChatWidthTextStepsEnvironmentKey: EnvironmentKey {
 }
 
 /// The system's text size under a column that stepped its environment's
-/// up, which the transcript's steps start from.
+/// up, which the transcript's and cards' growth start from.
 private struct ChatColumnBaseTextSizeEnvironmentKey: EnvironmentKey {
-    static let defaultValue: DynamicTypeSize = .large
+    static let defaultValue: DynamicTypeSize? = nil
 }
 
 extension EnvironmentValues {
@@ -451,7 +449,8 @@ extension EnvironmentValues {
         set { self[ChatWidthTextStepsEnvironmentKey.self] = newValue }
     }
 
-    var chatColumnBaseTextSize: DynamicTypeSize {
+    /// Nil outside a column that steps its text.
+    var chatColumnBaseTextSize: DynamicTypeSize? {
         get { self[ChatColumnBaseTextSizeEnvironmentKey.self] }
         set { self[ChatColumnBaseTextSizeEnvironmentKey.self] = newValue }
     }
@@ -468,22 +467,19 @@ extension EnvironmentValues {
 extension UIFont {
     /// The text style's font at `sizeCategory`, the view's environment
     /// size: a wide window's chat column steps it up (`readableChatColumn`),
-    /// which the app-wide `preferredFont(forTextStyle:)` doesn't see. Where
-    /// the system draws that size smaller than iOS does (an iPad app on a
-    /// Mac appears to draw every size alike), it grows the rest of the way
-    /// by point size.
-    static func preferredFont(forTextStyle style: UIFont.TextStyle, in sizeCategory: ContentSizeCategory) -> UIFont {
+    /// which the app-wide `preferredFont(forTextStyle:)` doesn't see. In a
+    /// column stepped up from `base` (`chatColumnBaseTextSize`), where the
+    /// system draws the stepped size smaller than iOS does (an iPad app on
+    /// a Mac appears to draw every size alike), it grows the rest of the
+    /// way by point size, as the transcript does.
+    static func preferredFont(
+        forTextStyle style: UIFont.TextStyle,
+        in sizeCategory: ContentSizeCategory,
+        from base: DynamicTypeSize? = nil
+    ) -> UIFont {
         let category = UIContentSizeCategory(sizeCategory)
-        let traits = UITraitCollection(preferredContentSizeCategory: category)
-        let font = preferredFont(forTextStyle: style, compatibleWith: traits)
-        let growth = ChatTypography.missingGrowth(
-            at: category,
-            body: preferredFont(forTextStyle: .body, compatibleWith: traits).pointSize,
-            defaultBody: defaultBodySize
-        )
+        let font = preferredFont(forTextStyle: style, compatibleWith: UITraitCollection(preferredContentSizeCategory: category))
+        let growth = ChatTypography.missingGrowth(at: category, from: base)
         return growth == 1 ? font : font.withSize(font.pointSize * growth)
     }
-
-    /// Body text's size at the default text size, as this system draws it.
-    static let defaultBodySize = preferredFont(forTextStyle: .body, compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)).pointSize
 }

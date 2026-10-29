@@ -39,35 +39,30 @@ enum PastedRemoteImage {
 struct ComposerPasteTextView: UIViewRepresentable {
     /// One line of body text plus the text insets at the current text size,
     /// so a large Text Size doesn't clip the first line.
-    static var minimumHeight: CGFloat { minimumHeight(for: nil) }
+    static var minimumHeight: CGFloat { minimumHeight(for: .preferredFont(forTextStyle: .body)) }
     /// About four lines at large text sizes, never under the original
     /// 160 pt, and capped so the composer can't cover the chat.
-    static var maximumHeight: CGFloat { maximumHeight(for: nil) }
+    static var maximumHeight: CGFloat { maximumHeight(for: .preferredFont(forTextStyle: .body)) }
 
-    /// The bounds for a text view's own traits, the same source its
-    /// `adjustsFontForContentSizeCategory` font scales from.
-    static func minimumHeight(for traits: UITraitCollection?) -> CGFloat {
-        max(44, ceil(bodyLineHeight(for: traits)) + 16)
+    /// The bounds for the text view's own font (`bodyFont`).
+    static func minimumHeight(for font: UIFont) -> CGFloat {
+        max(44, ceil(font.lineHeight) + 16)
     }
 
-    static func maximumHeight(for traits: UITraitCollection?) -> CGFloat {
-        min(max(160, ceil(bodyLineHeight(for: traits)) * 4 + 16), 280)
+    static func maximumHeight(for font: UIFont) -> CGFloat {
+        min(max(160, ceil(font.lineHeight) * 4 + 16), 280)
     }
 
-    private static func bodyLineHeight(for traits: UITraitCollection?) -> CGFloat {
-        bodyFont(for: traits).lineHeight
+    /// Body text at the view's environment size, which a wide window's
+    /// chat column steps up (`readableChatColumn`) from `base`, grown by
+    /// point size where the system draws it no larger, as an iPad app on a
+    /// Mac appears to (`UIFont.preferredFont(forTextStyle:in:from:)`).
+    static func bodyFont(in sizeCategory: ContentSizeCategory, from base: DynamicTypeSize?) -> UIFont {
+        UIFont.preferredFont(forTextStyle: .body, in: sizeCategory, from: base)
     }
 
-    /// Body text at the view's own size, which a wide window's chat column
-    /// steps up (`readableChatColumn`), grown by point size where the
-    /// system draws it no larger, as an iPad app on a Mac appears to
-    /// (`UIFont.preferredFont(forTextStyle:in:)`).
-    static func bodyFont(for traits: UITraitCollection?) -> UIFont {
-        guard let category = traits.flatMap({ ContentSizeCategory($0.preferredContentSizeCategory) }) else {
-            return UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits)
-        }
-        return UIFont.preferredFont(forTextStyle: .body, in: category)
-    }
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
 
     @Binding var text: String
     @Binding var isFocused: Bool
@@ -123,7 +118,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         view.delegate = context.coordinator
         // Set here and on each text size change below rather than
         // adjusted by UIKit, which would undo the Mac's point-size growth.
-        view.font = Self.bodyFont(for: nil)
+        view.font = Self.bodyFont(in: sizeCategory, from: columnBaseTextSize)
         view.backgroundColor = .clear
         view.textColor = .label
         view.tintColor = .systemOrange
@@ -159,12 +154,13 @@ struct ComposerPasteTextView: UIViewRepresentable {
         // Text Size changed while the app was open, or a wide column
         // stepped it: the font and the height bounds follow. Checked by
         // category so the hot update path doesn't look up fonts.
-        let category = uiView.traitCollection.preferredContentSizeCategory
+        let category = UIContentSizeCategory(sizeCategory)
         if uiView.boundsContentSizeCategory != category {
             uiView.boundsContentSizeCategory = category
-            uiView.font = Self.bodyFont(for: uiView.traitCollection)
-            uiView.minimumReportedHeight = Self.minimumHeight(for: uiView.traitCollection)
-            uiView.maximumReportedHeight = Self.maximumHeight(for: uiView.traitCollection)
+            let font = Self.bodyFont(in: sizeCategory, from: columnBaseTextSize)
+            uiView.font = font
+            uiView.minimumReportedHeight = Self.minimumHeight(for: font)
+            uiView.maximumReportedHeight = Self.maximumHeight(for: font)
             uiView.setNeedsLayout()
         }
         context.coordinator.parent = self

@@ -208,24 +208,23 @@ extension SidebarLayoutTests {
         XCTAssertEqual(ChatTypography.widthScale(steps: 3, from: .xxLarge), 23.0 / 21, accuracy: 0.0001)
         XCTAssertEqual(ChatTypography.widthScale(steps: 2, from: .xxxLarge), 1)
         XCTAssertEqual(ChatTypography.widthScale(steps: 2, from: .accessibility2), 1)
-        // A system that draws the base smaller or larger than iOS (a Mac
-        // drawing every size at the default's 17 pt) grows to the stepped
-        // size, as the column's cards do, never shrinks.
-        XCTAssertEqual(ChatTypography.widthScale(steps: 1, from: .medium, baseBody: 16), 17.0 / 16, accuracy: 0.0001)
-        XCTAssertEqual(ChatTypography.widthScale(steps: 1, from: .medium, baseBody: UIFont.defaultBodySize), 1, accuracy: 0.0001)
-        XCTAssertEqual(ChatTypography.widthScale(steps: 3, from: .large, baseBody: UIFont.defaultBodySize), 23.0 / 17, accuracy: 0.0001)
         XCTAssertEqual(ReadableWidth.chatTextGrowth, [19.0 / 17, 21.0 / 17, 23.0 / 17])
         XCTAssertEqual(ChatTextAppearance(size: .default).widened(steps: 2, from: .accessibility2), ChatTextAppearance(size: .default))
         XCTAssertEqual(ChatTypography.lowered(.extraExtraLarge, by: 2), .large)
         XCTAssertEqual(ChatTypography.lowered(.accessibilityMedium, by: 2), .accessibilityMedium)
         // In-column cards' UIKit text: nothing added where the system sizes
-        // text as iOS does; a Mac drawing every size alike gets the growth.
-        XCTAssertEqual(ChatTypography.missingGrowth(at: .extraExtraExtraLarge, body: 23, defaultBody: 17), 1)
-        XCTAssertEqual(ChatTypography.missingGrowth(at: .extraExtraExtraLarge, body: 17, defaultBody: 17), 23.0 / 17, accuracy: 0.0001)
-        XCTAssertEqual(ChatTypography.missingGrowth(at: .large, body: 13, defaultBody: 13), 1)
-        XCTAssertEqual(ChatTypography.missingGrowth(at: .accessibilityLarge, body: 17, defaultBody: 17), 1)
+        // text as iOS does, or outside a stepped column; where it draws
+        // every size alike (a Mac), the growth iOS would give from the
+        // column's base, the transcript's widthScale, never a shrink.
+        let mac = [CGFloat](repeating: 17, count: 7)
+        XCTAssertEqual(ChatTypography.missingGrowth(at: .extraExtraExtraLarge, from: .large), 1)
+        XCTAssertEqual(ChatTypography.missingGrowth(at: .extraExtraExtraLarge, from: nil, drawn: mac), 1)
+        XCTAssertEqual(ChatTypography.missingGrowth(at: .extraExtraExtraLarge, from: .large, drawn: mac), ChatTypography.widthScale(steps: 3, from: .large), accuracy: 0.0001)
+        XCTAssertEqual(ChatTypography.missingGrowth(at: .large, from: .medium, drawn: mac), ChatTypography.widthScale(steps: 1, from: .medium), accuracy: 0.0001)
+        XCTAssertEqual(ChatTypography.missingGrowth(at: .small, from: .small, drawn: mac), 1)
+        XCTAssertEqual(ChatTypography.missingGrowth(at: .accessibilityLarge, from: .large, drawn: mac), 1)
         XCTAssertEqual(
-            UIFont.preferredFont(forTextStyle: .subheadline, in: .extraExtraExtraLarge).pointSize,
+            UIFont.preferredFont(forTextStyle: .subheadline, in: .extraExtraExtraLarge, from: .large).pointSize,
             UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: UITraitCollection(preferredContentSizeCategory: .extraExtraExtraLarge)).pointSize,
             accuracy: 0.001
         )

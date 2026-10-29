@@ -255,6 +255,8 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
     var textInsets: UIEdgeInsets = .zero
     var maxLines: Int?
     @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatColumnBaseTextSize) private var columnBaseTextSize
     /// Whether the composer's Send (or dictation's Stop in its place) can
     /// act now; Return falls back to a newline when it can't.
     var canSubmitFromReturn: Bool
@@ -301,10 +303,9 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         // column steps up (`readableChatColumn`), set on each change rather
         // than adjusted by UIKit, which would undo a Mac's point-size growth
         // (`UIFont.preferredFont(forTextStyle:in:)`).
-        let sizeCategory = context.environment.sizeCategory
         if view.fontSizeCategory != sizeCategory {
             view.fontSizeCategory = sizeCategory
-            view.font = .preferredFont(forTextStyle: .body, in: sizeCategory)
+            view.font = .preferredFont(forTextStyle: .body, in: sizeCategory, from: columnBaseTextSize)
         }
         if view.isEditable != enabled { view.isEditable = enabled }
         view.accessibilityLabel = accessibilityLabel
