@@ -2960,11 +2960,12 @@ notifier's copies of both
 - Both repos give the reviewers the same prompt apart from their focus areas: bugs the PR introduces first, a concrete failure for each finding, the four severities defined, and REQUEST_CHANGES on any critical or major finding (2026-10-28, #1421, Eric asked for a review of the prompt).
 - A provider whose id is in the models.dev catalog (`anthropic` is, as `commandcode` was) whitelists the one model it reviews with. Otherwise opencode titles each session with the newest small model in that catalog, which was Gemini 3.8 Flash, a call Eric didn't want (2026-10-27, #1391 and notifier #428, Eric asked why Gemini Flash was being called).
 - Reviews run when a PR opens, on every push, on reopen and on the run-review label, drafts included; marking a draft ready doesn't rerun them, since that head was already reviewed (2026-10-29, #1465 and notifier #453, Eric asked why reviews reran after draft to ready).
+- Review cost (2026-10-29, #1466 and notifier #454, Eric: reviews shouldn't spend inference on code they already saw). A `plan` job decides before any model runs: it waits 60s so a quick push cancels the run first; it skips a run whose change (patch-id of the PR's diff from its base) matches a commit a reviewer already passed, so a clean merge of main or a rerun isn't reviewed again; and a PR whose files are all docs or config (Markdown, text, JSON, YAML, TOML, docs/; workflows count as code) gets GLM-5.3 alone, the cheaper of the two. A manual run always reviews.
 
 **Open gaps**
 - The workflow runs main's config, so a change to either file is first exercised by the review after it merges.
 
-**Checked:** 2026-10-29, #1465.
+**Checked:** 2026-10-29, #1466.
 
 ## Settings connection page
 
