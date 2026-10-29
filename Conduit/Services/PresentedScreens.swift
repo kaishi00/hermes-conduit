@@ -207,10 +207,12 @@ struct PresentedConfirm: Identifiable, Equatable {
     /// Whether the user's own words confirm it: a plain yes, or one of the
     /// phrases Hermes gave said on its own ("send it", "yes, send it").
     /// Never a question, never a phrase buried in a longer request.
-    func isConfirmed(by words: String) -> Bool {
+    /// `bareYes` false takes only its phrases: Classic voice never says a
+    /// Link's ask aloud, so a plain yes may have meant something else.
+    func isConfirmed(by words: String, bareYes: Bool = true) -> Bool {
         // Nothing to Share: no yes confirms it.
         guard canConfirm else { return false }
-        if VoiceCallDecisionOutcome.isYes(words) { return true }
+        if bareYes, VoiceCallDecisionOutcome.isYes(words) { return true }
         guard !words.contains("?"), !words.contains("？") else { return false }
         // What a refusal is, the handset decides, not Hermes: whatever
         // phrases it put in spoken_yes, the user's "no", "cancel" or
