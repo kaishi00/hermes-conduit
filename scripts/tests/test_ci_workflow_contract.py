@@ -492,8 +492,8 @@ class NightlyWorkflowTests(unittest.TestCase):
         self.assertIn("xcodegen generate --spec project-tests.yml", unit)
 
     def test_unit_shard_one_saves_the_slim_build_cache_on_main(self):
-        """PR smoke builds of project-tests.yml restore the slim cache, and
-        only the nightly unit shards build that kind on main now."""
+        """Only the nightly unit shards build project-tests.yml and restore
+        the slim cache; shard 1 saves it on main. Smoke builds the full app."""
         unit = _job_text(NIGHTLY, "unit")
         _assert_cache_round_trip(self, unit, "matrix.shard == 1", "nightly unit")
         self.assertIn("SPEC: project-tests.yml", unit)

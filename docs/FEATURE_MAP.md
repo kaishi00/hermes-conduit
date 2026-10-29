@@ -3065,7 +3065,7 @@ nightly partition, which runs everything Smoke leaves out · docs/CI.md
 - Lists and caps: `scripts/smoke-suite.json`; validation and the change's own classes: `scripts/plan-tests.py` (`smoke`)
 - Workflow steps: `.github/workflows/ci.yml` (the plan job's selection, the Smoke job's unit and UI steps)
 - UI retry: `scripts/smoke-retry-classes.py`; step summary: `scripts/smoke-summary.py`
-- Nightly partition: `scripts/hosted-suite.json`, `.github/workflows/nightly.yml`
+- Nightly partition: `scripts/hosted-suite.json`, `.github/workflows/nightly.yml`; the app-only overlay its unit shards build: `project-tests.yml`
 - Tests: `scripts/tests/test_ci_workflow_contract.py`, `scripts/tests/test_smoke_job_runner.py`, `scripts/tests/test_hosted_ci.py`
 - Docs: `docs/CI.md`
 
