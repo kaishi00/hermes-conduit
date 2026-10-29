@@ -662,6 +662,21 @@ final class AppState: ObservableObject {
 
     private var cachedGatewayMediaResolver: (profile: String, resolver: GatewayMediaDataURLResolver)?
 
+    /// The open chat's pictures, which a tapped one pages through in the
+    /// viewer. One instance, so the rows reading it never redraw for it;
+    /// the list is read only when a picture is tapped.
+    lazy var chatImageGallery = ImageGallerySource { [weak self] in
+        guard let self else { return [] }
+        return ChatImageGallery.items(in: self.messages, resolver: self.gatewayMediaResolver)
+    }
+
+    /// The saved copy's pictures (#99), the same way.
+    lazy var savedChatImageGallery = ImageGallerySource { [weak self] in
+        guard let self else { return [] }
+        return ChatImageGallery.items(in: self.offlineChatPresentation?.displayedMessages ?? [],
+                                      resolver: self.gatewayMediaResolver)
+    }
+
     /// A stable resolver for another profile's media (a Live Voice job that
     /// ran there), cached so views read the same instance on every pass.
     func gatewayMediaResolver(for profile: String) -> GatewayMediaDataURLResolver {
@@ -764,6 +779,7 @@ final class AppState: ObservableObject {
     @Published var sessions: [SessionSummary] = [] {
         didSet {
             sessionsRevision &+= 1
+            catalogRowsByAnyID = nil
             refreshActiveChatScrollSessionIdentity()
             observeChatReadState()
             updateSessionReferenceTitles()
@@ -906,6 +922,9 @@ final class AppState: ObservableObject {
     /// `knownProjectID(for:)`, which the chat list asks for every row on
     /// every render.
     private var projectPositionsBySessionID: [String: Int]?
+    /// The catalog's rows under every id they answer to, built once per
+    /// `sessions` change for `catalogRow(answeringTo:)`.
+    private var catalogRowsByAnyID: [String: SessionSummary]?
     @Published private(set) var supportsProjects = false
     /// The client whose gateway rejected `session.workspace.move` as an
     /// unknown method. Scoped to that client so any new connection (a
@@ -6045,6 +6064,10 @@ final class AppState: ObservableObject {
     func setActiveProfileForTesting(_ profile: String) {
         setActiveProfile(profile)
     }
+
+    func setProjectsForTesting(_ projects: [ProjectSummary]) {
+        self.projects = projects
+    }
 #endif
 
     // MARK: - Persistence
@@ -9409,6 +9432,16 @@ final class AppState: ObservableObject {
         order.save(to: defaults)
     }
 
+    /// Saves where All's mixed Pinned section holds each profile's chats
+    /// (issue 1486), on this device only.
+    func setPinnedChatMixedOrder(_ keys: [String]) {
+        var order = pinnedChatOrder
+        order.setMixed(keys)
+        guard order != pinnedChatOrder else { return }
+        pinnedChatOrder = order
+        order.save(to: defaults)
+    }
+
     /// An unpinned chat leaves the order, so pinning it again puts it on top.
     private func dropFromPinnedChatOrder(_ ids: Set<String>, profile: String) {
         var order = pinnedChatOrder
@@ -11006,6 +11039,7 @@ final class AppState: ObservableObject {
         defaults.removeObject(forKey: SessionStars.storageKey)
         pinnedChatOrder = PinnedChatOrder()
         defaults.removeObject(forKey: PinnedChatOrder.storageKey)
+        defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()
@@ -13883,6 +13917,7 @@ final class AppState: ObservableObject {
         defaults.removeObject(forKey: SessionStars.storageKey)
         pinnedChatOrder = PinnedChatOrder()
         defaults.removeObject(forKey: PinnedChatOrder.storageKey)
+        defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()
@@ -31687,6 +31722,38 @@ final class AppState: ObservableObject {
             if let position = index[id], position < (first ?? .max) { first = position }
         }
         return first.map { projects[$0].id }
+    }
+
+    /// The catalog's copy of a chat another list carries (a project tree's
+    /// preview), which a reply or a read updates between loads of that list.
+    /// A row's own ids (`id`, `storedSessionId`) win over the ids it shares
+    /// with others (a branch's lineage root is its parent's id), so a parent
+    /// never reads a newer branch's copy; the shared ones still find a chat
+    /// compressed since the list loaded.
+    func catalogRow(answeringTo session: SessionSummary) -> SessionSummary? {
+        let index: [String: SessionSummary]
+        if let cached = catalogRowsByAnyID {
+            index = cached
+        } else {
+            var built: [String: SessionSummary] = [:]
+            for row in sessions {
+                for id in Self.ownIDs(row) where built[id] == nil { built[id] = row }
+            }
+            for row in sessions {
+                for id in Self.sharedIDs(row) where built[id] == nil { built[id] = row }
+            }
+            catalogRowsByAnyID = built
+            index = built
+        }
+        return (Self.ownIDs(session) + Self.sharedIDs(session)).lazy.compactMap { index[$0] }.first
+    }
+
+    private static func ownIDs(_ session: SessionSummary) -> [String] {
+        [session.id, session.storedSessionId].compactMap { $0 }.filter { !$0.isEmpty }
+    }
+
+    private static func sharedIDs(_ session: SessionSummary) -> [String] {
+        ([session.lineageRootId].compactMap { $0 } + session.alternateIds).filter { !$0.isEmpty }
     }
 
     private func projectPositionsIndex() -> [String: Int] {

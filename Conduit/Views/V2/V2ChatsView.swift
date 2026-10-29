@@ -1848,17 +1848,24 @@ struct V2ChatsView: View, Equatable {
         // Read once, not once per row. A search or a filter looks through
         // project chats whatever the setting, so it names them too.
         let namesProjects = isSearching || !selection.isEmpty || projectChats != .hidden
-        let movable: [Bool] = movesPinned ? items.map { item in
+        let pinned: [Bool] = movesPinned ? items.map { item in
             guard case .session(let node) = item.kind else { return false }
-            return appState.isSessionPinned(node.session) && !appState.isSavedChatRow(node.session)
+            return appState.isSessionPinned(node.session)
         } : []
+        let movable: [Bool] = zip(items, pinned).map { item, isPinned in
+            guard isPinned, case .session(let node) = item.kind else { return false }
+            return !appState.isSavedChatRow(node.session)
+        }
         let movableIDs = Set(zip(items, movable).compactMap { item, canMove in canMove ? item.id : nil })
-        let shown: [SessionSummary] = zip(items, movable).compactMap { item, canMove in
-            guard canMove, case .session(let node) = item.kind else { return nil }
+        // Counted among every pinned chat shown, so one that can't move
+        // keeps its place.
+        let shown = zip(items, pinned).compactMap { item, isPinned -> SessionSummary? in
+            guard isPinned, case .session(let node) = item.kind else { return nil }
             return node.session
         }
-        let move: ((IndexSet, Int) -> Void)? = shown.count > 1 ? { source, destination in
-            guard let offsets = PinnedChatOrder.movableOffsets(fromOffsets: source, toOffset: destination, movable: movable) else { return }
+        let move: ((IndexSet, Int) -> Void)? = movableIDs.count > 1 ? { source, destination in
+            guard source.allSatisfy({ movable.indices.contains($0) && movable[$0] }),
+                  let offsets = PinnedChatOrder.movableOffsets(fromOffsets: source, toOffset: destination, movable: pinned) else { return }
             appState.movePinnedChats(shown, fromOffsets: offsets.source, toOffset: offsets.destination)
         } : nil
         return ForEach(items) { item in
@@ -1940,6 +1947,7 @@ struct V2ChatsView: View, Equatable {
             isPinned: appState.isSessionPinned,
             matches: sessionMatches
         ), session: { $0 })
+        let unreadProjects = appState.projectsWithUnread()
         return List {
             if barStacked == false {
                 searchField
@@ -1990,7 +1998,7 @@ struct V2ChatsView: View, Equatable {
             } else if !displayedProjects.isEmpty {
                 Section {
                     ForEach(displayedProjects) { project in
-                        projectRow(project)
+                        projectRow(project, isUnread: unreadProjects.contains(project.id))
                     }
                 } header: {
                     sectionHeader(AppLocalization.string("Projects"))
@@ -2008,9 +2016,9 @@ struct V2ChatsView: View, Equatable {
         }
     }
 
-    private func projectRow(_ project: ProjectSummary) -> some View {
+    private func projectRow(_ project: ProjectSummary, isUnread: Bool) -> some View {
         NavigationLink(value: V2Route.project(project)) {
-            V2ProjectRow(project: project, runningCount: runningCount(project))
+            V2ProjectRow(project: project, runningCount: runningCount(project), isUnread: isUnread)
         }
         .accessibilityHint(appState.isProjectEditable(project)
             ? AppLocalization.string("Opens the conversations in this project. Swipe or touch and hold to rename or delete it.")
@@ -2452,14 +2460,24 @@ private struct V2SessionActions: ViewModifier {
 
 /// A project in the Projects view: colored folder tile, title, path in
 /// monospace, conversation count, a running line, and "Discovered" for a
-/// repo Hermes found on its own.
+/// repo Hermes found on its own. The gold unread dot on the tile's corner
+/// says a chat in it has a reply the user hasn't seen, apart from Running.
 struct V2ProjectRow: View {
     let project: ProjectSummary
     let runningCount: Int
+    var isUnread = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             V2ProjectTile(project: project, size: 44)
+                .overlay(alignment: .topTrailing) {
+                    if isUnread {
+                        Circle()
+                            .fill(Color.conduitAccent)
+                            .frame(width: 12, height: 12)
+                            .offset(x: 3, y: -3)
+                    }
+                }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
                     Text(project.title)
@@ -2499,7 +2517,16 @@ struct V2ProjectRow: View {
         .contentShape(Rectangle())
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
         .accessibilityElement(children: .combine)
-        .accessibilityValue(Text(AppLocalization.string("\(project.sessionCount) conversations")))
+        .accessibilityValue(Text(accessibilityValue))
+    }
+
+    private var accessibilityValue: String {
+        [
+            isUnread ? AppLocalization.string("Unread") : nil,
+            AppLocalization.string("\(project.sessionCount) conversations"),
+        ]
+        .compactMap { $0 }
+        .joined(separator: ", ")
     }
 }
 

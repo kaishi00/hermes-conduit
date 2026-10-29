@@ -2148,8 +2148,8 @@ private struct RemoteMarkdownImage: View {
     /// The address `remoteOutcome` is for: a row handed another picture
     /// never shows the one it held before.
     @State private var remoteOutcomeURL: String?
-    @State private var openingRemote = false
-    @State private var openTask: Task<Void, Never>?
+    /// The pictures around this one, which the viewer pages through.
+    @Environment(\.imageGallery) private var imageGallery
 
     /// Shown at most 360 pt tall and a phone's width: twice that, at 3x,
     /// stays sharp.
@@ -2224,8 +2224,7 @@ private struct RemoteMarkdownImage: View {
             switch shownRemoteOutcome {
             case .image(let image):
                 Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: Self.maxHeight).clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                    .overlay { if openingRemote { ProgressView() } }
-                    .opensMediaPreview(openRemoteImage)
+                    .opensMediaPreview { openImage(showing: image) }
                     .accessibilityLabel(alt.isEmpty ? Text("Image") : Text(verbatim: alt))
             case .unavailable:
                 WebFallbackImage(url: url, alt: alt, arrival: arrival, engine: disclosure?.engine)
@@ -2239,9 +2238,6 @@ private struct RemoteMarkdownImage: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .chatRowFrame(arrival)
         .onDisappear {
-            openTask?.cancel()
-            openTask = nil
-            openingRemote = false
             // A picture still waiting to show is dropped with the row; the
             // task loads it again when the row is back.
             arrival.rowDisappeared()
@@ -2425,8 +2421,7 @@ private struct RemoteMarkdownImage: View {
                 .scaledToFit()
                 .frame(maxHeight: Self.maxHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                .overlay { if openingRemote { ProgressView() } }
-                .opensMediaPreview(openGatewayImage)
+                .opensMediaPreview { openImage(showing: gatewayImage) }
                 .accessibilityLabel(alt.isEmpty ? Text("Image") : Text(verbatim: alt))
         } else if gatewayLoadFailed {
             Label(alt.isEmpty ? AppLocalization.string("Image unavailable") : AppLocalization.string("\(alt) unavailable"), systemImage: "photo.badge.exclamationmark")
@@ -2473,41 +2468,16 @@ private struct RemoteMarkdownImage: View {
         }.value
     }
 
-    /// The row keeps only the decoded image, not the original bytes (up to
-    /// 16 MB each across a whole transcript), so opening re-fetches them.
-    private func openGatewayImage() {
-        guard !openingRemote else { return }
-        // The original kept on the phone, which stays after Hermes sweeps
-        // its copy.
-        if let key = gatewayCacheKey,
-           let kept = TranscriptImageCache.cachedFile(for: key, touch: true),
-           MediaPreviewPresenter.shared.present(fileURL: kept, title: alt.isEmpty ? MarkdownParser.mediaName(gatewayPath) : alt) {
-            return
-        }
-        guard let gatewayMediaDataURL else { return }
-        let path = gatewayPath
-        openingRemote = true
-        openTask = Task {
-            if let dataURL = await gatewayMediaDataURL(path), !Task.isCancelled {
-                await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: path)
-            }
-            guard !Task.isCancelled else { return }
-            openingRemote = false
-        }
-    }
-
-    /// AsyncImage keeps only the rendered image, so the original bytes are
-    /// fetched again (usually from URLCache) to share them at full quality.
-    private func openRemoteImage() {
-        guard !openingRemote, let destination = WebFallbackImageDestination.resolve(url) else { return }
-        openingRemote = true
-        // Cancelled on disappear, so a slow download can't pop a preview
-        // over whatever screen the user moved on to.
-        openTask = Task {
-            _ = await MediaPreviewPresenter.shared.presentRemote(url: destination, fallbackName: alt.isEmpty ? "image" : alt)
-            guard !Task.isCancelled else { return }
-            openingRemote = false
-        }
+    /// Opens the original among the pictures around it, with the row's
+    /// copy shown until it's in. The row keeps only the decoded image, not
+    /// the original bytes (up to 16 MB each across a whole transcript), so
+    /// opening re-fetches them: from the copy kept on the phone, which stays
+    /// after Hermes sweeps its own, else from Hermes; a web picture again
+    /// (usually from URLCache) to share it at full quality.
+    private func openImage(showing image: UIImage) {
+        guard let item = ImageGalleryItem.markdownImage(url: url, alt: alt, resolver: gatewayMediaFiles,
+                                                        dataURL: gatewayMediaDataURL) else { return }
+        ImageGallery.open(item, in: imageGallery, placeholder: image)
     }
 }
 

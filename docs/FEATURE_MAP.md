@@ -260,7 +260,7 @@ the saved transcript's job cards · `docs/VOICE_BACKGROUND_JOBS.md`
 **Open gaps**
 - GPT-Live's model can't put a card on the call screen: Gemini, Grok and Local Live agent have `show_on_screen`, GPT-Live has no marker for it. Cards Hermes shows still appear (#366).
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (live models are told of a file by name, never its path); 2026-10-28, #1424 (tool steps in the call trace stay with their call); 2026-10-28, #1407 (a line ending in a file-path link isn't read as a saved call's job note); 2026-10-26, #1247 (the Watch broker's tool and poll answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for the request whose chat an unattached call took; Qwen in the siblings, at #1182, carried in #1235; at #1224: a result counts as told once the model says something after it or once it has gone out twice (one resend, GPT-Live and Watch included), and a job stays on the job lists until then (#1210), a direct Watch call's iPhone-run jobs included; one already sent when the call ends counts as told, never carried into the next call. Earlier at #1223, for GPT-Live's replies that couldn't go out; at #1221, for the Watch's late refusals and answers lost to a reconnect; at 78f21da; at #1191; at #1220: a cut screen card reads fences as "Code fences in messages" says.
+**Checked:** 2026-10-29, #1491 (a job result's or card's picture opens in the picture viewer); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (live models are told of a file by name, never its path); 2026-10-28, #1424 (tool steps in the call trace stay with their call); 2026-10-28, #1407 (a line ending in a file-path link isn't read as a saved call's job note); 2026-10-26, #1247 (the Watch broker's tool and poll answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for the request whose chat an unattached call took; Qwen in the siblings, at #1182, carried in #1235; at #1224: a result counts as told once the model says something after it or once it has gone out twice (one resend, GPT-Live and Watch included), and a job stays on the job lists until then (#1210), a direct Watch call's iPhone-run jobs included; one already sent when the call ends counts as told, never carried into the next call. Earlier at #1223, for GPT-Live's replies that couldn't go out; at #1221, for the Watch's late refusals and answers lost to a reconnect; at 78f21da; at #1191; at #1220: a cut screen card reads fences as "Code fences in messages" says.
 
 ## Tools and consent in calls
 
@@ -412,7 +412,8 @@ Main button) · voice in the Chats top bar and a project page's toolbar when
 swapped · the chat's own voice button (Starting a call) · a minimised call's
 way back · the iPad split layout, with the list shown or hidden (#1164) ·
 Tasks and Settings on a wide window · Bots and Bot Chat · group rooms · the
-Main button caption
+Main button caption · a list the user widened (Resizable columns on a split
+window)
 
 **Code**
 - Round button and bar: `Conduit/Views/V2/V2Shell.swift` (voiceButton, tabs, splitColumns' hostsSettings, V2SplitLayout.hasChatVoiceBeside, V2SplitLayout.tabBarUnderList, V2SplitLayout.settingsBesideList, V2MainButtonPreference)
@@ -425,11 +426,12 @@ Main button caption
 - Split, a chat beside the list that shows its own voice button takes voice: the round voice button, and the swapped top bar and project page voice, step aside while it shows; New chat stays. A group room has none, so the list keeps its voice beside one (Eric, 2026-10-26, #1319).
 - The round button's touch-and-hold Recent menu goes with it while a chat is beside the list; the chat's own button offers a call or dictation, not Recent, so closing the chat brings the menu back (2026-10-26, #1319).
 - Split, Settings opens in the chat's column with the Chats list kept beside it, and the bar stays under the list; a chat tapped there opens in Chats. Tasks and a list shown alone have no list column and center the bar under the screen, at the list column's width (Eric, 2026-10-26, #1319; replaces #1169's bar kept at the leading edge).
+- Under a list the user widened, the bar keeps the standard list width, centered under the list's column (2026-10-29, #1492, see Resizable columns on a split window).
 
 **Open gaps**
 - Recent isn't reachable beside a chat on a split window (see Rulings).
 
-**Checked:** 2026-10-26, at #1319.
+**Checked:** 2026-10-29, #1492 (the bar under a widened list); 2026-10-26, at #1319.
 
 ## The open chat in the list beside it
 
@@ -462,7 +464,7 @@ no Settings caption or doc describes it
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1456 (rows match the open chat by its aliases); 2026-10-27, added at #1371.
+**Checked:** 2026-10-29, #1492 (tabs() gained the bar's width under a widened list; what shows beside the list is unchanged); 2026-10-28, #1456 (rows match the open chat by its aliases); 2026-10-27, added at #1371.
 
 ## A new chat in the list
 
@@ -1022,7 +1024,7 @@ confirmation and README say about restarts
 - Views: `Conduit/Views/ConduitPluginViews.swift` (NotifierPluginUpdateBanner, NotifierPluginUpdateStatusView, ConduitPluginSettingsDetail), `Conduit/Views/AuxiliaryViews.swift` (NotifierPluginUpdateNotice), `Conduit/Views/V2/V2FinishSetupCard.swift`
 - Gateway restart it reuses: `Conduit/Services/GatewayRestart.swift`
 - Notifier: `notifier/dashboard/api/self_update.py` (/self/update, /self/restart, finish_self_update_after_restart), `notifier/dashboard/api/capabilities.py` (/capabilities), `notifier/CHANGELOG.md`, `notifier/channels.yaml`
-- Tests: `ConduitTests/GatewayRestartTests+PluginUpdate.swift`, `notifier/tests/test_self_update.py`, `notifier/tests/test_install_scan.py`
+- Tests: `ConduitTests/GatewayRestartTests+PluginUpdate.swift`, `notifier/tests/test_self_update.py`, `notifier/tests/test_install_scan.py`, `notifier/upstream/test_install_scan.py` (Hermes' own scanner over the shipped files, on every notifier PR)
 
 **Rulings**
 - No automatic updates: restarts are the user's call; the notice offers each version once, and Update runs the whole update (2026-10-13, #582, Eric).
@@ -1032,19 +1034,20 @@ confirmation and README say about restarts
 - Every process the update restarts runs the new code at once, Pulse's loop included: a dashboard restarted by its service manager (a new pid) takes Pulse over from the old one without waiting out its lease (2026-10-26, notifier #392, Eric's report on 0.81.1).
 - The notice's What's New opens the notes in a sheet, presented by the notes it shows (a sheet item, not a flag); Settings shows the same notes inline in a disclosure (2026-10-25, Eric's report of a blank sheet, #1227).
 - Every file the plugin ships passes Hermes' install scan, which reads the whole checkout (the contract tests and the relay included) and refuses a dangerous verdict even with --force: no literal that looks like a token outside test folders (2026-10-27, notifier #418, Eric's host stuck on 0.84.1).
+- No high finding either: one makes the verdict caution, which the one-tap update can't confirm, so it holds every host on the old version just as surely. The notifier's upstream contract runs Hermes' own scanner on every PR and fails on a high or critical finding; README examples write a secret as a placeholder (`<token>`), never as a shell variable (2026-10-29, notifier #467, issue #1500: the crash report curl examples held hosts on 0.119.x).
 
 **Open gaps**
 - Hermes Desktop's own serve process on the host keeps the old plugin until Desktop restarts; nothing tells the user.
 - A dashboard without a fixed basic-auth secret signs Conduit out at every restart; the updater signs in again, but the chat may land on the sign-in screen.
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, at #1350 with notifier #418: Hermes' install scan refused 0.95.0 over upstream/conftest.py's token; the app's update path needed no change; 2026-10-26, at #1293 with notifier #392: the dashboard restart itself needed no change (systemd restarts it with the gateway, elsewhere the update re-execs it); 2026-10-25, Qwen Live's feature row and the qwen-live capability in the update nudge, at #1182, carried in #1235; at #1230 (the phone-run install and update requests wait in the profile config queue, the host-run update doesn't); at #1222; at #1227: the notice's What's New sheet opened blank; Settings' disclosure and the notifier's CHANGELOG.md needed no change.
+**Checked:** 2026-10-29, #1501 with notifier #467: Hermes' scan held the update at caution over two README curl examples (issue #1500); the app's update path and its error text needed no change; 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, at #1350 with notifier #418: Hermes' install scan refused 0.95.0 over upstream/conftest.py's token; the app's update path needed no change; 2026-10-26, at #1293 with notifier #392: the dashboard restart itself needed no change (systemd restarts it with the gateway, elsewhere the update re-execs it); 2026-10-25, Qwen Live's feature row and the qwen-live capability in the update nudge, at #1182, carried in #1235; at #1230 (the phone-run install and update requests wait in the profile config queue, the host-run update doesn't); at #1222; at #1227: the notice's What's New sheet opened blank; Settings' disclosure and the notifier's CHANGELOG.md needed no change.
 
 ## Notifications
 
 What a push says, in which language, where tapping it goes, and when it
 stays quiet.
 
-**Siblings:** reply (and the notification Hermes writes for it, `conduit_notify`, with its Chat activity row) · approval · question · failed turn · tasks and cron ·
+**Siblings:** reply (and the notification Hermes writes for it, `conduit_notify`, with its Chat activity row; a fork of the chat sends none: Predictions, step summaries' /btw, the self-improvement review) · approval · question · failed turn · tasks and cron ·
 phone changes · missed call · Pulse (pulse.noticed, pulse.brief, pulse.followup, each with
 how much it may interrupt, and private ones; app side on the `pulse` branch only, see Pulse) ·
 room invites (room.invite; app side on the `linked-rooms` branch only, see Linked Rooms) ·
@@ -1066,7 +1069,7 @@ docs/privacy: what the relay gets for each kind, and what end-to-end encryption 
 - Categories, on the `pulse` branch only, so not in backticks: Conduit/Services/NotificationCategories.swift registers the call and Pulse categories together (each registration replaces the set; the call's category is still defined in HermesCalls.swift), and Conduit/ConduitApp.swift handles Pulse's Quiet for today (see Pulse)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (notificationDetailPicker), `Conduit/Views/SavedDashboardsView.swift` (padlock on dashboard rows, also shown by `Conduit/Views/ProfilePickerSheet.swift`, which reuses `SavedDashboardRowLabel`; worked out by `AppState.notificationsEncryption(of:)` in `Conduit/Services/AppState.swift`)
 - Watch padlock: `Conduit/Services/AppState+HermesCalls.swift` (shareWatchCallVoices), `Conduit/ConduitApp.swift` (the `.task`s that re-share the Watch context when the notifications state settles and when the active dashboard changes), `Shared/WatchVoice/WatchCallVoices.swift` (WatchPhoneContext.notificationsEncryption), `ConduitWatch/WatchHomeView.swift` (WatchSettingsView: the label and its footer say quantum-safe when the shield shows)
-- Notifier: `notifier/events.py` (push_event, plain_text, media_free, sanitize_decision, sanitize_call, sanitize_room), `notifier/client.py` (enqueue, _drain_at_exit; relay_takes and RELAY_GATED, the events only a relay that lists them gets), `notifier/session_titles.py` (title, bot_name: a Bot Chat's bot name), `notifier/chat_on_screen.py`, `notifier/e2e.py`, `notifier/notify_tool.py` (conduit_notify: the headline a turn's reply push carries), `notifier/relay/src/apns.mjs`, `notifier/relay/src/server.mjs` (notificationFor, genericCopy, shouldDeliver; the gateway's GET /v1/meta; a push's interruption level and relevance score), `notifier/relay/src/store.mjs` (the preferences and their defaults), `notifier/pulse_push.py` (a Pulse push's level and whether it's private)
+- Notifier: `notifier/forks.py` (a fork of a chat sends nothing as its turn), `notifier/events.py` (push_event, plain_text, media_free, sanitize_decision, sanitize_call, sanitize_room), `notifier/client.py` (enqueue, _drain_at_exit; relay_takes and RELAY_GATED, the events only a relay that lists them gets), `notifier/session_titles.py` (title, bot_name: a Bot Chat's bot name), `notifier/chat_on_screen.py`, `notifier/e2e.py`, `notifier/notify_tool.py` (conduit_notify: the headline a turn's reply push carries), `notifier/relay/src/apns.mjs`, `notifier/relay/src/server.mjs` (notificationFor, genericCopy, shouldDeliver; the gateway's GET /v1/meta; a push's interruption level and relevance score), `notifier/relay/src/store.mjs` (the preferences and their defaults), `notifier/pulse_push.py` (a Pulse push's level and whether it's private)
 - Privacy policy: `notifier/docs/privacy/index.html` (what the relay gets for notification delivery, room invites among it, and what end-to-end encryption seals)
 
 **Rulings**
@@ -1076,6 +1079,7 @@ docs/privacy: what the relay gets for each kind, and what end-to-end encryption 
 - Hermes writes its own notification with `conduit_notify` (a title up to 60 characters, a body up to 300), and it has no push of its own: the turn's reply push carries it as a sealed `headline` instead of the reply's opening, so a turn still sends one push and a silent or muted reply sends none. Only Full previews shows it, as the title over its body, with the chat's title and the profile in the subtitle; Generic and Chat names show the reply's usual copy. A subagent can't write one, Pulse turns keep their own copy, and the relay's plain copy never gets it (redaction drops it). It belongs to the turn that wrote it: the turn's end drops it, so a turn that ends with no reply never lends it to the next (2026-10-28, Eric chose to build it, issue #1415, #1425, notifier #438).
 - No push shows a host path: replies (Bot Chat and Pulse included), background tasks, failed turns, questions, approvals, calls, updates and phone changes show each MEDIA tag as 📎 and the file's name, or its type when the name is only a hash, in the plain and the sealed copy alike, and so do the answer card and the call screen that come with them; a reply's fenced code stays as written (2026-10-24, Eric's review, #1212, notifier #348).
 - A reply's push stays quiet while its chat is on screen and in use (2026-10-22, #1132, notifier #301), and while a Predictive follow-up Hermes took in that chat runs, even with nobody touching the phone (2026-10-26, #1281); that includes replies to messages queued ahead of it while Conduit waits for its turn, through the fourth, which ends the wait, since the chat on screen shows them anyway (2026-10-26, Eric, #1290).
+- Only a chat's own turns push. A fork of the chat, which Hermes runs under the chat's session id (Predictions' `/predict`, step summaries' /btw, the self-improvement review), sends no reply, failure, approval or question push, no alert call, and doesn't start, move or end the chat's Live Activity, even on a Hermes that runs plugin hooks for forks; its tool calls still meet the room rules and Pulse's gate (Hermes 0.21 among them; Hermes' own 2026-09-10 fix keeps them out on newer ones). The plugin marks each fork's run and treats it as a subagent's run (2026-10-29, Michel, #1495 carrying #1489, notifier #464 carrying #462).
 - A Pulse morning brief's push says only the brief's first line, cut to 200 characters; the lines under it are for its card (2026-10-25, notifier #357).
 - Each Pulse push says how much it may interrupt, decided in code, never by the model. Time-sensitive: a pick held for a place at its moment, a reminder for a place as the user gets there or leaves, the same for a kind of shop walking past comes near (2026-10-28, notifier #435), and a follow-up that can't wait (its check said it's urgent, or it went at night or in a closed part of the day because later would be no use), at most three a day in the user's time zone, then active. Passive (Notification Center, with no sound or lit screen): anything else that goes while the phone says the user is busy (an event, or a Focus that holds calls; driving doesn't count), and a report whose pushed picks are all interests or far off. Active: the rest, the morning brief included. The reply carries `level` beside the envelope as routing, so the relay sees it with encryption on and `redact on` keeps it; the relay (0.20, `push-levels`) sets the alert's interruption level and relevance score (0.2, 0.5, 0.9), and an older relay sends it at the default level, as every other push goes. A build without the Time Sensitive Notifications entitlement gets a time-sensitive push as active (2026-10-27, Eric chose to build the gaps in order; notifier #424, #1379).
 - A Pulse push about someone's birthday or anniversary, or whose words are about a gift, a surprise, health or money, says only "Pulse has something for you." while Hide private reminders on the Lock Screen is on (the default), whatever Show in notifications says: its words never leave the host in a push, the sealed payload says `private` for the extension to write that line in the App Language, and its card shows everything. A pairing with no key gets the line in English (2026-10-27, notifier #424, #1379).
@@ -1101,7 +1105,7 @@ docs/privacy: what the relay gets for each kind, and what end-to-end encryption 
 - A registration update landing after a relay move is dropped rather than written onto the new registration (#865 follow-up, #1191); the move itself has no test seam (it registers through URLSession.shared).
 - No app on main turns `room_invite` on, so room invites reach no phone yet: on the `linked-rooms` branch, C3c turns it on, with the invite push's copy in the App Language, its tap to the join card and Settings > Notifications' Room invites (see Linked Rooms).
 
-**Checked:** 2026-10-28, #1457 (the main bot's pushes take its Conduit name, see Profile names); 2026-10-28, #1448 (an unnamed profile's id capitalized in the subtitle and in Bot Chat pushes, notifier #445); #1427 (a pick or reminder for a kind of shop walking past comes near pushes time-sensitive as a place's does, notifier #435); #1425 (the notification Hermes writes with `conduit_notify`, notifier #438, closing issue #1415's last gap; the relay, calls and encryption needed no change); #1416 (Show in notifications with Chat names and the profile subtitle, issue #1415, with notifier #436 for the relay's plain copy; the Watch mirrors it, and calls, encryption and decision cards needed no change); 2026-10-27, at #1383, carrying #1379 from the `pulse` branch (a Pulse push's level and private ones, with notifier #424: the extension's private line in the App Language; other pushes, the relay's plain copy, encryption and Settings > Notifications needed no change); #1381 with notifier #425 (room invite pushes, which the relay sends only to a Conduit that turns them on, and no reply or failure push for your agents' turns in rooms hosted elsewhere; the app's side waits for C3c on the `linked-rooms` branch); 2026-10-26, #1297 (a notification tapped during a call no longer switches and opens once the call ends, the gap #1292 recorded, kept across a relaunch, with a notice over the call's screen too, and so does one whose Bot Mode check fails during the call; the extension, the relay's copy, encryption and Settings needed no change); #1290 (the hold covers replies queued ahead of a follow-up); #1291 (queued pushes go out before a cron job's worker exits, notifier #389, issue #388); #1292 (Pulse pushes' Quiet for today button, from #1285 on the `pulse` branch, and a push tapped during a call, found in #1286's review; see Pulse); #1281 (a Predictive follow-up holds its chat's push); 2026-10-25, #1257 (a Bot Chat's push names its bot; `profile_name` for calls, the relay's plain copy and the Live Activity; notifier #372); the morning brief's push at notifier #357, carried in #1237; 2026-10-24, at #1213 (inline rotation, the shield and the Watch's row and footer; a pairing rotates at most once per run, a Rotate tap during a rotation joins it, and a verified key the Keychain refused stays pending and is shown as such; fork CI #85); #1212 (MEDIA tags in pushes, answer cards and the call screen); keys and padlock at #1197, carried in #1217 (fork CI #82); the registration update race at #1191; its relay registration error log redacted (bare hosts) at #1219.
+**Checked:** 2026-10-29, #1495, carrying #1489 (a chat's forks send no push, notifier #464 carrying #462; the extension, the relay, encryption and Settings needed no change); 2026-10-28, #1457 (the main bot's pushes take its Conduit name, see Profile names); 2026-10-28, #1448 (an unnamed profile's id capitalized in the subtitle and in Bot Chat pushes, notifier #445); #1427 (a pick or reminder for a kind of shop walking past comes near pushes time-sensitive as a place's does, notifier #435); #1425 (the notification Hermes writes with `conduit_notify`, notifier #438, closing issue #1415's last gap; the relay, calls and encryption needed no change); #1416 (Show in notifications with Chat names and the profile subtitle, issue #1415, with notifier #436 for the relay's plain copy; the Watch mirrors it, and calls, encryption and decision cards needed no change); 2026-10-27, at #1383, carrying #1379 from the `pulse` branch (a Pulse push's level and private ones, with notifier #424: the extension's private line in the App Language; other pushes, the relay's plain copy, encryption and Settings > Notifications needed no change); #1381 with notifier #425 (room invite pushes, which the relay sends only to a Conduit that turns them on, and no reply or failure push for your agents' turns in rooms hosted elsewhere; the app's side waits for C3c on the `linked-rooms` branch); 2026-10-26, #1297 (a notification tapped during a call no longer switches and opens once the call ends, the gap #1292 recorded, kept across a relaunch, with a notice over the call's screen too, and so does one whose Bot Mode check fails during the call; the extension, the relay's copy, encryption and Settings needed no change); #1290 (the hold covers replies queued ahead of a follow-up); #1291 (queued pushes go out before a cron job's worker exits, notifier #389, issue #388); #1292 (Pulse pushes' Quiet for today button, from #1285 on the `pulse` branch, and a push tapped during a call, found in #1286's review; see Pulse); #1281 (a Predictive follow-up holds its chat's push); 2026-10-25, #1257 (a Bot Chat's push names its bot; `profile_name` for calls, the relay's plain copy and the Live Activity; notifier #372); the morning brief's push at notifier #357, carried in #1237; 2026-10-24, at #1213 (inline rotation, the shield and the Watch's row and footer; a pairing rotates at most once per run, a Rotate tap during a rotation joins it, and a verified key the Keychain refused stays pending and is shown as such; fork CI #85); #1212 (MEDIA tags in pushes, answer cards and the call screen); keys and padlock at #1197, carried in #1217 (fork CI #82); the registration update race at #1191; its relay registration error log redacted (bare hosts) at #1219.
 
 ## Pulse
 
@@ -1296,13 +1300,14 @@ group rooms (no Artifacts list) · the notifier's artifacts route · README.md
 - A picture image generation made is listed: the host reads `image_generate`'s result, a saved file as a written image and a hosted one as an image link (2026-10-24, #1218 with notifier #353, plugin 0.71.1, Eric's report: a bot's generated pictures were missing).
 - A Bot Chat is listed though Hermes keeps it hidden: the host reads a chat asked for by id whether hidden or not, and a profile's whole list takes its hidden "Bot Chat" session and the sessions continuing it, while other hidden chats (a group room member's turns) stay out (2026-10-25, #1272 with notifier #376, plugin 0.78.1, Eric's report: a bot's pictures were still missing from both lists).
 - On a window with room for the chat and the panel, ⋯ › Artifacts opens beside the chat instead of in a sheet, with its own search field; a phone keeps the sheet (2026-10-27, #1399).
+- The panel beside the chat drags wider or narrower by the line beside it, kept per device; it shows at its standard width's window as before (Eric, 2026-10-29, #1492, see Resizable columns on a split window).
 - One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
 - A file still opening is dropped when the list moves to another server or profile, and only the latest open clears the spinner. Every reload, including one on a dashboard without artifacts, outdates the request before it (2026-10-24, from #895's review, #1191).
 
 **Open gaps**
 - Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1399 (the panel and the Folder tab); #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
+**Checked:** 2026-10-29, #1491 (a picture opens in the picture viewer and pages through the list's pictures); 2026-10-29, #1492 (the panel's width drags); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1399 (the panel and the Folder tab); #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
 
 ## Workspace files
 
@@ -1341,7 +1346,7 @@ README.md
 **Open gaps**
 - Group rooms have no Artifacts: a path tapped in a room opens the Folder on its own, at the projects' folders.
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1407 with notifier #431 and its follow-up; 2026-10-27, #1399 with notifier #431.
+**Checked:** 2026-10-29, #1491 (a picture, opened or Share or Save, opens in the picture viewer among its folder's pictures); 2026-10-29, #1492 (ChatSidePanel's width drags; the Folder in it is unchanged); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1407 with notifier #431 and its follow-up; 2026-10-27, #1399 with notifier #431.
 
 ## Bots: create and edit
 
@@ -1483,7 +1488,7 @@ reply's elements) · long-press Open Link · file paths, linked to the Folder
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
+**Checked:** 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
 
 ## Markdown lists in messages
 
@@ -1982,6 +1987,7 @@ CHANGELOG
 - Only a phase, a tool category from a fixed list, a tool count and a context percentage cross the relay; the chat's title stays on the phone (#605, notifier #111).
 - A turn's end reaches its card three ways: the stream while Conduit runs, the plugin through the relay, and the live registry once Conduit is back. The relay keeps an end reported before the phone registered the card, and ends a card registered later if it started before that end, never the chat's next turn's (2026-10-27, issue #1361, #1374, notifier #421).
 - A turn that a compaction moves to a new session id reports and ends under the id the card was registered with (2026-10-27, #1374, notifier #421).
+- A fork of the chat (Predictions' `/predict`, step summaries' /btw, the self-improvement review) never starts, moves or ends its card, even on a Hermes that runs plugin hooks for forks (2026-10-29, #1495 carrying #1489, notifier #464 carrying #462; see Notifications).
 - The card's registration runs as a background task, so it finishes when Conduit leaves the screen right after sending, and one that didn't reach the relay is sent again when Conduit is next on screen (2026-10-27, #1374).
 
 **Open gaps**
@@ -1989,7 +1995,7 @@ CHANGELOG
 - The live registry check reads the profile and dashboard on screen, so a card from another one ends only by push.
 - The registration and its retry go through `URLSession.shared`, so only their decisions (`needsRegistration`, `liveActivityStartedAgo`, `liveActivityRouteExists`) are tested.
 
-**Checked:** 2026-10-27, #1374.
+**Checked:** 2026-10-29, #1495, carrying #1489 (a chat's fork never touches the card, notifier #464); 2026-10-27, #1374.
 
 ## Large code blocks in messages
 
@@ -2550,6 +2556,36 @@ Recent menu) · the Archived sheet · README.md
 
 **Checked:** 2026-10-26, #1328.
 
+## Unread dot on projects
+
+The gold dot on a project in the Projects list while any chat in it has a
+reply the user hasn't seen (issue 1496).
+
+**Siblings:** the V2 Projects list (Chats › Projects) · the iPad and Mac
+list (same view) · the classic drawer's Projects list · a chat row's unread
+dot, which each project's dot follows (the project's page shows the same
+dots on its chats) · the Running line on the same row · Mark as read and
+unread · VoiceOver · the profile strip's dot, the same signal a level up ·
+README.md
+
+**Code**
+- Which projects: `Conduit/Services/AppState+V2Shell.swift` (projectsWithUnread), `Conduit/Services/AppState.swift` (catalogRow: a chat's catalog copy, its own ids before the ids it shares, cached per catalog change)
+- Rows: `Conduit/Views/V2/V2ChatsView.swift` (projectsList, projectRow, V2ProjectRow), `Conduit/Views/SidebarView.swift` (the Projects section, ProjectRow)
+- Read state: `Conduit/Services/ChatReadState.swift` (isUnread), `Conduit/Services/AppState.swift` (isSessionUnread)
+- Docs: `README.md` (Features)
+- Tests: `ConduitTests/ChatReadStateTests.swift` (testProjectDotsMarkEachProjectWithAnUnreadChat)
+
+**Rulings**
+- The dot means an unread reply, read as a chat row reads it (Hermes' shared flag, a mark, or messages past what this device saw), never only that a chat finished: a reply already read leaves no dot. It stays while any chat in the project is unread, so reading one leaves it for the others (issue 1496).
+- The dot sits on the tile's corner, as on a chat row's icon, apart from the Running line: a project can show both.
+- Home gets the dot too, for its chats in no project.
+
+**Open gaps**
+- The dot reads the chats the project tree lists, as the Running line does, so an unread chat beyond the tree's preview of a big project doesn't light it. A chat the catalog also lists reads its copy there, which stays current between loads of the tree.
+- Projects belong to the profile in use; All profiles has no Projects list of its own.
+
+**Checked:** 2026-10-29, #1499.
+
 ## Pinned chats order
 
 The Pinned section in the order the person sets (issue 1354): a pinned chat
@@ -2565,7 +2601,7 @@ Settings caption · CarPlay's chat list · the chat pickers (the Home Screen
 widget's and the Share extension's) · README.md
 
 **Code**
-- Order: `Conduit/Models/PinnedChatOrder.swift` (arrange, orders, movableOffsets), `Conduit/Services/AppState+PinnedChatOrder.swift` (arrangePinned, movePinnedChats, pinnedChatsForOrdering, pinnedChatOrderSlot), `Conduit/Services/AppState.swift` (pinnedChatOrder, setPinnedChatOrder, dropFromPinnedChatOrder from storePins and removePinnedState)
+- Order: `Conduit/Models/PinnedChatOrder.swift` (arrange, interleave, orders, mixedOrder, movableOffsets), `Conduit/Services/AppState+PinnedChatOrder.swift` (arrangePinned, movePinnedChats, pinnedChatsForOrdering, pinnedChatOrderSlot), `Conduit/Services/AppState.swift` (pinnedChatOrder, setPinnedChatOrder, setPinnedChatMixedOrder, dropFromPinnedChatOrder from storePins and removePinnedState; sign-out and a new server clear both stored orders, and deleting a profile its own, in the mix too)
 - Chats list: `Conduit/Views/V2/V2ChatsView.swift` (nestedSections, listRows' movesPinned, dragsPinned, pinnedHeader, projectsList, V2SessionActions' onReorderPinned)
 - Sheet and menu: `Conduit/Views/PinnedChatsOrderSheet.swift` (reorderPinnedChatsMenu for the Pinned headers), `Conduit/Views/SidebarView.swift` (SessionActionMenuItems' onReorderPinned; the classic drawer's nestedSessionSections, projectsViewPinnedSessions and pinnedHeader)
 - CarPlay: `Conduit/CarPlay/CarPlayBrowseTemplates.swift` (chatList's arrangePinned), `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (chatList, chatsObservation)
@@ -2575,10 +2611,11 @@ widget's and the Share extension's) · README.md
 
 **Rulings**
 - Drag in place plus Reorder pinned chats, together: a hold that moves lifts a pinned row, a hold that stays still opens the menu as before, and a swipe starts before either; the sheet is the way with VoiceOver and in the classic drawer (Eric, 2026-10-27, issue 1354).
-- Only pinned chats move, and only within their own profile's pins: a drop past the last pinned chat lands at the end of Pinned, never among recent chats, and moving never pins or unpins. A nest's "3 jobs" line and its open children stay put and follow their parent.
+- Only pinned chats move, among the pins the section shows (in All's mixed Pinned section, other profiles' too; see below): a drop past the last pinned chat lands at the end of Pinned, never among recent chats, and moving never pins or unpins. A nest's "3 jobs" line and its open children stay put and follow their parent.
 - Rows move by dragging while the list shows every pinned chat: not during a search or under a filter, whose rows are a lookup. The Pinned header reorders the profile in use's pins, and in All grouped by profile each profile's header reorders that profile's; a row's menu reorders its own profile's.
-- Until a profile's pins are reordered they follow recent activity, as before. Once ordered, a chat pinned since (here, on another device or in Hermes Desktop) goes on top, and an unpinned chat leaves the order, so pinning it again puts it on top too.
-- The order is kept per profile under each chat's pin id (its lineage root), so a compacted chat keeps its place. Hermes keeps only whether a chat is pinned, so the order goes to other devices through Sync across devices (`chats.pinned_order`, the profile in use's), not through Hermes. In All, each profile's pinned rows keep the places they held among the others'.
+- Until a profile's pins are reordered (or shown in a drag in All's mixed Pinned section, below) they follow recent activity, as before. Once ordered, a chat pinned since (here, on another device or in Hermes Desktop) goes on top, and an unpinned chat leaves the order, so pinning it again puts it on top too.
+- The order is kept per profile under each chat's pin id (its lineage root), so a compacted chat keeps its place. Hermes keeps only whether a chat is pinned, so the order goes to other devices through Sync across devices (`chats.pinned_order`, the profile in use's), not through Hermes.
+- In All's mixed Pinned section a chat stays where it's dropped, among the other profiles' too: the section also keeps which profile holds each place, and each profile's chats fill its places in that profile's own order. A drag there saves the order of every profile it shows, so later activity doesn't move a chat dropped among another profile's. That mix stays on this device, like All's other settings, and applies to the mixed section only (All grouped by profile and a profile's own list follow each profile's order); a chat pinned since goes on top, and an unpinned one leaves it. This replaces "each profile's pinned rows keep the places they held among the others'", under which a drop past another profile's chats snapped back (Eric, 2026-10-29, issue 1486, #1490).
 - CarPlay's pinned chats follow the order. The widget's and Share extension's pickers don't: they pick a chat from every chat, pinned ones first by recent activity.
 
 **Open gaps**
@@ -2586,7 +2623,7 @@ widget's and the Share extension's) · README.md
 - The classic drawer reorders only from the sheet: its nested rows are one block each, which a List drag can't move cleanly.
 - Not yet tried on a device: whether the system's lift from a held row and the touch-and-hold menu share the hold as planned.
 
-**Checked:** 2026-10-27, #1373.
+**Checked:** 2026-10-29, #1490.
 
 ## Deleting from a list row
 
@@ -2807,6 +2844,7 @@ Show thinking in the run's menu and in its reply's ⋯, and Settings > Chat's Th
 - A run's summary is opt-in and device-only, off by default. Once a turn has settled (its reply in place, nothing running) and its last run folds on screen (two steps or more of those Settings shows) with a tool call in it, Conduit asks a hidden `/btw` (Hermes' cache-sharing fork, no tools, the chat untouched) for a short train of thought in the app's language: one natural first-person paragraph, looking back, on what Hermes set out to do and why each step came next, a coherent story of intentions from the calls' real arguments that names a result only where it changed course (the reply already has the results) and never a tool's name, and that keeps to the calls since the user's last message. Its budget is about half a phone line per tool call (9 words a line, 2 lines at least and 4 at most, so a long run doesn't make a page of it). A run of more steps than Settings > Chat's limit (20 by default, 5 to 100, counted like the folded line's "N steps", the steps Settings shows) isn't summarized on its own (Michel, 2026-10-25, #1233).
 - The folded run shows every step's icon and the count on its first line (an ellipsis when they don't fit) and the summary under them, uncut; opened, the summary stays at the top of the card, under the count (2026-10-25, #1233).
 - Touching and holding a finished run whose first tool call has an id of its own, switch on or off, offers Explain these steps (Explain again over a summary), and a lone tool step offers Explain this step once its turn is done, its answer under the step's card (under a lone thought instead when Settings hides the tools, which then carries the menu). An answer to a question that was forgotten or asked again since is only taken from the stream. Its question lists the run's calls with their arguments and the start of their results (the first 30, then how many more followed), since /btw only sees up to the last reply and, once the chat's agent is gone, only a digest of tool names, and asks for a somewhat longer paragraph about that run alone. Its answer is kept like the others, so the switch only turns automatic summaries on and off and kept summaries always show (2026-10-25, #1233).
+- A summary's /btw never notifies: its fork runs under the chat's session id, and the plugin keeps its answer from going out as the chat's reply push, or moving the Live Activity, on a Hermes that runs plugin hooks for forks (2026-10-29, Michel, #1495 carrying #1489, notifier #464 carrying #462; see Notifications).
 - Summaries are kept per dashboard and profile, by the run's first tool call, so only a run whose call ids are its own is described (not ids numbered per turn, like `functions.web_search:0`). Questions unanswered after two minutes are forgotten (the run's menu can ask again), and so is an answer that comes later; that run keeps the count. The kept summaries describe chats, so they go with a dashboard's saved chats (sign-out, removal, a new interactive sign-in) and with Delete Saved Chats. In Conduit an answer never shows as a /btw note, late, replayed or asked by another device, and the user's own /btw is never taken for one (only the exact questions are, today's or 2.2.1's) (2026-10-24, #1202; #1233).
 - Settings > Chat's Thinking is a choice of three (Eric, 2026-10-25, #1243): Show in every chat (Hermes' `display.show_reasoning` on), On request (thinking hidden, Show thinking offered), Off (hidden, no Show thinking anywhere). Hermes' key stays a switch other clients read; Conduit's `display.conduit_thinking_on_request` tells On request from Off while it is off. An install that had the switch on keeps Show, one that had it off gets On request. It is the only control for thinking: the old Show reasoning switch (an unused settings view's Chat display section) is gone. This replaces the earlier ruling that the profile-wide switch stays as it is.
 - On request: a finished run with thinking offers Show thinking in its menu (touch and hold), and a reply right under such a run offers it in its ⋯ (the only way in when the tools are hidden too; not on a folded teammate reply). It shows that run's thoughts, the run and the thoughts opened, until Hide thinking, which puts the run and its thoughts back the way they were, or another conversation; nothing is saved or asked of Hermes, since the history already carries each reply's reasoning. The steps a summary counts, and the run's "N steps" line and its discs while its thinking shows, stay the ones Settings shows; when Settings shows none of the run's steps (the tools hidden too), the line counts the thoughts shown rather than read 0 steps (Michel and Eric, 2026-10-25, #1243; #1282).
@@ -2825,7 +2863,7 @@ Show thinking in the run's menu and in its reply's ⋯, and Settings > Chat's Th
 - An older Hermes' single-underscore MCP names (`mcp_server_tool`) can't be split into app and action; they read "Used a connector".
 - Show thinking has nothing to show for a model that returns no reasoning text (hidden or summarized only), and a thought in the middle of a turn, above an interim reply, is reached from that reply's ⋯, not the last one's.
 
-**Checked:** 2026-10-26, at #1282, carrying #1243 (Show thinking on request, the three-way Thinking choice as the only thinking control, Hide thinking restoring the run, the count while thinking shows), after #1233, carried in #1236.
+**Checked:** 2026-10-29, #1495, carrying #1489 (a summary's /btw sends no push, notifier #464); 2026-10-26, at #1282, carrying #1243 (Show thinking on request, the three-way Thinking choice as the only thinking control, Hide thinking restoring the run, the count while thinking shows), after #1233, carried in #1236.
 
 ## Code fences in messages
 
@@ -2863,22 +2901,25 @@ split · Read Aloud and live read-back · chat list previews and quotes
 Gateway files Conduit downloads to show or hand to the share sheet: where the
 copy goes and when it is removed.
 
-**Siblings:** a chat's media and file previews · the Artifacts page's opener ·
-the gateway media resolver · the Folder's Quick Look and Share or Save
+**Siblings:** a chat's media and file previews · the picture viewer · the
+Artifacts page's opener · the gateway media resolver · the Folder's Quick Look
+and Share or Save
 
 **Code**
 - Media previews: `Conduit/Views/Components/MediaPreviewPresenter.swift` (stage, stagingRoot, removeDirectory), `Conduit/Views/Components/MarkdownText.swift`, `Conduit/Views/Components/GatewayMediaDataURLResolver.swift`, `Conduit/Views/V2/V2ArtifactsViews.swift`
 - Folder: `Conduit/Views/V2/V2WorkspaceViews.swift` (quickLook), through the media preview presenter
+- Picture viewer: `Conduit/Views/Components/ImageGalleryViewer.swift` (ImageGalleryFile, ImageGalleryViewController.finish)
 - Tests: `ConduitTests/MarkdownLargeDocumentTests+MediaPreview.swift`
 
 **Rulings**
 - Each download goes in a folder of its own, removed when the preview or share sheet that asked for it closes, or when it is dismissed or switched to another file while still downloading; a previous run's leftovers are swept at launch (2026-10-24, #1220, from #1002).
 - The Folder opens files through the media preview presenter, so its copies follow the same rule; the workspace browser's own download folder is gone (2026-10-27, #1399).
+- The picture viewer fetches each picture into a folder of its own the same way, removes one once the reader is two pages past it (paging back fetches it again), and removes the rest when it closes, including one still arriving then; a photo on the device or a copy kept on the phone is shown in place and stays (2026-10-29, #1491).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-27, #1399; #1220.
+**Checked:** 2026-10-29, #1491 (the picture viewer's copies); 2026-10-27, #1399; #1220.
 
 ## Review labels
 
@@ -2973,7 +3014,7 @@ notifier's copies of both
 - Both repos give the reviewers the same prompt apart from their focus areas: bugs the PR introduces first, a concrete failure for each finding, the four severities defined, and REQUEST_CHANGES on any critical or major finding (2026-10-28, #1421, Eric asked for a review of the prompt).
 - A provider whose id is in the models.dev catalog (`anthropic` is, as `commandcode` was) whitelists the one model it reviews with. Otherwise opencode titles each session with the newest small model in that catalog, which was Gemini 3.8 Flash, a call Eric didn't want (2026-10-27, #1391 and notifier #428, Eric asked why Gemini Flash was being called).
 - Reviews run when a PR opens, on every push, on reopen and, on a fork's PR, on the run-review label, drafts included; marking a draft ready doesn't rerun them, since that head was already reviewed (2026-10-29, #1465 and notifier #453, Eric asked why reviews reran after draft to ready).
-- Review cost (2026-10-29, #1466 and notifier #454, Eric: reviews shouldn't spend inference on code they already saw). A `plan` job decides before any model runs: it waits 60s so a quick push cancels the run first; it skips a run whose change (the PR's diff from its base, whitespace kept; hunk headers and blob ids left out, and a Markdown file counted by the words the PR adds and removes, so a resolved feature map conflict still matches) matches a commit a review already ran on (whatever its verdict), so a clean merge of main or a reopen isn't reviewed again; and a PR whose files (both names of a rename) are all docs or config (Markdown, text, JSON, YAML, TOML; .github/, the notifier's skills/, opencode.json, .coderabbit.yaml, manifests that declare code, targets or dependencies, and the notifier's data files the plugin reads, channels.yaml, bip39_english.txt and upstream/contract.yml, count as code) gets GLM-5.3 alone, as Eric asked, since it's the cheaper of the two. A manual run (both repos have one now), or adding run-review to a fork's PR, always reviews. CI skips this repo's Smoke job on the same change id (`scripts/pr-change-id.py`, docs/CI.md, #1467): after any merge of main that keeps the id, not only a feature map conflict, the merge commit isn't built on the PR, as for a PR that never merged main (Eric, 2026-10-29, #1467).
+- Review cost (2026-10-29, #1466 and notifier #454, Eric: reviews shouldn't spend inference on code they already saw). A `plan` job decides before any model runs: it waits 60s so a quick push cancels the run first; it skips a run whose change (the PR's diff from its base, whitespace kept; hunk headers and blob ids left out, and a Markdown file counted by the words the PR adds and removes, so a resolved feature map conflict still matches) matches a commit a review already ran on (whatever its verdict), so a clean merge of main or a reopen isn't reviewed again; and a PR whose files (both names of a rename) are all docs or config (Markdown, text, JSON, YAML, TOML; .github/, the notifier's skills/, opencode.json, .coderabbit.yaml, manifests that declare code, targets or dependencies, the notifier's data files the plugin reads, channels.yaml, bip39_english.txt and upstream/contract.yml, and Markdown under an app or test folder, which CI always builds too, count as code; Eric chose both reviewers for that Markdown on 2026-10-29, #1469 and notifier #456) gets GLM-5.3 alone, as Eric asked, since it's the cheaper of the two. A manual run (both repos have one now), or adding run-review to a fork's PR, always reviews. CI skips this repo's Smoke job on the same change id (`scripts/pr-change-id.py`, docs/CI.md, #1467): after any merge of main that keeps the id, not only a feature map conflict, the merge commit isn't built on the PR, as for a PR that never merged main (Eric, 2026-10-29, #1467).
 
 **Open gaps**
 - The workflow runs main's config, so a change to either file is first exercised by the review after it merges.
@@ -2981,11 +3022,10 @@ notifier's copies of both
 - Data files the app or CI reads (`Conduit/Cards/card-schema.json`, `scripts/smoke-suite.json`, `scripts/hosted-suite.json`, test fixtures) count as config, so a PR that changes only those gets GLM-5.3 alone (2026-10-29, #1466).
 - A run can't say which PR it reviewed (GitHub fills a run's PRs from the branch's open PRs when read), so the same commit reviewed in a PR into main counts as reviewed in a PR into `pulse` or `linked-rooms` from the same branch (2026-10-29, #1466).
 - A Markdown file counts by its words, so a push that only reorders or re-indents Markdown the PR already changed matches the earlier review and isn't reviewed again; that keeps a resolved feature map conflict from costing a review (2026-10-29, #1466).
-- Markdown under an app or test folder (Conduit*/, Shared/) counts as code for reviews (both reviewers), so the review plan agrees with CI, which always builds it. This is a classification from a review finding, waiting on Eric's ruling; the Review cost ruling above is as he gave it (2026-10-29, #1469, notifier #456).
 - CI's smoke skip counts a passing Smoke from whatever PR it ran for, as reviews do: a commit that passed in a PR into `pulse` or `linked-rooms` counts for a PR into `main` from the same branch (2026-10-29, #1469).
 - Re-running a review from the Actions page still reviews: the run being rerun isn't finished, so it doesn't count as reviewed (2026-10-29, #1466).
 
-**Checked:** 2026-10-29, #1469 (Markdown under an app or test folder counts as code for reviews and always builds in CI; notifier #456); #1467 (the change id hashes any bytes and a failing one counts as no match; the notifier's data files count as code, notifier #455; CI's copy of the change id is in Code, held to the review's by a test); #1466.
+**Checked:** 2026-10-29, #1502 (Eric ruled that Markdown under an app or test folder gets both reviewers); 2026-10-29, #1469 (Markdown under an app or test folder counts as code for reviews and always builds in CI; notifier #456); #1467 (the change id hashes any bytes and a failing one counts as no match; the notifier's data files count as code, notifier #455; CI's copy of the change id is in Code, held to the review's by a test); #1466.
 
 ## Settings connection page
 
@@ -3098,7 +3138,45 @@ pictures load)
 - Group rooms show no `MEDIA:` pictures: their Markdown has no gateway resolver.
 - Past 4,000 remembered sizes the memo starts again (no LRU), so pictures grow once more until each loads again.
 
-**Checked:** 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
+**Checked:** 2026-10-29, #1491 (a tapped picture opens in the picture viewer among the chat's pictures); 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
+
+## The picture viewer
+
+A picture tapped full screen: swiped left and right through the pictures
+around it, closed with a swipe down, zoomed with a pinch or a double tap, and
+shared or saved from its Share button.
+
+**Siblings:** chats, project chats and Bot Chat (attachments, reply pictures,
+tool pictures) · the saved-chat copy · call job result sheets and the cards a
+voice model shows · group rooms · the Artifacts page, a chat's Artifacts sheet
+and the panel beside the chat · the Folder tab · iPhone, iPad and Mac (the
+same viewer; keys and a trackpad on an iPad or Mac) · Quick Look, which still
+opens videos, audio and documents · README.md · text that describes it (the
+pictures' VoiceOver hint "Opens full screen with save and share")
+
+**Code**
+- Viewer and presenting it: `Conduit/Views/Components/ImageGalleryViewer.swift` (ImageGalleryViewController, ImageGalleryPageController, ImageGalleryDecoder, ImageGalleryItem, ImageGallery, ImageGallerySource, the `imageGallery` environment value), `Conduit/Views/Components/MediaPreviewPresenter.swift` (presentGallery)
+- What a chat lists: `Conduit/Views/Components/ImageGalleryItems.swift` (ChatImageGallery, the item makers), set in `Conduit/Services/AppState.swift` (chatImageGallery, savedChatImageGallery) and `Conduit/Views/ChatView.swift`
+- Taps: `Conduit/Views/ChatView.swift` (UserImageAttachmentPreview), `Conduit/Views/Components/MarkdownText.swift` (RemoteMarkdownImage.openImage)
+- Other lists: `Conduit/Views/GroupChatView.swift` (GroupRoomImageGallery), `Conduit/Views/LiveVoiceCallJobs.swift` (both sheets), `Conduit/Views/V2/V2ArtifactsViews.swift` (openImage), `Conduit/Views/V2/V2WorkspaceViews.swift` (openImage)
+- Tests: `ConduitTests/MarkdownLargeDocumentTests+ImageGallery.swift`
+
+**Rulings**
+- Pictures page in Conduit's own viewer, not Quick Look: Quick Look shows one file and has no swipe down. Videos, audio and documents still open in Quick Look; a picture never pages to one (2026-10-29, #1491, Eric asked for both gestures).
+- A picture pages through the pictures of what it was tapped in, in the order they show: a chat's (each message's pictures in its text, then the ones it attaches, then a tool's), the saved copy's, a room's, a job result's or card's, the Artifacts list's as filtered, or the Folder's (the search's names, else the file's folder, else Recently Changed); one in a Markdown file the Folder previews pages through that file's pictures. Each picture is listed once, where it first shows. One its list doesn't have (a reply still streaming) opens alone (2026-10-29, #1491).
+- The list is read when a picture is tapped, never while scrolling: each screen holds one source, so no row redraws for it. Each picture fetches its original only as its page comes near (its own, then its neighbours once it is in, so a tap never starts three large downloads at once), the way its row opened it alone: the photo on this device, the copy kept on the phone, then Hermes; a picture in a list fetches as Artifacts and the Folder open a file. The row's own copy shows until the original is in, and stays if the original can't be had (2026-10-29, #1491).
+- A swipe down (or up) of a picture that isn't zoomed in drags it, fading the backdrop; past a fifth of the screen or flung it closes, short of that it springs back. A zoomed picture pans instead, and its edge hands a sideways swipe on to the next. One finger only: two are a pinch. A trackpad's two-finger swipe does the same; on a keyboard the arrows page and Escape closes; VoiceOver pages with a three-finger swipe and closes with the escape gesture (2026-10-29, #1491).
+- A single tap shows or hides the bar (Done, the name, "3 / 12", Share); Share opens once the picture's original is in. The Folder's Share or Save opens a picture in the viewer too, since its Share saves and copies (2026-10-29, #1491).
+- A picture whose original can't be had keeps the row's copy, or says "Image unavailable" ("Too large to open on this phone" for one over the download limit), and one that failed otherwise (a dropped connection) is fetched again each time it is paged to; one too large isn't, since it would be again (2026-10-29, #1491).
+- Copies fetched for the viewer are removed once it is two pages past them, and the rest when it closes, so a long list of large photos doesn't fill the phone (see Files prepared for preview and Save to Files).
+
+**Open gaps**
+- Not checked on a device yet: the swipe down beside the pager's own pan, the zoomed edge handing on to the next page, and the trackpad swipe on a Mac.
+- A reply still streaming isn't listed: its pictures open alone until it settles.
+- An animated GIF plays at up to 120 frames, drawn small enough that its frames stay within 32 MB (the pager holds three pages); Quick Look played every frame at full size.
+- The Folder pages through its listed files only: a folder not opened in the tree isn't listed.
+
+**Checked:** 2026-10-29, #1491.
 
 ## Cards drawn in web pages
 
@@ -3302,6 +3380,7 @@ route, its README section and the CHANGELOG · the Predictive page's captions
 - Hermes follows up only while the chat is on screen, settled and unwritten: first check after the chosen wait, then when Hermes asks (held to 30 s–15 min), at most 4 checks per reply, and at most one hidden turn per message the user sends. Conduit measures every duration and sends it (2026-10-25, Michel, #1242).
 - On screen means not covered by the sidebar or a room, with Conduit in front. A paused draft's question and a follow-up's hidden turn check it again just before they are sent (2026-10-26, #1281).
 - A follow-up's reply holds the chat on screen for pushes even when nobody touched the phone in the last two minutes (2026-10-25, #1242).
+- A guess never notifies: `/predict`'s fork runs under the chat's session id, and the plugin keeps its turn from sending a push or moving the Live Activity on a Hermes that runs plugin hooks for forks (2026-10-29, Michel, #1495 carrying #1489, notifier #464 carrying #462; see Notifications).
 - Hide for this chat also stops a follow-up check already asked, and leaving the chat (another chat, the sidebar, a room, Conduit in the background) drops a follow-up's hold and its tag. A tapped guess goes only into the chat it was offered in (2026-10-25, #1242).
 - A turn that ends in a system notice, fails or is interrupted tags nothing and doesn't restart the reply's idle time, and a notice merged into the last row is no reply to guess at; a follow-up that never reached Hermes doesn't spend the user's message and is checked again (within the 4 checks), unless the gateway takes no hidden prompts. A follow-up that leaves no reply of its own asks for the reply's guesses again. A switch turned off takes its chips with it (2026-10-26, Eric, #1242).
 - Signing out of or removing the open dashboard, or its connection reaching a different server, forgets every guess, the draft they read, hidden follow-ups and checks still waiting, and drops answers still on their way; Delete Saved Chats leaves them, as it leaves the chat in use. A follow-up Hermes queued keeps its tag and hold, since it runs as its own turn, until a reconnect (below), and the turn it waited behind (another client's) gets neither, even when that turn ends before Hermes says the prompt was queued; only one steered or redirected into a running turn loses them (2026-10-26, #1281). When Hermes queued the hidden prompt, a reply to a message someone sent before it (another client's, queued ahead) isn't tagged either, and the chat stays held while Conduit waits: it skips up to 3 such replies, and a fourth ends the wait untagged; a message sent after the hidden prompt runs after it, so once its row is read the next reply is still the follow-up's. A message another client sends during the wait counts even when it's read in before the turn the follow-up waited behind ends, on a gateway that announces `user.message`; without it, only rows read in after that turn count. A turn of a message queued ahead that fails, is interrupted or ends in a notice counts as one of the 3. A reply that ends while a message another client sent hasn't been read into the chat yet, or after the row the follow-up was sent after has left the chat (a reload), isn't tagged and ends the wait, since whose reply it is can't be told. No second follow-up is checked for in a chat while one waits there. A reconnect ends the wait, queued or not, and with it the tag; the hold is no longer renewed and lapses at the next renewal unless someone is using the chat, since the turn may have ended unseen (2026-10-26, Eric, #1290).
@@ -3316,7 +3395,7 @@ route, its README section and the CHANGELOG · the Predictive page's captions
 - The fast model is the profile's `auxiliary.conduit_predict` on the host; Conduit can't set it.
 - Which reply is Hermes' own, when other clients' messages are queued around the hidden prompt, is inferred from row timestamps (the phone's clock at sending against the host's) and `user.message` events. Hermes sends no turn ownership, so a message sent within clock skew of the prompt, one read into the chat before its event arrives, another device's message repeating the text this iPhone sent last before that message has its row id (taken for this iPhone's own), a message whose event arrives only after the hidden prompt while its turn is the one the prompt queued behind (counted twice), or a message queued ahead whose row is read in before the turn the prompt queued behind ends and whose event came before the prompt (not counted), can still put the tag on the wrong reply; and this iPhone's own message announced back after a newer one of its own is taken for someone else's, which drops the tag. The event's origin isn't read for this (#1290).
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1455 (carrying #1431; a chip that sends wraps instead of truncating; Rulings); 2026-10-26, #1290 (a follow-up's tag skips replies to other messages); at #1281 (carrying #1242).
+**Checked:** 2026-10-29, #1495, carrying #1489 (a guess's fork sends no push, notifier #464); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1455 (carrying #1431; a chip that sends wraps instead of truncating; Rulings); 2026-10-26, #1290 (a follow-up's tag skips replies to other messages); at #1281 (carrying #1242).
 
 ## Linked Rooms
 
@@ -3445,7 +3524,7 @@ captions, Settings captions, the invite's share message
 - Everyone whose agents are in a room keeps a copy of it on their own Hermes, which their Conduit reads, never the home. The home sends each of them its log a page at a time (room.page: at most 500 events and 160 KB, one waiting for its answer at a time and sent again after a minute without one), with what the room is doing (whether it ended, who's answering, each linked agent's route), never the home's approvals or its own agents' turn errors. Their Hermes takes a page only over the Link that invited it, once the room started, from the room's own authority, keeps it with Hermes' replica store in its own conduit-rooms/copies.db (owner only, apart from Hermes' rooms), and answers with what the copy holds (room.copied), so a gap or a lost page starts the next one where the copy is. Pages stop when a person's agents are all out; a disbanded room's go on until every copy has its end. GET /rooms/copies, /rooms/copies/log and DELETE /rooms/copies (capability room-copies, `rooms copies`) read and forget them (2026-10-28, notifier #434). Forgetting is refused while an agent of yours is still in the room (`still_in`), so your posts keep framing its turns, and for a room this Hermes hosts (`hosted`). A copy notes which members are your agents, so once its invite is forgotten (30 days after it ended) the copy still lists them, and from then the room in it reads `left` unless the home said it ended (2026-10-29, notifier #448).
 - A person with an agent still in a room someone else hosts posts in it from their own Conduit, to their own Hermes (POST /rooms/copies/messages, capability room-posts), which keeps it as sending and sends it over the Link that invited it (room.post). The home posts it with Hermes' own send in thread main, every line starting with the person's name as its Link calls them ("Mona: "; "Guest: " for a Link without a name, or with anything but letters, digits, spaces and `.'&-`, so no name carries a colon, a bracket or a line break), so none reads as its owner's in Hermes' prompt; at most 16,000 bytes, 60 an hour per person per room; and answers with the seq or why not (room.posted). The home records who each post was for: its pages carry it to the copies (an event's `post.by`, null for your own) and GET /rooms/people lists the latest 500 (`posts`). Its agents are told the others' names start their lines; a member's agents are told their owner's do, and a line under their owner's name that their Hermes didn't forward is the host's (2026-10-28, notifier #441). Posts and who's who follow the room's current invite, so a room re-joined over a new Link is another room; a page keeps who posted before its events (2026-10-29, notifier #448).
 - Your agent works on a room for you in your private chats: notes, a summary, what someone said, a draft reply. The conduit_room tool (toolset conduit) lists the rooms this Hermes hosts over Links and its copies of rooms hosted elsewhere, and reads one's messages, newest first or from a seq on (at most 200, each cut at 4,000 characters, the answer at most 64 KB, keeping a forward page's start). Each message is named as the room screen names it: "you", a linked person by their Link's name, an agent with its owner. A line the home marks as yours is yours only when it's one of your posts (by its seq, or its text while still sending), else "<host>, as if from you (not one of your posts)"; a name another Hermes gives that reads as "you" is Guest, and room and agent names are one line of at most 80 characters. Nothing goes back to the room. A room turn never has the tool (room_choices' NEVER), and it refuses a room's session, a subagent and a call without a session id. A room's private chat (one per room and profile, conduit-room-chats.json) tells each turn which room it's about, its name framed as the host's words. In a room hosted elsewhere where your agent Listens only, the rooms loop (looking once a minute) sends that agent a hidden turn in the room's chat through the session host, once the room has been quiet 30 minutes after new messages or has ended: notes on what's new since its last ones, at most 200 messages a turn, counted once the chat takes the turn; a refused or failed send waits 30 minutes (2026-10-29, notifier #448). GET /rooms/chats lists a profile's room chats and PUT /rooms/chats makes a chat that room's chat for the profile (capability room-chats; 404 for a room this Hermes doesn't have, 503 when its rooms can't be read); a chat the room gets starts its notes at the room's newest message, and one Hermes no longer has is forgotten when its notes come due. In the tool's list a copy whose agents were all taken out reads "you were taken out" while the room goes on, and other people's agents in a copy carry no in-room status, which the home's pages don't give (2026-10-29, notifier #457).
-- Ask me first: in a room turn with other people's agents whose owner chose Ask me first (the default), the agent asks its owner's phone with conduit_ask_owner (question, and exactly what it would share) before it shares anything personal, in any tools tier, Talk only included. The ask is a confirm prompt in the profile's present store that lasts 24 hours and goes only to, and is answered only by, a Conduit with feature room-asks: Share (share exactly that), Say instead (say only what the owner wrote; no text reads as no) or Don't share. The tool waits 30 s; an answer that comes later reaches the room's next turn privately, once, by room so a compacted session hears it too, and counts as heard only when that turn replied and Hermes says it ended without failing or being stopped, never in a delegated child's turn. Room asks have their own caps (3 waiting a room, 40 across rooms, 6 an hour a room, 12 across rooms), never use the owner's own, and keep the newest 10 unheard answers a room (60 across rooms) for a week. Where no ask is kept, the agent says it can't share that, never that it'll check. Setup always keeps conduit_rooms in the room ceiling, the one exception to its saving the ceiling exactly (2026-10-29, notifier #460, notifier #461).
+- Ask me first: in a room turn with other people's agents whose owner chose Ask me first (the default), the agent asks its owner's phone with conduit_ask_owner (question, and exactly what it would share) before it shares anything personal, in any tools tier, Talk only included. The ask is a confirm prompt in the profile's present store that lasts 24 hours and goes only to, and is answered only by, a Conduit with feature room-asks: Share (share exactly that), Say instead (say only what the owner wrote; no text reads as no) or Don't share. The tool waits 30 s; an answer that comes later reaches the room's next turn privately, once, by room so a compacted session hears it too, and counts as heard only when that turn replied and Hermes says it ended without failing or being stopped, never in a delegated child's turn or a fork of the chat (the self-improvement review, a /btw), which isn't framed with them either (#1495 carrying #1489, notifier #464). Room asks have their own caps (3 waiting a room, 40 across rooms, 6 an hour a room, 12 across rooms), never use the owner's own, and keep the newest 10 unheard answers a room (60 across rooms) for a week. Where no ask is kept, the agent says it can't share that, never that it'll check. Setup always keeps conduit_rooms in the room ceiling, the one exception to its saving the ceiling exactly (2026-10-29, notifier #460, notifier #461).
 - Use my data: in a room turn with other people's agents whose owner chose Use my data, the agent may call conduit_free_busy for its owner's busy times from the calendar the phone shares with the profile (merged busy blocks, at most 31 days a call, with the time zone, when the phone last synced and the synced window when the range leaves it), never titles, places, calendars, people or the device. Busy times follow the room's share choice, as the 2026-10-22 ruling has what an agent shares: What helps may share them, Ask me first asks the owner with conduit_ask_owner before it does, and Nothing personal takes the tool out of the room. Use my data allows every room-safe data tool, only conduit_free_busy for now, so choosing it is choosing free/busy and there's no tool picker; conduit_calendar stays out (2026-10-29, notifier #463).
 - Asks between linked agents: in the owner's private chats only (never a room turn or a subagent), their agent asks a linked person's Hermes with conduit_ask_linked whether they're free on a date (in their time zone, at most 92 days off) or a question (one line, at most 300 characters). No agent answers on the asked side: the asked owner's standing rules for that Link answer, computed by the plugin, or the owner does, so nothing the asker writes reaches a model there. Free on a date is yes_no (free or busy), times (also the busy times in that window), ask (the default: the owner sees what the rule would say and Shares it, Says instead or Doesn't share) or off; a question is ask (the default) or off; the rules name the profile whose phone and calendar answer. What waits is a confirm prompt in that profile's present store carrying the Link, shown and answered only by a Conduit with feature link-asks, for 24 hours, with a question shown as plain text; with no such Conduit it's answered that it can't be now, and unanswered the asker hears no answer came. The asked side allows 10 asks an hour a Link, 3 waiting a Link and 20 in all. The tool waits 20 s; a later answer reaches the chat that asked before its next turn, once (also when Hermes continues the chat under a new session after a compaction), heard as room asks' answers are, an answer the tool gave too, and whatever the other side sends back is quoted and framed as theirs, never as instructions. A free-on answer from a phone that last shared its calendar over 6 hours ago says how long ago (2026-10-29, notifier #465).
 - Your agents' turns in a room someone else hosts send no reply or failure push and no automatic alert call, since the room shows them and their hidden chats aren't ones Conduit opens; approvals and questions still notify. A turn whose room can't be told from the session store notifies as any other (2026-10-27, #1381, notifier #425).
@@ -3486,7 +3565,7 @@ captions, Settings captions, the invite's share message
 - Changing the tools rooms may use says the agent stops answering in rooms already started, but not in which.
 - An invite opened from another app while a sheet is already up (classic Settings, say) can't show over it, as a sign-in code link can't: open it again once the sheet is closed.
 
-**Checked:** 2026-10-29, #1497 (asks between linked agents: the tool, the rules, the CLI and routes, the README section, the gap left for C7), with notifier #465; 2026-10-29, #1494 (Use my data's free/busy: the tool, its rules, the README section, the gap closed), with notifier #463; 2026-10-29, #1485 (Ask me first: the tool, its prompt and its answers, the gap left for C5c), with notifier #460 and #461; 2026-10-29, #1475 (the room chats routes, the tool's "you were taken out", the README section in the text sibling), with notifier #457; 2026-10-29, #1470 (your agent reading your rooms, the room chats and their notes, N7a's minors), with notifier #448; 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1448 (a member known only by name matches a bot's own name before an unnamed bot's id capitalized); #1450 (posting in rooms hosted elsewhere), with notifier #441; #1410 (copies of rooms hosted elsewhere), with notifier #434; 2026-10-27, #1381 (the invite push and quiet room turns), with notifier #425; #1360 (new drafts and the setup on a profile the dashboard didn't start with), with notifier #387, #390, #396, #397, #398, #401, #406, #409, #411, #416 and #419.
+**Checked:** 2026-10-29, #1497 (asks between linked agents: the tool, the rules, the CLI and routes, the README section, the gap left for C7), with notifier #465; 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-29, #1495 (a fork of a room's chat neither hears nor is framed with the owner's answers, notifier #464); 2026-10-29, #1494 (Use my data's free/busy: the tool, its rules, the README section, the gap closed), with notifier #463; 2026-10-29, #1485 (Ask me first: the tool, its prompt and its answers, the gap left for C5c), with notifier #460 and #461; 2026-10-29, #1475 (the room chats routes, the tool's "you were taken out", the README section in the text sibling), with notifier #457; 2026-10-29, #1470 (your agent reading your rooms, the room chats and their notes, N7a's minors), with notifier #448; 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1448 (a member known only by name matches a bot's own name before an unnamed bot's id capitalized); #1450 (posting in rooms hosted elsewhere), with notifier #441; #1410 (copies of rooms hosted elsewhere), with notifier #434; 2026-10-27, #1381 (the invite push and quiet room turns), with notifier #425; #1360 (new drafts and the setup on a profile the dashboard didn't start with), with notifier #387, #390, #396, #397, #398, #401, #406, #409, #411, #416 and #419.
 
 ## Kanban workers' transcripts
 
@@ -3627,6 +3706,7 @@ phone)
 **Code**
 - `Conduit/Views/V2/V2Shell.swift` (splitColumns, v2ClippedToColumn)
 - Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent)
+- The line between them: `Conduit/Views/Components/ColumnDivider.swift` (ColumnDivider, which drags a column's width: Resizable columns on a split window)
 - The backdrop: `Conduit/Theme.swift` (ConduitBackdrop ignores the safe area)
 
 **Rulings**
@@ -3635,7 +3715,45 @@ phone)
 **Open gaps**
 - Not seen on a device yet: the simulator suites have no Duo before Xcode 27.1, so a Duo or a split iPad from TestFlight confirms it.
 
-**Checked:** 2026-10-29, #1472.
+**Checked:** 2026-10-29, #1492 (the 1 pt line between the columns is a draggable ColumnDivider above them; the drawer shell's sidebar threshold counts it); 2026-10-29, #1472.
+
+## Resizable columns on a split window
+
+The line between a wide window's list and its chat, and between the chat
+and Artifacts beside it, drags the column's width (#1487).
+
+**Siblings:** the Chats list column · the Bots list column · Settings
+beside the list (it opens in the chat's column) · a group room beside the
+list (the list drags; a room has no Artifacts) · Artifacts beside a chat ·
+the drawer shell's persistent sidebar (Appearance, V2 off) · the tab bar
+under the list (Voice beside the tabs) · the chat's readable column (it
+measures the room left to it: not needed) · hiding the list (#1164: the
+width comes back with the list) · Settings > Appearance > Layout's caption
+in both shells (the drawer shell's only while its persistent sidebar is
+on) · not needed: README.md (it doesn't describe the split
+layout)
+
+**Code**
+- Widths and the line: `Conduit/Views/Components/ColumnDivider.swift` (ColumnWidth: resolved, dragged; ColumnDivider)
+- List: `Conduit/Views/V2/V2Shell.swift` (V2SplitLayout.listWidths, V2SplitLayout.ListColumn, V2SplitLayout.chatKeeps, sizedTabs, tabs, splitColumns)
+- Artifacts: `Conduit/Views/V2/V2ConversationScreen.swift` (ChatSidePanel.widths, sidePanelWidth)
+- Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent, persistentSidebarWidth), `Conduit/Views/SidebarLayout.swift` (SidebarLayoutMetrics.persistentSidebarWidths)
+- Caption: `Conduit/Views/AuxiliaryViews.swift` (Layout)
+- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testDraggedColumnWidthsKeepToTheirBoundsAndTheWindow)
+
+**Rulings**
+- Both lines drag: the list (375 to 560 pt; it can't go under the tab bar's width) and Artifacts (300 to 720 pt, standard 340 pt); the drawer shell's sidebar 320 to 520 pt. A double-click or double-tap resets a line; VoiceOver adjusts it by 40 pt or resets it (Eric, 2026-10-29, #1492, issue 1487).
+- Each width is kept per device, as hiding the list is, not synced. A window smaller than a width needs gives the column what's left beside the chat's least width (430 pt); a window splits, and Artifacts shows, at the standard width whatever the user's, so a widened column never takes them away (2026-10-29, #1492).
+- Under a widened list the tab bar keeps its width, centered under the list's column (2026-10-29, #1492).
+- A window with room for Artifacts beside a chat at the list's standard width keeps that room whatever the list's width, the panel open or not: widening the list never hides the panel or its toggle, and the list doesn't jump as a chat or the panel opens. The list's most is then the window less 772 pt: 408 pt on a 1180 pt iPad in landscape, 422 pt on an 11-inch's 1194 pt, the full 560 pt on a maximized Mac. Artifacts beside the chat then reaches the window less the list and 431 pt: about 373 pt on 1180 pt, 387 pt on 1194 pt (2026-10-29, #1492, from review).
+- A drag lays the column out at its live width and stores it once, when the drag ends or is cancelled: every defaults write redraws each `@AppStorage` view. A press that doesn't move the line (under 4 pt) keeps the stored width, which a smaller window may show less of (2026-10-29, #1492, from review).
+- The caption shows only with the setting that puts a line on a wide window: the list set beside the chat (V2), the persistent sidebar on (the drawer shell); a window too narrow to split still shows it (2026-10-29, #1492, from review).
+
+**Open gaps**
+- No resize cursor on a Mac: a Designed-for-iPad app can't set one from SwiftUI on iOS 17, so the line highlights on hover and a tooltip names it.
+- Not seen on a device yet: a Mac or iPad from TestFlight confirms it.
+
+**Checked:** 2026-10-29, #1492.
 
 ## Voice on a profile the dashboard didn't start with
 

@@ -363,6 +363,8 @@ struct ChatView: View {
                     OfflineChatTranscriptView(presentation: offline)
                         // Its own scroll view: the chat's jump can't reach it.
                         .environment(\.quotedReplyJump, nil)
+                        // Its pictures page among its own.
+                        .environment(\.imageGallery, appState.savedChatImageGallery)
                 }
             }
 
@@ -388,6 +390,8 @@ struct ChatView: View {
         .environment(\.selectableTextDrawsUntilTouched, true)
         // Gateway videos, audio and documents open from a download (#569).
         .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
+        // A tapped picture pages through the chat's pictures.
+        .environment(\.imageGallery, appState.chatImageGallery)
         // Pictures' sizes from earlier launches, read once off the main
         // thread, so rows above take their final height (#1238).
         .task { await TranscriptPictureMemory.loadKeptSizes() }
@@ -1935,8 +1939,8 @@ private struct UserImageAttachmentPreview: View {
     /// The cache key `gatewayImage` was loaded for, so a reused view never
     /// shows the picture it held before.
     @State private var gatewayImageKey: String?
-    @State private var opening = false
-    @State private var openTask: Task<Void, Never>?
+    /// The chat's pictures, which the viewer pages through.
+    @Environment(\.imageGallery) private var imageGallery
     /// The cache key a load from Hermes failed for.
     @State private var gatewayFailedKey: String?
     @State private var localPreview: UIImage?
@@ -2265,55 +2269,20 @@ private struct UserImageAttachmentPreview: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
                 }
-                .overlay { if opening { ProgressView().tint(.white) } }
-                .opensMediaPreview(openPreview)
-                .onDisappear {
-                    openTask?.cancel()
-                    openTask = nil
-                    opening = false
-                }
+                .opensMediaPreview { openPreview(showing: image) }
                 .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
                 .accessibilityLabel("Attached image: \(attachment.imageDescription ?? attachment.name)")
                 .accessibilityAddTraits(.isImage)
     }
 
-    /// Opens the full-resolution original: the local file when the photo
-    /// is still on this device, otherwise the bytes re-fetched from Hermes.
+    /// Opens the full-resolution original among the chat's pictures: the
+    /// local file when the photo is still on this device, otherwise the
+    /// bytes re-fetched from Hermes, with the row's copy shown meanwhile.
     /// The row keeps only the downsampled/decoded image, never the original
     /// bytes, so an image-heavy transcript doesn't pin them all in memory.
-    private func openPreview() {
-        guard !opening else { return }
-        if let localFileURL, MediaPreviewPresenter.shared.present(fileURL: localFileURL, title: attachment.name) {
-            return
-        }
-        // The original kept on the phone (#652).
-        if let key = gatewayResolver?.imageCacheKey(for: attachment),
-           let kept = TranscriptImageCache.cachedFile(for: key, touch: true),
-           MediaPreviewPresenter.shared.present(fileURL: kept, title: attachment.name) {
-            return
-        }
-        guard loadsFromHermes, let gatewayResolver else { return }
-        let uri = attachment.uri
-        let inlineImage = attachment.inlineImage
-        let hasServerFile = isGatewayImage
-        let filename = AttachmentPreviewFilename.make(name: attachment.name, uri: uri)
-        opening = true
-        openTask = Task {
-            var dataURL = hasServerFile ? await gatewayResolver.dataURL(for: uri) : nil
-            if dataURL == nil, !Task.isCancelled, let inlineImage {
-                dataURL = await gatewayResolver.inlineImageDataURL(inlineImage)
-            }
-            if let dataURL, !Task.isCancelled {
-                // A picture known only from its message has no file name to
-                // borrow an extension from; Quick Look needs one.
-                let named = (filename as NSString).pathExtension.isEmpty
-                    ? "\(filename).\(TranscriptImageCache.fileExtension(forDataURL: dataURL))"
-                    : filename
-                await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: named)
-            }
-            guard !Task.isCancelled else { return }
-            opening = false
-        }
+    private func openPreview(showing image: UIImage) {
+        guard let item = ImageGalleryItem.attachment(attachment, resolver: gatewayResolver) else { return }
+        ImageGallery.open(item, in: imageGallery, placeholder: image)
     }
 
     private func previewHeight(for size: CGSize) -> CGFloat {

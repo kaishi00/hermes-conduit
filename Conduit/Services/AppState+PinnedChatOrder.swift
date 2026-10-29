@@ -13,12 +13,15 @@ extension AppState {
     /// `rows` with each profile's pinned chats in its order.
     func arrangePinned<Row>(_ rows: [Row], session: (Row) -> SessionSummary) -> [Row] {
         let order = pinnedChatOrder
-        guard !order.idsByProfile.isEmpty else { return rows }
+        guard !order.isEmpty else { return rows }
         return PinnedChatOrder.arrange(
             rows,
             profile: { rowProfile(session($0)) },
             ids: { SessionPinSync.pinIDs(for: session($0)) },
-            order: { order.ids(profile: $0) }
+            order: { order.ids(profile: $0) },
+            // All grouped by profile splits the rows per profile, each in
+            // its own order: the mix is for the mixed section only.
+            mixed: allProfilesGroupsByProfile ? [] : order.mixed
         )
     }
 
@@ -26,10 +29,27 @@ extension AppState {
         arrangePinned(nodes, session: \.session)
     }
 
-    /// A drag in a Pinned section: `shown` is that section's pinned chats
-    /// as they were shown, moved as a List's `onMove` reports it.
+    /// A drag in a Pinned section: `shown` is every pinned chat that
+    /// section shows, as they were shown, moved as a List's `onMove`
+    /// reports it counted among them. A pinned chat that can't move (a
+    /// saved row) is among them, so it keeps its place. In All's mixed
+    /// Pinned section the chat also stays where it was dropped among the
+    /// other profiles' (issue 1486).
     func movePinnedChats(_ shown: [SessionSummary], fromOffsets source: IndexSet, toOffset destination: Int) {
         let order = pinnedChatOrder
+        let shownProfiles = Set(shown.map { rowProfile($0) })
+        let mixes = shownProfiles.count > 1
+        if mixes {
+            setPinnedChatMixedOrder(PinnedChatOrder.mixedOrder(
+                moving: shown,
+                fromOffsets: source,
+                toOffset: destination,
+                profile: { rowProfile($0) },
+                pinID: { SessionPinSync.pinID(for: $0) },
+                ids: { SessionPinSync.pinIDs(for: $0) },
+                mixed: order.mixed
+            ))
+        }
         let orders = PinnedChatOrder.orders(
             moving: shown,
             fromOffsets: source,
@@ -37,7 +57,10 @@ extension AppState {
             profile: { rowProfile($0) },
             pinID: { SessionPinSync.pinID(for: $0) },
             ids: { SessionPinSync.pinIDs(for: $0) },
-            order: { order.ids(profile: $0) }
+            order: { order.ids(profile: $0) },
+            // In the mix every profile shown keeps the order it was shown
+            // in, so later activity doesn't move a chat dropped among its.
+            alsoSaving: mixes ? shownProfiles : []
         )
         for (profile, ids) in orders {
             setPinnedChatOrder(ids, profile: profile)
