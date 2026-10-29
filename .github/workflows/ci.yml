@@ -322,7 +322,6 @@ jobs:
         # runner image preferred, so ci-build-for-testing.sh recompiles only
         # what changed since. A new Xcode starts clean.
         id: cache-key
-        env:
         run: |
           set -euo pipefail
           # The full app, as every push to main builds and saves it: a PR

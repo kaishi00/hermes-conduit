@@ -99,7 +99,7 @@ jobs:
         # DerivedData from the newest main build of the same project and
         # Xcode (the same runner image preferred), so ci-build-for-testing.sh
         # recompiles only what changed since. A new Xcode starts clean. The
-        # slim (app-only) kind: these shards are what saves it for PR builds.
+        # slim (app-only) kind: these shards alone build, save and restore it.
         id: cache-key
         env:
           SPEC: project-tests.yml

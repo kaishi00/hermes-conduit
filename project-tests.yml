@@ -3,9 +3,9 @@
 # The tests run the iPhone app only, so this drops what the app embeds but no
 # test exercises: the Apple Watch app (a second platform, compiled from
 # scratch on every run) and the app extensions. Everything else is
-# project.yml unchanged. The full app is still built by the UI smoke job when a
-# PR touches those targets' sources (ci.yml, plan job), by the nightly run and
-# by every TestFlight archive.
+# project.yml unchanged. Only the nightly unit shards build it; Smoke (every
+# PR and push, ci.yml), the nightly timing and UI jobs and every TestFlight
+# archive build the full app.
 include:
   - path: project.yml
 targets:
