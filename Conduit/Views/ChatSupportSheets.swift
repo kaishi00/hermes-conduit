@@ -490,7 +490,8 @@ private struct DelegateAgentTailSheet: View {
 
 /// iOS's own MetricKit reports for Conduit (MetricKitReports): a short
 /// English summary of the latest day and a file to share, for battery and
-/// data questions. Nothing here is uploaded.
+/// data questions. Nothing here is uploaded; a new crash or hang is
+/// offered once on its own card (CrashReportOffer).
 private struct DeviceReportsSection: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @State private var loaded: MetricKitReports.Loaded?
@@ -500,6 +501,9 @@ private struct DeviceReportsSection: View {
         ConduitSettingsSection(title: AppLocalization.string("Device reports"), symbol: "chart.bar.doc.horizontal", tint: .conduitAccent) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Usage, network and hang reports iOS makes about once a day. They stay on this device until you share them.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Text("After a crash or freeze, Conduit asks once whether to send that report to its developer.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 if let summary = loaded?.summary, !summary.isEmpty {
