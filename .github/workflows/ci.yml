@@ -271,7 +271,7 @@ jobs:
             change_id() {
               local diff
               diff=$(gh api -H 'Accept: application/vnd.github.diff' "$repo/compare/$BASE_REF...$1") || diff=''
-              python3 scripts/pr-change-id.py <<<"$diff"
+              python3 scripts/pr-change-id.py <<<"$diff" || true
             }
             # The newest of the PR's last 20 commits whose smoke job passed.
             commits=$(gh api --paginate "$repo/pulls/$PR_NUMBER/commits" --jq '.[].sha') || commits=''

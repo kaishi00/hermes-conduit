@@ -48,6 +48,13 @@ class ChangeIdTests(unittest.TestCase):
                     "**Checked:** 2026-10-28, #1462; 2026-10-28, #1449; 2026-10-27, #1351.")
         self.assertEqual(cid(before), cid(after))
 
+    def test_bytes_that_are_not_utf8_hash(self):
+        import subprocess, sys
+        script = os.path.join(SCRIPTS_DIR, "pr-change-id.py")
+        run = subprocess.run([sys.executable, script], input=b"diff --git a/x.txt b/x.txt\n+caf\xe9\n",
+                             capture_output=True, check=True)
+        self.assertEqual(len(run.stdout.strip()), 64)
+
     def test_new_words_in_markdown_change_the_id(self):
         self.assertNotEqual(cid(doc("a b", "a b c")), cid(doc("a b", "a b d")))
 

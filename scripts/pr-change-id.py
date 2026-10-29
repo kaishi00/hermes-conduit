@@ -53,8 +53,9 @@ def change_id(diff: str) -> str:
         elif not md:
             out.append(line)
     words()
-    return hashlib.sha256("\n".join(out).encode()).hexdigest()
+    return hashlib.sha256("\n".join(out).encode("utf-8", "surrogateescape")).hexdigest()
 
 
 if __name__ == "__main__":
-    print(change_id(sys.stdin.read()))
+    # Bytes that aren't UTF-8 (a Latin-1 file) pass through unchanged.
+    print(change_id(sys.stdin.buffer.read().decode("utf-8", "surrogateescape")))
