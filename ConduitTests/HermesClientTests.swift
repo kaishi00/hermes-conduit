@@ -1106,6 +1106,62 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testASpokenTurnWithAPasteDropsEachKeyAnOldGatewayRefuses() async throws {
+        // A Hermes from before both `voice_turn` and `title_preview` refuses
+        // one key per answer: each refused key goes and the turn is resent,
+        // so a spoken turn carrying a paste still sends (#1515 review).
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete")
+
+        func nextRequest(_ phase: String, after send: () -> Void) async throws -> [String: Any] {
+            let sent = Gate()
+            socket.onSend = { sent.signal() }
+            send()
+            try await sent.wait(phase)
+            return try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+            )
+        }
+        func refuse(_ request: [String: Any], key: String) throws {
+            let response: [String: Any] = [
+                "jsonrpc": "2.0", "id": try XCTUnwrap(request["id"] as? Int),
+                "error": ["code": 4000, "message": "invalid params for prompt.submit: \(key): Extra inputs are not permitted"]
+            ]
+            socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
+        }
+
+        var submitTask: Task<PromptSubmissionOutcome, Error>?
+        let first = try await nextRequest("the spoken prompt.submit") {
+            submitTask = Task {
+                try await client.sendPrompt("sess-1", text: "@file:a.txt", surface: "voice-live", voiceTurn: true, titlePreview: "Log")
+            }
+        }
+        var params = try XCTUnwrap(first["params"] as? [String: Any])
+        XCTAssertEqual(params["voice_turn"] as? Bool, true)
+        XCTAssertEqual(params["title_preview"] as? String, "Log")
+
+        let second = try await nextRequest("the resend without voice_turn") { try? refuse(first, key: "voice_turn") }
+        params = try XCTUnwrap(second["params"] as? [String: Any])
+        XCTAssertNil(params["voice_turn"])
+        XCTAssertEqual(params["title_preview"] as? String, "Log")
+
+        let third = try await nextRequest("the resend without title_preview") { try? refuse(second, key: "title_preview") }
+        params = try XCTUnwrap(third["params"] as? [String: Any])
+        XCTAssertNil(params["voice_turn"])
+        XCTAssertNil(params["title_preview"])
+        XCTAssertEqual(params["surface"] as? String, "voice-live")
+        let accepted: [String: Any] = ["jsonrpc": "2.0", "id": try XCTUnwrap(third["id"] as? Int), "result": ["status": "streaming"]]
+        socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: accepted), encoding: .utf8)))
+        let outcome = try await awaitResult(of: try XCTUnwrap(submitTask), "the twice-resent prompt.submit response")
+        XCTAssertEqual(outcome, .accepted)
+        client.disconnect()
+    }
+
     func testQueueMarksQueuedAndNeverResendsWithoutIt() async throws {
         // Queue (#842) carries `queued: true`: Hermes keeps the message as
         // the next turn. A gateway that refuses the key fails the send
