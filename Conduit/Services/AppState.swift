@@ -22407,8 +22407,15 @@ final class AppState: ObservableObject {
         // The main profile goes by its Conduit name, so a rename here is
         // that name too.
         if metaPersisted, patch.keys.contains("title"), botOpenFenceIsCurrent(epoch: epoch, client: client) {
-            // saveDefaultProfileName renames the main bot's Bot Chats itself.
+            // saveDefaultProfileName renames the main bot's Bot Chats itself,
+            // from the title as written: the roster refresh comes later.
             if BotManagement.isDefaultProfile(bot.name) {
+                var titles = profileBotTitles
+                titles[bot.name] = title.isEmpty || title == bot.name ? nil : title
+                if titles != profileBotTitles {
+                    profileBotTitles = titles
+                    profileAppearanceStore.saveBotTitles(titles, dashboardID: activeDashboardID)
+                }
                 saveDefaultProfileName(title)
             } else {
                 renameCapturedBotChatLabels(for: bot.name, to: title)
