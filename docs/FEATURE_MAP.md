@@ -3572,10 +3572,13 @@ does.
 
 **Siblings:** the Chats list column · the Bots list column · the chat column
 (a chat, its side panel, the empty column, Settings beside the list) · the
-one-column screens they match (Tasks, a list shown alone, a phone)
+drawer shell's persistent sidebar beside its chat (Appearance, V2 off), never
+clipped · the one-column screens they match (Tasks, a list shown alone, a
+phone)
 
 **Code**
 - `Conduit/Views/V2/V2Shell.swift` (splitColumns, v2ClippedToColumn)
+- Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent)
 - The backdrop: `Conduit/Theme.swift` (ConduitBackdrop ignores the safe area)
 
 **Rulings**
