@@ -1848,17 +1848,24 @@ struct V2ChatsView: View, Equatable {
         // Read once, not once per row. A search or a filter looks through
         // project chats whatever the setting, so it names them too.
         let namesProjects = isSearching || !selection.isEmpty || projectChats != .hidden
-        let movable: [Bool] = movesPinned ? items.map { item in
+        let pinned: [Bool] = movesPinned ? items.map { item in
             guard case .session(let node) = item.kind else { return false }
-            return appState.isSessionPinned(node.session) && !appState.isSavedChatRow(node.session)
+            return appState.isSessionPinned(node.session)
         } : []
+        let movable: [Bool] = zip(items, pinned).map { item, isPinned in
+            guard isPinned, case .session(let node) = item.kind else { return false }
+            return !appState.isSavedChatRow(node.session)
+        }
         let movableIDs = Set(zip(items, movable).compactMap { item, canMove in canMove ? item.id : nil })
-        let shown: [SessionSummary] = zip(items, movable).compactMap { item, canMove in
-            guard canMove, case .session(let node) = item.kind else { return nil }
+        // Counted among every pinned chat shown, so one that can't move
+        // keeps its place.
+        let shown = zip(items, pinned).compactMap { item, isPinned -> SessionSummary? in
+            guard isPinned, case .session(let node) = item.kind else { return nil }
             return node.session
         }
-        let move: ((IndexSet, Int) -> Void)? = shown.count > 1 ? { source, destination in
-            guard let offsets = PinnedChatOrder.movableOffsets(fromOffsets: source, toOffset: destination, movable: movable) else { return }
+        let move: ((IndexSet, Int) -> Void)? = movableIDs.count > 1 ? { source, destination in
+            guard source.allSatisfy({ movable.indices.contains($0) && movable[$0] }),
+                  let offsets = PinnedChatOrder.movableOffsets(fromOffsets: source, toOffset: destination, movable: pinned) else { return }
             appState.movePinnedChats(shown, fromOffsets: offsets.source, toOffset: offsets.destination)
         } : nil
         return ForEach(items) { item in
