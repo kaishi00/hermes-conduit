@@ -127,11 +127,13 @@ final class ChatScrollEngineTests: XCTestCase {
     /// An engine showing session "a" with ten messages, attached to a
     /// surface that has already laid them out.
     private func makeEngine(
-        surface providedSurface: FakeChatScrollSurface? = nil
+        surface providedSurface: FakeChatScrollSurface? = nil,
+        reducedMotion: Bool = false
     ) -> (ChatScrollEngine, FakeChatScrollSurface) {
         let surface = providedSurface ?? FakeChatScrollSurface()
         let engine = ChatScrollEngine(
             now: { [unowned self] in self.clock },
+            prefersReducedMotion: { reducedMotion },
             schedule: { [unowned self] _, body in self.scheduled.append(body) }
         )
         engines.append(engine)
@@ -2614,9 +2616,11 @@ final class ChatScrollEngineTests: XCTestCase {
 
     /// Session "a" at its end with the hold switched on, after a send of
     /// m10: the user's message is laid out at stack 3500...3580 (content
-    /// 3518...3598), so the hold stops at 3598.
-    private func sendIntoHold() -> (ChatScrollEngine, FakeChatScrollSurface) {
-        let (engine, surface) = makeEngine()
+    /// 3518...3598), so the hold stops at 3481, the message 37 pt below the
+    /// viewport's top, and the room under it makes the content at least
+    /// 3481 + 800 = 4281 tall.
+    private func sendIntoHold(reducedMotion: Bool = false) -> (ChatScrollEngine, FakeChatScrollSurface) {
+        let (engine, surface) = makeEngine(reducedMotion: reducedMotion)
         engine.holdsRepliesAtStart = { true }
         XCTAssertEqual(surface.contentOffsetY, 3200)
         engine.transcriptChanged(
@@ -2627,9 +2631,24 @@ final class ChatScrollEngineTests: XCTestCase {
         engine.explicitLatestRequested(animated: false, armsReplyHold: true)
         surface.layOut(contentHeight: 4200)
         engine.rowFramesChanged(["m10": ChatScrollRowFrame(minY: 3500, maxY: 3580, order: 10)])
-        XCTAssertEqual(surface.contentOffsetY, 3400)
+        XCTAssertEqual(surface.contentOffsetY, 3400, "nothing moves before the room is laid out")
         XCTAssertTrue(engine.replyHoldArmed)
+        XCTAssertEqual(engine.replyRoomMinContentHeight, 4281)
         return (engine, surface)
+    }
+
+    /// What SwiftUI lays out: the reply's own content, or the room the
+    /// engine asks for if that is taller.
+    private func layOutWithRoom(_ engine: ChatScrollEngine, _ surface: FakeChatScrollSurface, reply height: CGFloat) {
+        surface.layOut(contentHeight: max(height, engine.replyRoomMinContentHeight))
+    }
+
+    /// The landing's animation has had its time.
+    private func finishLandingAnimation() {
+        clock += ChatScrollEngine.latestAnimationDuration + 0.1
+        let bodies = scheduled
+        scheduled = []
+        bodies.forEach { $0() }
     }
 
     /// The offsets the engine wrote never went up: the hold is a stop.
@@ -2638,41 +2657,195 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(offsets, offsets.sorted(), "an offset went up", file: file, line: line)
     }
 
-    func testALongReplyStopsAtItsStart() {
+    /// #1436: the sent message moves to the top once its room is laid out,
+    /// in one animated move, and the reply streams into the room under it
+    /// without moving anything; once it outgrows the screen the reader is
+    /// left browsing at the same place.
+    func testASentMessageMovesToTheTopAndALongReplyStopsThere() {
         let (engine, surface) = sendIntoHold()
         surface.sets = []
-        // Still on screen: following as before.
-        surface.layOut(contentHeight: 4300)
-        XCTAssertEqual(surface.contentOffsetY, 3500)
-        // The reply reaches the top: the bottom of the user's message is at
-        // the viewport top, and following stops there.
-        surface.layOut(contentHeight: 4420)
-        XCTAssertEqual(surface.contentOffsetY, 3598)
+        layOutWithRoom(engine, surface, reply: 4200)
+        XCTAssertEqual(surface.sets.map(\.y), [3481])
+        XCTAssertEqual(surface.sets.map(\.animated), [true], "the move to the top animates")
+        XCTAssertTrue(engine.isFollowingLatest)
+        finishLandingAnimation()
+        XCTAssertEqual(surface.sets.count, 1)
+        // The reply fills the room: nothing moves.
+        layOutWithRoom(engine, surface, reply: 4250)
+        layOutWithRoom(engine, surface, reply: 4281)
+        XCTAssertEqual(surface.sets.count, 1)
+        XCTAssertTrue(engine.isFollowingLatest)
+        XCTAssertFalse(engine.showsJumpToLatest)
+        // It runs past the screen: still nothing moves, and the reader is
+        // left browsing at the stop.
+        layOutWithRoom(engine, surface, reply: 4300)
         XCTAssertTrue(engine.isFollowingLatest, "within the near-bottom distance it is still following")
-        surface.layOut(contentHeight: 4700)
-        XCTAssertEqual(surface.contentOffsetY, 3598)
+        layOutWithRoom(engine, surface, reply: 4700)
         XCTAssertEqual(engine.mode, .browsing)
         XCTAssertTrue(engine.showsJumpToLatest)
         XCTAssertTrue(engine.replyHoldArmed, "armed until the reader is below the reply's start")
-        // The rest of the reply arrives below without moving the reader.
-        surface.layOut(contentHeight: 6000)
-        XCTAssertEqual(surface.contentOffsetY, 3598)
-        assertNeverMovedUp(surface)
-        XCTAssertEqual(surface.sets.count, 2)
+        layOutWithRoom(engine, surface, reply: 6000)
+        XCTAssertEqual(surface.contentOffsetY, 3481)
+        XCTAssertEqual(surface.sets.count, 1)
     }
 
-    /// Chips appearing under a reply that just fits push the bottom past
-    /// the stop: following stops there, as for the reply's own growth.
-    func testABottomBarGrowingPastTheStopStopsThere() {
+    func testWithReduceMotionTheSentMessageSnapsToTheTop() {
+        let (engine, surface) = sendIntoHold(reducedMotion: true)
+        surface.sets = []
+        layOutWithRoom(engine, surface, reply: 4200)
+        XCTAssertEqual(surface.sets.map(\.y), [3481])
+        XCTAssertEqual(surface.sets.map(\.animated), [false])
+    }
+
+    /// Long replies switched off while the room is there: it goes at once,
+    /// and following goes to the end.
+    func testSwitchingLongRepliesOffTakesTheRoomAway() {
         let (engine, surface) = sendIntoHold()
-        surface.layOut(contentHeight: 4380)
-        XCTAssertEqual(surface.contentOffsetY, 3580)
+        layOutWithRoom(engine, surface, reply: 4200)
+        finishLandingAnimation()
+        engine.holdsRepliesAtStart = { false }
+        engine.replyStartPreferenceChanged()
+        XCTAssertEqual(engine.replyRoomMinContentHeight, 0)
+        XCTAssertEqual(engine.replyRoom.minContentHeight, 0)
+        surface.layOut(contentHeight: 4200)
+        XCTAssertEqual(surface.contentOffsetY, 3400)
+        XCTAssertTrue(engine.isFollowingLatest)
+    }
+
+    /// The room lags a pass behind content that got shorter (a row
+    /// shrinking, a keyboard closing): the reader stays at the stop instead
+    /// of going down to the bottom and back.
+    func testContentShorterThanTheRoomForAPassLeavesTheReaderAtTheStop() {
+        let (engine, surface) = sendIntoHold()
+        layOutWithRoom(engine, surface, reply: 4200)
+        finishLandingAnimation()
+        surface.sets = []
+        surface.layOut(contentHeight: 4230)
+        XCTAssertEqual(surface.contentOffsetY, 3481)
+        // A keyboard opening grows the bottom inset before the room shrinks
+        // for it: still the stop, still following.
+        surface.layOut(contentHeight: 4281)
+        surface.insetBottom = 300
+        engine.bottomBarResized()
+        XCTAssertEqual(surface.contentOffsetY, 3481)
+        XCTAssertTrue(engine.isFollowingLatest)
+        XCTAssertEqual(engine.replyRoomMinContentHeight, 3981)
+        XCTAssertTrue(surface.sets.isEmpty)
+    }
+
+    /// The next send lands in the room the last reply left: nothing moves
+    /// until the new message's frame is in and its own room laid out.
+    func testTheNextSendKeepsTheRoomUntilItsMessageIsLaidOut() {
+        let (engine, surface) = sendIntoHold()
+        layOutWithRoom(engine, surface, reply: 4200)
+        finishLandingAnimation()
+        engine.transcriptChanged(
+            messages: Self.messages(0..<13),
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 1
+        )
+        engine.explicitLatestRequested(animated: false, armsReplyHold: true)
+        XCTAssertEqual(engine.replyRoomMinContentHeight, 4281, "the last reply's room stays")
+        surface.sets = []
+        // m12 lands below the reply, inside the room.
+        layOutWithRoom(engine, surface, reply: 4260)
+        XCTAssertTrue(surface.sets.isEmpty)
+        engine.rowFramesChanged([
+            "m10": ChatScrollRowFrame(minY: 3500, maxY: 3580, order: 10),
+            "m12": ChatScrollRowFrame(minY: 4100, maxY: 4180, order: 12),
+        ])
+        XCTAssertEqual(engine.replyRoomMinContentHeight, 4881)
+        XCTAssertTrue(surface.sets.isEmpty, "nothing moves before its room is laid out")
+        layOutWithRoom(engine, surface, reply: 4260)
+        XCTAssertEqual(surface.sets.map(\.y), [4081])
+        XCTAssertEqual(surface.sets.map(\.animated), [true])
+    }
+
+    /// The send pulse can reach the engine before the sent message does.
+    /// A reader at the last reply's stop goes to the end for the send, not
+    /// to that stop, and the new message moves to the top once it has a
+    /// frame and room.
+    func testASendFromTheLastStopBeforeItsMessageArrivesLandsTheNewMessage() {
+        let (engine, surface) = sendIntoHold()
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 3481)
+        XCTAssertEqual(engine.mode, .browsing)
+        engine.explicitLatestRequested(animated: false, armsReplyHold: true)
+        XCTAssertEqual(surface.contentOffsetY, 4400)
+        XCTAssertTrue(engine.isFollowingLatest)
+        engine.transcriptChanged(
+            messages: Self.messages(0..<13),
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 1
+        )
+        surface.layOut(contentHeight: 5300)
+        engine.rowFramesChanged(["m12": ChatScrollRowFrame(minY: 5000, maxY: 5080, order: 12)])
+        XCTAssertEqual(engine.replyRoomMinContentHeight, 5781)
+        surface.sets = []
+        layOutWithRoom(engine, surface, reply: 5300)
+        XCTAssertEqual(surface.sets.map(\.y), [4981])
+        XCTAssertEqual(surface.sets.map(\.animated), [true])
+    }
+
+    func testClearingTheTranscriptDisarmsTheHoldAndItsRoom() {
+        let (engine, _) = sendIntoHold()
+        engine.transcriptChanged(messages: [], transcriptRevision: 3, viewportTransitionGeneration: 1)
+        XCTAssertFalse(engine.replyHoldArmed)
+        XCTAssertEqual(engine.replyRoomMinContentHeight, 0)
+    }
+
+    /// A message taller than a third of the screen stops with its last
+    /// third showing, so the reply still has the screen under it.
+    func testATallMessageStopsWithItsLastThirdShowing() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.transcriptChanged(
+            messages: Self.messages(0..<11),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        engine.explicitLatestRequested(animated: false, armsReplyHold: true)
+        surface.layOut(contentHeight: 4400)
+        engine.rowFramesChanged(["m10": ChatScrollRowFrame(minY: 3500, maxY: 4100, order: 10)])
+        // 18 + 4100 - 800 / 3
+        surface.layOut(contentHeight: 6000)
+        XCTAssertEqual(surface.contentOffsetY, 3851.33, accuracy: 0.01)
+        XCTAssertEqual(engine.mode, .browsing)
+    }
+
+    /// An unread chat opened at its reply has no room under it: the reply is
+    /// already there.
+    func testAnUnreadLandingMakesNoRoom() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.rowFramesChanged(["m8": ChatScrollRowFrame(minY: 3600, maxY: 3680, order: 8)])
+        engine.replyStartLandingRequested()
+        scheduled.forEach { $0() }
+        XCTAssertEqual(engine.replyRoomMinContentHeight, 0)
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+    }
+
+    func testDisarmingTheHoldTakesTheRoomAway() {
+        let (engine, _) = sendIntoHold()
+        engine.explicitLatestRequested(animated: false)
+        XCTAssertEqual(engine.replyRoomMinContentHeight, 0)
+        XCTAssertEqual(engine.replyRoom.minContentHeight, 0, "published at once from a command")
+    }
+
+    /// Chips appearing under a reply that fits in its room leave the
+    /// message at the top: the room shrinks for them.
+    func testABottomBarGrowingUnderTheRoomLeavesTheMessageAtTheTop() {
+        let (engine, surface) = sendIntoHold()
+        layOutWithRoom(engine, surface, reply: 4200)
+        finishLandingAnimation()
         surface.sets = []
         surface.insetBottom = 52
         engine.bottomBarResized()
-        XCTAssertEqual(surface.contentOffsetY, 3598)
-        XCTAssertTrue(engine.isFollowingLatest, "within the near-bottom distance it is still following")
-        assertNeverMovedUp(surface)
+        XCTAssertEqual(engine.replyRoomMinContentHeight, 4229)
+        layOutWithRoom(engine, surface, reply: 4200)
+        XCTAssertEqual(surface.contentOffsetY, 3481)
+        XCTAssertTrue(engine.isFollowingLatest)
+        XCTAssertTrue(surface.sets.isEmpty)
     }
 
     /// Nightly 2026-10-26 (hosted): a newly appended row's estimate put the
@@ -2683,16 +2856,16 @@ final class ChatScrollEngineTests: XCTestCase {
         let (engine, surface) = sendIntoHold()
         surface.sets = []
         surface.layOut(contentHeight: 4700)
-        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertEqual(surface.contentOffsetY, 3481)
         XCTAssertEqual(engine.mode, .browsing)
         // Measured: the reply still fits. SwiftUI clamps to the new bottom.
-        surface.layOut(contentHeight: 4300)
-        surface.contentOffsetY = 3500
+        surface.layOut(contentHeight: 4250)
+        surface.contentOffsetY = 3450
         engine.surfaceScrolled()
         XCTAssertEqual(engine.mode, .following)
         // The reply grows past the screen for real.
         surface.layOut(contentHeight: 4700)
-        XCTAssertEqual(surface.contentOffsetY, 3598, "stops at the reply's start again")
+        XCTAssertEqual(surface.contentOffsetY, 3481, "stops at the reply's start again")
         XCTAssertEqual(engine.mode, .browsing)
     }
 
@@ -2701,7 +2874,7 @@ final class ChatScrollEngineTests: XCTestCase {
         surface.sets = []
         // One layout pass carries the reply well past a screen.
         surface.layOut(contentHeight: 5200)
-        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertEqual(surface.contentOffsetY, 3481)
         XCTAssertEqual(engine.mode, .browsing)
         assertNeverMovedUp(surface)
     }
@@ -2717,7 +2890,7 @@ final class ChatScrollEngineTests: XCTestCase {
     func testTheJumpToLatestGoesPastTheHoldAndFollowsTheEnd() {
         let (engine, surface) = sendIntoHold()
         surface.layOut(contentHeight: 5200)
-        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertEqual(surface.contentOffsetY, 3481)
         engine.explicitLatestRequested(animated: false)
         XCTAssertEqual(surface.contentOffsetY, 4400)
         surface.layOut(contentHeight: 6000)
@@ -2728,7 +2901,7 @@ final class ChatScrollEngineTests: XCTestCase {
     func testAReaderBackAtTheEndFollowsTheRestOfTheReply() {
         let (engine, surface) = sendIntoHold()
         surface.layOut(contentHeight: 5200)
-        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertEqual(surface.contentOffsetY, 3481)
         // Read down to the end while it still streams: following again,
         // to the end this time.
         surface.userScroll(to: 4400)
@@ -2753,7 +2926,7 @@ final class ChatScrollEngineTests: XCTestCase {
         surface.layOut(contentHeight: 4200)
         engine.rowFramesChanged(["m10": ChatScrollRowFrame(minY: 3500, maxY: 3580, order: 10)])
         surface.layOut(contentHeight: 5200)
-        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertEqual(surface.contentOffsetY, 3481)
         XCTAssertEqual(engine.mode, .browsing)
     }
 
@@ -2825,11 +2998,11 @@ final class ChatScrollEngineTests: XCTestCase {
         engine.rowFramesChanged(["m8": ChatScrollRowFrame(minY: 2500, maxY: 2580, order: 8)])
         engine.replyStartLandingRequested()
         scheduled.forEach { $0() }
-        XCTAssertEqual(surface.contentOffsetY, 2598)
+        XCTAssertEqual(surface.contentOffsetY, 2481)
         XCTAssertEqual(engine.mode, .browsing)
         // The notification's handoff ends after the landing: it stays.
         engine.notificationHandoffFinished()
-        XCTAssertEqual(surface.contentOffsetY, 2598)
+        XCTAssertEqual(surface.contentOffsetY, 2481)
         XCTAssertEqual(engine.mode, .browsing)
     }
 
@@ -2874,7 +3047,7 @@ final class ChatScrollEngineTests: XCTestCase {
         engine.rowFramesChanged(["m8": ChatScrollRowFrame(minY: 2500, maxY: 2580, order: 8)])
         engine.replyStartLandingRequested()
         scheduled.forEach { $0() }
-        XCTAssertEqual(surface.contentOffsetY, 2598)
+        XCTAssertEqual(surface.contentOffsetY, 2481)
         engine.viewDisappeared()
         // A later notification for this chat takes it to the end again.
         engine.notificationHandoffBegan()
@@ -2889,7 +3062,7 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertTrue(engine.replyHoldArmed)
         // Back with the reply still running: it stops at its start.
         surface.layOut(contentHeight: 5200)
-        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertEqual(surface.contentOffsetY, 3481)
     }
 
     func testALandingBeforeTheScrollViewIsFoundLandsWhenItIs() {
