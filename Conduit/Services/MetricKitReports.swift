@@ -88,7 +88,7 @@ struct MetricKitReportStore {
                 && (kind == .metrics || entry.contentHash == hash)
         }
         guard !duplicate else { return false }
-        let url = directory.appendingPathComponent("\(kind.rawValue)-\(beginSeconds)-\(endSeconds)-\(hash).json")
+        let url = directory.appendingPathComponent(Self.fileName(kind: kind, beginSeconds: beginSeconds, endSeconds: endSeconds, hash: hash))
         do {
             try prepareDirectory()
             try normalized.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
@@ -232,6 +232,21 @@ struct MetricKitReportStore {
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
         try folder.setResourceValues(values)
+    }
+
+    /// The file `save` keeps a payload in, whether or not it's there.
+    static func fileName(of json: Data, kind: MetricKitReportKind, begin: Date, end: Date) -> String? {
+        guard let normalized = normalized(json) else { return nil }
+        return fileName(
+            kind: kind,
+            beginSeconds: Int(begin.timeIntervalSince1970.rounded(.down)),
+            endSeconds: Int(end.timeIntervalSince1970.rounded(.down)),
+            hash: hash(normalized)
+        )
+    }
+
+    private static func fileName(kind: MetricKitReportKind, beginSeconds: Int, endSeconds: Int, hash: String) -> String {
+        "\(kind.rawValue)-\(beginSeconds)-\(endSeconds)-\(hash).json"
     }
 
     /// Sorted keys, so the same payload hashes the same however it arrived.
@@ -574,7 +589,7 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
             offer = queueCrashReport(json, begin: payload.timeStampBegin, end: payload.timeStampEnd) || offer
         }
         if offer {
-            Task { @MainActor in CrashReportOffer.shared.refresh() }
+            Task { @MainActor in await CrashReportOffer.shared.refresh() }
         }
     }
 
@@ -583,11 +598,9 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
     func queueCrashReport(_ json: Data, begin: Date, end: Date, now: Date = Date()) -> Bool {
         guard now.timeIntervalSince(end) < CrashReportUpload.maxAge,
               CrashReportUpload.kind(ofPayloadJSON: json) != nil,
-              let entry = store.entries(.diagnostics).last(where: {
-                  Int($0.begin.timeIntervalSince1970) == Int(begin.timeIntervalSince1970.rounded(.down))
-                      && Int($0.end.timeIntervalSince1970) == Int(end.timeIntervalSince1970.rounded(.down))
-              }) else { return false }
-        crashReports.add(entry.url.lastPathComponent)
+              let name = MetricKitReportStore.fileName(of: json, kind: .diagnostics, begin: begin, end: end),
+              store.entries(.diagnostics).contains(where: { $0.url.lastPathComponent == name }) else { return false }
+        crashReports.add(name)
         return true
     }
 }

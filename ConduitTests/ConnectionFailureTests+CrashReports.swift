@@ -143,18 +143,18 @@ extension ConnectionFailureTests {
         var defaults = crashDefaults()
         CrashReportQueue(defaults: defaults).add("diagnostics-1-2-abc.json")
         var offer = CrashReportOffer(queue: CrashReportQueue(defaults: defaults), directory: directory, relayURL: relay, session: session)
-        offer.refresh()
+        await offer.refresh()
         XCTAssertEqual(offer.state, .asking(crashed: true))
         offer.dismiss()
         XCTAssertEqual(offer.state, .hidden)
-        offer.refresh()
+        await offer.refresh()
         XCTAssertEqual(offer.state, .hidden, "not offered again")
 
         // Send: posted to the relay's route, then thanked.
         defaults = crashDefaults()
         CrashReportQueue(defaults: defaults).add("diagnostics-1-2-abc.json")
         offer = CrashReportOffer(queue: CrashReportQueue(defaults: defaults), directory: directory, relayURL: relay, session: session, thanksFor: .zero)
-        offer.refresh()
+        await offer.refresh()
         CrashReportStubProtocol.status = 201
         CrashReportStubProtocol.paths = []
         await offer.send()
@@ -166,7 +166,7 @@ extension ConnectionFailureTests {
         defaults = crashDefaults()
         CrashReportQueue(defaults: defaults).add("diagnostics-1-2-abc.json")
         offer = CrashReportOffer(queue: CrashReportQueue(defaults: defaults), directory: directory, relayURL: relay, session: session)
-        offer.refresh()
+        await offer.refresh()
         CrashReportStubProtocol.status = 503
         await offer.send()
         XCTAssertEqual(offer.state, .failed)

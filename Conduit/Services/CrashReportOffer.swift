@@ -258,10 +258,10 @@ final class CrashReportOffer: ObservableObject {
     }
 
     /// Shows the card when reports wait and nothing else is on it.
-    func refresh() {
+    func refresh() async {
         guard state == .hidden || state == .sent else { return }
-        let reports = pendingReports()
-        guard !reports.isEmpty else { return }
+        let reports = await pendingReports()
+        guard !reports.isEmpty, state == .hidden || state == .sent else { return }
         state = .asking(crashed: reports.contains { $0.kind == .crash })
     }
 
@@ -273,12 +273,14 @@ final class CrashReportOffer: ObservableObject {
     }
 
     func send() async {
-        let reports = pendingReports()
+        // A second tap while sending sends nothing twice.
+        guard state != .sending else { return }
+        state = .sending
+        let reports = await pendingReports()
         guard !reports.isEmpty else {
             state = .hidden
             return
         }
-        state = .sending
         var sent: [String] = []
         var failed = false
         for report in reports {
@@ -302,26 +304,32 @@ final class CrashReportOffer: ObservableObject {
         }
     }
 
-    private struct Report {
+    /// Read off the main thread, then only read on it.
+    private struct Report: @unchecked Sendable {
         let fileName: String
         let kind: CrashReportUpload.Kind
         let body: [String: Any]
     }
 
-    /// Pending reports whose files are still kept; one gone or unreadable
-    /// leaves the queue.
-    private func pendingReports() -> [Report] {
-        var gone: [String] = []
-        let reports: [Report] = queue.pending.compactMap { name in
-            let url = directory.appendingPathComponent(name)
-            guard let data = try? Data(contentsOf: url),
-                  let kind = CrashReportUpload.kind(ofPayloadJSON: data),
-                  let body = CrashReportUpload.body(fromPayloadJSON: data) else {
-                gone.append(name)
-                return nil
+    /// Pending reports whose files are still kept, read off the main
+    /// thread (a diagnostic can run to megabytes); one gone, unreadable or
+    /// too big leaves the queue.
+    private func pendingReports() async -> [Report] {
+        let names = queue.pending
+        let directory = directory
+        let (reports, gone) = await Task.detached(priority: .utility) { () -> ([Report], [String]) in
+            var gone: [String] = []
+            let reports: [Report] = names.compactMap { name in
+                guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
+                      let kind = CrashReportUpload.kind(ofPayloadJSON: data),
+                      let body = CrashReportUpload.body(fromPayloadJSON: data) else {
+                    gone.append(name)
+                    return nil
+                }
+                return Report(fileName: name, kind: kind, body: body)
             }
-            return Report(fileName: name, kind: kind, body: body)
-        }
+            return (reports, gone)
+        }.value
         if !gone.isEmpty { queue.remove(gone) }
         return reports
     }

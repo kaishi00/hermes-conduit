@@ -24,7 +24,7 @@ struct CrashReportBanner: View {
         }
         .animation(.snappy, value: offer.state)
         // Reports left from a launch that ended before they were answered.
-        .task { offer.refresh() }
+        .task { await offer.refresh() }
     }
 
     private var title: String {
