@@ -231,6 +231,13 @@ extension GroupChatModelsTests {
         XCTAssertFalse(superseded.log.contains { $0.hasPrefix("send") })
     }
 
+    /// The plugin's answer once it keeps rooms' chats.
+    var roomChatsPluginReport: [String: Any] {
+        var report = postsPluginReport
+        report["capabilities"] = (report["capabilities"] as? [String] ?? []) + [RoomChatsClient.capability]
+        return report
+    }
+
     @MainActor
     func testGroupInfoOffersRoomChatsOnlyWithThePlugin() async throws {
         let routes = CopiesRoutes(copies: [copiesCopy()])
@@ -238,10 +245,53 @@ extension GroupChatModelsTests {
         XCTAssertFalse(older.canOpenRoomChats)
         XCTAssertEqual(older.activeRoomChatAgents, [], "a plugin before 0.117 keeps no room chats")
 
-        var report = postsPluginReport
-        report["capabilities"] = (report["capabilities"] as? [String] ?? []) + [RoomChatsClient.capability]
-        let appState = try await postsOpenCopy(CopiesRoutes(copies: [copiesCopy()]), report: report)
+        let appState = try await postsOpenCopy(CopiesRoutes(copies: [copiesCopy()]), report: roomChatsPluginReport)
         XCTAssertTrue(appState.canOpenRoomChats)
         XCTAssertEqual(appState.activeRoomChatAgents.map(\.profile), ["research"])
+    }
+
+    /// Kuro's kept chat in the research profile is gone from Hermes (4007):
+    /// a new one is made there, registered, titled by the id it runs under
+    /// and opened in Kuro's scope, and the gone chat's restore error isn't
+    /// left on screen.
+    @MainActor
+    func testAGoneRoomChatIsReplacedInTheAgentsProfileWithNoStaleError() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy()])
+        routes.roomChats = [["room_id": "conduit-9", "chat_id": "chat-old", "notes_seq": 3]]
+        var opens: [(id: String, profile: String?)] = []
+        var created: [String?] = []
+        var titles: [(id: String, title: String, profile: String?)] = []
+        var operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [] },
+            openSessionWithProfile: { _, id, _, profile in
+                opens.append((id, profile))
+                if id == "chat-old" { throw RpcError(code: 4007, message: "session not found") }
+                return SessionResumeResult(sessionId: id, storedSessionId: id,
+                                           messages: [ChatMessage(id: "\(id)-m", role: .user, content: "hi", timestamp: "1")],
+                                           snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            refreshContext: { _, _ in }
+        )
+        operations.createRoomChat = { _, profile in
+            created.append(profile)
+            return (sessionId: "run-new", storedSessionId: "chat-new", profile: "research")
+        }
+        operations.titleRoomChat = { _, id, title, profile in titles.append((id, title, profile)) }
+        let appState = try await postsOpenCopy(routes, report: roomChatsPluginReport, chatResume: operations)
+        let kuro = try XCTUnwrap(appState.activeRoomChatAgents.first)
+
+        let failure = await appState.openRoomChat(with: kuro, wrapUp: false)
+
+        XCTAssertNil(failure)
+        XCTAssertNil(appState.errorMessage, "the gone chat's restore error went with it")
+        XCTAssertEqual(opens.map(\.id), ["chat-old", "chat-new"])
+        XCTAssertEqual(opens.map(\.profile), ["research", "research"])
+        XCTAssertEqual(created, ["research"])
+        XCTAssertEqual(routes.roomChatPuts.last?["chat_id"] as? String, "chat-new")
+        XCTAssertEqual(titles.map(\.id), ["run-new"])
+        XCTAssertEqual(titles.map(\.profile), ["research"])
+        XCTAssertEqual(appState.activeSessionId, "chat-new")
+        // In Kuro's scope, as a Bot Chat's: `/new` there keeps the room's one chat (Linked Rooms ruling).
+        XCTAssertEqual(appState.botConversationProfileForTesting("chat-new"), "research")
     }
 }

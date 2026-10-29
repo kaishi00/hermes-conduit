@@ -166,6 +166,11 @@ struct ChatResumeLifecycleOperations {
     /// cwd in, the created ids out. Not an init parameter: tests set it on
     /// the value.
     var createSession: (@MainActor (HermesClient, String?) async throws -> BranchResult)?
+    /// Test seams for a room's new chat (RoomChats.swift): `session.create`
+    /// in a profile (nil for the dashboard's), and its title, by the id it
+    /// runs under, in that profile. Not init parameters either.
+    var createRoomChat: (@MainActor (HermesClient, String?) async throws -> BranchResult)?
+    var titleRoomChat: (@MainActor (HermesClient, String, String, String?) async throws -> Void)?
 
     init(
         connectClient: (@MainActor (HermesClient) async throws -> Void)? = nil,
@@ -22794,6 +22799,28 @@ final class AppState: ObservableObject {
         return outcome == .opened
     }
 
+    /// A room's new chat (RoomChats.swift), in `profile` (nil for the
+    /// dashboard's).
+    func createRoomChatSession(
+        using client: HermesClient,
+        profile: String?
+    ) async throws -> ChatResumeLifecycleOperations.BranchResult {
+        if let createRoomChat = chatResumeLifecycleOperations.createRoomChat {
+            return try await createRoomChat(client, profile)
+        }
+        return try await client.createSession(inProfile: profile)
+    }
+
+    /// A room's new chat titled, by the id it runs under.
+    func titleRoomChatSession(_ runtimeID: String, title: String, using client: HermesClient,
+                              profile: String?) async throws {
+        if let titleRoomChat = chatResumeLifecycleOperations.titleRoomChat {
+            try await titleRoomChat(client, runtimeID, title, profile)
+        } else {
+            try await client.setSessionTitle(runtimeID, title: title, profile: profile)
+        }
+    }
+
     /// Opens a room's chat (RoomChats.swift), in `profile`'s own store: one
     /// in another profile than the dashboard's opens under that profile's
     /// scope, as a Bot Chat does, without switching.
@@ -22807,6 +22834,7 @@ final class AppState: ObservableObject {
         if let scoped {
             noteBotChatSession(chatID, profile: scoped, label: agentName)
         }
+        let shownError = errorMessage
         let result = await performSessionOpenNotingRefusal(
             chatID,
             reusing: nil,
@@ -22816,7 +22844,11 @@ final class AppState: ObservableObject {
         switch result.outcome {
         case .opened: return .opened
         case .superseded: return .superseded
-        case .failed: return result.refused ? .gone : .failed
+        case .failed:
+            guard result.refused else { return .failed }
+            // A chat Hermes no longer has is replaced: its "Failed to restore" isn't the user's to see.
+            errorMessage = shownError
+            return .gone
         }
     }
 

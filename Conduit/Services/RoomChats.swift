@@ -178,6 +178,10 @@ enum RoomChatText {
         AppLocalization.string("Could not open the room's chat: \(reason)")
     }
 
+    static var wrapUpBlockedByDraft: String {
+        AppLocalization.string("Wrap Up wasn't sent: this chat has a draft. Send or clear it, then try again.")
+    }
+
     static var openFailure: String { AppLocalization.string("The chat didn't open. Try again.") }
 }
 
@@ -227,7 +231,7 @@ extension AppState {
             create: { [weak self] profile in
                 guard let self else { throw HermesError.notConnected }
                 let scoped = self.profilesMatch(profile, self.activeProfile) ? nil : profile
-                let created = try await client.createSession(inProfile: scoped)
+                let created = try await self.createRoomChatSession(using: client, profile: scoped)
                 if let returned = created.profile, !self.profilesMatch(returned, profile) {
                     throw HermesError.invalidResponse
                 }
@@ -240,8 +244,8 @@ extension AppState {
                 guard let self else { return }
                 // To the id it runs under, as a Bot Chat's title goes. A title that didn't land leaves the
                 // chat as Hermes names it: it still knows its room.
-                try? await client.setSessionTitle(runtimeID, title: title,
-                                                  profile: self.profilesMatch(profile, self.activeProfile) ? nil : profile)
+                try? await self.titleRoomChatSession(runtimeID, title: title, using: client,
+                                                     profile: self.profilesMatch(profile, self.activeProfile) ? nil : profile)
             },
             open: { [weak self] chatID, profile, title in
                 guard let self else { return .failed }
@@ -251,8 +255,10 @@ extension AppState {
                 guard let self else { return false }
                 // A chat still settling on screen takes it into its composer, to send.
                 if await self.submitComposer(text: text) { return true }
-                // Never over a draft the chat already has.
-                if !self.composerDraftStore.hasDraft(for: self.composerDraftKeyOnScreen) {
+                // Never over a draft the chat already has: the banner says Wrap Up wasn't sent.
+                if self.composerDraftStore.hasDraft(for: self.composerDraftKeyOnScreen) {
+                    self.errorMessage = RoomChatText.wrapUpBlockedByDraft
+                } else {
                     self.prefillComposer(text)
                 }
                 return false

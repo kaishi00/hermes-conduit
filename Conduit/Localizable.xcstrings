@@ -371163,6 +371163,88 @@
           }
         }
       }
+    },
+    "Wrap Up wasn't sent: this chat has a draft. Send or clear it, then try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zusammenfassung wurde nicht gesendet: Dieser Chat hat einen Entwurf. Sende oder lösche ihn und versuch es dann noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El resumen no se envió: este chat tiene un borrador. Envíalo o bórralo y vuelve a intentarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le bilan n'a pas été envoyé : cette discussion a un brouillon. Envoyez-le ou effacez-le, puis réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rangkuman tidak terkirim: obrolan ini punya draf. Kirim atau hapus draf itu, lalu coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il riepilogo non è stato inviato: questa chat ha una bozza. Inviala o cancellala, poi riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まとめは送信されませんでした：このチャットには下書きがあります。送信するか消去してから、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "정리 요청을 보내지 못했어요: 이 채팅에 임시 저장된 글이 있어요. 보내거나 지운 다음 다시 시도해 주세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podsumowanie nie zostało wysłane: ten czat ma wersję roboczą. Wyślij ją lub wyczyść i spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O resumo não foi enviado: este chat tem um rascunho. Envie ou apague o rascunho e tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запрос итогов не отправлен: в этом чате есть черновик. Отправьте или очистите его и попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Özet isteği gönderilmedi: bu sohbette bir taslak var. Gönder ya da temizle, sonra tekrar dene."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "总结请求没有发送：这个聊天有草稿。发送或清除草稿后再试一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "總結請求沒有傳送：這個聊天有草稿。傳送或清除草稿後再試一次。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

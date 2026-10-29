@@ -460,7 +460,8 @@ extension GroupChatModelsTests {
     /// hosts Group Chats with `room`, whose plugin's rooms routes are
     /// `routes`.
     @MainActor
-    func copiesAppState(_ routes: CopiesRoutes, room: GroupRoom? = nil) throws -> AppState {
+    func copiesAppState(_ routes: CopiesRoutes, room: GroupRoom? = nil,
+                        chatResume: ChatResumeLifecycleOperations = .live) throws -> AppState {
         let suite = "GroupChatModelsTests.copies.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
@@ -487,7 +488,7 @@ extension GroupChatModelsTests {
             defaults: defaults,
             loadSavedConnection: false,
             clearSessionPresentationCache: {},
-            chatResumeLifecycleOperations: .live,
+            chatResumeLifecycleOperations: chatResume,
             groupChatOperations: operations,
             sessionPresentationCache: SessionPresentationCache(defaults: defaults)
         )
@@ -570,6 +571,9 @@ final class CopiesRoutes {
     /// POST /rooms/copies/messages's bodies.
     private(set) var postBodies: [[String: Any]] = []
     private(set) var postListReads = 0
+    /// What `GET /rooms/chats` lists, and `PUT /rooms/chats`'s bodies.
+    var roomChats: [[String: Any]] = []
+    private(set) var roomChatPuts: [[String: Any]] = []
     /// The invite a leave answers.
     var leftInvite: [String: Any] = [
         "room_id": "conduit-9", "link": "lk1a2b3c4d5e6f", "name": "Zoo trip", "status": "left", "from": "Furina",
@@ -581,6 +585,14 @@ final class CopiesRoutes {
     }
 
     func answer(_ path: String, _ method: String, _ body: [String: Any]?, _ timeout: Int?) async throws -> [String: Any] {
+        if path.hasPrefix(RoomChatsClient.path) {
+            guard method == "PUT", let body else { return ["ok": true, "chats": roomChats] }
+            roomChatPuts.append(body)
+            let chat: [String: Any] = ["room_id": body["room_id"] ?? "", "chat_id": body["chat_id"] ?? "", "notes_seq": 0]
+            roomChats.removeAll { $0["room_id"] as? String == body["room_id"] as? String }
+            roomChats.append(chat)
+            return ["ok": true, "chat": chat]
+        }
         if method == "DELETE" {
             deletes.append(path)
             if path.hasPrefix(RoomCopiesClient.sessionsPath) {
