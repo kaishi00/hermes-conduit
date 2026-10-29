@@ -166,6 +166,11 @@ struct ChatResumeLifecycleOperations {
     /// cwd in, the created ids out. Not an init parameter: tests set it on
     /// the value.
     var createSession: (@MainActor (HermesClient, String?) async throws -> BranchResult)?
+    /// Test seams for a room's new chat (RoomChats.swift): `session.create`
+    /// in a profile (nil for the dashboard's), and its title, by the id it
+    /// runs under, in that profile. Not init parameters either.
+    var createRoomChat: (@MainActor (HermesClient, String?) async throws -> BranchResult)?
+    var titleRoomChat: (@MainActor (HermesClient, String, String, String?) async throws -> Void)?
 
     init(
         connectClient: (@MainActor (HermesClient) async throws -> Void)? = nil,
@@ -22792,6 +22797,70 @@ final class AppState: ObservableObject {
             )
         }
         return outcome == .opened
+    }
+
+    /// A room's new chat (RoomChats.swift), in `profile` (nil for the
+    /// dashboard's).
+    func createRoomChatSession(
+        using client: HermesClient,
+        profile: String?
+    ) async throws -> ChatResumeLifecycleOperations.BranchResult {
+        if let createRoomChat = chatResumeLifecycleOperations.createRoomChat {
+            return try await createRoomChat(client, profile)
+        }
+        return try await client.createSession(inProfile: profile)
+    }
+
+    /// A room's new chat titled, by the id it runs under.
+    func titleRoomChatSession(_ runtimeID: String, title: String, using client: HermesClient,
+                              profile: String?) async throws {
+        if let titleRoomChat = chatResumeLifecycleOperations.titleRoomChat {
+            try await titleRoomChat(client, runtimeID, title, profile)
+        } else {
+            try await client.setSessionTitle(runtimeID, title: title, profile: profile)
+        }
+    }
+
+    /// Opens a room's chat (RoomChats.swift) as an ordinary chat of
+    /// `profile`: here, or in another profile than the dashboard's through
+    /// a chat link's route, which switches to it first, as All's other
+    /// profiles' chats open. Never as a Bot Chat, whose registry would
+    /// route its pushes to the bot's own chat and hide it from its
+    /// profile's list. A chat Hermes refused (gone, or another one) reads
+    /// gone, and the restore error the refusal left is put back: the
+    /// opener replaces the chat.
+    func openRoomChatSession(_ chatID: String, profile: String, title: String) async -> RoomChatOpenOutcome {
+        let shownError = errorMessage
+        guard !profilesMatch(profile, activeProfile) else {
+            let result = await performSessionOpenNotingRefusal(
+                chatID,
+                reusing: nil,
+                preferredTitle: title
+            )
+            switch result.outcome {
+            case .opened: return .opened
+            case .superseded: return .superseded
+            case .failed:
+                guard result.refused else { return .failed }
+                errorMessage = shownError
+                return .gone
+            }
+        }
+        let outcome = await openNotificationTargetOutcome(
+            ConduitNotificationTarget(
+                profile: profile, sessionId: chatID, dashboardID: activeDashboardID, type: nil, isChatLink: true
+            )
+        )
+        switch outcome {
+        case .opened: return .opened
+        case .failed:
+            // Gone only once the route reached the chat's profile and Hermes refused it there: a dashboard
+            // that couldn't be reached, or a call that started meanwhile, is no answer about the chat.
+            guard !isVoiceCallInProgress, profilesMatch(profile, activeProfile) else { return .failed }
+            errorMessage = shownError
+            return .gone
+        case .retry, .unverified, .afterCall: return .failed
+        }
     }
 
     /// Creates the bot's ONE forever chat (lookup confirmed absence): hidden,

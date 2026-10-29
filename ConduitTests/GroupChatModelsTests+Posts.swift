@@ -17,8 +17,9 @@ extension GroupChatModelsTests {
 
     /// A copy opened on an AppState whose plugin takes posts.
     @MainActor
-    func postsOpenCopy(_ routes: CopiesRoutes, report: [String: Any]? = nil) async throws -> AppState {
-        let appState = try copiesAppState(routes)
+    func postsOpenCopy(_ routes: CopiesRoutes, report: [String: Any]? = nil,
+                       chatResume: ChatResumeLifecycleOperations = .live) async throws -> AppState {
+        let appState = try copiesAppState(routes, chatResume: chatResume)
         copiesConnect(appState)
         appState.applyNotifierPluginReport(report ?? postsPluginReport)
         await appState.refreshGroupChatSupport()

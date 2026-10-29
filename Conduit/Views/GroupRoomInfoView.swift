@@ -21,6 +21,12 @@ struct GroupRoomInfoSheet: View {
     @State private var working = false
     /// A refusal's title and the plugin's words.
     @State private var refusal: (title: String, message: String)?
+    /// Whether the sheet is still up, for a room chat that fails after Done.
+    @State private var presence = Presence()
+
+    private final class Presence {
+        var shown = true
+    }
 
     var body: some View {
         NavigationStack {
@@ -31,6 +37,7 @@ struct GroupRoomInfoSheet: View {
                 if let room = appState.activeRoomSurface?.room {
                     memberSection(room)
                 }
+                roomChatSection
                 if appState.canLeaveActiveRoom {
                     Section {
                         Button(role: .destructive) {
@@ -75,6 +82,8 @@ struct GroupRoomInfoSheet: View {
             }
             .navigationTitle(appState.activeRoomSurface?.room.name ?? AppLocalization.string("Group Info"))
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear { presence.shown = true }
+            .onDisappear { presence.shown = false }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(AppLocalization.string("Done")) { dismiss() }
@@ -131,6 +140,47 @@ struct GroupRoomInfoSheet: View {
 }
 
 extension GroupRoomInfoSheet {
+    /// Each of your agents in a room with other people's opens a private
+    /// chat about it, or asks there for its notes (C5b).
+    @ViewBuilder
+    private var roomChatSection: some View {
+        let agents = appState.activeRoomChatAgents
+        if !agents.isEmpty {
+            Section {
+                ForEach(agents, id: \.profile) { agent in
+                    Button {
+                        openRoomChat(with: agent, wrapUp: false)
+                    } label: {
+                        Label(RoomChatText.ask(agent.name), systemImage: "bubble.left.and.text.bubble.right")
+                    }
+                    .disabled(working)
+                    Button {
+                        openRoomChat(with: agent, wrapUp: true)
+                    } label: {
+                        Label(RoomChatText.wrapUp(agent.name), systemImage: "checklist")
+                    }
+                    .disabled(working)
+                }
+            } header: {
+                Text(verbatim: RoomChatText.sectionTitle)
+            } footer: {
+                Text(verbatim: RoomChatText.footer)
+            }
+        }
+    }
+
+    private func openRoomChat(with agent: RoomChatAgent, wrapUp: Bool) {
+        working = true
+        Task { @MainActor in
+            let failure = await appState.openRoomChat(with: agent, wrapUp: wrapUp) { [presence] in presence.shown }
+            working = false
+            if let failure {
+                Haptics.error()
+                refusal = (RoomChatText.failureTitle, failure)
+            }
+        }
+    }
+
     private var openRoomKey: String? {
         appState.activeRoomSurface.map { $0.copy?.id ?? $0.room.roomID }
     }
