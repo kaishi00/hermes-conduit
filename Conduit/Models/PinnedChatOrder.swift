@@ -7,27 +7,30 @@
 //  under each chat's pin id (its lineage root, so a compacted chat keeps its
 //  place). Until a profile's pins are reordered they follow recent activity
 //  as before. A pinned chat the order doesn't name yet (pinned since, here
-//  or on another device) goes on top.
+//  or on another device) goes on top. All's mixed Pinned section also keeps
+//  where each profile's chats sit among the others' (issue 1486), on this
+//  device only, like All's other settings.
 //
 
 import SwiftUI
 
 struct PinnedChatOrder: Equatable {
     static let storageKey = "conduit.pinnedChatOrderByProfile.v1"
+    static let mixedStorageKey = "conduit.pinnedChatOrderAllProfiles.v1"
 
     private(set) var idsByProfile: [String: [String]]
+    /// All's mixed Pinned section, top first: each chat as `key(profile:id:)`.
+    private(set) var mixed: [String]
 
-    init(idsByProfile: [String: [String]] = [:]) {
+    init(idsByProfile: [String: [String]] = [:], mixed: [String] = []) {
         self.idsByProfile = idsByProfile.filter { !$0.value.isEmpty }
+        self.mixed = Self.unique(mixed)
     }
 
     init(defaults: UserDefaults) {
-        guard let data = defaults.data(forKey: Self.storageKey),
-              let stored = try? JSONDecoder().decode([String: [String]].self, from: data) else {
-            self.init()
-            return
-        }
-        self.init(idsByProfile: stored)
+        let stored = defaults.data(forKey: Self.storageKey)
+            .flatMap { try? JSONDecoder().decode([String: [String]].self, from: $0) } ?? [:]
+        self.init(idsByProfile: stored, mixed: defaults.stringArray(forKey: Self.mixedStorageKey) ?? [])
     }
 
     func save(to defaults: UserDefaults) {
@@ -36,6 +39,23 @@ struct PinnedChatOrder: Equatable {
         } else if let data = try? JSONEncoder().encode(idsByProfile) {
             defaults.set(data, forKey: Self.storageKey)
         }
+        if mixed.isEmpty {
+            defaults.removeObject(forKey: Self.mixedStorageKey)
+        } else {
+            defaults.set(mixed, forKey: Self.mixedStorageKey)
+        }
+    }
+
+    var isEmpty: Bool { idsByProfile.isEmpty && mixed.isEmpty }
+
+    /// A chat in the mixed order: its profile and pin id.
+    static func key(profile: String, id: String) -> String {
+        profile + "\u{1F}" + id
+    }
+
+    private static func unique(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        return ids.filter { seen.insert($0).inserted }
     }
 
     func ids(profile: String) -> [String] {
@@ -43,31 +63,41 @@ struct PinnedChatOrder: Equatable {
     }
 
     mutating func set(_ ids: [String], profile: String) {
-        var seen = Set<String>()
-        let unique = ids.filter { seen.insert($0).inserted }
+        let unique = Self.unique(ids)
         idsByProfile[profile] = unique.isEmpty ? nil : unique
+    }
+
+    mutating func setMixed(_ keys: [String]) {
+        mixed = Self.unique(keys)
     }
 
     /// A pin that went or came: either way it leaves the order, so a chat
     /// pinned again goes on top rather than back to its old place.
     mutating func drop(_ ids: Set<String>, profile: String) {
-        guard let current = idsByProfile[profile] else { return }
-        set(current.filter { !ids.contains($0) }, profile: profile)
+        if let current = idsByProfile[profile] {
+            set(current.filter { !ids.contains($0) }, profile: profile)
+        }
+        let keys = Set(ids.map { Self.key(profile: profile, id: $0) })
+        mixed.removeAll { keys.contains($0) }
     }
 
     mutating func forget(profile: String) {
         idsByProfile.removeValue(forKey: profile)
+        let prefix = Self.key(profile: profile, id: "")
+        mixed.removeAll { $0.hasPrefix(prefix) }
     }
 
     /// Puts each profile's pinned rows in its order, in the places that
-    /// profile's rows already hold, so All's mixed Pinned section keeps
-    /// how the profiles interleave. Rows the order doesn't name lead their
-    /// profile's rows, in the order they came.
+    /// profile's rows already hold. Rows the order doesn't name lead their
+    /// profile's rows, in the order they came. With a `mixed` order, All's
+    /// mixed Pinned section then gives each profile the places the person
+    /// left its chats in (issue 1486).
     static func arrange<Row>(
         _ rows: [Row],
         profile: (Row) -> String,
         ids: (Row) -> Set<String>,
-        order: (String) -> [String]
+        order: (String) -> [String],
+        mixed: [String] = []
     ) -> [Row] {
         guard rows.count > 1 else { return rows }
         var slotsByProfile: [String: [Int]] = [:]
@@ -96,7 +126,43 @@ struct PinnedChatOrder: Equatable {
                 arranged[slot] = rows[source.element.slot]
             }
         }
-        return arranged
+        return interleave(arranged, profile: profile, ids: ids, mixed: mixed)
+    }
+
+    /// Which profile holds each place, from the mixed order: rows it names
+    /// in its order, after the rows it doesn't (a chat pinned since goes on
+    /// top). Each profile's rows then fill its places in the order they
+    /// came, which is that profile's own order.
+    private static func interleave<Row>(
+        _ rows: [Row],
+        profile: (Row) -> String,
+        ids: (Row) -> Set<String>,
+        mixed: [String]
+    ) -> [Row] {
+        guard !mixed.isEmpty else { return rows }
+        var rankOf: [String: Int] = [:]
+        for (rank, key) in mixed.enumerated() where rankOf[key] == nil { rankOf[key] = rank }
+        let ranks = rows.map { row in
+            let owner = profile(row)
+            return ids(row).compactMap { rankOf[key(profile: owner, id: $0)] }.min()
+        }
+        let places = rows.indices.sorted { lhs, rhs in
+            switch (ranks[lhs], ranks[rhs]) {
+            case let (left?, right?) where left != right: return left < right
+            case (nil, .some): return true
+            case (.some, nil): return false
+            default: return lhs < rhs
+            }
+        }
+        var queues: [String: [Row]] = [:]
+        for row in rows { queues[profile(row), default: []].append(row) }
+        var taken: [String: Int] = [:]
+        return places.map { place in
+            let owner = profile(rows[place])
+            let next = taken[owner, default: 0]
+            taken[owner] = next + 1
+            return queues[owner]![next]
+        }
     }
 
     /// The orders a drag leaves: `rows` as shown, moved the way a List's
@@ -123,6 +189,26 @@ struct PinnedChatOrder: Equatable {
             result[owner] = shown.map(pinID) + order(owner).filter { !shownIDs.contains($0) }
         }
         return result
+    }
+
+    /// The mixed order a drag leaves in All's mixed Pinned section: `rows`
+    /// moved as `onMove` reports it, then the saved keys of chats not shown.
+    static func mixedOrder<Row>(
+        moving rows: [Row],
+        fromOffsets source: IndexSet,
+        toOffset destination: Int,
+        profile: (Row) -> String,
+        pinID: (Row) -> String,
+        ids: (Row) -> Set<String>,
+        mixed: [String]
+    ) -> [String] {
+        var moved = rows
+        moved.move(fromOffsets: source, toOffset: destination)
+        let shownKeys = rows.reduce(into: Set<String>()) { keys, row in
+            let owner = profile(row)
+            keys.formUnion(ids(row).map { key(profile: owner, id: $0) })
+        }
+        return moved.map { key(profile: profile($0), id: pinID($0)) } + mixed.filter { !shownKeys.contains($0) }
     }
 
     /// Where a move lands among the rows that can move, when a List section

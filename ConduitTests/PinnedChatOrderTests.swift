@@ -19,8 +19,12 @@ extension SessionNestingModelTests {
         var ids: Set<String> { [id, pinID] }
     }
 
-    private func pinArranged(_ rows: [PinRow], _ orders: [String: [String]]) -> [String] {
-        PinnedChatOrder.arrange(rows, profile: \.profile, ids: \.ids, order: { orders[$0] ?? [] }).map(\.id)
+    private func pinArranged(_ rows: [PinRow], _ orders: [String: [String]], mixed: [String] = []) -> [String] {
+        PinnedChatOrder.arrange(rows, profile: \.profile, ids: \.ids, order: { orders[$0] ?? [] }, mixed: mixed).map(\.id)
+    }
+
+    private func pinKeys(_ rows: [PinRow]) -> [String] {
+        rows.map { PinnedChatOrder.key(profile: $0.profile, id: $0.pinID) }
     }
 
     private func pinOrders(
@@ -86,6 +90,37 @@ extension SessionNestingModelTests {
         XCTAssertEqual(pinOrders(rows, moving: [2], to: 0), ["work": ["w2", "w1"]])
     }
 
+    func testPinnedOrderDragInAllStaysWhereItWasDropped() {
+        // Issue 1486: home's only pin dragged above work's snapped back.
+        let rows = [
+            PinRow(id: "w1", profile: "work"),
+            PinRow(id: "w2", profile: "work"),
+            PinRow(id: "h1", profile: "home"),
+        ]
+        let orders = pinOrders(rows, moving: [2], to: 0)
+        let mixed = PinnedChatOrder.mixedOrder(
+            moving: rows, fromOffsets: [2], toOffset: 0,
+            profile: \.profile, pinID: \.pinID, ids: \.ids, mixed: ["home\u{1F}gone"]
+        )
+        XCTAssertEqual(mixed, pinKeys([rows[2], rows[0], rows[1]]) + ["home\u{1F}gone"])
+        XCTAssertEqual(pinArranged(rows, orders, mixed: mixed), ["h1", "w1", "w2"])
+    }
+
+    func testPinnedOrderMixedKeepsEachProfilesOwnOrder() {
+        let rows = [
+            PinRow(id: "w1", profile: "work"),
+            PinRow(id: "h1", profile: "home"),
+            PinRow(id: "w2", profile: "work"),
+        ]
+        let mixed = pinKeys([rows[1], rows[0], rows[2]])
+        XCTAssertEqual(pinArranged(rows, [:], mixed: mixed), ["h1", "w1", "w2"])
+        // Reordered since in work alone: home keeps the top, work's chats swap.
+        XCTAssertEqual(pinArranged(rows, ["work": ["w2", "w1"]], mixed: mixed), ["h1", "w2", "w1"])
+        // A chat pinned since goes on top.
+        let pinned = [PinRow(id: "h2", profile: "home")] + rows
+        XCTAssertEqual(pinArranged(pinned, [:], mixed: mixed), ["h2", "h1", "w1", "w2"])
+    }
+
     func testPinnedOrderMovesSkipNestRowsAndStayAboveRecentChats() {
         // pinned a, its "3 jobs" line, an open job, pinned b, then a recent chat.
         let movable = [true, false, false, true, false]
@@ -106,12 +141,20 @@ extension SessionNestingModelTests {
         XCTAssertEqual(order.ids(profile: "default"), ["a", "b", "c"])
         order.drop(["b"], profile: "default")
         order.set(["x"], profile: "work")
+        order.setMixed([
+            PinnedChatOrder.key(profile: "work", id: "x"),
+            PinnedChatOrder.key(profile: "default", id: "a"),
+            PinnedChatOrder.key(profile: "default", id: "b"),
+        ])
         order.save(to: defaults)
         XCTAssertEqual(PinnedChatOrder(defaults: defaults), order)
+        order.drop(["b"], profile: "default")
+        XCTAssertEqual(order.mixed.count, 2, "an unpinned chat leaves All's order too")
         order.forget(profile: "work")
         order.drop(["a", "c"], profile: "default")
-        XCTAssertTrue(order.idsByProfile.isEmpty)
+        XCTAssertTrue(order.isEmpty)
         order.save(to: defaults)
         XCTAssertNil(defaults.object(forKey: PinnedChatOrder.storageKey))
+        XCTAssertNil(defaults.object(forKey: PinnedChatOrder.mixedStorageKey))
     }
 }

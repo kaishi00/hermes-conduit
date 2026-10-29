@@ -2562,7 +2562,7 @@ Settings caption · CarPlay's chat list · the chat pickers (the Home Screen
 widget's and the Share extension's) · README.md
 
 **Code**
-- Order: `Conduit/Models/PinnedChatOrder.swift` (arrange, orders, movableOffsets), `Conduit/Services/AppState+PinnedChatOrder.swift` (arrangePinned, movePinnedChats, pinnedChatsForOrdering, pinnedChatOrderSlot), `Conduit/Services/AppState.swift` (pinnedChatOrder, setPinnedChatOrder, dropFromPinnedChatOrder from storePins and removePinnedState)
+- Order: `Conduit/Models/PinnedChatOrder.swift` (arrange, interleave, orders, mixedOrder, movableOffsets), `Conduit/Services/AppState+PinnedChatOrder.swift` (arrangePinned, movePinnedChats, pinnedChatsForOrdering, pinnedChatOrderSlot), `Conduit/Services/AppState.swift` (pinnedChatOrder, setPinnedChatOrder, setPinnedChatMixedOrder, dropFromPinnedChatOrder from storePins and removePinnedState)
 - Chats list: `Conduit/Views/V2/V2ChatsView.swift` (nestedSections, listRows' movesPinned, dragsPinned, pinnedHeader, projectsList, V2SessionActions' onReorderPinned)
 - Sheet and menu: `Conduit/Views/PinnedChatsOrderSheet.swift` (reorderPinnedChatsMenu for the Pinned headers), `Conduit/Views/SidebarView.swift` (SessionActionMenuItems' onReorderPinned; the classic drawer's nestedSessionSections, projectsViewPinnedSessions and pinnedHeader)
 - CarPlay: `Conduit/CarPlay/CarPlayBrowseTemplates.swift` (chatList's arrangePinned), `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (chatList, chatsObservation)
@@ -2575,7 +2575,8 @@ widget's and the Share extension's) · README.md
 - Only pinned chats move, and only within their own profile's pins: a drop past the last pinned chat lands at the end of Pinned, never among recent chats, and moving never pins or unpins. A nest's "3 jobs" line and its open children stay put and follow their parent.
 - Rows move by dragging while the list shows every pinned chat: not during a search or under a filter, whose rows are a lookup. The Pinned header reorders the profile in use's pins, and in All grouped by profile each profile's header reorders that profile's; a row's menu reorders its own profile's.
 - Until a profile's pins are reordered they follow recent activity, as before. Once ordered, a chat pinned since (here, on another device or in Hermes Desktop) goes on top, and an unpinned chat leaves the order, so pinning it again puts it on top too.
-- The order is kept per profile under each chat's pin id (its lineage root), so a compacted chat keeps its place. Hermes keeps only whether a chat is pinned, so the order goes to other devices through Sync across devices (`chats.pinned_order`, the profile in use's), not through Hermes. In All, each profile's pinned rows keep the places they held among the others'.
+- The order is kept per profile under each chat's pin id (its lineage root), so a compacted chat keeps its place. Hermes keeps only whether a chat is pinned, so the order goes to other devices through Sync across devices (`chats.pinned_order`, the profile in use's), not through Hermes.
+- In All's mixed Pinned section a chat stays where it's dropped, among the other profiles' too: the section also keeps which profile holds each place, and each profile's chats fill its places in that profile's own order. That mix stays on this device, like All's other settings; a chat pinned since goes on top, and an unpinned one leaves it. This replaces "each profile's pinned rows keep the places they held among the others'", under which a drop past another profile's chats snapped back (Eric, 2026-10-29, issue 1486, #PRNUM).
 - CarPlay's pinned chats follow the order. The widget's and Share extension's pickers don't: they pick a chat from every chat, pinned ones first by recent activity.
 
 **Open gaps**
@@ -2583,7 +2584,7 @@ widget's and the Share extension's) · README.md
 - The classic drawer reorders only from the sheet: its nested rows are one block each, which a List drag can't move cleanly.
 - Not yet tried on a device: whether the system's lift from a held row and the touch-and-hold menu share the hold as planned.
 
-**Checked:** 2026-10-27, #1373.
+**Checked:** 2026-10-29, #PRNUM.
 
 ## Deleting from a list row
 

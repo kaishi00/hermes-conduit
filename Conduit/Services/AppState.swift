@@ -9409,6 +9409,16 @@ final class AppState: ObservableObject {
         order.save(to: defaults)
     }
 
+    /// Saves where All's mixed Pinned section holds each profile's chats
+    /// (issue 1486), on this device only.
+    func setPinnedChatMixedOrder(_ keys: [String]) {
+        var order = pinnedChatOrder
+        order.setMixed(keys)
+        guard order != pinnedChatOrder else { return }
+        pinnedChatOrder = order
+        order.save(to: defaults)
+    }
+
     /// An unpinned chat leaves the order, so pinning it again puts it on top.
     private func dropFromPinnedChatOrder(_ ids: Set<String>, profile: String) {
         var order = pinnedChatOrder
@@ -11006,6 +11016,7 @@ final class AppState: ObservableObject {
         defaults.removeObject(forKey: SessionStars.storageKey)
         pinnedChatOrder = PinnedChatOrder()
         defaults.removeObject(forKey: PinnedChatOrder.storageKey)
+        defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()
@@ -13883,6 +13894,7 @@ final class AppState: ObservableObject {
         defaults.removeObject(forKey: SessionStars.storageKey)
         pinnedChatOrder = PinnedChatOrder()
         defaults.removeObject(forKey: PinnedChatOrder.storageKey)
+        defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()
