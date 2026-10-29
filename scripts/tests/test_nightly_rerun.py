@@ -89,9 +89,10 @@ class NightlyRerunTests(unittest.TestCase):
     def test_leaves_a_run_with_nothing_lost(self):
         self.assertFalse(self._reruns([ran("Plan", "success"), ran("UI", "skipped")]))
 
-    def test_job_only_runs_on_a_failed_run_before_its_third_attempt(self):
+    def test_job_only_runs_on_a_failed_scheduled_run_before_its_third_attempt(self):
         with open(RERUN, encoding="utf-8") as fh:
             text = fh.read()
+        self.assertIn("github.event.workflow_run.event == 'schedule'", text)
         self.assertIn("github.event.workflow_run.conclusion == 'failure'", text)
         self.assertIn("github.event.workflow_run.run_attempt < 3", text)
 

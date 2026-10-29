@@ -3029,12 +3029,12 @@ notifier's copies of both
 
 ## Nightly reruns
 
-A Nightly whose only losses are jobs GitHub never gave a macOS runner reruns
+A scheduled Nightly whose only losses are jobs GitHub never gave a macOS runner reruns
 those jobs by itself.
 
 **Siblings:** the Nightly workflow it follows (its name and its matrices) ·
 docs/CI.md's workflow table and the Nightly paragraph · docs/RELEASE_WORKFLOW.md's
-rule that every job of a candidate's Nightly passes
+rule that every job of a candidate's dispatched Nightly passes
 
 **Code**
 - Rerun: `.github/workflows/nightly-rerun.yml`, `scripts/tests/test_nightly_rerun.py` (the decision against fixture job lists, and that it still follows Nightly's name and `fail-fast: false` matrices)
@@ -3042,7 +3042,7 @@ rule that every job of a candidate's Nightly passes
 - Docs: `docs/CI.md`, `docs/RELEASE_WORKFLOW.md`
 
 **Rulings**
-- A job counts as never placed when it is `cancelled` with no runner and no steps (GitHub's "not acquired by Runner of type hosted"). The run reruns its failed jobs only when every job that didn't pass is one of those, at most twice, so a test that ran and failed is never retried, and a release candidate's Nightly counts a job a rerun attempt passed (2026-10-29, #1506, after Nightly lost 2 jobs on 10-28 and 3 on 10-29 to macOS arm64 capacity).
+- A job counts as never placed when it is `cancelled` with no runner and no steps (GitHub's "not acquired by Runner of type hosted"). The run reruns its failed jobs only when every job that didn't pass is one of those, at most twice, so a test that ran and failed is never retried. Only scheduled runs rerun: a dispatched run, such as a release candidate's, keeps its own result, so the release rule is unchanged (2026-10-29, #1506, after Nightly lost 2 jobs on 10-28 and 3 on 10-29 to macOS arm64 capacity).
 
 **Open gaps**
 - The failure email for the first attempt still goes out. The two-rerun cap assumes GitHub fires `workflow_run` for each rerun attempt; the first live rerun shows it.
