@@ -565,6 +565,22 @@ enum NotificationSharedSettings {
         set { defaults?.set(newValue, forKey: appLanguageKey) }
     }
 
+    private static let mainProfileNamesKey = "conduit.notifications.mainProfileNames"
+    private static let activeDashboardIDKey = "conduit.notifications.activeDashboardID"
+
+    /// The main profile's Conduit name per dashboard (UUID string), so a
+    /// push from it names it as the app does (NotificationCopy.named).
+    static var mainProfileNames: [String: String] {
+        get { defaults?.dictionary(forKey: mainProfileNamesKey) as? [String: String] ?? [:] }
+        set { defaults?.set(newValue, forKey: mainProfileNamesKey) }
+    }
+
+    /// The dashboard open in the app, standing in for a push that names none.
+    static var activeDashboardID: String? {
+        get { defaults?.string(forKey: activeDashboardIDKey) }
+        set { defaults?.set(newValue, forKey: activeDashboardIDKey) }
+    }
+
     private static let knownGatewayIDsKey = "conduit.notifications.knownGatewayIDs"
     private static let keysProvisionedMarker = "e2e-keys-provisioned"
 

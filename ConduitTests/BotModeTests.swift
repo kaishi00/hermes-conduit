@@ -78,6 +78,13 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: "atlas", sessionID: "s1")), "Atlas",
                        "and so does one saved with the id as its label")
         XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: "Scout", sessionID: "s1")), "Scout")
+        XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "atlas", label: "ATLAS", sessionID: "s1")), "ATLAS",
+                       "a title that only recases the id is still the bot's title")
+        XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "default", label: "Default", sessionID: "s1")), "Hermes",
+                       "the main bot's label saved before #1457 gives way to its Conduit name")
+        XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "default", label: nil, sessionID: "s1"), mainName: "Jarvis"), "Jarvis")
+        XCTAssertEqual(AppState.botConversationTitle(for: .bot(botName: "default", label: "Muse", sessionID: "s1"), mainName: "Jarvis"), "Jarvis",
+                       "a label saved before the main bot was renamed gives way too")
     }
 
     func testRosterDecodeRejectsNonProfilesEnvelope() {
@@ -220,9 +227,11 @@ final class BotModeTests: XCTestCase {
         await harness.appState.refreshBotRoster()
         XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Prime")
         XCTAssertEqual(harness.appState.profileDisplayName("default"), "Muse", "A main profile with no Conduit name goes by its bot's")
+        XCTAssertEqual(mainBotLabel(harness.appState), "Muse")
 
         harness.appState.saveDefaultProfileName("Home")
         XCTAssertEqual(harness.appState.profileDisplayName("default"), "Home", "The Conduit name wins for the main profile")
+        XCTAssertEqual(mainBotLabel(harness.appState), "Home", "Bots, rooms and the widget call the main bot what Conduit does")
 
         // A profile listing that only knows `display_name` doesn't undo it.
         harness.appState.adoptProfileHermesNames([(profile: "atlas", displayName: "Atlas")])
@@ -234,11 +243,33 @@ final class BotModeTests: XCTestCase {
         harness.appState.adoptProfileHermesNames([(profile: "atlas", displayName: "Atlas Hermes")])
         XCTAssertEqual(harness.appState.profileDisplayName("atlas"), "Atlas Hermes", "No title: the display name")
         XCTAssertEqual(harness.appState.profileDisplayName("default"), "Home")
+        XCTAssertEqual(mainBotLabel(harness.appState), "Home", "A roster that answers again keeps it")
 
         // Renaming the main profile sets its Conduit name.
         let failure = await harness.appState.renameProfile("default", to: "Studio")
         XCTAssertNil(failure)
         XCTAssertEqual(harness.appState.profileDisplayName("default"), "Studio")
+        XCTAssertEqual(mainBotLabel(harness.appState), "Studio")
+        XCTAssertEqual(harness.appState.botRoster.first(where: { $0.name == "atlas" })?.displayLabel, "Atlas", "Only the main bot")
+    }
+
+    /// The main bot nobody named reads "Hermes" in Bots, as everywhere else
+    /// in Conduit, not "Default" (Eric 2026-10-28).
+    func testAnUnnamedMainBotIsHermes() async {
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            botRoster: { _ in BotRosterSnapshot(bots: [self.makeBot(name: "default")], supportsBotProtocol: true) }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(mainBotLabel(harness.appState), "Hermes")
+        XCTAssertEqual(makeBot(name: "default").displayLabel, "Default", "A bot off the roster keeps its own label")
+    }
+
+    private func mainBotLabel(_ appState: AppState) -> String? {
+        appState.botRoster.first(where: { BotManagement.isDefaultProfile($0.name) })?.displayLabel
     }
 
     /// On a gateway without bot looks a rename stays on the device and names
@@ -604,6 +635,41 @@ final class BotModeTests: XCTestCase {
             "the captured label travels to the rotated id; the roster's retitled label must not take over"
         )
         XCTAssertEqual(harness.appState.activeSessionTitle, "Bo")
+    }
+
+    /// The main bot's open Bot Chat goes by its Conduit name, and a rename
+    /// on the Profiles card renames it there too (#1457).
+    func testTheMainBotsOpenBotChatFollowsItsConduitName() async {
+        let main = makeBot(name: "default", canonicalID: "stored-default")
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, id, _, _ in
+                SessionResumeResult(
+                    sessionId: id,
+                    storedSessionId: "stored-default",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            botRoster: { _ in BotRosterSnapshot(bots: [main], supportsBotProtocol: true) },
+            findBotChat: { _, profile in
+                [BotChatLookupRow(id: "stored-\(profile)", resolvedID: "runtime-\(profile)", title: "Bot Chat")]
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        await harness.appState.refreshBotRoster()
+        let opened = await harness.appState.openBotChat(for: harness.appState.botRoster.first ?? main)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Hermes")
+        XCTAssertEqual(harness.appState.conversationAgentIdentity.name, "Hermes")
+
+        let failure = await harness.appState.renameProfile("default", to: "Jarvis")
+        XCTAssertNil(failure)
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Jarvis")
+        XCTAssertEqual(harness.appState.conversationAgentIdentity.name, "Jarvis", "the reply headers too")
     }
 
     func testMissingCanonicalCreatesHiddenTitledChatThenOpensStoredID() async {
