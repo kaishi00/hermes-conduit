@@ -212,7 +212,8 @@ struct PulseCard: Equatable, Identifiable {
     /// a new one for a deadline from the Shortcuts inbox (0.90.0), which
     /// came from no chat, or for one from a Kanban task's worker (0.117.1).
     var isActionable: Bool {
-        (kind == "followup" || (isNoticed && itemID != nil)) && (!chatID.isEmpty || topic == "deadline")
+        (kind == "followup" || (isNoticed && itemID != nil))
+            && (!chatID.isEmpty || topic == "deadline" || kanbanTask != nil)
             && hasReminder
     }
 

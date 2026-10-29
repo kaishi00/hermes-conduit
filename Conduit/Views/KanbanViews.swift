@@ -498,7 +498,11 @@ struct KanbanView: View {
             defer {
                 if appState.kanbanTaskOpenRequest?.id == request.id { appState.kanbanTaskOpenRequest = nil }
             }
-            let current = { appState.kanbanTaskOpenRequest?.id == request.id && appState.activeDashboardID == request.dashboardID }
+            // Still the request, on its dashboard, with Tasks showing: one left behind opens nothing.
+            let current = {
+                appState.kanbanTaskOpenRequest?.id == request.id && appState.activeDashboardID == request.dashboardID
+                    && shell.isTabActive
+            }
             do {
                 let found = try await store.findTask(id: request.taskID)
                 guard current() else { return }
