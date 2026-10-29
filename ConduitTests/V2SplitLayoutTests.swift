@@ -278,7 +278,7 @@ extension SidebarLayoutTests {
         let wide = ReadableWidth.columnText(column: 1792, base: ReadableWidth.chat, scalesChatText: true, size: .large, systemGrowsTextStyles: false)
         XCTAssertEqual(wide.size, .large)
         XCTAssertEqual(wide.chatSteps, 0)
-        XCTAssertEqual(wide.text, ColumnText(base: .large, scale: 1.57))
+        XCTAssertEqual(wide.text, ColumnText(base: .large, scale: 1.55))
         let narrow = ReadableWidth.columnText(column: 1040, base: ReadableWidth.chat, scalesChatText: true, size: .large, systemGrowsTextStyles: false)
         XCTAssertEqual(narrow.text, ColumnText(base: .large, scale: 1))
         let widest = ReadableWidth.columnText(column: 4000, base: ReadableWidth.settings, scalesChatText: false, size: .large, systemGrowsTextStyles: false)
@@ -295,6 +295,9 @@ extension SidebarLayoutTests {
         let subheadline = UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)).pointSize
         XCTAssertEqual(UIFont.preferredFont(forTextStyle: .subheadline, in: .large, from: column).pointSize, subheadline * 1.5, accuracy: 0.001)
         XCTAssertEqual(ScaledFont.caption.font(in: column), Font.system(size: 18, weight: .regular, design: .default))
+        // A Mac draws text styles at their default size whatever the
+        // system's, an accessibility size included: scaled from there.
+        XCTAssertEqual(ScaledFont.caption.font(in: ColumnText(base: .accessibility2, scale: 1.5)), Font.system(size: 18, weight: .regular, design: .default))
         XCTAssertNotEqual(
             ChatTextAppearance(size: .default).widened(steps: 0, in: column).cacheIdentity,
             ChatTextAppearance(size: .default).cacheIdentity

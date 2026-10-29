@@ -129,7 +129,9 @@ enum ReadableWidth {
         guard let base else { return (size, 0, nil) }
         guard systemGrowsTextStyles else {
             let scale = min(macMaxTextScale, max(1, column / (base * macLineGrowth)))
-            return (size, 0, ColumnText(base: size, scale: (scale * 100).rounded() / 100))
+            // In twentieths, so a window drag re-lays the transcript a
+            // few times rather than at every point.
+            return (size, 0, ColumnText(base: size, scale: (scale * 20).rounded() / 20))
         }
         let steps = textSteps(column: column, base: base, from: size)
         let sizes = ChatTypography.standardDynamicTypeSizes
