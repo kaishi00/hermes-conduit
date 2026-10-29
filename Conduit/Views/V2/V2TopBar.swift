@@ -167,7 +167,10 @@ struct V2LegacyScrollEdge: ViewModifier {
 }
 
 /// The soft edge content scrolls under: a material that fades out away
-/// from the screen edge, so the bar reads without a hard line.
+/// from the screen edge, so the bar reads without a hard line. It runs the
+/// screen's whole width, past a readable column's margins: kept to a wide
+/// window's chat column, it drew a lighter box around the composer on a
+/// Mac.
 struct V2ScrollEdgeBackground: View {
     /// The screen edge the bar sits on.
     var edge: VerticalEdge = .top
@@ -186,7 +189,7 @@ struct V2ScrollEdgeBackground: View {
                     endPoint: edge == .top ? .bottom : .top
                 )
             }
-            .ignoresSafeArea(edges: edge == .top ? .top : .bottom)
+            .ignoresSafeArea(edges: [edge == .top ? .top : .bottom, .horizontal])
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
