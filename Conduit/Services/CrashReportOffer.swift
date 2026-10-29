@@ -41,7 +41,7 @@ enum CrashReportUpload {
     /// Whether a payload holds a crash or a hang worth asking about, and
     /// which: a crash wins.
     static func kind(ofPayloadJSON data: Data) -> Kind? {
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        guard let root = (try? JSONSerialization.jsonObject(with: MetricKitReportStore.shallowed(data))) as? [String: Any] else { return nil }
         if !((root["crashDiagnostics"] as? [Any]) ?? []).isEmpty { return .crash }
         if !((root["hangDiagnostics"] as? [Any]) ?? []).isEmpty { return .hang }
         return nil
@@ -55,7 +55,7 @@ enum CrashReportUpload {
         os: String = ProcessInfo.processInfo.operatingSystemVersionString,
         device: String = CrashReportUpload.deviceModel
     ) -> [String: Any]? {
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+        guard let root = (try? JSONSerialization.jsonObject(with: MetricKitReportStore.shallowed(data))) as? [String: Any],
               let kind = kind(ofPayloadJSON: data) else { return nil }
         var crashes = ((root["crashDiagnostics"] as? [Any]) ?? []).map(kept)
         var hangs = ((root["hangDiagnostics"] as? [Any]) ?? []).map(kept)
@@ -154,10 +154,11 @@ enum CrashReportUpload {
 
     /// A root frame is the one that was running and its subFrames lead out
     /// toward the thread's entry, so the crash site is in the levels kept.
-    /// A stack that overflowed can nest thousands of frames: the first 256
-    /// frame levels are kept, so the walk's depth stays bounded on a thread's stack
-    /// and under the relay's 512 (it counts frame levels too, notifier #469).
-    static let maxFrameDepth = 256
+    /// A stack that overflowed can nest thousands of frames: the first 240
+    /// frame levels are kept, so the walk's depth stays bounded and the body,
+    /// which nests a level-L frame 7 + 2L deep, stays under the 512 that
+    /// JSONSerialization writes (the relay keeps 512 frame levels, notifier #469).
+    static let maxFrameDepth = 240
 
     private static func keptFrame(_ frame: Any, level: Int) -> Any {
         pick(frame, frameKeys) { key, value in

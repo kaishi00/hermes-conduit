@@ -81,7 +81,7 @@ extension ConnectionFailureTests {
         // deepest subFrame is the thread's entry (a real payload on Apple's
         // forums nests libsystem_kernel, CoreFoundation, UIKitCore, the app,
         // then dyld: developer.apple.com/forums/content/attachment/18fdc26d-396d-4950-950f-e4d2dffa25cc).
-        let levels = 400
+        let levels = 5_000
         let nested = "{\"binaryName\":\"libsystem_kernel.dylib\",\"subFrames\":["
             + String(repeating: "{\"subFrames\":[", count: levels - 2) + "{\"binaryName\":\"dyld\"}" + String(repeating: "]}", count: levels - 2)
             + "]}"
