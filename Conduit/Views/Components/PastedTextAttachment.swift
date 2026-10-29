@@ -122,8 +122,9 @@ enum PastedText {
     /// a message that is only a paste is titled from its file's name.
     static func titlePreview(in attachments: [Attachment], limit: Int = 1_000) -> String? {
         guard let paste = attachments.first(where: { isPastedText($0) }),
-              let preview = prefix(of: paste, limit: limit) else { return nil }
-        return preview.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : preview
+              let preview = prefix(of: paste, limit: limit)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !preview.isEmpty else { return nil }
+        return preview
     }
 
     /// The chip's line: the first words of the paste's first 2,000

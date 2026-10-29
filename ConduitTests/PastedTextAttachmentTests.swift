@@ -95,6 +95,12 @@ extension ComposerAttachmentPolicyTests {
         let picture = Attachment(id: "p", name: "photo.jpg", uri: "file:///nowhere.jpg", mimeType: "image/jpeg", kind: .image)
         XCTAssertEqual(PastedText.titlePreview(in: [picture, attachment]), String(repeating: "é", count: 1_000))
         XCTAssertNil(PastedText.titlePreview(in: [picture]))
+
+        guard case .staged(let padded) = PastedText.stage("\n\n  Stack trace\n" + String(repeating: "x", count: 3_000), limitMegabytes: 16) else {
+            return XCTFail("the padded paste wasn't staged")
+        }
+        defer { ComposerBar.discardStagedFile(padded) }
+        XCTAssertEqual(PastedText.titlePreview(in: [padded], limit: 20), "Stack trace\nxxxxxxx")
     }
 }
 

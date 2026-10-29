@@ -610,7 +610,9 @@ final class ImagePasteTextView: ReturnKeyTextView {
 
     /// Whether long words are what the clipboard holds: a paste of them,
     /// not a drag. The clipboard is read only for a long text, once its
-    /// metadata says it holds words.
+    /// metadata says it holds words, so an ordinary drop never reads it; a
+    /// long drop may, and a drag of exactly the clipboard's text counts as
+    /// its paste.
     static func isTheClipboardsText(_ text: String) -> Bool {
         let pasteboard = UIPasteboard.general
         guard pasteboard.hasStrings else { return false }
