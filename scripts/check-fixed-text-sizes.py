@@ -115,14 +115,15 @@ def font_argument(code, start):
 def branches(argument):
     """The values an argument can take: each branch of a ternary (nested
     ones too) and each side of `??`, split at the top level, or the
-    argument itself."""
+    argument itself. A `??` inside a ternary's branch splits once the
+    ternary has."""
     depth, question = 0, None
     for index, char in enumerate(argument):
         if char in "([":
             depth += 1
         elif char in ")]":
             depth -= 1
-        elif depth == 0 and argument.startswith("??", index):
+        elif depth == 0 and question is None and argument.startswith("??", index):
             return branches(argument[:index]) + branches(argument[index + 2:])
         elif depth == 0 and char == "?" and question is None and argument[index - 1:index].isspace():
             # A ternary's `?` stands apart; optional chaining's follows a name.
