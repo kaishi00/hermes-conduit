@@ -78,7 +78,9 @@ extension ConnectionFailureTests {
 
         // A stack that overflowed: deeper than the walk goes. As in MetricKit's
         // crash stacks, the root is the frame that was running and the
-        // deepest subFrame is the thread's entry.
+        // deepest subFrame is the thread's entry (a real payload on Apple's
+        // forums nests libsystem_kernel, CoreFoundation, UIKitCore, the app,
+        // then dyld: developer.apple.com/forums/content/attachment/18fdc26d-396d-4950-950f-e4d2dffa25cc).
         let levels = 400
         let nested = "{\"binaryName\":\"libsystem_kernel.dylib\",\"subFrames\":["
             + String(repeating: "{\"subFrames\":[", count: levels - 2) + "{\"binaryName\":\"dyld\"}" + String(repeating: "]}", count: levels - 2)
