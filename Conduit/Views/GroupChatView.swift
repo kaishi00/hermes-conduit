@@ -47,7 +47,6 @@ struct GroupChatView: View {
                 transcript
                     .v2EdgeBar(.bottom) {
                         bottomBar
-                            .modifier(V2LegacyScrollEdge(edge: .bottom))
                     }
             } else {
                 VStack(spacing: 0) {
@@ -205,7 +204,7 @@ struct GroupChatView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
-            .modifier(V2SoftTopScrollEdge(isOn: isV2))
+            .modifier(V2SoftTopScrollEdge(isOn: isV2, underChatHeader: true))
             .simultaneousGesture(TapGesture().onEnded {
                 // A tap on the transcript puts the keyboard away.
                 UIApplication.shared.sendAction(
