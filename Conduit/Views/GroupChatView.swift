@@ -155,7 +155,7 @@ struct GroupChatView: View {
                         GroupUserBubble(text: pending.text, members: members, timestamp: nil, eventID: pending.eventID) {
                             if appState.activeRoomSendInFlight {
                                 Text(AppLocalization.string("Sending…"))
-                                    .font(.caption2)
+                                    .scaledFont(.caption2)
                                     .foregroundStyle(.secondary)
                             } else {
                                 // Ambiguous outcome: the message may or may
@@ -173,7 +173,7 @@ struct GroupChatView: View {
                                         AppLocalization.string("Not delivered — retry"),
                                         systemImage: "arrow.clockwise"
                                     )
-                                    .font(.caption.weight(.semibold))
+                                    .scaledFont(.caption.weight(.semibold))
                                 }
                                 .buttonStyle(.plain)
                                 .foregroundStyle(Color.conduitAccent)
@@ -297,7 +297,7 @@ struct GroupChatView: View {
                 size: 56
             )
             Text(AppLocalization.string("No messages yet. Say something to the room."))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -356,7 +356,7 @@ struct GroupChatView: View {
                     appState.closeGroupRoom()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                 }
                 .accessibilityLabel(Text(AppLocalization.string("Leave this group chat")))
             }
@@ -379,7 +379,7 @@ struct GroupChatView: View {
                     )
                 } label: {
                     Image(systemName: "ellipsis.circle")
-                        .font(.callout.weight(.semibold))
+                        .scaledFont(.callout.weight(.semibold))
                 }
                 .accessibilityLabel(Text(AppLocalization.string("Group chat actions")))
             }
@@ -502,11 +502,11 @@ struct GroupRoomTitle: View {
             GroupRoomIcon(picture: picture, members: members, size: 28)
             VStack(alignment: .leading, spacing: 0) {
                 Text(name)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Text(subtitle)
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .contentTransition(.opacity)
@@ -557,14 +557,14 @@ struct GroupApprovalCard: View {
                     Text(submitting
                         ? AppLocalization.string("SENDING DECISION")
                         : (failure == nil ? AppLocalization.string("APPROVAL NEEDED") : AppLocalization.string("TRY AGAIN")))
-                        .font(.caption2.weight(.bold))
+                        .scaledFont(.caption2.weight(.bold))
                         .tracking(0.5)
                         .foregroundStyle(failure == nil ? Color.orange : Color.red)
                     Text(memberName)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                     if !approval.description.isEmpty {
                         Text(verbatim: ApprovalDisplayText.revealingHidden(approval.description))
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                             .textSelection(.enabled)
                     }
                 }
@@ -582,7 +582,7 @@ struct GroupApprovalCard: View {
                         * UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnBaseTextSize).lineHeight
                 ) {
                     Text(verbatim: ApprovalDisplayText.revealingHidden(approval.command))
-                        .font(.caption.monospaced())
+                        .scaledFont(.caption.monospaced())
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -602,10 +602,10 @@ struct GroupApprovalCard: View {
                     rejectButton
                 }
             }
-            .font(.subheadline.weight(.medium))
+            .scaledFont(.subheadline.weight(.medium))
             if let failure {
                 Label(failure, systemImage: "exclamationmark.circle")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
             }
         }
@@ -713,14 +713,14 @@ private struct GroupMessageFiles: View {
         ForEach(files) { file in
             HStack(spacing: 8) {
                 Image(systemName: AttachmentTypePolicy.symbolName(for: file))
-                    .font(.callout)
+                    .scaledFont(.callout)
                     .frame(width: 30, height: 30)
                     .background(
                         (onAccent ? Color.white.opacity(0.18) : Color.primary.opacity(0.07)),
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                     )
                 Text(file.name)
-                    .font(.caption.weight(.medium))
+                    .scaledFont(.caption.weight(.medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -785,7 +785,7 @@ struct GroupUserBubble<Footer: View>: View {
                     footer
                     if let timestamp {
                         Text(GroupBubbleTime.text(timestamp))
-                            .font(.caption2)
+                            .scaledFont(.caption2)
                             .foregroundStyle(.conduitTertiary)
                     }
                     // Like a chat, Copy takes only what the user wrote.
@@ -845,12 +845,12 @@ struct GroupMemberBubble: View {
                 if !continuesRun {
                     HStack(spacing: 6) {
                         Text(name)
-                            .font(.caption.weight(.semibold))
+                            .scaledFont(.caption.weight(.semibold))
                             .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
                             .lineLimit(1)
                         if let timestamp {
                             Text(GroupBubbleTime.text(timestamp))
-                                .font(.caption2)
+                                .scaledFont(.caption2)
                                 .foregroundStyle(.conduitTertiary)
                         }
                     }
@@ -890,7 +890,7 @@ struct GroupSystemEventCaption: View {
 
     var body: some View {
         Text(caption)
-            .font(.caption2)
+            .scaledFont(.caption2)
             .foregroundStyle(.conduitTertiary)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 2)
@@ -946,14 +946,14 @@ struct GroupRespondingRow: View {
             GroupMemberAvatar(member: member, name: name, size: GroupMemberBubble.avatarSize)
             VStack(alignment: .leading, spacing: 3) {
                 Text(name)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
                     .lineLimit(1)
                 HStack(spacing: 6) {
                     ProgressView()
                         .controlSize(.mini)
                     Text(AppLocalization.string("Responding…"))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 14)
@@ -1163,7 +1163,7 @@ struct GroupMessageCopyButton: View {
             }
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 // A full-size tap target in the footer's 32 pt.
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
@@ -1208,7 +1208,7 @@ struct GroupMessageQuoteButton: View {
             appState.replyInRoomComposer(text: text, authorName: authorName, authorHandle: authorHandle)
         } label: {
             Image(systemName: "quote.bubble")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
                 .padding(-6)
@@ -1318,7 +1318,7 @@ private struct GroupReadAloudControl: View {
                     Image(systemName: isPaused ? "play.fill" : isActive ? "stop.fill" : "speaker.wave.2")
                 }
             }
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
             .padding(-6)
@@ -1355,11 +1355,11 @@ struct MentionSuggestionList: View {
                     } label: {
                         HStack(spacing: 10) {
                             Text(candidate.title)
-                                .font(.subheadline.weight(.semibold))
+                                .scaledFont(.subheadline.weight(.semibold))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
                             Text(verbatim: "@\(candidate.tag)")
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                             Spacer(minLength: 0)
@@ -1434,7 +1434,7 @@ struct GroupCreateSheet: View {
                     // surface INSIDE the sheet — the room surface's notice
                     // is behind the dismissal.
                     Text(error)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                         .listRowBackground(Color.clear)
                 }
@@ -1500,10 +1500,10 @@ struct GroupCreateSheet: View {
                 BotMonogramView(bot: bot)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(bot.displayLabel)
-                        .font(.body)
+                        .scaledFont(.body)
                         .foregroundStyle(.primary)
                     Text(bot.name)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
@@ -1594,14 +1594,14 @@ struct DesktopGroupChatView: View {
                         Text(AppLocalization.string(
                             "Created in Hermes Desktop. Desktop runs this group's conversation, so reply from there; this shows the latest synced messages."
                         ))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
                         .padding(.bottom, 4)
                         if group.omitted > 0 {
                             Text(AppLocalization.string("Earlier messages are only in Hermes Desktop."))
-                                .font(.caption2)
+                                .scaledFont(.caption2)
                                 .foregroundStyle(.conduitTertiary)
                                 .frame(maxWidth: .infinity)
                         }
@@ -1611,7 +1611,7 @@ struct DesktopGroupChatView: View {
                         }
                         if group.messages.isEmpty {
                             Text(AppLocalization.string("No messages yet."))
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                                 .padding(.top, 32)
                         }
@@ -1661,7 +1661,7 @@ struct DesktopGroupChatView: View {
             }
             if message.truncated {
                 Text(AppLocalization.string("Shortened — the full message is in Hermes Desktop."))
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.leading, message.isMember ? GroupMemberBubble.avatarSize + 9 : 0)
             }

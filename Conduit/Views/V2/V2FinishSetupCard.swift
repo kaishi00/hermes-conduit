@@ -59,12 +59,12 @@ struct V2FinishSetupCard: View {
     private var header: some View {
         HStack(spacing: 6) {
             Image(systemName: "checkmark")
-                .font(.caption.weight(.bold))
+                .scaledFont(.caption.weight(.bold))
                 .conduitFixedGlyph()
                 .foregroundStyle(Color.conduitAccent)
                 .accessibilityHidden(true)
             Text("Finish setting up")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 8)
@@ -73,7 +73,7 @@ struct V2FinishSetupCard: View {
                 withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { appState.endFinishSetup() }
             } label: {
                 Text("Not now")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 12)
                     .frame(minHeight: 44)
@@ -196,7 +196,7 @@ struct V2FinishSetupCard: View {
 
     private var doneMark: some View {
         Image(systemName: "checkmark.circle.fill")
-            .font(.title3)
+            .scaledFont(.title3)
             .conduitFixedGlyph()
             .foregroundStyle(Color.green)
             .accessibilityLabel(AppLocalization.string("Done"))
@@ -223,7 +223,7 @@ private struct FinishSetupRow<Trailing: View>: View {
     var body: some View {
         HStack(spacing: 14) {
             Image(systemName: icon)
-                .font(.body.weight(.medium))
+                .scaledFont(.body.weight(.medium))
                 .conduitFixedGlyph()
                 .foregroundStyle(Color.conduitAccent)
                 .frame(width: 26)
@@ -251,10 +251,10 @@ private struct FinishSetupRow<Trailing: View>: View {
     private var text: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(verbatim: title)
-                .font(.callout.weight(.semibold))
+                .scaledFont(.callout.weight(.semibold))
                 .foregroundStyle(.primary)
             Text(verbatim: detail)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(detailIsWarning ? Color.orange : Color.primary.opacity(0.6))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -268,7 +268,7 @@ private struct FinishSetupActionStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.subheadline.weight(.semibold))
+            .scaledFont(.subheadline.weight(.semibold))
             .foregroundStyle(Color.conduitAccent)
             .lineLimit(1)
             .padding(.horizontal, 14)

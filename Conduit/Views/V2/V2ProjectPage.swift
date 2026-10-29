@@ -180,11 +180,11 @@ struct V2ProjectPage: View {
             V2ProjectTile(project: project, size: 56)
             VStack(alignment: .leading, spacing: 3) {
                 Text(project.title)
-                    .font(.title.weight(.bold))
+                    .scaledFont(.title.weight(.bold))
                     .lineLimit(2)
                 if let path = newConversationPath {
                     Text(path)
-                        .font(.footnote.monospaced())
+                        .scaledFont(.footnote.monospaced())
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -197,7 +197,7 @@ struct V2ProjectPage: View {
                         Text("\(runningCount) running")
                     }
                 }
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -218,28 +218,28 @@ struct V2ProjectPage: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
                     .conduitFixedGlyph()
                     .foregroundStyle(.secondary)
                     .rotationEffect(.degrees(isCollapsed ? 0 : 90))
                     .frame(width: 12)
                 Image(systemName: "folder")
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(V2ProjectTile.color(for: project))
                 Text(lane.title)
-                    .font(.callout.weight(.semibold))
+                    .scaledFont(.callout.weight(.semibold))
                     .lineLimit(1)
                     .layoutPriority(1)
                 if let path = lanePath(lane) {
                     Text(path)
-                        .font(.caption.monospaced())
+                        .scaledFont(.caption.monospaced())
                         .foregroundStyle(Color.primary.opacity(0.45))
                         .lineLimit(1)
                         .truncationMode(.head)
                 }
                 Spacer(minLength: 6)
                 Text(String(lane.sessions.count))
-                    .font(.footnote.monospacedDigit())
+                    .scaledFont(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 16)

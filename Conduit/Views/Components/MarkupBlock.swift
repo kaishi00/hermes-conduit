@@ -134,7 +134,7 @@ struct MarkupBlock: View {
     private var header: some View {
         HStack(spacing: 14) {
             Label(title, systemImage: kind == .mermaid ? "point.3.connected.trianglepath.dotted" : "function")
-                .font(.caption2.monospaced().weight(.semibold))
+                .scaledFont(.caption2.monospaced().weight(.semibold))
                 .foregroundStyle(.secondary)
             // Only for a block still being written; one waiting for a large
             // reply to settle isn't working on anything yet.
@@ -145,7 +145,7 @@ struct MarkupBlock: View {
             Button {
                 UIPasteboard.general.string = source
                 Haptics.light()
-            } label: { Label("Copy source", systemImage: "doc.on.doc").font(.caption2.weight(.semibold)) }
+            } label: { Label("Copy source", systemImage: "doc.on.doc").scaledFont(.caption2.weight(.semibold)) }
                 .tint(.conduitAccent)
             // A failed page has nothing to zoom; Try again is the way on.
             if draws, !hasFailed {
@@ -153,7 +153,7 @@ struct MarkupBlock: View {
                     showsFullScreen = true
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.caption2.weight(.semibold))
+                        .scaledFont(.caption2.weight(.semibold))
                 }
                 .tint(.conduitAccent)
                 .accessibilityLabel(Text("Open full screen"))
@@ -215,17 +215,17 @@ struct MarkupBlock: View {
     private func failure(_ detail: String?) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(kind == .mermaid ? AppLocalization.string("Couldn't draw this diagram.") : AppLocalization.string("Couldn't draw this formula."))
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
             if let detail, !detail.isEmpty {
                 Text(verbatim: detail)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(4)
             }
             Button {
                 attempt += 1
             } label: {
-                Label("Try again", systemImage: "arrow.clockwise").font(.caption.weight(.semibold))
+                Label("Try again", systemImage: "arrow.clockwise").scaledFont(.caption.weight(.semibold))
             }
             .tint(.conduitAccent)
         }

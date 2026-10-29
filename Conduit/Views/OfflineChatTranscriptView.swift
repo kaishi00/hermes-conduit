@@ -47,12 +47,12 @@ struct OfflineChatTranscriptView: View {
                         .id(Self.topAnchor)
                     if isOpeningPickedChat {
                         ProgressView("Opening conversation…")
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                             .foregroundStyle(.secondary)
                             .padding(.top, 60)
                     } else if presentation.displayedRows.isEmpty && appState.pendingComposerSendOnScreen == nil {
                         Text("No saved copy of this conversation")
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                             .foregroundStyle(.secondary)
                             .padding(.top, 60)
                     }
@@ -145,26 +145,26 @@ private struct OfflineChatBanner: View {
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             Image(systemName: "icloud.slash")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                 if let savedAt {
                     Text("Saved \(savedAt.formatted(.relative(presentation: .named)))")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 8)
             Button("Retry") { appState.retryFromOfflineChat() }
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.conduitAccent)
             if appState.connection == nil {
                 Button("Sign In") { appState.signInFromOfflineChat() }
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .buttonStyle(.plain)
                     .foregroundStyle(Color.conduitAccent)
             }

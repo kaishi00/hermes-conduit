@@ -975,7 +975,7 @@ struct ComposerBar: View, Equatable {
                     appState.showAgentsSheet = true
                 } label: {
                     Label("\(appState.activeAgents)", systemImage: "person.2")
-                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .scaledFont(.caption.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.conduitAccent)
                         .frame(minWidth: Self.controlSize, minHeight: Self.controlSize)
                         .contentShape(Self.controlHitShape)
@@ -1033,7 +1033,7 @@ struct ComposerBar: View, Equatable {
                 Text(appState.turnState == .unsupportedGateway
                      ? AppLocalization.string("Update this Hermes gateway to recover active turns safely.")
                      : AppLocalization.string("Synchronizing with Hermes before enabling chat controls"))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
                 }
@@ -1041,7 +1041,7 @@ struct ComposerBar: View, Equatable {
 
             if let error = appState.errorMessage, !error.isEmpty {
                 Text(error)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1055,7 +1055,7 @@ struct ComposerBar: View, Equatable {
                     repairContext = appState.beginConnectionRepair()
                 } label: {
                     Label("Repair Connection", systemImage: "wrench.and.screwdriver")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 34)
                 }
@@ -1090,7 +1090,7 @@ struct ComposerBar: View, Equatable {
                         .foregroundStyle(.secondary)
                 }
                 Text(Self.chatTakeoverMessage(takeover))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
@@ -1099,7 +1099,7 @@ struct ComposerBar: View, Equatable {
                     appState.dismissChatTakeover()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
@@ -1116,7 +1116,7 @@ struct ComposerBar: View, Equatable {
                     appState.takeOverChat()
                 } label: {
                     Label("Take over this chat", systemImage: "arrow.down.to.line")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 34)
                 }
@@ -1176,7 +1176,7 @@ struct ComposerBar: View, Equatable {
             ProgressView()
                 .controlSize(.small)
             Text(AppLocalization.string("Compressing…"))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
@@ -1193,7 +1193,7 @@ struct ComposerBar: View, Equatable {
                 .controlSize(.small)
                 .accessibilityHidden(true)
             Text(AppLocalization.string("Sending…"))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
@@ -1210,7 +1210,7 @@ struct ComposerBar: View, Equatable {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
             Text(message)
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.red)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -1220,7 +1220,7 @@ struct ComposerBar: View, Equatable {
                     guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
                     UIApplication.shared.open(url)
                 }
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
             }
         }
         .padding(.horizontal, 14)
@@ -1448,7 +1448,7 @@ struct ComposerBar: View, Equatable {
                 .contentTransition(.symbolEffect(.replace))
             if let actionTitle {
                 Text(actionTitle)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
         }
@@ -1487,7 +1487,7 @@ struct ComposerBar: View, Equatable {
                         .truncationMode(.tail)
                     if appState.runtime.yolo {
                         Image(systemName: "shield.slash.fill")
-                            .font(.caption2.weight(.bold))
+                            .scaledFont(.caption2.weight(.bold))
                             .foregroundStyle(Color.orange)
                     }
                 }
@@ -1507,7 +1507,7 @@ struct ComposerBar: View, Equatable {
                     .layoutPriority(1)
             }
         }
-        .font(.footnote.weight(.semibold))
+        .scaledFont(.footnote.weight(.semibold))
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         // The rest of the chip's width still opens the sheet.
         .background {
@@ -1748,7 +1748,7 @@ struct ComposerBar: View, Equatable {
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(notice)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -1756,7 +1756,7 @@ struct ComposerBar: View, Equatable {
                 appState.dismissComposerNotice()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
@@ -1787,7 +1787,7 @@ struct ComposerBar: View, Equatable {
                     Image(systemName: "phone.arrow.up.right")
                 }
             }
-            .font(.subheadline.weight(.semibold))
+            .scaledFont(.subheadline.weight(.semibold))
             .foregroundStyle(Color.conduitAccent)
             .frame(width: Self.controlSize, height: Self.controlSize)
             .contentShape(Self.controlHitShape)
@@ -2200,16 +2200,16 @@ struct ComposerBar: View, Equatable {
     private func replyReferenceChip(_ reference: ComposerReplyReference) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "quote.bubble")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(AppLocalization.string("Replying to \(reference.authorName)"))
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Text(reference.excerpt)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -2223,7 +2223,7 @@ struct ComposerBar: View, Equatable {
                 }
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.body)
+                    .scaledFont(.body)
                     .foregroundStyle(.secondary)
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
@@ -2783,13 +2783,13 @@ private struct SlashSuggestionsOverlay: View {
                                 Text(cmd.name)
                                     .foregroundStyle(.primary)
                             }
-                            .font(.system(.subheadline, design: .monospaced).weight(.semibold))
+                            .scaledFont(.subheadline.monospaced().weight(.semibold))
                             .frame(minWidth: 90, alignment: .leading)
 
                             // Description
                             if !cmd.description.isEmpty {
                                 Text(cmd.description)
-                                    .font(.caption)
+                                    .scaledFont(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }

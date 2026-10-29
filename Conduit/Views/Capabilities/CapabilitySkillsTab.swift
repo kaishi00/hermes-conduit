@@ -133,7 +133,7 @@ struct CapabilitySkillsTab: View {
                 ProgressView().controlSize(.small)
             } else {
                 Image(systemName: "ellipsis.circle")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
         }
@@ -246,7 +246,7 @@ private struct OfficialSkillRow: View {
             }
             if case .failed(let reason) = state {
                 Text(verbatim: reason)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
                     .padding(.leading, 41)
                     .padding(.bottom, 8)
@@ -303,7 +303,7 @@ struct CapabilitySkillDetailPage: View {
                         set: { enabled in Task { await appState.toggleSkill(name: skill.name, enabled: enabled) } }
                     )) {
                         Text("Turned on")
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                     }
                     .tint(.conduitAccent)
                 }
@@ -312,7 +312,7 @@ struct CapabilitySkillDetailPage: View {
                 CapabilitySkillDocument(document: document, error: loadError)
             }
             Text("Changes apply to new sessions.")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
         }
@@ -374,7 +374,7 @@ struct OfficialSkillDetailPage: View {
                     EmptyView()
                 } else if installed {
                     Label(AppLocalization.string("Installed"), systemImage: "checkmark.circle.fill")
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.green)
                 } else {
                     Button {
@@ -399,7 +399,7 @@ struct OfficialSkillDetailPage: View {
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
                     if case .failed(let reason) = state {
                         Text(verbatim: reason)
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.red)
                     }
                 }
@@ -439,14 +439,14 @@ private struct CapabilitySkillHeader<Control: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(verbatim: title)
-                .font(.title3.weight(.semibold))
+                .scaledFont(.title3.weight(.semibold))
             if let description, !description.isEmpty {
                 Text(verbatim: description)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
             } else {
                 Text("No description.")
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
             }
             HStack(spacing: 6) {
@@ -455,7 +455,7 @@ private struct CapabilitySkillHeader<Control: View>: View {
                 }
                 if let usage, usage > 0 {
                     Text(verbatim: CapabilityFormat.uses(usage))
-                        .font(.caption.monospacedDigit())
+                        .scaledFont(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
@@ -480,7 +480,7 @@ private struct CapabilitySkillDocument: View {
     var body: some View {
         if let error {
             Text(verbatim: error)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
         } else if let document {
@@ -494,7 +494,7 @@ private struct CapabilitySkillDocument: View {
             if !document.body.isEmpty {
                 ConduitSettingsSection(title: AppLocalization.string("Instructions"), symbol: "doc.text", tint: .conduitAccent) {
                     Text(verbatim: document.body)
-                        .font(.caption.monospaced())
+                        .scaledFont(.caption.monospaced())
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }

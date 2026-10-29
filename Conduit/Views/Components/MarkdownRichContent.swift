@@ -578,7 +578,7 @@ struct RichBudgetedMarkdownBody: View {
                 "Continue reading (\(Int(remainingBlocks)) sections left)",
                 systemImage: "chevron.down"
             )
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
         }
         .tint(usesAccentSurface ? .white : .conduitAccent)
         .frame(maxWidth: .infinity, alignment: .leading)

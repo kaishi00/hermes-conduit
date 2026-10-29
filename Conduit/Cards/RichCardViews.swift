@@ -98,7 +98,7 @@ struct RichMapCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 if let title = card.title {
                     Text(verbatim: title)
-                        .font(.headline)
+                        .scaledFont(.headline)
                 }
                 if let route, let destination = card.route {
                     RichRouteSummary(route: route, mode: destination.mode)
@@ -169,7 +169,7 @@ struct RichMapPicture: View {
                         .transition(.opacity)
                 } else if (looked && coordinates.isEmpty) || failed {
                     Image(systemName: "map")
-                        .font(.title)
+                        .scaledFont(.title)
                         .foregroundStyle(.conduitTertiary)
                 } else {
                     ProgressView()
@@ -223,7 +223,7 @@ private struct RichRouteSummary: View {
             Text(verbatim: RichTravel.distance(route.distance))
                 .foregroundStyle(.secondary)
         }
-        .font(.subheadline)
+        .scaledFont(.subheadline)
         .foregroundStyle(Color.conduitAccent)
         .accessibilityElement(children: .combine)
     }
@@ -244,11 +244,11 @@ private struct RichPlaceRow: View {
                 Circle().fill(Color.conduitUserBubble)
                 if let number {
                     Text(verbatim: "\(number)")
-                        .font(.caption.weight(.bold))
+                        .scaledFont(.caption.weight(.bold))
                         .foregroundStyle(.white)
                 } else {
                     Image(systemName: match?.symbol ?? "mappin")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.white)
                 }
             }
@@ -256,7 +256,7 @@ private struct RichPlaceRow: View {
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: match?.name ?? place.name)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                 RichPlaceWhere(match: match, looked: looked)
                 RichPlaceFacts(place: place)
                 if let note = place.note {
@@ -291,13 +291,13 @@ struct RichPlaceCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 if let title, title != place.name {
                     Text(verbatim: title)
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .textCase(.uppercase)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: match?.name ?? place.name)
-                        .font(.title3.weight(.semibold))
+                        .scaledFont(.title3.weight(.semibold))
                     RichPlaceWhere(match: match, looked: looked)
                 }
                 RichPlaceFacts(place: place)
@@ -307,7 +307,7 @@ struct RichPlaceCard: View {
                     } icon: {
                         Image(systemName: RichTravel.symbol(mode))
                     }
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.conduitAccent)
                 }
                 if let note = place.note {
@@ -392,7 +392,7 @@ private struct RichPhotoHeader: View {
                 openURL(sourceURL)
             } label: {
                 Text(verbatim: photo.source)
-                    .font(.caption2.weight(.semibold))
+                    .scaledFont(.caption2.weight(.semibold))
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(.ultraThinMaterial, in: Capsule())
@@ -419,7 +419,7 @@ private struct RichPlaceWhere: View {
                 } icon: {
                     Image(systemName: match.symbol)
                 }
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
                 .labelStyle(RichCompactLabelStyle())
             }
@@ -431,7 +431,7 @@ private struct RichPlaceWhere: View {
                     Text("Location from Hermes")
                 }
             }
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
         }
     }
@@ -468,13 +468,13 @@ private struct RichRatingLine: View {
                     Image(systemName: Self.symbol(star: star, value: rating.value))
                 }
             }
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.orange)
             Text(verbatim: rating.value.formatted(.number.precision(.fractionLength(1)).locale(AppLocalization.formattingLocale)))
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             if let count = rating.count {
                 Text(verbatim: "(\(count.formatted(.number.locale(AppLocalization.formattingLocale))))")
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
             }
             RichSource(name: rating.source, url: rating.url)
@@ -499,11 +499,11 @@ private struct RichSourcedLine: View {
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: symbol)
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(verbatim: fact.text)
-                .font(.subheadline)
+                .scaledFont(.subheadline)
             RichSource(name: fact.source, url: fact.url)
         }
         .accessibilityElement(children: .combine)
@@ -576,7 +576,7 @@ private struct RichSource: View {
                 Text(verbatim: name)
             }
         }
-        .font(.caption)
+        .scaledFont(.caption)
         .foregroundStyle(.secondary)
     }
 }
@@ -588,11 +588,11 @@ private struct RichHermesNote: View {
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: "text.bubble")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(Color.conduitAccent)
                 .accessibilityHidden(true)
             Text(verbatim: note)
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .italic()
                 .foregroundStyle(.secondary)
         }
@@ -641,7 +641,7 @@ private struct RichPlaceActions: View {
                 .accessibilityLabel(Text("Website"))
             }
         }
-        .font(.subheadline.weight(.semibold))
+        .scaledFont(.subheadline.weight(.semibold))
         .controlSize(.regular)
     }
 }
@@ -657,7 +657,7 @@ private struct RichAppleMapsMark: View {
             } icon: {
                 Image(systemName: "map.fill")
             }
-            .font(.caption2)
+            .scaledFont(.caption2)
             .foregroundStyle(.conduitTertiary)
             .labelStyle(RichCompactLabelStyle())
         }
@@ -684,7 +684,7 @@ struct RichPlacesCarousel: View {
         VStack(alignment: .leading, spacing: 8) {
             if let title = card.title {
                 Text(verbatim: title)
-                    .font(.headline)
+                    .scaledFont(.headline)
                     .padding(.horizontal, 4)
             }
             ScrollView(.horizontal, showsIndicators: false) {
@@ -742,7 +742,7 @@ private struct RichPlaceTile: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(verbatim: match?.name ?? place.name)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 RichPlaceWhere(match: match, looked: looked)
                     .lineLimit(1)
@@ -752,7 +752,7 @@ private struct RichPlaceTile: View {
                 }
                 if let note = place.note {
                     Text(verbatim: note)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .italic()
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -885,7 +885,7 @@ struct RichMapScreen: View {
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text(verbatim: selected.match.name)
-                    .font(.headline)
+                    .scaledFont(.headline)
                 RichPlaceWhere(match: selected.match, looked: true)
             }
             RichPlaceFacts(place: selected.place)

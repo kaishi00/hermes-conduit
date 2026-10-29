@@ -61,7 +61,7 @@ struct BotEditorSheet: View {
                 if let error, !error.isEmpty {
                     Section {
                         Text(error)
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.red)
                     }
                 }
@@ -212,10 +212,10 @@ struct BotEditorSheet: View {
                     .buttonStyle(.bordered)
                 }
             }
-            .font(.subheadline)
+            .scaledFont(.subheadline)
             if canGeneratePictures == false {
                 Text(AppLocalization.string("Set up image generation in Hermes to generate pictures."))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -361,7 +361,7 @@ struct BotEditorSheet: View {
             if isCreating || detailsState == .loaded {
                 TextEditor(text: $draft.soul)
                     .frame(minHeight: 160)
-                    .font(.callout.monospaced())
+                    .scaledFont(.callout.monospaced())
             } else if detailsState == .failed {
                 Text(AppLocalization.string("Could not load this bot's personality."))
                     .foregroundStyle(.secondary)
@@ -395,7 +395,7 @@ struct BotEditorSheet: View {
                             .foregroundStyle(.primary)
                         Spacer()
                         Image(systemName: "chevron.right")
-                            .font(.footnote.weight(.semibold))
+                            .scaledFont(.footnote.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .rotationEffect(.degrees(showsAdvanced ? 90 : 0))
                             .accessibilityHidden(true)
@@ -441,7 +441,7 @@ struct BotEditorSheet: View {
             Text(draft.noSkills
                 ? AppLocalization.string("A fresh profile starts with Hermes' default tools. Edit the bot afterwards to change them.")
                 : AppLocalization.string("A fresh profile starts with Hermes' bundled skills and default tools. Edit the bot afterwards to change them."))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         } else if draft.capabilities != nil {
             NavigationLink {

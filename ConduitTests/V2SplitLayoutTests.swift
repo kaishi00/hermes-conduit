@@ -266,6 +266,41 @@ extension SidebarLayoutTests {
         XCTAssertEqual(accessible.base, .accessibility2)
     }
 
+    func testMacColumnsSetTextStylesInPoints() {
+        // Where the system grows text styles, nothing is set in points.
+        let iOS = ReadableWidth.columnText(column: ReadableWidth.chatMax, base: ReadableWidth.chat, scalesChatText: true, size: .large, systemGrowsTextStyles: true)
+        XCTAssertNil(iOS.pointSized)
+        // A Mac draws every size alike: a stepped column sets its size.
+        let mac = ReadableWidth.columnText(column: ReadableWidth.settingsMax, base: ReadableWidth.settings, scalesChatText: false, size: .large, systemGrowsTextStyles: false)
+        XCTAssertEqual(mac.pointSized, .xxxLarge)
+        // A column that doesn't step, or a fixed one, sets nothing.
+        let narrow = ReadableWidth.columnText(column: ReadableWidth.chat, base: ReadableWidth.chat, scalesChatText: true, size: .large, systemGrowsTextStyles: false)
+        XCTAssertNil(narrow.pointSized)
+        let fixed = ReadableWidth.columnText(column: 2000, base: nil, scalesChatText: false, size: .large, systemGrowsTextStyles: false)
+        XCTAssertNil(fixed.pointSized)
+
+        XCTAssertTrue(ScaledFont.systemGrowsTextStyles(drawn: ChatTypography.standardBodySizes))
+        XCTAssertFalse(ScaledFont.systemGrowsTextStyles(drawn: Array(repeating: 17, count: 7)))
+    }
+
+    func testScaledFontIsTheTextStyleUnlessPointSized() {
+        XCTAssertEqual(ScaledFont.caption.font(), Font.caption)
+        XCTAssertEqual(ScaledFont.subheadline.weight(.semibold).font(), Font.subheadline.weight(.semibold))
+        XCTAssertEqual(ScaledFont.footnote.monospaced().font(), Font.footnote.monospaced())
+        XCTAssertEqual(ScaledFont.caption2.monospacedDigit().font(), Font.caption2.monospacedDigit())
+
+        XCTAssertEqual(ScaledFont.points(.body, at: .xxxLarge), 23)
+        XCTAssertEqual(ScaledFont.points(.caption, at: .xLarge), 14)
+        XCTAssertEqual(ScaledFont.points(.title2, at: .large), 22)
+        XCTAssertNil(ScaledFont.points(.body, at: .accessibility1))
+        XCTAssertEqual(ScaledFont.caption.font(pointSizedAt: .xxxLarge), Font.system(size: 18, weight: .regular, design: .default))
+        XCTAssertEqual(ScaledFont.headline.font(pointSizedAt: .xLarge), Font.system(size: 19, weight: .semibold, design: .default))
+        // Every text style has iOS's seven standard sizes.
+        for (style, points) in ScaledFont.standardPoints {
+            XCTAssertEqual(points.count, ChatTypography.standardDynamicTypeSizes.count, "\(style)")
+        }
+    }
+
     func testWideColumnStepsScaleTranscriptFonts() {
         let traits = UITraitCollection(preferredContentSizeCategory: .large)
         let base = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits)

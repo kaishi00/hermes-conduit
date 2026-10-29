@@ -98,7 +98,7 @@ struct V2StatusGlyph: View {
                     .tint(Color.conduitAccent)
             } else if let symbol = status.symbol {
                 Image(systemName: symbol)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .conduitFixedGlyph()
                     .foregroundStyle(status.color)
             }
@@ -116,7 +116,7 @@ struct V2SessionIcon: View {
 
     var body: some View {
         Image(systemName: symbol)
-            .font(.callout.weight(.semibold))
+            .scaledFont(.callout.weight(.semibold))
             .conduitFixedGlyph()
             .foregroundStyle(tint)
             .frame(width: 38, height: 38)
@@ -207,18 +207,18 @@ struct V2SessionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(title)
-                        .font(.callout.weight(.semibold))
+                        .scaledFont(.callout.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     Spacer(minLength: 4)
                     if isStarred {
                         Image(systemName: "star.fill")
-                            .font(.caption2)
+                            .scaledFont(.caption2)
                             .foregroundStyle(Color.conduitAccent)
                             .accessibilityHidden(true)
                     }
                     Text(time)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(Color.primary.opacity(0.45))
                         .lineLimit(1)
                         .layoutPriority(1)
@@ -228,13 +228,13 @@ struct V2SessionRow: View {
                         V2StatusGlyph(status: status)
                     }
                     Text(preview)
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.5))
                         .lineLimit(1)
                     Spacer(minLength: 4)
                     if !leadingGlyph, let word = status.actionWord {
                         Text(word)
-                            .font(.footnote.weight(.semibold))
+                            .scaledFont(.footnote.weight(.semibold))
                             .foregroundStyle(status.color)
                             .lineLimit(1)
                             .layoutPriority(1)
@@ -335,25 +335,25 @@ struct V2ContentMatchRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(title)
-                        .font(.callout.weight(.semibold))
+                        .scaledFont(.callout.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     Spacer(minLength: 4)
                     if isStarred {
                         Image(systemName: "star.fill")
-                            .font(.caption2)
+                            .scaledFont(.caption2)
                             .foregroundStyle(Color.conduitAccent)
                             .accessibilityHidden(true)
                     }
                     Text(time)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(Color.primary.opacity(0.45))
                         .lineLimit(1)
                         .layoutPriority(1)
                 }
                 if !snippet.runs.isEmpty {
                     Text(snippet.attributed())
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
                 }

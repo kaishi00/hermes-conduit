@@ -87,7 +87,7 @@ struct CapabilityToolsTab: View {
                 ProgressView().controlSize(.small)
             } else {
                 Image(systemName: "ellipsis.circle")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
         }
@@ -231,7 +231,7 @@ struct CapabilityToolsetDetailPage: View {
             }
             if appState.capabilitiesAreCurrent, let notice {
                 Text(verbatim: notice)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
                     .padding(.horizontal, 16)
             }
@@ -247,12 +247,12 @@ struct CapabilityToolsetDetailPage: View {
                 }
             } else if appState.capabilitiesAreCurrent, let configError {
                 Text(verbatim: configError)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
             }
             Text("Changes apply to new sessions.")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
         }
@@ -301,7 +301,7 @@ struct CapabilityToolsetDetailPage: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Text(verbatim: CapabilityToolsetOrdering.label(toolset))
-                    .font(.title3.weight(.semibold))
+                    .scaledFont(.title3.weight(.semibold))
                 if toolset.configured == false {
                     let pill = CapabilityToolsetStyle.needsKeysPill()
                     CapabilityPill(text: pill.text, tint: pill.tint)
@@ -309,14 +309,14 @@ struct CapabilityToolsetDetailPage: View {
             }
             if let description = toolset.description, !description.isEmpty {
                 Text(verbatim: description)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
             }
             if let counts = store.toolCalls {
                 let calls = CapabilityToolsetOrdering.calls(toolset, counts: counts)
                 if calls > 0 {
                     Text(verbatim: CapabilityFormat.uses(calls))
-                        .font(.caption.monospacedDigit())
+                        .scaledFont(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
@@ -325,7 +325,7 @@ struct CapabilityToolsetDetailPage: View {
                 set: { enabled in Task { await appState.toggleToolset(name: toolset.name, enabled: enabled) } }
             )) {
                 Text("Turned on")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
             }
             .tint(.conduitAccent)
         }
@@ -337,10 +337,10 @@ struct CapabilityToolsetDetailPage: View {
     private func toolChip(_ tool: String) -> some View {
         HStack(spacing: 4) {
             Text(verbatim: tool)
-                .font(.caption.monospaced())
+                .scaledFont(.caption.monospaced())
             if let count = store.toolCalls?[tool], count > 0 {
                 Text(verbatim: CapabilityFormat.uses(count))
-                    .font(.caption2.monospacedDigit())
+                    .scaledFont(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
         }
@@ -367,17 +367,17 @@ struct CapabilityToolsetDetailPage: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack(spacing: 6) {
                                     Text(verbatim: backend.label)
-                                        .font(.subheadline.weight(.semibold))
+                                        .scaledFont(.subheadline.weight(.semibold))
                                     Self.backendPill(backend.status)
                                 }
                                 if !backend.description.isEmpty {
                                     Text(verbatim: backend.description)
-                                        .font(.caption)
+                                        .scaledFont(.caption)
                                         .foregroundStyle(.secondary)
                                 }
                                 if let detail = backend.detail, backend.status != "ready" {
                                     Text(verbatim: detail)
-                                        .font(.caption)
+                                        .scaledFont(.caption)
                                         .foregroundStyle(.orange)
                                 }
                             }
@@ -386,7 +386,7 @@ struct CapabilityToolsetDetailPage: View {
                                 ProgressView().controlSize(.small)
                             } else if backend.active {
                                 Image(systemName: "checkmark")
-                                    .font(.subheadline.weight(.semibold))
+                                    .scaledFont(.subheadline.weight(.semibold))
                                     .foregroundStyle(Color.conduitAccent)
                             }
                         }
@@ -400,7 +400,7 @@ struct CapabilityToolsetDetailPage: View {
             }
         } else if let backendsError {
             Text(verbatim: backendsError)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
         }
@@ -434,7 +434,7 @@ struct CapabilityToolsetDetailPage: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Text(verbatim: provider.name)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                 if !provider.badge.isEmpty {
                     CapabilityPill(text: provider.badge, tint: .conduitAura)
                 }
@@ -448,24 +448,24 @@ struct CapabilityToolsetDetailPage: View {
             }
             if !provider.tag.isEmpty {
                 Text(verbatim: provider.tag)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             ForEach(provider.envVars) { env in
                 HStack(spacing: 8) {
                     Text(verbatim: env.key)
-                        .font(.caption.monospaced())
+                        .scaledFont(.caption.monospaced())
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer(minLength: 4)
                     Text(verbatim: env.isSet ? AppLocalization.string("Set") : AppLocalization.string("Not set"))
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(env.isSet ? Color.green : Color.orange)
                     Button(env.isSet ? AppLocalization.string("Replace") : AppLocalization.string("Add")) {
                         keyValue = ""
                         keyPrompt = env
                     }
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .buttonStyle(.borderless)
                     .tint(.conduitAccent)
                     .accessibilityLabel(Text(verbatim: env.isSet ? AppLocalization.string("Replace \(env.key)") : AppLocalization.string("Add \(env.key)")))
@@ -487,7 +487,7 @@ struct CapabilityToolsetDetailPage: View {
                             capability == "extract" ? AppLocalization.string("Used for Extract") : AppLocalization.string("Used for Search"),
                             systemImage: "checkmark"
                         )
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(Color.conduitAccent)
                     } else {
                         CapabilityRowButton(
@@ -501,7 +501,7 @@ struct CapabilityToolsetDetailPage: View {
             }
         } else if provider.isActive {
             Label(AppLocalization.string("In use"), systemImage: "checkmark")
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
         } else {
             CapabilityRowButton(title: AppLocalization.string("Use This Backend")) {

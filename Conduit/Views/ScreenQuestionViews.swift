@@ -20,7 +20,7 @@ struct ScreenQuestionVoiceBanner: View {
         if let screenshot {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Asking about this screenshot")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 HStack(spacing: 8) {
                     ComposerAttachmentChip(attachment: screenshot, canRemove: true, onRemove: onDiscard)
@@ -58,7 +58,7 @@ struct ScreenshotNewChatButton: View {
             action()
         } label: {
             Label("New Chat", systemImage: "square.and.pencil")
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
@@ -89,7 +89,7 @@ struct ScreenQuestionHowItWorksSection: View {
                 Label("It joins the chat you used in the last 5 minutes, or a new chat. Tap New Chat beside the screenshot to move it to a fresh one.", systemImage: "square.and.pencil")
                 Label("To always use a new chat, open the shortcut in Shortcuts, tap Show More, and set Chat to New Chat.", systemImage: "slider.horizontal.3")
             }
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
         }
     }
@@ -113,7 +113,7 @@ struct ScreenQuestionSettingsSection: View {
             tint: .conduitAccent
         ) {
             Text("Press the Action Button in any app and Conduit opens with a screenshot of it, ready for your question.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             addShortcutStep
             actionButtonStep
@@ -146,7 +146,7 @@ struct ScreenQuestionSettingsSection: View {
             .disabled(isOpeningShortcut)
             .accessibilityIdentifier("voice.screenQuestionAddShortcut")
             Text("Opens Shortcuts. Tap Add Shortcut there.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -154,10 +154,10 @@ struct ScreenQuestionSettingsSection: View {
     private var actionButtonStep: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Put it on the Action Button")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
             Text("Open Settings, then Action Button. Swipe to Shortcut and choose Ask Hermes About Screen. The Action Button is on iPhone 15 Pro and later.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -165,14 +165,14 @@ struct ScreenQuestionSettingsSection: View {
     private var otherWaysStep: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Other ways to run it")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
             Label("Siri: say “Ask Hermes About Screen”.", systemImage: "mic")
             Label("Back Tap: Settings, Accessibility, Touch, Back Tap.", systemImage: "hand.tap")
             Label("Control Center: add a Shortcut control and pick it.", systemImage: "switch.2")
             Label("Home Screen: in Shortcuts, touch and hold it, then Share, Add to Home Screen.", systemImage: "apps.iphone")
         }
-        .font(.caption)
+        .scaledFont(.caption)
         .foregroundStyle(.secondary)
     }
 
@@ -184,12 +184,12 @@ struct ScreenQuestionSettingsSection: View {
                 Text("Last used")
                 Text(lastUsed, format: .relative(presentation: .named))
             }
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
             .accessibilityElement(children: .combine)
         } else {
             Text("Not run yet. Once it runs, it shows here.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }

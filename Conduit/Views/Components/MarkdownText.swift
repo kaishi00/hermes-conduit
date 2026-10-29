@@ -1427,7 +1427,7 @@ private struct MarkdownCallout: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(detail.title, systemImage: detail.icon)
-                .font(.caption.weight(.bold))
+                .scaledFont(.caption.weight(.bold))
                 .foregroundStyle(detail.color)
             InlineMarkdown(
                 source: text,
@@ -2059,7 +2059,7 @@ struct LargeMarkdownTable: View {
                     Label(AppLocalization.string("Show \(min(Self.rowBatch, rows.count - renderedRowCount)) more rows")
                         + " " + AppLocalization.string("(\(String(rows.count - renderedRowCount)) of \(String(rows.count)) left)"),
                         systemImage: "chevron.down")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                 }
                 .tint(usesAccentSurface ? .white : .conduitAccent)
                 .padding(.vertical, 8)
@@ -2085,11 +2085,11 @@ struct GuardedSourceCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Label(title, systemImage: icon)
-                    .font(.caption2.monospaced().weight(.semibold))
+                    .scaledFont(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("Too large to render")
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
             }
             SelectableTextView(
@@ -2109,7 +2109,7 @@ struct GuardedSourceCard: View {
                 }
             } label: {
                 Label(copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy full source"), systemImage: copied ? "checkmark" : "doc.on.doc")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
             }
             .tint(.conduitAccent)
         }
@@ -2425,7 +2425,7 @@ private struct RemoteMarkdownImage: View {
                 .accessibilityLabel(alt.isEmpty ? Text("Image") : Text(verbatim: alt))
         } else if gatewayLoadFailed {
             Label(alt.isEmpty ? AppLocalization.string("Image unavailable") : AppLocalization.string("\(alt) unavailable"), systemImage: "photo.badge.exclamationmark")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(12)
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
@@ -2443,7 +2443,7 @@ private struct RemoteMarkdownImage: View {
         let label = HStack(spacing: 8) {
             ProgressView()
             Text(alt.isEmpty ? AppLocalization.string("Loading image…") : alt)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
         if let size = reservedSize, arrival.holds(rowHeight(showing: size)) {
@@ -2523,17 +2523,17 @@ private struct GatewayMediaFileCard: View {
     private var fileCard: some View {
         HStack(spacing: 12) {
             Image(systemName: failed ? "exclamationmark.triangle.fill" : kind.systemImage)
-                .font(.title2)
+                .scaledFont(.title2)
                 .foregroundStyle(failed ? Color.secondary : Color.conduitAccent)
                 .frame(width: 44, height: 44)
                 .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: displayName)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(verbatim: failed ? failureLabel : kind.label)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
@@ -2541,7 +2541,7 @@ private struct GatewayMediaFileCard: View {
                 ProgressView()
             } else {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
         }
@@ -2883,7 +2883,7 @@ private struct WebFallbackImage: View {
                     WebFallbackImageLabel.title(alt: alt, destinationAvailable: true),
                     systemImage: "photo.badge.exclamationmark"
                 )
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
             }
                 .tint(.conduitAccent)
         } else {
@@ -2891,7 +2891,7 @@ private struct WebFallbackImage: View {
                 WebFallbackImageLabel.title(alt: alt, destinationAvailable: false),
                 systemImage: "photo.badge.exclamationmark"
             )
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
     }
@@ -2985,7 +2985,7 @@ struct ChatCodeBlock: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(normalizedLanguage == "plain" ? AppLocalization.string("Code") : normalizedLanguage)
-                    .font(.caption2.monospaced().weight(.semibold))
+                    .scaledFont(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.86) : .secondary)
                 Spacer()
                 Button {
@@ -2994,7 +2994,7 @@ struct ChatCodeBlock: View {
                     copied = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { copied = false }
                 } label: {
-                    Label(copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy"), systemImage: copied ? "checkmark" : "doc.on.doc").font(.caption2.weight(.semibold))
+                    Label(copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy"), systemImage: copied ? "checkmark" : "doc.on.doc").scaledFont(.caption2.weight(.semibold))
                 }
                 .tint(usesAccentSurface ? .white : .conduitAccent)
             }

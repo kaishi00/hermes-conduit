@@ -21,7 +21,7 @@ struct V2AllProfilesSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         Text(AppLocalization.string("All lists these profiles' chats together, newest first. A new chat asks which profile to use."))
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 4)
 
@@ -43,7 +43,7 @@ struct V2AllProfilesSheet: View {
                             }
                         )) {
                             Label(AppLocalization.string("Group by profile"), systemImage: "rectangle.stack")
-                                .font(.body)
+                                .scaledFont(.body)
                         }
                         .tint(.conduitAccent)
                         .padding(.horizontal, 14)
@@ -81,7 +81,7 @@ struct V2AllProfilesSheet: View {
                     size: 30
                 )
                 Text(name)
-                    .font(.body)
+                    .scaledFont(.body)
                     .lineLimit(1)
             }
         }

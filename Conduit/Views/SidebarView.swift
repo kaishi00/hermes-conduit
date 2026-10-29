@@ -42,7 +42,7 @@ struct SidebarView: View {
                                 .lineLimit(1)
                         }
                     }
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 40)
                     .foregroundStyle(selectedTab == tab ? .primary : .secondary)
@@ -83,14 +83,14 @@ struct SidebarView: View {
                                     )
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text("Workspace")
-                                            .font(.caption2)
+                                            .scaledFont(.caption2)
                                             .foregroundStyle(.secondary)
                                         Text(appState.profileDisplayName(appState.activeProfile))
-                                            .font(.subheadline.weight(.semibold))
+                                            .scaledFont(.subheadline.weight(.semibold))
                                             .lineLimit(2)
                                     }
                                     Image(systemName: "chevron.up.chevron.down")
-                                        .font(.caption2.weight(.semibold))
+                                        .scaledFont(.caption2.weight(.semibold))
                                         .foregroundStyle(.secondary)
                                 }
                                 .padding(.horizontal, 12)
@@ -245,7 +245,7 @@ struct SessionList: View {
                         Image(systemName: "plus.circle.fill")
                             .font(.system(size: 16, weight: .semibold))
                         Text("New Chat")
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                             .lineLimit(2)
                     }
                     .foregroundStyle(Color.conduitBackgroundColor)
@@ -270,7 +270,7 @@ struct SessionList: View {
                         }
                     } label: {
                         Image(systemName: "waveform")
-                            .font(.title3.weight(.semibold))
+                            .scaledFont(.title3.weight(.semibold))
                             .conduitFixedGlyph()
                             .frame(width: 44, height: 44)
                     }
@@ -786,9 +786,9 @@ struct SessionList: View {
                     Text(AppLocalization.string("Status"))
                 }
                 Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
             }
-            .font(.caption.weight(.semibold))
+            .scaledFont(.caption.weight(.semibold))
             .foregroundStyle(selected == nil ? Color.secondary : Color.conduitBackgroundColor)
             .padding(.horizontal, 11).padding(.vertical, 7)
             .background(selected?.color ?? Color.primary.opacity(0.07), in: Capsule())
@@ -806,7 +806,7 @@ struct SessionList: View {
         Button { withAnimation(ConduitMotion.response) { Haptics.selection()
                 setSelectedSource(source) } } label: {
             Text("\(title) \(String(count))")
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(selectedSource == source ? Color.conduitBackgroundColor : .secondary)
                 .padding(.horizontal, 11).padding(.vertical, 7)
                 .background(selectedSource == source ? Color.conduitAccent : Color.primary.opacity(0.07), in: Capsule())
@@ -1049,7 +1049,7 @@ struct SessionList: View {
                 // The count keeps its slot while expanded, so the chevron
                 // doesn't jump sideways on the toggle.
                 Text(String(node.descendantCount))
-                    .font(.caption2.weight(.semibold))
+                    .scaledFont(.caption2.weight(.semibold))
                     .dynamicTypeSize(...DynamicTypeSize.listRowCap)
                     .foregroundStyle(Color.conduitAccent)
                     .padding(.horizontal, 6)
@@ -1057,7 +1057,7 @@ struct SessionList: View {
                     .background(Color.conduitAccent.opacity(0.15), in: Capsule())
                     .opacity(isExpanded ? 0 : 1)
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
+                    .scaledFont(.caption.weight(.bold))
                     .conduitFixedGlyph()
                     .foregroundStyle(Color.secondary.opacity(0.6))
                     .rotationEffect(.degrees(isExpanded ? 90 : 0))
@@ -1151,7 +1151,7 @@ struct ArchivedSessionsSheet: View {
                                         }
                                     } label: {
                                         Image(systemName: "arrow.uturn.backward")
-                                            .font(.caption.weight(.bold))
+                                            .scaledFont(.caption.weight(.bold))
                                             .frame(width: 34, height: 34)
                                     }
                                     .buttonStyle(.plain)
@@ -1163,7 +1163,7 @@ struct ArchivedSessionsSheet: View {
                                         sessionPendingDeletion = session
                                     } label: {
                                         Image(systemName: "trash")
-                                            .font(.caption.weight(.bold))
+                                            .scaledFont(.caption.weight(.bold))
                                             .frame(width: 34, height: 34)
                                     }
                                     .buttonStyle(.plain)
@@ -1244,7 +1244,7 @@ struct SessionRow: View {
     var body: some View {
         HStack(spacing: 11) {
             Image(systemName: icon.iconName)
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .conduitFixedGlyph()
                 .foregroundStyle(icon.color)
                 .frame(width: 30, height: 30)
@@ -1252,7 +1252,7 @@ struct SessionRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.title)
-                    .font(.subheadline.weight(isUnread ? .semibold : .medium))
+                    .scaledFont(.subheadline.weight(isUnread ? .semibold : .medium))
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                 // Stacked at large text so the model doesn't truncate the time.
                 Group {
@@ -1268,7 +1268,7 @@ struct SessionRow: View {
                         }
                     }
                 }
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             }
 
@@ -1276,7 +1276,7 @@ struct SessionRow: View {
             switch liveStatus {
             case .needsInput?:
                 Image(systemName: "exclamationmark.bubble.fill")
-                    .font(.caption.weight(.bold))
+                    .scaledFont(.caption.weight(.bold))
                     .foregroundStyle(SessionStatusFilter.needsInput.color)
                     .accessibilityLabel(SessionStatusFilter.needsInput.title)
             case .working?:
@@ -1295,18 +1295,18 @@ struct SessionRow: View {
             }
             if isVoiceJob, icon != .voiceJob {
                 Image(systemName: "waveform")
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
                     .foregroundStyle(Color.conduitAura)
                     .accessibilityLabel("Started from voice")
             }
             if isPinned {
                 Image(systemName: "pin.fill")
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
                     .foregroundStyle(.conduitAccent)
             }
             if showsDisclosureIndicator {
                 Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
                     .foregroundStyle(isSelected ? Color.conduitAccent : Color.secondary.opacity(0.45))
             }
         }
@@ -1573,7 +1573,7 @@ private struct ProjectRow: View {
     var body: some View {
         HStack(spacing: 11) {
             Image(systemName: project.isHome ? "house.fill" : "folder.fill")
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .conduitFixedGlyph()
                 .foregroundStyle(project.isHome ? Color.conduitAccent : .orange)
                 .frame(width: 30, height: 30)
@@ -1589,16 +1589,16 @@ private struct ProjectRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(project.title)
-                    .font(.subheadline.weight(.medium))
+                    .scaledFont(.subheadline.weight(.medium))
                     .lineLimit(1)
                 Text("\(project.sessionCount) conversations")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")
-                .font(.caption2.weight(.bold))
+                .scaledFont(.caption2.weight(.bold))
                 .foregroundStyle(Color.secondary.opacity(0.45))
         }
         .padding(.horizontal, 12)
@@ -1919,7 +1919,7 @@ private struct ProjectFolderPickerSheet: View {
                 List {
                     Section {
                         Text(currentPath)
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
@@ -2003,13 +2003,13 @@ struct CronList: View {
         List {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Scheduled jobs").font(.headline)
+                    Text("Scheduled jobs").scaledFont(.headline)
                     if appState.cronJobs.isEmpty {
-                        Text("\(appState.cronJobs.count) configured").font(.caption).foregroundStyle(.secondary)
+                        Text("\(appState.cronJobs.count) configured").scaledFont(.caption).foregroundStyle(.secondary)
                     } else {
                         // Two counts, so two plurals: each agrees with its own number.
                         Text(verbatim: AppLocalization.string("\(activeJobCount) active") + " · " + AppLocalization.string("\(inactiveJobCount) inactive"))
-                            .font(.caption).foregroundStyle(.secondary)
+                            .scaledFont(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Spacer()
@@ -2044,10 +2044,10 @@ struct CronList: View {
                 let shown = CronJobFilter.shownJobs(jobs, showAll: showAllJobs, isSearching: isSearching)
                 let zoneLabel = ProfileTimeZone.scheduleZoneLabel(profileSetting: appState.activeProfileTimeZoneSetting)
                 HStack {
-                    Text("Jobs").font(.headline)
+                    Text("Jobs").scaledFont(.headline)
                     Spacer()
                     Text("\(jobs.count)")
-                        .font(.subheadline.weight(.medium))
+                        .scaledFont(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
                 .listRowBackground(Color.clear)
@@ -2068,7 +2068,7 @@ struct CronList: View {
                                 : AppLocalization.string("Show \(jobs.count - shown.count) more"),
                             systemImage: showAllJobs ? "chevron.up" : "chevron.down"
                         )
-                        .font(.subheadline.weight(.medium))
+                        .scaledFont(.subheadline.weight(.medium))
                         .foregroundStyle(Color.conduitAccent)
                     }
                     .buttonStyle(.plain)
@@ -2236,19 +2236,19 @@ private struct CronJobRow: View {
                 .foregroundStyle(job.isActive ? .green : .secondary)
                 .frame(width: 30, height: 30).background((job.isActive ? Color.green : .secondary).opacity(0.13), in: Circle())
             VStack(alignment: .leading, spacing: 3) {
-                Text(job.displayName).font(.subheadline.weight(.medium)).lineLimit(1)
+                Text(job.displayName).scaledFont(.subheadline.weight(.medium)).lineLimit(1)
                 Text(CronScheduleText.describe(job, zoneLabel: zoneLabel) ?? AppLocalization.string("No schedule"))
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .scaledFont(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
             if !notifies {
                 Image(systemName: "bell.slash")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityLabel(AppLocalization.string("Notifications off"))
             }
-            Text(job.statusLabel).font(.caption2.weight(.semibold)).foregroundStyle(job.isActive ? .green : .secondary)
-            Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.conduitTertiary)
+            Text(job.statusLabel).scaledFont(.caption2.weight(.semibold)).foregroundStyle(job.isActive ? .green : .secondary)
+            Image(systemName: "chevron.right").scaledFont(.caption2.weight(.bold)).foregroundStyle(.conduitTertiary)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -2301,8 +2301,8 @@ struct CronJobDetailSheet: View {
                                     set: { notify in Task { await appState.setCronJobNotifies(notify, for: job) } }
                                 )) {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(AppLocalization.string("Notify me when it runs")).font(.subheadline.weight(.medium))
-                                        Text(AppLocalization.string("Runs that answer [SILENT] never notify.")).font(.caption).foregroundStyle(.secondary)
+                                        Text(AppLocalization.string("Notify me when it runs")).scaledFont(.subheadline.weight(.medium))
+                                        Text(AppLocalization.string("Runs that answer [SILENT] never notify.")).scaledFont(.caption).foregroundStyle(.secondary)
                                     }
                                 }
                                 .tint(.conduitAccent)
@@ -2330,14 +2330,14 @@ struct CronJobDetailSheet: View {
                             .frame(minHeight: 48)
                             .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent, prominent: true)
                         }
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         Button { editing = true } label: {
                             Label(AppLocalization.string("Edit job"), systemImage: "pencil").frame(maxWidth: .infinity)
                         }
                         .disabled(appState.cronJobActionID != nil || appState.dashboardTicketBridge == nil)
                         .frame(minHeight: 48)
                         .conduitGlassControl(cornerRadius: 16)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         Button(role: .destructive) { confirmingDelete = true } label: {
                             Label(AppLocalization.string("Delete job"), systemImage: "trash").frame(maxWidth: .infinity)
                         }
@@ -2345,15 +2345,15 @@ struct CronJobDetailSheet: View {
                         .disabled(appState.cronJobActionID != nil)
                         .frame(minHeight: 48)
                         .conduitGlassControl(cornerRadius: 16, tint: .red.opacity(0.14))
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         if let prompt = job.prompt, !prompt.isEmpty {
-                            ConduitSettingsSection(title: AppLocalization.string("Prompt"), symbol: "text.quote", tint: .conduitAura) { Text(prompt).textSelection(.enabled).font(.callout) }
+                            ConduitSettingsSection(title: AppLocalization.string("Prompt"), symbol: "text.quote", tint: .conduitAura) { Text(prompt).textSelection(.enabled).scaledFont(.callout) }
                         }
                         ConduitSettingsSection(title: AppLocalization.string("Run history"), symbol: "clock.arrow.circlepath", tint: .conduitAura) {
-                            if appState.cronRuns.isEmpty { Text("This job has not run yet.").font(.footnote).foregroundStyle(.secondary) }
+                            if appState.cronRuns.isEmpty { Text("This job has not run yet.").scaledFont(.footnote).foregroundStyle(.secondary) }
                             ForEach(appState.cronRuns) { run in
                                 Button { appState.dismissSidebarDrawer(); dismiss(); appState.requestOpenSession(run.id) } label: {
-                                    HStack { VStack(alignment: .leading) { Text(run.title ?? run.preview ?? run.id).lineLimit(1); Text(run.model ?? "Hermes").font(.caption).foregroundStyle(.secondary) }; Spacer(); Text(run.lastActive.map(String.init) ?? "").font(.caption2).foregroundStyle(.conduitTertiary) }
+                                    HStack { VStack(alignment: .leading) { Text(run.title ?? run.preview ?? run.id).lineLimit(1); Text(run.model ?? "Hermes").scaledFont(.caption).foregroundStyle(.secondary) }; Spacer(); Text(run.lastActive.map(String.init) ?? "").scaledFont(.caption2).foregroundStyle(.conduitTertiary) }
                                 }
                                 .buttonStyle(.plain)
                             }

@@ -244,7 +244,7 @@ private struct ArtifactsList: View {
                         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { filter = option }
                     } label: {
                         Text(option.title)
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                             .foregroundStyle(isOn ? Color.conduitAccent : Color.primary.opacity(0.75))
                             .padding(.horizontal, 14)
                             .frame(minHeight: 36)
@@ -266,7 +266,7 @@ private struct ArtifactsList: View {
                         showMissing.toggle()
                     } label: {
                         Label("Show Missing Files", systemImage: showMissing ? "checkmark.circle.fill" : "circle")
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                             .foregroundStyle(showMissing ? Color.conduitAccent : Color.primary.opacity(0.75))
                             .padding(.horizontal, 14)
                             .frame(minHeight: 36)
@@ -335,7 +335,7 @@ private struct ArtifactsList: View {
                         // to get past.
                         VStack(spacing: 8) {
                             Text("Files no longer on your Hermes host are hidden.")
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
                             Button("Show Missing Files") { showMissing = true }
@@ -374,7 +374,7 @@ private struct ArtifactsList: View {
     @ViewBuilder
     private func section(_ day: Date, items: [ArtifactItem]) -> some View {
         Text(Self.dayTitle(day))
-            .font(.footnote.weight(.bold))
+            .scaledFont(.footnote.weight(.bold))
             .textCase(.uppercase)
             .foregroundStyle(.secondary)
             .padding(.top, 16)
@@ -430,7 +430,7 @@ private struct ArtifactsList: View {
                     // and clear of the name along the bottom.
                     if !item.exists {
                         Label("Missing", systemImage: "exclamationmark.circle.fill")
-                            .font(.caption2.weight(.semibold))
+                            .scaledFont(.caption2.weight(.semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
@@ -456,12 +456,12 @@ private struct ArtifactsList: View {
                 ArtifactIcon(kind: item.kind)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: item.name)
-                        .font(.body.weight(.semibold))
+                        .scaledFont(.body.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Text(verbatim: detail(item))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -835,7 +835,7 @@ private struct ArtifactThumbnail: View {
             }
             if image == nil {
                 Text(verbatim: item.name)
-                    .font(.caption2.weight(.semibold))
+                    .scaledFont(.caption2.weight(.semibold))
                     .foregroundStyle(Color.primary.opacity(0.85))
                     .lineLimit(1)
                     .truncationMode(.middle)

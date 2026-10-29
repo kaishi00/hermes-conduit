@@ -44,14 +44,14 @@ struct ProfilePickerSheet: View {
                             Text(isReordering
                                  ? AppLocalization.string("Use the arrows to choose the order profiles appear throughout Conduit.")
                                  : photosFootnote)
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                             Spacer(minLength: 0)
                             Button(isReordering ? AppLocalization.string("Done") : AppLocalization.string("Reorder")) {
                                 Haptics.selection()
                                 withAnimation(ConduitMotion.response) { isReordering.toggle() }
                             }
-                            .font(.footnote.weight(.semibold))
+                            .scaledFont(.footnote.weight(.semibold))
                             .buttonStyle(.plain)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 7)
@@ -100,7 +100,7 @@ extension ProfilePickerSheet {
     private var dashboardsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Saved Dashboards")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
                 .accessibilityAddTraits(.isHeader)
@@ -182,7 +182,7 @@ private struct ProfilePickerRow: View {
             profileLine
             if !isReordering { glowLine }
             if let saveError {
-                Text(saveError).font(.caption2).foregroundStyle(.red)
+                Text(saveError).scaledFont(.caption2).foregroundStyle(.red)
             }
         }
         .padding(12)
@@ -251,7 +251,7 @@ private struct ProfilePickerRow: View {
                                 ProgressView().frame(width: 48, height: 48).background(.ultraThinMaterial, in: Circle())
                             }
                         }
-                    Image(systemName: "camera.fill").font(.caption2.weight(.bold)).foregroundStyle(Color.conduitBackgroundColor)
+                    Image(systemName: "camera.fill").scaledFont(.caption2.weight(.bold)).foregroundStyle(Color.conduitBackgroundColor)
                         .frame(width: 20, height: 20).background(Color.conduitAccent, in: Circle())
                         .overlay { Circle().strokeBorder(.background, lineWidth: 1) }
                 }
@@ -265,8 +265,8 @@ private struct ProfilePickerRow: View {
 
             Button(action: select) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(appState.profileDisplayName(profile)).font(.headline).foregroundStyle(.primary)
-                    Text(BotManagement.isDefaultProfile(profile) ? AppLocalization.string("Primary Hermes profile") : AppLocalization.string("Hermes profile")).font(.caption).foregroundStyle(.secondary)
+                    Text(appState.profileDisplayName(profile)).scaledFont(.headline).foregroundStyle(.primary)
+                    Text(BotManagement.isDefaultProfile(profile) ? AppLocalization.string("Primary Hermes profile") : AppLocalization.string("Hermes profile")).scaledFont(.caption).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }
@@ -280,9 +280,9 @@ private struct ProfilePickerRow: View {
                         .accessibilityLabel("Move \(appState.profileDisplayName(profile)) later")
                 }
             } else if isCurrent {
-                Label("Current", systemImage: "checkmark.circle.fill").font(.caption.weight(.semibold)).foregroundStyle(.conduitAccent)
+                Label("Current", systemImage: "checkmark.circle.fill").scaledFont(.caption.weight(.semibold)).foregroundStyle(.conduitAccent)
             } else {
-                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.conduitTertiary)
+                Image(systemName: "chevron.right").scaledFont(.caption.weight(.semibold)).foregroundStyle(.conduitTertiary)
             }
             if !isReordering { editMenu }
         }
@@ -313,7 +313,7 @@ private struct ProfilePickerRow: View {
             }
         } label: {
             Image(systemName: "pencil")
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
                 .opacity(isSavingName ? 0 : 1)
                 .frame(width: 30, height: 30)
@@ -346,11 +346,11 @@ private struct ProfilePickerRow: View {
     private var glowLine: some View {
         HStack(spacing: 8) {
             Image(systemName: "sparkles")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(AppLocalization.string("Background glow"))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Spacer(minLength: 0)
@@ -359,7 +359,7 @@ private struct ProfilePickerRow: View {
                     Haptics.selection()
                     appState.setProfileGlowColor(nil, for: profile)
                 }
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
                 .buttonStyle(.plain)
                 .frame(minHeight: 44)
@@ -410,7 +410,7 @@ private struct ProfilePickerRow: View {
     private func reorderArrow(_ systemImage: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.subheadline.weight(.bold))
+                .scaledFont(.subheadline.weight(.bold))
                 .foregroundStyle(Color.conduitAccent)
                 .frame(width: 34, height: 34)
                 .background(Color.conduitAccent.opacity(0.12), in: Circle())

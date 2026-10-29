@@ -93,7 +93,7 @@ private struct CardIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(isOn ? Color.conduitAccent : .secondary)
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
@@ -120,10 +120,10 @@ private struct PlanCard: View {
                         Image(systemName: plan.isFinished ? "checkmark.circle.fill" : "checklist")
                             .foregroundStyle(plan.isFinished ? Color.green : Color.conduitAccent)
                         Text("Tasks")
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
                         Text(PlanText.count(plan))
-                            .font(.caption.monospacedDigit())
+                            .scaledFont(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                     .contentShape(Rectangle())
@@ -181,10 +181,10 @@ private struct PlanFoldRow: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: systemImage)
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
                     .frame(width: 16)
                 Text(verbatim: text)
-                    .font(.caption)
+                    .scaledFont(.caption)
             }
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -203,12 +203,12 @@ struct PlanItemRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: symbol)
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(tint)
                 .frame(width: 16)
                 .modifier(PulsesWhileActive(isOn: item.status == .inProgress))
             Text(verbatim: item.content)
-                .font(.footnote.weight(item.status == .inProgress ? .semibold : .regular))
+                .scaledFont(.footnote.weight(item.status == .inProgress ? .semibold : .regular))
                 .foregroundStyle(item.status.isOpen ? Color.primary : Color.secondary)
                 .strikethrough(item.status == .cancelled)
                 .lineLimit(lineLimit)
@@ -269,21 +269,21 @@ private struct PlanStrip: View {
                         .frame(width: 16, height: 16)
                 }
                 Text("Tasks")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                 Text(verbatim: PlanText.fraction(plan))
-                    .font(.subheadline.monospacedDigit())
+                    .scaledFont(.subheadline.monospacedDigit())
                     .foregroundStyle(.secondary)
                 if let current = plan.current {
                     Text(verbatim: current.content)
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
                 Spacer(minLength: 4)
                 Image(systemName: "chevron.up")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 14)
@@ -325,7 +325,7 @@ private struct PlanSheet: View {
                         Section {
                             ProgressView(value: plan.progress) {
                                 Text(PlanText.count(plan))
-                                    .font(.subheadline.monospacedDigit())
+                                    .scaledFont(.subheadline.monospacedDigit())
                                     .foregroundStyle(.secondary)
                             }
                             .tint(plan.isFinished ? .green : .conduitAccent)

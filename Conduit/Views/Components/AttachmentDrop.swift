@@ -178,7 +178,7 @@ struct AttachmentDropTarget: ViewModifier {
                         )
                         .overlay {
                             Label(AppLocalization.string("Drop to attach"), systemImage: "paperclip")
-                                .font(.headline)
+                                .scaledFont(.headline)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)
                                 .conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.12))

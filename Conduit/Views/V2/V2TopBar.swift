@@ -390,7 +390,7 @@ struct V2ProfileStrip: View {
                     }
                 if isSelected {
                     Text(name)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .fixedSize()
@@ -455,7 +455,7 @@ struct V2ProfileStrip: View {
                 .opacity(isSelected ? 1 : 0.62)
                 if isSelected {
                     Text(Self.allTitle)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .fixedSize()
@@ -623,7 +623,7 @@ struct V2SegmentedControl<Value: Hashable>: View {
                     selection = option.value
                 } label: {
                     Text(option.title)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(isSelected ? Color.primary : Color.secondary)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, minHeight: 36)

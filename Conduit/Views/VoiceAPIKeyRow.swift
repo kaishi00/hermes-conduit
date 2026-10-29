@@ -43,7 +43,7 @@ struct VoiceAPIKeyRow: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: targetKey)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .accessibilityLabel(Text(verbatim: targetKey.replacingOccurrences(of: "_", with: " ")))
                     statusText
                 }
@@ -91,13 +91,13 @@ struct VoiceAPIKeyRow: View {
             }
             if let saveError {
                 Text(verbatim: saveError)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let note {
                 Text(verbatim: note)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -110,25 +110,25 @@ struct VoiceAPIKeyRow: View {
         if let configured {
             if let masked = configured.redactedValue {
                 Text(verbatim: masked)
-                    .font(.caption.monospaced())
+                    .scaledFont(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .accessibilityLabel(Text(verbatim: AppLocalization.string("Key set on Hermes") + ", " + masked))
             } else {
                 Text(AppLocalization.string("Key set on Hermes"))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.green)
             }
         } else if service.isLoading {
             Text(AppLocalization.string("Checking…"))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         } else if service.snapshot.environmentLoaded {
             Text(AppLocalization.string("No key yet"))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.orange)
         } else {
             Text(AppLocalization.string("Hermes didn’t say whether a key is set"))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }

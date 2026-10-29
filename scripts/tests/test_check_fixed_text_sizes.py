@@ -82,5 +82,38 @@ class FixedTextSizeTests(unittest.TestCase):
         """), [])
 
 
+def style_problems(text):
+    return check_fixed_text_sizes.find_text_style_fonts({"View.swift": textwrap.dedent(text)})
+
+
+class TextStyleFontTests(unittest.TestCase):
+    def test_text_styles_set_with_font_are_reported(self):
+        found = style_problems("""
+        Text("A")
+            .font(.caption2.weight(.semibold))
+        Text("B").font(isOn ? .body : .subheadline)
+        Text("C").font(Font.footnote)
+        Text("D").font(.system(.largeTitle, design: .rounded))
+        """)
+        self.assertEqual([problem.split(":")[1] for problem in found], ["3", "4", "5", "6"])
+
+    def test_scaled_fonts_fixed_sizes_and_other_fonts_pass(self):
+        self.assertEqual(style_problems("""
+        Text("A")
+            .scaledFont(.caption2.weight(.semibold))
+        Image(systemName: "plus")
+            .font(.system(size: 16, weight: .medium))
+        Text(line).font(lineFont)
+        let font = ChatTypography.font(for: .body, appearance: chatTextSize)
+        // .font(.caption) in a comment
+        """), [])
+
+    def test_a_stated_reason_exempts_the_font(self):
+        self.assertEqual(style_problems("""
+        // Text style: joined with + below, so it needs Text's own font.
+        Text("A").font(.caption)
+        """), [])
+
+
 if __name__ == "__main__":
     unittest.main()

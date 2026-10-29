@@ -93,17 +93,24 @@ enum ReadableWidth {
 
     /// What a column `column` points wide sets for its content at the
     /// system's `size`: the Dynamic Type size its own text draws at, the
-    /// steps a chat's transcript takes (none outside a chat), and the
-    /// system's size as the column's base (nil in a column that doesn't
-    /// step its text, `base` nil, so a fixed column inside a stepped one
-    /// keeps its base).
-    static func columnText(column: CGFloat, base: CGFloat?, scalesChatText: Bool, size: DynamicTypeSize)
-        -> (size: DynamicTypeSize, chatSteps: Int, base: DynamicTypeSize?) {
-        guard let base else { return (size, 0, nil) }
+    /// steps a chat's transcript takes (none outside a chat), the system's
+    /// size as the column's base (nil in a column that doesn't step its
+    /// text, `base` nil, so a fixed column inside a stepped one keeps its
+    /// base), and, where the system doesn't grow text styles (a Mac), the
+    /// stepped size for `scaledFont` to set in points.
+    static func columnText(
+        column: CGFloat,
+        base: CGFloat?,
+        scalesChatText: Bool,
+        size: DynamicTypeSize,
+        systemGrowsTextStyles: Bool = ScaledFont.systemGrowsTextStyles()
+    ) -> (size: DynamicTypeSize, chatSteps: Int, base: DynamicTypeSize?, pointSized: DynamicTypeSize?) {
+        guard let base else { return (size, 0, nil, nil) }
         let steps = textSteps(column: column, base: base, from: size)
         let sizes = ChatTypography.standardDynamicTypeSizes
         let boosted = sizes.firstIndex(of: size).map { sizes[min(sizes.count - 1, $0 + steps)] } ?? size
-        return (boosted, scalesChatText ? steps : 0, size)
+        let pointSized = steps > 0 && !systemGrowsTextStyles ? boosted : nil
+        return (boosted, scalesChatText ? steps : 0, size, pointSized)
     }
 
     /// The body text growth each step brings at the default size
@@ -153,6 +160,10 @@ private struct ReadableContentWidth: ViewModifier {
                 .transformEnvironment(\.chatColumnBaseTextSize) { base in
                     if let columnBase = text.base { base = columnBase }
                 }
+                // Where the system draws every size alike (a Mac): text
+                // styles in points (`scaledFont`), the column's plain text
+                // included.
+                .modifier(PointSizedColumnText(size: text.pointSized))
                 .onChange(of: text.size, initial: true) { _, _ in
                     if let textBase {
                         let steps = ReadableWidth.textSteps(column: column, base: textBase, from: dynamicTypeSize)
@@ -160,6 +171,26 @@ private struct ReadableContentWidth: ViewModifier {
                     }
                 }
         }
+    }
+}
+
+/// A column's text where the system doesn't grow text styles: body text
+/// for what sets no font, and the stepped size for `scaledFont`. Nothing
+/// changes without a `size`, so a fixed column inside a stepped one keeps
+/// the stepped column's.
+private struct PointSizedColumnText: ViewModifier {
+    let size: DynamicTypeSize?
+
+    func body(content: Content) -> some View {
+        // Transformed rather than a branch, so crossing a step keeps the
+        // column's views (and a chat's scroll position).
+        content
+            .transformEnvironment(\.font) { font in
+                if let size { font = ScaledFont.body.font(pointSizedAt: size) }
+            }
+            .transformEnvironment(\.pointSizedText) { pointSized in
+                if let size { pointSized = size }
+            }
     }
 }
 
@@ -185,6 +216,7 @@ enum MacTextStepsReport {
             Double(UIFont.preferredFont(forTextStyle: .body, compatibleWith: UITraitCollection(preferredContentSizeCategory: $0)).pointSize)
         }
         let swiftUI = [DynamicTypeSize.large, .xxxLarge].map {
+            // Text style: measures what the system does with the style itself.
             UIHostingController(rootView: Text(verbatim: "Conduit").font(.body).dynamicTypeSize($0))
                 .sizeThatFits(in: CGSize(width: 1000, height: 1000)).height.native
         }
