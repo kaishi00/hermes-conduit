@@ -156,7 +156,7 @@ enum CrashReportUpload {
     /// toward the thread's entry, so the crash site is in the levels kept.
     /// A stack that overflowed can nest thousands of frames: the first 256
     /// frame levels are kept, so the walk stays well inside a thread's stack
-    /// and under the relay's 512.
+    /// and under the relay's 512 (it counts frame levels too, notifier #469).
     static let maxFrameDepth = 256
 
     private static func keptFrame(_ frame: Any, level: Int) -> Any {
