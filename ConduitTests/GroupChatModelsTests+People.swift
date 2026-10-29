@@ -6,7 +6,9 @@ import XCTest
 /// installation keeps, its four words, the host setup for rooms with other
 /// people's agents (C2a), and invites made, opened and accepted (C2b).
 /// Notifier 0.83 (`room_links.py`, the links routes) and 0.85
-/// (`room_setup.py`, `/rooms/setup`). An extension, so no new class to plan.
+/// (`room_setup.py`, `/rooms/setup`), and what a linked person's Hermes can
+/// ask (C7, notifier 0.120 `link_asks.py`). An extension, so no new class to
+/// plan.
 extension GroupChatModelsTests {
     private static let peopleWords = ["amber", "birch", "cedar", "delta"]
 
@@ -595,5 +597,56 @@ extension GroupChatModelsTests {
             _ = try await refused.setUp(profile: "furina", ceiling: ["web"])
             XCTFail("A setup that wasn't ok read as saved")
         } catch HermesError.invalidResponse {}
+    }
+
+    // MARK: - What they can ask
+
+    @MainActor
+    func testLinkAskRulesReadEachLinksRulesAndChangeOneAtATime() async throws {
+        var asked: [(path: String, method: String, body: [String: Any]?)] = []
+        let client = LinkAsksClient { path, method, body in
+            asked.append((path, method, body))
+            if method == "PUT" {
+                return ["ok": true, "id": "lnk_1", "rules": ["free_on": "times", "questions": "ask", "profile": "work"]]
+            }
+            let links: [[String: Any]] = [
+                ["id": "lnk_1", "name": "Laifu", "status": "linked", "saved": false,
+                 "rules": ["free_on": "ask", "questions": "ask", "profile": "default"]],
+                // One the page can't show is left out.
+                ["id": "lnk_2", "name": "Mona", "status": "linked"],
+            ]
+            return ["ok": true, "links": links, "defaults": ["free_on": "ask", "questions": "ask", "profile": "default"]]
+        }
+        let links = try await client.rules()
+        XCTAssertEqual(asked.first?.path, "/api/plugins/conduit_push/links/rules")
+        XCTAssertEqual(asked.first?.method, "GET")
+        XCTAssertEqual(links, [LinkAskRulesEntry(id: "lnk_1", name: "Laifu", status: "linked",
+                                                 rules: LinkAskRules(freeOn: "ask", questions: "ask", profile: "default"))])
+
+        let rules = try await client.set(["free_on": "times"], linkID: "lnk_1")
+        XCTAssertEqual(asked.last?.method, "PUT")
+        XCTAssertEqual(asked.last?.body?.count, 2)
+        XCTAssertEqual(asked.last?.body?["link_id"] as? String, "lnk_1")
+        XCTAssertEqual(asked.last?.body?["free_on"] as? String, "times")
+        XCTAssertEqual(rules, LinkAskRules(freeOn: "times", questions: "ask", profile: "work"))
+
+        // Another Link's answer, or one that isn't ok, is never shown as this one's.
+        XCTAssertThrowsError(try LinkAsksClient.parseChange(
+            ["ok": true, "id": "lnk_2", "rules": ["free_on": "off", "questions": "off", "profile": "default"]], linkID: "lnk_1"))
+        XCTAssertThrowsError(try LinkAsksClient.parseList(["ok": false, "links": [[String: Any]]()]))
+    }
+
+    @MainActor
+    func testWhatTheyCanAskSaysWhoAnswersAndThatQuestionsWaitForYou() {
+        let asking = LinkAskRules(freeOn: "ask", questions: "ask", profile: "default")
+        let caption = LinkAskText.caption(asking, name: "Laifu", profileName: "Furina")
+        XCTAssertTrue(caption.contains("Furina"), caption)
+        XCTAssertTrue(caption.contains("only you answer them"), caption)
+        let off = LinkAskText.caption(LinkAskRules(freeOn: "off", questions: "off", profile: "default"),
+                                      name: "Laifu", profileName: "Furina")
+        XCTAssertFalse(off.contains("Furina"), off)
+        XCTAssertTrue(off.contains("turns Laifu's questions away"), off)
+        XCTAssertEqual(LinkAskRules.freeOnChoices.map(LinkAskText.freeOnTitle),
+                       ["Say if you're free", "Say when you're busy", "Ask me first", "Don't answer"])
     }
 }

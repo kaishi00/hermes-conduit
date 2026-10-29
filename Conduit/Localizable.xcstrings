@@ -371655,6 +371655,1646 @@
           }
         }
       }
+    },
+    "Say if you're free" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sagen, ob du frei bist"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Decir si estás libre"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dire si tu es libre"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bilang apakah kamu luang"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dire se sei libero"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空いているかを伝える"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시간이 되는지 알려 주기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Powiedz, czy masz czas"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dizer se você está livre"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщать, свободен ли ты"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Müsait olup olmadığını söyle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "告诉对方你是否有空"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "告訴對方你是否有空"
+          }
+        }
+      }
+    },
+    "Say when you're busy" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sagen, wann du beschäftigt bist"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Decir cuándo estás ocupado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dire quand tu es occupé"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bilang kapan kamu sibuk"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dire quando sei impegnato"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "忙しい時間も伝える"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "언제 바쁜지도 알려 주기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Powiedz, kiedy jesteś zajęty"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dizer quando você está ocupado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщать, когда ты занят"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ne zaman meşgul olduğunu söyle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "告诉对方你何时忙"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "告訴對方你何時忙"
+          }
+        }
+      }
+    },
+    "Don't answer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht antworten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No responder"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ne pas répondre"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jangan jawab"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non rispondere"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "答えない"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "답하지 않기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie odpowiadaj"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não responder"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не отвечать"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yanıtlama"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不回答"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不回答"
+          }
+        }
+      }
+    },
+    "Ask me" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mich fragen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preguntarme"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Me demander"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tanya aku"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiedimelo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自分に聞く"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "나에게 묻기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pytaj mnie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perguntar a mim"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Спрашивать меня"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bana sor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "问我"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "問我"
+          }
+        }
+      }
+    },
+    "Asked whether you're free on a date, your Hermes says free or busy from the calendar your phone shares with %@, without asking you." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird gefragt, ob du an einem Tag frei bist, sagt dein Hermes frei oder beschäftigt, aus dem Kalender, den dein Telefon mit %@ teilt, ohne dich zu fragen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si le preguntan si estás libre un día, tu Hermes dice libre u ocupado según el calendario que tu teléfono comparte con %@, sin preguntarte."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quand on lui demande si tu es libre un jour, ton Hermes répond libre ou occupé d'après le calendrier que ton téléphone partage avec %@, sans te demander."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saat ditanya apakah kamu luang pada suatu tanggal, Hermes-mu menjawab luang atau sibuk dari kalender yang dibagikan ponselmu dengan %@, tanpa bertanya padamu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se gli chiedono se sei libero in una data, il tuo Hermes risponde libero o impegnato dal calendario che il tuo telefono condivide con %@, senza chiedertelo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ある日に空いているか聞かれると、あなたの Hermes は、電話が %@ と共有しているカレンダーから、空いているか忙しいかをあなたに聞かずに答えます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "어떤 날짜에 시간이 되는지 물으면, Hermes가 휴대폰이 %@와 공유하는 캘린더를 바탕으로 나에게 묻지 않고 되는지 바쁜지 답해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zapytany, czy masz czas w danym dniu, twój Hermes odpowiada „wolny” lub „zajęty” na podstawie kalendarza, który twój telefon udostępnia %@, bez pytania cię."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando perguntam se você está livre em uma data, seu Hermes responde livre ou ocupado pelo calendário que seu telefone compartilha com %@, sem perguntar a você."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда спрашивают, свободен ли ты в какой-то день, твой Hermes отвечает «свободен» или «занят» по календарю, которым твой телефон делится с %@, не спрашивая тебя."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir tarihte müsait olup olmadığın sorulduğunda Hermes'in, telefonunun %@ ile paylaştığı takvime bakarak sana sormadan müsait ya da meşgul der."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "被问到你某天是否有空时，你的 Hermes 会根据你的手机与 %@ 共享的日历，直接回答有空或忙，不会问你。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "被問到你某天是否有空時，你的 Hermes 會根據你的手機與 %@ 共享的行事曆，直接回答有空或忙，不會問你。"
+          }
+        }
+      }
+    },
+    "Asked whether you're free on a date, your Hermes says so from the calendar your phone shares with %@, and when you're busy then (the times only), without asking you." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird gefragt, ob du an einem Tag frei bist, sagt dein Hermes es aus dem Kalender, den dein Telefon mit %@ teilt, und wann du dann beschäftigt bist (nur die Zeiten), ohne dich zu fragen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si le preguntan si estás libre un día, tu Hermes lo dice según el calendario que tu teléfono comparte con %@, y cuándo estás ocupado ese día (solo las horas), sin preguntarte."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quand on lui demande si tu es libre un jour, ton Hermes le dit d'après le calendrier que ton téléphone partage avec %@, et quand tu es occupé ce jour-là (seulement les horaires), sans te demander."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saat ditanya apakah kamu luang pada suatu tanggal, Hermes-mu menjawabnya dari kalender yang dibagikan ponselmu dengan %@, beserta kapan kamu sibuk saat itu (hanya waktunya), tanpa bertanya padamu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se gli chiedono se sei libero in una data, il tuo Hermes lo dice dal calendario che il tuo telefono condivide con %@, e quando sei impegnato quel giorno (solo gli orari), senza chiedertelo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ある日に空いているか聞かれると、あなたの Hermes は、電話が %@ と共有しているカレンダーから、空いているかと、その日の忙しい時間（時間だけ）をあなたに聞かずに答えます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "어떤 날짜에 시간이 되는지 물으면, Hermes가 휴대폰이 %@와 공유하는 캘린더를 바탕으로 나에게 묻지 않고 되는지와 그날 바쁜 시간(시간만)을 답해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zapytany, czy masz czas w danym dniu, twój Hermes odpowiada na podstawie kalendarza, który twój telefon udostępnia %@, i podaje, kiedy jesteś wtedy zajęty (tylko godziny), bez pytania cię."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando perguntam se você está livre em uma data, seu Hermes responde pelo calendário que seu telefone compartilha com %@, e diz quando você está ocupado nesse dia (só os horários), sem perguntar a você."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда спрашивают, свободен ли ты в какой-то день, твой Hermes отвечает по календарю, которым твой телефон делится с %@, и говорит, когда ты занят в этот день (только время), не спрашивая тебя."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir tarihte müsait olup olmadığın sorulduğunda Hermes'in, telefonunun %@ ile paylaştığı takvime bakarak bunu ve o gün ne zaman meşgul olduğunu (yalnızca saatleri) sana sormadan söyler."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "被问到你某天是否有空时，你的 Hermes 会根据你的手机与 %@ 共享的日历回答，并说出你那天忙的时间（只说时间），不会问你。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "被問到你某天是否有空時，你的 Hermes 會根據你的手機與 %@ 共享的行事曆回答，並說出你那天忙的時間（只說時間），不會問你。"
+          }
+        }
+      }
+    },
+    "Your Hermes doesn't say whether you're free." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Hermes sagt nicht, ob du frei bist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu Hermes no dice si estás libre."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ton Hermes ne dit pas si tu es libre."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes-mu tidak memberi tahu apakah kamu luang."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo Hermes non dice se sei libero."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたの Hermes は、空いているかを伝えません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes는 시간이 되는지 알려 주지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój Hermes nie mówi, czy masz czas."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu Hermes não diz se você está livre."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Твой Hermes не сообщает, свободен ли ты."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in müsait olup olmadığını söylemez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 不会说你是否有空。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 不會說你是否有空。"
+          }
+        }
+      }
+    },
+    "Asked whether you're free on a date, you see what your Hermes would answer from the calendar your phone shares with %@, and Share it, say something else, or don't." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird gefragt, ob du an einem Tag frei bist, siehst du, was dein Hermes aus dem Kalender, den dein Telefon mit %@ teilt, antworten würde, und teilst es, sagst etwas anderes oder nicht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si le preguntan si estás libre un día, ves lo que respondería tu Hermes según el calendario que tu teléfono comparte con %@, y lo compartes, dices otra cosa o no."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quand on lui demande si tu es libre un jour, tu vois ce que ton Hermes répondrait d'après le calendrier que ton téléphone partage avec %@, et tu le partages, dis autre chose, ou non."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saat ditanya apakah kamu luang pada suatu tanggal, kamu melihat jawaban Hermes-mu dari kalender yang dibagikan ponselmu dengan %@, lalu membagikannya, mengatakan hal lain, atau tidak."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se gli chiedono se sei libero in una data, vedi cosa risponderebbe il tuo Hermes dal calendario che il tuo telefono condivide con %@, e lo condividi, dici altro o no."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ある日に空いているか聞かれると、電話が %@ と共有しているカレンダーから Hermes が答える内容が表示され、それを共有するか、別のことを伝えるか、伝えないかを選べます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "어떤 날짜에 시간이 되는지 물으면, 휴대폰이 %@와 공유하는 캘린더를 바탕으로 Hermes가 할 답이 보이고, 그걸 공유하거나 다르게 말하거나 공유하지 않을 수 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy ktoś zapyta, czy masz czas w danym dniu, widzisz, co twój Hermes odpowiedziałby na podstawie kalendarza, który twój telefon udostępnia %@, i udostępniasz to, mówisz coś innego albo nie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando perguntam se você está livre em uma data, você vê o que seu Hermes responderia pelo calendário que seu telefone compartilha com %@, e compartilha, diz outra coisa ou não."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда спрашивают, свободен ли ты в какой-то день, ты видишь, что ответил бы твой Hermes по календарю, которым твой телефон делится с %@, и делишься этим, говоришь другое или нет."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir tarihte müsait olup olmadığın sorulduğunda, telefonunun %@ ile paylaştığı takvime göre Hermes'inin vereceği yanıtı görürsün; onu paylaşır, başka bir şey söyler ya da paylaşmazsın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "被问到你某天是否有空时，你会看到你的 Hermes 根据你的手机与 %@ 共享的日历会怎么回答，然后选择分享、改说别的，或不分享。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "被問到你某天是否有空時，你會看到你的 Hermes 根據你的手機與 %@ 共享的行事曆會怎麼回答，然後選擇分享、改說別的，或不分享。"
+          }
+        }
+      }
+    },
+    "Your Hermes turns %@'s questions away." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Hermes weist die Fragen von %@ ab."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu Hermes rechaza las preguntas de %@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ton Hermes refuse les questions de %@."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes-mu menolak pertanyaan dari %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo Hermes rifiuta le domande di %@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたの Hermes は %@ の質問を断ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes는 %@의 질문을 거절해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój Hermes odrzuca pytania od %@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu Hermes recusa as perguntas de %@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Твой Hermes отклоняет вопросы от %@."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in %@ kişisinin sorularını geri çevirir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 会拒绝 %@ 的问题。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 會拒絕 %@ 的問題。"
+          }
+        }
+      }
+    },
+    "Questions from %@'s Hermes wait for you: only you answer them, never an agent." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fragen vom Hermes von %@ warten auf dich: Nur du beantwortest sie, nie ein Agent."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las preguntas del Hermes de %@ te esperan: solo tú las respondes, nunca un agente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les questions du Hermes de %@ t'attendent : toi seul y réponds, jamais un agent."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pertanyaan dari Hermes milik %@ menunggumu: hanya kamu yang menjawabnya, tidak pernah agen."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le domande dell'Hermes di %@ aspettano te: rispondi solo tu, mai un agente."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の Hermes からの質問はあなたを待ちます。答えるのはあなただけで、エージェントは答えません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@의 Hermes가 보낸 질문은 나를 기다려요. 답하는 건 나뿐이고, 에이전트는 답하지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pytania od Hermesa %@ czekają na ciebie: odpowiadasz na nie tylko ty, nigdy agent."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As perguntas do Hermes de %@ esperam por você: só você as responde, nunca um agente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вопросы от Hermes %@ ждут тебя: отвечаешь на них только ты, никогда не агент."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ kişisinin Hermes'inden gelen sorular seni bekler: onları yalnızca sen yanıtlarsın, asla bir ajan değil."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来自 %@ 的 Hermes 的问题会等你：只有你来回答，绝不由智能体回答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "來自 %@ 的 Hermes 的問題會等你：只有你來回答，絕不由代理回答。"
+          }
+        }
+      }
+    },
+    "What they can ask" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was sie fragen können"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qué pueden preguntar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce qu'ils peuvent demander"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apa yang boleh mereka tanyakan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cosa possono chiedere"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聞けること"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "물어볼 수 있는 것"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O co mogą pytać"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que podem perguntar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "О чём могут спрашивать"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neler sorabilirler"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对方可以问什么"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "對方可以問什麼"
+          }
+        }
+      }
+    },
+    "A linked person's Hermes can ask yours whether you're free on a date, or ask you a question. You choose how each is answered. Nothing else they send is answered." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Hermes einer verknüpften Person kann deinen fragen, ob du an einem Tag frei bist, oder dir eine Frage stellen. Du wählst, wie beides beantwortet wird. Auf nichts anderes, was sie senden, wird geantwortet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El Hermes de una persona vinculada puede preguntarle al tuyo si estás libre un día, o hacerte una pregunta. Tú eliges cómo se responde cada cosa. Nada más de lo que envíen recibe respuesta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le Hermes d'une personne liée peut demander au tien si tu es libre un jour, ou te poser une question. Tu choisis comment chacun est répondu. Rien d'autre de ce qu'elle envoie ne reçoit de réponse."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes milik orang yang tertaut bisa bertanya ke Hermes-mu apakah kamu luang pada suatu tanggal, atau mengajukan pertanyaan kepadamu. Kamu memilih cara menjawab masing-masing. Hal lain yang mereka kirim tidak dijawab."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'Hermes di una persona collegata può chiedere al tuo se sei libero in una data, o farti una domanda. Scegli tu come rispondere a ciascuna. Nient'altro di ciò che invia riceve risposta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リンクした相手の Hermes は、あなたの Hermes にある日に空いているかを聞いたり、あなたに質問したりできます。それぞれの答え方はあなたが選びます。それ以外に送られてきたものには答えません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결된 사람의 Hermes는 내 Hermes에게 어떤 날짜에 시간이 되는지 묻거나, 나에게 질문할 수 있어요. 각각 어떻게 답할지는 내가 정해요. 그 밖에 보낸 것에는 답하지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes połączonej osoby może zapytać twojego, czy masz czas w danym dniu, albo zadać ci pytanie. Ty wybierasz, jak odpowiadać na każde z nich. Na nic innego, co przyśle, nie ma odpowiedzi."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes de uma pessoa vinculada pode perguntar ao seu se você está livre em uma data, ou fazer uma pergunta a você. Você escolhe como cada um é respondido. Nada mais que enviarem é respondido."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes связанного человека может спросить твоего, свободен ли ты в какой-то день, или задать тебе вопрос. Ты выбираешь, как отвечать на каждое. На всё остальное, что он присылает, ответа нет."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlı bir kişinin Hermes'i seninkine bir tarihte müsait olup olmadığını sorabilir ya da sana bir soru sorabilir. Her birinin nasıl yanıtlanacağını sen seçersin. Gönderdikleri başka hiçbir şey yanıtlanmaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已关联的人的 Hermes 可以问你的 Hermes 你某天是否有空，或向你提一个问题。每种怎么回答由你决定。对方发来的其他内容都不会回答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已連結的人的 Hermes 可以問你的 Hermes 你某天是否有空，或向你提一個問題。每種怎麼回答由你決定。對方傳來的其他內容都不會回答。"
+          }
+        }
+      }
+    },
+    "What %@'s Hermes can ask" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was der Hermes von %@ fragen kann"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qué puede preguntar el Hermes de %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce que le Hermes de %@ peut demander"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apa yang boleh ditanyakan Hermes milik %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cosa può chiedere l'Hermes di %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の Hermes が聞けること"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@의 Hermes가 물어볼 수 있는 것"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O co może pytać Hermes %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que o Hermes de %@ pode perguntar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "О чём может спрашивать Hermes %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ kişisinin Hermes'i neler sorabilir"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Hermes 可以问什么"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Hermes 可以問什麼"
+          }
+        }
+      }
+    },
+    "Free on a date" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An einem Tag frei"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Libre un día"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Libre un jour"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Luang pada tanggal"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Libero in una data"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ある日に空いているか"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "특정 날짜에 시간이 되는지"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czy masz czas w danym dniu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Livre em uma data"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Свободен ли в день"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir tarihte müsait mi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "某天是否有空"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "某天是否有空"
+          }
+        }
+      }
+    },
+    "Questions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fragen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preguntas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questions"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pertanyaan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domande"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "質問"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "질문"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pytania"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perguntas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вопросы"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sorular"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "问题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "問題"
+          }
+        }
+      }
+    },
+    "Answered by" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antwortet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Responde"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Répond"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dijawab oleh"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Risponde"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "答えるプロフィール"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "답하는 프로필"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odpowiada"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Responde"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отвечает"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yanıtlayan"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由谁回答"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由誰回答"
+          }
+        }
+      }
+    },
+    "Could not read what they can ask: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konnte nicht lesen, was sie fragen können: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo leer qué pueden preguntar: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de lire ce qu'ils peuvent demander : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak bisa membaca apa yang boleh mereka tanyakan: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile leggere cosa possono chiedere: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聞けることを読み込めませんでした：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "물어볼 수 있는 것을 읽지 못했어요: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się odczytać, o co mogą pytać: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível ler o que podem perguntar: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось прочитать, о чём могут спрашивать: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neler sorabilecekleri okunamadı: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取对方可以问什么：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取對方可以問什麼：%@"
+          }
+        }
+      }
+    },
+    "Could not change what %@'s Hermes can ask: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konnte nicht ändern, was der Hermes von %@ fragen kann: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo cambiar qué puede preguntar el Hermes de %@: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de changer ce que le Hermes de %@ peut demander : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak bisa mengubah apa yang boleh ditanyakan Hermes milik %@: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile cambiare cosa può chiedere l'Hermes di %@: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ の Hermes が聞けることを変更できませんでした：%2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@의 Hermes가 물어볼 수 있는 것을 바꾸지 못했어요: %2$@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się zmienić, o co może pytać Hermes %@: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível mudar o que o Hermes de %@ pode perguntar: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось изменить, о чём может спрашивать Hermes %@: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ kişisinin Hermes'inin neler sorabileceği değiştirilemedi: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法更改 %1$@ 的 Hermes 可以问什么：%2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法更改 %1$@ 的 Hermes 可以問什麼：%2$@"
+          }
+        }
+      }
+    },
+    "A linked person's Hermes asks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Hermes einer verknüpften Person fragt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El Hermes de una persona vinculada pregunta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le Hermes d'une personne liée demande"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes milik orang yang tertaut bertanya"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'Hermes di una persona collegata chiede"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リンクした相手の Hermes からの質問"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결된 사람의 Hermes가 물어봐요"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pyta Hermes połączonej osoby"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes de uma pessoa vinculada pergunta"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Спрашивает Hermes связанного человека"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlı bir kişinin Hermes'i soruyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已关联的人的 Hermes 在问"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已連結的人的 Hermes 在問"
+          }
+        }
+      }
+    },
+    "%@'s Hermes asks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Hermes von %@ fragt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El Hermes de %@ pregunta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le Hermes de %@ demande"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes milik %@ bertanya"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'Hermes di %@ chiede"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の Hermes からの質問"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@의 Hermes가 물어봐요"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pyta Hermes %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes de %@ pergunta"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Спрашивает Hermes %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ kişisinin Hermes'i soruyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Hermes 在问"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Hermes 在問"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
