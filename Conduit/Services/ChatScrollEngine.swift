@@ -1201,6 +1201,16 @@ final class ChatScrollEngine: ObservableObject {
         }
     }
 
+    /// Settings > Chat's Long replies switch changed (here or synced from
+    /// another device): the room under a sent message goes or comes back
+    /// now, not at the next layout.
+    func replyStartPreferenceChanged() {
+        refreshReplyRoom()
+        guard !isPaused, let surface, canPinWhileFollowing(surface), !isDragging else { return }
+        pin(surface)
+        refreshJumpButton()
+    }
+
     // MARK: - Opening an unread reply
 
     /// An unread chat was opened and its transcript is in: it lands at the

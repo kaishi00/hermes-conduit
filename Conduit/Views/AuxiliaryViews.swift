@@ -1889,7 +1889,7 @@ private struct ReplyStartSettings: View {
             symbol: "arrow.up.to.line",
             tint: .conduitAura
         ) {
-            Text("When you send, your message moves to the top of the screen and the reply appears under it. A reply longer than the screen stops there, so you can read it from the top. The arrow button goes to its end.")
+            Text("In a chat, your message moves to the top of the screen when you send, and the reply appears under it. A reply longer than the screen stops at its start, so you can read it from the top. The arrow button goes to its end.")
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Text("A chat with an unread reply also opens at the start of that reply.")

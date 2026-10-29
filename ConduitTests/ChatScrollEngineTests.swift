@@ -127,11 +127,13 @@ final class ChatScrollEngineTests: XCTestCase {
     /// An engine showing session "a" with ten messages, attached to a
     /// surface that has already laid them out.
     private func makeEngine(
-        surface providedSurface: FakeChatScrollSurface? = nil
+        surface providedSurface: FakeChatScrollSurface? = nil,
+        reducedMotion: Bool = false
     ) -> (ChatScrollEngine, FakeChatScrollSurface) {
         let surface = providedSurface ?? FakeChatScrollSurface()
         let engine = ChatScrollEngine(
             now: { [unowned self] in self.clock },
+            prefersReducedMotion: { reducedMotion },
             schedule: { [unowned self] _, body in self.scheduled.append(body) }
         )
         engines.append(engine)
@@ -2617,8 +2619,8 @@ final class ChatScrollEngineTests: XCTestCase {
     /// 3518...3598), so the hold stops at 3481, the message 37 pt below the
     /// viewport's top, and the room under it makes the content at least
     /// 3481 + 800 = 4281 tall.
-    private func sendIntoHold() -> (ChatScrollEngine, FakeChatScrollSurface) {
-        let (engine, surface) = makeEngine()
+    private func sendIntoHold(reducedMotion: Bool = false) -> (ChatScrollEngine, FakeChatScrollSurface) {
+        let (engine, surface) = makeEngine(reducedMotion: reducedMotion)
         engine.holdsRepliesAtStart = { true }
         XCTAssertEqual(surface.contentOffsetY, 3200)
         engine.transcriptChanged(
@@ -2685,6 +2687,29 @@ final class ChatScrollEngineTests: XCTestCase {
         layOutWithRoom(engine, surface, reply: 6000)
         XCTAssertEqual(surface.contentOffsetY, 3481)
         XCTAssertEqual(surface.sets.count, 1)
+    }
+
+    func testWithReduceMotionTheSentMessageSnapsToTheTop() {
+        let (engine, surface) = sendIntoHold(reducedMotion: true)
+        surface.sets = []
+        layOutWithRoom(engine, surface, reply: 4200)
+        XCTAssertEqual(surface.sets.map(\.y), [3481])
+        XCTAssertEqual(surface.sets.map(\.animated), [false])
+    }
+
+    /// Long replies switched off while the room is there: it goes at once,
+    /// and following goes to the end.
+    func testSwitchingLongRepliesOffTakesTheRoomAway() {
+        let (engine, surface) = sendIntoHold()
+        layOutWithRoom(engine, surface, reply: 4200)
+        finishLandingAnimation()
+        engine.holdsRepliesAtStart = { false }
+        engine.replyStartPreferenceChanged()
+        XCTAssertEqual(engine.replyRoomMinContentHeight, 0)
+        XCTAssertEqual(engine.replyRoom.minContentHeight, 0)
+        surface.layOut(contentHeight: 4200)
+        XCTAssertEqual(surface.contentOffsetY, 3400)
+        XCTAssertTrue(engine.isFollowingLatest)
     }
 
     /// The room lags a pass behind content that got shorter (a row

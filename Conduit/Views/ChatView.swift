@@ -313,6 +313,9 @@ struct ChatView: View {
     /// typography, while non-chat subtrees keep the `.default` environment
     /// value and today's appearance.
     @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
+    /// Settings > Chat's Long replies switch, so the scroll engine hears a
+    /// change while the chat is open (ChatReplyRoom).
+    @AppStorage(ChatReplyStartPreference.key) private var stopsAtReplyStart = ChatReplyStartPreference.defaultOn
     /// The chat text style (typeface), stored and injected beside the size.
     @AppStorage(ChatTypography.fontStylePreferenceKey) private var chatFontStyleRaw = ChatFontStyle.standard.rawValue
 
@@ -669,6 +672,9 @@ struct ChatView: View {
             }
             .onPreferenceChange(ChatScrollRowFramesPreferenceKey.self) { frames in
                 scrollEngine.rowFramesChanged(frames)
+            }
+            .onChange(of: stopsAtReplyStart) { _, _ in
+                scrollEngine.replyStartPreferenceChanged()
             }
             .onPreferenceChange(ChatScrollLiveRowFramesPreferenceKey.self) { frames in
                 scrollEngine.liveRowFramesChanged(frames)
