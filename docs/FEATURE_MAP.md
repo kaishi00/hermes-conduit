@@ -3585,7 +3585,7 @@ phone)
 - Each column's backdrop stays clipped at the divider, so the glows don't cross it, and runs under the window's safe areas at the top, the bottom and its own outer side: the home indicator, and a landscape status bar or sensor. Clipped at the safe area, every split tab showed black bars along the bottom and the right of an iPhone Duo's inner screen while Tasks filled it (2026-10-29, #1472, a tester's report).
 
 **Open gaps**
-- None known.
+- Not seen on a device yet: the simulator suites have no Duo before Xcode 27.1, so a Duo or a split iPad from TestFlight confirms it.
 
 **Checked:** 2026-10-29, #1472.
 
