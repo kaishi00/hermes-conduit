@@ -625,6 +625,7 @@ struct SessionList: View {
     /// Matching Projects" state under them.
     @ViewBuilder
     private func projectContent(hasPinnedSessions: Bool) -> some View {
+        let unreadProjects = appState.projectsWithUnread()
         if appState.projectsLoading && displayedProjects.isEmpty {
             ProgressView("Loading projects…")
                 .frame(maxWidth: .infinity, minHeight: 140)
@@ -642,7 +643,6 @@ struct SessionList: View {
             )
         } else {
             Section("Projects") {
-                let unreadProjects = appState.projectsWithUnread()
                 ForEach(displayedProjects) { project in
                     Button {
                         Haptics.light()

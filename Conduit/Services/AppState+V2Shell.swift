@@ -2,7 +2,8 @@
 //  AppState+V2Shell.swift
 //  Conduit
 //
-//  Read-only lookups the V2 navigation shell draws from. They add no state:
+//  Read-only lookups the V2 navigation shell draws from (the classic
+//  drawer's Projects list reads projectsWithUnread too). They add no state:
 //  everything here derives from the catalog, read state and roster AppState
 //  already owns.
 //
@@ -62,16 +63,21 @@ extension AppState {
     /// which a reply or a read updates between loads of the tree. One walk
     /// for the whole Projects list.
     func projectsWithUnread() -> Set<String> {
+        // Every id a chat answers to, so one whose id moved on since the
+        // tree loaded (a compression) still finds its catalog copy.
+        func ids(_ session: SessionSummary) -> [String] {
+            [session.id, session.storedSessionId, session.lineageRootId].compactMap { $0 } + session.alternateIds
+        }
         var listed: [String: SessionSummary] = [:]
         for session in sessions {
-            for id in [session.id, session.storedSessionId].compactMap({ $0 }) where listed[id] == nil {
+            for id in ids(session) where listed[id] == nil {
                 listed[id] = session
             }
         }
         var unread = Set<String>()
         for project in projects {
             let hasUnread = project.previewSessions.contains { preview in
-                let current = [preview.id, preview.storedSessionId].compactMap { $0 }.lazy.compactMap { listed[$0] }.first
+                let current = ids(preview).lazy.compactMap { listed[$0] }.first
                 return isSessionUnread(current ?? preview)
             }
             if hasUnread { unread.insert(project.id) }

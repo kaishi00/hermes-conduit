@@ -450,30 +450,36 @@ final class ChatReadStateTests: XCTestCase {
             session.isUnread = unread
             return session
         }
-        func project(_ id: String, _ previews: [SessionSummary]) -> ProjectSummary {
-            ProjectSummary(id: id, title: id, isHome: false, sessionCount: previews.count, previewSessions: previews)
+        func project(_ id: String, _ previews: [SessionSummary], isHome: Bool = false) -> ProjectSummary {
+            ProjectSummary(id: id, title: id, isHome: isHome, sessionCount: previews.count, previewSessions: previews)
         }
         appState.setActiveProfileForTesting("default")
         let first = chat("first")
         let second = chat("second")
         // The tree's copy says unread; the catalog's, newer, says read.
         let readSince = chat("read-since", unread: true)
-        appState.sessions = [first, second, chat("read-since", unread: false)]
+        // Compressed since the tree loaded: the catalog lists it under a new id.
+        var compressed = chat("compressed-new", unread: false)
+        compressed.alternateIds = ["compressed-old"]
+        appState.sessions = [first, second, chat("read-since", unread: false), compressed]
         appState.setProjectsForTesting([
             project("two-unread", [first, second]),
             project("read", [readSince]),
+            project("compressed", [chat("compressed-old", unread: true)]),
             project("tree-only", [chat("not-listed", unread: true)]),
+            // Home's chats are in no project, and Home gets the dot for them.
+            project("home", [chat("home-unread", unread: true)], isHome: true),
             project("empty", []),
         ])
         appState.markSessionUnread(first)
         appState.markSessionUnread(second)
 
-        XCTAssertEqual(appState.projectsWithUnread(), ["two-unread", "tree-only"])
+        XCTAssertEqual(appState.projectsWithUnread(), ["two-unread", "tree-only", "home"])
 
         // Reading one chat leaves the dot while another is still unread.
         appState.markSessionRead(first)
-        XCTAssertEqual(appState.projectsWithUnread(), ["two-unread", "tree-only"])
+        XCTAssertEqual(appState.projectsWithUnread(), ["two-unread", "tree-only", "home"])
         appState.markSessionRead(second)
-        XCTAssertEqual(appState.projectsWithUnread(), ["tree-only"])
+        XCTAssertEqual(appState.projectsWithUnread(), ["tree-only", "home"])
     }
 }
