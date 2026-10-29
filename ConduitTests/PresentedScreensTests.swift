@@ -173,7 +173,7 @@ extension AppStateVoiceCapabilityTests {
             sent = body
             return ["ok": true, "prompts": []]
         }
-        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards", "text-drafts", "room-asks"])
+        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards", "text-drafts", "room-asks", "link-asks"])
     }
 
     func testARoomsAskNamesItsRoomAndSaysInsteadWithTheWords() async throws {
@@ -222,6 +222,68 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(results.first { $0["id"] as? String == "p1" }?["outcome"] as? String, "edit")
         XCTAssertNil(results.first { $0["id"] as? String == "p2" }?["edit_text"])
         XCTAssertEqual((results.first { $0["id"] as? String == "p3" }?["edit_text"] as? String)?.count, 2_000)
+    }
+
+    func testALinksAskNamesThemAndSharesOnlyAnAnswerThereIs() async throws {
+        let answer = try XCTUnwrap(PresentedConfirm(json: [
+            "id": "p1", "title": "Free on 2026-11-22?", "preview": "Busy 22:00-24:00 on 2026-11-22.",
+            "action_label": "Share", "spoken_yes": ["share it"],
+            "link": ["id": "lnk_1", "name": " Laifu ", "share": true],
+        ]))
+        XCTAssertEqual(answer.link, PresentedLink(id: "lnk_1", name: "Laifu", share: true))
+        XCTAssertTrue(answer.isAsk)
+        XCTAssertTrue(answer.canConfirm)
+        XCTAssertTrue(answer.isConfirmed(by: "Share it."))
+        XCTAssertEqual(PresentVoiceTool.describe(answer)["asked_by"] as? String, "Laifu's Hermes")
+        XCTAssertNil(PresentVoiceTool.describe(answer)["can_confirm"])
+
+        // Their question has no answer to Share: no yes confirms it, by voice or otherwise.
+        let question = try XCTUnwrap(PresentedConfirm(json: [
+            "id": "p2", "title": "Laifu's Hermes asks", "preview": "Can Laifu borrow the tent?",
+            "action_label": "Share", "link": ["id": "lnk_1", "name": "Laifu", "share": false],
+        ]))
+        XCTAssertFalse(question.canConfirm)
+        XCTAssertFalse(question.isConfirmed(by: "yes"))
+        XCTAssertEqual(PresentVoiceTool.describe(question)["can_confirm"] as? Bool, false)
+        XCTAssertTrue(PresentVoiceTool.note(for: question).contains("they type their answer on the panel"))
+        // A Link that doesn't say there's something to share has nothing to Share.
+        XCTAssertEqual(PresentedConfirm(json: ["id": "p3", "title": "Asks", "link": ["id": "l"]])?.canConfirm, false)
+        // A Link that can't be read is still a Link's ask, with nothing to Share.
+        XCTAssertEqual(PresentedConfirm(json: ["id": "p5", "title": "Asks", "link": "lnk_1"])?.link,
+                       PresentedLink(id: "", name: "", share: false))
+        XCTAssertNil(PresentedConfirm(json: ["id": "p6", "title": "Send?", "link": NSNull()])?.link)
+        XCTAssertNil(PresentedConfirm(json: ["id": "p4", "title": "Send?"])?.link)
+        XCTAssertEqual(PresentedConfirm(json: ["id": "p4", "title": "Send?"])?.canConfirm, true)
+
+        let suite = "present-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let sync = PresentedScreensSync(defaults: defaults)
+        await sync.sync(scope: "host|default", profile: "default", installationID: "i") { _, _ in
+            ["ok": true, "prompts": [["id": "p2", "title": "Laifu's Hermes asks", "preview": "Tent?", "action_label": "Share",
+                                      "link": ["id": "lnk_1", "name": "Laifu", "share": false]]]]
+        }
+        let listed = try XCTUnwrap(sync.prompts.first)
+        sync.noteShown(listed.id, userTurn: UUID())
+        var confirmed = false
+        let refused = await PresentVoiceTool.run(["action": "confirm", "id": listed.id], sync: sync,
+                                                 lastUserTurn: { (UUID(), "yes") }) { _, _ in confirmed = true }
+        XCTAssertNotNil(refused["error"])
+        XCTAssertFalse(confirmed)
+        XCTAssertEqual(sync.prompts.map(\.id), ["p2"])
+        // Nothing sends a Share for it, whoever asks.
+        sync.answer(listed, outcome: .confirmed, via: .tap)
+        XCTAssertEqual(sync.prompts.map(\.id), ["p2"])
+        // Say instead answers it with their words.
+        var bodies: [[String: Any]] = []
+        sync.answer(listed, outcome: .edit, via: .tap, editText: " Yes, it's in the garage. ")
+        await sync.sync(scope: "host|default", profile: "default", installationID: "i") { _, body in
+            bodies.append(body)
+            return ["ok": true, "prompts": []]
+        }
+        let results = try XCTUnwrap(bodies.last?["results"] as? [[String: Any]])
+        XCTAssertEqual(results.first?["edit_text"] as? String, "Yes, it's in the garage.")
+        XCTAssertEqual(results.first?["outcome"] as? String, "edit")
     }
 
     func testMapsOpensWithDirectionsFromALinkOnlyItMade() throws {

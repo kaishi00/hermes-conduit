@@ -6,7 +6,8 @@
 //  ready for rooms with other people's agents (RoomSetup.swift), the people
 //  it's linked with, and the invites still waiting (RoomLinks.swift). Link
 //  with someone makes an invite, and Scan and Paste open one someone sent
-//  (RoomLinkSheets.swift).
+//  (RoomLinkSheets.swift). Each Link's rules say what that person's Hermes
+//  may ask yours (LinkAsks.swift, C7).
 //
 
 import OSLog
@@ -132,6 +133,10 @@ struct PeopleSettingsPage: View {
                 }
             }
             linksSection
+            // What each linked person's Hermes may ask yours, on a plugin that answers asks.
+            if appState.canSetLinkAsks, let links = shown?.list.links.filter({ $0.status == "linked" }), !links.isEmpty {
+                LinkAsksSection(linkIDs: links.map(\.id))
+            }
             if let invites = shown?.list.invites, !invites.isEmpty {
                 invitesSection(invites)
             }
@@ -469,6 +474,148 @@ struct PeopleSettingsPage: View {
             }
             await load(key)
             if loaded?.key == key, loaded?.list.invites.contains(where: { $0.id == invite.id }) == false { actionError = nil }
+        }
+    }
+}
+
+/// What each linked person's Hermes may ask yours (LinkAsks.swift): whether
+/// you're free on a date and questions, and the profile that answers when
+/// there's more than one. Read once the page shows the Links, and again when
+/// they change.
+@MainActor
+struct LinkAsksSection: View {
+    /// The Links the page shows as linked, in its order.
+    let linkIDs: [String]
+
+    @EnvironmentObject private var appState: AppState
+
+    @State private var loaded: (key: String, links: [LinkAskRulesEntry])?
+    @State private var loadError: String?
+    @State private var actionError: String?
+    /// The Link a change is saving: one at a time.
+    @State private var changingID: String?
+
+    private var key: String { (appState.activeDashboardID?.uuidString ?? "") + "|" + linkIDs.joined(separator: ",") }
+
+    private var shown: [LinkAskRulesEntry] {
+        guard let loaded, loaded.key == key else { return [] }
+        let byID = Dictionary(loaded.links.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return linkIDs.compactMap { byID[$0] }
+    }
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("What they can ask"), symbol: "questionmark.bubble", tint: .conduitAccent) {
+            Text(AppLocalization.string("A linked person's Hermes can ask yours whether you're free on a date, or ask you a question. You choose how each is answered. Nothing else they send is answered."))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            if loaded?.key == key {
+                ForEach(shown) { link in
+                    linkRules(link)
+                }
+                // A read again that failed leaves the rules up and says so.
+                if let loadError {
+                    Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                    Button(AppLocalization.string("Try again")) { Task { await load(key) } }
+                        .buttonStyle(.settings)
+                        .disabled(changingID != nil)
+                }
+            } else if let loadError {
+                Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                Button(AppLocalization.string("Try again")) { Task { await load(key) } }
+                    .buttonStyle(.settings)
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+            }
+            if let actionError {
+                Label(actionError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .task(id: key) { await load(key) }
+    }
+
+    private func linkRules(_ link: LinkAskRulesEntry) -> some View {
+        let profiles = appState.profiles
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(verbatim: AppLocalization.string("What \(link.name)'s Hermes can ask"))
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if changingID == link.id {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            ConduitMenuPicker(
+                value: link.rules.freeOn,
+                choices: LinkAskRules.freeOnChoices.map { (id: $0, title: LinkAskText.freeOnTitle($0)) },
+                onSelect: { change(link, "free_on", to: $0) }
+            ) {
+                Text(AppLocalization.string("Free on a date")).foregroundStyle(.secondary)
+            }
+            ConduitMenuPicker(
+                value: link.rules.questions,
+                choices: LinkAskRules.questionChoices.map { (id: $0, title: LinkAskText.questionsTitle($0)) },
+                onSelect: { change(link, "questions", to: $0) }
+            ) {
+                Text(AppLocalization.string("Questions")).foregroundStyle(.secondary)
+            }
+            // Only one profile: it's the one that answers.
+            if profiles.count > 1 {
+                ConduitMenuPicker(
+                    value: link.rules.profile,
+                    choices: (profiles.contains(link.rules.profile) ? profiles : profiles + [link.rules.profile])
+                        .map { (id: $0, title: appState.profileDisplayName($0)) },
+                    onSelect: { change(link, "profile", to: $0) }
+                ) {
+                    Text(AppLocalization.string("Answered by")).foregroundStyle(.secondary)
+                }
+            }
+            Text(verbatim: LinkAskText.caption(link.rules, name: link.name,
+                                               profileName: appState.profileDisplayName(link.rules.profile)))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .disabled(changingID != nil)
+    }
+
+    private func load(_ key: String) async {
+        loadError = nil
+        do {
+            let links = try await appState.linkAsksClient.rules()
+            guard key == self.key else { return }
+            loaded = (key, links)
+        } catch {
+            guard !(error is CancellationError), !Task.isCancelled, key == self.key else { return }
+            peopleLogger.notice("Link rules not read: \(LogRedaction.message(error), privacy: .public)")
+            loadError = AppLocalization.string("Could not read what they can ask: \(RoomLinksClient.message(for: error))")
+        }
+    }
+
+    private func change(_ link: LinkAskRulesEntry, _ rule: String, to value: String) {
+        guard changingID == nil else { return }
+        let key = key
+        changingID = link.id
+        actionError = nil
+        Task {
+            defer { if changingID == link.id { changingID = nil } }
+            do {
+                let rules = try await appState.linkAsksClient.set([rule: value], linkID: link.id)
+                guard key == self.key, let loaded, loaded.key == key else { return }
+                self.loaded = (key, loaded.links.map { $0.id == link.id ? LinkAskRulesEntry(id: $0.id, name: $0.name, status: $0.status, rules: rules) : $0 })
+                Haptics.selection()
+            } catch {
+                guard !(error is CancellationError), key == self.key else { return }
+                Haptics.error()
+                peopleLogger.notice("Link rules not changed: \(LogRedaction.message(error), privacy: .public)")
+                actionError = AppLocalization.string("Could not change what \(link.name)'s Hermes can ask: \(RoomLinksClient.message(for: error))")
+            }
         }
     }
 }

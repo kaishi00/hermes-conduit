@@ -1248,6 +1248,22 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(SpokenApprovals.answer("send it", waiting: presented)?.target, .presented(id: "p_1"))
         XCTAssertEqual(SpokenApprovals.answer("no", waiting: presented)?.approve, false)
         XCTAssertEqual(SpokenApprovals.answer("don't send it", waiting: presented)?.approve, false, "A no-led phrase never confirms")
+        // A Link's ask with an answer takes "share it"; their question waits for the panel: it counts as
+        // waiting, but no yes or no answers it.
+        let linkShare = PresentedConfirm(id: "p_2", title: "Free on 2026-11-22?", preview: "Busy 10:00-11:00.",
+                                         actionLabel: "Share", spokenYes: ["share it"],
+                                         link: PresentedLink(id: "l", name: "Laifu", share: true))
+        let linkQuestion = PresentedConfirm(id: "p_3", title: "Laifu's Hermes asks", preview: "Tent?", actionLabel: "Share",
+                                            link: PresentedLink(id: "l", name: "Laifu", share: false))
+        let shared = SpokenApprovals.Waiting(presented: [linkShare])
+        XCTAssertEqual(SpokenApprovals.answer("share it", waiting: shared)?.approve, true)
+        XCTAssertEqual(SpokenApprovals.answer("yes, share it", waiting: shared)?.approve, true)
+        XCTAssertNil(SpokenApprovals.answer("yes", waiting: shared), "a bare yes may mean something else")
+        XCTAssertEqual(SpokenApprovals.answer("no", waiting: shared)?.approve, false)
+        let question = SpokenApprovals.Waiting(presented: [linkQuestion])
+        XCTAssertEqual(question.count, 1)
+        XCTAssertNil(SpokenApprovals.answer("no", waiting: question))
+        XCTAssertNil(SpokenApprovals.answer("yes", waiting: question))
 
         // A change already waiting when the user last spoke or typed wasn't
         // asked for in the reply this yes answers: it answers nothing, so a

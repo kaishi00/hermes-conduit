@@ -7,7 +7,9 @@
 //  will happen, Edit, Not now and a gold primary action. Over a voice call
 //  it also says the user can just answer out loud. A room's ask (Linked
 //  Rooms, Ask me first) names its room and offers Say instead, Don't share
-//  and Share, Say instead typed right here.
+//  and Share, Say instead typed right here. A Link's ask (a linked person's
+//  Hermes asks yours) names them the same way, with Share only when there's
+//  an answer to share.
 //
 
 import SwiftUI
@@ -19,7 +21,7 @@ struct PresentedConfirmOverlay: View {
     var inCall = false
     let onAnswer: (PresentedConfirm, PresentedConfirmOutcome) -> Void
     var onEdit: ((PresentedConfirm) -> Void)?
-    /// A room's ask answered with what to say instead.
+    /// A room's or a Link's ask answered with what to say instead.
     var onSayInstead: ((PresentedConfirm, String) -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -31,11 +33,11 @@ struct PresentedConfirmOverlay: View {
                     prompt: prompt,
                     inCall: inCall,
                     onAnswer: { onAnswer(prompt, $0) },
-                    // Directions have nothing to edit; a room's ask says what to say instead here, never in
-                    // the room's hidden chat.
-                    onEdit: prompt.maps == nil && prompt.room == nil
+                    // Directions have nothing to edit; a room's or a Link's ask says what to say instead here,
+                    // never in a hidden chat.
+                    onEdit: prompt.maps == nil && !prompt.isAsk
                         ? onEdit.map { edit in { () -> Void in edit(prompt) } } : nil,
-                    onSayInstead: prompt.room == nil ? nil : onSayInstead.map { say in { text in say(prompt, text) } }
+                    onSayInstead: prompt.isAsk ? onSayInstead.map { say in { text in say(prompt, text) } } : nil
                 )
                 .id(prompt.id)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -77,16 +79,35 @@ struct PresentedConfirmPanel: View {
         return AppLocalization.string("Or just say yes")
     }
 
+    /// Who asks: a room's agent, a linked person's Hermes, or Hermes.
+    private var asker: String {
+        if let name = prompt.room?.name, !name.isEmpty {
+            return AppLocalization.string("Asked in \(name)")
+        }
+        if let link = prompt.link {
+            return link.name.isEmpty ? AppLocalization.string("A linked person's Hermes asks")
+                : AppLocalization.string("\(link.name)'s Hermes asks")
+        }
+        return AppLocalization.string("Hermes asks")
+    }
+
+    /// A Link's question has nothing to share: it's not answered.
+    private var declineLabel: String {
+        if !prompt.canConfirm { return AppLocalization.string("Don't answer") }
+        return prompt.isAsk ? AppLocalization.string("Don't share") : AppLocalization.string("Not now")
+    }
+
+    private var askerSymbol: String {
+        if prompt.link != nil { return "link" }
+        return prompt.room == nil ? "checkmark.shield" : "person.2"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Label {
-                if let name = prompt.room?.name, !name.isEmpty {
-                    Text(AppLocalization.string("Asked in \(name)"))
-                } else {
-                    Text("Hermes asks")
-                }
+                Text(verbatim: asker)
             } icon: {
-                Image(systemName: prompt.room == nil ? "checkmark.shield" : "person.2")
+                Image(systemName: askerSymbol)
             }
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
@@ -109,7 +130,8 @@ struct PresentedConfirmPanel: View {
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
 
-            if inCall {
+            // A question has nothing to say yes to.
+            if inCall, prompt.canConfirm {
                 Label(spokenHint, systemImage: "waveform")
                     .font(.footnote)
                     .foregroundStyle(Color.conduitAura)
@@ -130,15 +152,16 @@ struct PresentedConfirmPanel: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
         .onAppear {
-            if let name = prompt.room?.name, !name.isEmpty {
-                AccessibilityNotification.Announcement("\(AppLocalization.string("Asked in \(name)")). \(prompt.title)").post()
+            if prompt.isAsk {
+                AccessibilityNotification.Announcement("\(asker). \(prompt.title)").post()
             } else {
                 AccessibilityNotification.Announcement(AppLocalization.string("Hermes asks: \(prompt.title)")).post()
             }
         }
     }
 
-    /// What your agent says in the room instead, typed here.
+    /// What your agent says in the room, or to the linked person's Hermes,
+    /// instead, typed here.
     private var sayInsteadField: some View {
         VStack(alignment: .leading, spacing: 10) {
             TextField(AppLocalization.string("What to say instead"), text: $instead, axis: .vertical)
@@ -213,7 +236,7 @@ struct PresentedConfirmPanel: View {
             Haptics.selection()
             onAnswer(.declined)
         } label: {
-            Text(prompt.room == nil ? AppLocalization.string("Not now") : AppLocalization.string("Don't share"))
+            Text(declineLabel)
                 .font(.body.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .frame(minHeight: 44)
@@ -221,18 +244,21 @@ struct PresentedConfirmPanel: View {
         }
         .buttonStyle(PressableButtonStyle())
         Spacer(minLength: 0)
-        Button {
-            Haptics.medium()
-            onAnswer(.confirmed)
-        } label: {
-            Text(verbatim: prompt.actionLabel)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(Color.conduitBackgroundColor)
-                .frame(minWidth: 96, minHeight: 44)
-                .padding(.horizontal, 12)
-                .background(Color.conduitAccent, in: Capsule())
+        // A Link's question has no answer to Share: Say instead answers it.
+        if prompt.canConfirm {
+            Button {
+                Haptics.medium()
+                onAnswer(.confirmed)
+            } label: {
+                Text(verbatim: prompt.actionLabel)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.conduitBackgroundColor)
+                    .frame(minWidth: 96, minHeight: 44)
+                    .padding(.horizontal, 12)
+                    .background(Color.conduitAccent, in: Capsule())
+            }
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityHint(Text(verbatim: prompt.title))
         }
-        .buttonStyle(PressableButtonStyle())
-        .accessibilityHint(Text(verbatim: prompt.title))
     }
 }

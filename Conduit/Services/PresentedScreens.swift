@@ -60,6 +60,35 @@ struct PresentedRoom: Equatable {
     }
 }
 
+/// The Link a Link's ask comes from (asks between linked agents, C7): a
+/// linked person's Hermes asks yours, and what the plugin's rule would answer
+/// waits for you. Only an answer there is to Share: a question has none, so
+/// it's answered with Say instead or Don't share.
+struct PresentedLink: Equatable {
+    let id: String
+    let name: String
+    /// Whether there's an answer to Share (the host refuses a confirm
+    /// otherwise).
+    let share: Bool
+
+    init(id: String, name: String, share: Bool) {
+        self.id = id
+        self.name = name
+        self.share = share
+    }
+
+    /// Any Link the host names makes it a Link's ask, even one that can't be
+    /// read; one that doesn't say there's something to share has nothing
+    /// to Share.
+    init?(json: Any?) {
+        guard let json, !(json is NSNull) else { return nil }
+        let entry = json as? [String: Any] ?? [:]
+        let id = (entry["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let name = (entry["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.init(id: id, name: String(name.prefix(80)), share: entry["share"] as? Bool == true)
+    }
+}
+
 /// Something Hermes put on the screen of the user's voice call with
 /// `conduit_show`: a table, steps, a chart. Shown once, never answered.
 struct PresentedCard: Identifiable, Equatable {
@@ -119,10 +148,13 @@ struct PresentedConfirm: Identifiable, Equatable {
     /// Say instead answers with what to say, never by opening the room's
     /// hidden chat.
     let room: PresentedRoom?
+    /// A Link's ask: a linked person's Hermes asks yours. The preview is the
+    /// answer to Share, or their question when there's none.
+    let link: PresentedLink?
 
     init(id: String, title: String, preview: String, actionLabel: String,
          spokenYes: [String] = [], sessionID: String? = nil, expiresAt: Date? = nil, maps: PresentedMapsTarget? = nil,
-         room: PresentedRoom? = nil) {
+         room: PresentedRoom? = nil, link: PresentedLink? = nil) {
         self.id = id
         self.title = title
         self.preview = preview
@@ -132,7 +164,15 @@ struct PresentedConfirm: Identifiable, Equatable {
         self.expiresAt = expiresAt
         self.maps = maps
         self.room = room
+        self.link = link
     }
+
+    /// A room's or a Link's ask: answered with Share, Say instead or Don't
+    /// share, never Edit in a chat.
+    var isAsk: Bool { room != nil || link != nil }
+
+    /// Whether it has something to confirm: a Link's question doesn't.
+    var canConfirm: Bool { link?.share ?? true }
 
     init?(json: Any) {
         guard let entry = json as? [String: Any],
@@ -155,7 +195,8 @@ struct PresentedConfirm: Identifiable, Equatable {
             sessionID: session,
             expiresAt: expires,
             maps: PresentedMapsTarget(json: entry["maps"]),
-            room: PresentedRoom(json: entry["room"])
+            room: PresentedRoom(json: entry["room"]),
+            link: PresentedLink(json: entry["link"])
         )
     }
 
@@ -166,8 +207,12 @@ struct PresentedConfirm: Identifiable, Equatable {
     /// Whether the user's own words confirm it: a plain yes, or one of the
     /// phrases Hermes gave said on its own ("send it", "yes, send it").
     /// Never a question, never a phrase buried in a longer request.
-    func isConfirmed(by words: String) -> Bool {
-        if VoiceCallDecisionOutcome.isYes(words) { return true }
+    /// `bareYes` false takes only its phrases: Classic voice never says a
+    /// Link's ask aloud, so a plain yes may have meant something else.
+    func isConfirmed(by words: String, bareYes: Bool = true) -> Bool {
+        // Nothing to Share: no yes confirms it.
+        guard canConfirm else { return false }
+        if bareYes, VoiceCallDecisionOutcome.isYes(words) { return true }
         guard !words.contains("?"), !words.contains("？") else { return false }
         // What a refusal is, the handset decides, not Hermes: whatever
         // phrases it put in spoken_yes, the user's "no", "cancel" or
@@ -237,9 +282,11 @@ final class PresentedScreensSync: ObservableObject {
     /// under a live name (plugin 0.47+); "text-drafts": Send text for a
     /// contact card's message (plugin 0.67+). "room-asks": a room's asks,
     /// answered with Share, Say instead (with the words) or Don't share
-    /// (plugin 0.118+, Linked Rooms).
+    /// (plugin 0.118+, Linked Rooms). "link-asks": a linked person's Hermes'
+    /// asks, the same way, with Share only when there's an answer to share
+    /// (plugin 0.120+).
     static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
-                           "text-drafts", "room-asks"]
+                           "text-drafts", "room-asks", "link-asks"]
     /// The longest Say instead the host keeps.
     static let maxEditText = 2_000
     /// Card ids remembered as seen, so a card is shown at most once.
@@ -361,6 +408,8 @@ final class PresentedScreensSync: ObservableObject {
                 editText: String? = nil) {
         // The first answer wins: a second tap lands on a panel already gone.
         guard let scope, prompts.contains(where: { $0.id == prompt.id }) else { return }
+        // Nothing to confirm (a Link's question): never sent as a Share.
+        if outcome == .confirmed, !prompt.canConfirm { return }
         prompts.removeAll { $0.id == prompt.id }
         var list = results(for: scope).filter { ($0["id"] as? String) != prompt.id }
         var result: [String: Any] = ["id": prompt.id, "outcome": outcome.rawValue, "via": source.rawValue]
@@ -434,6 +483,11 @@ enum PresentVoiceTool {
         if !prompt.spokenYes.isEmpty { entry["confirming_phrases"] = prompt.spokenYes }
         // Your agent asks before it shares this in a room with other people's agents.
         if let room = prompt.room { entry["room"] = room.name.isEmpty ? "a room" : room.name }
+        // A linked person's Hermes asks; a question has nothing to confirm.
+        if let link = prompt.link {
+            entry["asked_by"] = link.name.isEmpty ? "a linked person's Hermes" : "\(link.name)'s Hermes"
+            if !link.share { entry["can_confirm"] = false }
+        }
         return entry
     }
 
@@ -441,6 +495,9 @@ enum PresentVoiceTool {
     static func note(for prompt: PresentedConfirm) -> String {
         let data = (try? JSONSerialization.data(withJSONObject: describe(prompt), options: [.sortedKeys])) ?? Data()
         let details = String(data: data, encoding: .utf8) ?? ""
+        if !prompt.canConfirm {
+            return "[A linked person's Hermes asked the user something on their screen: \(details). At the next natural pause, tell the user in a sentence; they type their answer on the panel, or call \(name) with decline and its id if they say they won't answer. Don't interrupt the user for it.]"
+        }
         return "[Hermes put a confirmation on the user's screen: \(details). At the next natural pause, tell the user in a sentence what it will do and ask whether to go ahead; then call \(name) with confirm or decline and its id. Don't interrupt the user for it.]"
     }
 
@@ -463,6 +520,9 @@ enum PresentVoiceTool {
         }
         switch action {
         case "confirm":
+            guard prompt.canConfirm else {
+                return ["error": "Nothing to confirm: it's their question. The user answers it on the panel with Say instead, or decline it if they don't want to."]
+            }
             // Their words reach Conduit a moment after the model heard them.
             let shownAfter = sync.userTurnWhenShown[prompt.id]
             let deadline = ContinuousClock.now + .seconds(2)
