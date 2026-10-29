@@ -93,8 +93,11 @@ class ReturnKeyTextView: UITextView {
     private func takesLongTextPaste() -> Bool {
         let pasteboard = UIPasteboard.general
         guard let onLongTextPaste, isEditable, pasteboard.hasStrings, !pasteboard.hasImages,
-              let pasted = pasteboard.string, PastedText.becomesAttachment(pasted) else { return false }
-        return onLongTextPaste(pasted)
+              let pasted = pasteboard.string, PastedText.becomesAttachment(pasted),
+              onLongTextPaste(pasted) else { return false }
+        // A paste replaces what was selected, wherever the words went.
+        if selectedRange.length > 0 { deleteBackward() }
+        return true
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
