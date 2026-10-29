@@ -104,6 +104,14 @@ extension SessionNestingModelTests {
         )
         XCTAssertEqual(mixed, pinKeys([rows[2], rows[0], rows[1]]) + ["home\u{1F}gone"])
         XCTAssertEqual(pinArranged(rows, orders, mixed: mixed), ["h1", "w1", "w2"])
+
+        // A chat of a profile left out of All for now keeps its place.
+        let away = "away\u{1F}a"
+        let again = PinnedChatOrder.mixedOrder(
+            moving: rows, fromOffsets: [0], toOffset: 3,
+            profile: \.profile, pinID: \.pinID, ids: \.ids, mixed: [away] + mixed
+        )
+        XCTAssertEqual(again, [away] + pinKeys([rows[1], rows[2], rows[0]]) + ["home\u{1F}gone"])
     }
 
     func testPinnedOrderMixedKeepsEachProfilesOwnOrder() {

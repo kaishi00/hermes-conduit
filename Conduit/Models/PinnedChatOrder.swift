@@ -203,7 +203,10 @@ struct PinnedChatOrder: Equatable {
     }
 
     /// The mixed order a drag leaves in All's mixed Pinned section: `rows`
-    /// moved as `onMove` reports it, then the saved keys of chats not shown.
+    /// moved as `onMove` reports it, where the first of them was, among the
+    /// saved keys of chats not shown (a profile left out of All for now),
+    /// which keep their places. A row the mix didn't name was shown on top,
+    /// so then the rows go first.
     static func mixedOrder<Row>(
         moving rows: [Row],
         fromOffsets source: IndexSet,
@@ -215,11 +218,14 @@ struct PinnedChatOrder: Equatable {
     ) -> [String] {
         var moved = rows
         moved.move(fromOffsets: source, toOffset: destination)
-        let shownKeys = rows.reduce(into: Set<String>()) { keys, row in
-            let owner = profile(row)
-            keys.formUnion(ids(row).map { key(profile: owner, id: $0) })
-        }
-        return moved.map { key(profile: profile($0), id: pinID($0)) } + mixed.filter { !shownKeys.contains($0) }
+        let rowKeys = rows.map { row in Set(ids(row).map { key(profile: profile(row), id: $0) }) }
+        let shownKeys = rowKeys.reduce(into: Set<String>()) { $0.formUnion($1) }
+        let named = Set(mixed)
+        let start = rowKeys.allSatisfy { !$0.isDisjoint(with: named) }
+            ? mixed.firstIndex(where: shownKeys.contains) ?? mixed.count
+            : 0
+        let unshown = mixed.filter { !shownKeys.contains($0) }
+        return Array(unshown.prefix(start)) + moved.map { key(profile: profile($0), id: pinID($0)) } + unshown.dropFirst(start)
     }
 
     /// Where a move lands among the rows that can move, when a List section

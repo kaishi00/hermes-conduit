@@ -2572,7 +2572,7 @@ widget's and the Share extension's) · README.md
 
 **Rulings**
 - Drag in place plus Reorder pinned chats, together: a hold that moves lifts a pinned row, a hold that stays still opens the menu as before, and a swipe starts before either; the sheet is the way with VoiceOver and in the classic drawer (Eric, 2026-10-27, issue 1354).
-- Only pinned chats move, and only within their own profile's pins: a drop past the last pinned chat lands at the end of Pinned, never among recent chats, and moving never pins or unpins. A nest's "3 jobs" line and its open children stay put and follow their parent.
+- Only pinned chats move, among the pins the section shows (in All's mixed Pinned section, other profiles' too; see below): a drop past the last pinned chat lands at the end of Pinned, never among recent chats, and moving never pins or unpins. A nest's "3 jobs" line and its open children stay put and follow their parent.
 - Rows move by dragging while the list shows every pinned chat: not during a search or under a filter, whose rows are a lookup. The Pinned header reorders the profile in use's pins, and in All grouped by profile each profile's header reorders that profile's; a row's menu reorders its own profile's.
 - Until a profile's pins are reordered they follow recent activity, as before. Once ordered, a chat pinned since (here, on another device or in Hermes Desktop) goes on top, and an unpinned chat leaves the order, so pinning it again puts it on top too.
 - The order is kept per profile under each chat's pin id (its lineage root), so a compacted chat keeps its place. Hermes keeps only whether a chat is pinned, so the order goes to other devices through Sync across devices (`chats.pinned_order`, the profile in use's), not through Hermes.
