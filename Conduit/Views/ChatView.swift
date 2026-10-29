@@ -363,6 +363,8 @@ struct ChatView: View {
                     OfflineChatTranscriptView(presentation: offline)
                         // Its own scroll view: the chat's jump can't reach it.
                         .environment(\.quotedReplyJump, nil)
+                        // Its pictures page among its own.
+                        .environment(\.imageGallery, appState.savedChatImageGallery)
                 }
             }
 
@@ -388,6 +390,8 @@ struct ChatView: View {
         .environment(\.selectableTextDrawsUntilTouched, true)
         // Gateway videos, audio and documents open from a download (#569).
         .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
+        // A tapped picture pages through the chat's pictures.
+        .environment(\.imageGallery, appState.chatImageGallery)
         // Pictures' sizes from earlier launches, read once off the main
         // thread, so rows above take their final height (#1238).
         .task { await TranscriptPictureMemory.loadKeptSizes() }
@@ -1935,8 +1939,8 @@ private struct UserImageAttachmentPreview: View {
     /// The cache key `gatewayImage` was loaded for, so a reused view never
     /// shows the picture it held before.
     @State private var gatewayImageKey: String?
-    @State private var opening = false
-    @State private var openTask: Task<Void, Never>?
+    /// The chat's pictures, which the viewer pages through.
+    @Environment(\.imageGallery) private var imageGallery
     /// The cache key a load from Hermes failed for.
     @State private var gatewayFailedKey: String?
     @State private var localPreview: UIImage?
@@ -2265,55 +2269,20 @@ private struct UserImageAttachmentPreview: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
                 }
-                .overlay { if opening { ProgressView().tint(.white) } }
-                .opensMediaPreview(openPreview)
-                .onDisappear {
-                    openTask?.cancel()
-                    openTask = nil
-                    opening = false
-                }
+                .opensMediaPreview { openPreview(showing: image) }
                 .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
                 .accessibilityLabel("Attached image: \(attachment.imageDescription ?? attachment.name)")
                 .accessibilityAddTraits(.isImage)
     }
 
-    /// Opens the full-resolution original: the local file when the photo
-    /// is still on this device, otherwise the bytes re-fetched from Hermes.
+    /// Opens the full-resolution original among the chat's pictures: the
+    /// local file when the photo is still on this device, otherwise the
+    /// bytes re-fetched from Hermes, with the row's copy shown meanwhile.
     /// The row keeps only the downsampled/decoded image, never the original
     /// bytes, so an image-heavy transcript doesn't pin them all in memory.
-    private func openPreview() {
-        guard !opening else { return }
-        if let localFileURL, MediaPreviewPresenter.shared.present(fileURL: localFileURL, title: attachment.name) {
-            return
-        }
-        // The original kept on the phone (#652).
-        if let key = gatewayResolver?.imageCacheKey(for: attachment),
-           let kept = TranscriptImageCache.cachedFile(for: key, touch: true),
-           MediaPreviewPresenter.shared.present(fileURL: kept, title: attachment.name) {
-            return
-        }
-        guard loadsFromHermes, let gatewayResolver else { return }
-        let uri = attachment.uri
-        let inlineImage = attachment.inlineImage
-        let hasServerFile = isGatewayImage
-        let filename = AttachmentPreviewFilename.make(name: attachment.name, uri: uri)
-        opening = true
-        openTask = Task {
-            var dataURL = hasServerFile ? await gatewayResolver.dataURL(for: uri) : nil
-            if dataURL == nil, !Task.isCancelled, let inlineImage {
-                dataURL = await gatewayResolver.inlineImageDataURL(inlineImage)
-            }
-            if let dataURL, !Task.isCancelled {
-                // A picture known only from its message has no file name to
-                // borrow an extension from; Quick Look needs one.
-                let named = (filename as NSString).pathExtension.isEmpty
-                    ? "\(filename).\(TranscriptImageCache.fileExtension(forDataURL: dataURL))"
-                    : filename
-                await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: named)
-            }
-            guard !Task.isCancelled else { return }
-            opening = false
-        }
+    private func openPreview(showing image: UIImage) {
+        guard let item = ImageGalleryItem.attachment(attachment, resolver: gatewayResolver) else { return }
+        ImageGallery.open(item, in: imageGallery, placeholder: image)
     }
 
     private func previewHeight(for size: CGSize) -> CGFloat {
@@ -2917,32 +2886,32 @@ private struct ReviewSummaryCard: View {
                 disclosure?.willToggle(nil, to: !expanded)
                 withAnimation(ConduitMotion.response) { expanded.toggle() }
             } label: {
-                HStack(alignment: .center, spacing: 10) {
-                    Image(systemName: "internaldrive.fill")
-                        .foregroundStyle(.conduitAura)
-                        .frame(width: 28, height: 28)
-                        .background(Color.conduitAura.opacity(0.14), in: Circle())
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("SELF-IMPROVEMENT REVIEW")
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.6)
-                            .foregroundStyle(.secondary)
-                        SelectableTextView(
-                            text: activity.summary,
-                            font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
-                            textColor: .label
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    Spacer(minLength: 8)
-                    MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
-                    if !details.isEmpty {
-                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                            .font(.caption.weight(.semibold))
-                            .conduitFixedGlyph()
-                            .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .center, spacing: 10) {
+                        Image(systemName: "internaldrive.fill")
+                            .foregroundStyle(.conduitAura)
                             .frame(width: 28, height: 28)
+                            .background(Color.conduitAura.opacity(0.14), in: Circle())
+                        CardHeaderCaption(timestamp: timestamp) {
+                            Text("SELF-IMPROVEMENT REVIEW")
+                                .font(.caption2.weight(.bold))
+                                .tracking(0.6)
+                                .foregroundStyle(.secondary)
+                        }
+                        if !details.isEmpty {
+                            Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                                .font(.caption.weight(.semibold))
+                                .conduitFixedGlyph()
+                                .foregroundStyle(.secondary)
+                                .frame(width: 28, height: 28)
+                        }
                     }
+                    SelectableTextView(
+                        text: activity.summary,
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
+                        textColor: .label
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .contentShape(Rectangle())
             }
@@ -2995,28 +2964,26 @@ private struct ModelChangeSummaryCard: View {
     let timestamp: String
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.conduitAccent)
-                .frame(width: 28, height: 28)
-                .background(Color.conduitAccent.opacity(0.14), in: Circle())
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("MODEL UPDATED")
-                    .font(.caption2.weight(.bold))
-                    .tracking(0.6)
-                    .foregroundStyle(.secondary)
-                SelectableTextView(
-                    text: AppLocalization.string("Model has been changed to \(provider)/\(model)"),
-                    font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
-                    textColor: .label
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.conduitAccent)
+                    .frame(width: 28, height: 28)
+                    .background(Color.conduitAccent.opacity(0.14), in: Circle())
+                CardHeaderCaption(timestamp: timestamp) {
+                    Text("MODEL UPDATED")
+                        .font(.caption2.weight(.bold))
+                        .tracking(0.6)
+                        .foregroundStyle(.secondary)
+                }
             }
-
-            Spacer(minLength: 8)
-            MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
+            SelectableTextView(
+                text: AppLocalization.string("Model has been changed to \(provider)/\(model)"),
+                font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
+                textColor: .label
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(14)
         .chatCard(cornerRadius: 18, tint: .conduitAccent.opacity(0.07))
@@ -3081,21 +3048,28 @@ private struct VoiceCallMarkerCard: View {
                     .frame(width: 28, height: 28)
                     .background(Color.conduitAccent.opacity(0.14), in: Circle())
                     .accessibilityHidden(true)
+                // The start time on the short detail line, so a long title
+                // ("Started from" a chat) keeps the row's width (#1440).
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(2)
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 8)
-                if let started {
-                    Text(started)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(Color.conduitAccent.opacity(0.78))
-                        .monospacedDigit()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 8) {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if let started {
+                            Text(started)
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(Color.conduitAccent.opacity(0.78))
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .layoutPriority(1)
+                        }
+                    }
                 }
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
@@ -3237,6 +3211,32 @@ private struct MessageTimestampLabel: View {
                 .foregroundStyle(tone == .supporting ? Color.conduitAccent.opacity(0.78) : Color.conduitAccent.opacity(0.70))
                 .monospacedDigit()
                 .accessibilityLabel(AppLocalization.string("Sent \(label)"))
+        }
+    }
+}
+
+/// An activity card's caption with its time on the right (#1440); the
+/// card's text runs the full width below the row. The time keeps its one
+/// line and is laid out first, so a long caption wraps beside it (a raw
+/// time that doesn't parse truncates only past the row's width), and at
+/// the accessibility text
+/// sizes the time goes under the caption, as on VoiceJobLinkCard.
+private struct CardHeaderCaption<Caption: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let timestamp: String
+    @ViewBuilder let caption: Caption
+
+    var body: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+            : AnyLayout(HStackLayout(spacing: 8))
+        layout {
+            caption
+                .frame(maxWidth: .infinity, alignment: .leading)
+            MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .layoutPriority(1)
         }
     }
 }
@@ -3632,33 +3632,33 @@ struct ClarifyCard: View {
             // them still waits.
             let showsForm = clarify.isForm && clarify.hasPendingDecision
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: "questionmark.bubble")
-                        .foregroundStyle(.orange)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(statusTitle(for: displayStatus))
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.5)
-                            .foregroundStyle(statusColor(for: displayStatus))
-                        SelectableTextView(
-                            text: layout.headerText(for: clarify),
-                            font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
-                            textColor: .label
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "questionmark.bubble")
+                            .foregroundStyle(.orange)
+                        CardHeaderCaption(timestamp: message.timestamp) {
+                            Text(statusTitle(for: displayStatus))
+                                .font(.caption2.weight(.bold))
+                                .tracking(0.5)
+                                .foregroundStyle(statusColor(for: displayStatus))
+                        }
+                        if displayStatus == .submitting {
+                            ProgressView().controlSize(.small)
+                        } else if displayStatus == .answered,
+                                  clarify.questions.contains(where: { $0.answer != nil }) {
+                            // Only an answer this device holds earns the check;
+                            // an answered-elsewhere settle renders no checkmark so
+                            // the header agrees with the body copy.
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        }
                     }
-                    Spacer(minLength: 8)
-                    if displayStatus == .submitting {
-                        ProgressView().controlSize(.small)
-                    } else if displayStatus == .answered,
-                              clarify.questions.contains(where: { $0.answer != nil }) {
-                        // Only an answer this device holds earns the check;
-                        // an answered-elsewhere settle renders no checkmark so
-                        // the header agrees with the body copy.
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    }
-                    MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
+                    SelectableTextView(
+                        text: layout.headerText(for: clarify),
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
+                        textColor: .label
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 if showsForm {
@@ -4276,34 +4276,34 @@ struct ApprovalCard: View {
     var body: some View {
         if let approval = message.approval {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.shield")
-                        .foregroundStyle(statusColor(for: approval.status))
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(statusTitle(for: approval.status))
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.5)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.shield")
                             .foregroundStyle(statusColor(for: approval.status))
-                        SelectableTextView(
-                            text: ApprovalDisplayText.revealingHidden(approval.description),
-                            font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
-                            textColor: .label
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    Spacer(minLength: 8)
-                    if approval.status == .submitting {
-                        ProgressView().controlSize(.small)
-                    } else if approval.status == .approved || approval.status == .rejected {
-                        Image(systemName: approval.status == .approved ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .foregroundStyle(statusColor(for: approval.status))
-                    } else if approval.status == .expired {
-                        Image(systemName: "clock.badge.xmark")
-                            .foregroundStyle(.secondary)
                             .accessibilityHidden(true)
+                        CardHeaderCaption(timestamp: message.timestamp) {
+                            Text(statusTitle(for: approval.status))
+                                .font(.caption2.weight(.bold))
+                                .tracking(0.5)
+                                .foregroundStyle(statusColor(for: approval.status))
+                        }
+                        if approval.status == .submitting {
+                            ProgressView().controlSize(.small)
+                        } else if approval.status == .approved || approval.status == .rejected {
+                            Image(systemName: approval.status == .approved ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundStyle(statusColor(for: approval.status))
+                        } else if approval.status == .expired {
+                            Image(systemName: "clock.badge.xmark")
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                        }
                     }
-                    MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
+                    SelectableTextView(
+                        text: ApprovalDisplayText.revealingHidden(approval.description),
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
+                        textColor: .label
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 if !approval.command.isEmpty {
@@ -4499,28 +4499,28 @@ struct InputPromptCard: View {
     var body: some View {
         if let prompt = message.inputPrompt {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: iconName(for: prompt.kind))
-                        .foregroundStyle(statusColor(for: prompt.status))
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(statusTitle(for: prompt.status))
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.5)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: iconName(for: prompt.kind))
                             .foregroundStyle(statusColor(for: prompt.status))
-                        Text(prompt.title)
-                            .font(.subheadline.weight(.bold))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    Spacer(minLength: 8)
-                    if prompt.status == .submitting {
-                        ProgressView().controlSize(.small)
-                    } else if prompt.status == .expired {
-                        Image(systemName: "clock.badge.xmark")
-                            .foregroundStyle(.secondary)
                             .accessibilityHidden(true)
+                        CardHeaderCaption(timestamp: message.timestamp) {
+                            Text(statusTitle(for: prompt.status))
+                                .font(.caption2.weight(.bold))
+                                .tracking(0.5)
+                                .foregroundStyle(statusColor(for: prompt.status))
+                        }
+                        if prompt.status == .submitting {
+                            ProgressView().controlSize(.small)
+                        } else if prompt.status == .expired {
+                            Image(systemName: "clock.badge.xmark")
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                        }
                     }
-                    MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
+                    Text(prompt.title)
+                        .font(.subheadline.weight(.bold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 if let note = explanation(for: prompt) {

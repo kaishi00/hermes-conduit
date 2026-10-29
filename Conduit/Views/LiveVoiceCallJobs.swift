@@ -297,6 +297,8 @@ struct LiveVoiceScreenCardSheet: View {
 
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    /// The card's pictures, which a tapped one pages through.
+    @State private var imageGallery = ImageGallerySource()
 
     var body: some View {
         NavigationStack {
@@ -308,10 +310,15 @@ struct LiveVoiceScreenCardSheet: View {
                     if !markdown.isEmpty {
                         // Hermes' own images (MEDIA: paths) load through the gateway.
                         let profile = appState.activeProfile
+                        let resolver = appState.gatewayMediaResolver
+                        let _ = imageGallery.update { [markdown] in
+                            ChatImageGallery.markdownItems(markdown, resolver: resolver, recognizesGatewayMedia: true)
+                        }
                         MarkdownText(source: markdown, gatewayMediaDataURL: { path in
                             await appState.gatewayMediaDataURL(for: path, profile: profile)
                         })
-                        .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
+                        .environment(\.gatewayMediaFiles, resolver)
+                        .environment(\.imageGallery, imageGallery)
                     }
                 }
                 .padding(20)
@@ -340,6 +347,8 @@ struct LiveVoiceJobResultSheet: View {
     /// The job as last seen, so a job the ledger prunes while open (it only
     /// keeps the latest settled ones) stays readable.
     @State private var lastSeen: VoiceBackgroundJob?
+    /// The result's pictures, which a tapped one pages through.
+    @State private var imageGallery = ImageGallerySource()
 
     private var job: VoiceBackgroundJob? { jobs.jobs.first { $0.id == jobID } ?? lastSeen }
 
@@ -392,10 +401,15 @@ struct LiveVoiceJobResultSheet: View {
             // Hermes' own images (MEDIA: paths) load through the gateway,
             // from the profile the job ran in.
             let profile = job.profile ?? appState.activeProfile
+            let resolver = appState.gatewayMediaResolver(for: profile)
+            let _ = imageGallery.update {
+                ChatImageGallery.markdownItems(result, resolver: resolver, recognizesGatewayMedia: true)
+            }
             MarkdownText(source: result, gatewayMediaDataURL: { path in
                 await appState.gatewayMediaDataURL(for: path, profile: profile)
             })
-            .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver(for: profile))
+            .environment(\.gatewayMediaFiles, resolver)
+            .environment(\.imageGallery, imageGallery)
         } else if job.status.isActive {
             Text("Hermes is still working on this. The result will show here.")
                 .foregroundStyle(.secondary)

@@ -4,6 +4,9 @@
 //
 //  Full-screen preview for chat media (#195): agent `MEDIA:` images, video,
 //  audio and documents, web images, and the user's own attachments.
+//  Pictures open in the paging picture viewer (ImageGalleryViewer.swift),
+//  which swipes between them and closes on a swipe down; everything else
+//  opens here in Quick Look.
 //
 //  Presentation goes through Quick Look rather than a hand-rolled viewer:
 //  QLPreviewController already gives pinch-to-zoom for images, playback for
@@ -178,16 +181,6 @@ final class MediaPreviewPresenter {
         return show(Session(url: staged.file, title: staged.file.lastPathComponent, ownedDirectory: staged.directory))
     }
 
-    /// Downloads a web image and previews it. The body is streamed against
-    /// the same 16 MB ceiling as gateway media, so an oversized or endless
-    /// response is abandoned instead of being buffered whole.
-    func presentRemote(url: URL, fallbackName: String) async -> Bool {
-        guard let (data, response) = await Self.boundedDownload(url),
-              !Task.isCancelled else { return false }
-        let name = Self.filename(for: url, response: response, fallback: fallbackName)
-        return await present(data: data, filename: name, mimeType: response.mimeType)
-    }
-
     // MARK: - Presentation
 
     @discardableResult
@@ -225,6 +218,35 @@ final class MediaPreviewPresenter {
             guard !session.didPresent, controller.presentingViewController == nil else { return }
             self?.sessions[key] = nil
             Self.removeDirectory(session.ownedDirectory)
+        }
+        return true
+    }
+
+    private var galleries: [ObjectIdentifier: ImageGalleryViewController] = [:]
+
+    /// Opens pictures in the paging viewer at `index`; each one's original
+    /// is fetched as its page comes near. `placeholder` shows on the first
+    /// page until its original is in.
+    @discardableResult
+    func presentGallery(_ items: [ImageGalleryItem], startingAt index: Int, placeholder: UIImage? = nil) -> Bool {
+        guard !items.isEmpty, let presenter = Self.topViewController() else { return false }
+        let controller = ImageGalleryViewController(items: items, startingAt: index, placeholder: placeholder)
+        let key = ObjectIdentifier(controller)
+        controller.onFinish = { [weak self] in self?.galleries[key] = nil }
+        galleries[key] = controller
+        // Over the screens under it, as Quick Look is (see `show`).
+        controller.modalPresentationStyle = .overFullScreen
+        controller.modalTransitionStyle = .crossDissolve
+        controller.modalPresentationCapturesStatusBarAppearance = true
+        ChatAudioClipPlayer.shared.stop()
+        presenter.present(controller, animated: true)
+        // As in `show`: a presentation refused while another is in flight
+        // never completes, so its fetched copies are reclaimed. One that
+        // showed and closed by then has finished already; this is a no-op.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(5))
+            guard controller.presentingViewController == nil else { return }
+            controller.finish()
         }
         return true
     }
