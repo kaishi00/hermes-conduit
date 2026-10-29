@@ -52,11 +52,12 @@ enum PastedText {
         return "pasted_content_\(formatter.string(from: now))_\(random).txt"
     }
 
-    /// Whether a file is a paste, by that name. Hermes may put its own
-    /// prefix on the stored name, or `-N` after it.
+    /// Whether a file is a paste, by that exact name, so a file the user
+    /// picked isn't taken for one. Hermes may put its own prefix on the
+    /// stored name, or `-N` after it.
     static func isPastedText(_ name: String) -> Bool {
         let last = (name as NSString).lastPathComponent
-        return last.wholeMatch(of: #/.*pasted_content_[\w-]+\.txt/#) != nil
+        return last.wholeMatch(of: #/.*pasted_content_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}_[0-9a-f]{6}(?:-\d+)?\.txt/#) != nil
     }
 
     static func isPastedText(_ attachment: Attachment) -> Bool {
@@ -144,6 +145,7 @@ enum PastedText {
     /// A paste put back into the message: after what was typed, on a line
     /// of its own.
     static func joined(_ draft: String, with pasted: String) -> String {
+        guard !pasted.isEmpty else { return draft }
         guard !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return pasted }
         let separator = draft.hasSuffix("\n") ? "\n" : "\n\n"
         return draft + separator + pasted

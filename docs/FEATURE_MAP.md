@@ -1756,7 +1756,7 @@ Keyboard caption is unchanged, as it describes the option)
   command sending, Shift-Return and the IME's Return still reaching the
   text, in chats, rooms and the full editor.
 
-**Checked:** 2026-10-28, #1460 (inline prediction off on a Mac).
+**Checked:** 2026-10-29, #1515 (the same fields take a long paste as an attachment, `onLongTextPaste`; Return unchanged); 2026-10-28, #1460 (inline prediction off on a Mac).
 
 ## A chat's last reply
 

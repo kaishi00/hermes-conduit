@@ -31,8 +31,10 @@ extension ComposerAttachmentPolicyTests {
         XCTAssertTrue(PastedText.isPastedText("attachments/pasted_content_2026-10-29_20-50-06-123_a1b2c3-2.txt"))
         XCTAssertFalse(PastedText.isPastedText("notes.txt"))
         XCTAssertFalse(PastedText.isPastedText("pasted_content_2026.pdf"))
+        // Only Desktop's generated shape: a file the user named like it isn't one.
+        XCTAssertFalse(PastedText.isPastedText("pasted_content_notes.txt"))
 
-        let file = Attachment(id: "a", name: "pasted_content_x.txt", uri: "/tmp/x", mimeType: "text/plain", kind: .document)
+        let file = Attachment(id: "a", name: "pasted_content_2026-10-29_20-50-06-123_a1b2c3.txt", uri: "/tmp/x", mimeType: "text/plain", kind: .document)
         XCTAssertEqual(AttachmentTypePolicy.displayName(for: file), PastedText.displayName)
         XCTAssertEqual(AttachmentTypePolicy.symbolName(for: file), "doc.plaintext")
         let other = Attachment(id: "b", name: "report.pdf", uri: "/tmp/r", mimeType: "application/pdf", kind: .document)
@@ -73,6 +75,7 @@ extension ComposerAttachmentPolicyTests {
         XCTAssertEqual(PastedText.joined("  \n", with: "log"), "log")
         XCTAssertEqual(PastedText.joined("Why does this fail?", with: "log"), "Why does this fail?\n\nlog")
         XCTAssertEqual(PastedText.joined("Why?\n", with: "log"), "Why?\n\nlog")
+        XCTAssertEqual(PastedText.joined("Why?", with: ""), "Why?")
     }
 
     func testTheChipPreviewsThePastesFirstWords() {
