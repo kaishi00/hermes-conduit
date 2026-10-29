@@ -178,6 +178,15 @@ final class ImageGalleryViewController: UIViewController {
     private let items: [ImageGalleryItem]
     private var index: Int
     private let placeholder: UIImage?
+    /// The page the row's copy belongs to.
+    private let placeholderIndex: Int
+    /// Pictures decoded already, so a page the pager makes again (a swipe
+    /// away and back) shows its picture without decoding it again.
+    private let decoded: NSCache<NSURL, UIImage> = {
+        let cache = NSCache<NSURL, UIImage>()
+        cache.totalCostLimit = 96 * 1024 * 1024
+        return cache
+    }()
     private let pager = UIPageViewController(
         transitionStyle: .scroll,
         navigationOrientation: .horizontal,
@@ -208,6 +217,7 @@ final class ImageGalleryViewController: UIViewController {
         self.items = items
         self.index = min(max(index, 0), max(items.count - 1, 0))
         self.placeholder = placeholder
+        self.placeholderIndex = self.index
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -411,14 +421,16 @@ final class ImageGalleryViewController: UIViewController {
     // MARK: Pages
 
     private func page(at index: Int) -> ImageGalleryPageController {
-        let page = ImageGalleryPageController(index: index, title: items[index].title)
+        let page = ImageGalleryPageController(index: index, title: items[index].title, decoded: decoded)
         pages.add(page)
+        // The row's copy first: it stays if the original can't be had.
+        if index == placeholderIndex, let placeholder {
+            page.show(placeholder: placeholder)
+        }
         if let file = files[index] {
             page.show(file: file)
         } else if let tooLarge = failed[index] {
             page.showFailure(tooLarge: tooLarge)
-        } else if index == self.index, let placeholder {
-            page.show(placeholder: placeholder)
         }
         return page
     }
@@ -603,10 +615,12 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
     private let failureLabel = UILabel()
     private var shownFile: URL?
     private var decodeTask: Task<Void, Never>?
+    private let decoded: NSCache<NSURL, UIImage>
 
-    init(index: Int, title: String) {
+    init(index: Int, title: String, decoded: NSCache<NSURL, UIImage>) {
         self.index = index
         self.pictureTitle = title
+        self.decoded = decoded
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -702,8 +716,14 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
         guard shownFile != file.url else { return }
         shownFile = file.url
         failureLabel.isHidden = true
-        if imageView.image == nil { spinner.startAnimating() }
         let url = file.url
+        if let image = decoded.object(forKey: url as NSURL) {
+            spinner.stopAnimating()
+            imageView.image = image
+            if !isZoomedIn { layoutPicture() }
+            return
+        }
+        if imageView.image == nil { spinner.startAnimating() }
         // Sharp at twice the fitted size, within what a phone decodes: the
         // pager holds three pages at once.
         let longest = max(view.bounds.width, view.bounds.height, 400) * max(traitCollection.displayScale, 2)
@@ -716,6 +736,8 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
             guard let self, !Task.isCancelled else { return }
             self.spinner.stopAnimating()
             if let image {
+                let cost = Int(image.size.width * image.scale * image.size.height * image.scale) * 4
+                self.decoded.setObject(image, forKey: url as NSURL, cost: cost)
                 self.imageView.image = image
                 if !self.isZoomedIn { self.layoutPicture() }
             } else if self.imageView.image == nil {

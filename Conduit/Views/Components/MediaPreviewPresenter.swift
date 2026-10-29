@@ -181,16 +181,6 @@ final class MediaPreviewPresenter {
         return show(Session(url: staged.file, title: staged.file.lastPathComponent, ownedDirectory: staged.directory))
     }
 
-    /// Downloads a web image and previews it. The body is streamed against
-    /// the same 16 MB ceiling as gateway media, so an oversized or endless
-    /// response is abandoned instead of being buffered whole.
-    func presentRemote(url: URL, fallbackName: String) async -> Bool {
-        guard let (data, response) = await Self.boundedDownload(url),
-              !Task.isCancelled else { return false }
-        let name = Self.filename(for: url, response: response, fallback: fallbackName)
-        return await present(data: data, filename: name, mimeType: response.mimeType)
-    }
-
     // MARK: - Presentation
 
     @discardableResult
