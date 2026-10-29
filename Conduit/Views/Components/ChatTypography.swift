@@ -284,11 +284,16 @@ enum ChatTypography {
         return standardBodySizes[grown] / standardBodySizes[index]
     }
 
-    /// `category` moved `steps` sizes up, stopping at the largest standard
-    /// size. An accessibility size is already larger and stays as it is.
-    static func boosted(_ category: UIContentSizeCategory, by steps: Int) -> UIContentSizeCategory {
-        guard steps > 0, let index = standardCategories.firstIndex(of: category) else { return category }
-        return standardCategories[min(standardCategories.count - 1, index + steps)]
+    /// What a standard size's text should grow by that the system didn't
+    /// give it: body text there is `body` points against `defaultBody` at
+    /// the default size, a smaller step than iOS's, as on a Mac, where
+    /// every size appears to draw alike. One where the system grows text
+    /// as iOS does (and at an accessibility size).
+    static func missingGrowth(at category: UIContentSizeCategory, body: CGFloat, defaultBody: CGFloat) -> CGFloat {
+        guard let index = standardCategories.firstIndex(of: category), body > 0, defaultBody > 0 else { return 1 }
+        let expected = standardBodySizes[index] / standardBodySizes[3]
+        let given = body / defaultBody
+        return abs(expected - given) < 0.01 ? 1 : expected / given
     }
 
     /// `category` moved `steps` sizes down: the system's size under a
@@ -442,8 +447,19 @@ extension EnvironmentValues {
 extension UIFont {
     /// The text style's font at `sizeCategory`, the view's environment
     /// size: a wide window's chat column steps it up (`readableChatColumn`),
-    /// which the app-wide `preferredFont(forTextStyle:)` doesn't see.
+    /// which the app-wide `preferredFont(forTextStyle:)` doesn't see. Where
+    /// the system draws that size smaller than iOS does (an iPad app on a
+    /// Mac appears to draw every size alike), it grows the rest of the way
+    /// by point size.
     static func preferredFont(forTextStyle style: UIFont.TextStyle, in sizeCategory: ContentSizeCategory) -> UIFont {
-        preferredFont(forTextStyle: style, compatibleWith: UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(sizeCategory)))
+        let category = UIContentSizeCategory(sizeCategory)
+        let traits = UITraitCollection(preferredContentSizeCategory: category)
+        let font = preferredFont(forTextStyle: style, compatibleWith: traits)
+        let growth = ChatTypography.missingGrowth(
+            at: category,
+            body: preferredFont(forTextStyle: .body, compatibleWith: traits).pointSize,
+            defaultBody: preferredFont(forTextStyle: .body, compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)).pointSize
+        )
+        return growth == 1 ? font : font.withSize(font.pointSize * growth)
     }
 }

@@ -129,7 +129,7 @@ private struct ReadableContentWidth: ViewModifier {
                 .environment(\.chatWidthTextSteps, scalesChatText ? steps : 0)
                 .environment(\.chatColumnBaseTextSize, dynamicTypeSize)
                 .onChange(of: steps, initial: true) { _, steps in
-                    MacTextStepsReport.noteOnce(steps: steps, from: dynamicTypeSize)
+                    if textBase != nil { MacTextStepsReport.noteOnce(steps: steps, from: dynamicTypeSize) }
                 }
         }
     }
@@ -150,17 +150,18 @@ private struct ReadableContentWidth: ViewModifier {
     }
 }
 
-/// What a Mac does with a column's text steps, logged once a launch: an
-/// iPad app there may draw every Dynamic Type size alike, which left
-/// #1393's steps doing nothing, and no build of ours can be probed on the
-/// Mac itself. `log show --predicate 'category == "ReadableWidth"'` reads it.
+/// What a Mac does with a column's text steps, logged once a launch when
+/// the first column that steps its text lays out, steps or none: an iPad
+/// app there may draw every Dynamic Type size alike, which left #1393's
+/// steps doing nothing, and no build of ours can be probed on the Mac
+/// itself. `log show --predicate 'category == "ReadableWidth"'` reads it.
 @MainActor
 enum MacTextStepsReport {
     private static let log = Logger(subsystem: "com.milim.relay", category: "ReadableWidth")
     private static var noted = false
 
     static func noteOnce(steps: Int, from base: DynamicTypeSize, onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac) {
-        guard onMac, steps > 0, !noted else { return }
+        guard onMac, !noted else { return }
         noted = true
         let uikit = [UIContentSizeCategory.large, .extraExtraExtraLarge].map {
             Double(UIFont.preferredFont(forTextStyle: .body, compatibleWith: UITraitCollection(preferredContentSizeCategory: $0)).pointSize)

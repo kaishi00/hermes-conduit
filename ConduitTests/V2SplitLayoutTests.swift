@@ -211,9 +211,19 @@ extension SidebarLayoutTests {
         XCTAssertEqual(ChatTypography.widthScale(steps: 2, from: .xxxLarge), 1)
         XCTAssertEqual(ChatTypography.widthScale(steps: 2, from: .accessibility2), 1)
         XCTAssertEqual(ChatTextAppearance(size: .default).widened(steps: 2, from: .accessibility2), ChatTextAppearance(size: .default))
-        XCTAssertEqual(ChatTypography.boosted(.extraExtraLarge, by: 3), .extraExtraExtraLarge)
         XCTAssertEqual(ChatTypography.lowered(.extraExtraLarge, by: 2), .large)
-        XCTAssertEqual(ChatTypography.boosted(.accessibilityMedium, by: 2), .accessibilityMedium)
+        XCTAssertEqual(ChatTypography.lowered(.accessibilityMedium, by: 2), .accessibilityMedium)
+        // In-column cards' UIKit text: nothing added where the system sizes
+        // text as iOS does; a Mac drawing every size alike gets the growth.
+        XCTAssertEqual(ChatTypography.missingGrowth(at: .extraExtraExtraLarge, body: 23, defaultBody: 17), 1)
+        XCTAssertEqual(ChatTypography.missingGrowth(at: .extraExtraExtraLarge, body: 17, defaultBody: 17), 23.0 / 17, accuracy: 0.0001)
+        XCTAssertEqual(ChatTypography.missingGrowth(at: .large, body: 13, defaultBody: 13), 1)
+        XCTAssertEqual(ChatTypography.missingGrowth(at: .accessibilityLarge, body: 17, defaultBody: 17), 1)
+        XCTAssertEqual(
+            UIFont.preferredFont(forTextStyle: .subheadline, in: .extraExtraExtraLarge).pointSize,
+            UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: UITraitCollection(preferredContentSizeCategory: .extraExtraExtraLarge)).pointSize,
+            accuracy: 0.001
+        )
         // Caches tell the steps apart; no steps keeps today's keys.
         XCTAssertEqual(ChatTextAppearance(size: .default).cacheIdentity, ChatTextSize.default.cacheIdentity)
         XCTAssertNotEqual(stepped.cacheIdentity, ChatTextAppearance(size: .default).cacheIdentity)
