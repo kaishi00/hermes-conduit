@@ -41,15 +41,18 @@ enum ReadableWidth {
     /// A chat's transcript and composer: the narrowest its column gets on a
     /// wide window. A wider window widens it (`chat(available:)`).
     static let chat: CGFloat = 760
-    /// The widest a chat's column gets, however wide the window.
-    static let chatMax: CGFloat = 1040
+    /// The widest a chat's column gets, however wide the window: past
+    /// 1040 pt its text, at the largest standard size, runs longer lines
+    /// rather than leave most of a big window empty.
+    static let chatMax: CGFloat = 1400
     /// The share of the chat's width its column takes between those two.
-    static let chatShare: CGFloat = 0.72
+    static let chatShare: CGFloat = 0.8
     /// Settings' pages: the narrowest their column gets on a wide window.
     /// A wider window widens it (`settings(available:)`).
     static let settings: CGFloat = 720
-    /// The widest Settings' column gets: room for its text's three steps.
-    static let settingsMax: CGFloat = 980
+    /// The widest Settings' column gets, its text three steps up past
+    /// 975 pt.
+    static let settingsMax: CGFloat = 1300
     /// A Chats or Bots list shown on its own on a wide window, the list
     /// beside the chat hidden (`V2ChatListPreference`).
     static let list: CGFloat = 720
@@ -57,9 +60,9 @@ enum ReadableWidth {
     static let call: CGFloat = 640
 
     /// A chat's column for `available` points of width: the phone's
-    /// 760 pt column on an iPad beside the list, growing with a maximized
-    /// Mac or iPad window up to `chatMax`, so the text doesn't sit in a
-    /// narrow strip in the middle of it.
+    /// 760 pt column on a narrower window, growing with a wider one (an
+    /// iPad's whole window, a maximized Mac) up to `chatMax`, so the text
+    /// doesn't sit in a narrow strip in the middle of it.
     static func chat(available: CGFloat) -> CGFloat {
         min(chatMax, max(chat, (available * chatShare).rounded(.down)))
     }

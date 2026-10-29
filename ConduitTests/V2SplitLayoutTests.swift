@@ -194,24 +194,25 @@ extension SidebarLayoutTests {
     }
 
     func testChatColumnWidensWithTheWindowUpToItsCap() {
-        // A phone, and an iPad beside the list, keep the 760 pt column.
-        for width: CGFloat in [375, 760, 1001, 1056] {
+        // A phone, and a narrower window, keep the 760 pt column.
+        for width: CGFloat in [375, 760, 950] {
             XCTAssertEqual(ReadableWidth.chat(available: width), ReadableWidth.chat, "\(width) pt keeps 760 pt.")
         }
-        // A wider window widens it with the window.
-        XCTAssertEqual(ReadableWidth.chat(available: 1057), 761)
-        XCTAssertEqual(ReadableWidth.chat(available: 1376), 990)
+        // A wider window widens it with the window: an iPad beside the
+        // list a little, its whole window and a Mac's more.
+        XCTAssertEqual(ReadableWidth.chat(available: 1001), 800)
+        XCTAssertEqual(ReadableWidth.chat(available: 1376), 1100)
         XCTAssertGreaterThan(ReadableWidth.chat(available: 1300), ReadableWidth.chat(available: 1200))
         // A maximized window stops at the cap.
-        for width: CGFloat in [1445, 1800, 3000] {
+        for width: CGFloat in [1750, 2240, 3000] {
             XCTAssertEqual(ReadableWidth.chat(available: width), ReadableWidth.chatMax, "\(width) pt stops at the cap.")
         }
-        XCTAssertEqual(ReadableWidth.margin(available: 1800, maxWidth: ReadableWidth.chat(available: 1800)), 380)
+        XCTAssertEqual(ReadableWidth.margin(available: 2240, maxWidth: ReadableWidth.chat(available: 2240)), 420)
     }
 
     func testChatTextStepsUpWithTheColumn() {
         // A phone, and an iPad beside the list, keep the system's size.
-        for width: CGFloat in [375, 1001, 1056, 1180] {
+        for width: CGFloat in [375, 1001, 1056] {
             XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chat(available: width), base: ReadableWidth.chat), 0, "\(width) pt keeps the size.")
         }
         // Each step once the column holds as many words a line at it.
@@ -221,6 +222,8 @@ extension SidebarLayoutTests {
         // An iPad's whole window with the list hidden, and a maximized Mac.
         XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chat(available: 1376), base: ReadableWidth.chat), 2)
         XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chat(available: 1800), base: ReadableWidth.chat), 3)
+        // Past three steps the column widens on at the largest size.
+        XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chatMax, base: ReadableWidth.chat), 3)
         // From the system's size: never past the largest standard size, and
         // none at an accessibility size.
         XCTAssertEqual(ReadableWidth.textSteps(column: 1040, base: ReadableWidth.chat, from: .large), 3)
@@ -231,12 +234,12 @@ extension SidebarLayoutTests {
 
     func testSettingsColumnWidensAndStepsItsText() {
         // A sheet, and an iPad's window beside nothing wider, keep 720 pt.
-        for width: CGFloat in [375, 720, 1000] {
+        for width: CGFloat in [375, 720, 900] {
             XCTAssertEqual(ReadableWidth.settings(available: width), ReadableWidth.settings, "\(width) pt keeps 720 pt.")
             XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.settings(available: width), base: ReadableWidth.settings), 0)
         }
-        XCTAssertEqual(ReadableWidth.settings(available: 1200), 864)
-        XCTAssertEqual(ReadableWidth.textSteps(column: 864, base: ReadableWidth.settings), 1)
+        XCTAssertEqual(ReadableWidth.settings(available: 1050), 840)
+        XCTAssertEqual(ReadableWidth.textSteps(column: 840, base: ReadableWidth.settings), 1)
         // A maximized window stops at the cap, three steps up.
         XCTAssertEqual(ReadableWidth.settings(available: 1800), ReadableWidth.settingsMax)
         XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.settingsMax, base: ReadableWidth.settings), 3)
