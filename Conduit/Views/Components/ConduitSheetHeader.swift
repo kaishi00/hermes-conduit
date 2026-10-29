@@ -8,7 +8,7 @@ struct ConduitSheetHeader: View {
     var body: some View {
         ZStack {
             Text(title)
-                .font(.headline)
+                .scaledFont(.headline)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 // Clear of the close button at any text size.

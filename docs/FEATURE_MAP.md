@@ -125,12 +125,13 @@ several details only the user can give (notifier 0.82).
 - Most questions stay multiple choice: only several questions with one to type in make a form. A form sends once something in it is filled in, and its blank fields go to Hermes as skipped (Eric 2026-10-26, #1294, notifier #391).
 - An approval one of your agents' turns waits for in a room someone else hosts is answered only on your own Hermes, once or deny, never by the room's host. Its notification goes out as for any chat, named by the agent's hidden chat for the room, which the chat card's `approval.respond` can't reach (4001 on Hermes c73cbcc4), so the plugin's list names that `session_key` and the answer goes through POST /rooms/approvals/answer. A call from Hermes about one answers it as about any other approval, since `calls.follow_approval` answers Hermes' own queue by that key (2026-10-27, notifier #416).
 - "Skip" leaves only a form's question blank. Only a choice the words name whole ("Pass") is picked instead, not one inside them ("leave it blank" beside a choice called Blank), and a question or a negation ("don't skip it") is an answer; the phone and the plugin read it the same way (2026-10-26, #1294, notifier #391).
+- On the chat card, here, on Classic voice's screen and on a live call's screen (VoiceApprovalPanel, which LiveVoiceWaitingPanel shows, draws the same cards), the card's caption and its time share the top row, the time on the right on one line (a long caption wraps beside it), and the description or question runs the card's full width below, never in a column beside the time; at the accessibility text sizes the time goes under the caption (2026-10-29, #1507, issue #1440).
 
 **Open gaps**
 - Group rooms: the card's failure line shows the error text raw, while the chat card reveals hidden characters in its error and expiry text (#951 follow-up).
 - Your agents' approvals in rooms other people host have no card in the app yet, and their notification opens a hidden chat the app doesn't show, whose card couldn't answer them. C3 (on `linked-rooms`) adds the card, matched to the notification by its `session_key`; until then `hermes conduit-push rooms approvals`, `approve` and `deny` answer them, as does a call from Hermes about one.
 
-**Checked:** 2026-10-29, #1497 (a linked person's ask to its owner in the siblings, notifier #465); 2026-10-29, #1485 (a room's ask to its owner in the siblings; the call-screen confirmation's panel and overlay listed in Code); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files); 2026-10-27, #1351 (your agents' approvals in rooms other people host, notifier #416); 2026-10-26, #1301 (the jump button goes to input cards too); 2026-10-26, #1294 (clarify forms: a field for each question and one Send, blanks skipped on every transport, "skip" by voice; notifier #391); 2026-10-26, #1247 (the Watch broker's grant answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, the table and the Watch row, at #1182, carried in #1235; 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
+**Checked:** 2026-10-29, #1507 (the chat card's time top right, its description or question full width below, #1440); 2026-10-29, #1497 (a linked person's ask to its owner in the siblings, notifier #465); 2026-10-29, #1485 (a room's ask to its owner in the siblings; the call-screen confirmation's panel and overlay listed in Code); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files); 2026-10-27, #1351 (your agents' approvals in rooms other people host, notifier #416); 2026-10-26, #1301 (the jump button goes to input cards too); 2026-10-26, #1294 (clarify forms: a field for each question and one Send, blanks skipped on every transport, "skip" by voice; notifier #391); 2026-10-26, #1247 (the Watch broker's grant answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, the table and the Watch row, at #1182, carried in #1235; 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
 
 ## Passwords, logins and codes Hermes asks for
 
@@ -166,6 +167,7 @@ these prompts)
 - Never asked or answered by voice: Local Live and a voice job's notice say Hermes waits and where, the other live modes only show the card on the call screen, and Classic voice shows it too, but no listening window opens for it and nothing asks for the value aloud. A live call's open microphone and Classic's barge-in still hear the room, so a user who reads a code out loud is heard like any other speech (2026-10-26, #1301).
 - A website login names the exact origin it is saved for, its title the origin's own host, or the origin itself when it has none (never a separately sent site name), and goes as JSON `{identifier, password}`, the identifier trimmed and the password as typed (spaces alone are no password, as on the other cards); a code drops the spaces and dashes a site groups it with. As in Hermes Desktop: the code is shown as typed, Don't save and Skip answer empty, and the code request's `hint` is not shown (Hermes always sends it empty) (2026-10-26, #1299, #1301).
 - No password or username autofill type on the login card: iOS would offer to save the site's login under Conduit's own domain. The code field offers a code from a text message or email (2026-10-26, #1301).
+- On the chat card, here, on Classic voice's screen and on a live call's screen (VoiceApprovalPanel, which LiveVoiceWaitingPanel shows, draws the same card), the card's caption and its time share the top row, the time on the right on one line (a long caption wraps beside it), and the title runs the card's full width below, never in a column beside the time; at the accessibility text sizes the time goes under the caption (2026-10-29, #1507, issue #1440).
 
 **Open gaps**
 - Notification: none for any of these. Hermes gives plugins no hook on server requests, and `browser_vault` can't tell before it runs whether it will ask (a saved authenticator key fills codes itself).
@@ -174,7 +176,7 @@ these prompts)
 - A voice job waiting on one shows no card on the call screen or Classic voice's screen: the job keeps only that it needs input, so the call says to open it in Conduit (waitingNotice). The same goes for Watch calls, which have no card at all.
 - The minimised call bar shows no card, as for approvals and questions; opening the call shows it. A call from Hermes is never about one: the plugin calls only for approvals and questions.
 
-**Checked:** 2026-10-28, #1452 (open requests move with a socket kept across a profile switch); 2026-10-26, #1301 (website logins and codes, #1299).
+**Checked:** 2026-10-29, #1507 (the card's time top right, its title full width below, #1440); 2026-10-28, #1452 (open requests move with a socket kept across a profile switch); 2026-10-26, #1301 (website logins and codes, #1299).
 
 ## Voice follow-ups
 
@@ -553,7 +555,7 @@ Hermes · Resume Call · memory at call end (notifier)
 **Code**
 - Recording and saving: `Conduit/Voice/VoiceHistory.swift` (VoiceTranscriptRecorder, VoiceTranscriptSaveRequest, VoiceCallChatLink, VoiceTranscriptOutbox, VoiceCallCheckpoint)
 - In the app: `Conduit/Services/AppState.swift` (chatCallReconnectWindow, isArchivedVoiceChat, saveWatchVoiceCall, checkpointVoiceCall)
-- The call's card in its chat: `Conduit/Views/VoiceChatCallTranscriptSheet.swift`
+- The call's card in its chat: `Conduit/Views/ChatView.swift` (VoiceCallMarkerCard), `Conduit/Views/VoiceChatCallTranscriptSheet.swift`
 - Watch: `Conduit/Watch/WatchDirectBroker.swift`, `ConduitWatch/WatchDirectCallModel.swift` (trimTranscript), `ConduitWatch/WatchBridgeCallModel.swift` (trimTranscript), `Shared/WatchVoice/WatchVoiceWire.swift` (DirectTranscript)
 - Notifier: `notifier/dashboard/api/voice_calls.py` (/voice/sessions, /voice/chat-calls, /voice/archive), `notifier/voice_archive.py`
 - Background time: `Conduit/Services/BackgroundTaskHold.swift` (`AppState.beginVoiceTranscriptBackgroundTask`, the Watch broker's revoke and late revoke)
@@ -567,11 +569,12 @@ Hermes · Resume Call · memory at call end (notifier)
 - Ending a call runs Hermes' session-end hooks and memory commit; a call kept with its chat writes memory under the chat (2026-10-06, notifier #46; 2026-10-13, notifier #98).
 - A call's turns stay in memory until the host has them; each capture starts after the last line it took, and rescans only when the engine changed a line before it (2026-10-24, #1222, from #1004).
 - A Watch call, in every voice mode, keeps only the newest 40 KB of its transcript while it runs, the most its saved call can carry. Lines still in use (an open line, the user turn a tool call answers) and a single newest turn over 40 KB are kept whole; the saved call clips them (2026-10-24, #1221).
+- The call's card in its chat keeps its start time on the short detail line under the title, so a long title ("Started from" a chat) has the card's width (2026-10-29, #1507, issue #1440).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445 (a call's jobs leave Desktop's list once answered); 2026-10-26, #1247 (the closing transcript save and the Watch broker's revokes keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for a call kept with its first request's chat; Qwen joins the shared save path (`qwen-live` history), at #1182, carried in #1235; 2026-10-24, at #1222 (capture cursor); at #1221, for the Watch's transcript tail; at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review); at #1220: quiet checkpoints, and a saved turn's cut closes a long fence with one as long, within the plugin's limit.
+**Checked:** 2026-10-29, #1507 (the call card's start time under its title, #1440); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445 (a call's jobs leave Desktop's list once answered); 2026-10-26, #1247 (the closing transcript save and the Watch broker's revokes keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for a call kept with its first request's chat; Qwen joins the shared save path (`qwen-live` history), at #1182, carried in #1235; 2026-10-24, at #1222 (capture cursor); at #1221, for the Watch's transcript tail; at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review); at #1220: quiet checkpoints, and a saved turn's cut closes a long fence with one as long, within the plugin's limit.
 
 ## Voice in the chats list
 
@@ -3029,6 +3032,56 @@ notifier's copies of both
 
 **Checked:** 2026-10-29, #1502 (Eric ruled that Markdown under an app or test folder gets both reviewers); 2026-10-29, #1469 (Markdown under an app or test folder counts as code for reviews and always builds in CI; notifier #456); #1467 (the change id hashes any bytes and a failing one counts as no match; the notifier's data files count as code, notifier #455; CI's copy of the change id is in Code, held to the review's by a test); #1466.
 
+## Nightly reruns
+
+A scheduled Nightly whose only losses are jobs GitHub never gave a macOS runner reruns
+those jobs by itself.
+
+**Siblings:** the Nightly workflow it follows (its name and its matrices) ·
+docs/CI.md's workflow table and the Nightly paragraph · docs/RELEASE_WORKFLOW.md's
+rule that every job of a candidate's dispatched Nightly passes
+
+**Code**
+- Rerun: `.github/workflows/nightly-rerun.yml`, `scripts/tests/test_nightly_rerun.py` (the decision against fixture job lists, and that it still follows Nightly's name and `fail-fast: false` matrices)
+- Nightly: `.github/workflows/nightly.yml`
+- Docs: `docs/CI.md`, `docs/RELEASE_WORKFLOW.md`
+
+**Rulings**
+- A job counts as never placed when it is `cancelled` with no runner and no steps (GitHub's "not acquired by Runner of type hosted"). The run reruns its failed jobs only when every job that didn't pass is one of those, at most twice, so a test that ran and failed is never retried. Only scheduled runs rerun: a dispatched run, such as a release candidate's, keeps its own result, so the release rule is unchanged (2026-10-29, #1506, after Nightly lost 2 jobs on 10-28 and 3 on 10-29 to macOS arm64 capacity).
+
+**Open gaps**
+- The failure email for the first attempt still goes out. The two-rerun cap assumes GitHub fires `workflow_run` for each rerun attempt; the first live rerun shows it.
+
+**Checked:** 2026-10-29, #1506.
+
+## Smoke selection
+
+What the one macOS Smoke job runs on every PR and push, against what only the
+nightly run covers.
+
+**Siblings:** the pinned lists and their caps · the change's own unit classes
+· the source contracts · the UI targeted retry · the step summary · the
+nightly partition, which runs everything Smoke leaves out · docs/CI.md
+
+**Code**
+- Lists and caps: `scripts/smoke-suite.json`; validation and the change's own classes: `scripts/plan-tests.py` (`smoke`)
+- Workflow steps: `.github/workflows/ci.yml` (the plan job's selection, the Smoke job's unit and UI steps)
+- UI retry: `scripts/smoke-retry-classes.py`; step summary: `scripts/smoke-summary.py`
+- Nightly partition: `scripts/hosted-suite.json`, `.github/workflows/nightly.yml`
+- Tests: `scripts/tests/test_ci_workflow_contract.py`, `scripts/tests/test_smoke_job_runner.py`, `scripts/tests/test_hosted_ci.py`
+- Docs: `docs/CI.md`
+
+**Rulings**
+- Smoke pins single tests (Class/testMethod), never whole classes, under `max_unit_tests` (70) and `max_ui_tests` (4); `plan-tests.py smoke` fails a whole-class entry, a test its class doesn't declare, a pinned nightly-only timing family and a list over its cap. Add coverage by swapping a test; raising a cap is a deliberate change with its reason in the PR (Eric, 2026-10-29, #1508: whole classes let unit smoke grow from 195 s to 240 s with the list unchanged).
+- The source contracts and the change's own unit classes run whole; a changed class runs in place of the tests pinned from it (2026-10-29, #1508).
+- Everything Smoke leaves out runs every night; the nightly run is the exhaustive authority (CI v5, #739).
+
+**Open gaps**
+- A changed UI test class doesn't join Smoke: a UI test a PR adds or edits first runs at night. UI tests are the slow ones (36-150 s each) and the list is capped at 4 (2026-10-29, #1508).
+- A changed unit class with no timing baseline is charged 3 s of `changed_budget_s`, and `scripts/test-timings.json` was last seeded in August, so a PR adding several slow new classes isn't held to the budget (2026-10-29, #1508).
+
+**Checked:** 2026-10-29, #1508.
+
 ## Settings connection page
 
 The page with the server, Reconnect, Restart Gateway, Cloudflare Access,
@@ -3230,18 +3283,19 @@ notifier's live read of the setting for chats already open
 
 **Code**
 - Setting: `Conduit/Views/AuxiliaryViews.swift` (ChatSettingsDetail fields, `display.memory_notifications`), `Conduit/Models/Models.swift` (ProfileDisplayPreferences.showReviews), `Conduit/Services/AppState.swift` (loadProfileDisplayPreferences, setProfileSetting)
-- Row: `Conduit/Services/StreamEventParser.swift` (`review.summary`), `Conduit/Services/HermesClient.swift` (reviewActivity), `Conduit/Services/AppState.swift` (the review cache, mergeCachedReviews), `Conduit/Views/ChatView.swift` (SELF-IMPROVEMENT REVIEW, drawnMessageScrollTargets), `Conduit/Views/ChatActivityRows.swift` (ChatMessageScrollTarget.drawsRow, isReview), `Conduit/Views/OfflineChatTranscriptView.swift` (the offline copy)
+- Row: `Conduit/Services/StreamEventParser.swift` (`review.summary`), `Conduit/Services/HermesClient.swift` (reviewActivity), `Conduit/Services/AppState.swift` (the review cache, mergeCachedReviews), `Conduit/Views/ChatView.swift` (SELF-IMPROVEMENT REVIEW, ReviewSummaryCard, and ModelChangeSummaryCard and CardHeaderCaption, which share its layout, drawnMessageScrollTargets), `Conduit/Views/ChatActivityRows.swift` (ChatMessageScrollTarget.drawsRow, isReview), `Conduit/Views/OfflineChatTranscriptView.swift` (the offline copy)
 - Tests: `ConduitTests/AppStateChatResumeTests.swift` (testReviewRowsFollowTheSelfImprovementSetting)
 - Notifier: `notifier/review_notices.py`, `notifier/tests/test_review_notices.py`
 
 **Rulings**
 - A changed setting reaches chats already open at their next review, with no restart: the dashboard reads it only when it builds a chat's agent, so the plugin reads it again from the chat's profile before each review. Hermes' messaging platforms need nothing, its gateway reads it every turn (2026-10-25, notifier #373, #1260).
 - Never show hides the rows a chat already has too, live and in the offline copy (from the setting last read for that profile, kept on the phone, until the dashboard answers; Settings then reads Never show), without deleting them: they come back when the setting does. Anything but "off" (or a YAML false) shows them, as Hermes reads it (2026-10-25, #1260; Eric's rule to close gaps in the same change).
+- On the review row, as on the Model updated card beside it, the card's caption and its time share the top row, the time on the right on one line (a long caption wraps beside it), and the summary runs the card's full width below, never in a column beside the time; at the accessibility text sizes the time goes under the caption (2026-10-29, #1507, issue #1440).
 
 **Open gaps**
 - None.
 
-**Checked:** 2026-10-26, #1282 (display settings kept on the phone, so the offline copy follows Never show from launch); 2026-10-25, #1260.
+**Checked:** 2026-10-29, #1507 (caption and time on the row's top line, summary full width below, #1440); 2026-10-26, #1282 (display settings kept on the phone, so the offline copy follows Never show from launch); 2026-10-25, #1260.
 
 ## Profile glow color
 
@@ -3665,33 +3719,36 @@ the column's width (see Cards drawn in web pages) · the chat's text on a
 wide column (transcript, step rows and cards, timestamps and the reply's
 buttons, the composer, group rooms; the list beside it keeps its size) ·
 Settings' text on its wider column · the Mac (an iPad app there: text
-sizes have to grow by point size) · text: no Settings caption or doc gives a
+sizes have to grow by point size, the app's text styles through
+`scaledFont`) · the check that keeps text styles on `scaledFont` · text: no Settings caption or doc gives a
 width, and Chat text size's caption is about its slider, which still applies
 on top
 
 **Code**
-- Widths and the modifier: `Conduit/Views/Components/ReadableContentWidth.swift` (ReadableWidth.chat(available:), chatMax, chatShare, settings(available:), settingsMax, textSteps(column:base:), textSteps(column:base:from:), chatTextGrowth, columnText(column:base:scalesChatText:size:): the Dynamic Type size, transcript steps and base a column sets, readableChatColumn, readableSettingsColumn, MacTextStepsReport: one log line a launch on a Mac, category ReadableWidth, of what its UIKit and SwiftUI text do at the stepped size)
+- Widths and the modifier: `Conduit/Views/Components/ReadableContentWidth.swift` (ReadableWidth.chat(available:systemGrowsTextStyles:), chatMax, chatShare, settings(available:systemGrowsTextStyles:), settingsMax, macLineGrowth, macMaxTextScale, macShare, textSteps(column:base:), textSteps(column:base:from:), chatTextGrowth, columnText(column:base:scalesChatText:size:systemGrowsTextStyles:): the Dynamic Type size, transcript steps and ColumnText a column sets, readableChatColumn, readableSettingsColumn)
 - Chat column: `Conduit/Views/V2/V2ConversationScreen.swift` (readableChatColumn()), and the drawer shell's in `Conduit/Views/RootView.swift` (chatNavigationContent)
-- Text on a wide column: `Conduit/Views/Components/ChatTypography.swift` (ChatTextAppearance.widthSteps and widthScale, ChatTypography.widthScale(steps:from:), standardBodySizes, drawnBodySizes, missingGrowth, lowered, dimension(_:appearance:), font(for:appearance:environmentCategory:), chatWidthTextSteps, chatColumnBaseTextSize), read at the chat's root in `Conduit/Views/ChatView.swift` (chatTextSize) and a room's in `Conduit/Views/GroupChatView.swift` (chatTextSize); geometry that grows with it: `Conduit/Views/Components/MarkdownProseRun.swift` (the list marker column), `Conduit/Views/Components/MarkdownText.swift` (marker frames); the spots that resolve against the column's already-stepped size: `Conduit/Views/Components/MarkdownText.swift` (markerFont), `Conduit/Views/ChatView.swift` (bodyLineHeight; the cards' UIKit text through `UIFont.preferredFont(forTextStyle:in:)`: ReviewSummaryCard, ModelChangeSummaryCard, ToolRawTextSection, ClarifyCard, ClarifyQuestionRow, ApprovalCard, InputPromptCard), `Conduit/Views/GroupChatView.swift` (GroupApprovalCard), `Conduit/Views/ToolResultViews.swift` (ToolResultBodyView's diff and output, the opened tool row's readable part); the composer's typed text: `Conduit/Views/Components/ComposerPasteTextView.swift` (bodyFont, set on each text size change rather than adjusted by UIKit), and a group room's field and the full editor: `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextEditor, the same way)
+- Text on a wide column: `Conduit/Views/Components/ChatTypography.swift` (ChatTextAppearance.widthSteps, widthScale and widened(steps:in:), ChatTypography.widthScale(steps:from:), standardBodySizes, drawnBodySizes, missingGrowth, lowered, dimension(_:appearance:), font(for:appearance:environmentCategory:), chatWidthTextSteps, ColumnText and the columnText environment value), read at the chat's root in `Conduit/Views/ChatView.swift` (chatTextSize) and a room's in `Conduit/Views/GroupChatView.swift` (chatTextSize); geometry that grows with it: `Conduit/Views/Components/MarkdownProseRun.swift` (the list marker column), `Conduit/Views/Components/MarkdownText.swift` (marker frames); the spots that resolve against the column's already-stepped size: `Conduit/Views/Components/MarkdownText.swift` (markerFont), `Conduit/Views/ChatView.swift` (bodyLineHeight; the cards' UIKit text through `UIFont.preferredFont(forTextStyle:in:)`: ReviewSummaryCard, ModelChangeSummaryCard, ToolRawTextSection, ClarifyCard, ClarifyQuestionRow, ApprovalCard, InputPromptCard), `Conduit/Views/GroupChatView.swift` (GroupApprovalCard), `Conduit/Views/ToolResultViews.swift` (ToolResultBodyView's diff and output, the opened tool row's readable part); the composer's typed text: `Conduit/Views/Components/ComposerPasteTextView.swift` (bodyFont, set on each text size or column change rather than adjusted by UIKit) and its resting height in `Conduit/Views/Components/ComposerBar.swift` (restingTextHeight, showsFullEditorButton), and a group room's field and the full editor: `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextEditor, the same way)
+- Text styles in points on a Mac: `Conduit/Views/Components/ScaledFont.swift` (ScaledFont, font(in:), standardPoints, systemGrowsTextStyles, View.scaledFont), the column's plain text in `Conduit/Views/Components/ReadableContentWidth.swift` (the font transform); every text style in `Conduit/` is set with `.scaledFont(`, which `scripts/check-fixed-text-sizes.py` (find_text_style_fonts, tests in `scripts/tests/test_check_fixed_text_sizes.py`) holds
 - List shown alone: `Conduit/Views/V2/V2Shell.swift` (ReadableWidth.list)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (readableSettingsColumn())
 - Calls: `Conduit/Views/VoiceConversationSheet.swift`, `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/LiveVoiceConsentViews.swift` (ReadableWidth.call)
 - Sign-in: `Conduit/Views/Login/LoginScreens.swift` (LoginReadableWidth, 560 pt scaled with the text size)
-- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testChatColumnWidensWithTheWindowUpToItsCap, testChatTextStepsUpWithTheColumn, testSettingsColumnWidensAndStepsItsText, testColumnsSetTheirTextForTheirContent, testWideColumnStepsScaleTranscriptFonts)
+- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testChatColumnWidensWithTheWindowUpToItsCap, testChatTextStepsUpWithTheColumn, testSettingsColumnWidensAndStepsItsText, testColumnsSetTheirTextForTheirContent, testMacColumnsGrowTheirTextByScale, testScaledFontIsTheTextStyleUnlessScaled, testWideColumnStepsScaleTranscriptFonts)
 
 **Rulings**
 - Widths follow the window, not the device (2026-10-19, #949).
 - A chat's column is 760 pt until the chat's width passes about 1056 pt, then takes 72% of it, up to 1040 pt: an iPad beside the list keeps 760 pt, a maximized Mac or iPad window gets a wider column, with the list shown or hidden, in V2 and the drawer shell alike (2026-10-26, #1320, Eric: the column was too narrow on a maximized window). This replaces the 2026-10-23 ruling (#1169) that kept 760 pt with the list hidden.
 - A wider chat column shows bigger text rather than longer lines: the column's text goes up one system text size for each size whose lines still hold as many words as the 760 pt column does (none beside the list on an iPad, two with an iPad's list hidden, three on a maximized Mac). Everything in the column steps together, its chrome (timestamps, the reply's buttons, banners) with its text so they keep their proportions (the chrome through Dynamic Type, which holds them together wherever the system honors it; see the 2026-10-29 rulings for the Mac): transcript, thinking, step rows, cards, the composer and group rooms, on top of the user's Dynamic Type and Chat text size (which group rooms now follow too, size and style, as chats do); it stops at the largest standard size, so an accessibility size stays as set. The list beside the chat and the top bar keep their size: the list's column doesn't widen (Eric, 2026-10-27, #1393: maximized on a Mac the chat looked small in a big empty space).
-- Transcript text grows by point size, body text's growth from the system's size to the stepped one (17 to 19, 21, 23 pt at the default size), not by resolving fonts at the stepped Dynamic Type size: an iPad app on a Mac appears to draw every size alike, so #1393's steps did nothing there (Eric, 2026-10-29, #1478: maximized or resized, the text didn't scale). In-column cards' UIKit text and the typed text of the chat's composer, a group room's field and the full editor (`UIFont.preferredFont(forTextStyle:in:)`) grow the same way wherever the system draws the stepped size smaller than iOS does, to the same size as the transcript: both land on iOS's body size for the stepped size, whatever the system draws at the column's base (`chatColumnBaseTextSize`), and nothing is added outside a stepped column. The SwiftUI chrome still steps through Dynamic Type; whether a Mac honors that is logged once a launch (MacTextStepsReport) until a Mac build can be checked. Where it doesn't, the transcript, cards and composer grow and the SwiftUI chrome doesn't, the earlier ruling's proportions aside, rather than nothing growing.
+- Transcript text grows by point size, body text's growth from the system's size to the stepped one (17 to 19, 21, 23 pt at the default size), not by resolving fonts at the stepped Dynamic Type size: an iPad app on a Mac appears to draw every size alike, so #1393's steps did nothing there (Eric, 2026-10-29, #1478: maximized or resized, the text didn't scale). In-column cards' UIKit text and the typed text of the chat's composer, a group room's field and the full editor (`UIFont.preferredFont(forTextStyle:in:)`) grow the same way wherever the system draws the stepped size smaller than iOS does, to the same size as the transcript: both land on iOS's body size for the stepped size, whatever the system draws at the column's base (`columnText`), and nothing is added outside a stepped column.
+- On a Mac a column's text doesn't step: it grows by point size in proportion to the column, transcript, cards, composers and SwiftUI text alike. A Mac build showed an iPad app there draws every text style at its default size for any Dynamic Type size (body 17, title2 22 pt), and only a point size grows; it also draws at about 77%, so iOS's largest standard size (23 pt) looks like ordinary Mac text and a 1040 pt column a narrow strip. So on a Mac the column takes 80% of the window, its text at the system's size until its lines hold 1.5 times a phone's words (1140 pt for a chat), then growing with it, up to 2.2 times (a 2508 pt chat column), the margins past that (Eric, 2026-10-29, #1503: the 1040 pt column looked far too narrow on a maximized Mac; he chose text that keeps growing so lines stay a readable length, and to have buttons and Settings grow with the chat's text). The app sets every text style with `scaledFont`, which is the text style itself wherever the system grows text styles, and in such a column the style's default size (what a Mac draws at any system size) times the column's scale (`ColumnText.scale`, in twentieths so a window drag re-lays the transcript only a few times), the column's plain text included. Navigation bar titles are UIKit's and keep their size. The Watch app and widgets keep `font`: they never sit in a wide column. An iPhone or iPad keeps the steps and the caps above.
 - Settings' column widens with the window as a chat's does, from 720 pt up to 980 pt, and its text steps up the same way from 720 pt (Eric, 2026-10-29, #1478: he expected Settings to scale too). This replaces Settings' fixed 720 pt from the 2026-10-26 ruling (#1320) below, which now keeps only a list shown alone and calls fixed.
+- The chat's column and its text steps measure the room the list leaves, so a list dragged wider (Resizable columns on a split window) narrows the chat's column and may take a step back, as hiding the list adds one (2026-10-29, #1498; the behavior since #1492).
 - A list shown alone (720 pt) and calls (640 pt) keep fixed widths: rows, cards and captions don't read better wider. The sign-in screens keep their own 560 pt column, which follows the text size (2026-10-26, #1320).
 
 **Open gaps**
-- On a Mac, SwiftUI text (the chat column's chrome, Settings' pages) may not grow with its steps if an iPad app there ignores Dynamic Type for SwiftUI as well; MacTextStepsReport's line says which, from a TestFlight build (#1478).
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text. Earlier 2026-10-27, #1393; 2026-10-26, #1320.
+**Checked:** 2026-10-29, #1503: on a Mac, a column takes 80% of the window and its text, text styles through `scaledFont` included, grows by point size with it. Earlier 2026-10-29, #1498 (a dragged list narrows the chat's column, from #1492; Rulings); 2026-10-29, #1507 (the listed cards' text moved below their caption row, sizes unchanged); 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text; 2026-10-27, #1393; 2026-10-26, #1320.
 
 ## A split window's columns fill the window
 
@@ -3717,7 +3774,7 @@ phone)
 **Open gaps**
 - Not seen on a device yet: the simulator suites have no Duo before Xcode 27.1, so a Duo or a split iPad from TestFlight confirms it.
 
-**Checked:** 2026-10-29, #1492 (the 1 pt line between the columns is a draggable ColumnDivider above them; the drawer shell's sidebar threshold counts it); 2026-10-29, #1472.
+**Checked:** 2026-10-29, #1498 (ColumnDivider's store rules and drag direction are ColumnWidth functions; the layout is unchanged); 2026-10-29, #1492 (the 1 pt line between the columns is a draggable ColumnDivider above them; the drawer shell's sidebar threshold counts it); 2026-10-29, #1472.
 
 ## Resizable columns on a split window
 
@@ -3729,7 +3786,7 @@ beside the list (it opens in the chat's column) · a group room beside the
 list (the list drags; a room has no Artifacts) · Artifacts beside a chat ·
 the drawer shell's persistent sidebar (Appearance, V2 off) · the tab bar
 under the list (Voice beside the tabs) · the chat's readable column (it
-measures the room left to it: not needed) · hiding the list (#1164: the
+measures the room left to it; done, Readable width's ruling, #1498) · hiding the list (#1164: the
 width comes back with the list) · Settings > Appearance > Layout's caption
 in both shells (the drawer shell's only while its persistent sidebar is
 on) · not needed: README.md (it doesn't describe the split
@@ -3741,21 +3798,24 @@ layout)
 - Artifacts: `Conduit/Views/V2/V2ConversationScreen.swift` (ChatSidePanel.widths, sidePanelWidth)
 - Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent, persistentSidebarWidth), `Conduit/Views/SidebarLayout.swift` (SidebarLayoutMetrics.persistentSidebarWidths)
 - Caption: `Conduit/Views/AuxiliaryViews.swift` (Layout)
+- Widths and the line: what a drag or a VoiceOver step stores is ColumnWidth.storedAfterDrag and storedAfterStep, its direction ColumnWidth.dragSign
 - Tests: `ConduitTests/V2SplitLayoutTests.swift` (testDraggedColumnWidthsKeepToTheirBoundsAndTheWindow)
 
 **Rulings**
 - Both lines drag: the list (375 to 560 pt; it can't go under the tab bar's width) and Artifacts (300 to 720 pt, standard 340 pt); the drawer shell's sidebar 320 to 520 pt. A double-click or double-tap resets a line; VoiceOver adjusts it by 40 pt or resets it (Eric, 2026-10-29, #1492, issue 1487).
 - Each width is kept per device, as hiding the list is, not synced. A window smaller than a width needs gives the column what's left beside the chat's least width (430 pt); a window splits, and Artifacts shows, at the standard width whatever the user's, so a widened column never takes them away (2026-10-29, #1492).
 - Under a widened list the tab bar keeps its width, centered under the list's column (2026-10-29, #1492).
-- A window with room for Artifacts beside a chat at the list's standard width keeps that room whatever the list's width, the panel open or not: widening the list never hides the panel or its toggle, and the list doesn't jump as a chat or the panel opens. The list's most is then the window less 772 pt: 408 pt on a 1180 pt iPad in landscape, 422 pt on an 11-inch's 1194 pt, the full 560 pt on a maximized Mac. Artifacts beside the chat then reaches the window less the list and 431 pt: about 373 pt on 1180 pt, 387 pt on 1194 pt (2026-10-29, #1492, from review).
+- A window with room for Artifacts beside a chat at the list's standard width keeps that room whatever the list's width, the panel open or not: widening the list never hides the panel or its toggle, and the list doesn't jump as a chat or the panel opens. The list's most is then the window less 772 pt: 408 pt on a 1180 pt iPad in landscape, 422 pt on an 11-inch's 1194 pt, the full 560 pt on a maximized Mac. Artifacts beside the chat then reaches the window less the list and 432 pt (the chat's 430 pt and two lines): about 373 pt on 1180 pt, 387 pt on 1194 pt. Where the panel starts to fit, at a 1147 pt window, the list's most drops from 560 pt to its standard 375 pt: one point narrower it keeps only the chat's least width, one point wider the panel's room as well. The drop stays: it shows only while resizing a window across that width with a widened list, and either way round it costs more (Eric, 2026-10-29, #1498; the layout since #1492).
 - A drag lays the column out at its live width and stores it once, when the drag ends or is cancelled: every defaults write redraws each `@AppStorage` view. A press that doesn't move the line (under 4 pt) keeps the stored width, which a smaller window may show less of (2026-10-29, #1492, from review).
 - The caption shows only with the setting that puts a line on a wide window: the list set beside the chat (V2), the persistent sidebar on (the drawer shell); a window too narrow to split still shows it (2026-10-29, #1492, from review).
+- A drag follows the pointer right to left too: there a leading column is on the right, so dragging left widens it. VoiceOver finds the line by its 12 pt grip, not the 1 pt line (2026-10-29, #1498, from #1492's review).
+- The drawer shell's sidebar is named "Chat list width" as V2's list is: both hold the chats (2026-10-29, #1498, from #1492's review).
 
 **Open gaps**
 - No resize cursor on a Mac: a Designed-for-iPad app can't set one from SwiftUI on iOS 17, so the line highlights on hover and a tooltip names it.
 - Not seen on a device yet: a Mac or iPad from TestFlight confirms it.
 
-**Checked:** 2026-10-29, #1492.
+**Checked:** 2026-10-29, #1498 (store rules, right to left, the grip's VoiceOver frame, the 1147 pt drop; Code, Rulings); 2026-10-29, #1492.
 
 ## Voice on a profile the dashboard didn't start with
 
@@ -3852,25 +3912,25 @@ card shows when the app is next opened), the widgets and the share extension
 
 **Code**
 - Offer and upload: `Conduit/Services/CrashReportOffer.swift` (CrashReportUpload: what a report sends; CrashReportQueue; CrashReportOffer)
-- Which diagnostics are offered: `Conduit/Services/MetricKitReports.swift` (queueCrashReport)
+- Which diagnostics are offered: `Conduit/Services/MetricKitReports.swift` (queueCrashReport; MetricKitReportStore.save, normalized and shallowed, which keep a stack overflow's payload readable)
 - Card: `Conduit/Views/CrashReportBanner.swift`, shown by `Conduit/Views/RootView.swift` (MainView's top overlay)
 - Settings caption: `Conduit/Views/ChatSupportSheets.swift` (DeviceReportsSection)
 - Relay: `notifier/relay/src/crash-reports.mjs`, `notifier/relay/test/crash-reports.test.mjs`; privacy: `notifier/docs/privacy/index.html`
 - Privacy manifest: `Conduit/PrivacyInfo.xcprivacy`, `ConduitTests/PrivacyManifestTests.swift`
-- Tests: `ConduitTests/ConnectionFailureTests+CrashReports.swift`
+- Tests: `ConduitTests/ConnectionFailureTests+CrashReports.swift`, `ConduitTests/ConnectionFailureTests+MetricKit.swift` (testMetricKitSaveKeepsAStackThatOverflowed)
 
 **Rulings**
 - Ask once, upload to the relay: Not now drops the report from the offer (it stays in Diagnostics & logs), and nothing is sent without Send (2026-10-29, Eric chose it in the TestFlight crashes thread; #1477, notifier #459).
 - A report is the diagnostic's crashes and hangs only, with the version, build, iOS version and device model; an exception's composed message and arguments are left out, since they can quote anything. It goes to the developer's relay (`push.milim.dev`) even when the user's notifications use another relay, and carries no installation credential (#1477, notifier #459).
 - Only a crash or hang from the last 7 days is offered, checked again when the card would show, the newest 5 at most, and one too big to send even trimmed to its first crash and hang is not. Those an earlier build kept are queued once per device, on the first launch with the card. Send sends only the reports the card asked about. A relay that answers 404 (no `CRASH_REPORTS_TOKEN`) stops the offers from that build on that device; what's still queued waits for the next build, so a build that ships before the relay route is deployed loses nothing, and a report declined or sent isn't asked about again. The look at reports earlier builds kept waits for a launch that can list the folder and finds none or reads at least one of them (locked files before first unlock fail together); a single file that can't be read is skipped (part of the ask-once design Eric delegated in the TestFlight crashes thread, 2026-10-29; #1477).
-- A report is built from named keys only (the diagnostic's metadata, exception and stack frames); a key MetricKit adds later stays on the phone until it's named (#1477).
+- A report is built from named keys only (the diagnostic's metadata, exception and stack frames); a key MetricKit adds later stays on the phone until it's named (#1477). A stack keeps its first 240 levels (one that overflowed can nest thousands, which would overflow the walk too, and JSONSerialization reads and writes nothing nested past 512, which a sent level-L frame is at 7 + 2L), and the relay keeps at most 512 frame levels. The stored payload has every container 500 deep emptied, so a stack overflow's crash is kept and offered rather than refused as unreadable (MetricKit's root frame is the one that was running and its subFrames lead out toward the thread's entry, so the crash site is what's kept: a real crash payload posted on Apple's developer forums, attachment 18fdc26d-396d-4950-950f-e4d2dffa25cc, nests libsystem_kernel, CoreFoundation, GraphicsServices, UIKitCore, the app, then dyld, root first). Both numbers are Claude's pick, under the ask-once design Eric delegated in the TestFlight crashes thread, after the 0.24.0 deploy, 2026-10-29; Eric hasn't ruled on them (#1505, notifier #469).
 
 **Open gaps**
 - A kill for memory (jetsam) leaves no MetricKit diagnostic, so a freeze that ends that way is never offered.
 - MetricKit may hold diagnostics back on a device that doesn't share analytics with developers.
 - App Store Connect's privacy label doesn't yet list Crash Data and Performance Data (not linked, not tracked), which the privacy manifest now declares; the maintainer updates it before the next App Store submission.
 
-**Checked:** 2026-10-29, #1481.
+**Checked:** 2026-10-29, #1505.
 
 ## Feature map rules
 

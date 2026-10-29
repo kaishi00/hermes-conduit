@@ -121,13 +121,13 @@ struct GatewayRestartStatusView: View {
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: row.title)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     if let detail = row.detail, !detail.isEmpty {
                         // A log line is at most 240 characters, so it wraps
                         // in full at any text size.
                         Text(verbatim: detail)
-                            .font(row.logDetail ? .caption.monospaced() : .footnote)
+                            .scaledFont(row.logDetail ? .caption.monospaced() : .footnote)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
@@ -139,7 +139,7 @@ struct GatewayRestartStatusView: View {
             if row.symbol != nil {
                 Button { appState.dismissGatewayRestartOutcome() } label: {
                     Image(systemName: "xmark")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }

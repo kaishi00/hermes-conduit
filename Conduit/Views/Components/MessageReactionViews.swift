@@ -50,10 +50,10 @@ struct MessageReactionChips: View {
     private func chip(_ group: ChipGroup) -> some View {
         let label = HStack(spacing: 2) {
             Text(group.emoji)
-                .font(.subheadline)
+                .scaledFont(.subheadline)
             if group.count > 1 {
                 Text(verbatim: "\(group.count)")
-                    .font(.caption2.weight(.semibold))
+                    .scaledFont(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
         }
@@ -116,7 +116,7 @@ struct TapbackPicker: View {
                     onPick(emoji)
                 } label: {
                     Text(emoji)
-                        .font(.title2)
+                        .scaledFont(.title2)
                         .frame(minWidth: 44, minHeight: 44)
                         .background(
                             Circle().fill(emoji == selected ? Color.conduitAccent.opacity(0.22) : Color.clear)
@@ -160,7 +160,7 @@ struct MessageReactButton: View {
             isPresented = true
         } label: {
             Image(systemName: mine == nil ? "face.smiling" : "face.smiling.inverse")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .frame(width: 34, height: 34)
         }
         .buttonStyle(.plain)

@@ -113,7 +113,7 @@ struct BotRosterView: View {
                 managementNotice = nil
             } label: {
                 Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -178,14 +178,14 @@ struct BotRosterView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: showsHiddenBots ? "chevron.down" : "chevron.right")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .accessibilityHidden(true)
                     Text(AppLocalization.string("Hidden"))
                     Text(verbatim: String(hiddenBots.count))
                         .foregroundStyle(.tertiary)
                     Spacer()
                 }
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 8)
                 .contentShape(Rectangle())
@@ -283,7 +283,7 @@ struct BotRosterView: View {
                 Section {
                     botRows
                     Text("Each bot is its own profile with one ongoing conversation.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.top, 10)
                         .padding(.bottom, 8)
@@ -373,7 +373,7 @@ struct BotRosterView: View {
                     // As the Chats list's section headers, in line with the
                     // pictures.
                     Text(AppLocalization.string("Group Chats"))
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .textCase(nil)
                         .padding(.leading, 16)
@@ -563,24 +563,24 @@ private struct BotRosterRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(bot.displayLabel)
-                            .font(.callout.weight(.semibold))
+                            .scaledFont(.callout.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         if bot.isPinned {
                             Image(systemName: "pin.fill")
-                                .font(.caption2.weight(.bold))
+                                .scaledFont(.caption2.weight(.bold))
                                 .foregroundStyle(Color.primary.opacity(0.35))
                         }
                         Spacer(minLength: 4)
                         if let activity = activityLabel {
                             Text(activity)
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(Color.primary.opacity(0.45))
                                 .lineLimit(1)
                         }
                     }
                     subtitleText
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
                 }
@@ -748,7 +748,7 @@ private struct BotModeNoticeRow: View {
             Image(systemName: icon)
                 .foregroundStyle(.yellow)
             Text(message)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
     }
@@ -775,12 +775,12 @@ struct RosterIconRow<Icon: View>: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.callout.weight(.semibold))
+                    .scaledFont(.callout.weight(.semibold))
                     .foregroundStyle(isAction ? Color.conduitAccent : Color.primary)
                     .lineLimit(1)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
                 }
@@ -788,7 +788,7 @@ struct RosterIconRow<Icon: View>: View {
             Spacer(minLength: 4)
             if let trailingSymbol {
                 Image(systemName: trailingSymbol)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.conduitTertiary)
                     .accessibilityHidden(true)
             }
@@ -812,7 +812,7 @@ struct RosterGlyphRow: View {
                 Circle()
                     .fill(Color.conduitAccent.opacity(0.16))
                 Image(systemName: symbol)
-                    .font(Font.caption.weight(isAction ? .bold : .regular))
+                    .scaledFont(ScaledFont.caption.weight(isAction ? .bold : .regular))
                     .foregroundStyle(Color.conduitAccent)
             }
         }

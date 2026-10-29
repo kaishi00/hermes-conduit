@@ -23,18 +23,18 @@ struct LiveVoiceJobCard: View {
                     .frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: job.title)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                     Text(verbatim: Self.statusText(for: job))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.conduitTertiary)
             }
             .padding(.horizontal, 14)
@@ -111,7 +111,7 @@ struct LiveVoiceCallJobStrip: View {
                 }
                 if count > 1 {
                     Text("\(count - 1) more in the transcript")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -133,20 +133,20 @@ struct LiveVoiceScreenCardRow: View {
                     .frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: Self.title(for: card))
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                     if !card.title.isEmpty {
                         Text("On screen")
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.conduitTertiary)
             }
             .padding(.horizontal, 14)
@@ -395,7 +395,7 @@ struct LiveVoiceJobResultSheet: View {
         } icon: {
             if job.status.isActive { ProgressView().controlSize(.small) }
         }
-        .font(.subheadline)
+        .scaledFont(.subheadline)
         .foregroundStyle(.secondary)
         if let result = job.result, LiveVoiceJobCard.hasResult(job) {
             // Hermes' own images (MEDIA: paths) load through the gateway,
@@ -466,20 +466,20 @@ struct LiveVoiceJobWaitingCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(verbatim: job.title)
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .lineLimit(2)
             if let approval = job.waitingApproval {
                 Text("APPROVAL NEEDED")
-                    .font(.caption2.weight(.semibold))
+                    .scaledFont(.caption2.weight(.semibold))
                     .foregroundStyle(.orange)
                 let asked = approval.description.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !asked.isEmpty {
                     Text(verbatim: asked)
-                        .font(.callout)
+                        .scaledFont(.callout)
                 }
                 if !approval.command.isEmpty {
                     Text(verbatim: approval.command)
-                        .font(.caption.monospaced())
+                        .scaledFont(.caption.monospaced())
                         .foregroundStyle(.secondary)
                         .lineLimit(4)
                 }
@@ -499,10 +499,10 @@ struct LiveVoiceJobWaitingCard: View {
                 }
             } else if let question = job.waitingQuestion.flatMap({ HermesCallWaiting(clarify: $0)?.openQuestion }) {
                 Text(verbatim: question.text)
-                    .font(.callout)
+                    .scaledFont(.callout)
                 if question.choices.isEmpty {
                     Text("Answer in your own words.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 ForEach(Array(question.choices.enumerated()), id: \.offset) { index, choice in

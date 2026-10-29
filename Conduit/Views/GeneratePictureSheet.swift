@@ -67,7 +67,7 @@ struct GeneratePictureSheet: View {
                 if let error {
                     Section {
                         Text(error)
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.red)
                     }
                 }

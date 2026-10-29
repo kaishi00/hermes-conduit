@@ -644,8 +644,8 @@ class HostedSelectionTests(unittest.TestCase):
             smoke = json.load(fh)
         shard_classes = {c for csv in doc["unit_shards"] for c in csv.split(",")}
         ui_classes = {c for csv in doc["ui_shards"] for c in csv.split(",")}
-        self.assertLessEqual(set(smoke["unit"]), shard_classes)
-        self.assertLessEqual(set(smoke["ui"]), ui_classes)
+        self.assertLessEqual({t.split("/")[0] for t in smoke["unit"]}, shard_classes)
+        self.assertLessEqual({t.split("/")[0] for t in smoke["ui"]}, ui_classes)
 
     def test_a_stale_nightly_class_fails_the_selection(self):
         with open(self.HOSTED_SUITE, encoding="utf-8") as fh:
@@ -709,10 +709,10 @@ class SmokeSelectionTests(unittest.TestCase):
         }
         self.assertLessEqual(timing_families, nightly_only)
         self.assertFalse(
-            nightly_only & set(suite.get("unit") or []),
+            nightly_only & {t.split("/")[0] for t in suite.get("unit") or []},
             "a nightly-only timing family must not be in the smoke set")
         self.assertFalse(nightly_only & set(suite.get("source_contracts") or []))
-        self.assertFalse(nightly_only & set(suite.get("ui") or []))
+        self.assertFalse(nightly_only & {t.split("/")[0] for t in suite.get("ui") or []})
 
     def test_a_nonexistent_class_fails_the_selection(self):
         with open(SMOKE_SUITE, encoding="utf-8") as fh:
@@ -739,6 +739,65 @@ class SmokeSelectionTests(unittest.TestCase):
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("twice", proc.stdout)
 
+    def test_a_whole_class_entry_fails_the_selection(self):
+        # A class grows with every test added to it, and the PR gate with it:
+        # the curated lists pin single tests.
+        def mutate(suite):
+            suite["unit"] = list(suite["unit"]) + ["ProfileDiscoveryTests"]
+
+        proc = self._run_smoke_with(mutate)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("Class/testMethod", proc.stdout)
+
+    def test_a_renamed_test_fails_the_selection(self):
+        def mutate(suite):
+            suite["ui"] = list(suite["ui"]) + ["ProfilePickerUITests/testNoSuchThing"]
+            suite["max_ui_tests"] = len(suite["ui"])
+
+        proc = self._run_smoke_with(mutate)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("has no test method testNoSuchThing()", proc.stdout)
+
+    def test_a_list_over_its_cap_fails_the_selection(self):
+        for key, cap in (("unit", "max_unit_tests"), ("ui", "max_ui_tests")):
+            with self.subTest(key=key):
+                def mutate(suite, cap=cap, key=key):
+                    suite[cap] = len(suite[key]) - 1
+
+                proc = self._run_smoke_with(mutate)
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn("over its cap", proc.stdout)
+                self.assertIn(cap, proc.stdout)
+
+    def test_a_pinned_timing_family_test_fails_the_selection(self):
+        with open(os.path.join(SCRIPTS_DIR, "hosted-suite.json"), encoding="utf-8") as fh:
+            family = json.load(fh)["nightly_only_unit"][0]
+        method = None
+        for dirpath, _, files in os.walk(os.path.join(REPO_ROOT, "ConduitTests")):
+            for f in files:
+                with open(os.path.join(dirpath, f), encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
+                m = re.search(r"^(?:final )?class " + family + r"\b.*?^    func (test\w+)\(\)",
+                              text, re.M | re.S)
+                if m:
+                    method = m.group(1)
+        self.assertTrue(method, family)
+
+        def mutate(suite):
+            suite["unit"] = list(suite["unit"])[:-1] + [f"{family}/{method}"]
+
+        proc = self._run_smoke_with(mutate)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("nightly-only timing family", proc.stdout)
+
+    def test_a_missing_cap_fails_the_selection(self):
+        def mutate(suite):
+            suite.pop("max_ui_tests")
+
+        proc = self._run_smoke_with(mutate)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("max_ui_tests", proc.stdout)
+
     def _run_smoke_with(self, mutate):
         """Run `smoke` against a copy of the shipped suite after `mutate`."""
         with open(SMOKE_SUITE, encoding="utf-8") as fh:
@@ -756,11 +815,12 @@ class SmokeSelectionTests(unittest.TestCase):
         # job would then filter it against the wrong bundle - running zero tests
         # for it while the plan job reported success.
         def mutate(suite):
-            suite["unit"] = list(suite["unit"]) + ["ConnectionSetupUITests"]
+            suite["unit"] = list(suite["unit"]) + [
+                "ConnectionSetupUITests/testWizardAdvancesThroughQuestionsToTailscaleBranchAndBack"]
 
         proc = self._run_smoke_with(mutate)
         self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("it is not a unit test class", proc.stdout)
+        self.assertIn("ConnectionSetupUITests is not a unit test class", proc.stdout)
 
     def test_a_missing_target_key_fails_the_selection(self):
         def mutate(suite):
@@ -810,8 +870,9 @@ class SmokeSelectionTests(unittest.TestCase):
             self.assertTrue(doc["unit_csv"])
             self.assertEqual(doc["unit_csv"].split(","), doc["unit"])
             self.assertEqual(doc["ui_csv"].split(","), doc["ui"])
-            self.assertEqual(doc["delegated_unit"] + len(doc["unit"]),
-                             doc["inventory_unit"])
+            self.assertEqual(
+                doc["delegated_unit"] + len({t.split("/")[0] for t in doc["unit"]}),
+                doc["inventory_unit"])
             summary = subprocess.run(
                 [sys.executable, os.path.join(SCRIPTS_DIR, "smoke-summary.py"),
                  "--selection", out],
@@ -866,7 +927,18 @@ class SmokeSelectionTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("SessionPresentationCacheTests", doc["changed_unit"])
         self.assertEqual(doc["unit_csv"].split(","), doc["unit"])
-        self.assertEqual(doc["delegated_unit"] + len(doc["unit"]), doc["inventory_unit"])
+        self.assertEqual(doc["delegated_unit"] + len({t.split("/")[0] for t in doc["unit"]}),
+                         doc["inventory_unit"])
+
+    def test_a_changed_pinned_class_runs_whole_instead_of_its_pinned_tests(self):
+        proc, doc = self._changed_selection(["ConduitTests/BotModeTests.swift"])
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("BotModeTests", doc["changed_unit"])
+        self.assertIn("BotModeTests", doc["unit"])
+        self.assertFalse([t for t in doc["unit"] if t.startswith("BotModeTests/")])
+        self.assertTrue([t for t in doc["curated_unit"] if t.startswith("BotModeTests/")])
+        self.assertEqual(doc["replaced_unit"],
+                         [t for t in doc["curated_unit"] if t.startswith("BotModeTests/")])
 
     def test_a_changed_app_file_adds_its_namesake_tests(self):
         proc, doc = self._changed_selection(
@@ -947,7 +1019,10 @@ class SmokeSelectionTests(unittest.TestCase):
     def test_shipped_smoke_invocation_fits_a_nightly_batch(self):
         with open(SMOKE_SUITE, encoding="utf-8") as fh:
             suite = json.load(fh)
-        total = (len(suite["unit"]) + len(suite.get("source_contracts", []))
+        # Counted in classes, as nightly batches are: the pinned tests come
+        # from a few classes.
+        total = (len({t.split("/")[0] for t in suite["unit"]})
+                 + len(suite.get("source_contracts", []))
                  + suite.get("changed_max_classes", 0))
         self.assertLessEqual(total, 45, "nightly.yml runs unit batches of 45")
 

@@ -31,7 +31,7 @@ struct SavedDashboardsSettingsDetail: View {
                 tint: .conduitAura
             ) {
                 Text("Switch between your saved Hermes dashboards. Each dashboard keeps its own sign-in and cookies on this device.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 ForEach(rows) { row in
                     rowView(row)
@@ -197,10 +197,10 @@ struct SavedDashboardRowLabel: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(verbatim: row.dashboard.label)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                     if let quantumSafe = notificationsEncryption {
                         Image(systemName: quantumSafe ? "lock.shield.fill" : "lock.fill")
-                            .font(.caption2)
+                            .scaledFont(.caption2)
                             .foregroundStyle(.secondary)
                             .accessibilityLabel(quantumSafe
                                 ? AppLocalization.string("Notifications end-to-end encrypted and quantum-safe")
@@ -208,11 +208,11 @@ struct SavedDashboardRowLabel: View {
                     }
                 }
                 Text(verbatim: row.dashboard.normalizedURL)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Text(statusText)
-                    .font(.caption2.weight(.medium))
+                    .scaledFont(.caption2.weight(.medium))
                     .foregroundStyle(statusColor)
             }
             Spacer(minLength: 8)
@@ -224,7 +224,7 @@ struct SavedDashboardRowLabel: View {
                 ProgressView()
             } else {
                 Text(actionText)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.conduitAccent)
             }
         }

@@ -1305,7 +1305,7 @@ private struct V2SplitPlaceholder: View {
                         appState.startNewChat()
                     } label: {
                         Label(AppLocalization.string("Start a new conversation"), systemImage: "square.and.pencil")
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                             .padding(.horizontal, 18)
                             .padding(.vertical, 12)
                     }
@@ -1337,11 +1337,11 @@ struct V2NoticeBanner: View {
         Button(action: dismiss) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Image(systemName: notice.systemImage)
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(Color.conduitAccent)
                     .accessibilityHidden(true)
                 Text(notice.message)
-                    .font(.footnote.weight(.medium))
+                    .scaledFont(.footnote.weight(.medium))
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1386,7 +1386,7 @@ private struct V2CapsuleTabBar: View {
                             .font(.system(size: 17, weight: .semibold))
                             .conduitFixedGlyph()
                         Text(tab.title)
-                            .font(.caption2.weight(.semibold))
+                            .scaledFont(.caption2.weight(.semibold))
                             .lineLimit(1)
                     }
                     .foregroundStyle(isSelected ? Color.conduitAccent : Color.secondary)

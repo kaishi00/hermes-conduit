@@ -144,16 +144,16 @@ struct PinnedReplyBar: View {
                     PinnedReplyBarIndicator(count: pins.count, selected: index)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(title)
-                            .font(.caption.weight(.semibold))
+                            .scaledFont(.caption.weight(.semibold))
                             .foregroundStyle(Color.conduitAccent)
                         Text(pin.title)
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                     }
                     Spacer(minLength: 4)
                     Image(systemName: "pin.fill")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 12)
@@ -338,7 +338,7 @@ struct PinnedRepliesSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 if let label = pin.label {
                     Text(label)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
@@ -347,18 +347,18 @@ struct PinnedRepliesSheet: View {
                     // A passage reads as a quote of its reply.
                     if pin.isPassage {
                         Image(systemName: "text.quote")
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(Color.conduitAccent)
                             .accessibilityHidden(true)
                     }
                     Text(pin.shownText)
-                        .font(pin.label == nil ? .subheadline : .footnote)
+                        .scaledFont(pin.label == nil ? .subheadline : .footnote)
                         .foregroundStyle(pin.label == nil ? Color.primary : Color.secondary)
                         .lineLimit(3)
                         .multilineTextAlignment(.leading)
                 }
                 Text(pin.pinnedAt, format: .relative(presentation: .named))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -52,7 +52,7 @@ struct UndeliveredDictationNotice: View {
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(message)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -69,14 +69,14 @@ struct UndeliveredDictationNotice: View {
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .buttonStyle(.borderless)
                 .accessibilityValue(Text(message))
                 Button {
                     confirmingDelete = clip
                 } label: {
                     Image(systemName: "trash")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())

@@ -55,7 +55,7 @@ struct CronJobEditorSheet: View {
                 if let error, !error.isEmpty {
                     Section {
                         Text(error)
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.red)
                     }
                 }
@@ -223,7 +223,7 @@ private struct CronScheduleEditor: View {
                 DatePicker(AppLocalization.string("Runs at"), selection: $schedule.runAt, in: min(schedule.runAt, Date())..., displayedComponents: [.date, .hourAndMinute])
             case .custom:
                 TextField(AppLocalization.string("0 9 * * 1 or every monday 9am"), text: $schedule.custom)
-                    .font(.callout.monospaced())
+                    .scaledFont(.callout.monospaced())
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             }
@@ -232,7 +232,7 @@ private struct CronScheduleEditor: View {
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 Text(preview)
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(schedule.scheduleString == nil ? Color.red : Color.conduitScheduled)
                 if schedule.mode == .custom {
                     Text(AppLocalization.string("A cron expression, or a phrase Hermes reads, like every 2h or weekdays at 9am."))
@@ -275,7 +275,7 @@ private struct CronWeekdayPicker: View {
                     if isOn { days.remove(day) } else { days.insert(day) }
                 } label: {
                     Text(verbatim: symbols[day])
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 36)
                         .foregroundStyle(isOn ? Color.white : Color.primary)
                         .background(isOn ? Color.conduitAccent : Color.primary.opacity(0.07), in: Circle())
@@ -367,10 +367,10 @@ struct CronBlueprintGallerySheet: View {
     private func blueprintRow(_ blueprint: CronBlueprint) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(verbatim: blueprint.title)
-                .font(.body.weight(.semibold))
+                .scaledFont(.body.weight(.semibold))
             if !blueprint.summary.isEmpty {
                 Text(verbatim: blueprint.summary)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
@@ -380,7 +380,7 @@ struct CronBlueprintGallerySheet: View {
                 } icon: {
                     Image(systemName: "clock")
                 }
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(Color.conduitScheduled)
             }
         }
@@ -431,14 +431,14 @@ private struct CronBlueprintForm: View {
             if !blueprint.summary.isEmpty {
                 Section {
                     Text(verbatim: blueprint.summary)
-                        .font(.callout)
+                        .scaledFont(.callout)
                         .foregroundStyle(.secondary)
                 }
             }
             if let error, !error.isEmpty {
                 Section {
                     Text(error)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                 }
             }

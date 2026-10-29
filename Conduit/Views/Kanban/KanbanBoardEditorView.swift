@@ -127,7 +127,7 @@ struct KanbanBoardEditorView: View {
                 if let effective = effectiveDirectory {
                     Section {
                         Label(effective, systemImage: "folder")
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                     } header: {
@@ -137,14 +137,14 @@ struct KanbanBoardEditorView: View {
                 if let errorMessage {
                     Section {
                         Label(errorMessage, systemImage: "exclamationmark.triangle")
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.red)
                     }
                 }
                 if let notice {
                     Section {
                         Label(notice, systemImage: "checkmark.circle")
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -189,7 +189,7 @@ struct KanbanBoardEditorView: View {
                 .accessibilityLabel("Board name")
             if isCreate {
                 Toggle("Edit slug manually", isOn: $manualSlug)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .accessibilityLabel("Edit slug manually (advanced)")
                 if manualSlug {
                     TextField("Slug", text: $slug)
@@ -205,7 +205,7 @@ struct KanbanBoardEditorView: View {
                         }
                 } else {
                     Text("Slug: \(resolvedSlug)")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .accessibilityLabel("Generated slug \(resolvedSlug)")
                 }
@@ -242,7 +242,7 @@ struct KanbanBoardEditorView: View {
             .accessibilityLabel("Project scope")
             if store.projects.isEmpty {
                 Text("No projects on this server yet — the board stays unscoped (scratch workspaces).")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
         } header: {

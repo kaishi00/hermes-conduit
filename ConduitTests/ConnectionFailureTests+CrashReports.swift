@@ -76,6 +76,32 @@ extension ConnectionFailureTests {
         let huge: [String: Any] = ["crashDiagnostics": [["callStackTree": ["callStacks": [["callStackRootFrames": [["binaryName": String(repeating: "x", count: 600_000)]]]]]]]]
         XCTAssertNil(CrashReportUpload.body(fromPayloadJSON: try JSONSerialization.data(withJSONObject: huge)), "too big even trimmed: not offered")
 
+        // A stack that overflowed: deeper than the walk goes. As in MetricKit's
+        // crash stacks, the root is the frame that was running and the
+        // deepest subFrame is the thread's entry (a real payload on Apple's
+        // forums nests libsystem_kernel, CoreFoundation, UIKitCore, the app,
+        // then dyld: developer.apple.com/forums/content/attachment/18fdc26d-396d-4950-950f-e4d2dffa25cc).
+        let levels = 5_000
+        let nested = "{\"binaryName\":\"libsystem_kernel.dylib\",\"subFrames\":["
+            + String(repeating: "{\"subFrames\":[", count: levels - 2) + "{\"binaryName\":\"dyld\"}" + String(repeating: "]}", count: levels - 2)
+            + "]}"
+        let deep = Data("{\"crashDiagnostics\":[{\"callStackTree\":{\"callStacks\":[{\"callStackRootFrames\":[\(nested)]}]}}]}".utf8)
+        let deepBody = try XCTUnwrap(CrashReportUpload.body(fromPayloadJSON: deep))
+        let deepDiagnostic = try XCTUnwrap(deepBody["diagnostic"] as? [String: Any])
+        let deepTree = try XCTUnwrap((deepDiagnostic["crashDiagnostics"] as? [[String: Any]])?.first?["callStackTree"] as? [String: Any])
+        var frames = (deepTree["callStacks"] as? [[String: Any]])?.first?["callStackRootFrames"] as? [Any]
+        let crashSite = (frames?.first as? [String: Any])?["binaryName"] as? String
+        var kept = 0
+        var binaries: [String] = []
+        while let frame = frames?.first as? [String: Any] {
+            kept += 1
+            if let binary = frame["binaryName"] as? String { binaries.append(binary) }
+            frames = frame["subFrames"] as? [Any]
+        }
+        XCTAssertEqual(kept, 240, "kept to the first levels, the root counted")
+        XCTAssertEqual(crashSite, "libsystem_kernel.dylib", "the frame that was running is kept")
+        XCTAssertEqual(binaries, ["libsystem_kernel.dylib"], "the entry, past the levels kept, is dropped")
+
         XCTAssertEqual(CrashReportUpload.kind(ofPayloadJSON: diagnosticJSON(crashes: 0, hangs: 2)), .hang)
         XCTAssertNil(CrashReportUpload.kind(ofPayloadJSON: diagnosticJSON(crashes: 0, hangs: 0, cpu: 1)))
         XCTAssertNil(CrashReportUpload.body(fromPayloadJSON: diagnosticJSON(crashes: 0, hangs: 0, cpu: 1)))

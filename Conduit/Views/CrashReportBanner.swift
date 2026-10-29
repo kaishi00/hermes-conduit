@@ -57,11 +57,11 @@ struct CrashReportBanner: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(verbatim: title)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .lineLimit(2)
                 if case .asking = offer.state {
                     Text(verbatim: AppLocalization.string("Send the report to Conduit's developer? It shows where the app stopped, never your messages."))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -74,7 +74,7 @@ struct CrashReportBanner: View {
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .accessibilityIdentifier("crashReport.send")
             default:
                 EmptyView()
@@ -82,7 +82,7 @@ struct CrashReportBanner: View {
             if offer.state != .sending {
                 Button { offer.dismiss() } label: {
                     Image(systemName: "xmark")
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())

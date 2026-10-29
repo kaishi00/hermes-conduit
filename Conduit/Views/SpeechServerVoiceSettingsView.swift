@@ -30,14 +30,14 @@ struct SpeechServerVoiceSettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
             if showsIntro {
                 Label(AppLocalization.string("Your speech server speaks the replies in its own voice, so one server listens and speaks. It uses the address set under Speech to text."), systemImage: "server.rack")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
 
             if let status {
                 if let address = status.modelAddress, let key = status.apiKey {
                     Text(AppLocalization.string("On the speech server, set its language model to this address and key, with the model name \(status.modelName). It then reads Hermes' replies aloud instead of writing its own."))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if let setup = status.agentSetupText {
@@ -49,7 +49,7 @@ struct SpeechServerVoiceSettingsView: View {
                         copyRow(title: AppLocalization.string("Flags for speech-to-speech"), value: flags, identifier: "voice.speechServerVoice.flags")
                     }
                     Text(AppLocalization.string("Run it with two pipelines so it can listen and speak at once."))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                     lastAskedRow(status.lastRequestAt)
                     HStack {
@@ -64,18 +64,18 @@ struct SpeechServerVoiceSettingsView: View {
                         Spacer()
                     }
                     .buttonStyle(.borderless)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                 }
                 if !status.available || status.modelAddress == nil {
                     Label(status.reason ?? AppLocalization.string("Your Hermes host didn't send a key."), systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("voice.speechServerVoice.reason")
                 }
                 if let rotateError {
                     Label(rotateError, systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.orange)
                 }
             } else {
@@ -99,7 +99,7 @@ struct SpeechServerVoiceSettingsView: View {
             .buttonStyle(.settingsPrimary)
             .accessibilityIdentifier("voice.speechServerVoice.copySetup")
             Text(AppLocalization.string("One block with the address, key and flags, written for whoever sets up the server, such as your Hermes agent."))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -119,19 +119,19 @@ struct SpeechServerVoiceSettingsView: View {
             : AnyLayout(HStackLayout())
         return VStack(alignment: .leading, spacing: 4) {
             layout {
-                Text(verbatim: title).font(.subheadline.weight(.semibold))
+                Text(verbatim: title).scaledFont(.subheadline.weight(.semibold))
                 if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                 Button(AppLocalization.string("Copy")) {
                     Self.copy(value)
                     UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Copied"))
                 }
                 .buttonStyle(.borderless)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .accessibilityLabel(Text(AppLocalization.string("Copy \(title)")))
                 .accessibilityIdentifier(identifier)
             }
             Text(verbatim: value)
-                .font(.caption.monospaced())
+                .scaledFont(.caption.monospaced())
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
@@ -142,11 +142,11 @@ struct SpeechServerVoiceSettingsView: View {
     private func lastAskedRow(_ date: Date?) -> some View {
         if let date {
             Label(AppLocalization.string("Your speech server last asked for words \(date.formatted(.relative(presentation: .named))). It's pointed here."), systemImage: "checkmark.circle.fill")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.green)
         } else {
             Label(AppLocalization.string("Your speech server hasn't asked for words yet. Set the address and key on it, then restart it."), systemImage: "clock")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
