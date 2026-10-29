@@ -3645,7 +3645,7 @@ beside the list (it opens in the chat's column) · a group room beside the
 list (the list drags; a room has no Artifacts) · Artifacts beside a chat ·
 the drawer shell's persistent sidebar (Appearance, V2 off) · the tab bar
 under the list (Voice beside the tabs) · the chat's readable column (it
-measures the room left to it: not needed) · hiding the list (#1164: the
+measures the room left to it; done, Readable width's ruling, #1498) · hiding the list (#1164: the
 width comes back with the list) · Settings > Appearance > Layout's caption
 in both shells (the drawer shell's only while its persistent sidebar is
 on) · not needed: README.md (it doesn't describe the split
