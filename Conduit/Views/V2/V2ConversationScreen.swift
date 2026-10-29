@@ -101,15 +101,28 @@ struct V2ConversationScreen: View {
         return appState.nestingParent(of: session)
     }
 
+    /// The chat column's width, beside Artifacts when they show.
+    private var chatColumnWidth: CGFloat {
+        showsSidePanel ? screenWidth - sidePanelWidth - 1 : screenWidth
+    }
+
+    /// Expanded on a Mac and on an iPad with the room, so the voice button
+    /// stays beside it; resting on an iPhone (#1483).
+    private var composerStaysExpanded: Bool {
+        ComposerLayout.staysExpanded(width: chatColumnWidth)
+    }
+
     @ViewBuilder private var conversation: some View {
         if appState.activeRoomSurface != nil {
             // Keyed by room: another room starts with its own draft.
             GroupChatView()
                 .id(appState.activeRoomSurface?.room.roomID)
                 .environment(\.v2ComposerRests, true)
+                .environment(\.composerStaysExpanded, composerStaysExpanded)
         } else {
             ChatView()
                 .environment(\.v2ComposerRests, true)
+                .environment(\.composerStaysExpanded, composerStaysExpanded)
         }
     }
 
@@ -191,9 +204,12 @@ struct V2ConversationScreen: View {
     }
 
     /// The composer's own bottom padding, plus half of what the resting bar
-    /// stands taller than the button, so the two share a centre line.
-    static func voiceButtonBottomPadding(restingComposerHeight: CGFloat) -> CGFloat {
-        10 + max(0, (restingComposerHeight - V2VoiceButton.diameter) / 2)
+    /// stands taller than the button, so the two share a centre line. Beside
+    /// a composer that stays expanded, the button sits level with its
+    /// bottom, by the controls row, however tall the draft grows.
+    static func voiceButtonBottomPadding(restingComposerHeight: CGFloat, composerStaysExpanded: Bool = false) -> CGFloat {
+        guard !composerStaysExpanded else { return 10 }
+        return 10 + max(0, (restingComposerHeight - V2VoiceButton.diameter) / 2)
     }
 
     private var chatColumn: some View {
@@ -205,7 +221,8 @@ struct V2ConversationScreen: View {
                 .overlay(alignment: .bottomTrailing) {
                     if appState.activeRoomSurface == nil {
                         // Beside the resting composer; it slides aside,
-                        // shrinks and fades while the composer is expanded.
+                        // shrinks and fades while the composer is expanded
+                        // for use. One that stays expanded keeps it.
                         V2VoiceButton(context: .conversation, isHidden: hidesVoiceButton)
                             .scaleEffect(hidesVoiceButton && !reduceMotion ? 0.4 : 1)
                             .offset(x: hidesVoiceButton && !reduceMotion ? 30 : 0)
@@ -213,7 +230,7 @@ struct V2ConversationScreen: View {
                             .allowsHitTesting(!hidesVoiceButton)
                             .accessibilityHidden(hidesVoiceButton)
                             .padding(.trailing, 16)
-                            .padding(.bottom, Self.voiceButtonBottomPadding(restingComposerHeight: restingComposerHeight))
+                            .padding(.bottom, Self.voiceButtonBottomPadding(restingComposerHeight: restingComposerHeight, composerStaysExpanded: composerStaysExpanded))
                             .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: hidesVoiceButton)
                     }
                 }

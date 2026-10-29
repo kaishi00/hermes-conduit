@@ -349,7 +349,7 @@ entry)
 **Code**
 - Start paths: `Conduit/Voice/VoiceTypes.swift` (PendingVoiceIntent.Source), `Conduit/Services/AppState.swift` (prepareVoiceConversation, voiceWaitsForRunningTurn)
 - Which chat: `Conduit/Services/AppState.swift` (liveVoiceThreadForOpenChat, savedCallToResume, keepVoiceCallWithAdoptedChat); an unattached call's first request's chat: `Conduit/Voice/VoiceBackgroundJobs.swift` (adoptCallChat, callChatJobRuns, callChatClaim, waitForCallChatClaim), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (startBackgroundJob), `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` (send), `Shared/WatchVoice/VoiceJobRouting.swift` (wantsJobOfItsOwn); on the Watch: `Shared/WatchVoice/WatchJobRelay.swift` (joinsCall), `ConduitWatch/WatchBridgeCallModel.swift` (startArguments), `ConduitWatch/WatchDirectCallModel.swift` (joins_call), `Conduit/Watch/WatchDirectBroker.swift` (WatchCallJobSupervisor.callChat, startingCallChat, callIsLive), `Conduit/Voice/VoiceBackgroundJobs.swift` (markOpensCallChat), `Conduit/Voice/VoiceBackgroundJobs.swift` (continueJob), `notifier/dashboard/api/watch_jobs.py` (_WatchJobs._continue_session)
-- Chat voice button: `Conduit/Views/V2/V2VoiceButton.swift`, `Conduit/Views/V2/ChatVoiceButtonAction.swift`, `Conduit/Views/V2/V2ConversationScreen.swift` (voiceButtonBottomPadding, V2RestingComposerHeightKey: level with the resting composer), `Conduit/Views/Components/ComposerBar.swift` (the resting bar's height), `Conduit/Services/AppState+VoiceMessage.swift`, `Conduit/Voice/VoiceMessageRecorder.swift`
+- Chat voice button: `Conduit/Views/V2/V2VoiceButton.swift`, `Conduit/Views/V2/ChatVoiceButtonAction.swift`, `Conduit/Views/V2/V2ConversationScreen.swift` (voiceButtonBottomPadding, V2RestingComposerHeightKey: level with the resting composer, or with the bottom of one that stays expanded, see Composer at rest and expanded), `Conduit/Views/Components/ComposerBar.swift` (the resting bar's height, keepsVoiceButtonBeside), `Conduit/Services/AppState+VoiceMessage.swift`, `Conduit/Voice/VoiceMessageRecorder.swift`
 - Siri and Shortcuts: `Conduit/Intents/StartVoiceConversationIntent.swift`; wake phrase: `Conduit/Voice/Wake/WakeLifecycleCoordinator.swift`
 - CarPlay: `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (CarPlayVoiceMode current and listed, conversationStartingOnPhone, prepareWaitingForConnection, establishLiveVoice, performOpenChat, openChatOnPhone, selectVoiceMode), `Conduit/CarPlay/CarPlayBrowseTemplates.swift` (CarPlayVoiceMode.all, choice), `Conduit/Services/AppState.swift` (start…ForCarPlay, releaseCarPlay… per live mode)
 - A start's late answers: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (callEpoch, isStarting; Gemini, Qwen, Grok, Local Live), `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (startAttempt), `Conduit/Voice/VoiceConversationController.swift` (operationGeneration), `ConduitWatch/WatchDirectCallModel.swift` (callID)
@@ -374,7 +374,7 @@ entry)
 - Group rooms have no voice button setting, and the Watch and CarPlay don't follow it (#1134).
 - When a Classic call can't take over its chat, it shows a generic error (#1066).
 
-**Checked:** 2026-10-29, #1476 (the chat's voice button centres on a resting composer taller than it, as when a long placeholder wraps); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1413 (the Siri and Shortcuts profile picker shows each profile's Conduit name, see Profile names); 2026-10-28, #1424 (a call starts its trace; Qwen Live calls are traced too); 2026-10-27, #1378 (CarPlay starts Local Live, agent mode and Classic's hands-free option, #1376); 2026-10-27, at #1370 (a chat picked in CarPlay shows Thinking, and a live call waits at most 3 s for the phone to open it); 2026-10-26, at #1319 (Home's main button points to its own entry); 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-29, #PRNUM (the voice button stays beside a composer that stays expanded on a Mac or a wide iPad, issue 1483); 2026-10-29, #1476 (the chat's voice button centres on a resting composer taller than it, as when a long placeholder wraps); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1413 (the Siri and Shortcuts profile picker shows each profile's Conduit name, see Profile names); 2026-10-28, #1424 (a call starts its trace; Qwen Live calls are traced too); 2026-10-27, #1378 (CarPlay starts Local Live, agent mode and Classic's hands-free option, #1376); 2026-10-27, at #1370 (a chat picked in CarPlay shows Thinking, and a live call waits at most 3 s for the phone to open it); 2026-10-26, at #1319 (Home's main button points to its own entry); 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
 
 ## Switching voice mode in a call
 
@@ -1750,6 +1750,46 @@ Keyboard caption is unchanged, as it describes the option)
   text, in chats, rooms and the full editor.
 
 **Checked:** 2026-10-28, #1460 (inline prediction off on a Mac).
+
+## Composer at rest and expanded
+
+Whether the composer rests as a slim bar (attach, the field, the mic) until
+it is used, or stays expanded with its controls row showing: attach, the
+model chip, the context ring, agents, the mic and Send.
+
+**Siblings:** the chat composer (chats, project chats, Bot Chat; done, #PRNUM)
+· group rooms' composer (done, #PRNUM) · the chat's voice button beside it
+(done, #PRNUM: it stays beside a composer that stays expanded, level with its
+bottom, and the composer's own voice and mic buttons give way to it, see
+Starting a call) · the composer bar the transcript fades under (not needed:
+the bar takes the composer's height, see Bars lists scroll under) · the
+drawer shell's chat (not needed: its chat composer never rests; its rooms'
+composer follows the same rule, #PRNUM) · iPhone, iPad and Mac · text: no
+Settings caption or doc describes it
+
+**Code**
+- Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.staysExpanded, expandedMinimumWidth, composerStaysExpanded, composerLayoutFromWidth)
+- V2: `Conduit/Views/V2/V2ConversationScreen.swift` (chatColumnWidth, composerStaysExpanded, voiceButtonBottomPadding), `Conduit/Views/Components/ComposerBar.swift` (rests, keepsVoiceButtonBeside, composerInUse), `Conduit/Views/Components/GroupRoomComposer.swift` (rests)
+- Drawer shell: `Conduit/Views/RootView.swift` (chatNavigationContent)
+- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerRestsOnIPhoneAndStaysExpandedOnMacAndWideIPad, testBigButtonSitsLevelWithTheBottomOfAComposerThatStaysExpanded)
+
+**Rulings**
+- iPhone: the composer rests and expands while it is used (focus, a draft,
+  dictation, a notice, a control's sheet), at any width. iPad: it stays
+  expanded when the chat's column has the room (600 pt, Artifacts beside it
+  taken off) and rests below that. Mac: it stays expanded at any width, with
+  its controls always in reach. There is no setting (Eric, 2026-10-29,
+  #PRNUM, issue 1483).
+- A composer that stays expanded keeps the big voice button beside it, as the
+  resting bar does, rather than sliding it aside while typing; the controls
+  row then leaves out its own voice button, and its mic when the big button
+  dictates (2026-10-29, #PRNUM).
+
+**Open gaps**
+- Not yet seen on a device: an iPad crossing 600 pt as a split or Artifacts
+  resizes, and a Mac window at its narrowest.
+
+**Checked:** 2026-10-29, #PRNUM (new entry, issue 1483).
 
 ## A chat's last reply
 

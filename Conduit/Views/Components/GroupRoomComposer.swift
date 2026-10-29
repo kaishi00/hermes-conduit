@@ -28,6 +28,9 @@ struct GroupRoomComposer: View {
     /// next message is addressed to them; none picked, it goes to every bot.
     @State private var recipients: [String] = []
     @Environment(\.groupMemberTints) private var tints
+    /// A Mac, or an iPad with the room: the controls stay showing, as in a
+    /// chat (#1483).
+    @Environment(\.composerStaysExpanded) private var staysExpanded
     @State private var attachments: [Attachment] = []
     @State private var isFocused = false
     @State private var isUploading = false
@@ -84,7 +87,7 @@ struct GroupRoomComposer: View {
     /// Resting, it is one slim bar: attach beside the field. Anything in
     /// progress opens the controls row under the field.
     private var rests: Bool {
-        !isFocused && !hasText && attachments.isEmpty && !isDictationActive && !isUploading
+        !staysExpanded && !isFocused && !hasText && attachments.isEmpty && !isDictationActive && !isUploading
             && composerError == nil && replyReference == nil && recipients.isEmpty
     }
 

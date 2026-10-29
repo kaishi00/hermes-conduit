@@ -85,6 +85,22 @@ extension ComposerFullEditorTests {
         XCTAssertEqual(V2ConversationScreen.voiceButtonBottomPadding(restingComposerHeight: 76), 20)
     }
 
+    func testBigButtonSitsLevelWithTheBottomOfAComposerThatStaysExpanded() {
+        // A bar last measured taller no longer lifts it.
+        XCTAssertEqual(V2ConversationScreen.voiceButtonBottomPadding(restingComposerHeight: 76, composerStaysExpanded: true), 10)
+    }
+
+    func testComposerRestsOnIPhoneAndStaysExpandedOnMacAndWideIPad() {
+        // An iPhone rests however wide, a Pro Max in landscape too.
+        XCTAssertFalse(ComposerLayout.staysExpanded(width: 932, idiom: .phone, onMac: false))
+        // An iPad with the room stays expanded; a narrow split rests.
+        XCTAssertTrue(ComposerLayout.staysExpanded(width: 744, idiom: .pad, onMac: false))
+        XCTAssertTrue(ComposerLayout.staysExpanded(width: ComposerLayout.expandedMinimumWidth, idiom: .pad, onMac: false))
+        XCTAssertFalse(ComposerLayout.staysExpanded(width: 507, idiom: .pad, onMac: false))
+        // A Mac stays expanded at any width.
+        XCTAssertTrue(ComposerLayout.staysExpanded(width: 400, idiom: .pad, onMac: true))
+    }
+
     func testProfileVoicePreferencesKeepTheChatVoiceButton() throws {
         var preferences = VoiceProfilePreferences()
         preferences.chatVoiceButton = "dictation"
