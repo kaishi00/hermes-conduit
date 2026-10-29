@@ -679,6 +679,10 @@ struct MainView: View {
             },
             onEdit: inCall ? nil : { prompt in
                 Task { await appState.editPresentedConfirm(prompt) }
+            },
+            // Typed on the panel, so it stays open over a call too.
+            onSayInstead: { prompt, text in
+                Task { await appState.answerPresentedConfirm(prompt, outcome: .edit, via: .tap, editText: text) }
             }
         )
     }
