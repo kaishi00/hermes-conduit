@@ -236,7 +236,7 @@ nightly-only families) and `ui` (one job per UI shard).
 
 | Job | Runner | Purpose |
 |---|---|---|
-| `plan` | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1` and, on a PR into `pulse` or `linked-rooms` that merges main, main's maps where the PR and its base meet main, so the entries a merge of main brings in keep main's Checked lines (if GitHub can't say whether the PR merges main or give those maps, it warns and checks without them, so those entries fail as the PR's edits until a re-run); its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage during that lookup only warns), cheap CI-tooling tests, the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`), the **nightly partition** check (`plan-tests.py hosted`), and the smoke build's project (`ui-spec`). |
+| `plan` | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1` and, on a PR into `pulse` or `linked-rooms` that merges main, main's maps where the PR and its base meet main, so the entries a merge of main brings in keep main's Checked lines (if GitHub can't say whether the PR merges main or give those maps, it warns and checks without them, so those entries fail as the PR's edits until a re-run); its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage during that lookup only warns), cheap CI-tooling tests, the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`), the **nightly partition** check (`plan-tests.py hosted`), the smoke build's project (`ui-spec`), and whether the PR needs the smoke job at all (`smoke`, below). |
 | `self-test` | ubuntu | CI-tooling regression suites (planner tests, destination lookup, gate/contract tests, the bash wrapper tests the plan job skips) in one job, concurrent with `smoke`. |
 | `smoke` (`Smoke`) | macos-26 | The only macOS job: restores main's build cache (on a PR into `pulse` or `linked-rooms`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the curated unit classes (one invocation, no retry) and the curated UI classes (one invocation, one targeted retry) on that build. Saves the full build cache on pushes to `main`, `pulse` or `linked-rooms`. |
 | `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating `plan`, `smoke` and `self-test` via `scripts/ci-gate.py`. |
@@ -466,11 +466,28 @@ The `CI Gate` job is the single stable required status check for branch
 protection. It passes only when:
 
 * `plan`, `smoke` and `self-test` all succeed (CI v5). `smoke` fails when
-  its build, its unit smoke step or its UI smoke step failed. Nothing is ever
-  legitimately skipped: `plan-tests.py smoke` fails closed on an empty curated
+  its build, its unit smoke step or its UI smoke step failed. The one
+  legitimate skip is the plan job's: its `smoke` output is `false` on a PR
+  that doesn't need the macOS build, and the gate passes a skipped `smoke`
+  only then. Otherwise `plan-tests.py smoke` fails closed on an empty curated
   selection and both smoke test steps refuse to run unfiltered, so a
-  `skipped` job always means an upstream failure cascade — which fails the
-  gate.
+  `skipped` job means an upstream failure cascade — which fails the gate.
+
+A PR doesn't need the smoke job when it changes only what the build and the
+smoke tests never read (Markdown, `docs/`, `LICENSE`, `opencode.json`,
+`.coderabbit.yaml`, `.github/` other than `ci.yml`; a file under `Conduit*/` or
+`Shared/` always builds, and a rename counts by both names), or when its change is the
+same as at an earlier commit of it whose smoke job passed:
+`scripts/pr-change-id.py` hashes the PR's diff from its base without hunk
+headers or blob ids, and its Markdown by the words the PR adds and removes, so
+merging main or resolving a feature map conflict keeps it. That merge commit
+is then never built on the PR, which is the ruling (Eric, 2026-10-29, #1467:
+resolving a feature map conflict shouldn't rerun CI); main's own run after
+the merge still builds, and catches two PRs that break together, as it does
+for any PR that wasn't up to date. The review plan in
+`opencode-review.yml` hashes the same way with an inline copy of the script,
+and `scripts/tests/test_pr_change_id.py` holds the two to the same ids. Pushes always build, and every lookup
+that fails builds too.
 
 Branch protection must require **CI Gate** (and nothing else from this
 workflow): the jobs behind it are implementation detail, and any job that can

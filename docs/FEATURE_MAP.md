@@ -2954,13 +2954,14 @@ notifier's copies of both
 - Workflow: `.github/workflows/opencode-review.yml` (the reviewer matrix, secrets and prompt)
 - Config: `opencode.json` (providers, models and the reviewer's permissions)
 - Notifier: `notifier/.github/workflows/opencode-review.yml`, `notifier/opencode.json`
+- Change id: the review plan's inline copy in `.github/workflows/opencode-review.yml` (and the notifier's), and `scripts/pr-change-id.py`, which CI's smoke skip uses; `scripts/tests/test_pr_change_id.py` holds this repo's two to the same ids
 
 **Rulings**
 - Two reviewers gate merges (one, GLM-5.3, on a docs and config PR; see Review cost below), and both repos run the same pair: GLM-5.3 on Z.ai at reasoning effort max (2026-10-28, #1458, Eric: the full model is faster than Flash; GLM-5.3-Flash before that), and Claude Haiku 5.5 on the Anthropic API at effort high, set in opencode.json (2026-10-28, #1421, Eric; Muse Spark 1.3 on Command Code before that, #1335).
 - Both repos give the reviewers the same prompt apart from their focus areas: bugs the PR introduces first, a concrete failure for each finding, the four severities defined, and REQUEST_CHANGES on any critical or major finding (2026-10-28, #1421, Eric asked for a review of the prompt).
 - A provider whose id is in the models.dev catalog (`anthropic` is, as `commandcode` was) whitelists the one model it reviews with. Otherwise opencode titles each session with the newest small model in that catalog, which was Gemini 3.8 Flash, a call Eric didn't want (2026-10-27, #1391 and notifier #428, Eric asked why Gemini Flash was being called).
 - Reviews run when a PR opens, on every push, on reopen and, on a fork's PR, on the run-review label, drafts included; marking a draft ready doesn't rerun them, since that head was already reviewed (2026-10-29, #1465 and notifier #453, Eric asked why reviews reran after draft to ready).
-- Review cost (2026-10-29, #1466 and notifier #454, Eric: reviews shouldn't spend inference on code they already saw). A `plan` job decides before any model runs: it waits 60s so a quick push cancels the run first; it skips a run whose change (the PR's diff from its base, whitespace kept; hunk headers and blob ids left out, and a Markdown file counted by the words the PR adds and removes, so a resolved feature map conflict still matches) matches a commit a review already ran on (whatever its verdict), so a clean merge of main or a reopen isn't reviewed again; and a PR whose files (both names of a rename) are all docs or config (Markdown, text, JSON, YAML, TOML; .github/, the notifier's skills/, opencode.json, .coderabbit.yaml, and manifests that declare code, targets or dependencies count as code) gets GLM-5.3 alone, as Eric asked, since it's the cheaper of the two. A manual run (both repos have one now), or adding run-review to a fork's PR, always reviews.
+- Review cost (2026-10-29, #1466 and notifier #454, Eric: reviews shouldn't spend inference on code they already saw). A `plan` job decides before any model runs: it waits 60s so a quick push cancels the run first; it skips a run whose change (the PR's diff from its base, whitespace kept; hunk headers and blob ids left out, and a Markdown file counted by the words the PR adds and removes, so a resolved feature map conflict still matches) matches a commit a review already ran on (whatever its verdict), so a clean merge of main or a reopen isn't reviewed again; and a PR whose files (both names of a rename) are all docs or config (Markdown, text, JSON, YAML, TOML; .github/, the notifier's skills/, opencode.json, .coderabbit.yaml, manifests that declare code, targets or dependencies, and the notifier's data files the plugin reads, channels.yaml, bip39_english.txt and upstream/contract.yml, count as code) gets GLM-5.3 alone, as Eric asked, since it's the cheaper of the two. A manual run (both repos have one now), or adding run-review to a fork's PR, always reviews. CI skips this repo's Smoke job on the same change id (`scripts/pr-change-id.py`, docs/CI.md, #1467).
 
 **Open gaps**
 - The workflow runs main's config, so a change to either file is first exercised by the review after it merges.
@@ -2970,7 +2971,7 @@ notifier's copies of both
 - A Markdown file counts by its words, so a push that only reorders or re-indents Markdown the PR already changed matches the earlier review and isn't reviewed again; that keeps a resolved feature map conflict from costing a review (2026-10-29, #1466).
 - Re-running a review from the Actions page still reviews: the run being rerun isn't finished, so it doesn't count as reviewed (2026-10-29, #1466).
 
-**Checked:** 2026-10-29, #1466.
+**Checked:** 2026-10-29, #1467 (the change id hashes any bytes and a failing one counts as no match; the notifier's data files count as code, notifier #455; CI's copy of the change id is in Code, held to the review's by a test); #1466.
 
 ## Settings connection page
 

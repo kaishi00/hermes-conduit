@@ -76,7 +76,9 @@ jobs:
             def words():
                 if md:
                     out.append(repr(sorted((added - removed).items())) + repr(sorted((removed - added).items())))
-            for line in sys.stdin.read().split("\n"):
+            # Bytes that aren't UTF-8 (a Latin-1 file) pass through unchanged.
+            text = sys.stdin.buffer.read().decode("utf-8", "surrogateescape")
+            for line in text.split("\n"):
                 if line.startswith("diff --git "):
                     words()
                     added.clear(); removed.clear()
@@ -97,7 +99,7 @@ jobs:
                 elif not md:
                     out.append(line)
             words()
-            print(hashlib.sha256("\n".join(out).encode()).hexdigest())
+            print(hashlib.sha256("\n".join(out).encode("utf-8", "surrogateescape")).hexdigest())
         run: |
           case "$PR_NUMBER" in
             '' | *[!0-9]*) echo "pr_number must be a PR number, not '$PR_NUMBER'" >&2; exit 1 ;;
@@ -132,7 +134,7 @@ jobs:
               echo "No diff for $1 from $base, so it can't match." | tee -a "$GITHUB_STEP_SUMMARY" >&2
               return
             fi
-            python3 -I -c "$CHANGE_ID_PY" <<<"$diff"
+            python3 -I -c "$CHANGE_ID_PY" <<<"$diff" || true
           }
 
           if [ "$EVENT_NAME" = pull_request_target ] && [ "$EVENT_ACTION" != labeled ]; then
@@ -164,13 +166,15 @@ jobs:
 
           # .github/ counts as code (workflows and actions run with this repo's
           # secrets), and so do opencode.json and .coderabbit.yaml (review
-          # config), the notifier's skills/ (instructions its agent loads) and
-          # manifests that declare code, targets or dependencies. A rename
+          # config), the notifier's skills/ (instructions its agent loads), its
+          # data files the plugin reads (channels.yaml, the BIP-39 word list,
+          # upstream/contract.yml) and manifests that declare code, targets
+          # or dependencies. A rename
           # counts by both names. So does a file list that didn't load, so
           # every reviewer runs.
           files=$(gh api --paginate "$repo/pulls/$PR_NUMBER/files" \
             --jq '.[] | .filename, (.previous_filename // empty)') || files=''
-          code_config='^\.github/|^skills/|^(opencode\.json|\.coderabbit\.ya?ml)$|(^|/)((requirements|constraints)[^/]*\.txt|package(-lock)?\.json|[^/]*lock\.ya?ml|pyproject\.toml|plugin\.yaml|manifest\.json|project[^/]*\.yml)$'
+          code_config='^\.github/|^skills/|^(opencode\.json|\.coderabbit\.ya?ml|channels\.yaml|bip39_english\.txt|upstream/contract\.yml)$|(^|/)((requirements|constraints)[^/]*\.txt|package(-lock)?\.json|[^/]*lock\.ya?ml|pyproject\.toml|plugin\.yaml|manifest\.json|project[^/]*\.yml)$'
           if [ -z "$files" ] || grep -Eq "$code_config" <<<"$files" \
             || grep -Evq '\.(md|txt|json|ya?ml|toml)$' <<<"$files"; then
             pick "$ALL_REVIEWERS" "Reviewing with every reviewer."
