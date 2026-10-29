@@ -177,6 +177,11 @@ struct LocationBatch {
     /// "maps" is MapKit lookups (designs/maps-v1-contract.md section 1).
     /// Emptied when the key can't open a maps request (LocationIngest).
     var features: [String] = LocationBatch.phoneFeatures
+    /// Walking past (LocationSpots): the shops this iPhone came near, and
+    /// how many it can watch. Set (even empty) when it watches shops for
+    /// Pulse, so the host's answer carries a sealed list of what to watch.
+    var spotEntries: [LocationSpotEntry]?
+    var spotsRoom: Int?
 
     static let phoneFeatures = ["maps"]
 
@@ -198,6 +203,8 @@ struct LocationBatch {
         }
         if !events.isEmpty { object["events"] = events.map { $0.json(formatter: formatter) } }
         if let locateID { object["locate_id"] = locateID }
+        if let spotEntries { object["spot_entries"] = spotEntries.map { $0.json(formatter: formatter) } }
+        if let spotsRoom { object["spots_room"] = spotsRoom }
         return object
     }
 

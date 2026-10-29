@@ -35,9 +35,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, pulse]
   pull_request:
-    branches: [main]
+    # pulse: the internal-tester branch with the Pulse settings page (never merged into main).
+    branches: [main, pulse]
 
 # A PR's newer push supersedes its older run. A push is grouped by its own
 # commit instead, so every merge gets a full run: branch protection does not
