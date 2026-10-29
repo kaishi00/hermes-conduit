@@ -53,6 +53,9 @@ struct RoomChoices: Equatable {
 /// profile. A refusal (400) carries the plugin's reason.
 struct RoomChoicesClient {
     static let capability = "room-rules"
+    /// Use my data lets the agent say when you're busy (the plugin's
+    /// conduit_free_busy): offered only on a plugin that has it.
+    static let freeBusyCapability = "room-free-busy"
     static let path = "/api/plugins/conduit_push/rooms/choices"
     /// room_choices.MAX_NOTE_CHARS, in code points as the plugin counts.
     static let noteLimit = 1000
@@ -132,6 +135,11 @@ extension AppState {
     /// offer them, with no update notice.
     var canSetRoomChoices: Bool {
         notifierPlugin.reports(RoomChoicesClient.capability)
+    }
+
+    /// Whether Use my data shares when you're busy, so the choices offer it.
+    var canShareFreeBusy: Bool {
+        notifierPlugin.reports(RoomChoicesClient.freeBusyCapability)
     }
 
     /// Requests stay with the dashboard they were made for.
