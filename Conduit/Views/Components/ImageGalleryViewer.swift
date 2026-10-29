@@ -384,7 +384,10 @@ final class ImageGalleryViewController: UIViewController {
         shareButton.isEnabled = files[newIndex] != nil
         // A picture that failed (a dropped connection) is tried again each
         // time it is paged to; meanwhile it keeps its message.
-        if failed[newIndex] == false { failed[newIndex] = nil }
+        if failed[newIndex] == false {
+            failed[newIndex] = nil
+            madePages(newIndex).forEach { $0.showLoading() }
+        }
         for prefetch in ImageGallery.prefetchOrder(around: newIndex, count: items.count) {
             startLoading(prefetch)
         }
@@ -701,9 +704,10 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
         failureLabel.isHidden = true
         if imageView.image == nil { spinner.startAnimating() }
         let url = file.url
-        // Sharp at the most a pinch zooms, within what a phone decodes.
+        // Sharp at twice the fitted size, within what a phone decodes: the
+        // pager holds three pages at once.
         let longest = max(view.bounds.width, view.bounds.height, 400) * max(traitCollection.displayScale, 2)
-        let maxPixelSize = min(longest * scrollView.maximumZoomScale / 2, 4096)
+        let maxPixelSize = min(longest * scrollView.maximumZoomScale / 2, 3072)
         decodeTask?.cancel()
         decodeTask = Task { @MainActor [weak self] in
             let image = await Task.detached(priority: .userInitiated) {
@@ -718,6 +722,13 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
                 self.failureLabel.isHidden = false
             }
         }
+    }
+
+    /// Fetching again after a failure.
+    func showLoading() {
+        loadViewIfNeeded()
+        failureLabel.isHidden = true
+        spinner.startAnimating()
     }
 
     func showFailure(tooLarge: Bool = false) {
