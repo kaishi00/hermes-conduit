@@ -1804,7 +1804,7 @@ devices)
 - A browsing reader (a chat or a room) is never rebuilt under, so a blank screen there waits until they reach the bottom or reopen the chat.
 - A group room that opens empty scrolls its first events to the end: that batch is usually the room's history arriving, which should open at its newest row, so only events after a row already seen land at a member message's start.
 
-**Checked:** 2026-10-28, #1455 (carrying #1431; following pins when the composer bar's height changes; Code, Rulings, gap); 2026-10-27, #1367 (the blank viewport check counts live rows and runs during a turn, and group rooms have it too; Code, Rulings, gaps); 2026-10-26, #1313 (the stop stays armed, so a reader a shrinking row estimate clamps back to the bottom stops again instead of following the reply to its end; ChatScrollHostedTests in Tests); 2026-10-26, #1290 (the check for another device's message goes by row id; Code); 2026-10-25, at #1270.
+**Checked:** 2026-10-29, #1468 (the fade spans the screen past the column; Rulings); 2026-10-28, #1455 (carrying #1431; following pins when the composer bar's height changes; Code, Rulings, gap); 2026-10-27, #1367 (the blank viewport check counts live rows and runs during a turn, and group rooms have it too; Code, Rulings, gaps); 2026-10-26, #1313 (the stop stays armed, so a reader a shrinking row estimate clamps back to the bottom stops again instead of following the reply to its end; ChatScrollHostedTests in Tests); 2026-10-26, #1290 (the check for another device's message goes by row id; Code); 2026-10-25, at #1270.
 
 ## Reconnecting to Hermes
 
@@ -3515,6 +3515,7 @@ describes them
 **Rulings**
 - On iOS 26 a bar is a `safeAreaBar` with the system's soft scroll edge. Before iOS 26, and on a Mac, it is a `safeAreaInset` over Conduit's own fading material. A bar and its fade read the same switch (`V2SystemScrollEdge.isUsed`), so they always agree (2026-10-27, #1397: on macOS 27 the composer bar's edge hid the transcript well above the composer, #1357).
 - The tab bar's own fade (`V2LegacyTabBarEdge`) is only as wide as the screen it sits under: under the list column when the bar sits there, the whole window when it is centered. Across the window it covered the composer and voice button of the chat beside the list (2026-10-28, #1444, #1439).
+- Conduit's fade (`V2ScrollEdgeBackground`) runs the screen's whole width, into a readable column's margins: kept to a wide window's chat column it drew a lighter box around the composer on a Mac (2026-10-29, #1468).
 
 **Open gaps**
 - The Mac fallback isn't confirmed on macOS 27; it waits on the reporter's TestFlight check (#1357).
