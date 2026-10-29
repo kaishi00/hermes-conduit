@@ -78,6 +78,8 @@ struct V2ConversationScreen: View {
     /// Artifacts beside the chat, on a window wide enough for both.
     @AppStorage(ChatSidePanel.key) private var sidePanelOpen = false
     @AppStorage(ChatSidePanel.widths.key) private var storedSidePanelWidth = Double(ChatSidePanel.widths.standard)
+    /// The panel's width while its line is dragged (`ColumnDivider`).
+    @State private var draggedSidePanelWidth: CGFloat?
     @State private var sidePanelTab: ArtifactsTab = .made
     /// The chat's ids when the panel opened.
     @State private var sidePanelIDs: [String] = []
@@ -86,7 +88,7 @@ struct V2ConversationScreen: View {
     private var fitsSidePanel: Bool { ChatSidePanel.fits(width: screenWidth) }
     /// As wide as the user dragged it, less on a window without the room.
     private var sidePanelWidth: CGFloat {
-        ChatSidePanel.widths.resolved(storedSidePanelWidth, window: screenWidth, keeping: V2SplitLayout.minimumChatWidth)
+        draggedSidePanelWidth ?? ChatSidePanel.widths.resolved(storedSidePanelWidth, window: screenWidth, keeping: V2SplitLayout.minimumChatWidth)
     }
     private var showsSidePanel: Bool {
         sidePanelOpen && fitsSidePanel && appState.activeRoomSurface == nil
@@ -121,7 +123,8 @@ struct V2ConversationScreen: View {
                     room: screenWidth - V2SplitLayout.minimumChatWidth - 1,
                     columnEdge: .trailing,
                     label: AppLocalization.string("Artifacts width"),
-                    stored: $storedSidePanelWidth
+                    stored: $storedSidePanelWidth,
+                    live: $draggedSidePanelWidth
                 )
                 ChatSidePanel(sessionIDs: sidePanelIDs, tab: $sidePanelTab) {
                     sidePanelOpen = false

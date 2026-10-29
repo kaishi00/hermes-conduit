@@ -111,6 +111,8 @@ struct MainView: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("conduit.ipadPersistentSidebar") private var prefersPersistentSidebar = false
     @AppStorage(SidebarLayoutMetrics.persistentSidebarWidths.key) private var storedSidebarWidth = Double(SidebarLayoutMetrics.persistentSidebarWidth)
+    /// The sidebar's width while its line is dragged (`ColumnDivider`).
+    @State private var draggedSidebarWidth: CGFloat?
     /// Conduit V2's tab shell (V2Shell.swift). Off brings back the drawer
     /// shell, the fallback while V2 is on its branch.
     @AppStorage(V2ShellPreference.key) private var useV2Shell = V2ShellPreference.defaultValue
@@ -135,7 +137,7 @@ struct MainView: View {
     private var isPersistentSidebarActive: Bool { !useV2Shell && sidebarPresentation == .persistent }
 
     private var persistentSidebarWidth: CGFloat {
-        SidebarLayoutMetrics.persistentSidebarWidths.resolved(
+        draggedSidebarWidth ?? SidebarLayoutMetrics.persistentSidebarWidths.resolved(
             storedSidebarWidth,
             window: availableWindowWidth,
             keeping: SidebarLayoutMetrics.minimumChatWidth
@@ -483,7 +485,8 @@ struct MainView: View {
                     room: availableWindowWidth - SidebarLayoutMetrics.minimumChatWidth - 1,
                     columnEdge: .leading,
                     label: AppLocalization.string("Chat list width"),
-                    stored: $storedSidebarWidth
+                    stored: $storedSidebarWidth,
+                    live: $draggedSidebarWidth
                 )
 
                 chatNavigationContent

@@ -56,8 +56,13 @@ struct ColumnDivider: View {
     /// What VoiceOver calls the line, such as "Chat list width".
     let label: String
     @Binding var stored: Double
+    /// The width while a drag is under way, which the parent lays the
+    /// column out at. It goes to `stored` once, when the drag ends: every
+    /// defaults write redraws each `@AppStorage` view, whatever its key.
+    @Binding var live: CGFloat?
 
-    @State private var dragStart: CGFloat?
+    /// Reset when the drag ends or the system cancels it.
+    @GestureState private var dragStart: CGFloat?
     @State private var isHovering = false
 
     private static let gripWidth: CGFloat = 12
@@ -97,19 +102,21 @@ struct ColumnDivider: View {
                 }
             }
             .accessibilityAction(named: Text("Reset width")) { reset() }
+            .onChange(of: dragStart == nil) { _, ended in
+                guard ended, let width = live else { return }
+                stored = Double(width)
+                live = nil
+            }
     }
 
     /// Measured in the window, so the line moving with the column doesn't
     /// move the drag's own frame of reference.
     private var drag: some Gesture {
         DragGesture(minimumDistance: 1, coordinateSpace: .global)
-            .onChanged { value in
-                let start = dragStart ?? width
-                if dragStart == nil { dragStart = start }
-                stored = Double(widths.dragged(from: start, by: value.translation.width * direction, room: room))
-            }
-            .onEnded { _ in
-                dragStart = nil
+            .updating($dragStart) { value, start, _ in
+                let from = start ?? width
+                start = from
+                live = widths.dragged(from: from, by: value.translation.width * direction, room: room)
             }
     }
 

@@ -36,7 +36,8 @@ enum SidebarLayoutMetrics {
     /// Stage Manager, and narrow resizable windows stay usable.
     static let minimumChatWidth: CGFloat = 430
     /// Windows narrower than this never activate the persistent layout.
-    static let minimumPersistentLayoutWidth: CGFloat = persistentSidebarWidth + minimumChatWidth
+    /// The 1 pt line between them counts too (#1487).
+    static let minimumPersistentLayoutWidth: CGFloat = persistentSidebarWidth + 1 + minimumChatWidth
 }
 
 enum SidebarLayoutPolicy {
