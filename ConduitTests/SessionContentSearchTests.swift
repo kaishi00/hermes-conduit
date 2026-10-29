@@ -87,11 +87,11 @@ final class SessionContentSearchTests: XCTestCase {
     func testPathCarriesQueryLimitAndNamedProfile() {
         XCTAssertEqual(
             SessionContentSearch.path(query: "recycling pickup", profile: "work"),
-            "/api/sessions/search?q=recycling%20pickup&limit=\(SessionContentSearch.resultLimit)&exclude_sources=kanban,oneshot,tool&profile=work"
+            "/api/sessions/search?q=recycling%20pickup&limit=60&exclude_sources=kanban,oneshot,tool&profile=work"
         )
         XCTAssertEqual(
             SessionContentSearch.path(query: "recycling", profile: "default"),
-            "/api/sessions/search?q=recycling&limit=\(SessionContentSearch.resultLimit)&exclude_sources=kanban,oneshot,tool"
+            "/api/sessions/search?q=recycling&limit=60&exclude_sources=kanban,oneshot,tool"
         )
     }
 
@@ -156,6 +156,13 @@ final class SessionContentSearchTests: XCTestCase {
             ["session_id": "o", "source": "cli", "snippet": "x"],
         ]]
         XCTAssertEqual(SessionContentSearch.hits(from: response, query: "x")?.map(\.sessionID), ["c", "t", "o"])
+    }
+
+    func testHitsKeepTwentyRealChatsBehindLegacyWorkers() {
+        let workers: [[String: Any]] = (0..<30).map { ["session_id": "w\($0)", "source": "cli", "preview": "work kanban task t_\($0)", "snippet": "x"] }
+        let chats: [[String: Any]] = (0..<25).map { ["session_id": "c\($0)", "source": "cli", "preview": "Task list \($0)", "snippet": "x"] }
+        let hits = SessionContentSearch.hits(from: ["results": workers + chats], query: "task")
+        XCTAssertEqual(hits?.map(\.sessionID), (0..<20).map { "c\($0)" })
     }
 
     func testABodyThatIsNotASearchResponseHasNoHits() {
