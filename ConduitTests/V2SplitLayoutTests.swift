@@ -62,6 +62,13 @@ extension SidebarLayoutTests {
         XCTAssertEqual(list.dragged(from: 375, by: 100, room: 420), 420)
         XCTAssertEqual(list.dragged(from: 375, by: 100, room: 200), list.minimum)
 
+        // Dragging away from the column widens it, right to left too,
+        // where a leading column is on the right.
+        XCTAssertEqual(ColumnWidth.dragSign(columnEdge: .leading, layoutDirection: .leftToRight), 1)
+        XCTAssertEqual(ColumnWidth.dragSign(columnEdge: .trailing, layoutDirection: .leftToRight), -1)
+        XCTAssertEqual(ColumnWidth.dragSign(columnEdge: .leading, layoutDirection: .rightToLeft), -1)
+        XCTAssertEqual(ColumnWidth.dragSign(columnEdge: .trailing, layoutDirection: .rightToLeft), 1)
+
         // A drag stores its width once it moved the line; a press doesn't.
         XCTAssertEqual(ColumnWidth.storedAfterDrag(live: 450, began: 375), 450)
         XCTAssertNil(ColumnWidth.storedAfterDrag(live: 375.5, began: 375))

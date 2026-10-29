@@ -55,6 +55,13 @@ struct ColumnWidth {
         return stepped
     }
 
+    /// Which way the pointer's travel moves a column's edge: away from the
+    /// column widens it. The drag is measured in the window, which doesn't
+    /// mirror right to left, so there a leading column is on the right.
+    static func dragSign(columnEdge: HorizontalEdge, layoutDirection: LayoutDirection) -> CGFloat {
+        (columnEdge == .leading) == (layoutDirection == .leftToRight) ? 1 : -1
+    }
+
     /// One VoiceOver adjustment's step.
     static let accessibilityStep: CGFloat = 40
 }
@@ -91,10 +98,8 @@ struct ColumnDivider: View {
 
     private static let gripWidth: CGFloat = 12
 
-    /// The drag is measured in the window, which doesn't mirror right to
-    /// left, so there a leading column is on the right.
     private var direction: CGFloat {
-        (columnEdge == .leading) == (layoutDirection == .leftToRight) ? 1 : -1
+        ColumnWidth.dragSign(columnEdge: columnEdge, layoutDirection: layoutDirection)
     }
     private var isActive: Bool { isHovering || dragStart != nil }
 
