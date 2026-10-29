@@ -235,6 +235,8 @@ final class CrashReportOffer: ObservableObject {
     }
 
     @Published private(set) var state: State = .hidden
+    /// The reports the card is about.
+    private var shown: [String] = []
 
     private let queue: CrashReportQueue
     private let directory: URL
@@ -262,13 +264,15 @@ final class CrashReportOffer: ObservableObject {
         guard state == .hidden || state == .sent else { return }
         let reports = await pendingReports()
         guard !reports.isEmpty, state == .hidden || state == .sent else { return }
+        shown = reports.map(\.fileName)
         state = .asking(crashed: reports.contains { $0.kind == .crash })
     }
 
-    /// Not now: these reports aren't offered again.
+    /// Not now: the reports the card asked about aren't offered again; one
+    /// that came in meanwhile is, next time.
     func dismiss() {
-        if case .asking = state { queue.clear() }
-        if state == .failed { queue.clear() }
+        if case .asking = state { queue.remove(shown) }
+        if state == .failed { queue.remove(shown) }
         state = .hidden
     }
 
@@ -281,6 +285,7 @@ final class CrashReportOffer: ObservableObject {
             state = .hidden
             return
         }
+        shown = reports.map(\.fileName)
         var sent: [String] = []
         var failed = false
         for report in reports {
@@ -301,6 +306,8 @@ final class CrashReportOffer: ObservableObject {
         if !failed {
             try? await Task.sleep(for: thanksFor)
             if state == .sent { state = .hidden }
+            // One that came in while sending.
+            await refresh()
         }
     }
 
