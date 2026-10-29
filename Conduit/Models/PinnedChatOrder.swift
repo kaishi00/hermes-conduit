@@ -178,9 +178,10 @@ struct PinnedChatOrder: Equatable {
     }
 
     /// The orders a drag leaves: `rows` as shown, moved the way a List's
-    /// `onMove` reports it. Each moved row's profile gets its shown rows in
-    /// their new places, then any of its saved ids not shown (a pinned chat
-    /// not listed right now) in their old order.
+    /// `onMove` reports it. Each moved row's profile, and each profile in
+    /// `alsoSaving`, gets its shown rows in their new places, then any of
+    /// its saved ids not shown (a pinned chat not listed right now) in their
+    /// old order.
     static func orders<Row>(
         moving rows: [Row],
         fromOffsets source: IndexSet,
@@ -188,9 +189,11 @@ struct PinnedChatOrder: Equatable {
         profile: (Row) -> String,
         pinID: (Row) -> String,
         ids: (Row) -> Set<String>,
-        order: (String) -> [String]
+        order: (String) -> [String],
+        alsoSaving: Set<String> = []
     ) -> [String: [String]] {
         let movedProfiles = Set(source.filter { rows.indices.contains($0) }.map { profile(rows[$0]) })
+            .union(alsoSaving)
         guard !movedProfiles.isEmpty else { return [:] }
         var moved = rows
         moved.move(fromOffsets: source, toOffset: destination)

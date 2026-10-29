@@ -37,7 +37,9 @@ extension AppState {
     /// other profiles' (issue 1486).
     func movePinnedChats(_ shown: [SessionSummary], fromOffsets source: IndexSet, toOffset destination: Int) {
         let order = pinnedChatOrder
-        if Set(shown.map { rowProfile($0) }).count > 1 {
+        let shownProfiles = Set(shown.map { rowProfile($0) })
+        let mixes = shownProfiles.count > 1
+        if mixes {
             setPinnedChatMixedOrder(PinnedChatOrder.mixedOrder(
                 moving: shown,
                 fromOffsets: source,
@@ -55,7 +57,10 @@ extension AppState {
             profile: { rowProfile($0) },
             pinID: { SessionPinSync.pinID(for: $0) },
             ids: { SessionPinSync.pinIDs(for: $0) },
-            order: { order.ids(profile: $0) }
+            order: { order.ids(profile: $0) },
+            // In the mix every profile shown keeps the order it was shown
+            // in, so later activity doesn't move a chat dropped among its.
+            alsoSaving: mixes ? shownProfiles : []
         )
         for (profile, ids) in orders {
             setPinnedChatOrder(ids, profile: profile)

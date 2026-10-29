@@ -172,6 +172,7 @@ extension SessionNestingModelTests {
         let key = PinnedChatOrder.key(profile:id:)
         XCTAssertEqual(appState.pinnedChatOrder.mixed, [key("work", "w1"), key("default", "d2"), key("default", "d1")])
         XCTAssertEqual(appState.pinnedChatOrder.ids(profile: "default"), ["d2", "d1"], "the other profile's order stays")
+        XCTAssertEqual(appState.pinnedChatOrder.ids(profile: "work"), ["w1"], "each profile shown keeps its order")
 
         appState.toggleSessionPinned(d1)
         appState.toggleSessionPinned(d1)
