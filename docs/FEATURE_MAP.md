@@ -2581,7 +2581,7 @@ README.md
 - The dot reads the chats the project tree lists, as the Running line does, so an unread chat beyond the tree's preview of a big project doesn't light it. A chat the catalog also lists reads its copy there, which stays current between loads of the tree.
 - Projects belong to the profile in use; All profiles has no Projects list of its own.
 
-**Checked:** 2026-10-29, #PR.
+**Checked:** 2026-10-29, #1499.
 
 ## Pinned chats order
 
