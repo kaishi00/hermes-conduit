@@ -2886,32 +2886,32 @@ private struct ReviewSummaryCard: View {
                 disclosure?.willToggle(nil, to: !expanded)
                 withAnimation(ConduitMotion.response) { expanded.toggle() }
             } label: {
-                HStack(alignment: .center, spacing: 10) {
-                    Image(systemName: "internaldrive.fill")
-                        .foregroundStyle(.conduitAura)
-                        .frame(width: 28, height: 28)
-                        .background(Color.conduitAura.opacity(0.14), in: Circle())
-                    VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .center, spacing: 10) {
+                        Image(systemName: "internaldrive.fill")
+                            .foregroundStyle(.conduitAura)
+                            .frame(width: 28, height: 28)
+                            .background(Color.conduitAura.opacity(0.14), in: Circle())
                         Text("SELF-IMPROVEMENT REVIEW")
                             .font(.caption2.weight(.bold))
                             .tracking(0.6)
                             .foregroundStyle(.secondary)
-                        SelectableTextView(
-                            text: activity.summary,
-                            font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
-                            textColor: .label
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        CardHeaderTimestamp(timestamp: timestamp)
+                        if !details.isEmpty {
+                            Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                                .font(.caption.weight(.semibold))
+                                .conduitFixedGlyph()
+                                .foregroundStyle(.secondary)
+                                .frame(width: 28, height: 28)
+                        }
                     }
-                    Spacer(minLength: 8)
-                    MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
-                    if !details.isEmpty {
-                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                            .font(.caption.weight(.semibold))
-                            .conduitFixedGlyph()
-                            .foregroundStyle(.secondary)
-                            .frame(width: 28, height: 28)
-                    }
+                    SelectableTextView(
+                        text: activity.summary,
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
+                        textColor: .label
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .contentShape(Rectangle())
             }
@@ -2964,28 +2964,26 @@ private struct ModelChangeSummaryCard: View {
     let timestamp: String
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.conduitAccent)
-                .frame(width: 28, height: 28)
-                .background(Color.conduitAccent.opacity(0.14), in: Circle())
-
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.conduitAccent)
+                    .frame(width: 28, height: 28)
+                    .background(Color.conduitAccent.opacity(0.14), in: Circle())
                 Text("MODEL UPDATED")
                     .font(.caption2.weight(.bold))
                     .tracking(0.6)
                     .foregroundStyle(.secondary)
-                SelectableTextView(
-                    text: AppLocalization.string("Model has been changed to \(provider)/\(model)"),
-                    font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
-                    textColor: .label
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                CardHeaderTimestamp(timestamp: timestamp)
             }
-
-            Spacer(minLength: 8)
-            MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
+            SelectableTextView(
+                text: AppLocalization.string("Model has been changed to \(provider)/\(model)"),
+                font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
+                textColor: .label
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(14)
         .chatCard(cornerRadius: 18, tint: .conduitAccent.opacity(0.07))
@@ -3207,6 +3205,19 @@ private struct MessageTimestampLabel: View {
                 .monospacedDigit()
                 .accessibilityLabel(AppLocalization.string("Sent \(label)"))
         }
+    }
+}
+
+/// The time in an activity card's top row, right of its caption (#1440).
+/// It keeps its one line; a long caption wraps beside it instead, and the
+/// card's text runs the full width below the row.
+private struct CardHeaderTimestamp: View {
+    let timestamp: String
+
+    var body: some View {
+        MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
+            .lineLimit(1)
+            .fixedSize()
     }
 }
 
@@ -3601,33 +3612,33 @@ struct ClarifyCard: View {
             // them still waits.
             let showsForm = clarify.isForm && clarify.hasPendingDecision
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: "questionmark.bubble")
-                        .foregroundStyle(.orange)
-                    VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "questionmark.bubble")
+                            .foregroundStyle(.orange)
                         Text(statusTitle(for: displayStatus))
                             .font(.caption2.weight(.bold))
                             .tracking(0.5)
                             .foregroundStyle(statusColor(for: displayStatus))
-                        SelectableTextView(
-                            text: layout.headerText(for: clarify),
-                            font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
-                            textColor: .label
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if displayStatus == .submitting {
+                            ProgressView().controlSize(.small)
+                        } else if displayStatus == .answered,
+                                  clarify.questions.contains(where: { $0.answer != nil }) {
+                            // Only an answer this device holds earns the check;
+                            // an answered-elsewhere settle renders no checkmark so
+                            // the header agrees with the body copy.
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        }
+                        CardHeaderTimestamp(timestamp: message.timestamp)
                     }
-                    Spacer(minLength: 8)
-                    if displayStatus == .submitting {
-                        ProgressView().controlSize(.small)
-                    } else if displayStatus == .answered,
-                              clarify.questions.contains(where: { $0.answer != nil }) {
-                        // Only an answer this device holds earns the check;
-                        // an answered-elsewhere settle renders no checkmark so
-                        // the header agrees with the body copy.
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    }
-                    MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
+                    SelectableTextView(
+                        text: layout.headerText(for: clarify),
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
+                        textColor: .label
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 if showsForm {
@@ -4245,34 +4256,34 @@ struct ApprovalCard: View {
     var body: some View {
         if let approval = message.approval {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.shield")
-                        .foregroundStyle(statusColor(for: approval.status))
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.shield")
+                            .foregroundStyle(statusColor(for: approval.status))
+                            .accessibilityHidden(true)
                         Text(statusTitle(for: approval.status))
                             .font(.caption2.weight(.bold))
                             .tracking(0.5)
                             .foregroundStyle(statusColor(for: approval.status))
-                        SelectableTextView(
-                            text: ApprovalDisplayText.revealingHidden(approval.description),
-                            font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
-                            textColor: .label
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if approval.status == .submitting {
+                            ProgressView().controlSize(.small)
+                        } else if approval.status == .approved || approval.status == .rejected {
+                            Image(systemName: approval.status == .approved ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundStyle(statusColor(for: approval.status))
+                        } else if approval.status == .expired {
+                            Image(systemName: "clock.badge.xmark")
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                        }
+                        CardHeaderTimestamp(timestamp: message.timestamp)
                     }
-                    Spacer(minLength: 8)
-                    if approval.status == .submitting {
-                        ProgressView().controlSize(.small)
-                    } else if approval.status == .approved || approval.status == .rejected {
-                        Image(systemName: approval.status == .approved ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .foregroundStyle(statusColor(for: approval.status))
-                    } else if approval.status == .expired {
-                        Image(systemName: "clock.badge.xmark")
-                            .foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
-                    }
-                    MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
+                    SelectableTextView(
+                        text: ApprovalDisplayText.revealingHidden(approval.description),
+                        font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnBaseTextSize).withTraits(.traitBold),
+                        textColor: .label
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 if !approval.command.isEmpty {
@@ -4468,28 +4479,28 @@ struct InputPromptCard: View {
     var body: some View {
         if let prompt = message.inputPrompt {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: iconName(for: prompt.kind))
-                        .foregroundStyle(statusColor(for: prompt.status))
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: iconName(for: prompt.kind))
+                            .foregroundStyle(statusColor(for: prompt.status))
+                            .accessibilityHidden(true)
                         Text(statusTitle(for: prompt.status))
                             .font(.caption2.weight(.bold))
                             .tracking(0.5)
                             .foregroundStyle(statusColor(for: prompt.status))
-                        Text(prompt.title)
-                            .font(.subheadline.weight(.bold))
                             .frame(maxWidth: .infinity, alignment: .leading)
+                        if prompt.status == .submitting {
+                            ProgressView().controlSize(.small)
+                        } else if prompt.status == .expired {
+                            Image(systemName: "clock.badge.xmark")
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                        }
+                        CardHeaderTimestamp(timestamp: message.timestamp)
                     }
-                    Spacer(minLength: 8)
-                    if prompt.status == .submitting {
-                        ProgressView().controlSize(.small)
-                    } else if prompt.status == .expired {
-                        Image(systemName: "clock.badge.xmark")
-                            .foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
-                    }
-                    MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
+                    Text(prompt.title)
+                        .font(.subheadline.weight(.bold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 if let note = explanation(for: prompt) {
