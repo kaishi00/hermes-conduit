@@ -788,6 +788,45 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertFalse(alone.isCaughtUp, "the summary lists what's still open")
     }
 
+    /// Each morning's brief replaces the one before (Eric's report: new
+    /// briefs stacked on the old ones). An older brief goes to Done with
+    /// what it brought that's handled; its cards still open stay on the
+    /// screen as cards of their own. One a Pulse mark opened, at it or at
+    /// one of its cards, stays whole.
+    func testANewBriefReplacesTheOneBefore() throws {
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"cards": [
+          {"id": 9, "kind": "brief", "level": "push", "news": "Today.", "brief": "b3", "created_at": 300},
+          {"id": 8, "kind": "brief", "level": "push", "news": "Yesterday.", "brief": "b2", "created_at": 200},
+          {"id": 7, "kind": "followup", "level": "brief", "news": "Deck", "brief": "b2", "created_at": 120, "item_id": 1},
+          {"id": 6, "kind": "followup", "level": "brief", "news": "Gym", "brief": "b2", "created_at": 110,
+           "done_at": 250},
+          {"id": 5, "kind": "brief", "level": "push", "news": "Two days ago.", "brief": "b1", "created_at": 100},
+          {"id": 4, "kind": "deadline", "level": "brief", "news": "Trial ends", "brief": "b1", "created_at": 90}
+        ]}
+        """)))
+        let layout = PulseLayout(cards: page.cards)
+        XCTAssertEqual(layout.briefs.map(\.id), [9], "one brief at the top, the newest")
+        XCTAssertEqual(layout.open.map(\.id), [7, 4], "what older briefs brought that's open stays")
+        XCTAssertEqual(layout.clearedBriefs.map(\.id), [8, 5])
+        XCTAssertEqual(layout.clearedBriefs.first?.items.map(\.id), [6], "with what it brought that's handled")
+        XCTAssertEqual(layout.clearedBriefs.last?.isSummary, true)
+        XCTAssertEqual(layout.clearedCount, 2)
+        XCTAssertFalse(layout.isCaughtUp)
+        XCTAssertNil(layout.brief(bringing: 7), "a card of its own now")
+        XCTAssertEqual(layout.brief(bringing: 6)?.id, 8)
+
+        // An older brief a Pulse mark opened shows whole, whether the mark points at the brief
+        // or (as the screen keeps it) at one of its cards, open or done.
+        for focused in [8, 7, 6] {
+            let marked = PulseLayout(cards: page.cards, keeping: [focused])
+            XCTAssertEqual(marked.briefs.map(\.id), [9, 8], "kept at \(focused)")
+            XCTAssertEqual(marked.briefs.last?.items.map(\.id), [6, 7])
+            XCTAssertEqual(marked.open.map(\.id), [4])
+            XCTAssertEqual(marked.clearedBriefs.map(\.id), [5])
+        }
+    }
+
     /// A brief folds to one row once the user folds it, a summary alone and
     /// one with cards left too, and stays folded until it's opened again;
     /// one all handled folds by itself unless opened on this visit. A Pulse
@@ -795,9 +834,11 @@ final class PulseFeedTests: XCTestCase {
     /// back open after the fold, from Not now or with Undo, whether or not
     /// it was open at the fold.
     func testABriefFoldsOnceTheUserFoldsItOrOnceItIsAllHandled() throws {
+        let calm = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"cards": [{"id": 9, "kind": "brief", "level": "push", "news": "A calm day.", "brief": "b3", "created_at": 300}]}
+        """)))
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
         {"cards": [
-          {"id": 9, "kind": "brief", "level": "push", "news": "A calm day.", "brief": "b3", "created_at": 300},
           {"id": 8, "kind": "brief", "level": "push", "news": "Two things waited.", "brief": "b2", "created_at": 200},
           {"id": 7, "kind": "followup", "level": "brief", "news": "Deck", "brief": "b2", "created_at": 120, "item_id": 1},
           {"id": 6, "kind": "followup", "level": "brief", "news": "Gym", "brief": "b2", "created_at": 110,
@@ -805,7 +846,7 @@ final class PulseFeedTests: XCTestCase {
         ]}
         """)))
         let layout = PulseLayout(cards: page.cards)
-        let summary = try XCTUnwrap(layout.briefs.first { $0.id == 9 })
+        let summary = try XCTUnwrap(PulseLayout(cards: calm.cards).briefs.first { $0.id == 9 })
         let open = try XCTUnwrap(layout.briefs.first { $0.id == 8 })
         XCTAssertEqual(layout.brief(bringing: 7)?.id, 8)
         XCTAssertEqual(layout.brief(bringing: 6)?.id, 8, "done, still the brief's")
@@ -843,11 +884,11 @@ final class PulseFeedTests: XCTestCase {
 
         var handled = page
         if let index = handled.cards.firstIndex(where: { $0.id == 7 }) { handled.cards[index].doneAt = Date() }
-        let done = try XCTUnwrap(PulseLayout(cards: handled.cards).clearedBriefs.first { $0.id == 8 })
+        let done = try XCTUnwrap(PulseLayout(cards: handled.cards).briefs.first { $0.id == 8 })
         XCTAssertTrue(done.isFolded(folded: open.openCards, opened: false, focused: nil), "Deck done after the fold")
         // Deck put back with Undo then drops out of the fold (AppState.unfoldPulseCard): open again, it opens the brief.
         XCTAssertFalse(open.isFolded(folded: [:], opened: false, focused: nil))
-        XCTAssertEqual(PulseLayout(cards: handled.cards).brief(bringing: 7)?.id, 8, "all handled, among the cleared")
+        XCTAssertEqual(PulseLayout(cards: handled.cards).brief(bringing: 7)?.id, 8, "all handled, still the brief's")
         XCTAssertTrue(done.isFolded(folded: nil, opened: false, focused: nil), "all handled")
         XCTAssertFalse(done.isFolded(folded: nil, opened: true, focused: nil), "opened again on this visit")
     }
