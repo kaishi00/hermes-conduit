@@ -56,6 +56,29 @@ extension AppState {
         return unread
     }
 
+    /// Which projects hold a conversation with a reply the user hasn't
+    /// seen (issue 1496): the chats the project tree lists, as its running
+    /// count reads them. A chat the catalog lists too reads its copy there,
+    /// which a reply or a read updates between loads of the tree. One walk
+    /// for the whole Projects list.
+    func projectsWithUnread() -> Set<String> {
+        var listed: [String: SessionSummary] = [:]
+        for session in sessions {
+            for id in [session.id, session.storedSessionId].compactMap({ $0 }) where listed[id] == nil {
+                listed[id] = session
+            }
+        }
+        var unread = Set<String>()
+        for project in projects {
+            let hasUnread = project.previewSessions.contains { preview in
+                let current = [preview.id, preview.storedSessionId].compactMap { $0 }.lazy.compactMap { listed[$0] }.first
+                return isSessionUnread(current ?? preview)
+            }
+            if hasUnread { unread.insert(project.id) }
+        }
+        return unread
+    }
+
     /// Whether a voice call's screen is up or on its way up. Opening a call
     /// uncovers the chat the old drawer hid; the V2 shell keeps its list.
     var isVoiceCallScreenPresented: Bool {

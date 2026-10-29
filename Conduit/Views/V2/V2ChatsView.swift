@@ -1947,6 +1947,7 @@ struct V2ChatsView: View, Equatable {
             isPinned: appState.isSessionPinned,
             matches: sessionMatches
         ), session: { $0 })
+        let unreadProjects = appState.projectsWithUnread()
         return List {
             if barStacked == false {
                 searchField
@@ -1997,7 +1998,7 @@ struct V2ChatsView: View, Equatable {
             } else if !displayedProjects.isEmpty {
                 Section {
                     ForEach(displayedProjects) { project in
-                        projectRow(project)
+                        projectRow(project, isUnread: unreadProjects.contains(project.id))
                     }
                 } header: {
                     sectionHeader(AppLocalization.string("Projects"))
@@ -2015,9 +2016,9 @@ struct V2ChatsView: View, Equatable {
         }
     }
 
-    private func projectRow(_ project: ProjectSummary) -> some View {
+    private func projectRow(_ project: ProjectSummary, isUnread: Bool) -> some View {
         NavigationLink(value: V2Route.project(project)) {
-            V2ProjectRow(project: project, runningCount: runningCount(project))
+            V2ProjectRow(project: project, runningCount: runningCount(project), isUnread: isUnread)
         }
         .accessibilityHint(appState.isProjectEditable(project)
             ? AppLocalization.string("Opens the conversations in this project. Swipe or touch and hold to rename or delete it.")
@@ -2459,14 +2460,24 @@ private struct V2SessionActions: ViewModifier {
 
 /// A project in the Projects view: colored folder tile, title, path in
 /// monospace, conversation count, a running line, and "Discovered" for a
-/// repo Hermes found on its own.
+/// repo Hermes found on its own. The gold unread dot on the tile's corner
+/// says a chat in it has a reply the user hasn't seen, apart from Running.
 struct V2ProjectRow: View {
     let project: ProjectSummary
     let runningCount: Int
+    var isUnread = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             V2ProjectTile(project: project, size: 44)
+                .overlay(alignment: .topTrailing) {
+                    if isUnread {
+                        Circle()
+                            .fill(Color.conduitAccent)
+                            .frame(width: 12, height: 12)
+                            .offset(x: 3, y: -3)
+                    }
+                }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
                     Text(project.title)
@@ -2506,7 +2517,16 @@ struct V2ProjectRow: View {
         .contentShape(Rectangle())
         .dynamicTypeSize(...DynamicTypeSize.listRowCap)
         .accessibilityElement(children: .combine)
-        .accessibilityValue(Text(AppLocalization.string("\(project.sessionCount) conversations")))
+        .accessibilityValue(Text(accessibilityValue))
+    }
+
+    private var accessibilityValue: String {
+        [
+            isUnread ? AppLocalization.string("Unread") : nil,
+            AppLocalization.string("\(project.sessionCount) conversations"),
+        ]
+        .compactMap { $0 }
+        .joined(separator: ", ")
     }
 }
 

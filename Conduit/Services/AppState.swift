@@ -6045,6 +6045,10 @@ final class AppState: ObservableObject {
     func setActiveProfileForTesting(_ profile: String) {
         setActiveProfile(profile)
     }
+
+    func setProjectsForTesting(_ projects: [ProjectSummary]) {
+        self.projects = projects
+    }
 #endif
 
     // MARK: - Persistence

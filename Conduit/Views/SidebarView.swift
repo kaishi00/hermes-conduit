@@ -642,15 +642,17 @@ struct SessionList: View {
             )
         } else {
             Section("Projects") {
+                let unreadProjects = appState.projectsWithUnread()
                 ForEach(displayedProjects) { project in
                     Button {
                         Haptics.light()
                         selectedProject = project
                     } label: {
-                        ProjectRow(project: project)
+                        ProjectRow(project: project, isUnread: unreadProjects.contains(project.id))
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityValue(unreadProjects.contains(project.id) ? AppLocalization.string("Unread") : "")
                     .accessibilityHint(appState.isProjectEditable(project)
                         ? AppLocalization.string("Opens the conversations in this project. Swipe or touch and hold to rename or delete it.")
                         : AppLocalization.string("Opens the conversations in this project."))
@@ -1565,6 +1567,8 @@ struct MoveToProjectMenu: View {
 
 private struct ProjectRow: View {
     let project: ProjectSummary
+    /// A chat in the project has a reply the user hasn't seen (issue 1496).
+    var isUnread = false
 
     var body: some View {
         HStack(spacing: 11) {
@@ -1574,6 +1578,14 @@ private struct ProjectRow: View {
                 .foregroundStyle(project.isHome ? Color.conduitAccent : .orange)
                 .frame(width: 30, height: 30)
                 .background((project.isHome ? Color.conduitAccent : .orange).opacity(0.13), in: Circle())
+                .overlay(alignment: .topTrailing) {
+                    if isUnread {
+                        Circle()
+                            .fill(Color.conduitAccent)
+                            .frame(width: 9, height: 9)
+                            .offset(x: 1, y: -1)
+                    }
+                }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(project.title)
