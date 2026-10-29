@@ -59,7 +59,8 @@ struct ScaledFont: Equatable {
 
     /// The font: in a column that grows its text by a scale (a Mac's,
     /// `columnText`), iOS's size for the column's base in points times
-    /// it, else the text style itself.
+    /// it, else the text style itself (at an accessibility size too,
+    /// which a Mac doesn't offer).
     func font(in column: ColumnText? = nil) -> Font {
         var font: Font
         if let column, column.scale != 1, let points = Self.points(style, at: column.base) {

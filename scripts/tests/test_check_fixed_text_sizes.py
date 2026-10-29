@@ -94,8 +94,9 @@ class TextStyleFontTests(unittest.TestCase):
         Text("B").font(isOn ? .body : .subheadline)
         Text("C").font(Font.footnote)
         Text("D").font(.system(.largeTitle, design: .rounded))
+        label.font(.body)
         """)
-        self.assertEqual([problem.split(":")[1] for problem in found], ["3", "4", "5", "6"])
+        self.assertEqual([problem.split(":")[1] for problem in found], ["3", "4", "5", "6", "7"])
 
     def test_scaled_fonts_fixed_sizes_and_other_fonts_pass(self):
         self.assertEqual(style_problems("""

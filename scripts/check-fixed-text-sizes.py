@@ -43,7 +43,7 @@ TEXT_START = re.compile(r"\bText\s*\(")
 FIXED_SIZE = re.compile(r"\.system\(size:\s*\d")
 EXEMPTION = "// Fixed size:"
 TEXT_STYLE_FONT = re.compile(
-    r"(?:^|[\s)\]])\.font\([^)]*?(?:\bFont)?(?:\.system\()?\.(?:caption2?|footnote|subheadline|body|callout|"
+    r"\.font\(\s*(?:[^()]*?\?\s*)?(?:Font)?(?:\.system\()?\.(?:caption2?|footnote|subheadline|body|callout|"
     r"title[23]?|headline|largeTitle)\b")
 TEXT_STYLE_EXEMPTION = "// Text style:"
 
