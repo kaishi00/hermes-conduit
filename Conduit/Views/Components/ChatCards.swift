@@ -7,6 +7,7 @@
 //  whole card. ChatCardsModel decides when; this only draws it.
 //
 
+import GameController
 import SwiftUI
 
 struct ChatPlanDock: View {
@@ -14,11 +15,16 @@ struct ChatPlanDock: View {
     /// The keyboard is up: the plan keeps to its one line.
     let isCompact: Bool
 
-    /// The composer has focus on a device with an on-screen keyboard. A
-    /// Mac has none, and its composer keeps focus between messages, so
-    /// there the plan opens whatever the focus (issue 1510).
-    static func keepsToLine(composerFocused: Bool, onMac: Bool) -> Bool {
-        composerFocused && !onMac
+    /// The composer has focus with the on-screen keyboard up. A Mac has
+    /// none, and its composer keeps focus between messages; a hardware
+    /// keyboard puts it away. There the plan opens whatever the focus
+    /// (issue 1510).
+    static func keepsToLine(
+        composerFocused: Bool,
+        onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac,
+        hardwareKeyboard: Bool = GCKeyboard.coalesced != nil
+    ) -> Bool {
+        composerFocused && !onMac && !hardwareKeyboard
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

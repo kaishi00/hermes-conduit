@@ -2678,7 +2678,7 @@ reading of the line and its new-plan announcement · iPhone, iPad and Mac
 - Docked at the bottom above the composer, a line that announces a new plan without opening over the chat; the artifact card was dropped (2026-10-23, #1135, Eric).
 - An announced plan is on screen: a new plan, even one that arrives finished after the last one went, clears the hidden state and gets its own 60 s (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
 - The line and the card cap Dynamic Type at accessibility1; the sheet, a scrolling list, takes every size (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
-- The plan keeps to its one line only while an on-screen keyboard can be up: a Mac's composer keeps focus between messages, so there the line opens whatever the focus, and a tap on the line under the keyboard puts the keyboard away and opens the card (2026-10-29, #1511, issue #1510).
+- The plan keeps to its one line only while an on-screen keyboard can be up: a Mac's composer keeps focus between messages and a hardware keyboard puts it away, so there the line opens whatever the focus, and a tap on the line under the keyboard puts the keyboard away and opens the card (2026-10-29, #1511, issue #1510).
 
 **Open gaps**
 - The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
