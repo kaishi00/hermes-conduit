@@ -427,6 +427,7 @@ struct V2Shell: View {
     @State private var tabBarHeight: CGFloat = 62
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     @AppStorage(V2ChatListPreference.key) private var chatListBeside = V2ChatListPreference.defaultValue
+    @AppStorage(V2SplitLayout.listWidths.key) private var storedListWidth = Double(V2SplitLayout.listWidths.standard)
 
     /// Whether the visible tab shows the conversation.
     private var conversationVisible: Bool {
@@ -475,12 +476,14 @@ struct V2Shell: View {
     /// so the open chat, carry over; the tab's own state (the list's scroll
     /// position, its search) doesn't. Hiding the list (the chat's toggle,
     /// Settings > Appearance) gives a wide window the phone's one column
-    /// the same way.
+    /// the same way. The list's column is as wide as the user dragged it
+    /// (`V2SplitLayout.listWidths`), less on a window without the room.
     private var sizedTabs: some View {
         GeometryReader { proxy in
             let canSplit = V2SplitLayout.isSplit(width: proxy.size.width)
             let split = V2SplitLayout.isSplit(width: proxy.size.width, showsList: chatListBeside)
-            tabs(split: split, canSplit: canSplit)
+            let list = V2SplitLayout.ListColumn(window: proxy.size.width, stored: storedListWidth)
+            tabs(split: split, canSplit: canSplit, list: list)
                 .environment(\.v2Shell, V2ShellContext(pickProfile: { pickProfile($0) }, dropQueuedProfilePick: { queuedProfilePick = V2QueuedProfilePick() }, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit, isPickingProfile: isPickingProfile)))
         }
     }
@@ -613,7 +616,9 @@ struct V2Shell: View {
     /// A wide window's screens with no list column (Tasks, a list the user
     /// hid beside the chat) center their content, and the bar centers
     /// under it rather than sitting alone in the corner.
-    private func tabs(split: Bool, canSplit: Bool) -> some View {
+    /// Under a list the user widened, the bar keeps its own width, centered
+    /// under the list's column.
+    private func tabs(split: Bool, canSplit: Bool, list: V2SplitLayout.ListColumn) -> some View {
         let settingsBeside = V2SplitLayout.settingsBesideList(split: split)
         let underList = V2SplitLayout.tabBarUnderList(split: split, tab: selectedTab)
         return ZStack {
@@ -629,7 +634,7 @@ struct V2Shell: View {
                     let chatShown = !(tab == .chats && selectedTab == .settings)
                     let chatBeside = split && chatShown && path(of: tab).contains(.conversation)
                     let chatVoiceBeside = chatShown && V2SplitLayout.hasChatVoiceBeside(split: split, path: path(of: tab), inRoom: appState.activeRoomSurface != nil)
-                    tabRoot(tab, split: split, canSplit: canSplit)
+                    tabRoot(tab, split: split, canSplit: canSplit, list: list)
                         // Split, the list marks what shows beside it.
                         .environment(\.v2OpenBeside, split ? V2SplitLayout.openBeside(chatBeside: chatBeside, roomID: appState.activeRoomSurface?.room.roomID) : nil)
                         .transformEnvironment(\.v2Shell) {
@@ -666,6 +671,7 @@ struct V2Shell: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 6)
                     .frame(width: canSplit ? V2SplitLayout.listWidth : nil)
+                    .frame(width: canSplit && underList ? list.width : nil)
                     // Lists fade out under the bar themselves, as a chat
                     // does under its composer, over their clearance
                     // (`tabBarClearance`): the bar draws no fade of its own,
@@ -716,14 +722,14 @@ struct V2Shell: View {
     }
 
     @ViewBuilder
-    private func tabRoot(_ tab: V2Tab, split: Bool, canSplit: Bool) -> some View {
+    private func tabRoot(_ tab: V2Tab, split: Bool, canSplit: Bool, list: V2SplitLayout.ListColumn) -> some View {
         switch tab {
         case .chats where split:
-            splitColumns(path: $chatsPath, offersNewChat: true, hostsSettings: true) {
+            splitColumns(path: $chatsPath, list: list, offersNewChat: true, hostsSettings: true) {
                 tabBarClearance(V2ChatsView(appState: appState).equatable())
             }
         case .bots where split:
-            splitColumns(path: $botsPath, offersNewChat: false, hostsSettings: false) {
+            splitColumns(path: $botsPath, list: list, offersNewChat: false, hostsSettings: false) {
                 tabBarClearance(V2BotsView())
             }
         case .chats:
@@ -773,8 +779,10 @@ struct V2Shell: View {
     /// `hostsSettings`: Chats, whose chat column also holds Settings while
     /// that tab is picked. It stays mounted once opened, as a hidden tab
     /// does, so its pushed page survives a trip to a chat and back.
+    /// The line between the columns drags the list's width (#1487).
     private func splitColumns<Root: View>(
         path: Binding<[V2Route]>,
+        list column: V2SplitLayout.ListColumn,
         offersNewChat: Bool,
         hostsSettings: Bool,
         @ViewBuilder root: () -> Root
@@ -786,14 +794,17 @@ struct V2Shell: View {
                 list
                     .navigationDestination(for: V2Route.self) { destination($0) }
             }
-            .frame(width: V2SplitLayout.listWidth)
+            .frame(width: column.width)
             // Each column's backdrop stays in its own column.
             .v2ClippedToColumn(outerEdge: .leading)
-            Rectangle()
-                .fill(Color.primary.opacity(0.08))
-                .frame(width: 1)
-                .ignoresSafeArea()
-                .accessibilityHidden(true)
+            ColumnDivider(
+                widths: V2SplitLayout.listWidths,
+                width: column.width,
+                room: column.room,
+                columnEdge: .leading,
+                label: AppLocalization.string("Chat list width"),
+                stored: $storedListWidth
+            )
             ZStack {
                 Group {
                     if path.wrappedValue.contains(.conversation) {
@@ -1077,6 +1088,24 @@ enum V2SplitLayout {
     static let listWidth: CGFloat = 375
     /// The least room the chat keeps beside the list.
     static let minimumChatWidth: CGFloat = 430
+    /// The list column's widths as the user drags it (#1487): from the
+    /// standard width, which the tab bar under it needs, to about half
+    /// again as wide. A window splits at the standard width whatever the
+    /// user's, so widening the list never takes the split away.
+    static let listWidths = ColumnWidth(key: "conduit.v2.chatListWidth", standard: listWidth, minimum: listWidth, maximum: 560)
+
+    /// The list's column in a window: the user's width, less when the
+    /// window leaves the chat beside it less than its least width.
+    struct ListColumn: Equatable {
+        let width: CGFloat
+        /// The widest the list can be in this window.
+        let room: CGFloat
+
+        init(window: CGFloat, stored: Double) {
+            width = V2SplitLayout.listWidths.resolved(stored, window: window, keeping: V2SplitLayout.minimumChatWidth)
+            room = window - V2SplitLayout.minimumChatWidth - 1
+        }
+    }
 
     static func isSplit(width: CGFloat) -> Bool {
         width >= listWidth + 1 + minimumChatWidth

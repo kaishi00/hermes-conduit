@@ -36,6 +36,50 @@ extension SidebarLayoutTests {
         XCTAssertTrue(V2ChatListPreference.defaultValue, "The list shows beside the chat unless the user hides it.")
     }
 
+    func testDraggedColumnWidthsKeepToTheirBoundsAndTheWindow() {
+        // #1487: the list's column shows the user's width on a window with
+        // room for it and the chat's least width beside it.
+        let list = V2SplitLayout.listWidths
+        XCTAssertEqual(V2SplitLayout.ListColumn(window: 1440, stored: 500).width, 500)
+        // A smaller window gives the list what's left beside the chat.
+        XCTAssertEqual(V2SplitLayout.ListColumn(window: 900, stored: 500).width, 900 - V2SplitLayout.minimumChatWidth - 1)
+        // Never below the standard width the tab bar needs, nor past its
+        // most, nor anything but the standard width for an unreadable value.
+        XCTAssertEqual(V2SplitLayout.ListColumn(window: 806, stored: 500).width, V2SplitLayout.listWidth)
+        XCTAssertEqual(V2SplitLayout.ListColumn(window: 1440, stored: 100).width, V2SplitLayout.listWidth)
+        XCTAssertEqual(V2SplitLayout.ListColumn(window: 2560, stored: 5000).width, list.maximum)
+        XCTAssertEqual(list.resolved(.nan, window: 1440, keeping: V2SplitLayout.minimumChatWidth), list.standard)
+        // A widened list never takes the split away: the window splits at
+        // the standard width whatever the user's.
+        XCTAssertTrue(V2SplitLayout.isSplit(width: 806))
+
+        // A drag adds the pointer's travel to where it began, within the
+        // bounds and the room the window has now.
+        XCTAssertEqual(list.dragged(from: 375, by: 60, room: 1000), 435)
+        XCTAssertEqual(list.dragged(from: 375, by: -60, room: 1000), list.minimum)
+        XCTAssertEqual(list.dragged(from: 375, by: 400, room: 1000), list.maximum)
+        XCTAssertEqual(list.dragged(from: 375, by: 100, room: 420), 420)
+        XCTAssertEqual(list.dragged(from: 375, by: 100, room: 200), list.minimum)
+
+        // Artifacts beside the chat shows at its standard width's window,
+        // as before, and can then be dragged narrower or wider.
+        let panel = ChatSidePanel.widths
+        XCTAssertFalse(ChatSidePanel.fits(width: V2SplitLayout.minimumChatWidth + panel.standard))
+        XCTAssertTrue(ChatSidePanel.fits(width: V2SplitLayout.minimumChatWidth + panel.standard + 1))
+        XCTAssertLessThan(panel.minimum, panel.standard)
+        XCTAssertEqual(panel.resolved(300, window: 1440, keeping: V2SplitLayout.minimumChatWidth), 300)
+        XCTAssertEqual(panel.resolved(700, window: 1000, keeping: V2SplitLayout.minimumChatWidth), 1000 - V2SplitLayout.minimumChatWidth - 1)
+
+        // The drawer shell's persistent sidebar drags the same way, from
+        // the width it turns persistent at.
+        let sidebar = SidebarLayoutMetrics.persistentSidebarWidths
+        XCTAssertEqual(sidebar.standard, SidebarLayoutMetrics.persistentSidebarWidth)
+        XCTAssertEqual(sidebar.resolved(460, window: SidebarLayoutMetrics.minimumPersistentLayoutWidth, keeping: SidebarLayoutMetrics.minimumChatWidth), sidebar.minimum)
+
+        // Each is its own setting on the device.
+        XCTAssertEqual(Set([list.key, panel.key, sidebar.key]).count, 3)
+    }
+
     func testV2SplitListLeavesVoiceToTheChatBesideIt() {
         let project = ProjectSummary(id: "p1", title: "Trips", isHome: false, sessionCount: 0, previewSessions: [])
         // A chat beside the list has its own voice button by the composer.
