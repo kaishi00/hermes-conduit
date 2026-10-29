@@ -25,17 +25,24 @@ def render(selection: dict) -> str:
     lines = [
         "### Hosted CI selection",
         "",
-        "PR and push runs build once and run the curated smoke classes below",
-        "(`scripts/smoke-suite.json`). Every unit class (in balanced shards,",
+        "PR and push runs build once and run the pinned smoke tests below",
+        "(`scripts/smoke-suite.json`, capped at "
+        f"{_count(selection.get('max_unit_tests'))} unit and "
+        f"{_count(selection.get('max_ui_tests'))} UI tests). Every unit class (in balanced shards,",
         "`scripts/hosted-suite.json`), the timing families and the complete UI",
         "suite run in the nightly workflow.",
         "",
-        f"- unit smoke classes: **{len(unit)}** of {_count(selection.get('inventory_unit'))}",
-        f"- UI smoke classes: **{len(ui)}** of {_count(selection.get('inventory_ui'))}",
+        f"- pinned unit tests: **{len(selection.get('curated_unit') or [])}**; unit classes"
+        f" this run reaches, whole or in part: {len({t.split('/')[0] for t in unit})}"
+        f" of {_count(selection.get('inventory_unit'))}",
+        f"- pinned UI tests: **{len(ui)}**, from {len({t.split('/')[0] for t in ui})} of "
+        f"{_count(selection.get('inventory_ui'))} UI classes",
         f"- classes left to the nightly run: {_count(selection.get('delegated_unit'))} unit"
         f" + {_count(selection.get('delegated_ui'))} UI",
         "",
-        "Unit: " + ", ".join(unit),
+        "Unit: " + ", ".join(selection.get("curated_unit") or unit),
+        "",
+        "Source contracts: " + ", ".join(selection.get("source_contracts") or []),
         "",
     ]
     if selection.get("changed_unit"):

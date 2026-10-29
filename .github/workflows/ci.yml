@@ -7,8 +7,8 @@ name: CI
 #                           compiles the app (without its Watch app and
 #                           extensions unless a PR touches them, see the plan
 #                           job's ui-spec) and all test targets once, and runs
-#                           the curated unit smoke classes and the curated UI
-#                           smoke classes (scripts/smoke-suite.json) on that
+#                           the pinned unit smoke tests and the pinned UI
+#                           smoke tests (scripts/smoke-suite.json) on that
 #                           build and simulator.
 #   Nightly (nightly.yml)   EVERY unit class in balanced shards, the
 #                           timing/performance/dormancy families with repeats,
@@ -24,8 +24,8 @@ name: CI
 #                        project (ui-spec).
 #   self-test  (ubuntu)  the CI-tooling suites, bash wrapper tests included.
 #   smoke      (macos)   builds its test products while its simulator boots in
-#                        the background, then runs the unit smoke classes (one
-#                        invocation, no retry) and the UI smoke classes (one
+#                        the background, then runs the unit smoke tests (one
+#                        invocation, no retry) and the UI smoke tests (one
 #                        invocation, one targeted retry). A unit failure does
 #                        not skip the UI step; the job fails if either did.
 #   ci-gate    (ubuntu)  the single stable branch-protection check.
@@ -178,7 +178,7 @@ jobs:
           # HEAD^1 is the base (a PR's merge commit) or the branch's previous
           # commit (a push; main takes squash merges, one commit each, and a
           # merge of main into another branch brings main's changes too): the
-          # unit classes this change touches join the curated ones, so a
+          # unit classes this change touches join the pinned tests, so a
           # PR's new or edited tests run before merge.
           python3 scripts/plan-tests.py smoke --repo-root . \
             --suite scripts/smoke-suite.json --out ci-artifacts/smoke.json \
@@ -331,7 +331,7 @@ jobs:
 
   smoke:
     # The only macOS job of a PR or push run: one build, one booted simulator,
-    # then the unit smoke classes and the UI smoke classes on them.
+    # then the unit smoke tests and the UI smoke tests on them.
     name: Smoke
     needs: plan
     if: needs.plan.outputs.smoke != 'false'
@@ -401,7 +401,7 @@ jobs:
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run the curated unit smoke classes
-        # One representative class per risk area (scripts/smoke-suite.json),
+        # A few pinned tests per risk area (scripts/smoke-suite.json, capped),
         # plus the static source contracts and the change's own unit classes
         # (within a time budget), as ONE xcodebuild invocation on the booted
         # simulator: each
@@ -422,7 +422,7 @@ jobs:
           set -euo pipefail
           # Fail closed: an empty list would expand to no -only-testing filter,
           # and a bare xcodebuild would run the ENTIRE unit suite instead of the
-          # curated classes.
+          # pinned tests.
           if [ -z "$UNIT_CLASSES" ]; then
             echo "::error::unit smoke selection is empty - refusing to run unfiltered"
             exit 1
@@ -439,7 +439,7 @@ jobs:
             args+=("-only-testing:ConduitTests/${cls}")
           done
 
-          echo "unit smoke: ${#CLASSES[@]} classes in one invocation"
+          echo "unit smoke: ${#CLASSES[@]} tests and classes in one invocation"
           started=$(date +%s)
           rc=0
           xcodebuild test-without-building \
@@ -522,7 +522,7 @@ jobs:
           set -euo pipefail
           # Fail closed: an empty list would expand to no -only-testing filter,
           # and a bare xcodebuild would run the ENTIRE UI suite instead of the
-          # two curated classes.
+          # pinned tests.
           if [ -z "$UI_CLASSES" ]; then
             echo "::error::UI smoke selection is empty - refusing to run unfiltered"
             exit 1
@@ -559,7 +559,7 @@ jobs:
               "${args[@]}"
           }
 
-          echo "UI smoke: ${#CLASSES[@]} classes"
+          echo "UI smoke: ${#CLASSES[@]} tests"
           rc=0
           run_classes "$RESULT_DIR/initial.xcresult" "${CLASSES[@]}" 2>&1 | tee "$UI_SMOKE_LOG" || rc=$?
           if [ "$rc" -ne 0 ]; then

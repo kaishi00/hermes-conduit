@@ -648,14 +648,16 @@ class SmokeJobRunnerTests(unittest.TestCase):
         self.assertEqual(selection["unit_csv"].split(","), selection["unit"])
         self.assertEqual(selection["ui_csv"].split(","), selection["ui"])
         self.assertEqual(selection["unit_csv"].count(",") + 1, len(selection["unit"]))
-        # Size is policy, not taste (docs/CI.md): one curated class per risk
-        # area. The source contracts and the change's own classes (within
+        # Size is policy, not taste (docs/CI.md): pinned single tests under
+        # a cap, so a test added to one of their classes never joins every
+        # PR's run. The source contracts and the change's own classes (within
         # changed_budget_s) ride in the same single invocation.
-        self.assertEqual(
-            len(selection["curated_unit"]), 7,
-            "the hosted selection is one class per risk area - growing it adds a "
-            "whole xcodebuild invocation, not just one class")
-        self.assertEqual(len(selection["ui"]), 2)
+        self.assertLessEqual(len(selection["curated_unit"]), selection["max_unit_tests"])
+        self.assertLessEqual(len(selection["ui"]), selection["max_ui_tests"])
+        self.assertLessEqual(selection["max_unit_tests"], 70)
+        self.assertLessEqual(selection["max_ui_tests"], 4)
+        for test in selection["curated_unit"] + selection["ui"]:
+            self.assertRegex(test, r"^[A-Za-z_][A-Za-z0-9_]*/test[A-Za-z0-9_]*$")
 
 
 if __name__ == "__main__":
