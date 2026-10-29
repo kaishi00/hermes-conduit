@@ -227,6 +227,10 @@ extension AppState {
         guard canOpenRoomChats, isConnected, let client, let surface = activeRoomSurface else {
             return RoomLinksClient.message(for: HermesError.notConnected)
         }
+        // Another profile's chat opens after a switch to it, which would end the call.
+        if !profilesMatch(agent.profile, activeProfile), isVoiceCallInProgress {
+            return AppLocalization.string("End the call to open a chat in another profile.")
+        }
         let roomID = surface.room.roomID
         let routes = roomChatsClient
         let opener = RoomChatOpener(
@@ -251,12 +255,13 @@ extension AppState {
             },
             open: { [weak self] chatID, profile, title in
                 guard let self else { return .failed }
-                return await self.openRoomChatSession(chatID, profile: profile, agentName: agent.name, title: title)
+                return await self.openRoomChatSession(chatID, profile: profile, title: title)
             },
             send: { [weak self] text in
                 guard let self else { return false }
-                // A chat still settling on screen takes it into its composer, to send.
-                if await self.submitComposer(text: text) { return true }
+                // A chat still settling on screen, or with a turn running, takes it into its composer, to
+                // send: Wrap Up never steers, queues or interrupts by the busy setting.
+                if await self.submitComposer(text: text, onBusy: {}) { return true }
                 // Never over a draft the chat already has: the banner says Wrap Up wasn't sent.
                 if self.composerDraftStore.hasDraft(for: self.composerDraftKeyOnScreen) {
                     self.errorMessage = RoomChatText.wrapUpBlockedByDraft

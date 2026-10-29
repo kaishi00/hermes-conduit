@@ -266,12 +266,11 @@ extension GroupChatModelsTests {
     }
 
     /// The app's steps behind a room's chat, recorded: the opens (a kept
-    /// "chat-old" is gone, 4007), the creates, titles and compactions.
+    /// "chat-old" is gone, 4007), the creates and the titles.
     final class RoomChatSessions {
         var opens: [(id: String, profile: String?)] = []
         var created: [String?] = []
         var titles: [(id: String, title: String, profile: String?)] = []
-        var compressed: [String] = []
 
         @MainActor
         var operations: ChatResumeLifecycleOperations {
@@ -286,11 +285,7 @@ extension GroupChatModelsTests {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                refreshContext: { _, _ in },
-                compressSession: { [unowned self] _, id, _ in
-                    self.compressed.append(id)
-                    return SessionCompressResult(from: .object(["status": .string("compressed"), "removed": .number(2)]))
-                }
+                refreshContext: { _, _ in }
             )
             operations.createRoomChat = { [unowned self] _, profile in
                 self.created.append(profile)
@@ -303,55 +298,28 @@ extension GroupChatModelsTests {
         }
     }
 
-    /// Kuro's kept chat in the research profile is gone from Hermes (4007):
-    /// a new one is made there, registered, titled by the id it runs under
-    /// and opened in Kuro's scope, and the gone chat's restore error isn't
-    /// left on screen. `/new` there compacts it, not as a Bot Chat.
+    /// Kuro's kept chat in the dashboard's profile is gone from Hermes
+    /// (4007): a new one is made, registered, titled by the id it runs
+    /// under and opened, as an ordinary chat, and the gone chat's restore
+    /// error isn't left on screen.
     @MainActor
-    func testAGoneRoomChatIsReplacedInTheAgentsProfileWithNoStaleError() async throws {
-        let routes = CopiesRoutes(copies: [copiesCopy()])
-        routes.roomChats = [["room_id": "conduit-9", "chat_id": "chat-old", "notes_seq": 3]]
-        let steps = RoomChatSessions()
-        let appState = try await postsOpenCopy(routes, report: roomChatsPluginReport, chatResume: steps.operations)
-        let kuro = try XCTUnwrap(appState.activeRoomChatAgents.first)
-
-        let failure = await appState.openRoomChat(with: kuro, wrapUp: false)
-
-        XCTAssertNil(failure)
-        XCTAssertNil(appState.errorMessage, "the gone chat's restore error went with it")
-        XCTAssertEqual(steps.opens.map(\.id), ["chat-old", "chat-new"])
-        XCTAssertEqual(steps.opens.map(\.profile), ["research", "research"])
-        XCTAssertEqual(steps.created, ["research"])
-        XCTAssertEqual(routes.roomChatPuts.last?["chat_id"] as? String, "chat-new")
-        XCTAssertEqual(steps.titles.map(\.id), ["run-new"])
-        XCTAssertEqual(steps.titles.map(\.profile), ["research"])
-        XCTAssertEqual(appState.activeSessionId, "chat-new")
-        XCTAssertEqual(appState.botConversationProfileForTesting("chat-new"), "research", "in Kuro's scope")
-
-        await appState.executeSlashCommand("/new")
-        XCTAssertEqual(steps.compressed, ["chat-new"], "the room's one chat is compacted, never forked")
-        XCTAssertEqual(steps.created, ["research"])
-        let notice = AppLocalization.string("A room's chat never resets, so this one is compacted instead: Hermes carries on from a summary with fresh context, and still knows its room. For a separate chat, start one in Chats.")
-        XCTAssertTrue(appState.messages.contains { $0.content == notice }, "it says so, not as a Bot Chat")
-    }
-
-    /// In the dashboard's own profile a room's chat isn't in the Bot Chat
-    /// registry, and `/new` there compacts it all the same.
-    @MainActor
-    func testNewInARoomChatInTheDashboardsProfileCompactsToo() async throws {
+    func testAGoneRoomChatIsReplacedWithNoStaleError() async throws {
         let routes = CopiesRoutes(copies: [copiesCopy(yours: [["member_id": "m-kuro", "profile": "default", "handle": "kuro"]])])
+        routes.roomChats = [["room_id": "conduit-9", "chat_id": "chat-old", "notes_seq": 3]]
         let steps = RoomChatSessions()
         let appState = try await postsOpenCopy(routes, report: roomChatsPluginReport, chatResume: steps.operations)
         let kuro = try XCTUnwrap(appState.activeRoomChatAgents.first)
         XCTAssertEqual(kuro.profile, "default")
 
         let failure = await appState.openRoomChat(with: kuro, wrapUp: false)
-        XCTAssertNil(failure)
-        XCTAssertEqual(steps.created, [nil], "the dashboard's profile is named by none")
-        XCTAssertNil(appState.botConversationProfileForTesting("chat-new"))
 
-        await appState.executeSlashCommand("/new")
-        XCTAssertEqual(steps.compressed, ["chat-new"])
-        XCTAssertEqual(steps.created, [nil], "no new chat")
+        XCTAssertNil(failure)
+        XCTAssertNil(appState.errorMessage, "the gone chat's restore error went with it")
+        XCTAssertEqual(steps.opens.map(\.id), ["chat-old", "chat-new"])
+        XCTAssertEqual(steps.created, [nil], "the dashboard's profile is named by none")
+        XCTAssertEqual(routes.roomChatPuts.last?["chat_id"] as? String, "chat-new")
+        XCTAssertEqual(steps.titles.map(\.id), ["run-new"])
+        XCTAssertEqual(appState.activeSessionId, "chat-new")
+        XCTAssertNil(appState.botConversationProfileForTesting("chat-new"), "an ordinary chat, never a Bot Chat")
     }
 }

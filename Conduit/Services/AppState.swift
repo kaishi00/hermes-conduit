@@ -1638,11 +1638,6 @@ final class AppState: ObservableObject {
     /// session-destroyed event), a bounded cleanup could hook there —
     /// none exists today, so correctness wins over the small dictionary.
     private var botChatSessionProfiles: [String: String] = [:]
-    /// A room's chats this process opened (RoomChats.swift), by the id
-    /// Hermes keeps each by, in any profile. One in another profile is in
-    /// the registry above too, for its scope, but is never a Bot Chat.
-    /// Runtime-only and cleared with it.
-    private var roomChatSessionIDs: Set<String> = []
     /// The bot's display label per canonical-chat session id — the title a
     /// restored Bot Chat presents. Runtime-only like the registry above (same
     /// lifetime: entries are kept until the server-identity boundary, with no
@@ -10583,7 +10578,6 @@ final class AppState: ObservableObject {
         botChatOpenFlights.values.forEach { $0.task?.cancel() }
         botChatSessionProfiles.removeAll()
         botChatSessionLabels.removeAll()
-        roomChatSessionIDs.removeAll()
         botChatOpenFlights.removeAll()
         botRoster = []
         botAvatarImages = [:]
@@ -10624,31 +10618,21 @@ final class AppState: ObservableObject {
     /// `activeChatIsCanonicalBotChat`), whatever follows the command (`/new
     /// A title` is still a reset). No evidence, no reroute: ordinary
     /// sessions keep full `/new` freedom.
-    /// A room's chat is one chat too, in any profile: a `/new` there would
-    /// fork a chat the room doesn't know (Linked Rooms ruling).
     private func isCanonicalForeverChatReset(_ text: String) -> Bool {
         guard let command = Self.parseSlashCommand(text),
               ["new", "reset", "clear"].contains(command.name) else { return false }
-        return activeChatIsRoomChat || activeChatIsCanonicalBotChat
-    }
-
-    /// Whether the open chat is a room's chat this process opened.
-    private var activeChatIsRoomChat: Bool {
-        guard let sessionId = activeSessionId, !roomChatSessionIDs.isEmpty else { return false }
-        let ids = chatOwnSessionIDs(for: sessionId).union([sessionId])
-        return ids.contains { ChatScrollIdentityNormalization.sessionID($0).map(roomChatSessionIDs.contains) == true }
+        return activeChatIsCanonicalBotChat
     }
 
     /// Whether the open chat is a bot's canonical chat, by positive
     /// evidence: this process registered one of its ids when it opened the
-    /// Bot Chat (the registry holds canonical chats and the runtimes
-    /// resuming them, and a room's chats in another profile, which are
-    /// left out here), or the roster's canonical id is one of the chat's
-    /// own ids. A resume runs a Bot Chat under a fresh runtime id the
+    /// Bot Chat (the registry only ever holds canonical chats and the
+    /// runtimes resuming them), or the roster's canonical id is one of the
+    /// chat's own ids. A resume runs a Bot Chat under a fresh runtime id the
     /// roster never names, so the roster alone missed every reopened Bot
     /// Chat and `/new` forked it into a workspace chat (#1307).
     private var activeChatIsCanonicalBotChat: Bool {
-        guard let sessionId = activeSessionId, !activeChatIsRoomChat else { return false }
+        guard let sessionId = activeSessionId else { return false }
         let ids = chatOwnSessionIDs(for: sessionId).union([sessionId])
         return botOwnership.botProfileName(owningAny: ids) != nil
     }
@@ -22837,37 +22821,44 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Opens a room's chat (RoomChats.swift), in `profile`'s own store: one
-    /// in another profile than the dashboard's opens under that profile's
-    /// scope, as a Bot Chat does, without switching.
-    func openRoomChatSession(
-        _ chatID: String,
-        profile: String,
-        agentName: String,
-        title: String
-    ) async -> RoomChatOpenOutcome {
-        let scoped = profilesMatch(profile, activeProfile) ? nil : profile
-        if let scoped {
-            noteBotChatSession(chatID, profile: scoped, label: agentName)
-        }
-        if let normalized = ChatScrollIdentityNormalization.sessionID(chatID) {
-            roomChatSessionIDs.insert(normalized)
-        }
+    /// Opens a room's chat (RoomChats.swift) as an ordinary chat of
+    /// `profile`: here, or in another profile than the dashboard's through
+    /// a chat link's route, which switches to it first, as All's other
+    /// profiles' chats open. Never as a Bot Chat, whose registry would
+    /// route its pushes to the bot's own chat and hide it from its
+    /// profile's list. A chat Hermes refused (gone, or another one) reads
+    /// gone, and the restore error the refusal left is put back: the
+    /// opener replaces the chat.
+    func openRoomChatSession(_ chatID: String, profile: String, title: String) async -> RoomChatOpenOutcome {
         let shownError = errorMessage
-        let result = await performSessionOpenNotingRefusal(
-            chatID,
-            reusing: nil,
-            conversationProfile: scoped,
-            preferredTitle: title
+        guard !profilesMatch(profile, activeProfile) else {
+            let result = await performSessionOpenNotingRefusal(
+                chatID,
+                reusing: nil,
+                preferredTitle: title
+            )
+            switch result.outcome {
+            case .opened: return .opened
+            case .superseded: return .superseded
+            case .failed:
+                guard result.refused else { return .failed }
+                errorMessage = shownError
+                return .gone
+            }
+        }
+        let outcome = await openNotificationTargetOutcome(
+            ConduitNotificationTarget(
+                profile: profile, sessionId: chatID, dashboardID: activeDashboardID, type: nil, isChatLink: true
+            )
         )
-        switch result.outcome {
+        switch outcome {
         case .opened: return .opened
-        case .superseded: return .superseded
         case .failed:
-            guard result.refused else { return .failed }
-            // A chat Hermes no longer has is replaced: its "Failed to restore" isn't the user's to see.
+            // A chat link refused for a call that started meanwhile is no answer about the chat.
+            guard !isVoiceCallInProgress else { return .failed }
             errorMessage = shownError
             return .gone
+        case .retry, .unverified, .afterCall: return .failed
         }
     }
 
@@ -24817,9 +24808,9 @@ final class AppState: ObservableObject {
         // The canonical-chat `/new` reroute is a compaction, which carries no
         // attachments; refuse rather than submit a literal `/compact` turn.
         if !attachments.isEmpty, isCanonicalForeverChatReset(text) {
-            errorMessage = activeChatIsRoomChat
-                ? AppLocalization.string("This room's chat never resets. Remove the attachments to compact it instead.")
-                : AppLocalization.string("This bot chat never resets. Remove the attachments to compact it instead.")
+            errorMessage = AppLocalization.string(
+                "This bot chat never resets. Remove the attachments to compact it instead."
+            )
             return false
         }
 
@@ -27200,13 +27191,9 @@ final class AppState: ObservableObject {
             if isCanonicalForeverChatReset(text) {
                 cancelChatResumeRestoration()
                 appendSlashOutput(
-                    activeChatIsRoomChat
-                        ? AppLocalization.string(
-                            "A room's chat never resets, so this one is compacted instead: Hermes carries on from a summary with fresh context, and still knows its room. For a separate chat, start one in Chats."
-                        )
-                        : AppLocalization.string(
-                            "Bot chats never reset, so this one is compacted instead: Hermes carries on from a summary with fresh context, and keeps its memory and skills. For a separate chat, start one in Chats."
-                        ),
+                    AppLocalization.string(
+                        "Bot chats never reset, so this one is compacted instead: Hermes carries on from a summary with fresh context, and keeps its memory and skills. For a separate chat, start one in Chats."
+                    ),
                     context: submissionContext
                 )
                 await compressActiveSession(
