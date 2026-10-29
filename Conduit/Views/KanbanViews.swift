@@ -479,9 +479,10 @@ struct KanbanView: View {
     }
 
     /// Opens the task a request names, on whichever board holds it, once
-    /// a board has loaded and shows; says so when no board has it. A board
-    /// that fails to load drops the request, so it never opens later, and
-    /// so does a switch to another dashboard. A newer request wins: an
+    /// a board has loaded and shows; says so when no board has it. A load
+    /// that fails while the request waits drops it, so it never opens
+    /// later (an error left from before doesn't), and so does a switch to
+    /// another dashboard. A newer request wins: an
     /// older lookup that finishes later changes nothing.
     private func openRequestedTask() {
         guard shell.isTabActive, let request = appState.kanbanTaskOpenRequest, openingRequest != request.id else { return }
@@ -489,10 +490,7 @@ struct KanbanView: View {
             appState.kanbanTaskOpenRequest = nil
             return
         }
-        guard store.loadedBoardSlug != nil else {
-            if store.errorMessage != nil, !store.isLoading { appState.kanbanTaskOpenRequest = nil }
-            return
-        }
+        guard store.loadedBoardSlug != nil else { return }
         openingRequest = request.id
         Task {
             defer {
@@ -882,7 +880,13 @@ struct KanbanView: View {
         .onChange(of: appState.kanbanTaskOpenRequest, initial: true) { _, _ in openRequestedTask() }
         .onChange(of: store.loadedBoardSlug) { _, _ in openRequestedTask() }
         .onChange(of: shell.isTabActive) { _, _ in openRequestedTask() }
-        .onChange(of: store.errorMessage) { _, _ in openRequestedTask() }
+        .onChange(of: store.isLoading) { wasLoading, isLoading in
+            // A load that just failed with no board to show: the request can't open.
+            if wasLoading, !isLoading, store.loadedBoardSlug == nil, store.errorMessage != nil,
+               appState.kanbanTaskOpenRequest != nil, openingRequest != appState.kanbanTaskOpenRequest?.id {
+                appState.kanbanTaskOpenRequest = nil
+            }
+        }
         // V2 keeps a visited Tasks tab mounted behind the selected one: the
         // board listens and polls only while it shows and the app is on
         // screen, and catches up when it comes back. Outside V2 the board is

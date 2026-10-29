@@ -714,10 +714,15 @@ final class KanbanTests: XCTestCase {
         let missing = try await store.findTask(id: "gone")
         XCTAssertNil(missing)
 
-        // Anything but a board's 404 is the real failure, not a missing task.
+        // One board's failure doesn't hide the task on another board...
         requester.errorsByPath["/api/plugins/kanban/tasks/t9?board=default"] = DashboardTicketBridgeError.http(status: 503, detail: "down")
+        let pastFailure = try await store.findTask(id: "t9")
+        XCTAssertEqual(pastFailure?.board, "beta")
+
+        // ...but when no board has it, the failure is the answer, not a missing task.
+        requester.errorsByPath["/api/plugins/kanban/tasks/gone?board=default"] = DashboardTicketBridgeError.http(status: 503, detail: "down")
         do {
-            _ = try await store.findTask(id: "t9")
+            _ = try await store.findTask(id: "gone")
             XCTFail("a failed read must throw")
         } catch DashboardTicketBridgeError.http(let status, _) {
             XCTAssertEqual(status, 503)
