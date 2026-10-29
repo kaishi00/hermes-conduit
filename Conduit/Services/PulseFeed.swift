@@ -2,7 +2,7 @@
 //  PulseFeed.swift
 //  Conduit
 //
-//  The Pulse screen's data (TestFlight and Xcode builds): the cards Pulse
+//  The Pulse screen's data: the cards Pulse
 //  brought the user, their ratings, and what the ratings taught it. The
 //  plugin keeps all of it (pulse_learning.py) and serves it on
 //  /api/plugins/conduit_push/pulse/feed, /rate and /learned. A rating
@@ -1091,12 +1091,12 @@ extension PulseClient {
 }
 
 extension AppState {
-    /// The Pulse screen and its button: TestFlight and Xcode builds whose
-    /// plugin serves the feed (0.55.0 and later). Until the plugin answers
+    /// The Pulse screen and its button: wherever the plugin serves the
+    /// feed (0.55.0 and later). Until the plugin answers
     /// after a launch or a reconnect, a dashboard that had Pulse keeps it.
     var showsPulseScreen: Bool {
         (showsPulseSettings && notifierPlugin.reports(PulseClient.feedCapability))
-            || (appInstallSource != .appStore && pulsePluginUnanswered && pulseHomeChat != nil)
+            || (pulsePluginUnanswered && pulseHomeChat != nil)
     }
 
     /// Whether the plugin hasn't answered since the launch or the last reconnect.

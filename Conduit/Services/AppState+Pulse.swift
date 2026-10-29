@@ -2,10 +2,10 @@
 //  AppState+Pulse.swift
 //  Conduit
 //
-//  Settings > Pulse (beta): shown on TestFlight and Xcode builds when the
-//  dashboard's plugin serves Pulse (PulseSettings.swift). Pulse lives in the
-//  dashboard's own Hermes home, so its chat is made in the dashboard's
-//  default profile, whichever profile Conduit has open.
+//  Settings > Pulse (beta): shown when the dashboard's plugin serves Pulse
+//  (PulseSettings.swift). Pulse lives in the dashboard's own Hermes home, so
+//  its chat is made in the dashboard's default profile, whichever profile
+//  Conduit has open.
 //
 
 import Foundation
@@ -14,9 +14,9 @@ extension AppState {
     /// The profile Pulse reads its chat from: the dashboard's own.
     static let pulseHomeProfile = "default"
 
-    /// TestFlight and Xcode builds only, and only where the plugin serves it.
+    /// Wherever the plugin serves it, App Store builds included.
     var showsPulseSettings: Bool {
-        appInstallSource != .appStore && notifierPlugin.reports(PulseClient.capability)
+        notifierPlugin.reports(PulseClient.capability)
     }
 
     /// Pulse's routes on the dashboard in use now. Each request checks it is

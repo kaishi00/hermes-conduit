@@ -2,7 +2,7 @@
 //  PulseSettingsViews.swift
 //  Conduit
 //
-//  Settings > Pulse (beta), on TestFlight and Xcode builds: Pulse on or
+//  Settings > Pulse (beta): Pulse on or
 //  off; when it speaks up (how often, the times it looks through your
 //  chats, the morning brief, private reminders on the Lock Screen); what it
 //  reads (profiles, memory, deadlines from Shortcuts, looking things up,

@@ -53,7 +53,7 @@ enum V2Route: Hashable {
     case project(ProjectSummary)
     /// What the active profile's chats produced (Chats bar).
     case artifacts
-    /// The Pulse screen (Chats bar, pulse branch): its cards and ratings.
+    /// The Pulse screen (Chats bar): its cards and ratings.
     case pulse
 
     static func == (lhs: V2Route, rhs: V2Route) -> Bool {

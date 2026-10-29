@@ -2,7 +2,7 @@
 //  V2PulsePage.swift
 //  Conduit
 //
-//  The Pulse screen (TestFlight and Xcode builds, pulse branch): what Pulse
+//  The Pulse screen: what Pulse
 //  brought up, as cards. A morning brief comes first with the cards it
 //  brought, then what's new and what's still open, then Done and cleared,
 //  folded. Each card links back to the chat it came from and takes a thumbs

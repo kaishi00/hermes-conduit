@@ -3,7 +3,7 @@
 //  Conduit
 //
 //  Pulse, the notifier plugin's proactivity feature, as Settings > Pulse
-//  (beta) reads and changes it on TestFlight and Xcode builds. The plugin
+//  (beta) reads and changes it. The plugin
 //  serves Pulse's state and settings on its dashboard routes
 //  (/api/plugins/conduit_push/pulse…, plugin's pulse_control.py). Pulse is
 //  one per host, in the dashboard's own Hermes home, so the routes take no
