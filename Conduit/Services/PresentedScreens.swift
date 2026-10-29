@@ -50,10 +50,11 @@ struct PresentedRoom: Equatable {
         self.name = name
     }
 
+    /// Any room the host names makes it a room's ask, even one without an id:
+    /// never an ordinary confirmation whose Edit opens the room's hidden chat.
     init?(json: Any?) {
-        guard let entry = json as? [String: Any],
-              let id = (entry["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty
-        else { return nil }
+        guard let entry = json as? [String: Any] else { return nil }
+        let id = (entry["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let name = (entry["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         self.init(id: id, name: String(name.prefix(80)))
     }
