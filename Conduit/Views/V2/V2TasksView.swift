@@ -74,7 +74,6 @@ struct V2TasksView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 10)
             }
-            .modifier(V2LegacyScrollEdge())
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()

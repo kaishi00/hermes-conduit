@@ -126,8 +126,8 @@ extension View {
     /// Pins `bar` to a screen edge, with this view's lists scrolling under
     /// it and fading out beneath it. On iOS 26 it is a `safeAreaBar`, so the
     /// lists draw the system's soft scroll edge under it; before, and on a
-    /// Mac, it is a `safeAreaInset`, and the bar draws
-    /// `V2ScrollEdgeBackground` itself (`V2LegacyScrollEdge`).
+    /// Mac, it is a `safeAreaInset`, and the lists fade out under it
+    /// themselves (`V2LegacyEdgeBar`).
     @ViewBuilder
     func v2EdgeBar<Bar: View>(_ edge: VerticalEdge, @ViewBuilder bar: () -> Bar) -> some View {
         let content = bar()
@@ -135,7 +135,7 @@ extension View {
             scrollEdgeEffectStyle(.soft, for: edge == .top ? .top : .bottom)
                 .safeAreaBar(edge: edge, spacing: 0) { content }
         } else {
-            safeAreaInset(edge: edge, spacing: 0) { content }
+            modifier(V2LegacyEdgeBar(edge: edge, bar: content))
         }
     }
 }
@@ -149,28 +149,74 @@ enum V2SystemScrollEdge {
     static let isUsed = !ProcessInfo.processInfo.isiOSAppOnMac
 }
 
-/// Before iOS 26, and on a Mac, the fading material behind a bar that
-/// lists scroll under. iOS 26 draws its own soft edge there (`v2EdgeBar`),
-/// which costs less than our blur under a gradient mask on every scroll
-/// frame.
-struct V2LegacyScrollEdge: ViewModifier {
-    var edge: VerticalEdge = .top
+/// Before iOS 26, and on a Mac, a bar over the content's edge, with the
+/// content fading out under it: its text turns transparent toward the
+/// edge, over the bar's height, so the backdrop shows through as it does
+/// under iOS 26's soft edge. A material behind the bar instead drew a
+/// lighter box around a Mac's composer, as wide as the chat's column.
+struct V2LegacyEdgeBar<Bar: View>: ViewModifier {
+    let edge: VerticalEdge
+    let bar: Bar
 
-    @ViewBuilder
+    /// Where the bar is, in the window's space: the content's frame starts
+    /// above or below it depending on the safe area, so the fade goes by
+    /// the bar's own frame.
+    @State private var barFrame: CGRect = .zero
+
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *), V2SystemScrollEdge.isUsed {
-            content
+        content
+            .mask {
+                GeometryReader { proxy in
+                    fade(in: proxy.frame(in: .global))
+                }
+                // The whole area the content draws in: a transcript still
+                // scrolls under the navigation bar and the window's edges.
+                .ignoresSafeArea()
+            }
+            .safeAreaInset(edge: edge, spacing: 0) {
+                // A stack, so an empty bar still reports its frame.
+                VStack(spacing: 0) { bar }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                        barFrame = frame
+                    }
+            }
+    }
+
+    /// Opaque away from the bar, fading out to clear across it, and clear
+    /// past it (under the home indicator). With no bar (a chat's composer
+    /// that isn't floating), the content draws as it is.
+    @ViewBuilder
+    private func fade(in area: CGRect) -> some View {
+        if barFrame.height > 0 {
+            let gradient = LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black.opacity(0.15), location: 0.45),
+                    .init(color: .black, location: 1)
+                ],
+                startPoint: edge == .top ? .top : .bottom,
+                endPoint: edge == .top ? .bottom : .top
+            )
+            .frame(height: barFrame.height)
+            VStack(spacing: 0) {
+                if edge == .bottom {
+                    Color.black.frame(height: max(0, barFrame.minY - area.minY))
+                    gradient
+                } else {
+                    Spacer().frame(height: max(0, barFrame.minY - area.minY))
+                    gradient
+                    Color.black
+                }
+            }
+            .frame(width: area.width, height: area.height, alignment: .top)
         } else {
-            content.background { V2ScrollEdgeBackground(edge: edge) }
+            Color.black
         }
     }
 }
 
 /// The soft edge content scrolls under: a material that fades out away
-/// from the screen edge, so the bar reads without a hard line. It runs the
-/// screen's whole width, past a readable column's margins: kept to a wide
-/// window's chat column, it drew a lighter box around the composer on a
-/// Mac.
+/// from the screen edge, so the bar reads without a hard line.
 struct V2ScrollEdgeBackground: View {
     /// The screen edge the bar sits on.
     var edge: VerticalEdge = .top
@@ -189,7 +235,7 @@ struct V2ScrollEdgeBackground: View {
                     endPoint: edge == .top ? .bottom : .top
                 )
             }
-            .ignoresSafeArea(edges: [edge == .top ? .top : .bottom, .horizontal])
+            .ignoresSafeArea(edges: edge == .top ? .top : .bottom)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }

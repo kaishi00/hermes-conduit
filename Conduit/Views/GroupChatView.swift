@@ -47,7 +47,6 @@ struct GroupChatView: View {
                 transcript
                     .v2EdgeBar(.bottom) {
                         bottomBar
-                            .modifier(V2LegacyScrollEdge(edge: .bottom))
                     }
             } else {
                 VStack(spacing: 0) {

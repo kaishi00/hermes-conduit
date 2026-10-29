@@ -61,7 +61,6 @@ struct CapabilitiesView: View {
                 tabPicker
                 otherTabMatches
             }
-            .modifier(V2LegacyScrollEdge())
         }
         // The other settings pages' backdrop and small title.
         .background { SettingsBackdrop() }

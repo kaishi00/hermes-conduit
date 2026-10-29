@@ -373,7 +373,6 @@ struct ChatView: View {
         .v2EdgeBar(.bottom) {
             if composerFloats {
                 bottomBar
-                    .modifier(V2LegacyScrollEdge(edge: .bottom))
             }
         }
         .onPreferenceChange(V2ComposerTypingKey.self) { typing in
