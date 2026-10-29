@@ -77,10 +77,15 @@ struct PhoneAlarmRecord: Codable, Equatable {
 }
 
 enum PhoneAlarmSources {
-    /// AlarmKit on iOS 26, a source that can't set anything before it.
-    static func system(defaults: UserDefaults = .standard) -> PhoneAlarmSource {
+    /// AlarmKit on iOS 26, a source that can't set anything before it. The
+    /// iPad app on a Vision Pro reports iOS 26 but has no AlarmKit: reading
+    /// `AlarmManager.shared` there jumps to address 0 at launch.
+    static func system(
+        defaults: UserDefaults = .standard,
+        onVisionOS: Bool = ProcessInfo.processInfo.isiOSAppOnVisionOS
+    ) -> PhoneAlarmSource {
         #if canImport(AlarmKit)
-        if #available(iOS 26.0, *) { return AlarmKitPhoneSource(defaults: defaults) }
+        if #available(iOS 26.0, *), !onVisionOS { return AlarmKitPhoneSource(defaults: defaults) }
         #endif
         return UnsupportedPhoneAlarmSource()
     }
@@ -119,7 +124,8 @@ struct ConduitAlarmMetadata: AlarmMetadata {}
 
 @available(iOS 26.0, *)
 final class AlarmKitPhoneSource: PhoneAlarmSource {
-    private let manager = AlarmManager.shared
+    /// Read when used, not when made.
+    private var manager: AlarmManager { AlarmManager.shared }
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults) {

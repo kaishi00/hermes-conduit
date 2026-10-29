@@ -886,6 +886,12 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(calendar.component(.weekday, from: soonest), 6, "Friday comes before Monday")
     }
 
+    func testPhoneAlarmsUnsupportedOnVisionPro() {
+        let source = PhoneAlarmSources.system(onVisionOS: true)
+        XCTAssertFalse(source.isSupported, "A Vision Pro has no AlarmKit; touching it crashed at launch")
+        XCTAssertEqual(source.alarms(now: Date(), calendar: .current)?.count, 0)
+    }
+
     func testPhoneAlarmsAndPeopleSyncAndApply() async throws {
         let source = FakePhoneCalendarSource()
         let alarms = FakePhoneAlarmSource()
