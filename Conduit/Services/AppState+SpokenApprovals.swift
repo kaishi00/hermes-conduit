@@ -16,7 +16,7 @@ extension AppState {
         waiting.phoneChanges = phoneSync.prompts.map(\.id)
         waiting.cancellingAlarms = Set(phoneSync.prompts.filter { $0.change.kind == .cancelAlarm }.map(\.id))
         waiting.staleChanges = phoneChangesWaitingAtLastWords ?? Set(waiting.phoneChanges)
-        waiting.presented = SpokenApprovals.Waiting.spoken(presentedScreens.prompts)
+        waiting.presented = presentedScreens.prompts.filter { !$0.isExpired() }
         if let sessionId = activeSessionId, !sessionId.isEmpty {
             let open = chatOwnSessionIDs(for: sessionId)
             waiting.chatApprovals = messages.compactMap { message -> String? in

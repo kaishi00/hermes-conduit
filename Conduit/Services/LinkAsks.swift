@@ -66,14 +66,15 @@ struct LinkAsksClient {
         return try Self.parseChange(try await request(Self.path, "PUT", body), linkID: linkID)
     }
 
-    /// A Link the page can't show is left out rather than refusing the list.
+    /// A Link the page can't show (no id or name) is left out rather than
+    /// refusing the list.
     static func parseList(_ response: [String: Any]) throws -> [LinkAskRulesEntry] {
         guard response["ok"] as? Bool == true, let links = response["links"] as? [[String: Any]] else {
             throw HermesError.invalidResponse
         }
         return links.compactMap { link in
             guard let id = link["id"] as? String, !id.isEmpty,
-                  let name = link["name"] as? String,
+                  let name = (link["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
                   let status = link["status"] as? String,
                   let rules = rules(link["rules"]) else { return nil }
             return LinkAskRulesEntry(id: id, name: name, status: status, rules: rules)

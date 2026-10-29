@@ -614,6 +614,8 @@ extension GroupChatModelsTests {
                  "rules": ["free_on": "ask", "questions": "ask", "profile": "default"]],
                 // One the page can't show is left out.
                 ["id": "lnk_2", "name": "Mona", "status": "linked"],
+                ["id": "lnk_3", "name": "  ", "status": "linked",
+                 "rules": ["free_on": "ask", "questions": "ask", "profile": "default"]],
             ]
             return ["ok": true, "links": links, "defaults": ["free_on": "ask", "questions": "ask", "profile": "default"]]
         }

@@ -271,6 +271,9 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNotNil(refused["error"])
         XCTAssertFalse(confirmed)
         XCTAssertEqual(sync.prompts.map(\.id), ["p2"])
+        // Nothing sends a Share for it, whoever asks.
+        sync.answer(listed, outcome: .confirmed, via: .tap)
+        XCTAssertEqual(sync.prompts.map(\.id), ["p2"])
         // Say instead answers it with their words.
         var bodies: [[String: Any]] = []
         sync.answer(listed, outcome: .edit, via: .tap, editText: " Yes, it's in the garage. ")

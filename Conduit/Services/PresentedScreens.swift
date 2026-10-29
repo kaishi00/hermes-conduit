@@ -406,6 +406,8 @@ final class PresentedScreensSync: ObservableObject {
                 editText: String? = nil) {
         // The first answer wins: a second tap lands on a panel already gone.
         guard let scope, prompts.contains(where: { $0.id == prompt.id }) else { return }
+        // Nothing to confirm (a Link's question): never sent as a Share.
+        if outcome == .confirmed, !prompt.canConfirm { return }
         prompts.removeAll { $0.id == prompt.id }
         var list = results(for: scope).filter { ($0["id"] as? String) != prompt.id }
         var result: [String: Any] = ["id": prompt.id, "outcome": outcome.rawValue, "via": source.rawValue]

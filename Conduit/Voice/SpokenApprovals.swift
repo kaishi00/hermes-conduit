@@ -43,14 +43,6 @@ enum SpokenApprovals {
         var jobApprovals: [UUID] = []
 
         var count: Int { phoneChanges.count + presented.count + chatApprovals.count + jobApprovals.count }
-
-        /// The confirmations a spoken yes or no answers: those still up
-        /// that have something to confirm. A Link's question is answered
-        /// only on the panel, so it neither takes a "no" meant for
-        /// something else nor holds back an answer to the chat's question.
-        static func spoken(_ prompts: [PresentedConfirm], at now: Date = Date()) -> [PresentedConfirm] {
-            prompts.filter { !$0.isExpired(at: now) && $0.canConfirm }
-        }
     }
 
     /// The one thing `words` answer and whether they approve it. A phone
@@ -82,6 +74,9 @@ enum SpokenApprovals {
             // A yes, or a short "change it" / "delete it" naming the change.
             approves = PhoneVoiceTools.confirmsChange(words, cancelsAlarm: cancelsAlarm)
         } else if let prompt = waiting.presented.first {
+            // A Link's question is answered only on the panel: it still
+            // counts as waiting, but no yes or no answers it.
+            guard prompt.canConfirm else { return nil }
             target = .presented(id: prompt.id)
             // A yes, or one of the phrases Hermes gave ("send it").
             approves = prompt.isConfirmed(by: words)

@@ -91,6 +91,12 @@ struct PresentedConfirmPanel: View {
         return AppLocalization.string("Hermes asks")
     }
 
+    /// A Link's question has nothing to share: it's not answered.
+    private var declineLabel: String {
+        if !prompt.canConfirm { return AppLocalization.string("Don't answer") }
+        return prompt.isAsk ? AppLocalization.string("Don't share") : AppLocalization.string("Not now")
+    }
+
     private var askerSymbol: String {
         if prompt.link != nil { return "link" }
         return prompt.room == nil ? "checkmark.shield" : "person.2"
@@ -230,7 +236,7 @@ struct PresentedConfirmPanel: View {
             Haptics.selection()
             onAnswer(.declined)
         } label: {
-            Text(prompt.isAsk ? AppLocalization.string("Don't share") : AppLocalization.string("Not now"))
+            Text(declineLabel)
                 .font(.body.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .frame(minHeight: 44)
