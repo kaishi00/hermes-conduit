@@ -72,6 +72,53 @@ struct ChatListCatalogFreshness {
     }
 }
 
+/// A chat made here that Hermes doesn't list yet: Hermes stores a chat
+/// with its first message (`AppState.newChatAwaitingListing`, issue 1454).
+struct NewChatAwaitingListing: Equatable {
+    /// Every id the chat goes by: its stored id and the runtime's.
+    let ids: Set<String>
+    let profile: String
+    /// The folder it started in; nil for a plain chat, which lands in Home.
+    let cwd: String?
+
+    func matches(_ session: SessionSummary) -> Bool {
+        ids.contains(session.id)
+            || session.storedSessionId.map(ids.contains) == true
+            || session.alternateIds.contains(where: ids.contains)
+            // A first turn that compressed lists the chat under a new tip.
+            || session.lineageRootId.map(ids.contains) == true
+    }
+
+    /// Whether the chat belongs on `project`'s page: started in its folder,
+    /// or, for Home, in none.
+    func isIn(_ project: ProjectSummary) -> Bool {
+        guard let folder = Self.folder(cwd) else { return project.isHome }
+        return Self.folder(project.primaryPath) == folder
+    }
+
+    /// A project page's lanes with the chat on top of the lane of the
+    /// folder it started in, or of a new Recent lane when none is that
+    /// folder (a plain chat on Home's page among them). Hermes names a
+    /// lane's folder in its path, or in its label when the two are one.
+    func lanes(_ lanes: [ProjectSessionLane], with row: SessionSummary, newLaneID: String) -> [ProjectSessionLane] {
+        guard !lanes.contains(where: { $0.sessions.contains(where: matches) }) else { return lanes }
+        var lanes = lanes
+        if let folder = Self.folder(cwd),
+           let index = lanes.firstIndex(where: { Self.folder($0.path ?? $0.title) == folder }) {
+            lanes[index].sessions.insert(row, at: 0)
+        } else {
+            lanes.insert(ProjectSessionLane(id: newLaneID, title: AppLocalization.string("Recent"), sessions: [row]), at: 0)
+        }
+        return lanes
+    }
+
+    private static func folder(_ path: String?) -> String? {
+        var trimmed = path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        while trimmed.count > 1, trimmed.hasSuffix("/") { trimmed.removeLast() }
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
 /// Hermes' `sessions.changed`: a stored session row moved, whichever
 /// process wrote it. A turn run in the TUI on the gateway's computer, or
 /// through another gateway on the same Hermes home, shows only here and in

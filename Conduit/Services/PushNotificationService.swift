@@ -1969,7 +1969,7 @@ final class PushNotificationService: ObservableObject {
 
     static let pairPath = "/api/plugins/conduit_push/pair"
     /// Past the host's own wait: it claims the code at the relay with a
-    /// 15 s timeout (plugin_api PAIR_TIMEOUT_S), then writes the pairing.
+    /// 15 s timeout (dashboard/api/pairing.py PAIR_TIMEOUT_S), then writes the pairing.
     /// Giving up first would leave the host paired with no key handed over.
     static let pairTimeoutMilliseconds = 25_000
 
