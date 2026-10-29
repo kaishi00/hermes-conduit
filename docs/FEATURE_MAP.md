@@ -3693,7 +3693,7 @@ on top
 - On a Mac, SwiftUI text (the chat column's chrome, Settings' pages) may not grow with its steps if an iPad app there ignores Dynamic Type for SwiftUI as well; MacTextStepsReport's line says which, from a TestFlight build (#1478).
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text. Earlier 2026-10-27, #1393; 2026-10-26, #1320.
+**Checked:** 2026-10-29, #1507 (the listed cards' text moved below their caption row, sizes unchanged); 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text. Earlier 2026-10-27, #1393; 2026-10-26, #1320.
 
 ## A split window's columns fill the window
 
