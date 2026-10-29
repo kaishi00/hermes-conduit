@@ -377,8 +377,9 @@ struct PulseProposal: Equatable {
     }
 }
 
-/// The Pulse screen's order: morning briefs with the cards they brought
-/// (or their summary alone), then what's still open, then what's done or swiped away.
+/// The Pulse screen's order: the newest morning brief with the cards it
+/// brought (or its summary alone), then what's still open, then what's done
+/// or swiped away.
 struct PulseLayout: Equatable {
     struct Brief: Equatable, Identifiable {
         let card: PulseCard
@@ -416,11 +417,15 @@ struct PulseLayout: Equatable {
         }
     }
 
-    /// Briefs still holding something open, newest first, then the newest
-    /// brief even when it's all handled (it folds to one row).
+    /// The newest brief, even when it's all handled (it folds to one row):
+    /// each morning's replaces the one before. Also an older one a Pulse
+    /// mark or Bring it up opened.
     var briefs: [Brief] = []
+    /// What's still open, older briefs' open cards among it: each stays on
+    /// the screen as a card of its own once a newer brief has come.
     var open: [PulseCard] = []
-    /// Done or swiped away, newest first, with older briefs all handled.
+    /// Done or swiped away, newest first, with older briefs and what they
+    /// brought that's handled.
     var cleared: [PulseCard] = []
     var clearedBriefs: [Brief] = []
 
@@ -438,15 +443,17 @@ struct PulseLayout: Equatable {
         var taken: Set<Int> = []
         var newest = true
         for card in cards where card.kind == "brief" && !card.brief.isEmpty {
-            let items = grouped[card.brief] ?? []
-            let brief = Brief(card: card, items: items.sorted { ($0.createdAt ?? .distantPast, $0.id) < ($1.createdAt ?? .distantPast, $1.id) })
+            var items = (grouped[card.brief] ?? []).sorted { ($0.createdAt ?? .distantPast, $0.id) < ($1.createdAt ?? .distantPast, $1.id) }
             taken.insert(card.id)
-            taken.formUnion(items.map(\.id))
-            if !brief.isHandled || newest || keeping.contains(card.id) || items.contains(where: { keeping.contains($0.id) }) {
-                briefs.append(brief)
+            if newest || keeping.contains(card.id) {
+                briefs.append(Brief(card: card, items: items))
             } else {
-                clearedBriefs.append(brief)
+                // A newer brief came: this one goes to Done with what it
+                // brought that's handled, and the rest stay as cards of their own.
+                items = items.filter { $0.isCleared && !keeping.contains($0.id) }
+                clearedBriefs.append(Brief(card: card, items: items))
             }
+            taken.formUnion(items.map(\.id))
             newest = false
         }
         for card in cards where !taken.contains(card.id) {
