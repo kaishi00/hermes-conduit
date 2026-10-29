@@ -2,8 +2,6 @@ name: opencode-review
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, labeled]
-  pull_request:
-    types: [opened, synchronize]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -23,10 +21,11 @@ jobs:
   # Picks who reviews, so a run that needn't call a model ends here on one
   # runner. It waits a minute first: a push in that minute cancels this run
   # (the concurrency group above) before any model is called. Then it skips
-  # the review when the PR's change is the same as one a reviewer already
-  # passed (merging main, a rerun, re-adding run-review), and gives a PR that
-  # only touches docs and config files (Markdown, text, JSON, YAML, TOML,
-  # docs/; not workflows) to GLM-5.3 alone. A manual run always reviews.
+  # the review when the PR's change is the same as one a review already ran
+  # on (merging main, a rerun), and gives a PR that only touches docs and
+  # config files (Markdown, text, JSON, YAML, TOML, docs/; not .github/,
+  # opencode.json or dependency manifests) to GLM-5.3 alone. Adding run-review, or a manual run
+  # where this workflow has one, always reviews.
   plan:
     name: plan
     # The reviewer is an agent holding the review secrets, and a PR's title,
@@ -46,8 +45,10 @@ jobs:
         ((github.event.action == 'labeled' && github.event.label.name == 'run-review') ||
          (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'run-review'))))
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       actions: read
+      contents: read
       pull-requests: read
     outputs:
       reviewers: ${{ steps.pick.outputs.reviewers }}
@@ -62,6 +63,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
           WORKFLOW_FILE: opencode-review.yml
           ALL_REVIEWERS: >-
             [{"reviewer": "Claude Haiku 5.5", "model": "anthropic/claude-haiku-5-5"},
@@ -76,35 +78,46 @@ jobs:
             echo "reviewers=$(jq -c . <<<"$1")" >> "$GITHUB_OUTPUT"
             echo "$2" | tee -a "$GITHUB_STEP_SUMMARY"
           }
-          pr=$(gh api "$repo/pulls/$PR_NUMBER")
+          # Every lookup below fails open: when one doesn't load, every
+          # reviewer runs.
+          if ! pr=$(gh api "$repo/pulls/$PR_NUMBER"); then
+            pick "$ALL_REVIEWERS" "Couldn't load PR $PR_NUMBER: reviewing with every reviewer."
+            exit 0
+          fi
           head=$(jq -r .head.sha <<<"$pr")
           base=$(jq -r .base.ref <<<"$pr")
-          head_ref=$(jq -r .head.ref <<<"$pr")
 
           # The PR's change as the reviewers see it: its diff from where it
-          # meets the base. patch-id ignores line numbers and the base's own
-          # changes, so merging main doesn't change it. An empty id (a diff too
-          # large for the compare API) never matches, so that PR is reviewed.
+          # meets the base, without hunk line numbers and blob ids, so merging
+          # main doesn't change it. Whitespace is kept (indentation is code). An
+          # empty diff, or one too large for the compare API, never matches, so
+          # that PR is reviewed.
           change_id() {
-            gh api -H 'Accept: application/vnd.github.diff' "$repo/compare/$base...$1" 2>/dev/null \
-              | git patch-id --stable | cut -d' ' -f1 || true
+            local diff
+            diff=$(gh api -H 'Accept: application/vnd.github.diff' "$repo/compare/$base...$1") || diff=''
+            if [ -z "$diff" ]; then
+              echo "No diff for $1 from $base, so it can't match." | tee -a "$GITHUB_STEP_SUMMARY" >&2
+              return
+            fi
+            grep -E '^(diff --git |[-+ ])' <<<"$diff" | sha256sum | cut -d' ' -f1
           }
 
-          if [ "$EVENT_NAME" = pull_request_target ]; then
-            # The newest successful run on one of this PR's commits whose
-            # review job passed. A run this job skipped has no passing review
-            # job, so it never stands in for a review.
+          if [ "$EVENT_NAME" = pull_request_target ] && [ "$EVENT_ACTION" != labeled ]; then
+            # The newest of this PR's commits (the last 20) with a successful
+            # run whose review job passed. A run this job skipped has no
+            # passing review job, so it never stands in for a review.
             commits=$(gh api --paginate "$repo/pulls/$PR_NUMBER/commits" --jq '.[].sha') || commits=''
             reviewed=''
-            while read -r run_id run_sha; do
-              [ -n "$run_id" ] || continue
-              grep -qx "$run_sha" <<<"$commits" || continue
-              passed=$(gh api "$repo/actions/runs/$run_id/jobs" \
-                --jq '[.jobs[] | select((.name | startswith("review (")) and .conclusion == "success")] | length')
-              if [ "$passed" -gt 0 ]; then reviewed=$run_sha; break; fi
-            done < <(gh api -X GET "$repo/actions/workflows/$WORKFLOW_FILE/runs" \
-              -f event=pull_request_target -f status=success -f branch="$head_ref" -F per_page=30 \
-              --jq '.workflow_runs[] | "\(.id) \(.head_sha)"')
+            for sha in $(tail -n 20 <<<"$commits" | tac); do
+              runs=$(gh api -X GET "$repo/actions/workflows/$WORKFLOW_FILE/runs" \
+                -f event=pull_request_target -f status=success -f head_sha="$sha" \
+                --jq '.workflow_runs[].id') || runs=''
+              for run_id in $runs; do
+                passed=$(gh api "$repo/actions/runs/$run_id/jobs" \
+                  --jq '[.jobs[] | select((.name | startswith("review (")) and .conclusion == "success")] | length') || passed=0
+                if [ "$passed" -gt 0 ]; then reviewed=$sha; break 2; fi
+              done
+            done
             if [ -n "$reviewed" ]; then
               now=$(change_id "$head")
               if [ -n "$now" ] && [ "$now" = "$(change_id "$reviewed")" ]; then
@@ -114,15 +127,22 @@ jobs:
             fi
           fi
 
-          # Workflows count as code: they run with this repo's secrets. So does
-          # a file list that didn't load, so every reviewer runs.
+          # .github/ counts as code (workflows and actions run with this repo's
+          # secrets), and so do opencode.json (the reviewers' own config) and
+          # dependency manifests. So does a file list that didn't load, so
+          # every reviewer runs.
           files=$(gh api --paginate "$repo/pulls/$PR_NUMBER/files" --jq '.[].filename') || files=''
-          if [ -z "$files" ] || grep -q '^\.github/workflows/' <<<"$files" \
+          if [ -z "$files" ] \
+            || grep -Eq '(^\.github/|^opencode\.json$|(^|/)(requirements[^/]*\.txt|package(-lock)?\.json)$)' <<<"$files" \
             || grep -Evq '(^docs/|\.(md|txt|json|ya?ml|toml)$)' <<<"$files"; then
             pick "$ALL_REVIEWERS" "Reviewing with every reviewer."
           else
-            pick "$(jq -c --arg r "$DOCS_REVIEWER" 'map(select(.reviewer == $r))' <<<"$ALL_REVIEWERS")" \
-              "Docs and config only: reviewing with $DOCS_REVIEWER."
+            docs=$(jq -c --arg r "$DOCS_REVIEWER" 'map(select(.reviewer == $r))' <<<"$ALL_REVIEWERS")
+            if [ "$docs" = '[]' ]; then
+              pick "$ALL_REVIEWERS" "Docs and config only, but $DOCS_REVIEWER isn't a reviewer: reviewing with every reviewer."
+            else
+              pick "$docs" "Docs and config only: reviewing with $DOCS_REVIEWER."
+            fi
           fi
 
   review:
