@@ -116,7 +116,12 @@ def branches(argument):
     """The values an argument can take: each branch of a ternary (nested
     ones too) and each side of `??`, split at the top level, or the
     argument itself. A `??` inside a ternary's branch splits once the
-    ternary has."""
+    ternary has. Parentheses around the whole argument are looked inside."""
+    stripped = argument.strip()
+    if stripped.startswith("("):
+        inner = font_argument(stripped, 0)
+        if len(inner) + 2 == len(stripped):
+            return branches(inner)
     depth, question = 0, None
     for index, char in enumerate(argument):
         if char in "([":

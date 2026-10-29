@@ -104,8 +104,9 @@ class TextStyleFontTests(unittest.TestCase):
         Text("https://x").font(.caption)
         Text("K").font(settings?.emphasized == true ? .body : customFont)
         Text("L").font(flag ? .body ?? fallback : customFont)
+        Text("M").font((flag ? customFont : (.caption)))
         """)
-        self.assertEqual([problem.split(":")[1] for problem in found], ["3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"])
+        self.assertEqual([problem.split(":")[1] for problem in found], ["3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17"])
 
     def test_scaled_fonts_fixed_sizes_and_other_fonts_pass(self):
         self.assertEqual(style_problems("""
