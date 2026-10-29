@@ -3711,7 +3711,7 @@ card shows when the app is next opened), the widgets and the share extension
 **Rulings**
 - Ask once, upload to the relay: Not now drops the report from the offer (it stays in Diagnostics & logs), and nothing is sent without Send (2026-10-29, Eric chose it in the TestFlight crashes thread; #1477, notifier #459).
 - A report is the diagnostic's crashes and hangs only, with the version, build, iOS version and device model; an exception's composed message and arguments are left out, since they can quote anything. It goes to the developer's relay (`push.milim.dev`) even when the user's notifications use another relay, and carries no installation credential (#1477, notifier #459).
-- Only a crash or hang from the last 7 days is offered, checked again when the card would show, the newest 5 at most, and one too big to send even trimmed to its first crash and hang is not. Those an earlier build kept are queued once per device, on the first launch with the card. Send sends only the reports the card asked about. A relay that answers 404 (no `CRASH_REPORTS_TOKEN`) stops the offers from that build on that device; what's still queued waits for the next build, so a build that ships before the relay route is deployed loses nothing, and a report declined or sent isn't asked about again. The look at reports earlier builds kept waits for a launch that can read them all (part of the ask-once design Eric delegated in the TestFlight crashes thread, 2026-10-29; #1477).
+- Only a crash or hang from the last 7 days is offered, checked again when the card would show, the newest 5 at most, and one too big to send even trimmed to its first crash and hang is not. Those an earlier build kept are queued once per device, on the first launch with the card. Send sends only the reports the card asked about. A relay that answers 404 (no `CRASH_REPORTS_TOKEN`) stops the offers from that build on that device; what's still queued waits for the next build, so a build that ships before the relay route is deployed loses nothing, and a report declined or sent isn't asked about again. The look at reports earlier builds kept waits for a launch that can list the folder and read at least one of them (locked files before first unlock fail together); a single file that can't be read is skipped (part of the ask-once design Eric delegated in the TestFlight crashes thread, 2026-10-29; #1477).
 - A report is built from named keys only (the diagnostic's metadata, exception and stack frames); a key MetricKit adds later stays on the phone until it's named (#1477).
 
 **Open gaps**
@@ -3719,7 +3719,7 @@ card shows when the app is next opened), the widgets and the share extension
 - MetricKit may hold diagnostics back on a device that doesn't share analytics with developers.
 - App Store Connect's privacy label doesn't yet list Crash Data and Performance Data (not linked, not tracked), which the privacy manifest now declares; the maintainer updates it before the next App Store submission.
 
-**Checked:** 2026-10-29, #1477.
+**Checked:** 2026-10-29, #1478.
 
 ## Feature map rules
 
