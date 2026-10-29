@@ -113,19 +113,33 @@ def font_argument(code, start):
 
 
 def branches(argument):
-    """A ternary's two branches, split at its top-level `?` and `:`, or
-    the argument itself."""
+    """The values an argument can take: each branch of a ternary (nested
+    ones too) and each side of `??`, split at the top level, or the
+    argument itself."""
     depth, question = 0, None
     for index, char in enumerate(argument):
         if char in "([":
             depth += 1
         elif char in ")]":
             depth -= 1
-        elif depth == 0 and char == "?" and question is None:
+        elif depth == 0 and argument.startswith("??", index):
+            return branches(argument[:index]) + branches(argument[index + 2:])
+        elif depth == 0 and char == "?" and question is None and not argument.startswith("??", index - 1):
             question = index
         elif depth == 0 and char == ":" and question is not None:
-            return [argument[question + 1:index], argument[index + 1:]]
+            return branches(argument[question + 1:index]) + branches(argument[index + 1:])
     return [argument]
+
+
+def without_comment(line):
+    """The line up to a `//` comment outside a string literal."""
+    quoted = False
+    for index, char in enumerate(line):
+        if char == '"' and (index == 0 or line[index - 1] != "\\"):
+            quoted = not quoted
+        elif not quoted and line.startswith("//", index):
+            return line[:index]
+    return line
 
 
 def sets_text_style(code):
@@ -145,7 +159,7 @@ def find_text_style_fonts(sources):
     for path, text in sorted(sources.items()):
         lines = text.splitlines()
         for index, line in enumerate(lines):
-            code = line.split("//", 1)[0]
+            code = without_comment(line)
             if sets_text_style(code) and not stated_reason(lines, index, TEXT_STYLE_EXEMPTION):
                 problems.append(
                     f"{path}:{index + 1}: a text style set with .font( stays one size on a Mac; "
