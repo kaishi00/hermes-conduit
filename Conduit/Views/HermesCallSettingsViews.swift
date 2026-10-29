@@ -127,7 +127,7 @@ struct HermesCallsHowToSection: View {
                     Label("If you decline or miss a call, Hermes knows the next time you write in that chat.", systemImage: "phone.down")
                 }
             }
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
         }
     }
@@ -143,8 +143,10 @@ struct HermesCallSettingsSection: View {
     @FocusState private var rulesFocused: Bool
     /// This iPhone's own setting, not the host's.
     @AppStorage(HermesNativeCalls.ringsKey) private var ringsLikeCall = true
+    @ObservedObject private var notifications = PushNotificationService.shared
     @State private var loadFailed = false
     @State private var saveTask: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(model: HermesCallSettingsModel, startTestCall: (() -> Void)? = nil, startWatch: ((String) -> Void)? = nil) {
         self.model = model
@@ -157,9 +159,11 @@ struct HermesCallSettingsSection: View {
 
     /// Saved once the user stops tapping, so a stepper run is one save.
     /// Saves go one at a time, so the newest change lands last; one the host
-    /// didn't take puts back what it holds.
+    /// didn't take puts back what it holds. Animated, so the rows a toggle
+    /// reveals slide in rather than pop.
     private func change(_ edit: (inout HermesCallSettings) -> Void) {
-        edit(&draft)
+        let animation = ConduitMotion.ease(reduceMotion: reduceMotion)
+        withAnimation(animation) { edit(&draft) }
         let previous = saveTask
         previous?.cancel()
         let settings = draft
@@ -174,7 +178,9 @@ struct HermesCallSettingsSection: View {
             guard !Task.isCancelled else { return }
             saveTask = nil
             // What the host holds now, including saves since this edit.
-            if !saved, let hostSettings = current() ?? editTimeSettings { draft = hostSettings }
+            if !saved, let hostSettings = current() ?? editTimeSettings {
+                withAnimation(animation) { draft = hostSettings }
+            }
         }
     }
 
@@ -207,11 +213,11 @@ struct HermesCallSettingsSection: View {
                 Toggle("Hermes can call me", isOn: binding(\.enabled))
                     .disabled(!status.paired)
                 Text("When a job you asked about is done, Hermes calls you so you can talk it through. Your iPhone rings like a phone call; where it can't, a “Hermes wants to talk” notification comes instead: tap Talk to answer.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 if !status.paired {
                     Text("Turn on notifications for this profile first, in Settings under Notifications: Hermes calls you through them.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.orange)
                 }
                 if draft.enabled {
@@ -219,12 +225,18 @@ struct HermesCallSettingsSection: View {
                         Toggle("Ring like a phone call", isOn: $ringsLikeCall)
                             .onChange(of: ringsLikeCall) { _, _ in HermesNativeCalls.shared.ringingSettingChanged() }
                         Text("On this iPhone and your Apple Watch. Off, a “Hermes wants to talk” notification comes instead: tap Talk to answer.")
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
+                        if ringsLikeCall, notifications.watchRingsForAnotherIPhone {
+                            Label(AppLocalization.string("Your Apple Watch rings for Conduit on another iPhone, so a call you answer on the Watch goes there. If the Watch is with this iPhone now, pair each of your profiles with this iPhone in Settings > Notifications to move it here."), systemImage: "applewatch.slash")
+                                .scaledFont(.caption)
+                                .foregroundStyle(.orange)
+                                .accessibilityIdentifier("hermesCalls.watchElsewhere")
+                        }
                     }
                     Toggle("Call when I ask", isOn: binding(\.whenAsked))
                     Text("Say “call me when it's done” during a live call, or ask Hermes in a chat to call you. Hermes calls about that job once the call has ended; if it finishes while you're still talking, you hear about it in the call instead.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                     // The call tool came with plugin 0.14, as did "decides".
                     if let startTestCall, status.paired, draft.whenAsked, draft.decides != nil {
@@ -233,7 +245,7 @@ struct HermesCallSettingsSection: View {
                     if draft.decides != nil {
                         Toggle("Hermes decides when to call", isOn: optionalBinding(\.decides))
                         Text("Hermes may also call on its own when news can't wait, within your limits. It never calls for routine updates.")
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                     if draft.decides == true, draft.rules != nil {
@@ -247,7 +259,7 @@ struct HermesCallSettingsSection: View {
                     if draft.alerts != nil {
                         Toggle("Call about approvals and questions", isOn: optionalBinding(\.alerts))
                         Text("Hermes calls when it has waited a minute for your OK or an answer, or when a request fails. In a live call you can answer out loud.")
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                     ConduitMenuPicker(
@@ -265,7 +277,7 @@ struct HermesCallSettingsSection: View {
                         Text(AppLocalization.string("Calls per day: \(String(draft.perDay))"))
                     }
                     Text("Past a limit, a finished job sends its usual notification instead of calling. These settings are this profile's, kept on your Hermes host.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                     if draft.avoidPlaces != nil || draft.avoidUnknownPlace != nil {
                         avoidPlacesRows
@@ -273,7 +285,7 @@ struct HermesCallSettingsSection: View {
                 }
             } else if loadFailed {
                 Text("Couldn't read Hermes' call settings.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 Button(AppLocalization.string("Try again")) {
                     Task { await load() }
@@ -283,7 +295,7 @@ struct HermesCallSettingsSection: View {
                 HStack(spacing: 8) {
                     ProgressView()
                     Text("Loading call settings…")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -317,11 +329,11 @@ struct HermesCallSettingsSection: View {
         VStack(alignment: .leading, spacing: 6) {
             if draft.avoidPlaces != nil {
                 Text("Don't call me while I'm at")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .accessibilityAddTraits(.isHeader)
                 if model.places.isEmpty {
                     Text("Save places in Settings under Location first.")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 ForEach(model.places) { place in
@@ -334,13 +346,13 @@ struct HermesCallSettingsSection: View {
                     }
                 }
                 Text("A call Hermes would make while you're at one of these places comes as the usual “Hermes wants to talk” notification instead. Needs location shared in the background.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             if draft.avoidUnknownPlace != nil {
                 Toggle("Don't call me when Conduit can't say where I am", isOn: optionalBinding(\.avoidUnknownPlace))
                 Text("That's when location sharing is off or paused, or no recent location has been sent. The call comes as the usual notification instead.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -368,7 +380,7 @@ struct HermesCallSettingsSection: View {
             .buttonStyle(.settings)
             .accessibilityIdentifier("settings.hermesCallsTest")
             Text(AppLocalization.string("Opens a new chat with “\(HermesCallSettingsFormat.testCallPrompt)” ready to send. Send it, and your iPhone rings when Hermes replies."))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -381,7 +393,7 @@ struct HermesCallSettingsSection: View {
             .buttonStyle(.settings)
             .accessibilityIdentifier("settings.hermesCallsWatch")
             Text("Hermes doesn't check for what your note describes on its own. This opens a new chat asking it to set up scheduled checks that call you when it happens. After you change the note, tap it again to bring the checks up to date.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -389,7 +401,7 @@ struct HermesCallSettingsSection: View {
     private func rulesField(max: Int) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("What's worth a call")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
             TextField(
                 AppLocalization.string("For example: only if production is down or a deploy fails. Never before 9 am."),
@@ -407,13 +419,13 @@ struct HermesCallSettingsSection: View {
             // Kept in the layout, so the caption below doesn't jump as the
             // field gains and loses focus.
             Text(verbatim: "\(rulesText.unicodeScalars.count)/\(max)")
-                .font(.caption2.monospacedDigit())
+                .scaledFont(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .opacity(rulesFocused ? 1 : 0)
                 .accessibilityHidden(!rulesFocused)
             Text("Hermes reads this before each call it decides to make, and calls only if the news fits. Calls you ask for don't depend on it.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }

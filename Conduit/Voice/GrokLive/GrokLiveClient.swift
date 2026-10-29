@@ -44,14 +44,18 @@ final class GrokLiveClient: GrokLiveConnecting {
     private let makeSocketRequest: SocketRequest
     /// The Hermes profile whose sign-in and settings the host uses.
     private let profile: @MainActor () -> String
+    /// The query parameter naming it on the socket (DashboardPath.conduitProfileParameter).
+    private let profileParameter: @MainActor () -> String
 
     init(
         profile: @escaping @MainActor () -> String = { "default" },
+        profileParameter: @escaping @MainActor () -> String = { "profile" },
         request: @escaping Request,
         mintTicket: @escaping MintTicket,
         socketRequest: @escaping SocketRequest
     ) {
         self.profile = profile
+        self.profileParameter = profileParameter
         self.request = request
         self.mintTicket = mintTicket
         self.makeSocketRequest = socketRequest
@@ -70,10 +74,8 @@ final class GrokLiveClient: GrokLiveConnecting {
 
     func socketRequest() async throws -> URLRequest {
         let ticket = try await mintTicket()
-        return try await makeSocketRequest(Self.socketPath, [
-            URLQueryItem(name: "ticket", value: ticket),
-            URLQueryItem(name: "profile", value: profile()),
-        ])
+        return try await makeSocketRequest(Self.socketPath, [URLQueryItem(name: "ticket", value: ticket)]
+            + DashboardPath.socketProfileItems(profile(), parameter: profileParameter()))
     }
 
     // MARK: Parsing (static for tests)

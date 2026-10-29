@@ -73,6 +73,14 @@ final class ConnectionSetupUITests: XCTestCase {
         let password = app.secureTextFields["setup.password"]
         tapVisible(password, in: app)
         password.typeText("round3-private-fixture")
+        // Dismiss the keyboard before Continue, as ConnectionRepairUITests
+        // does. Leaving the step with the password field still focused
+        // stalled the app on a hosted nightly (2026-10-27): from the test
+        // screen on, every action waited out XCTest's two 60 s idle waits
+        // ("App animations complete notification not received") until the
+        // test hit its 10 minute allowance. Inferred from the logs: the
+        // Repair and Settings tests dismiss it here and never stalled.
+        dismissKeyboard(app)
         tapVisible(app.buttons["setup.next"], in: app)
         XCTAssertTrue(app.buttons["setup.test.run"].waitForExistence(timeout: 5))
         tapVisible(app.buttons["setup.test.run"], in: app)

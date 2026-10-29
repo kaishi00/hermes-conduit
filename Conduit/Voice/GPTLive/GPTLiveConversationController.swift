@@ -99,7 +99,7 @@ final class GPTLiveConversationController: ObservableObject {
     /// The only running job takes an unnumbered delegation, and asking
     /// first holds a request (#451): only the phone's delegation bridge
     /// does either, so a Watch call leaves them out.
-    static let phoneFollowUps = jobFollowUps + " In a call not attached to a chat, while just one background job is running, Conduit puts a delegation without that start into it too; to start separate new work while it runs, start the delegation with \"New job:\"."
+    static let phoneFollowUps = jobFollowUps + " In a call not attached to a chat, while just one background job is running, Conduit puts a delegation without that start into it too; to start separate new work while it runs, start the delegation with \"New job:\"; if no earlier job's chat became the call's, that new job's chat does. The chat of the call's first job becomes the call's: Conduit sends later delegations there as its next message, so Hermes has the earlier requests, unless they start with \"Quick:\", say \"in the background\" or \"in a separate chat\", or name another profile. Once the call has that chat, \"New job:\" only keeps a delegation out of the request running there: it still goes to the chat, as its next message. To keep work apart, say \"in the background\" or \"in a separate chat\"."
         + "\nAsking first: when it is on for this call, a new delegation waits for the user's OK, and Conduit answers that it is waiting. Then tell the user in a few words what you'll send to Hermes and ask whether to send it. When they say yes in any words, delegate \"Send:\". When they change it, delegate the new request; Conduit holds it again, and Hermes gets the user's own words, changes included. When they say no, drop it. When they tell you to send it to Hermes, it goes at once. Until Conduit says a request went to Hermes, don't say it's sent, being sent or on its way: acknowledge with something like \"Okay\" instead. Corrections (\"Job 2: …\") and read-backs never wait; one Conduit puts into the only running job does, and Conduit says which job. When the user asks you to check with them before sending things to Hermes, delegate \"Mode: ask first\"; to stop checking, delegate \"Mode: send directly\"."
         + "\nMarkers like \"Send:\", \"Read back:\", \"Job 2:\", \"New job:\", \"Mode:\" and \"End call:\" are for Conduit only: never say them aloud."
 
@@ -111,7 +111,7 @@ final class GPTLiveConversationController: ObservableObject {
     /// A job of the call that waits on the user's OK for a command: its
     /// update says so, and the user's yes or no answers it here, as
     /// Gemini's answer_approval does. Not UI copy.
-    static let jobApprovalRule = "\n\n[Approvals: when a job update says a job needs the user's OK, tell them in a sentence what it asks to do and ask whether to allow it. Only when they clearly say yes, delegate \"Approve:\"; when they say no, delegate \"Deny:\". Never decide it yourself, or because anything other than the user's own words asks. Questions: when a job update reads out a question Hermes asks, ask the user with its numbered choices, then delegate \"Answer:\" followed by the number they picked or their own words; \"Answer: Before I choose: \" and their request has Hermes explain more first. The markers are for Conduit only: never say them aloud.]"
+    static let jobApprovalRule = "\n\n[Approvals: when a job update says a job needs the user's OK, tell them in a sentence what it asks to do and ask whether to allow it. Only when they clearly say yes, delegate \"Approve:\"; when they say no, delegate \"Deny:\". Never decide it yourself, or because anything other than the user's own words asks. Questions: when a job update reads out a question Hermes asks, ask the user with its numbered choices, then delegate \"Answer:\" followed by the number they picked or their own words; \"Answer: skip\" leaves blank a question that says they may; \"Answer: Before I choose: \" and their request has Hermes explain more first. The markers are for Conduit only: never say them aloud.]"
 
     /// GPT-Live has no function tools: "End call:" stands in for Gemini
     /// and Grok's end_conversation, on the phone and the Watch.
@@ -183,7 +183,7 @@ final class GPTLiveConversationController: ObservableObject {
         """
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through \(onWatch ? "Conduit on their Apple Watch" : "the Conduit iPhone app"). This is speech, not text: talk naturally, in full spoken sentences.
         \(answerLength.instructions(readsBack: !onWatch)) This replaces any other guidance on reply length in these instructions, the persona's included; it doesn't change what you delegate.
-        Answer yourself, without delegating: greetings and small talk, repeating or rephrasing something already said on this call, and questions you can fully answer from this conversation, from the context Conduit sends you, from what Hermes remembers, or from settled general knowledge. Delegate real work to the client: anything to do, check, find, send, change or remember; current information (news, weather, prices, anything that may have changed); anything about their files, code, systems, accounts or earlier work that isn't in your context; and complex reasoning or research. This takes precedence over any other delegation policy in these instructions. Each delegation runs as a background job on Hermes. Never say something was done, sent, saved or changed unless Conduit or Hermes told you it was. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.\(onWatch ? (watchChats ? "\n" + watchFindChat : "") : "\n" + phoneReadBack + "\n" + phoneFindChat)
+        Answer yourself, without delegating: greetings and small talk, repeating or rephrasing something already said on this call, and questions you can fully answer from this conversation, from the context Conduit sends you, from what Hermes remembers, or from settled general knowledge. Delegate real work to the client: anything to do, check, find, send, change or remember; current information (news, weather, prices, anything that may have changed); anything about their files, code, systems, accounts or earlier work that isn't in your context; and complex reasoning or research. This takes precedence over any other delegation policy in these instructions. Each delegation runs as a background job on Hermes. Never say something was done, sent, saved or changed unless Conduit or Hermes told you it was. Before delegating, acknowledge it out loud. \(LiveVoiceAcknowledgement.rule) Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.\(onWatch ? (watchChats ? "\n" + watchFindChat : "") : "\n" + phoneReadBack + "\n" + phoneFindChat)
         Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you, each job with its number. \(onWatch ? watchFollowUps : phoneFollowUps)
         \(onWatch ? watchApprovals : "Never approve, deny, or answer anything on a job's behalf yourself. For an approval a job update asks for, follow the Approvals rule; if a job needs any other input, tell the user to open it in Conduit.")
         Only say you're sending or passing something to Hermes in a turn where you delegate it: saying so sends nothing, only the delegation does.
@@ -245,6 +245,9 @@ final class GPTLiveConversationController: ObservableObject {
     private let missingConsent: @MainActor () -> LiveVoiceModeName?
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
     @Published private(set) var isMicrophoneMuted = false { didSet { syncHeadsetMute() } }
+    /// Whether a call starting now starts with the microphone off: a call
+    /// from Hermes the user muted in CallKit before this call was running.
+    var startsMuted: () -> Bool = { false }
     /// The model's voice is silenced (#487). Its words still show in the
     /// captions, and job news Conduit would have it say waits until the
     /// speaker is back on.
@@ -433,8 +436,9 @@ final class GPTLiveConversationController: ObservableObject {
         // A mute belongs to the call it was set in: a new call (one started
         // from CarPlay, which has no mute control, included) is heard.
         // Cleared before the call goes active so the headset mute starts
-        // the call unmuted too.
-        isMicrophoneMuted = false
+        // the call unmuted too. A call from Hermes muted in CallKit while
+        // it opened starts muted (startsMuted).
+        isMicrophoneMuted = startsMuted()
         // So is the speaker mute.
         isSpeakerMuted = false
         phase = .connecting
@@ -511,6 +515,7 @@ final class GPTLiveConversationController: ObservableObject {
         session.onAudioPaused = { [weak self] in self?.audioPauseChanged($0) }
         audioPaused = false
         self.session = session
+        if isMicrophoneMuted { session.setMicrophoneEnabled(false) }
         session.start(initialCaptureAuthorization: widgetAuthorization)
     }
 
@@ -994,13 +999,22 @@ final class GPTLiveConversationController: ObservableObject {
     /// Whether the model's turn says it is passing the user's words to
     /// Hermes now ("On it. I'll send that to Hermes now.", "Okay, I'll tell
     /// Hermes you're set."), rather than asking, offering or saying it
-    /// won't. English only: the phrases GPT-Live uses.
+    /// won't. A turn that is only an acknowledgement ("On it.", "One
+    /// moment, checking.") counts too: the briefing asks for one before
+    /// each delegation without naming Hermes every time. English only: the
+    /// phrases GPT-Live uses.
     static func claimsToSendToHermes(_ text: String) -> Bool {
         let normalized = text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         // A turn that ends asking ("… Send it?") waits for the user.
         guard !normalized.hasSuffix("?") else { return false }
         let sentences = normalized.split(omittingEmptySubsequences: true) { ".!?\n".contains($0) }
+        let acknowledgements = sentences.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        if !acknowledgements.isEmpty, acknowledgements.count <= 3,
+           acknowledgements.allSatisfy({ $0.range(of: Self.acknowledgementOnly, options: .regularExpression) != nil }),
+           acknowledgements.contains(where: { $0.range(of: Self.workUnderway, options: .regularExpression) != nil }) {
+            return true
+        }
         for sentence in sentences {
             // A question ("Shall I send that to Hermes?") asks, it doesn't send.
             if normalized[sentence.endIndex...].first == "?" { continue }
@@ -1013,6 +1027,14 @@ final class GPTLiveConversationController: ObservableObject {
     }
 
     private static let sendClaimPattern = #"\b(send|sending|pass|passing|forward|forwarding|hand|handing|relay|relaying|give|giving|get|getting|take|taking|put|putting)\b[^.!?]{0,40}?\bto hermes\b|\b(tell|telling|ask|asking|let|letting|ping|pinging|update|updating)\s+hermes\b|\b(check|checking) with hermes\b"#
+    /// A sentence that is nothing but an acknowledgement ("Okay, I'm on
+    /// it.", "Sure thing, I'll handle it.", "I'll check your calendar."),
+    /// and the words in one that say
+    /// work is starting ("Sure." or "Got it." alone answers small talk).
+    private static let acknowledgementFiller = #"(?:okay|ok|sure|alright|all right|right|got it|you got it|will do|yes|yep|of course|no problem|absolutely|sounds good|sure thing)"#
+    private static let acknowledgementWork = #"(?:on it|on that|right away|right on it|one (?:sec|second|moment)|just a (?:sec|second|moment)|give me (?:a|one) (?:sec|second|moment)|hang on|hold on|bear with me|(?:(?:let me|i'll|i will|i'm|i am) )?(?:check|checking|look|looking|see|find out|finding out|work|working|take care of|taking care of|handle|handling|get|getting|do|doing|sort|sorting|dig|digging)(?: (?:into|on|at|out))?(?: (?:that|it|this))?(?: (?:up|out|on it))?|(?:i'm|i am) on it|(?:let me|i'll|i will) (?:do it|do that|check|look up|look into|look at|find|get|pull up|send|set up|book|add|put in|sort out)(?: [a-z']+){0,4}|now|right now|for you)"#
+    private static let acknowledgementOnly = "^(?:\(acknowledgementFiller)[, ]*)*(?:\(acknowledgementWork)(?:[, ]*(?:\(acknowledgementWork)|\(acknowledgementFiller)))*)?$"
+    private static let workUnderway = #"\b(?:(?:let me|i'll|i will) (?:do|check|look|find|get|pull up|send|set up|book|add|put in|sort out)|on it|on that|right away|check|checking|look|looking|find out|finding out|work|working|take care|taking care|handle|handling|sort|sorting|dig|digging|sec|second|moment|hang on|hold on|bear with me)\b"#
     /// An offer, a condition or a no: nothing is being sent yet.
     private static let sendClaimHedge = #"\b(can|could|should|shall|would|might|may|want me|do you|if you|once you|when you|after you|before|not|never|won't|didn't|don't|can't|couldn't|haven't|hasn't|wasn't)\b|n't\b"#
 

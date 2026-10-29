@@ -256,7 +256,7 @@ struct KanbanSelectionHeaderBar: View {
                 }
             } label: {
                 Text("Cancel")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
                     .contentShape(Rectangle())
@@ -269,7 +269,7 @@ struct KanbanSelectionHeaderBar: View {
 
             HStack(spacing: 6) {
                 Text(countLabel)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .accessibilityLabel(countLabel)
                 if bulkBusy {
@@ -367,17 +367,17 @@ struct KanbanView: View {
 
     init(columnsLayout: Bool = false) {
         self.columnsLayout = columnsLayout
-        _store = StateObject(wrappedValue: KanbanStore())
+        _store = State(initialValue: KanbanStore())
     }
 
     /// Tests host the real board over a store whose service they supply.
     init(columnsLayout: Bool, store: KanbanStore) {
         self.columnsLayout = columnsLayout
-        _store = StateObject(wrappedValue: store)
+        _store = State(initialValue: store)
     }
 
     @EnvironmentObject private var appState: AppState
-    @StateObject private var store: KanbanStore
+    @State private var store: KanbanStore
     @State private var selectedTask: KanbanTask?
     @State private var showNewTask = false
     @State private var newTaskStatus = "todo"
@@ -595,7 +595,7 @@ struct KanbanView: View {
                     description: Text(errorMessage)
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let board = store.board {
+            } else if store.board != nil {
                 if visibleColumns.isEmpty {
                     ContentUnavailableView("No Columns", systemImage: "rectangle.3.group")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -605,7 +605,7 @@ struct KanbanView: View {
                             VStack(alignment: .trailing, spacing: 6) {
                                 if let nudgeNotice = nudgeNoticeState.notice {
                                     Label(nudgeNotice, systemImage: "checkmark.circle")
-                                        .font(.caption)
+                                        .scaledFont(.caption)
                                         .foregroundStyle(.green)
                                         .padding(8)
                                         .background(.ultraThinMaterial, in: Capsule())
@@ -613,7 +613,7 @@ struct KanbanView: View {
                                 }
                                 if let bulkNotice = bulkNoticeState.text {
                                     Label(bulkNotice, systemImage: bulkNoticeState.kind == .success ? "checkmark.circle" : "exclamationmark.triangle.fill")
-                                        .font(.caption)
+                                        .scaledFont(.caption)
                                         .foregroundStyle(bulkNoticeState.kind == .success ? Color.green : Color.orange)
                                         .padding(8)
                                         .background(.ultraThinMaterial, in: Capsule())
@@ -628,13 +628,13 @@ struct KanbanView: View {
                                     .buttonStyle(.plain)
                                     .accessibilityLabel("Dismiss Kanban error")
                                     }
-                                    .font(.caption)
+                                    .scaledFont(.caption)
                                     .foregroundStyle(.red)
                                     .padding(8)
                                     .background(.ultraThinMaterial, in: Capsule())
                                 } else if let refreshError = store.errorMessage {
                                     Text("Refresh failed: \(refreshError)")
-                                        .font(.caption)
+                                        .scaledFont(.caption)
                                         .foregroundStyle(.secondary)
                                         .padding(8)
                                         .background(.ultraThinMaterial, in: Capsule())
@@ -654,26 +654,26 @@ struct KanbanView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(item: $selectedTask) { task in
             KanbanTaskDetailView(task: task)
-                .environmentObject(store)
+                .environment(store)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showNewTask) {
             KanbanTaskComposerView(initialStatus: newTaskStatus, expectedContext: newTaskContext)
-                .environmentObject(store)
+                .environment(store)
                 .environmentObject(appState)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showOrchestrationSettings) {
             KanbanOrchestrationSettingsSheet()
-                .environmentObject(store)
+                .environment(store)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showProfileRouting) {
             KanbanProfileRoutingScreen()
-                .environmentObject(store)
+                .environment(store)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
@@ -683,14 +683,14 @@ struct KanbanView: View {
             // no loaded metadata exists.
             if let board = loadedBoardMetadata {
                 KanbanBoardEditorView(mode: .settings(board: board), includeArchived: includeArchived)
-                    .environmentObject(store)
+                    .environment(store)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
         }
         .sheet(isPresented: $showNewBoard) {
             KanbanBoardEditorView(mode: .create, includeArchived: includeArchived)
-                .environmentObject(store)
+                .environment(store)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
@@ -701,7 +701,7 @@ struct KanbanView: View {
                 tenantFilter: $tenantFilter,
                 groupRunningByProfile: $groupRunningByProfile
             )
-            .environmentObject(store)
+            .environment(store)
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
         }
@@ -1018,7 +1018,7 @@ struct KanbanView: View {
         .overlay(alignment: .top) {
             if !store.isSelectedSnapshotLoaded {
                 Label("Loading \(store.selectedBoardMetadata?.name ?? store.resolvedSelectedBoardSlug)…", systemImage: "hourglass")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .background(.ultraThinMaterial, in: Capsule())
@@ -1065,15 +1065,15 @@ struct KanbanView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: summary.systemImage)
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                 Text(summary.title)
-                    .font(.caption.weight(isCurrent ? .bold : .semibold))
+                    .scaledFont(.caption.weight(isCurrent ? .bold : .semibold))
                 Text(String(summary.count))
-                    .font(.caption2.monospacedDigit())
+                    .scaledFont(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
                 if summary.isLocked {
                     Image(systemName: "lock.fill")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .imageScale(.small)
                         .foregroundStyle(.conduitTertiary)
                 }
@@ -1093,16 +1093,16 @@ struct KanbanView: View {
         return VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 6) {
                 Image(systemName: presentation.systemImage)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(presentation.tint)
                 Text(presentation.displayName)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                 Text(String(column.tasks.count))
-                    .font(.caption.monospacedDigit())
+                    .scaledFont(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                 if presentation.isBackendControlled {
                     Image(systemName: "lock.fill")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .imageScale(.small)
                         .foregroundStyle(.conduitTertiary)
                 }
@@ -1183,7 +1183,7 @@ struct KanbanView: View {
                 .overlay(alignment: .top) {
                     if !store.isSelectedSnapshotLoaded {
                         Label("Loading \(store.selectedBoardMetadata?.name ?? store.resolvedSelectedBoardSlug)…", systemImage: "hourglass")
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .background(.ultraThinMaterial, in: Capsule())
@@ -1289,7 +1289,7 @@ struct KanbanView: View {
     private var bulkActionBar: some View {
         HStack(spacing: 10) {
             Text(selectedCountLabel)
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .lineLimit(1)
                 .accessibilityLabel(selectedCountLabel)
             Spacer()
@@ -1488,7 +1488,7 @@ struct KanbanView: View {
                         TextField("Priority", value: $bulkPriorityValue, format: .number)
                             .keyboardType(.numbersAndPunctuation)
                             .multilineTextAlignment(.center)
-                            .font(.title3.bold())
+                            .scaledFont(.title3.bold())
                             .monospacedDigit()
                             .accessibilityLabel("Priority value")
                         Button {
@@ -1545,9 +1545,9 @@ struct KanbanView: View {
                     ForEach(KanbanBulkResultPolicy.failures(from: outcome), id: \.id) { failure in
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Task \(failure.id)")
-                                .font(.subheadline.weight(.semibold))
+                                .scaledFont(.subheadline.weight(.semibold))
                             Text(failure.reason)
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -1730,15 +1730,15 @@ struct KanbanView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: presentation.systemImage)
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                 Text(presentation.displayName)
-                    .font(.caption.weight(isSelected ? .bold : .semibold))
+                    .scaledFont(.caption.weight(isSelected ? .bold : .semibold))
                 Text(String(column.tasks.count))
-                    .font(.caption2.monospacedDigit())
+                    .scaledFont(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
                 if presentation.isBackendControlled {
                     Image(systemName: "lock.fill")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .imageScale(.small)
                         .foregroundStyle(.conduitTertiary)
                 }
@@ -1796,9 +1796,9 @@ struct KanbanView: View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Kanban")
-                    .font(.title3.weight(.bold))
+                    .scaledFont(.title3.weight(.bold))
                 Text(store.selectedBoardMetadata?.name ?? store.selectedBoardMetadata?.slug ?? AppLocalization.string("Board"))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -1956,7 +1956,7 @@ struct KanbanView: View {
                     searchText = ""
                     searchFocused = false
                 }
-                .font(.subheadline.weight(.medium))
+                .scaledFont(.subheadline.weight(.medium))
                 .foregroundStyle(Color.conduitAccent)
                 .buttonStyle(.plain)
                 .frame(minHeight: 44)
@@ -2017,10 +2017,10 @@ struct KanbanView: View {
     private func runningGroupHeader(_ group: KanbanRunningGroupPolicy.Group) -> some View {
         HStack(spacing: 6) {
             Text(group.displayName)
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text(String(group.tasks.count))
-                .font(.caption2.monospacedDigit())
+                .scaledFont(.caption2.monospacedDigit())
                 .foregroundStyle(.conduitTertiary)
             Spacer()
         }
@@ -2123,7 +2123,7 @@ private struct KanbanCardView: View {
                     .frame(width: 7, height: 7)
                     .padding(.top, 5)
                 Text(task.title)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .lineLimit(3)
                 Spacer(minLength: 2)
                 if !isMenusDisabled {
@@ -2173,7 +2173,7 @@ private struct KanbanCardView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.caption.weight(.bold))
+                        .scaledFont(.caption.weight(.bold))
                         .foregroundStyle(.secondary)
                         .frame(width: 24, height: 24)
                 }
@@ -2184,12 +2184,12 @@ private struct KanbanCardView: View {
 
             if let summary = task.latestSummary, !summary.isEmpty {
                 Text(summary)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
             } else if let body = task.body, !body.isEmpty {
                 Text(body)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
             }
@@ -2273,9 +2273,9 @@ private struct KanbanCardView: View {
                     .foregroundStyle(.red)
             }
             Text(KanbanShortID.of(task.id))
-                .font(.caption2.monospaced())
+                .scaledFont(.caption2.monospaced())
         }
-        .font(.caption2)
+        .scaledFont(.caption2)
         .foregroundStyle(.conduitTertiary)
     }
 

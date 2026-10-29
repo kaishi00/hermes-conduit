@@ -579,8 +579,14 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(WatchJobAnswer.scheduling(name: "start_job", result: ["status": "not_started"]), "WHEN_IDLE")
         XCTAssertNil(WatchJobAnswer.scheduling(name: "list_jobs", result: ["summary": "s"]))
 
-        XCTAssertEqual(WatchJobAnswer.arguments(name: "start_job", ["instructions": "  Check the build "]) as? [String: String],
-                       ["instructions": "Check the build"])
+        let start = WatchJobAnswer.arguments(name: "start_job", ["instructions": "  Check the build "])
+        XCTAssertEqual(start?["instructions"] as? String, "Check the build")
+        // Ordinary work goes to the call's chat; what the user keeps apart doesn't (#1250).
+        XCTAssertEqual(start?["joins_call"] as? Bool, true)
+        XCTAssertEqual(WatchJobAnswer.arguments(name: "start_job", ["instructions": "Quick: check the build"])?["joins_call"] as? Bool, false)
+        XCTAssertEqual(WatchJobAnswer.arguments(name: "start_job", ["instructions": "check the build in the background"])?["joins_call"] as? Bool, false)
+        XCTAssertEqual(WatchJobAnswer.arguments(name: "start_job", ["instructions": "check the lights", "profile": "fam"])?["joins_call"] as? Bool, false)
+        XCTAssertEqual(WatchJobAnswer.arguments(name: "start_job", ["instructions": "Quick question, is the build green?"])?["joins_call"] as? Bool, true)
         XCTAssertNil(WatchJobAnswer.arguments(name: "start_job", ["instructions": " "]))
         XCTAssertEqual(WatchJobAnswer.arguments(name: "cancel_job", ["job_id": "watch-2"]) as? [String: String], ["job_id": "watch-2"])
         XCTAssertEqual(WatchJobAnswer.arguments(name: "cancel_job", [:])?.count, 0)

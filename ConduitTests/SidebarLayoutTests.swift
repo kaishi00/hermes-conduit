@@ -65,7 +65,7 @@ final class SidebarLayoutTests: XCTestCase {
     func testIPadWithPreferenceOnAndNarrowWindowFallsBackToDrawer() {
         // Split View halves, small Stage Manager tiles, and undetermined
         // pre-layout widths must keep the drawer.
-        for width: CGFloat in [0, 320, 417, 512, 683, 749] {
+        for width: CGFloat in [0, 320, 417, 512, 683, 750] {
             XCTAssertEqual(
                 resolve(pad, prefersPersistentSidebar: true, availableWidth: width),
                 .drawer,
@@ -77,7 +77,8 @@ final class SidebarLayoutTests: XCTestCase {
     func testPersistentThresholdKeepsMinimumChatWidth() {
         XCTAssertEqual(
             SidebarLayoutMetrics.minimumPersistentLayoutWidth,
-            SidebarLayoutMetrics.persistentSidebarWidth + SidebarLayoutMetrics.minimumChatWidth
+            SidebarLayoutMetrics.persistentSidebarWidth + 1 + SidebarLayoutMetrics.minimumChatWidth,
+            "The sidebar, the line beside it (#1487) and the chat's least width."
         )
 
         let threshold = SidebarLayoutMetrics.minimumPersistentLayoutWidth

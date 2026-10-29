@@ -14,6 +14,8 @@ struct V2ProjectPage: View {
     @EnvironmentObject private var appState: AppState
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.v2Shell) private var shell
+    @Environment(\.v2OpenBeside) private var openBeside
     let project: ProjectSummary
     @State private var detail: ProjectSessionDetail?
     @State private var isLoading = true
@@ -47,7 +49,16 @@ struct V2ProjectPage: View {
     }
 
     private var allSessions: [SessionSummary] {
-        detail?.lanes.flatMap(\.sessions) ?? []
+        lanes.flatMap(\.sessions)
+    }
+
+    /// Hermes' lanes, with the chat just started here on top of its folder's
+    /// until Hermes lists it: Hermes stores a chat with its first message,
+    /// and the page beside the open chat would miss it (issue 1454).
+    private var lanes: [ProjectSessionLane] {
+        let lanes = detail?.lanes ?? []
+        guard let created = appState.newChatAwaitingListing(in: project) else { return lanes }
+        return created.awaiting.lanes(lanes, with: created.row, newLaneID: "\(project.id)-new")
     }
 
     var body: some View {
@@ -64,7 +75,7 @@ struct V2ProjectPage: View {
                         .frame(maxWidth: .infinity, minHeight: 140)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                } else if let detail, detail.lanes.allSatisfy({ $0.sessions.isEmpty }) {
+                } else if detail != nil, lanes.allSatisfy({ $0.sessions.isEmpty }) {
                     ContentUnavailableView {
                         Label("No Conversations", systemImage: "tray")
                     } description: {
@@ -78,8 +89,8 @@ struct V2ProjectPage: View {
                     }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                } else if let detail {
-                    ForEach(detail.lanes) { lane in
+                } else if detail != nil {
+                    ForEach(lanes) { lane in
                         laneRows(lane)
                     }
                 } else {
@@ -108,9 +119,12 @@ struct V2ProjectPage: View {
         .toolbar {
             if mainButtonNewChat {
                 // The gold button beside the tabs makes this project's new
-                // chats instead (Settings > Appearance): voice sits here.
-                ToolbarItem(placement: .topBarTrailing) {
-                    V2VoiceButton(context: .project(project), style: .toolbar)
+                // chats instead (Settings > Appearance): voice sits here,
+                // unless a chat beside the list shows its own.
+                if !shell.hasChatVoiceBeside {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        V2VoiceButton(context: .project(project), style: .toolbar)
+                    }
                 }
             } else if canStartConversation {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -126,7 +140,9 @@ struct V2ProjectPage: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()
         }
-        .task(id: project.id) { await reload() }
+        // Read again when the chats list's catalog changes: beside the open
+        // chat on a wide window the page stays on screen (issue 1454).
+        .task(id: "\(project.id)|\(appState.chatListCatalogGeneration)") { await reload() }
         .onChange(of: appState.isConnected) { _, isConnected in
             guard isConnected, detail == nil else { return }
             Task { await reload() }
@@ -164,11 +180,11 @@ struct V2ProjectPage: View {
             V2ProjectTile(project: project, size: 56)
             VStack(alignment: .leading, spacing: 3) {
                 Text(project.title)
-                    .font(.title.weight(.bold))
+                    .scaledFont(.title.weight(.bold))
                     .lineLimit(2)
                 if let path = newConversationPath {
                     Text(path)
-                        .font(.footnote.monospaced())
+                        .scaledFont(.footnote.monospaced())
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -181,7 +197,7 @@ struct V2ProjectPage: View {
                         Text("\(runningCount) running")
                     }
                 }
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -202,28 +218,28 @@ struct V2ProjectPage: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
                     .conduitFixedGlyph()
                     .foregroundStyle(.secondary)
                     .rotationEffect(.degrees(isCollapsed ? 0 : 90))
                     .frame(width: 12)
                 Image(systemName: "folder")
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(V2ProjectTile.color(for: project))
                 Text(lane.title)
-                    .font(.callout.weight(.semibold))
+                    .scaledFont(.callout.weight(.semibold))
                     .lineLimit(1)
                     .layoutPriority(1)
                 if let path = lanePath(lane) {
                     Text(path)
-                        .font(.caption.monospaced())
+                        .scaledFont(.caption.monospaced())
                         .foregroundStyle(Color.primary.opacity(0.45))
                         .lineLimit(1)
                         .truncationMode(.head)
                 }
                 Spacer(minLength: 6)
                 Text(String(lane.sessions.count))
-                    .font(.footnote.monospacedDigit())
+                    .scaledFont(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 16)
@@ -287,13 +303,14 @@ struct V2ProjectPage: View {
                     isUnread: appState.isSessionUnread(session),
                     isPinned: appState.isSessionPinned(session),
                     isStarred: appState.isSessionStarred(session),
-                    isSelected: session.id == appState.activeSessionId,
+                    selection: .chat(isActive: appState.isOpenChatRow(session), beside: openBeside),
                     leadingGlyph: true
                 )
             }
         }
         .buttonStyle(.plain)
         .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
+        .v2SelectedTrait(.chat(isActive: appState.isOpenChatRow(session), beside: openBeside))
     }
 
     // MARK: - Actions

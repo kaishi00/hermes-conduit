@@ -13,7 +13,7 @@ import SwiftUI
 
 struct CapabilityPluginsTab: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     let query: String
     @State private var message: String?
     @State private var pendingInstall: PluginCatalogEntry?
@@ -74,7 +74,7 @@ struct CapabilityPluginsTab: View {
                 }
                 if !canManage {
                     Text("Hermes installs plugins for the host's default profile. Switch to it to change them.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 16)
                 }
@@ -87,7 +87,7 @@ struct CapabilityPluginsTab: View {
                 }
                 if let message {
                     Text(verbatim: message)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 16)
                 }
@@ -98,7 +98,7 @@ struct CapabilityPluginsTab: View {
                 ) {
                     if installed.isEmpty {
                         Text(verbatim: query.isEmpty ? AppLocalization.string("No agent plugins installed for this profile.") : AppLocalization.string("Nothing matches “\(query)”."))
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                             .padding(.vertical, 12)
                     } else {
@@ -214,7 +214,7 @@ private struct AgentPluginListRow: View {
     let plugin: AgentPluginRow
     let catalogEntry: PluginCatalogEntry?
     let canManage: Bool
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     let onError: (String?) -> Void
 
     private var pills: [CapabilityPillModel] {
@@ -282,7 +282,7 @@ struct PluginRestartCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(AppLocalization.string("Restart the gateway to apply plugin changes."), systemImage: "arrow.triangle.2.circlepath")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             Button {
                 confirmingRestart = true
             } label: {
@@ -317,7 +317,7 @@ struct AgentPluginDetailPage: View {
     @Environment(\.dismiss) private var dismiss
     let name: String
     let canManage: Bool
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     @State private var message: String?
     @State private var confirmingRemove = false
     @State private var consent: PluginConsent?
@@ -332,16 +332,16 @@ struct AgentPluginDetailPage: View {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
                         Text(verbatim: plugin.name)
-                            .font(.title3.weight(.semibold))
+                            .scaledFont(.title3.weight(.semibold))
                         if let version = PluginStyle.version(plugin) {
                             Text(verbatim: version)
-                                .font(.subheadline)
+                                .scaledFont(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
                     }
                     if !plugin.description.isEmpty {
                         Text(verbatim: plugin.description)
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                     if let pill = PluginStyle.sourcePill(plugin, catalogEntry: catalogEntry) {
@@ -350,7 +350,7 @@ struct AgentPluginDetailPage: View {
                     if plugin.authRequired {
                         Text(verbatim: plugin.authCommand.map { AppLocalization.string("It needs a sign-in on your host: \($0)") }
                             ?? AppLocalization.string("It needs a sign-in on your host."))
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.orange)
                             .textSelection(.enabled)
                     }
@@ -368,7 +368,7 @@ struct AgentPluginDetailPage: View {
                         }
                     )) {
                         Text("Turned on")
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                     }
                     .tint(.conduitAccent)
                     .disabled(!canManage || busy)
@@ -383,7 +383,7 @@ struct AgentPluginDetailPage: View {
                 }
                 if let message {
                     Text(verbatim: message)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 16)
                 }
@@ -417,13 +417,13 @@ struct AgentPluginDetailPage: View {
                 }
                 if !canManage {
                     Text("Hermes installs plugins for the host's default profile. Switch to it to change them.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 16)
                 }
             } else {
                 Text("This plugin isn't installed anymore.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
             }

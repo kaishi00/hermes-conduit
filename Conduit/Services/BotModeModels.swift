@@ -77,6 +77,9 @@ struct BotProfile: Identifiable, Equatable {
     /// `ui_meta_revisions['hermes-bots']`: the compare-and-swap revision a
     /// write expects. Nil on gateways that predate ui_meta CAS.
     var botMetaRevision: Int?
+    /// The main profile's Conduit name (AppState.profileDisplayName), set on
+    /// the roster's main bot so it reads as the rest of Conduit names it.
+    var conduitName: String?
 
     var id: String { name }
 
@@ -86,12 +89,20 @@ struct BotProfile: Identifiable, Equatable {
     }
 
     /// Upstream `displayName`: the bot's customized title, else the profile's
-    /// display name, else the profile name.
+    /// display name, else the profile name capitalized, as the rest of
+    /// Conduit names it (AppState.profileDisplayName). The main bot goes by
+    /// its Conduit name.
     var displayLabel: String {
+        let conduit = conduitName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !conduit.isEmpty { return conduit }
         let title = botTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !title.isEmpty { return title }
         let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? self.name : name
+        // A display name that is only the id names it no more than the id.
+        guard !name.isEmpty, name != self.name else {
+            return String(self.name.prefix(1)).uppercased() + String(self.name.dropFirst())
+        }
+        return name
     }
 
     /// The canonical chat positively confirmed by the roster, if any.

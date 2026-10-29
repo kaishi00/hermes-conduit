@@ -29,7 +29,7 @@ struct KanbanTaskDetailView: View {
         var status: String
     }
 
-    @EnvironmentObject private var store: KanbanStore
+    @Environment(KanbanStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
@@ -202,31 +202,31 @@ struct KanbanTaskDetailView: View {
                         // section disappears - the notice must survive.
                         if let actionNotice {
                             Label(actionNotice, systemImage: "checkmark.circle")
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         if let remoteChangeNotice {
                             Text(remoteChangeNotice)
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(.orange)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         if hasUnsavedChanges {
                             Text("Unsaved edits")
-                                .font(.caption2.weight(.semibold))
+                                .scaledFont(.caption2.weight(.semibold))
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                         }
                         if let refreshErrorMessage {
                             Text("Refresh failed: \(refreshErrorMessage)")
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         if let errorMessage {
                             Text(errorMessage)
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(.red)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -336,12 +336,12 @@ struct KanbanTaskDetailView: View {
                     // Show the new assignee now rather than at the next poll.
                     Task { await loadDetail(force: true) }
                 }
-                    .environmentObject(store)
+                    .environment(store)
                     .presentationDetents([.medium])
             }
             .sheet(isPresented: $showModelSheet) {
                 KanbanModelOverrideSheet(value: $modelOverrideDraft)
-                    .environmentObject(store)
+                    .environment(store)
                     .presentationDetents([.medium, .large])
             }
             .onChange(of: showModelSheet) { wasOpen, nowOpen in
@@ -464,7 +464,7 @@ struct KanbanTaskDetailView: View {
     private var editorSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("Title", text: $title)
-                .font(.headline)
+                .scaledFont(.headline)
                 .textFieldStyle(.roundedBorder)
             TextEditor(text: $taskBody)
                 .frame(minHeight: 120)
@@ -501,7 +501,7 @@ struct KanbanTaskDetailView: View {
         ConduitSettingsSection(title: AppLocalization.string("Assignment & Execution"), symbol: "person.crop.rectangle.stack", tint: .conduitAura) {
             HStack(spacing: 8) {
                 Text("Assignee")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
                 if let assignee = displayedTask?.assignee, !assignee.isEmpty {
@@ -544,7 +544,7 @@ struct KanbanTaskDetailView: View {
             } label: {
                 HStack(spacing: 8) {
                     Text("Model")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 8)
                     // Display-only: derived from the loaded server task,
@@ -554,7 +554,7 @@ struct KanbanTaskDetailView: View {
                         .lineLimit(2)
                         .multilineTextAlignment(.trailing)
                     Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
+                        .scaledFont(.caption2.weight(.semibold))
                         .foregroundStyle(.conduitTertiary)
                 }
             }
@@ -571,10 +571,10 @@ struct KanbanTaskDetailView: View {
             if let failure = displayedTask?.lastFailureError, !failure.isEmpty {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Last failure")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     Text(failure)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.red)
                 }
             }
@@ -660,10 +660,10 @@ struct KanbanTaskDetailView: View {
     private var readyUnassignedCallout: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("Ready but unassigned", systemImage: "bolt.slash")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(.orange)
             Text("No profile is attached and Hermes has no default assignee configured, so this task will not run until someone assigns it.")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Button {
                 showReassignSheet = true
@@ -685,13 +685,13 @@ struct KanbanTaskDetailView: View {
         let tint = KanbanStatusPresentation.forStatus("blocked").tint
         return VStack(alignment: .leading, spacing: 6) {
             Label("Waiting on you", systemImage: "questionmark.bubble")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(tint)
             Text(question)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .textSelection(.enabled)
             Text("Reply & unblock posts your answer and moves the task back to Ready, so the next run sees it.")
-                .font(.caption2)
+                .scaledFont(.caption2)
                 .foregroundStyle(.secondary)
         }
         .padding(12)
@@ -723,16 +723,16 @@ struct KanbanTaskDetailView: View {
                 Image(systemName: severityIcon(diagnostic.severity))
                     .foregroundStyle(severityColor)
                 Text(diagnostic.title.isEmpty ? diagnostic.kind : diagnostic.title)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                 if diagnostic.count > 1 {
                     Text("×\(diagnostic.count)")
-                        .font(.caption.monospacedDigit())
+                        .scaledFont(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
             if !diagnostic.detail.isEmpty {
                 Text(diagnostic.detail)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             ForEach(Array(diagnostic.actions.filter { action in
@@ -814,7 +814,7 @@ struct KanbanTaskDetailView: View {
     private func dependencyGroup(title: String, ids: [String]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             ForEach(ids, id: \.self) { linkedID in
                 Button {
@@ -831,18 +831,18 @@ struct KanbanTaskDetailView: View {
                                 .lineLimit(1)
                             HStack(spacing: 5) {
                                 Text(KanbanShortID.of(linkedID))
-                                    .font(.caption2.monospaced())
+                                    .scaledFont(.caption2.monospaced())
                                     .foregroundStyle(.conduitTertiary)
                                 if let linkedStatus = linkedTaskStatus(for: linkedID) {
                                     Text(KanbanStatusPresentation.forStatus(linkedStatus).displayName)
-                                        .font(.caption2)
+                                        .scaledFont(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
                             }
                         }
                         Spacer()
                         Image(systemName: "chevron.right")
-                            .font(.caption2.weight(.semibold))
+                            .scaledFont(.caption2.weight(.semibold))
                             .foregroundStyle(.conduitTertiary)
                     }
                 }
@@ -868,19 +868,19 @@ struct KanbanTaskDetailView: View {
                 ForEach(comments) { value in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Text(value.author).font(.caption.weight(.semibold))
+                            Text(value.author).scaledFont(.caption.weight(.semibold))
                             Spacer()
                             Text(relativeDate(value.createdAt))
-                                .font(.caption2)
+                                .scaledFont(.caption2)
                                 .foregroundStyle(.conduitTertiary)
                         }
-                        Text(value.body).font(.footnote)
+                        Text(value.body).scaledFont(.footnote)
                     }
                     .padding(.vertical, 3)
                 }
             } else {
                 Text("No comments yet.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
             TextEditor(text: $comment)
@@ -890,7 +890,7 @@ struct KanbanTaskDetailView: View {
                 .accessibilityLabel("New comment")
             if isRunning {
                 Text("Comments reach the live worker between turns as an out-of-band note.")
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
             }
             HStack(spacing: 10) {
@@ -958,23 +958,23 @@ struct KanbanTaskDetailView: View {
                             .frame(width: 6, height: 6)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(row.label)
-                                .font(.caption.weight(.medium))
+                                .scaledFont(.caption.weight(.medium))
                             if let extra = row.detail, !extra.isEmpty {
                                 Text(extra)
-                                    .font(.caption2)
+                                    .scaledFont(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(2)
                             }
                         }
                         Spacer(minLength: 0)
                         Text(relativeDate(event.createdAt))
-                            .font(.caption2)
+                            .scaledFont(.caption2)
                             .foregroundStyle(.conduitTertiary)
                     }
                 }
                 if events.count > 60 {
                     Text("\(events.count - 60) earlier events hidden")
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .foregroundStyle(.conduitTertiary)
                 }
             }
@@ -1001,18 +1001,18 @@ struct KanbanTaskDetailView: View {
                 Image(systemName: failed ? "xmark.octagon.fill" : (run.outcome == "completed" || run.status == "completed" ? "checkmark.circle.fill" : "circle.dotted"))
                     .foregroundStyle(failed ? Color.red : (run.outcome == "completed" || run.status == "completed" ? Color.green : Color.secondary))
                 Text(KanbanRunPresentation.outcomeLabel(run))
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(failed ? Color.red : Color.primary)
                 if let stepKey = run.stepKey, !stepKey.isEmpty {
                     Text(stepKey)
-                        .font(.caption2)
+                        .scaledFont(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 if let duration = KanbanRunPresentation.durationText(start: run.startedAt, end: run.endedAt) {
                     Text(duration)
-                        .font(.caption2.monospacedDigit())
+                        .scaledFont(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
@@ -1029,16 +1029,16 @@ struct KanbanTaskDetailView: View {
                 Text(relativeDate(run.endedAt ?? run.startedAt))
                     .foregroundStyle(.conduitTertiary)
             }
-            .font(.caption2)
+            .scaledFont(.caption2)
             .foregroundStyle(.secondary)
             if let error = run.error, !error.isEmpty {
                 Text(error)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
                     .lineLimit(4)
             } else if let summary = run.summary, !summary.isEmpty {
                 Text(summary)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(4)
             }
@@ -1051,13 +1051,13 @@ struct KanbanTaskDetailView: View {
     private var workerLogLink: some View {
         NavigationLink {
             KanbanWorkerLogScreen(taskID: displayedTaskID)
-                .environmentObject(store)
+                .environment(store)
         } label: {
             HStack {
                 Label("Worker Log", systemImage: "doc.text.magnifyingglass")
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.conduitTertiary)
             }
         }
@@ -1447,7 +1447,7 @@ struct KanbanTaskDetailView: View {
         VStack(spacing: 10) {
             ProgressView()
             Text("Loading task…")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -1460,12 +1460,12 @@ struct KanbanTaskDetailView: View {
     private func loadFailureView(_ message: String) -> some View {
         VStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.title2)
+                .scaledFont(.title2)
                 .foregroundStyle(.orange)
             Text("Couldn't load this task")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             Text(message)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -1718,7 +1718,7 @@ enum KanbanNoteAndRequeueFlow {
 /// reclaim_first=true (upstream drawer behavior): switching profiles releases
 /// a running worker claim first and resets the failure streak.
 struct KanbanReassignSheet: View {
-    @EnvironmentObject private var store: KanbanStore
+    @Environment(KanbanStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let taskID: String
     let currentAssignee: String?
@@ -1765,7 +1765,7 @@ struct KanbanReassignSheet: View {
                 }
                 if let errorMessage {
                     Section {
-                        Text(errorMessage).foregroundStyle(.red).font(.footnote)
+                        Text(errorMessage).foregroundStyle(.red).scaledFont(.footnote)
                     }
                 }
             }

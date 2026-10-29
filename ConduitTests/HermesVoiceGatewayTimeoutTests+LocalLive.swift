@@ -95,6 +95,32 @@ extension HermesVoiceGatewayTimeoutTests {
         session.stop()
     }
 
+    /// Local Live traces the same turn steps as Grok Live (#1418).
+    func testLocalLiveSessionTracesTurnDetectionAndTheUsersTurns() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        var trace: [String] = []
+        session.onTrace = { trace.append($0) }
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated", "session": ["turn_detection": ["type": "server_vad", "silence_duration_ms": 500]]])
+        try await passLocalLiveReadiness(socket, session: session)
+        socket.deliver(["type": "response.done"])
+
+        session.send(.audio(Data(count: 3_200)))
+        socket.deliver(["type": "input_audio_buffer.speech_started"])
+        socket.deliver(["type": "input_audio_buffer.speech_stopped"])
+        socket.deliver(["type": "response.created"])
+        await localLiveSettle(until: { trace.contains("Reply started") })
+        XCTAssertEqual(trace, [
+            "Turn detection: server_vad, silence ms 500",
+            "Speech start heard (before it: microphone loudest -96 dBFS, quietest -96 dBFS)",
+            "Speech end heard after 0.0 s (no microphone audio)",
+            "Reply started",
+        ])
+        session.stop()
+    }
+
     func testLocalLiveSplitsLongRepliesIntoFramesThePluginTakes() {
         XCTAssertEqual(LocalLiveProtocol.deltaChunks(""), [])
         XCTAssertEqual(LocalLiveProtocol.deltaChunks("Hello."), ["Hello."])
@@ -250,6 +276,30 @@ extension HermesVoiceGatewayTimeoutTests {
         await localLiveSettle(until: { socket.sent.count >= 5 })
         XCTAssertEqual(socket.sent.dropFirst(3).map { $0["type"] as? String }, ["conversation.item.create", "response.create"])
         session.stop()
+    }
+
+    func testLocalLiveSessionTellsTheServerTheUserStoppedTheReplyAheadOfTheirAudio() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        session.cancelResponse()
+        socket.deliver(["type": "session.updated"])
+        try await passLocalLiveReadiness(socket, session: session)
+        XCTAssertFalse(socket.sent.contains { $0["type"] as? String == "response.cancel" }, "nothing goes out before the call is ready")
+        // The check's answer is written after the call went ready.
+        await localLiveSettle(until: { socket.sent.contains { $0["type"] as? String == "conduit.turn.done" } })
+
+        // The Interrupt button, then the user speaking again (#1325): a
+        // server that shuts its microphone while it speaks opens it first.
+        let before = socket.sent.count
+        session.cancelResponse()
+        session.send(.audio(Data(repeating: 1, count: 640)))
+        await localLiveSettle(until: { socket.sent.count >= before + 2 })
+        XCTAssertEqual(socket.sent.dropFirst(before).map { $0["type"] as? String }, ["response.cancel", "input_audio_buffer.append"])
+        session.stop()
+        session.cancelResponse()
+        XCTAssertEqual(socket.sent.count, before + 2, "a stopped call sends nothing")
     }
 
     func testLocalLiveSessionDropsOpenTurnsWhenItsConnectionEnds() async throws {
@@ -456,6 +506,41 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(items.first { $0.name == "mode" }?.value, "speak")
     }
 
+    func testVoiceRoutesNameAnotherProfileAsConduitProfileWhenThePluginTakesIt() throws {
+        // Hermes 0.22.3+ sends ?profile=<another profile> to that profile's
+        // plugin host, which has no sockets (#1336).
+        var plugin = NotifierPluginStatus()
+        XCTAssertEqual(plugin.dashboardProfileParameter, "profile", "not asked yet: as before")
+        plugin.state = .reported(version: "0.89.0", capabilities: ["local-live"])
+        XCTAssertEqual(plugin.dashboardProfileParameter, "profile", "an older plugin keeps ?profile=")
+        plugin.state = .reported(version: "0.90.0", capabilities: ["local-live", DashboardPath.dashboardProfilesCapability])
+        XCTAssertEqual(plugin.dashboardProfileParameter, DashboardPath.conduitProfileParameter)
+
+        XCTAssertEqual(DashboardPath.withProfile(LocalLiveProtocol.statusPath, profile: "work", parameter: "conduit_profile"),
+                       LocalLiveProtocol.statusPath + "?conduit_profile=work")
+        XCTAssertEqual(DashboardPath.withProfile(LocalLiveProtocol.statusPath, profile: "default", parameter: "conduit_profile"),
+                       LocalLiveProtocol.statusPath, "the dashboard's own profile still goes without one")
+        XCTAssertEqual(LocalLiveProtocol.profileQueryItems("work", parameter: "conduit_profile"),
+                       [URLQueryItem(name: "conduit_profile", value: "work")])
+        // Grok's and the listening socket: as before with ?profile=, and
+        // without the dashboard's own profile with ?conduit_profile=.
+        XCTAssertEqual(DashboardPath.socketProfileItems("default", parameter: "profile"),
+                       [URLQueryItem(name: "profile", value: "default")])
+        XCTAssertEqual(DashboardPath.socketProfileItems("default", parameter: "conduit_profile"), [])
+        XCTAssertEqual(DashboardPath.socketProfileItems("work", parameter: "conduit_profile"),
+                       [URLQueryItem(name: "conduit_profile", value: "work")])
+        let speak = try HermesVoiceGateway.speechServerSpeechRequest(
+            baseURL: "https://hermes.example", ticket: "t", profile: "work", profileParameter: "conduit_profile", cloudflareAccess: nil)
+        let speakItems = URLComponents(url: try XCTUnwrap(speak.url), resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(speakItems.first { $0.name == "conduit_profile" }?.value, "work")
+        XCTAssertNil(speakItems.first { $0.name == "profile" })
+        let listen = try HermesVoiceGateway.speechServerRequest(
+            baseURL: "https://hermes.example", ticket: "t", profile: "work", profileParameter: "conduit_profile", cloudflareAccess: nil)
+        let listenItems = URLComponents(url: try XCTUnwrap(listen.url), resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(listenItems.first { $0.name == "conduit_profile" }?.value, "work")
+        XCTAssertNil(listenItems.first { $0.name == "profile" })
+    }
+
     func testLocalLiveSetupCopiesAsOneBlockForAnAgent() throws {
         let status = SpeechServerVoiceStatus(response: [
             "available": true,
@@ -578,6 +663,38 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(runner.isFollowingReply)
     }
 
+    func testLocalLiveTurnLeavesNarratedActionsOutOfSpeech() async {
+        let script = LocalLiveTurnScript()
+        let runner = script.makeRunner()
+        runner.start(turnID: "t1", text: "Is it done?")
+        await localLiveSettle(until: { !script.submitted.isEmpty })
+        let chunks = ["Order! *sets", " down the gav", "el* The heist ", "is done, 5 * 3", " ways."]
+        for chunk in chunks {
+            runner.observe(.messageDelta(sessionId: "rt-1", text: chunk))
+        }
+        runner.observe(.messageComplete(sessionId: "rt-1", messageId: "m1", content: chunks.joined(), reasoning: nil))
+        // A dropped action leaves a space, which can double across deltas.
+        let said = script.spoken.map { $0.replacingOccurrences(of: "t1:", with: "") }.joined()
+            .replacingOccurrences(of: "  ", with: " ")
+        XCTAssertEqual(said, "Order! The heist is done, 5 * 3 ways.", "the action is left out, the spaced * is said")
+        XCTAssertEqual(script.done, ["t1"])
+    }
+
+    func testLocalLiveSaysHeldWordsBeforeTheCallsOwnLine() async {
+        let script = LocalLiveTurnScript()
+        let runner = script.makeRunner()
+        runner.start(turnID: "t1", text: "Clear the old logs")
+        await localLiveSettle(until: { !script.submitted.isEmpty })
+        runner.observe(.messageDelta(sessionId: "rt-1", text: "Let me check *the calendar for"))
+        let approval = ApprovalActivity(sessionId: "rt-1", requestId: "req-1", command: "rm -rf logs/old",
+                                        description: "Delete the old logs", choices: nil, allowPermanent: false,
+                                        smartDenied: false, status: .pending, choice: nil, error: nil)
+        runner.observe(.approval(sessionId: "rt-1", activity: approval))
+        let said = script.spoken.map { $0.replacingOccurrences(of: "t1:", with: "") }.joined()
+        XCTAssertTrue(said.hasPrefix("Let me check *the calendar for\n"), "an unclosed marker's words are said, not dropped")
+        XCTAssertTrue(said.contains("Delete the old logs"))
+    }
+
     func testLocalLiveTurnShowsWhatsToBeSeenAndSaysTheRest() async {
         let script = LocalLiveTurnScript()
         let runner = script.makeRunner()
@@ -619,7 +736,15 @@ extension VoiceConversationControllerTests {
         runner.observe(.messageComplete(sessionId: "rt-1", messageId: "m3", content: "Now.\n| b |", reasoning: nil))
         XCTAssertEqual(Array(script.spoken.suffix(2)), ["t3:Now.\n", "t3:" + LocalLiveTurnRunner.onScreenLine],
                        "a line already ended: no extra pause")
-        XCTAssertEqual(script.done, ["t1", "t2", "t3"])
+
+        // A card stands for the tables, but a file the reply attached still shows.
+        runner.start(turnID: "t4", text: "And the report?")
+        await localLiveSettle(until: { script.submitted.count == 4 })
+        runner.observe(.toolStart(sessionId: "rt-1", toolName: PresentedCard.toolName, toolInput: nil))
+        runner.observe(.messageComplete(sessionId: "rt-1", messageId: "m4", content: "It's up.\nMEDIA:/r.pdf\n| c |", reasoning: nil))
+        XCTAssertEqual(script.shown.last, "MEDIA:/r.pdf")
+        XCTAssertEqual(Array(script.spoken.suffix(2)), ["t4:It's up.\n", "t4:" + LocalLiveTurnRunner.onScreenLine])
+        XCTAssertEqual(script.done, ["t1", "t2", "t3", "t4"])
     }
 
     func testSpokenVisualSplitterGivesTheSameResultHoweverTheReplyIsSplit() {
@@ -682,6 +807,73 @@ extension VoiceConversationControllerTests {
             let parts = split(every: size)
             XCTAssertEqual(parts.0, whole.0, "split every \(size)")
             XCTAssertEqual(parts.1, whole.1, "split every \(size)")
+        }
+    }
+
+    func testSpokenVisualSplitterLeavesFileTagsUnsaid() {
+        // Ernest's Local voice call on the farm (2026-10-28): his reply was
+        // a text_to_speech file tag, which the speech server read out.
+        let reply = "Here's your briefing.\nMEDIA:/opt/data/cache/audio/tts_20261028_111922_603221.mp3\nSocial media: fine, and MEDIA:/tmp/b.pdf too [[audio_as_voice]]"
+        func split(every size: Int) -> String {
+            var splitter = SpokenVisualSplitter()
+            var said = ""
+            var index = reply.startIndex
+            while index < reply.endIndex {
+                let end = reply.index(index, offsetBy: size, limitedBy: reply.endIndex) ?? reply.endIndex
+                said += splitter.feed(String(reply[index..<end]))
+                index = end
+            }
+            return said + splitter.finish()
+        }
+        let whole = split(every: reply.count)
+        XCTAssertFalse(whole.contains("MEDIA"), whole)
+        XCTAssertFalse(whole.contains("/opt/"), whole)
+        XCTAssertFalse(whole.contains("[["), whole)
+        XCTAssertTrue(whole.hasPrefix("Here's your briefing.\nSocial media: fine, and"), whole)
+        for size in 1...9 {
+            XCTAssertEqual(split(every: size), whole, "split every \(size)")
+        }
+        XCTAssertEqual(SpokenMediaTagFilter.filter("MEDIA:/opt/data/cache/audio/tts_1.mp3"), "", "only a tag: nothing said")
+        XCTAssertEqual(SpokenMediaTagFilter.filter("Call me Medina, not media."), "Call me Medina, not media.")
+        // The files go on the call's screen, as the chat shows them.
+        var splitter = SpokenVisualSplitter()
+        _ = splitter.feed(reply) + splitter.finish()
+        XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/opt/data/cache/audio/tts_20261028_111922_603221.mp3\nMEDIA:/tmp/b.pdf")
+        // A tag written as a link is said by its label, and its file goes on
+        // the screen as a file, not as a link.
+        splitter.reset()
+        XCTAssertEqual(splitter.feed("See [the report](MEDIA:/r.pdf) now.\n") + splitter.finish(), "See the report now.\n")
+        XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/r.pdf")
+        splitter.reset()
+        XCTAssertEqual(splitter.feed("See [the report](media:/r.pdf) now.\n") + splitter.finish(), "See the report now.\n")
+        XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/r.pdf")
+        // A reply the call cuts off for its own line keeps its files.
+        splitter.reset()
+        _ = splitter.feed("Here you go.\nMEDIA:/r.pdf\nAnd then")
+        splitter.dropSpeech()
+        XCTAssertEqual(splitter.fileMarkdown, "MEDIA:/r.pdf")
+        XCTAssertEqual(splitter.visualMarkdown, "MEDIA:/r.pdf")
+        // An image of Hermes' own on its line is a file as well.
+        splitter.reset()
+        _ = splitter.feed("![chart](MEDIA:/tmp/a.png)\nDone.") + splitter.finish()
+        XCTAssertEqual(splitter.fileMarkdown, "MEDIA:/tmp/a.png")
+        // One with words after it is said, and its file shown.
+        splitter.reset()
+        XCTAssertEqual(splitter.feed("![chart](MEDIA:/tmp/a.png) Here it is.\n") + splitter.finish(), "chart Here it is.\n")
+        XCTAssertEqual(splitter.fileMarkdown, "MEDIA:/tmp/a.png")
+        // Windows line ends read as lines, however they arrive.
+        let crlf = "Here you go.\r\nMEDIA:/r.pdf\r\nDone."
+        let scalars = Array(crlf.unicodeScalars)
+        for size in [1, 2, scalars.count] {
+            splitter.reset()
+            var said = ""
+            for start in stride(from: 0, to: scalars.count, by: size) {
+                var piece = String.UnicodeScalarView()
+                piece.append(contentsOf: scalars[start..<min(start + size, scalars.count)])
+                said += splitter.feed(String(piece))
+            }
+            XCTAssertEqual(said + splitter.finish(), "Here you go.\nDone.", "split every \(size)")
+            XCTAssertEqual(splitter.fileMarkdown, "MEDIA:/r.pdf")
         }
     }
 

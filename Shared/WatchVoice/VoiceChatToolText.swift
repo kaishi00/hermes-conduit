@@ -64,9 +64,10 @@ enum VoiceChatToolText {
             : ["chats": summary, "message": searchNext(count: count, opens: opens)]
     }
 
-    /// read_chat's result for a chat that was read: `chat` is the fenced text.
+    /// read_chat's result for a chat that was read: `chat` is the fenced
+    /// text. An attached file is named, not given by its path.
     static func readResult(chat: String) -> [String: String] {
-        ["chat": chat, "message": readNote]
+        ["chat": GatewayMediaTags.namingFiles(in: chat), "message": readNote]
     }
 
     static func emptyReadResult(title: String) -> [String: String] {
@@ -154,7 +155,7 @@ enum VoiceChatToolText {
     }
 
     static func delegatedRead(chat: String) -> String {
-        "[\(chat)\n\(readNote)]"
+        "[\(GatewayMediaTags.namingFiles(in: chat))\n\(readNote)]"
     }
 
     static func delegatedEmptyChat(title: String) -> String {

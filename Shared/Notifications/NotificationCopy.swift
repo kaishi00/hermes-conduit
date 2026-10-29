@@ -33,41 +33,104 @@ enum NotificationCopy {
         }
     }
 
-    /// What a verified push shows with Show previews on: nil for a part the
-    /// generic copy keeps.
+    /// What a verified push shows with Show in notifications on Full
+    /// previews: nil for a part the generic copy keeps.
     ///
     /// A push whose decrypted content names a `title_label` gets that
     /// label's title, joined with the chat's title when the host sent one;
-    /// a call composes its line from the call's outcome, and a private
-    /// Pulse push (`private`) says only that Pulse has something. Any other
-    /// title or body is the host's own text (an older plugin, a tool's
-    /// prompt title).
-    static func preview(_ content: [String: Any]) -> (title: String?, body: String?) {
+    /// a call composes its line from the call's outcome. Any other title or
+    /// body is the host's own text (an older plugin, a tool's prompt title).
+    /// The subtitle names the profile (`profileLine`). A reply whose
+    /// notification Hermes wrote shows its `headline` as the title.
+    static func preview(_ content: [String: Any]) -> (title: String?, subtitle: String?, body: String?) {
         let hostTitle = nonEmpty(content["title"])
         let hostBody = nonEmpty(content["body"])
-        guard let label = nonEmpty(content["title_label"]) else { return (hostTitle, hostBody) }
-        let sessionTitle = nonEmpty(content["session_title"])
-        let title: String?
-        if label == "response.ready" {
-            title = sessionTitle ?? AppLocalization.string("Response ready")
-        } else if let heading = heading(for: label) {
-            title = sessionTitle.map { "\(heading) · \($0)" } ?? heading
-        } else if let phoneTitle = phoneTitle(for: label) {
-            title = phoneTitle
-        } else if let pulse = pulseTitle(for: label, count: content["count"] as? Int) {
-            title = pulse
-        } else {
-            title = hostTitle
+        guard let label = nonEmpty(content["title_label"]) else {
+            return (hostTitle, profileLine(content, title: hostTitle), hostBody)
         }
+        // A reply whose notification Hermes wrote (conduit_notify, #1415):
+        // its heading is the title, and the subtitle says which chat.
+        if label == "response.ready", let headline = nonEmpty(content["headline"]) {
+            let chat = nonEmpty(content["session_title"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let subtitle = [chat, profileLine(content, title: chat)].compactMap { $0 }.joined(separator: " · ")
+            return (headline, subtitle.isEmpty ? nil : subtitle, hostBody)
+        }
+        let title = labelTitle(label, content: content) ?? hostTitle
+        let subtitle = profileLine(content, title: title)
         if label == "call.requested", let call = content["call"] as? [String: Any], let line = callLine(call) {
-            return (title, line)
+            return (title, subtitle, line)
         }
-        if label.hasPrefix("pulse."), content["private"] as? Bool == true {
-            // A private Pulse push (a birthday, a gift, health or money;
-            // notifier 0.104.0): the host sent only this line, in English.
-            return (title, AppLocalization.string("Pulse has something for you."))
+        return (title, subtitle, hostBody)
+    }
+
+    /// What a verified push shows with Chat names (#1415): the chat's title
+    /// and the profile, and none of Hermes' words, so the body stays the
+    /// generic one. Only a title Conduit writes from the `title_label`
+    /// counts, never the host's own title, which may quote a tool's prompt.
+    static func chatNames(_ content: [String: Any]) -> (title: String?, subtitle: String?) {
+        let title = nonEmpty(content["title_label"]).flatMap { labelTitle($0, content: content) }
+        return (title, profileLine(content, title: title))
+    }
+
+    /// The title a `title_label` gives, with the chat's title when the host
+    /// sent one: nil for a label Conduit doesn't know.
+    private static func labelTitle(_ label: String, content: [String: Any]) -> String? {
+        let sessionTitle = nonEmpty(content["session_title"])
+        if label == "response.ready" {
+            return sessionTitle ?? AppLocalization.string("Response ready")
+        } else if let heading = heading(for: label) {
+            return sessionTitle.map { "\(heading) · \($0)" } ?? heading
         }
-        return (title, hostBody)
+        return phoneTitle(for: label)
+    }
+
+    /// The push's content with the main bot named as Conduit names it
+    /// (AppState.profileDisplayName, Eric 2026-10-28): the name given it in
+    /// Conduit, `mainName`, wins over its bot's name, and an unnamed one is
+    /// "Hermes", not "Default". The host titles a Bot Chat with the bot's
+    /// name, so a chat title that is only that name is renamed with it.
+    static let mainBotName = "Hermes"
+
+    /// The name given the main profile on a push's dashboard: the one its
+    /// key was made for, else the dashboard open in the app.
+    static func mainName(dashboardID: String?, activeDashboardID: String?, names: [String: String]) -> String? {
+        (dashboardID ?? activeDashboardID).flatMap(UUID.init(uuidString:)).flatMap { names[$0.uuidString] }
+    }
+
+    static func named(_ content: [String: Any], mainName: String?) -> [String: Any] {
+        let profile = nonEmpty(content["profile"])?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard profile == "default" else { return content }
+        // "Default" or "Hermes" names it no more than an unnamed main bot.
+        let given = (nonEmpty(content["profile_name"])?.trimmingCharacters(in: .whitespacesAndNewlines))
+            .flatMap { ["default", mainBotName.lowercased()].contains($0.lowercased()) ? nil : $0 }
+        let renamed = (mainName?.trimmingCharacters(in: .whitespacesAndNewlines))
+            .flatMap { $0.isEmpty || $0 == mainBotName ? nil : $0 }
+        let name = renamed ?? given ?? mainBotName
+        // An older plugin titles an unnamed main bot's chat "Default".
+        let hostNames = given.map { [$0] } ?? ["Default", mainBotName]
+        var content = content
+        if renamed != nil || given != nil { content["profile_name"] = name } else { content.removeValue(forKey: "profile_name") }
+        if let chat = nonEmpty(content["session_title"])?.trimmingCharacters(in: .whitespacesAndNewlines),
+           hostNames.contains(where: { $0.caseInsensitiveCompare(chat) == .orderedSame }) {
+            content["session_title"] = name
+        }
+        return content
+    }
+
+    /// Which profile the push came from (#1415): its bot's name
+    /// (`profile_name`, unless it is only the id), else its id capitalized, left out for an unnamed default
+    /// profile and when the title already ends with it (a Bot Chat's).
+    static func profileLine(_ content: [String: Any], title: String?) -> String? {
+        // Routing reads a profile id trimmed and lowercased, so "Default" is the default too.
+        let profile = nonEmpty(content["profile"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A name that is only the id names it no more than the id (BotProfile.displayLabel).
+        let given = nonEmpty(content["profile_name"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let name = given.flatMap({ $0.lowercased() == profile?.lowercased() ? nil : $0 })
+            ?? profile.flatMap({ $0.lowercased() == "default" ? nil : String($0.prefix(1)).uppercased() + String($0.dropFirst()) })
+        else { return nil }
+        if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           title == name.lowercased() || title.hasSuffix(" · \(name.lowercased())") { return nil }
+        return name
     }
 
     private static func heading(for label: String) -> String? {
@@ -77,19 +140,6 @@ enum NotificationCopy {
         case "turn.failed": return AppLocalization.string("Turn failed")
         case "background_task.finished": return AppLocalization.string("Task finished")
         case "call.requested": return AppLocalization.string("Hermes wants to talk")
-        default: return nil
-        }
-    }
-
-    /// What Pulse brings (`pulse.<kind>`), titled by itself: its chat is
-    /// hidden. A report says how many things it noticed (`count`).
-    private static func pulseTitle(for label: String, count: Int?) -> String? {
-        switch label {
-        case "pulse.noticed":
-            guard let count, count > 1 else { return AppLocalization.string("Pulse noticed something") }
-            return AppLocalization.string("Pulse noticed \(count) things")
-        case "pulse.brief": return AppLocalization.string("Your morning brief")
-        case "pulse.followup": return AppLocalization.string("Pulse · Follow-up")
         default: return nil
         }
     }

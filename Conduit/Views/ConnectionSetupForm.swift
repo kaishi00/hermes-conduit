@@ -250,7 +250,7 @@ struct ConnectionSetupForm: View {
     private var credentialsRequiredRecovery: some View {
         ConnectionSetupBanner(tone: .pending) {
             Text(ConnectionSetupTestState.credentialsRequiredMessage)
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("setup.test.credentials-required")
             Button(AppLocalization.string("Enter Credentials")) {
@@ -275,12 +275,12 @@ struct ConnectionSetupForm: View {
         ConnectionSetupBanner(tone: .failure) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(verbatim: failure.userTitle)
-                    .font(.callout.weight(.semibold))
+                    .scaledFont(.callout.weight(.semibold))
                     .foregroundStyle(Color.red)
                     .fixedSize(horizontal: false, vertical: true)
                 // The stable classified copy — never a raw error string.
                 Text(failure.userMessage)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(Color.primary.opacity(0.72))
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("setup.test.failure")
@@ -314,7 +314,7 @@ struct ConnectionSetupForm: View {
                     // the login screen" while the app shell is up.
                     ConnectionSetupBanner(tone: .pending) {
                         Text(ConnectionSetupSettingsReview.signInAgainMessage(connected: settingsReview.isSessionConnected))
-                            .font(.callout.weight(.semibold))
+                            .scaledFont(.callout.weight(.semibold))
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("setup.test.sign-in-again")
                     }
@@ -325,7 +325,7 @@ struct ConnectionSetupForm: View {
                         Text(flow.isRepairingConnection
                              ? ConnectionSetupTestState.repairInteractiveMessage
                              : ConnectionSetupTestState.interactiveReadyMessage)
-                            .font(.callout.weight(.semibold))
+                            .scaledFont(.callout.weight(.semibold))
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("setup.test.interactive-ready")
                     }
@@ -334,7 +334,7 @@ struct ConnectionSetupForm: View {
                         Text(flow.isRepairingConnection
                              ? ConnectionSetupTestState.repairSignInChoiceMessage
                              : ConnectionSetupTestState.signInChoiceMessage)
-                            .font(.callout.weight(.semibold))
+                            .scaledFont(.callout.weight(.semibold))
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("setup.test.sign-in-choice")
                     }
@@ -345,7 +345,7 @@ struct ConnectionSetupForm: View {
                 } else {
                     ConnectionSetupBanner(tone: .success) {
                         Text(ConnectionSetupTestState.readyMessage)
-                            .font(.callout.weight(.semibold))
+                            .scaledFont(.callout.weight(.semibold))
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("setup.test.ready")
                     }
@@ -407,10 +407,15 @@ struct ConnectionSetupForm: View {
             if let failure = review.signInFailure {
                 ConnectionSetupBanner(tone: .failure) {
                     Text(failure.userMessage)
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(Color.red)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("setup.review.sign-in-again-failure")
+                }
+            }
+            if review.showsPrivateSignInSwitch {
+                ConnectionSetupPanel {
+                    PrivateSignInPageToggle(identifier: "setup.review.sign-in-again-private")
                 }
             }
             LoginPrimaryButton(title: AppLocalization.string("Sign In Again")) { review.signInAgain() }
@@ -420,7 +425,10 @@ struct ConnectionSetupForm: View {
 
     /// Round 6: the Repair review's final actions. Reconnect Now requires a
     /// current validated candidate (a consumed one forces a fresh test);
-    /// Sign In to Reconnect opens the existing AuthWebView; an activation
+    /// Sign In to Reconnect opens the sign-in the test decided (native
+    /// sign-in in an ASWebAuthenticationSession, or the embedded
+    /// AuthWebView), with the Private
+    /// sign-in page switch above it when that can be native; an activation
     /// failure is shown classified with the explicit next step. Never an
     /// automatic retry, never an automatic reconnection.
     @ViewBuilder
@@ -433,13 +441,18 @@ struct ConnectionSetupForm: View {
             if let failure = repair.activationFailure {
                 ConnectionSetupBanner(tone: .failure) {
                     Text(failure.userMessage)
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(Color.red)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("setup.review.reconnect-failure")
                 }
             }
             if repair.isInteractive {
+                if repair.showsPrivateSignInSwitch {
+                    ConnectionSetupPanel {
+                        PrivateSignInPageToggle(identifier: "setup.review.sign-in-reconnect-private")
+                    }
+                }
                 LoginPrimaryButton(title: AppLocalization.string("Sign In to Reconnect")) { repair.signInToReconnect() }
                     .accessibilityIdentifier("setup.review.sign-in-reconnect")
                 if repair.offersPasswordSignIn {
@@ -485,10 +498,10 @@ struct ConnectionSetupForm: View {
             ConnectionSetupBanner(tone: .failure) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("These settings can’t be used yet. Go Back to edit them, then return here.")
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     Text(error.message)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -508,10 +521,10 @@ struct ConnectionSetupForm: View {
         if let error = flow.validationError {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "exclamationmark.circle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .accessibilityHidden(true)
                 Text(error.message)
-                    .font(.footnote.weight(.medium))
+                    .scaledFont(.footnote.weight(.medium))
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("setup.validation")
             }
@@ -524,10 +537,10 @@ struct ConnectionSetupForm: View {
     private func reviewValue(_ title: String, _ value: String, first: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(verbatim: title)
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text(verbatim: value)
-                .font(.callout)
+                .scaledFont(.callout)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -593,7 +606,7 @@ struct ConnectionSetupStageRow: View {
                 .conduitFixedGlyph()
                 .frame(width: 22)
             Text(label)
-                .font(.subheadline.weight(stageState == .pending ? .regular : .semibold))
+                .scaledFont(.subheadline.weight(stageState == .pending ? .regular : .semibold))
                 .foregroundStyle(stageState == .pending ? Color.primary.opacity(0.58) : Color.primary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -614,14 +627,14 @@ struct ConnectionSetupStageRow: View {
         switch stageState {
         case .pending:
             Image(systemName: "circle")
-                .font(.body)
+                .scaledFont(.body)
                 .foregroundStyle(.conduitTertiary)
         case .running:
             ProgressView()
                 .controlSize(.small)
         case .succeeded:
             Image(systemName: "checkmark.circle.fill")
-                .font(.body)
+                .scaledFont(.body)
                 .foregroundStyle(.green)
         case .requiresInteractiveSignIn, .requiresCredentials, .requiresSignInChoice:
             // An open circle in the accent color: deliberately not a
@@ -629,11 +642,11 @@ struct ConnectionSetupStageRow: View {
             // mark (nothing failed). All are partial outcomes — text and
             // VoiceOver carry which one it is.
             Image(systemName: "circle")
-                .font(.body)
+                .scaledFont(.body)
                 .foregroundStyle(.conduitAccent)
         case .failed:
             Image(systemName: "xmark.circle.fill")
-                .font(.body)
+                .scaledFont(.body)
                 .foregroundStyle(.red)
         }
     }

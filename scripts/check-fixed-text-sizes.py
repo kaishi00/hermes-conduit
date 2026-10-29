@@ -22,6 +22,14 @@ lines (`Text(\n"Title"\n).font(...)`) and one that is itself an argument
 after a comment is counted as the Text's, so a glyph's font there needs the
 exemption.
 
+A text style is set with `.scaledFont(.caption)`, not `.font(.caption)`: a
+Mac draws every text style at one size, so a wide column there sets them in
+points (ScaledFont.swift), which only `scaledFont` sees. Any `.font(` whose
+argument names a text style is reported, unless the comment lines just
+above say why it must stay a Font (`// Text style: <reason>`, such as a
+`Text` joined with `+`, which needs `Text`'s own `font`). It reads one line at a
+time, so a `.font(` whose style starts the next line isn't seen.
+
 Usage: check-fixed-text-sizes.py [--repo-root DIR]
 """
 
@@ -34,6 +42,10 @@ SOURCE_DIRS = ("Conduit",)
 TEXT_START = re.compile(r"\bText\s*\(")
 FIXED_SIZE = re.compile(r"\.system\(size:\s*\d")
 EXEMPTION = "// Fixed size:"
+TEXT_STYLE_FONT = re.compile(
+    r"\.font\(\s*(?:[^()]*?\?\s*)?(?:Font)?(?:\.system\()?\.(?:caption2?|footnote|subheadline|body|callout|"
+    r"title[23]?|headline|largeTitle)\b")
+TEXT_STYLE_EXEMPTION = "// Text style:"
 
 
 def owning_text(line):
@@ -47,11 +59,11 @@ def owning_text(line):
     return None
 
 
-def stated_reason(lines, index):
+def stated_reason(lines, index, exemption=EXEMPTION):
     """Whether the comment lines just above line `index` say why."""
     above = index - 1
     while above >= 0 and lines[above].strip().startswith("//"):
-        if EXEMPTION in lines[above]:
+        if exemption in lines[above]:
             return True
         above -= 1
     return False
@@ -85,6 +97,22 @@ def find_problems(sources):
     return problems
 
 
+def find_text_style_fonts(sources):
+    """sources: {path: text}. Returns ["path:line: ..."] for each text style
+    set with `.font(` rather than `.scaledFont(`."""
+    problems = []
+    for path, text in sorted(sources.items()):
+        lines = text.splitlines()
+        for index, line in enumerate(lines):
+            code = line.split("//", 1)[0]
+            if TEXT_STYLE_FONT.search(code) and not stated_reason(lines, index, TEXT_STYLE_EXEMPTION):
+                problems.append(
+                    f"{path}:{index + 1}: a text style set with .font( stays one size on a Mac; "
+                    "use .scaledFont(, or say why with "
+                    f"'{TEXT_STYLE_EXEMPTION} ...' on the line above")
+    return problems
+
+
 def load_sources(repo_root):
     sources = {}
     for directory in SOURCE_DIRS:
@@ -102,13 +130,13 @@ def main():
     parser.add_argument("--repo-root", default=".")
     args = parser.parse_args()
     sources = load_sources(args.repo_root)
-    problems = find_problems(sources)
+    problems = find_problems(sources) + find_text_style_fonts(sources)
     if problems:
-        print(f"FAIL: {len(problems)} fixed text size(s):")
+        print(f"FAIL: {len(problems)} fixed text size(s) or text style(s) set with .font(:")
         for problem in problems:
             print(f"  {problem}")
         return 1
-    print(f"OK: no fixed text sizes in {len(sources)} Swift files.")
+    print(f"OK: no fixed text sizes or .font( text styles in {len(sources)} Swift files.")
     return 0
 
 

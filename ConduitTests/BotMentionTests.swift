@@ -235,32 +235,6 @@ final class BotMentionTests: XCTestCase {
         )
     }
 
-    // MARK: - Forever-chat reroute
-
-    func testNewAndResetRerouteToCompactOnlyInCanonicalChat() {
-        XCTAssertEqual(
-            BotMentions.foreverChatRerouteText(for: "/new", isCanonicalBotChat: true),
-            "/compact"
-        )
-        XCTAssertEqual(
-            BotMentions.foreverChatRerouteText(for: "/reset", isCanonicalBotChat: true),
-            "/compact"
-        )
-        XCTAssertEqual(
-            BotMentions.foreverChatRerouteText(for: "/clear", isCanonicalBotChat: true),
-            "/compact",
-            "/clear starts a new chat too, so a bot's forever chat compacts instead"
-        )
-        XCTAssertNil(BotMentions.foreverChatRerouteText(for: "/new", isCanonicalBotChat: false))
-        // Padded forms reroute; anything else keeps slash-command freedom.
-        XCTAssertEqual(
-            BotMentions.foreverChatRerouteText(for: "  /new  ", isCanonicalBotChat: true),
-            "/compact"
-        )
-        XCTAssertNil(BotMentions.foreverChatRerouteText(for: "/new extra", isCanonicalBotChat: true))
-        XCTAssertNil(BotMentions.foreverChatRerouteText(for: "/compact", isCanonicalBotChat: true))
-    }
-
     // MARK: - Tag helpers
 
     func testMentionTagPrefersFriendlyFormAndHandleFallsBack() {

@@ -30,9 +30,10 @@ enum GrokLiveProtocol {
     static let delegationInstructions = "\nYou can't see the user's email, messages, calendar and schedule, to-dos, health or patient portals, bank or other accounts, files or systems, and web lookups can't reach them either; their Hermes agent can. Whenever the user asks you to check, read, find, send or do anything there (\"what's on my plate today?\" included), call start_job with their request instead of saying you can't. If they only ask whether you can see it, say Hermes can check it for them. Never answer it from guesses or a web lookup, and if start_job fails, tell them plainly. Public facts anyone could look up (weather, news, sports, stock prices) aren't Hermes work: look them up with web_search or x_search on this call, never with start_job."
 
     /// Grok answers start_job as soon as the job exists, so a claim can wait
-    /// for it. On a user's call Grok spoke a start_job call as text and said
+    /// for it (the shared instructions, built with `acknowledgesOnceStarted`,
+    /// say to acknowledge only once it returns). On a user's call Grok spoke a start_job call as text and said
     /// the work was queued when nothing ran.
-    static let jobClaimInstructions = "\nOn this call start_job answers as soon as Hermes has the job. This replaces the acknowledgement rule above: call start_job without announcing it first, and only once it returns started tell the user in a few words that Hermes is on it. Never say anything was started, queued, sent or done unless a tool's result said so; if a tool returns an error or not_started, tell the user plainly. Tools are only ever function calls: never speak a tool call, its name or its arguments."
+    static let jobClaimInstructions = "\nOn this call start_job answers as soon as Hermes has the job. Never say anything was started, queued, sent or done unless a tool's result said so; if a tool returns an error or not_started, tell the user plainly. Tools are only ever function calls: never speak a tool call, its name or its arguments."
 
     /// What Grok's instructions add after the shared ones: the delegation
     /// and job-claim rules, and the clock.
@@ -225,12 +226,34 @@ enum GrokLiveProtocol {
         /// The function names xAI's session.updated echoes back: which of
         /// the declared tools it took, for the call's trace.
         case acceptedFunctions([String])
-        /// The user's words so far in one input item. xAI sends these as
-        /// cumulative snapshots, sometimes more than once per item, not as
-        /// deltas: the session turns them into the new words only.
-        /// `itemID` is nil when xAI sent none.
-        case inputTranscriptSnapshot(itemID: String?, text: String)
+        /// The turn detection session.updated echoes back, for the call's
+        /// trace: what the server applied, not what was asked (#1418).
+        case turnDetection(String)
+        /// The server's turn detector heard the user start
+        /// (`speech_started`, which also interrupts the model) or stop
+        /// (`speech_stopped`), for the call's trace.
+        case speechStarted
+        case speechStopped
+        /// The user's words in one input item, whole each time, not as
+        /// deltas. xAI sends drafts while the user talks, each rewriting
+        /// the last, then one completed transcript per item; the session
+        /// keeps only the last one. `itemID` is nil when xAI sent none.
+        case inputTranscriptSnapshot(itemID: String?, text: String, stage: InputTranscriptStage)
         case event(GeminiLiveProtocol.ServerEvent)
+    }
+
+    /// How far an input transcript has got, from its event's `status`.
+    enum InputTranscriptStage: Equatable {
+        /// `in_progress`: a draft a later snapshot of the item replaces. A
+        /// draft cut mid-phrase ends in "...", and later drafts rewrite
+        /// earlier words, so one isn't an extension of the last.
+        case draft
+        /// `completed`: the item's final transcript, sent once, before the
+        /// reply's own transcript starts.
+        case completed
+        /// No status: a server that sends each item's transcript once, as
+        /// the Realtime protocol does.
+        case unstated
     }
 
     /// One frame can carry at most one event; unknown types are ignored.
@@ -239,9 +262,11 @@ enum GrokLiveProtocol {
               let type = object["type"] as? String else { return [] }
         switch type {
         case "session.updated":
-            let tools = (object["session"] as? [String: Any])?["tools"] as? [[String: Any]]
+            let session = object["session"] as? [String: Any]
+            let tools = session?["tools"] as? [[String: Any]]
             let names = tools?.compactMap { $0["type"] as? String == "function" ? $0["name"] as? String : nil }
-            return [.sessionUpdated] + (names.map { [.acceptedFunctions($0)] } ?? [])
+            return [.sessionUpdated, .turnDetection(turnDetectionSummary(session?["turn_detection"]))]
+                + (names.map { [.acceptedFunctions($0)] } ?? [])
         case "error":
             let error = object["error"] as? [String: Any]
             let message = (error?["message"] as? String) ?? (object["message"] as? String) ?? (error?["code"] as? String) ?? ""
@@ -253,11 +278,19 @@ enum GrokLiveProtocol {
         case "input_audio_buffer.speech_started":
             // The user started speaking: the server cancels the response,
             // and playback has to stop now.
-            return [.event(.interrupted)]
+            return [.speechStarted, .event(.interrupted)]
+        case "input_audio_buffer.speech_stopped":
+            return [.speechStopped]
         case "conversation.item.input_audio_transcription.completed":
             guard let text = object["transcript"] as? String, !text.isEmpty else { return [] }
             let itemID = (object["item_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            return [.inputTranscriptSnapshot(itemID: itemID, text: text)]
+            let stage: InputTranscriptStage
+            switch object["status"] as? String {
+            case "in_progress": stage = .draft
+            case "completed": stage = .completed
+            default: stage = .unstated
+            }
+            return [.inputTranscriptSnapshot(itemID: itemID, text: text, stage: stage)]
         case "response.output_audio.delta", "response.audio.delta":
             guard let base64 = object["delta"] as? String, let pcm = Data(base64Encoded: base64), !pcm.isEmpty else { return [] }
             return [.event(.audio(pcm, sampleRate: outputSampleRate))]
@@ -283,18 +316,20 @@ enum GrokLiveProtocol {
         }
     }
 
-    /// What a cumulative input transcript snapshot adds to the item's last
-    /// one, as the delta the shared controller appends; nil when it adds
-    /// nothing. Only a snapshot that extends the last one adds words: an
-    /// appended transcript can't take words back, so a revision of earlier
-    /// words ("send mail" then "send the mail") adds nothing rather than
-    /// repeating them. The session keeps a longer revision as the baseline:
-    /// words a later snapshot adds after it still arrive, but the revised
-    /// words themselves never reach the transcript.
-    static func inputTranscriptDelta(previous: String, snapshot: String) -> String? {
-        guard snapshot != previous, snapshot.hasPrefix(previous) else { return nil }
-        let added = String(snapshot.dropFirst(previous.count))
-        return added.isEmpty ? nil : added
+    /// The echoed turn detection in a line: its type and the settings it
+    /// states. Absent is "not stated", null is off.
+    static func turnDetectionSummary(_ value: Any?) -> String {
+        guard let value else { return "not stated" }
+        guard let object = value as? [String: Any] else { return value is NSNull ? "off" : "not readable" }
+        var parts = [(object["type"] as? String) ?? "no type"]
+        let settings = [
+            ("threshold", "threshold"), ("silence_duration_ms", "silence ms"),
+            ("prefix_padding_ms", "prefix ms"), ("idle_timeout_ms", "idle timeout ms"),
+        ]
+        for (key, label) in settings {
+            if let number = object[key] as? NSNumber { parts.append("\(label) \(number)") }
+        }
+        return parts.joined(separator: ", ")
     }
 
     /// `arguments` is a JSON string; Conduit's tools take string values.

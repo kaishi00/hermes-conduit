@@ -15,7 +15,7 @@ struct NotifierPluginStatus: Equatable {
     static let path = "/api/plugins/conduit_push/capabilities"
 
     /// Plugin features Conduit uses, by the plugin's capability id. Must match
-    /// ROUTE_CAPABILITIES in hermes-conduit-notifier's dashboard/plugin_api.py.
+    /// ROUTE_CAPABILITIES in hermes-conduit-notifier's dashboard/api/capabilities.py.
     static let usedCapabilities = [
         "session-takeover",
         "voice-sessions",
@@ -31,6 +31,7 @@ struct NotifierPluginStatus: Equatable {
         "e2e-notifications",
         "desktop-views",
         "hermes-calls",
+        DashboardPath.dashboardProfilesCapability,
         // "watch-chats" is left out on purpose: only Watch calls use it, and
         // they fall back to the phone without it, so it's no reason to nag.
     ]
@@ -255,6 +256,15 @@ struct NotifierPluginStatus: Equatable {
     /// Older ones serve /voice-tools with health only.
     var servesLocationVoice: Bool {
         reports("voice-tools") && !Self.isOlder(runningVersion, than: Self.locationVoiceVersion)
+    }
+
+    /// Whether the running plugin takes `?conduit_profile=` on the routes
+    /// that need the dashboard process (DashboardPath.conduitProfileParameter).
+    var servesDashboardProfiles: Bool { reports(DashboardPath.dashboardProfilesCapability) }
+
+    /// The query parameter that names the profile on those routes.
+    var dashboardProfileParameter: String {
+        servesDashboardProfiles ? DashboardPath.conduitProfileParameter : "profile"
     }
 
     /// True only when the plugin reported this capability.

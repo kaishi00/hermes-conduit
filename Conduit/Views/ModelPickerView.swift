@@ -8,21 +8,9 @@
 import SwiftUI
 import UIKit
 
-func sessionYoloSelectionChanged(from initial: Bool?, to selected: Bool) -> Bool {
-    guard let initial else { return false }
-    return initial != selected
-}
-
-/// Whether an approval-mode change crosses the global "off" floor boundary.
-/// Only such transitions affect the YOLO toggle; e.g. manual ↔ smart must not
-/// discard an in-progress draft.
-func yoloFloorBoundaryCrossed(from previousMode: String?, to newMode: String?) -> Bool {
-    (previousMode?.lowercased() == "off") != (newMode?.lowercased() == "off")
-}
-
-/// Whether Apply should ask Hermes to switch models. Re-sending the current
-/// model on every Apply (e.g. when only the reasoning level changed) would
-/// re-trigger the gateway's expensive-model confirmation for no reason.
+/// Whether a tapped row should ask Hermes to switch models. Re-sending the
+/// current model (re-tapping the checked row) would re-trigger the gateway's
+/// expensive-model confirmation for no reason.
 func modelPickerSelectionChanged(
     selectedModel: String,
     selectedProvider: String,
@@ -106,102 +94,54 @@ enum ModelSpeed: String, CaseIterable, Identifiable {
     }
 }
 
-/// The settings an Apply sends, captured from the sheet's draft.
-struct ModelPickerApplyDraft: Equatable {
-    var model: String
-    var provider: String
-    var yoloChanged: Bool
-    var yolo: Bool
-    /// The effort word sent to Hermes ("none" turns reasoning off), or nil
-    /// to leave reasoning alone. The sheet sets reasoning on tap instead.
-    var reasoningEffort: String?
-    /// Sent only when changed, so Apply never rewrites a speed set
-    /// elsewhere (a typed `/fast cold`, or Ultrafast on an older sheet).
-    var speedChanged: Bool
-    var speed: ModelSpeed
-}
-
-/// The gateway writes one Apply makes, in order. Injected so the apply flow
-/// is testable without a gateway.
-struct ModelPickerApplyActions {
-    var setModel: @MainActor (_ model: String, _ provider: String, _ confirmed: Bool) async throws -> ModelSwitchOutcome
-    var setYolo: @MainActor (_ enabled: Bool) async -> AppState.YoloWriteFailure?
-    var setReasoning: @MainActor (_ effort: String) async throws -> Void
-    var setSpeed: @MainActor (_ speed: ModelSpeed) async throws -> Void
-}
-
-/// How far an Apply got. Steps already applied stay applied when a later one
-/// fails, so the sheet records them and a retry does not send them again.
-struct ModelPickerApplyProgress: Equatable {
-    /// The model Hermes resolved the pick to, when this apply switched it.
-    var switchedModel: String?
-    var yoloApplied = false
-    var reasoningApplied = false
-    var speedApplied = false
-}
-
-enum ModelPickerApplyResult: Equatable {
-    case completed(ModelPickerApplyProgress)
-    /// Nothing was applied; Hermes wants this message confirmed first.
+/// What tapping a model row got from Hermes.
+enum ModelPickerSwitchResult: Equatable {
+    /// The model Hermes resolved the pick to. A deferred switch (mid-turn)
+    /// applies at the next turn start; Hermes' session.info reports the
+    /// pending pick meanwhile.
+    case switched(model: String, deferred: Bool)
+    /// Nothing was switched; Hermes wants this message confirmed first.
     case needsConfirmation(String)
-    case failed(String, ModelPickerApplyProgress)
+    case failed(String)
 }
 
-/// Runs one Apply: the model switch first, as the confirmation gate, then
-/// YOLO, reasoning and speed. A guarded switch stops before anything else is
-/// written, so cancelling its confirmation leaves the session untouched.
+/// Sends one model switch. A guarded pick comes back as needing
+/// confirmation, so cancelling it leaves the session on its model.
 @MainActor
-func runModelPickerApply(
-    _ draft: ModelPickerApplyDraft,
-    sendModelSwitch: Bool,
-    confirmedModelSwitch: Bool,
-    actions: ModelPickerApplyActions
-) async -> ModelPickerApplyResult {
-    var progress = ModelPickerApplyProgress()
+func runModelPickerSwitch(
+    to model: String,
+    confirmed: Bool,
+    setModel: @MainActor (_ confirmed: Bool) async throws -> ModelSwitchOutcome
+) async -> ModelPickerSwitchResult {
     do {
-        // A confirmed retry always re-sends: the runtime may have moved while
-        // the alert was up, and the confirmation must reach Hermes.
-        if sendModelSwitch || confirmedModelSwitch {
-            let outcome = try await actions.setModel(draft.model, draft.provider, confirmedModelSwitch)
-            if outcome.confirmRequired {
-                // A gateway that still asks after a confirmed retry would
-                // loop the alert forever; report it instead.
-                if confirmedModelSwitch {
-                    return .failed(
-                        outcome.confirmMessage.isEmpty
-                            ? AppLocalization.string("Hermes did not accept the model switch.")
-                            : outcome.confirmMessage,
-                        progress
-                    )
-                }
-                return .needsConfirmation(
-                    outcome.confirmMessage.isEmpty
-                        ? AppLocalization.string("Hermes asks you to confirm switching to \(draft.model).")
-                        : outcome.confirmMessage
-                )
-            }
-            // A deferred switch (mid-turn) applies at the next turn start;
-            // Hermes' session.info reports the pending pick meanwhile.
-            progress.switchedModel = outcome.model
+        let outcome = try await setModel(confirmed)
+        guard outcome.confirmRequired else {
+            return .switched(model: outcome.model, deferred: outcome.deferred)
         }
-        if draft.yoloChanged {
-            if let failure = await actions.setYolo(draft.yolo) {
-                return .failed(failure.message ?? AppLocalization.string("Unable to change YOLO mode."), progress)
-            }
-            progress.yoloApplied = true
+        // A gateway that still asks after a confirmed retry would loop the
+        // alert forever; report it instead.
+        if confirmed {
+            return .failed(
+                outcome.confirmMessage.isEmpty
+                    ? AppLocalization.string("Hermes did not accept the model switch.")
+                    : outcome.confirmMessage
+            )
         }
-        if let effort = draft.reasoningEffort {
-            try await actions.setReasoning(effort)
-            progress.reasoningApplied = true
-        }
-        if draft.speedChanged {
-            try await actions.setSpeed(draft.speed)
-            progress.speedApplied = true
-        }
-        return .completed(progress)
+        return .needsConfirmation(
+            outcome.confirmMessage.isEmpty
+                ? AppLocalization.string("Hermes asks you to confirm switching to \(model).")
+                : outcome.confirmMessage
+        )
     } catch {
-        return .failed(UserFacingError.message(for: error), progress)
+        return .failed(UserFacingError.message(for: error))
     }
+}
+
+/// The speed to write after switching to a model: Ultrafast falls back to
+/// Fast on a model that doesn't offer it (a row that says nothing counts as
+/// lacking it). Nil leaves the speed alone.
+func modelPickerSpeedAfterSwitch(_ speed: ModelSpeed, ultrafastOffered: Bool?) -> ModelSpeed? {
+    speed == .ultrafast && ultrafastOffered != true ? .fast : nil
 }
 
 /// What this sheet last switched Hermes to: the catalog row picked and the
@@ -211,7 +151,7 @@ struct ModelPickerSwitchedRow: Equatable {
     var resolvedModel: String
 }
 
-/// Whether Apply sends a model switch for `selection`. A row this sheet
+/// Whether a tap sends a model switch for `selection`. A row this sheet
 /// already switched to is skipped only while the runtime still runs what
 /// Hermes resolved it to; any outside change re-syncs it.
 func modelPickerShouldSwitch(
@@ -231,21 +171,6 @@ func modelPickerShouldSwitch(
         runtimeModel: runtimeModel,
         runtimeProvider: runtimeProvider
     )
-}
-
-struct ModelPickerYoloDraft: Equatable {
-    let initial: Bool
-    let selected: Bool
-
-    init(runtimeYolo: Bool) {
-        initial = runtimeYolo
-        selected = runtimeYolo
-    }
-
-    static func seededIfNeeded(initial: Bool?, runtimeYolo: Bool) -> ModelPickerYoloDraft? {
-        guard initial == nil else { return nil }
-        return ModelPickerYoloDraft(runtimeYolo: runtimeYolo)
-    }
 }
 
 /// What a model list shows before it has rows to pick from: the model
@@ -271,35 +196,29 @@ struct ModelPickerSelection: Equatable {
     var provider: String
 }
 
-/// Everything an Apply would send. An error shown for one draft is stale as
-/// soon as the draft changes.
-private struct ModelPickerDraftKey: Equatable {
-    var model: String
-    var provider: String
-    var speed: ModelSpeed
-    var yolo: Bool
+/// A tapped row Hermes wants confirmed before it switches.
+private struct ModelPickerConfirmation: Equatable {
+    var selection: ModelPickerSelection
+    /// The row checked before the tap, still the session's model.
+    var previous: ModelPickerSelection
+    var message: String
 }
 
 struct ModelPickerView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedModel = ""
     @State private var selectedProvider = ""
     /// The runtime's effort word ("none" when off); set on tap.
     @State private var reasoningEffort = "none"
     @State private var isApplyingReasoning = false
     @State private var reasoningError: String?
-    @State private var speed = ModelSpeed.normal
-    /// The speed the session had when the sheet seeded it; Apply writes
-    /// only a change from it.
-    @State private var initialSpeed = ModelSpeed.normal
-    /// The session's model as the catalog load seeded it, so only a model
-    /// picked here can drop Ultrafast.
-    @State private var seededModel = ""
-    @State private var seededProvider = ""
-    @State private var yoloEnabled = false
-    @State private var initialYoloEnabled: Bool?
+    /// The speed or YOLO value being written, shown until Hermes answers.
+    @State private var writingSpeed: ModelSpeed?
+    @State private var writingYolo: Bool?
+    @State private var runSettingsError: String?
     @State private var providers: [ProviderInfo] = []
     /// Whether the catalog fetch has answered, and whether it failed: an
     /// empty `providers` alone can't tell loading, failed and none apart.
@@ -311,41 +230,72 @@ struct ModelPickerView: View {
     @State private var expandedVisibilityProvider: String?
     @State private var showAllModelsFor: Set<String> = []
     @State private var visibility = ModelVisibility()
-    @State private var isApplying = false
-    @State private var applyError: String?
-    /// The gateway's guard message for a pick it will not switch to unconfirmed.
-    @State private var pendingModelConfirmation: String?
+    /// The row being switched to, while Hermes answers.
+    @State private var switchingRow: ModelPickerSelection?
+    @State private var modelError: String?
+    /// Says a switch made mid-turn waits for the reply to finish.
+    @State private var modelNote: String?
+    /// A pick Hermes will not switch to unconfirmed, with its guard message.
+    @State private var pendingConfirmation: ModelPickerConfirmation?
     /// The catalog row this sheet last switched Hermes to, so a retry does
     /// not switch to it again while the row id and `runtime.model` differ.
     @State private var switchedRow: ModelPickerSwitchedRow?
+    /// The model search: its text, the row the arrow keys have reached, and
+    /// whether the field has focus.
+    @State private var searchQuery = ""
+    @State private var highlightedMatch = 0
+    @FocusState private var searchFocused: Bool
+    /// On a Mac or with a hardware keyboard: the field takes focus on open,
+    /// a match is highlighted and Return picks it. On touch, Return only
+    /// puts the keyboard away.
+    @State private var keyboardDriven = false
+    /// Whether the search field has had focus since the sheet opened, so
+    /// the focus retry never pulls it back from a user who moved on.
+    @State private var searchWasFocused = false
 
     var body: some View {
         NavigationStack {
             ZStack {
                 // V2: a settings page's layout, each group's name over a
-                // quiet card on the profile's glow.
-                ConduitBackdrop(glowTint: appState.profileGlowTint(appState.activeProfile))
+                // quiet card on the open chat's glow (a Bot Chat's bot's).
+                ConduitBackdrop(glowTint: appState.profileGlowTint(appState.conversationIdentityProfile))
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        if editingVisibility {
-                            visibilityEditor
-                        } else {
-                            // Reasoning changes most often and the model
-                            // list can be long, so reasoning comes first.
-                            reasoningSection
-                            modelSection
-                            runSettingsSection
-                            applyButton
+                ScrollViewReader { scroller in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 24) {
+                            if editingVisibility {
+                                visibilityEditor
+                            } else {
+                                searchField
+                                if searching {
+                                    // The matches lead; reasoning stays
+                                    // below them, still at hand.
+                                    searchResultsSection
+                                    reasoningSection
+                                } else {
+                                    // Reasoning changes most often and the model
+                                    // list can be long, so reasoning comes first.
+                                    reasoningSection
+                                    modelSection
+                                }
+                                runSettingsSection
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .padding(.bottom, 24)
+                    }
+                    .scrollIndicators(.hidden)
+                    .scrollDismissesKeyboard(.interactively)
+                    .modifier(V2SoftTopScrollEdge(isOn: true))
+                    .onChange(of: highlightedMatch) { _, index in
+                        let matches = searchMatches
+                        guard searching, matches.indices.contains(index) else { return }
+                        withAnimation(ConduitMotion.response) {
+                            scroller.scrollTo(matches[index].id)
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 24)
                 }
-                .scrollIndicators(.hidden)
-                .scrollDismissesKeyboard(.interactively)
-                .modifier(V2SoftTopScrollEdge(isOn: true))
             }
             .navigationTitle("Model")
             .navigationBarTitleDisplayMode(.inline)
@@ -357,12 +307,13 @@ struct ModelPickerView: View {
                             appState.saveModelVisibility(visibility)
                             editingVisibility = false
                         } else {
+                            searchFocused = false
                             visibilityQuery = ""
                             expandedVisibilityProvider = selectedProvider
                             editingVisibility = true
                         }
                     }
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .tint(.conduitAccent)
                 }
             }
@@ -376,23 +327,32 @@ struct ModelPickerView: View {
             // leave it empty for Done to save, and a late one would replace
             // edits already made.
             visibility = appState.modelVisibility
-            // Seed the speed here too: a failed catalog fetch must not
-            // leave the draft at its initial value.
-            speed = runtimeSpeed
-            initialSpeed = runtimeSpeed
-            refreshYoloToggle(force: false)
-        }
-        .onChange(of: appState.runtime.approvalsMode) { oldMode, newMode in
-            // Only transitions into/out of the global floor affect the toggle;
-            // other mode changes (manual ↔ smart) must not discard an
-            // in-progress draft.
-            guard yoloFloorBoundaryCrossed(from: oldMode, to: newMode) else { return }
-            refreshYoloToggle(force: true)
         }
         .task { await loadModels() }
-        .onChange(of: draftKey) { _, _ in
-            applyError = nil
-            reasoningError = nil
+        .task {
+            // On a Mac or with a hardware keyboard, typing a model's name
+            // comes first. Asked again once the sheet settles, since a focus
+            // request made while it slides in can be dropped.
+            keyboardDriven = modelSearchFocusesOnOpen()
+            guard keyboardDriven else { return }
+            searchFocused = true
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled, !searchWasFocused, !editingVisibility else { return }
+            searchFocused = true
+        }
+        .onChange(of: searchQuery) { _, _ in highlightedMatch = 0 }
+        // Edit can hide the highlighted match.
+        .onChange(of: editingVisibility) { _, _ in highlightedMatch = 0 }
+        .onChange(of: searchFocused) { _, focused in
+            if focused { searchWasFocused = true }
+        }
+        // Esc closes the sheet, as the picker's taps already applied.
+        .background {
+            Button(AppLocalization.string("Close")) { dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
         }
         .onChange(of: appState.runtime.reasoningEffort) { _, effort in
             // Follow a level changed elsewhere (another device, a chat
@@ -400,36 +360,122 @@ struct ModelPickerView: View {
             guard !isApplyingReasoning else { return }
             reasoningEffort = effort.isEmpty ? "none" : effort
         }
-        .onChange(of: runtimeSpeed) { old, new in
-            // Follow a speed changed elsewhere while the sheet is open, so
-            // Apply doesn't write the stale draft back; a draft the user
-            // already changed here stays theirs.
-            guard !isApplying, speed == old else { return }
-            speed = new
-            initialSpeed = new
-        }
-        .onChange(of: ultrafastOffered) { _, _ in dropUnofferedUltrafast() }
-        .onChange(of: selectedModel) { _, _ in dropUnofferedUltrafast() }
-        .onChange(of: selectedProvider) { _, _ in dropUnofferedUltrafast() }
-        .onChange(of: applyError) { _, message in
-            // The error row appears silently; tell VoiceOver the apply failed.
-            guard let message else { return }
-            UIAccessibility.post(notification: .announcement, argument: message)
-        }
+        .onChange(of: modelError) { _, message in announce(message) }
+        .onChange(of: runSettingsError) { _, message in announce(message) }
+        .onChange(of: modelNote) { _, message in announce(message) }
         .alert(
             "Switch model?",
             isPresented: Binding(
-                get: { pendingModelConfirmation != nil },
-                set: { if !$0 { pendingModelConfirmation = nil } }
+                get: { pendingConfirmation != nil },
+                set: { if !$0 { pendingConfirmation = nil } }
             ),
-            presenting: pendingModelConfirmation
-        ) { _ in
+            presenting: pendingConfirmation
+        ) { confirmation in
             Button("Switch") {
-                Task { @MainActor in await applyModel(confirmedModelSwitch: true) }
+                Task { @MainActor in
+                    await switchModel(to: confirmation.selection, from: confirmation.previous, confirmed: true)
+                }
             }
+            // The row was never switched, so the checkmark stays where it is.
             Button("Cancel", role: .cancel) {}
-        } message: { message in
-            Text(message)
+        } message: { confirmation in
+            Text(confirmation.message)
+        }
+    }
+
+    /// Matches replace the provider list once the catalog is in; until then
+    /// the list's loading or failed state shows as usual.
+    private var searching: Bool {
+        !ModelSearchQuery(searchQuery).isEmpty
+            && ModelCatalogState.of(providers: catalogLoaded ? providers : nil, failed: catalogFailed) == .ready
+    }
+
+    private var searchMatches: [ModelSearchMatch] {
+        modelSearchMatches(in: visibleProviders, query: searchQuery)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            TextField(AppLocalization.string("Search providers or models"), text: $searchQuery)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.done)
+                .focused($searchFocused)
+                .onSubmit { pickHighlightedMatch() }
+                .onKeyPress(.downArrow) { moveHighlight(1) }
+                .onKeyPress(.upArrow) { moveHighlight(-1) }
+                .onKeyPress(.escape) {
+                    dismiss()
+                    return .handled
+                }
+            if !searchQuery.isEmpty {
+                Button {
+                    searchQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(AppLocalization.string("Clear"))
+            }
+        }
+        .scaledFont(.subheadline)
+        .padding(11)
+        .background(rowFoundation, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func moveHighlight(_ step: Int) -> KeyPress.Result {
+        guard keyboardDriven, searching else { return .ignored }
+        let matches = searchMatches
+        highlightedMatch = modelSearchHighlight(highlightedMatch, moving: step, count: matches.count)
+        // The highlight is only drawn, so VoiceOver hears which match
+        // Return will pick.
+        if matches.indices.contains(highlightedMatch) {
+            let match = matches[highlightedMatch]
+            let spoken: String = "\(match.model.id), \(match.provider.title)"
+            AccessibilityNotification.Announcement(spoken).post()
+        }
+        return .handled
+    }
+
+    /// Return picks the highlighted match, as a tap would, and keeps the
+    /// field focused for the next search. On touch it puts the keyboard away.
+    private func pickHighlightedMatch() {
+        guard keyboardDriven else {
+            searchFocused = false
+            return
+        }
+        searchFocused = true
+        let matches = searchMatches
+        guard matches.indices.contains(highlightedMatch), !modelRowsLocked else { return }
+        pick(matches[highlightedMatch].model, provider: matches[highlightedMatch].provider)
+    }
+
+    /// Each match names its provider: several providers often serve the
+    /// same model, and the pick switches to that provider's route.
+    private var searchResultsSection: some View {
+        ModelPickerSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent, flush: true) {
+            let matches = searchMatches
+            if matches.isEmpty {
+                Text(verbatim: AppLocalization.string("Nothing matches “\(searchQuery.trimmingCharacters(in: .whitespacesAndNewlines))”."))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+            }
+            ForEach(Array(matches.enumerated()), id: \.element.id) { index, match in
+                modelRow(match.model, provider: match.provider, showsProvider: true, isHighlighted: keyboardDriven && index == highlightedMatch)
+                    .id(match.id)
+                if index < matches.count - 1 {
+                    Divider()
+                        .overlay(rowStroke)
+                        .padding(.leading, 16)
+                }
+            }
+            modelStatusRows
         }
     }
 
@@ -443,17 +489,17 @@ struct ModelPickerView: View {
             case .failed:
                 VStack(alignment: .leading, spacing: 8) {
                     Text(AppLocalization.string("Could not load models."))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     Button(AppLocalization.string("Try Again")) { Task { await loadModels() } }
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .tint(.conduitAccent)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
             case .empty:
                 Text("No models are available from this gateway.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(16)
             case .ready:
@@ -466,11 +512,32 @@ struct ModelPickerView: View {
                 }
                 if shown.isEmpty {
                     Text("All providers are hidden. Tap Edit to restore one.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(16)
                 }
             }
+
+            modelStatusRows
+        }
+    }
+
+    /// The composer's error banner sits behind this sheet, so a failed
+    /// switch is reported here.
+    @ViewBuilder
+    private var modelStatusRows: some View {
+        if let modelError {
+            Label(modelError, systemImage: "exclamationmark.triangle.fill")
+                .scaledFont(.footnote)
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+        } else if let modelNote {
+            Text(modelNote)
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
         }
     }
 
@@ -485,18 +552,18 @@ struct ModelPickerView: View {
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "cube.transparent")
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.conduitAccent)
                         .frame(width: 20)
                         .accessibilityHidden(true)
                     Text(provider.name)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                     Spacer(minLength: 12)
                     Text("\(provider.models.count)")
-                        .font(.caption.monospacedDigit())
+                        .scaledFont(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
                 }
@@ -526,36 +593,49 @@ struct ModelPickerView: View {
         }
     }
 
-    private func modelRow(_ model: ModelInfo, provider: ProviderInfo) -> some View {
+    /// `showsProvider` for a search match, which isn't under its provider's
+    /// name; `isHighlighted` for the match the arrow keys have reached.
+    private func modelRow(
+        _ model: ModelInfo,
+        provider: ProviderInfo,
+        showsProvider: Bool = false,
+        isHighlighted: Bool = false
+    ) -> some View {
         // The provider too, by any of its spellings: two providers can list
         // the same model id.
         let isSelected = selectedModel == model.id && provider.matches(selectedProvider)
+        let isSwitching = switchingRow.map { $0.model == model.id && provider.matches($0.provider) } ?? false
         return Button {
-            Haptics.selectionChanged(selectedModel != model.id || !provider.matches(selectedProvider))
-            selectedModel = model.id
-            selectedProvider = provider.name
+            pick(model, provider: provider)
         } label: {
             HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(model.id)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
-                    if let label = model.label {
-                        Text(label)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                if showsProvider {
+                    ModelSearchResultText(title: model.id, detail: model.label, provider: provider.title)
+                } else {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(model.id)
+                            .scaledFont(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                        if let label = model.label {
+                            Text(label)
+                                .scaledFont(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
                     }
                 }
                 Spacer(minLength: 12)
-                if isSelected {
+                if isSwitching {
+                    ProgressView()
+                        .accessibilityLabel(AppLocalization.string("Switching model"))
+                } else if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.conduitAccent)
                         .accessibilityHidden(true)
                 }
             }
-            // Under the provider's name.
-            .padding(.leading, 42)
+            // Under the provider's name, unless the row names it.
+            .padding(.leading, showsProvider ? 12 : 42)
             .padding(.trailing, 12)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -563,11 +643,32 @@ struct ModelPickerView: View {
                 isSelected ? Color.conduitAccent.opacity(colorScheme == .dark ? 0.14 : 0.08) : .clear,
                 in: RoundedRectangle(cornerRadius: 12, style: .continuous)
             )
+            .overlay {
+                if isHighlighted {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.conduitAccent, lineWidth: 2)
+                }
+            }
             .padding(.horizontal, 4)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(modelRowsLocked)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// One switch at a time, and not under another write.
+    private var modelRowsLocked: Bool {
+        switchingRow != nil || isApplyingReasoning || writingSpeed != nil || writingYolo != nil
+    }
+
+    /// A tapped row, or the search match Return picked.
+    private func pick(_ model: ModelInfo, provider: ProviderInfo) {
+        let isSelected = selectedModel == model.id && provider.matches(selectedProvider)
+        Haptics.selectionChanged(!isSelected)
+        let previous = ModelPickerSelection(model: selectedModel, provider: selectedProvider)
+        let selection = ModelPickerSelection(model: model.id, provider: provider.name)
+        Task { @MainActor in await switchModel(to: selection, from: previous) }
     }
 
     private var reasoningSection: some View {
@@ -592,7 +693,7 @@ struct ModelPickerView: View {
 
             if let reasoningError {
                 Label(reasoningError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding([.horizontal, .bottom], 16)
@@ -608,8 +709,8 @@ struct ModelPickerView: View {
             reasoningPillLabel(level.title, isSelected: isSelected)
         }
         .buttonStyle(.plain)
-        // One write at a time: Apply may switch the model under this level.
-        .disabled(isApplyingReasoning || isApplying || appState.isWritingReasoningEffort)
+        // One write at a time: a model switch may change the level under it.
+        .disabled(isApplyingReasoning || switchingRow != nil || appState.isWritingReasoningEffort)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -617,7 +718,7 @@ struct ModelPickerView: View {
     /// dark-mode gold, white on the light-mode brown), the rest quiet.
     private func reasoningPillLabel(_ title: String, isSelected: Bool) -> some View {
         Text(title)
-            .font(.subheadline.weight(isSelected ? .semibold : .regular))
+            .scaledFont(.subheadline.weight(isSelected ? .semibold : .regular))
             .foregroundStyle(isSelected ? selectedPillText : Color.primary)
             .padding(.horizontal, 14)
             .frame(minHeight: 36)
@@ -643,7 +744,7 @@ struct ModelPickerView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Fast mode")
                         .accessibilityHidden(true)
-                    Picker("Fast mode", selection: $speed) {
+                    Picker("Fast mode", selection: speedBinding) {
                         ForEach(ModelSpeed.allCases) { option in
                             Text(option.title).tag(option)
                         }
@@ -652,20 +753,22 @@ struct ModelPickerView: View {
                     .labelsHidden()
                     .accessibilityLabel(Text("Fast mode"))
                 }
+                .disabled(speedLocked)
             } else {
                 Toggle("Fast mode", isOn: Binding(
                     get: { speed != .normal },
-                    set: { speed = $0 ? .fast : .normal }
+                    set: { speedBinding.wrappedValue = $0 ? .fast : .normal }
                 ))
                 .tint(.conduitAccent)
+                .disabled(speedLocked)
             }
             if globalYoloFloor {
                 VStack(alignment: .leading, spacing: 4) {
-                    Toggle("YOLO mode", isOn: $yoloEnabled)
+                    Toggle("YOLO mode", isOn: .constant(true))
                         .tint(.conduitAccent)
                         .disabled(true)
                     Text(yoloHelpText)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 // VoiceOver can skim past disabled controls and their separate
@@ -673,14 +776,39 @@ struct ModelPickerView: View {
                 // reason is always read with the control.
                 .accessibilityElement(children: .combine)
             } else {
-                Toggle("YOLO mode", isOn: $yoloEnabled)
-                    .tint(.conduitAccent)
+                Toggle("YOLO mode", isOn: Binding(
+                    get: { writingYolo ?? appState.runtime.yolo },
+                    set: { enabled in Task { @MainActor in await applyYolo(enabled) } }
+                ))
+                .tint(.conduitAccent)
+                .disabled(writingYolo != nil || switchingRow != nil)
                 Text(yoloHelpText)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
+            }
+            if let runSettingsError {
+                Label(runSettingsError, systemImage: "exclamationmark.triangle.fill")
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
+
+    /// The speed shown: the one being written, else the session's.
+    private var speed: ModelSpeed { writingSpeed ?? runtimeSpeed }
+
+    /// Picking a speed writes it at once.
+    private var speedBinding: Binding<ModelSpeed> {
+        Binding(
+            get: { speed },
+            set: { new in Task { @MainActor in await applySpeed(new) } }
+        )
+    }
+
+    /// One speed write at a time, and none while a model switch may drop
+    /// Ultrafast.
+    private var speedLocked: Bool { writingSpeed != nil || switchingRow != nil }
 
     /// Hermes auto-approves globally when the profile approval mode is "off", so
     /// a per-session YOLO toggle cannot require approvals. Lock the toggle on
@@ -719,7 +847,7 @@ struct ModelPickerView: View {
                     .background(rowFoundation, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 Text("Hiding a provider preserves its individual model choices. These filters stay on this device.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
             .padding(16)
@@ -756,11 +884,11 @@ struct ModelPickerView: View {
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                            .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            .scaledFont(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(provider.name).font(.subheadline.weight(.semibold))
+                            Text(provider.name).scaledFont(.subheadline.weight(.semibold))
                             Text("\(String(visibleModelCount(in: provider))) of \(String(provider.models.count)) shown")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .scaledFont(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                     }
@@ -770,7 +898,7 @@ struct ModelPickerView: View {
                 Button(providerHidden ? AppLocalization.string("Hidden") : AppLocalization.string("Visible")) {
                     toggleProviderVisibility(provider.name)
                 }
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(providerHidden ? Color.secondary : Color.green)
                 .padding(.horizontal, 12).frame(minHeight: 30)
                 .background(providerHidden ? Color.secondary.opacity(0.12) : Color.green.opacity(0.12), in: Capsule())
@@ -788,7 +916,7 @@ struct ModelPickerView: View {
                     Button("Show all") { setAllModels(in: provider, visible: true) }
                     Button("Hide all") { setAllModels(in: provider, visible: false) }
                 }
-                .font(.caption.weight(.semibold)).tint(.conduitAccent)
+                .scaledFont(.caption.weight(.semibold)).tint(.conduitAccent)
                 .padding(.horizontal, 16).padding(.vertical, 8)
 
                 ForEach(shownModels, id: \.id) { model in
@@ -798,10 +926,10 @@ struct ModelPickerView: View {
                         toggleModelVisibility(key)
                     } label: {
                         HStack {
-                            Text(model.id).font(.footnote).lineLimit(2)
+                            Text(model.id).scaledFont(.footnote).lineLimit(2)
                             Spacer()
                             Text(hidden ? AppLocalization.string("Hidden") : AppLocalization.string("Visible"))
-                                .font(.caption.weight(.semibold))
+                                .scaledFont(.caption.weight(.semibold))
                                 .foregroundStyle(hidden ? Color.secondary : Color.green)
                         }
                         .padding(.leading, 36).padding(.trailing, 16).padding(.vertical, 10)
@@ -811,7 +939,7 @@ struct ModelPickerView: View {
                 }
                 if models.count > shownModels.count {
                     Button("Show \(models.count - shownModels.count) more") { showAllModelsFor.insert(provider.name) }
-                        .font(.caption.weight(.semibold)).tint(.conduitAccent)
+                        .scaledFont(.caption.weight(.semibold)).tint(.conduitAccent)
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
                 }
             }
@@ -846,55 +974,6 @@ struct ModelPickerView: View {
         else { visibility.hiddenModels = Array(Set(visibility.hiddenModels).union(keys)) }
     }
 
-    private var applyButton: some View {
-        VStack(spacing: 10) {
-            // The composer's error banner sits behind this sheet, so a failed
-            // apply has to be reported here.
-            if let applyError {
-                Label(applyError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            Button {
-                Task { @MainActor in await applyModel() }
-            } label: {
-                Group {
-                    if isApplying {
-                        ProgressView()
-                            .tint(selectedPillText)
-                            .accessibilityLabel(AppLocalization.string("Applying configuration"))
-                    } else {
-                        Label("Apply configuration", systemImage: "checkmark")
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 46)
-            }
-            .buttonStyle(.settingsPrimary)
-            .disabled(isApplying || isApplyingReasoning)
-        }
-    }
-
-    private var draftKey: ModelPickerDraftKey {
-        ModelPickerDraftKey(
-            model: selectedModel,
-            provider: selectedProvider,
-            speed: speed,
-            yolo: yoloEnabled
-        )
-    }
-
-    /// Picking a model that says it lacks Ultrafast falls back to Fast. The
-    /// session's own model keeps what Hermes reports.
-    private func dropUnofferedUltrafast() {
-        // A row that says nothing about Ultrafast counts as lacking it.
-        guard ultrafastOffered != true, speed == .ultrafast,
-              ProviderInfo.normalized(selectedModel) != ProviderInfo.normalized(seededModel)
-                || ProviderInfo.normalized(selectedProvider) != ProviderInfo.normalized(seededProvider) else { return }
-        speed = .fast
-    }
-
     private var runtimeSpeed: ModelSpeed {
         ModelSpeed(fast: appState.runtime.fast, serviceTier: appState.runtime.serviceTier)
     }
@@ -924,12 +1003,7 @@ struct ModelPickerView: View {
             providers = provs ?? []
             catalogLoaded = true
             selectedModel = appState.runtime.model
-            seededModel = selectedModel
             selectedProvider = appState.runtime.provider
-            seededProvider = selectedProvider
-            // Speed is seeded on appear: re-seeding here would undo a toggle
-            // made while the catalog loaded, and Apply would write that back.
-            refreshYoloToggle(force: false)
         } catch {
             // Model options are supplementary to the current session state,
             // but the list says it didn't load rather than that there are
@@ -938,34 +1012,16 @@ struct ModelPickerView: View {
         }
     }
 
-    /// Seed the YOLO toggle from the effective runtime value. While the global
-    /// approval floor is active the toggle is pinned on (and marked unchanged so
-    /// `applyModel` sends no spurious write). Otherwise it follows the runtime
-    /// value, respecting an in-progress draft unless `force` re-seeds after a
-    /// global approval-mode change.
-    private func refreshYoloToggle(force: Bool) {
-        if globalYoloFloor {
-            yoloEnabled = true
-            initialYoloEnabled = true
-            return
-        }
-        if force {
-            let draft = ModelPickerYoloDraft(runtimeYolo: appState.runtime.yolo)
-            yoloEnabled = draft.selected
-            initialYoloEnabled = draft.initial
-        } else if let draft = ModelPickerYoloDraft.seededIfNeeded(
-            initial: initialYoloEnabled,
-            runtimeYolo: appState.runtime.yolo
-        ) {
-            yoloEnabled = draft.selected
-            initialYoloEnabled = draft.initial
-        }
+    /// An error row appears silently; tell VoiceOver what failed.
+    private func announce(_ message: String?) {
+        guard let message else { return }
+        UIAccessibility.post(notification: .announcement, argument: message)
     }
 
     /// Reasoning applies to the live agent at once, so a tap sends it without
     /// waiting for Apply.
     private func applyReasoning(_ level: ReasoningEffortLevel) async {
-        guard !isApplyingReasoning, !isApplying else { return }
+        guard !isApplyingReasoning, switchingRow == nil else { return }
         // Re-tapping the live level sends nothing.
         guard ReasoningEffortLevel(runtimeEffort: reasoningEffort) != level else { return }
         Haptics.selection()
@@ -984,94 +1040,118 @@ struct ModelPickerView: View {
         }
     }
 
-    private func applyModel(confirmedModelSwitch: Bool = false) async {
-        guard !isApplying, !isApplyingReasoning else { return }
-        reasoningError = nil
-        guard let client = appState.client, let sessionId = appState.activeSessionId else {
-            applyError = AppLocalization.string("Not connected to a conversation.")
-            return
-        }
-        // Every step goes to the chat Apply was pressed in, YOLO included.
-        let context = appState.composerSubmissionContext()
-        isApplying = true
-        applyError = nil
-        defer { isApplying = false }
-
-        let selection = ModelPickerSelection(model: selectedModel, provider: selectedProvider)
-        let draft = ModelPickerApplyDraft(
-            model: selection.model,
-            provider: selection.provider,
-            yoloChanged: sessionYoloSelectionChanged(from: initialYoloEnabled, to: yoloEnabled),
-            yolo: yoloEnabled,
-            reasoningEffort: nil,
-            speedChanged: speed != initialSpeed,
-            speed: speed
-        )
-        let sendModelSwitch = modelPickerShouldSwitch(
+    /// A tapped row switches the model at once. A row Hermes wants
+    /// confirmed asks first; a refused or failed switch leaves the
+    /// checkmark on the model the session still runs.
+    private func switchModel(
+        to selection: ModelPickerSelection,
+        from previous: ModelPickerSelection,
+        confirmed: Bool = false
+    ) async {
+        // A switch waits for the other writes and they wait for it; the
+        // Ultrafast fallback reads the speed the switch lands on.
+        guard switchingRow == nil, !isApplyingReasoning, writingSpeed == nil, writingYolo == nil else { return }
+        // A confirmed retry always re-sends: the runtime may have moved while
+        // the alert was up, and the confirmation must reach Hermes.
+        guard confirmed || modelPickerShouldSwitch(
             selection,
             lastSwitched: switchedRow,
             runtimeModel: appState.runtime.model,
             runtimeProvider: appState.runtime.provider
-        )
-        let actions = ModelPickerApplyActions(
-            setModel: { model, provider, confirmed in
-                try await client.setModel(sessionId, model: model, provider: provider, confirmed: confirmed)
-            },
-            // The composer banner sits behind this sheet; the failure is
-            // reported here instead.
-            setYolo: { enabled in await appState.setYoloModeReportingFailure(enabled, context: context) },
-            setReasoning: { effort in try await client.setReasoning(sessionId, effort: effort) },
-            setSpeed: { speed in try await client.setSpeed(sessionId, speed: speed) }
-        )
+        ) else {
+            selectedModel = selection.model
+            selectedProvider = selection.provider
+            return
+        }
+        modelError = nil
+        modelNote = nil
+        guard let client = appState.client, let sessionId = appState.activeSessionId else {
+            modelError = AppLocalization.string("Not connected to a conversation.")
+            return
+        }
+        selectedModel = selection.model
+        selectedProvider = selection.provider
+        switchingRow = selection
+        defer { switchingRow = nil }
 
-        let result = await runModelPickerApply(
-            draft,
-            sendModelSwitch: sendModelSwitch,
-            confirmedModelSwitch: confirmedModelSwitch,
-            actions: actions
-        )
+        let result = await runModelPickerSwitch(to: selection.model, confirmed: confirmed) { confirmed in
+            try await client.setModel(sessionId, model: selection.model, provider: selection.provider, confirmed: confirmed)
+        }
         // Another chat opened meanwhile (which also takes this sheet down):
-        // what Hermes took belongs to the chat Apply started in, not to the
+        // what Hermes took belongs to the chat the tap started in, not to the
         // runtime the composer now shows.
         guard appState.client === client, appState.activeSessionId == sessionId else { return }
         switch result {
-        case .completed(let progress):
-            record(progress, for: selection, draft: draft)
-            appState.showModelPicker = false
-        case .needsConfirmation(let message):
-            pendingModelConfirmation = message
-        case .failed(let message, let progress):
-            record(progress, for: selection, draft: draft)
-            applyError = message
-        }
-    }
-
-    /// Reflect the steps Hermes accepted, so the composer shows them and a
-    /// retry does not send them again.
-    private func record(_ progress: ModelPickerApplyProgress, for selection: ModelPickerSelection, draft: ModelPickerApplyDraft) {
-        if let model = progress.switchedModel {
+        case .switched(let model, let deferred):
             appState.runtime.model = model
             appState.runtime.provider = selection.provider
             switchedRow = ModelPickerSwitchedRow(selection: selection, resolvedModel: model)
-            seededModel = selection.model
-            seededProvider = selection.provider
+            if deferred {
+                modelNote = AppLocalization.string("Switches to \(model) when this reply finishes.")
+            }
+            if let fallback = modelPickerSpeedAfterSwitch(runtimeSpeed, ultrafastOffered: ultrafastOffered) {
+                await applySpeed(fallback, unlocked: true)
+            }
+        case .needsConfirmation(let message):
+            checkRunningModel(previous)
+            pendingConfirmation = ModelPickerConfirmation(selection: selection, previous: previous, message: message)
+        case .failed(let message):
+            checkRunningModel(previous)
+            modelError = message
         }
-        if progress.yoloApplied {
-            initialYoloEnabled = draft.yolo
+    }
+
+    /// Puts the checkmark back on the model the session runs: the row
+    /// checked before the tap, unless the model changed elsewhere meanwhile.
+    private func checkRunningModel(_ previous: ModelPickerSelection) {
+        let stillRunning = !modelPickerShouldSwitch(
+            previous,
+            lastSwitched: switchedRow,
+            runtimeModel: appState.runtime.model,
+            runtimeProvider: appState.runtime.provider
+        )
+        selectedModel = stillRunning ? previous.model : appState.runtime.model
+        selectedProvider = stillRunning ? previous.provider : appState.runtime.provider
+    }
+
+    /// Picking a speed writes it at once; a failed write leaves the
+    /// session's speed showing. `unlocked` lets a model switch write the
+    /// Ultrafast fallback while it still holds the controls.
+    private func applySpeed(_ new: ModelSpeed, unlocked: Bool = false) async {
+        guard writingSpeed == nil, unlocked || switchingRow == nil, new != runtimeSpeed else { return }
+        runSettingsError = nil
+        guard let client = appState.client, let sessionId = appState.activeSessionId else {
+            runSettingsError = AppLocalization.string("Not connected to a conversation.")
+            return
         }
-        if progress.reasoningApplied, let effort = draft.reasoningEffort {
-            appState.runtime.reasoningEffort = effort == "none" ? "" : effort
+        writingSpeed = new
+        defer { writingSpeed = nil }
+        do {
+            try await client.setSpeed(sessionId, speed: new)
+        } catch {
+            guard appState.client === client, appState.activeSessionId == sessionId else { return }
+            runSettingsError = UserFacingError.message(for: error)
+            return
         }
-        if progress.speedApplied {
-            appState.runtime.fast = draft.speed != .normal
-            appState.runtime.serviceTier = draft.speed.serviceTier
-            initialSpeed = draft.speed
+        guard appState.client === client, appState.activeSessionId == sessionId else { return }
+        appState.runtime.fast = new != .normal
+        appState.runtime.serviceTier = new.serviceTier
+    }
+
+    /// Flipping YOLO writes it at once, for this conversation only.
+    private func applyYolo(_ enabled: Bool) async {
+        guard writingYolo == nil, switchingRow == nil, !globalYoloFloor, enabled != appState.runtime.yolo else { return }
+        runSettingsError = nil
+        writingYolo = enabled
+        defer { writingYolo = nil }
+        // The composer banner sits behind this sheet; the failure is
+        // reported here instead.
+        if let message = await appState.setYoloModeReportingFailure(enabled)?.message {
+            runSettingsError = message
         }
     }
 }
 
-/// V2: a group's name over a quiet card, as on a settings page. `flush`
-/// drops the card's padding for a list of rows that run edge to edge.
 private struct ModelPickerSection<Content: View>: View {
     let title: String
     let symbol: String

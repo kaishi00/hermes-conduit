@@ -124,12 +124,12 @@ private struct LargeDocumentBanner: View {
                 "This message is very large (\(sizeLabel))",
                 systemImage: "doc.text.magnifyingglass"
             )
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
             .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.86) : .secondary)
 
             Button(action: expand) {
                 Label("Show full message", systemImage: "chevron.down")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
             }
             .tint(usesAccentSurface ? .white : .conduitAccent)
         }
@@ -629,7 +629,7 @@ struct LargeMarkdownExpandedView: View {
                 "Continue reading (\(remainingCount) sections left)",
                 systemImage: "chevron.down"
             )
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
         }
         .tint(usesAccentSurface ? .white : .conduitAccent)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -686,7 +686,7 @@ private struct LargeDocumentPreparingView: View {
         HStack(spacing: 8) {
             ProgressView().controlSize(.small)
             Text("Preparing large message…")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -823,7 +823,7 @@ struct LargeMarkdownCallout: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(detail.title, systemImage: detail.icon)
-                .font(.caption.weight(.bold))
+                .scaledFont(.caption.weight(.bold))
                 .foregroundStyle(detail.color)
             ForEach(Array(content.pieceBlocks.enumerated()), id: \.offset) { index, blocks in
                 LargeFlowChunkView(
@@ -962,7 +962,7 @@ struct LargeCodeBlockView: View {
                                 withAnimation(.easeInOut(duration: 0.15)) { expanded = true }
                             } label: {
                                 Label("Show all \(lineStats?.value.count ?? 0) lines", systemImage: "chevron.down")
-                                    .font(.caption.weight(.semibold))
+                                    .scaledFont(.caption.weight(.semibold))
                             }
                             .tint(usesAccentSurface ? .white : .conduitAccent)
                             .padding(.top, 8)
@@ -1016,7 +1016,7 @@ struct LargeCodeBlockView: View {
     private var header: some View {
         HStack {
             Text(normalizedLanguage == "plain" ? AppLocalization.string("Code") : normalizedLanguage)
-                .font(.caption2.monospaced().weight(.semibold))
+                .scaledFont(.caption2.monospaced().weight(.semibold))
                 .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.86) : .secondary)
             Spacer()
             Button {
@@ -1030,7 +1030,7 @@ struct LargeCodeBlockView: View {
                 }
             } label: {
                 Label(copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy"), systemImage: copied ? "checkmark" : "doc.on.doc")
-                    .font(.caption2.weight(.semibold))
+                    .scaledFont(.caption2.weight(.semibold))
             }
             .tint(usesAccentSurface ? .white : .conduitAccent)
         }

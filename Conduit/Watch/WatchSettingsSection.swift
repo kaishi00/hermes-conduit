@@ -26,10 +26,10 @@ struct WatchSettingsSection: View {
             } icon: {
                 Image(systemName: link.isPaired ? "applewatch.radiowaves.left.and.right" : "applewatch.slash")
             }
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
             Text("Open Conduit on your Watch to talk to Hermes: the call starts right away, or with a tap if you turn off Call on open in the Watch's settings. Gemini Live runs on the Watch; GPT-Live and Grok run on your Hermes host. Calls keep going with your wrist down and your iPhone locked, and are saved to voice history.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
 
             Stepper(value: $jobsPerCall, in: 0...WatchJobSettings.maximumJobsPerCall) {
@@ -39,7 +39,7 @@ struct WatchSettingsSection: View {
             }
             .accessibilityIdentifier("voice.watchJobsPerCall")
             Text("Hermes jobs a Watch call can start, wrist up or down. Each runs as a normal Hermes chat under Voice Jobs, and Hermes' own approval settings apply.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             ConduitMenuPicker(
                 value: voiceApprovals,
@@ -56,16 +56,16 @@ struct WatchSettingsSection: View {
             Text(voiceApprovals
                 ? AppLocalization.string("A job's approval request shows on the Watch, and Gemini Live or Grok can also take your answer by voice. Voice only ever approves once. Text in a web page or a job's output could try to talk it into approving.")
                 : AppLocalization.string("A job's approval request shows on the Watch with Approve once and Deny."))
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
 
             gptLiveRow
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Call log")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                 Text("Timings and connection events from Watch calls, without what was said. Share it when reporting a problem.")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 HStack {
                     ShareLink(item: log.fileURL) {
@@ -81,7 +81,7 @@ struct WatchSettingsSection: View {
                         Button(AppLocalization.string("Clear Log"), role: .destructive) { log.clear() }
                     }
                 }
-                .font(.subheadline)
+                .scaledFont(.subheadline)
             }
         }
     }
@@ -90,9 +90,9 @@ struct WatchSettingsSection: View {
     private var gptLiveRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("GPT-Live on the Watch")
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
             Text("Your Hermes host holds GPT-Live's call for the Watch, with a small runtime it sets up once. The first call sets it up too, but that can take a few minutes.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             HStack(spacing: 8) {
                 gptLiveStatus
@@ -103,7 +103,7 @@ struct WatchSettingsSection: View {
                         .accessibilityIdentifier("voice.watchGPTLiveSetup")
                 }
             }
-            .font(.caption)
+            .scaledFont(.caption)
         }
         .task { await gptLive.refresh() }
     }

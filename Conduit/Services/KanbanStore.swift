@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import SwiftUI
 
 /// Immutable capture of everything a mutation needs. Captured BEFORE the first
@@ -22,38 +23,39 @@ struct KanbanBoardContextStamp: Equatable {
 }
 
 @MainActor
-final class KanbanStore: ObservableObject {
+@Observable
+final class KanbanStore {
     static let selectedBoardKey = "conduit.kanbanBoardSlug"
 
-    @Published private(set) var boards: [KanbanBoardMetadata] = []
-    @Published private(set) var currentServerBoardSlug = "default"
-    @Published private(set) var board: KanbanBoard?
-    @Published private(set) var profiles: [KanbanProfile] = []
-    @Published private(set) var projects: [KanbanProject] = []
-    @Published private(set) var orchestration: KanbanOrchestrationSettings?
-    @Published private(set) var selectedBoardSlug = ""
+    private(set) var boards: [KanbanBoardMetadata] = []
+    private(set) var currentServerBoardSlug = "default"
+    private(set) var board: KanbanBoard?
+    private(set) var profiles: [KanbanProfile] = []
+    private(set) var projects: [KanbanProject] = []
+    private(set) var orchestration: KanbanOrchestrationSettings?
+    private(set) var selectedBoardSlug = ""
     /// Board identity of the snapshot currently on screen. Set ONLY when a
     /// load completes for the generation that is still current; mutations
     /// always target this value so a displayed card can never be written to a
     /// different board than the one it was read from.
-    @Published private(set) var loadedBoardSlug: String?
-    @Published private(set) var isLoading = false
-    @Published private(set) var isMutating = false
-    @Published private(set) var errorMessage: String?
-    @Published private(set) var mutationErrorMessage: String?
+    private(set) var loadedBoardSlug: String?
+    private(set) var isLoading = false
+    private(set) var isMutating = false
+    private(set) var errorMessage: String?
+    private(set) var mutationErrorMessage: String?
     /// V3D: latest coalesced live-event invalidation (published only after a
     /// REFRESHED board reload so detail surfaces act on fresh REST state).
-    @Published private(set) var liveInvalidation: KanbanEventInvalidation?
+    private(set) var liveInvalidation: KanbanEventInvalidation?
     /// The board's live event stream is connected: polls are a backstop.
-    @Published private(set) var liveStreamConnected = false
+    private(set) var liveStreamConnected = false
 
     private let defaults: UserDefaults
     private let makeService: @MainActor (any DashboardJSONRequester) -> KanbanService
-    private var service: KanbanService?
-    private var requesterID: ObjectIdentifier?
-    private var serverIdentity = ""
-    private var persistenceKey: String?
-    private var loadGeneration = 0
+    @ObservationIgnored private var service: KanbanService?
+    @ObservationIgnored private var requesterID: ObjectIdentifier?
+    @ObservationIgnored private var serverIdentity = ""
+    @ObservationIgnored private var persistenceKey: String?
+    @ObservationIgnored private var loadGeneration = 0
     /// Bumped on every configure(); captured by mutations so post-mutation
     /// refreshes and UI-state writes from an old server/board context are
     /// discarded.
@@ -61,7 +63,7 @@ final class KanbanStore: ObservableObject {
     /// Generation of the mutation that currently owns isMutating/
     /// mutationErrorMessage. Nil when no live operation owns the UI; configure()
     /// clears it immediately so a stale server's completion becomes inert.
-    private var activeMutationGeneration: Int?
+    @ObservationIgnored private var activeMutationGeneration: Int?
 
     /// The current configuration generation, captured BEFORE a suspension so a
     /// completion can prove it still belongs to the current server/board
@@ -239,7 +241,7 @@ final class KanbanStore: ObservableObject {
             guard generation == loadGeneration else { return }
 
             // A poll usually brings back the same snapshot; only what changed
-            // is written, since every @Published write redraws the board.
+            // is written, since every write redraws the board.
             setIfChanged(\.board, resolvedBoard)
             // Exactly the slug used in GET /board?board=... above.
             setIfChanged(\.loadedBoardSlug, resolvedSlug)
@@ -260,8 +262,8 @@ final class KanbanStore: ObservableObject {
         }
     }
 
-    /// @Published fires on equal writes too, so a background reload writes
-    /// only the values that changed.
+    /// A write notifies observers even when the value is equal, so a
+    /// background reload writes only the values that changed.
     private func setIfChanged<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<KanbanStore, Value>, _ value: Value) {
         if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
     }

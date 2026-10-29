@@ -380,6 +380,7 @@ extension HermesVoiceGateway: SpeechServerTranscriptionGateway {
                 baseURL: baseURL,
                 ticket: ticket,
                 profile: profile,
+                profileParameter: profileParameter,
                 cloudflareAccess: bridge.cloudflareAccess
               ),
               // The dashboard's own session cookies (cookie mode), on the
@@ -400,12 +401,14 @@ extension HermesVoiceGateway: SpeechServerTranscriptionGateway {
         baseURL: String,
         ticket: String,
         profile: String,
+        profileParameter: String = "profile",
         cloudflareAccess: CloudflareAccessCredentials?
     ) throws -> URLRequest {
         let url = try ConnectionURLPolicy.webSocketURL(
             baseURL: baseURL,
             path: SpeechServerTranscription.socketPath,
-            queryItems: [URLQueryItem(name: "ticket", value: ticket), URLQueryItem(name: "profile", value: profile)]
+            queryItems: [URLQueryItem(name: "ticket", value: ticket)]
+                + DashboardPath.socketProfileItems(profile, parameter: profileParameter)
         )
         return URLRequest(url: url).applyingProxyHeaders(cloudflare: cloudflareAccess)
     }

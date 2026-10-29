@@ -66,12 +66,13 @@ struct AllProfilesCatalog: Equatable {
 
 enum AllProfilesChats {
     /// The read: every profile's chats with a message, not archived, newest
-    /// first, cron runs left to each profile's own list. Hermes reads this
-    /// many rows from each profile and returns the newest of them all.
+    /// first, cron runs left to each profile's own list and Kanban workers to
+    /// the board. Hermes reads this many rows from each profile and returns
+    /// the newest of them all.
     static let pageSize = 300
 
     static var sessionsPath: String {
-        "/api/profiles/sessions?limit=\(pageSize)&offset=0&min_messages=1&archived=exclude&order=recent&exclude_sources=cron&profile=all"
+        "/api/profiles/sessions?limit=\(pageSize)&offset=0&min_messages=1&archived=exclude&order=recent&exclude_sources=\(SessionSource.chatListExcludedSources)&profile=all"
     }
 
     /// All needs two profiles to mean anything.

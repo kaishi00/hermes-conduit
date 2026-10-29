@@ -76,6 +76,48 @@ extension ComposerFullEditorTests {
         XCTAssertFalse(ComposerBar.showsRestingDictateButton(chatVoiceButton: .dictation))
     }
 
+    func testBigButtonCentresOnATallerRestingComposer() {
+        // Level with a one-line bar, as before.
+        XCTAssertEqual(V2ConversationScreen.voiceButtonBottomPadding(restingComposerHeight: 0), 10)
+        XCTAssertEqual(V2ConversationScreen.voiceButtonBottomPadding(restingComposerHeight: 56), 10)
+        // A bar 20 pt taller (a wrapped placeholder, a large Text Size)
+        // lifts it by half that.
+        XCTAssertEqual(V2ConversationScreen.voiceButtonBottomPadding(restingComposerHeight: 76), 20)
+    }
+
+    func testBigButtonSitsLevelWithTheBottomOfAComposerThatStaysExpanded() {
+        // A bar last measured taller no longer lifts it.
+        XCTAssertEqual(V2ConversationScreen.voiceButtonBottomPadding(restingComposerHeight: 76, composerStaysExpanded: true), 10)
+    }
+
+    func testComposerRestsOnIPhoneAndStaysExpandedOnMacAndWideIPad() {
+        // An iPhone rests however wide, a Pro Max in landscape too.
+        XCTAssertFalse(ComposerLayout.staysExpanded(width: 932, idiom: .phone, onMac: false))
+        // An iPad with the room stays expanded; a narrow split rests.
+        XCTAssertTrue(ComposerLayout.staysExpanded(width: 744, idiom: .pad, onMac: false))
+        XCTAssertTrue(ComposerLayout.staysExpanded(width: ComposerLayout.expandedMinimumWidth, idiom: .pad, onMac: false))
+        XCTAssertFalse(ComposerLayout.staysExpanded(width: 507, idiom: .pad, onMac: false))
+        // A Mac stays expanded at any width.
+        XCTAssertTrue(ComposerLayout.staysExpanded(width: 400, idiom: .pad, onMac: true))
+    }
+
+    func testExpandedComposerBesideTheBigButtonLeavesVoiceAndItsMicToIt() {
+        // The big button beside it offers voice, so the slot keeps Send.
+        XCTAssertEqual(ComposerBar.trailingControl(action: .unavailable, showsVoiceButton: false), .action)
+        // An empty draft shows Send dimmed, not the lock of a composer
+        // that can't send; a reconnecting one, an offline copy or a chat still
+        // being made (composerIsEnabled false) keeps the lock.
+        XCTAssertTrue(ComposerBar.showsEmptyDraftSend(action: .unavailable, voiceButtonBeside: true, composerIsEnabled: true))
+        XCTAssertFalse(ComposerBar.showsEmptyDraftSend(action: .unavailable, voiceButtonBeside: true, composerIsEnabled: false))
+        XCTAssertFalse(ComposerBar.showsEmptyDraftSend(action: .unavailable, voiceButtonBeside: false, composerIsEnabled: true))
+        XCTAssertFalse(ComposerBar.showsEmptyDraftSend(action: .send, voiceButtonBeside: true, composerIsEnabled: true))
+        // The row's mic gives way to a big button that dictates.
+        XCTAssertFalse(ComposerBar.controlsRowShowsDictate(holdsSendSlot: false, voiceButtonBeside: true, showsRestingDictateButton: false))
+        XCTAssertTrue(ComposerBar.controlsRowShowsDictate(holdsSendSlot: false, voiceButtonBeside: true, showsRestingDictateButton: true))
+        XCTAssertTrue(ComposerBar.controlsRowShowsDictate(holdsSendSlot: false, voiceButtonBeside: false, showsRestingDictateButton: false))
+        XCTAssertFalse(ComposerBar.controlsRowShowsDictate(holdsSendSlot: true, voiceButtonBeside: false, showsRestingDictateButton: true))
+    }
+
     func testProfileVoicePreferencesKeepTheChatVoiceButton() throws {
         var preferences = VoiceProfilePreferences()
         preferences.chatVoiceButton = "dictation"

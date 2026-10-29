@@ -17,9 +17,31 @@ struct GroupChatView: View {
     /// Following the latest event, or browsing history (GroupRoomFollow).
     /// The flag decides scrolling; the published copy draws the button.
     @State private var followFlag = GroupRoomFollowFlag()
+    /// The room's pictures, which a tapped one pages through.
+    @State private var imageGallery = ImageGallerySource()
     @State private var isFollowingLatest = true
     /// Bumped by the jump-to-latest button; the transcript scrolls on it.
     @State private var latestJumps = 0
+    /// The last row before the newest events, so a member message among
+    /// them can land at its top (GroupRoomFollow.replyStart).
+    @State private var lastSeenEventID: String?
+    /// Bumped to build the transcript's scroll view again when SwiftUI left
+    /// it blank (GroupRoomFollow.isBlank).
+    @State private var transcriptScrollID = 0
+    /// The chat text size and style, and a wide window's steps
+    /// (`readableChatColumn`): the room's messages draw as a chat's do.
+    @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
+    @AppStorage(ChatTypography.fontStylePreferenceKey) private var chatFontStyleRaw = ChatFontStyle.standard.rawValue
+    @Environment(\.chatWidthTextSteps) private var chatWidthTextSteps
+    @Environment(\.columnText) private var columnText
+
+    private var chatTextSize: ChatTextAppearance {
+        ChatTextAppearance(
+            size: ChatTypography.resolve(rawValue: chatTextSizeRaw),
+            style: ChatTypography.resolveStyle(rawValue: chatFontStyleRaw)
+        )
+        .widened(steps: chatWidthTextSteps, in: columnText)
+    }
 
     var body: some View {
         Group {
@@ -27,7 +49,6 @@ struct GroupChatView: View {
                 transcript
                     .v2EdgeBar(.bottom) {
                         bottomBar
-                            .modifier(V2LegacyScrollEdge(edge: .bottom))
                     }
             } else {
                 VStack(spacing: 0) {
@@ -39,6 +60,12 @@ struct GroupChatView: View {
         .animation(.easeInOut(duration: 0.2), value: appState.minimisedLiveVoice)
         // Each bot's color, for its name, bubble, tags and "To" chip.
         .environment(\.groupMemberTints, appState.groupMemberTints(members))
+        .environment(\.chatTextSize, chatTextSize)
+        // Files dragged onto the room are staged in its composer (#1408);
+        // a plugin that can't store them gets the composer's notice.
+        .attachmentDropTarget(isEnabled: surface.map { !$0.room.isDisbanded } ?? false) { providers in
+            appState.dropIntoRoomComposer(providers)
+        }
         .toolbar { toolbarContent }
         // V2's screen hosts this view and owns the room menu and picker.
         .modifier(GroupRoomPicturePicker(request: $choosingPicture, isEnabled: !isV2))
@@ -111,6 +138,7 @@ struct GroupChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 let rendered = self.visibleEvents
+                let _ = imageGallery.update { GroupRoomImageGallery.items(in: rendered) }
                 LazyVStack(spacing: 14) {
                     ForEach(Array(rendered.enumerated()), id: \.element.id) { index, event in
                         // A member's run of replies shows its picture and
@@ -121,12 +149,13 @@ struct GroupChatView: View {
                             members: members,
                             continuesRun: previous.map { GroupEventRow.sameSpeaker($0, event) } ?? false
                         )
+                        .reportsGroupRoomRowFrame(id: event.id)
                     }
                     if let pending = appState.pendingRoomMessage {
-                        GroupUserBubble(text: pending.text, members: members, timestamp: nil) {
+                        GroupUserBubble(text: pending.text, members: members, timestamp: nil, eventID: pending.eventID) {
                             if appState.activeRoomSendInFlight {
                                 Text(AppLocalization.string("Sending…"))
-                                    .font(.caption2)
+                                    .scaledFont(.caption2)
                                     .foregroundStyle(.secondary)
                             } else {
                                 // Ambiguous outcome: the message may or may
@@ -144,29 +173,42 @@ struct GroupChatView: View {
                                         AppLocalization.string("Not delivered — retry"),
                                         systemImage: "arrow.clockwise"
                                     )
-                                    .font(.caption.weight(.semibold))
+                                    .scaledFont(.caption.weight(.semibold))
                                 }
                                 .buttonStyle(.plain)
                                 .foregroundStyle(Color.conduitAccent)
                             }
                         }
                         .id("pending-row")
+                        .reportsGroupRoomRowFrame(id: "pending-row")
                     }
                     if let responder = respondingMember {
                         GroupRespondingRow(member: responder)
                             .id("responding-row")
+                            .reportsGroupRoomRowFrame(id: "responding-row")
                     }
                     if rendered.isEmpty && appState.pendingRoomMessage == nil && respondingMember == nil {
                         emptyState
                     }
                 }
+                .coordinateSpace(.named(GroupRoomFollow.coordinateSpaceName))
+                .environment(\.imageGallery, imageGallery)
                 .background { GroupRoomScrollLocator(flag: followFlag, isFollowing: $isFollowingLatest) }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
                 .padding(.bottom, 18)
             }
+            .id(transcriptScrollID)
+            .onPreferenceChange(GroupRoomRowFramesPreferenceKey.self) { frames in
+                let lostARow = followFlag.rowFrames.keys.contains { frames[$0] == nil }
+                followFlag.rowFrames = frames
+                // A stack that dropped its rows may change no size at all.
+                if frames.isEmpty || lostARow {
+                    followFlag.checkForBlankViewport?()
+                }
+            }
             .scrollDismissesKeyboard(.interactively)
-            .modifier(V2SoftTopScrollEdge(isOn: isV2))
+            .modifier(V2SoftTopScrollEdge(isOn: isV2, underChatHeader: true))
             .simultaneousGesture(TapGesture().onEnded {
                 // A tap on the transcript puts the keyboard away.
                 UIApplication.shared.sendAction(
@@ -176,8 +218,15 @@ struct GroupChatView: View {
             // New events and a member starting its turn move the transcript
             // only while it follows the latest; a reader scrolled up stays.
             .onChange(of: appState.activeRoomReplay.cursor) { _, _ in
+                let previousLastID = lastSeenEventID
+                lastSeenEventID = visibleEvents.last?.id
                 guard followFlag.isFollowing else { return }
-                withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
+                if ChatReplyStartPreference.isOn,
+                   let start = GroupRoomFollow.replyStart(in: visibleEvents, after: previousLastID) {
+                    landAtTop(of: start, proxy)
+                } else {
+                    withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
+                }
             }
             .onChange(of: respondingMember?.identityKey) { _, _ in
                 guard followFlag.isFollowing else { return }
@@ -192,9 +241,29 @@ struct GroupChatView: View {
             .onChange(of: latestJumps) { _, _ in
                 withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
             }
+            // A "Replying to" card's tap (issue 1420): the room stops
+            // following and shows the message it quoted.
+            .onChange(of: appState.pendingQuotedReplyJump) { _, jump in
+                guard let jump else { return }
+                appState.pendingQuotedReplyJump = nil
+                followFlag.isFollowing = false
+                isFollowingLatest = false
+                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(jump.messageID, anchor: .top) }
+            }
             .onAppear {
+                lastSeenEventID = visibleEvents.last?.id
                 followLatest()
                 scrollToBottom(proxy)
+                followFlag.lastRowID = { [weak appState = appState] in
+                    guard let appState else { return nil }
+                    if appState.activeRoomResponder != nil { return "responding-row" }
+                    if appState.pendingRoomMessage != nil { return "pending-row" }
+                    return appState.activeRoomReplay.events.last(where: GroupRoomTurns.isVisible)?.id
+                }
+                // The binding, not this view: the flag would keep its own
+                // view state alive through it.
+                let scrollID = $transcriptScrollID
+                followFlag.rebuild = { scrollID.wrappedValue &+= 1 }
             }
         }
         .background(Color.clear)
@@ -212,6 +281,12 @@ struct GroupChatView: View {
                 handler: appState.quoteIntoRoomComposer
             )
         )
+        .environment(
+            \.quotedReplyJump,
+            QuotedReplyJumpAction(owner: appState) { [weak appState = appState] quote, eventID in
+                appState?.showQuotedRoomMessage(quote, quotedIn: eventID) ?? false
+            }
+        )
     }
 
     private var emptyState: some View {
@@ -222,7 +297,7 @@ struct GroupChatView: View {
                 size: 56
             )
             Text(AppLocalization.string("No messages yet. Say something to the room."))
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -233,6 +308,27 @@ struct GroupChatView: View {
     private func followLatest() {
         followFlag.isFollowing = true
         isFollowingLatest = true
+    }
+
+    /// A new member message goes to the top of the screen, and the room
+    /// stops following there, as a long chat reply does (#365); one that
+    /// fits clamps at the bottom, where following picks up again.
+    private func landAtTop(of eventID: String, _ proxy: ScrollViewProxy) {
+        followFlag.isFollowing = false
+        followFlag.isLanding = true
+        followFlag.landingGeneration &+= 1
+        let generation = followFlag.landingGeneration
+        isFollowingLatest = false
+        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(eventID, anchor: .top) }
+        // Decide from where it lands once the animation is over (it may not
+        // move the offset at all).
+        Task { @MainActor [followFlag] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard followFlag.landingGeneration == generation else { return }
+            // Over even if the locator has gone (the room closed).
+            followFlag.isLanding = false
+            followFlag.reevaluate?()
+        }
     }
 
     /// The bottom-most row: the responding member, else the pending send,
@@ -260,7 +356,7 @@ struct GroupChatView: View {
                     appState.closeGroupRoom()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                 }
                 .accessibilityLabel(Text(AppLocalization.string("Leave this group chat")))
             }
@@ -283,7 +379,7 @@ struct GroupChatView: View {
                     )
                 } label: {
                     Image(systemName: "ellipsis.circle")
-                        .font(.callout.weight(.semibold))
+                        .scaledFont(.callout.weight(.semibold))
                 }
                 .accessibilityLabel(Text(AppLocalization.string("Group chat actions")))
             }
@@ -406,11 +502,11 @@ struct GroupRoomTitle: View {
             GroupRoomIcon(picture: picture, members: members, size: 28)
             VStack(alignment: .leading, spacing: 0) {
                 Text(name)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Text(subtitle)
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .contentTransition(.opacity)
@@ -434,6 +530,8 @@ struct GroupRoomTitle: View {
 /// One member's pending approval. Rooms answer Run (once) or Reject only:
 /// session and permanent grants aren't offered for a room member's turn.
 struct GroupApprovalCard: View {
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.columnText) private var columnText
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let approval: GroupPendingApproval
     let memberName: String
@@ -459,14 +557,14 @@ struct GroupApprovalCard: View {
                     Text(submitting
                         ? AppLocalization.string("SENDING DECISION")
                         : (failure == nil ? AppLocalization.string("APPROVAL NEEDED") : AppLocalization.string("TRY AGAIN")))
-                        .font(.caption2.weight(.bold))
+                        .scaledFont(.caption2.weight(.bold))
                         .tracking(0.5)
                         .foregroundStyle(failure == nil ? Color.orange : Color.red)
                     Text(memberName)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                     if !approval.description.isEmpty {
                         Text(verbatim: ApprovalDisplayText.revealingHidden(approval.description))
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                             .textSelection(.enabled)
                     }
                 }
@@ -481,10 +579,10 @@ struct GroupApprovalCard: View {
             if !approval.command.isEmpty {
                 ApprovalCommandBox(
                     maxHeight: ApprovalCommandBox<EmptyView>.maxLines
-                        * UIFont.preferredFont(forTextStyle: .caption1).lineHeight
+                        * UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnText).lineHeight
                 ) {
                     Text(verbatim: ApprovalDisplayText.revealingHidden(approval.command))
-                        .font(.caption.monospaced())
+                        .scaledFont(.caption.monospaced())
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -504,10 +602,10 @@ struct GroupApprovalCard: View {
                     rejectButton
                 }
             }
-            .font(.subheadline.weight(.medium))
+            .scaledFont(.subheadline.weight(.medium))
             if let failure {
                 Label(failure, systemImage: "exclamationmark.circle")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
             }
         }
@@ -548,7 +646,7 @@ struct GroupEventRow: View {
 
     var body: some View {
         if event.isUserMessage {
-            GroupUserBubble(text: event.messageText ?? "", members: members, timestamp: event.createdAt) {
+            GroupUserBubble(text: event.messageText ?? "", members: members, timestamp: event.createdAt, eventID: event.id) {
                 EmptyView()
             }
         } else if event.isMemberMessage {
@@ -580,6 +678,20 @@ struct GroupEventRow: View {
     }
 }
 
+/// The pictures in a room's messages, in order. Rooms draw web pictures
+/// only: their Markdown has no gateway resolver.
+enum GroupRoomImageGallery {
+    @MainActor
+    static func items(in events: [GroupEvent]) -> [ImageGalleryItem] {
+        let items = events.filter(\.isChatMessage).flatMap { event -> [ImageGalleryItem] in
+            let text = GroupMessageParts(event.messageText ?? "").text
+            let shown = event.isUserMessage ? (GroupRoomReplyQuote.parse(text)?.message ?? text) : text
+            return ChatImageGallery.markdownItems(shown, resolver: nil, recognizesGatewayMedia: false)
+        }
+        return ImageGallery.deduplicated(items)
+    }
+}
+
 /// A message's files and text. Files a message opens with (`@file:` lines,
 /// how Conduit sends a room its uploads) show as chips above the text.
 struct GroupMessageParts {
@@ -601,14 +713,14 @@ private struct GroupMessageFiles: View {
         ForEach(files) { file in
             HStack(spacing: 8) {
                 Image(systemName: AttachmentTypePolicy.symbolName(for: file))
-                    .font(.callout)
+                    .scaledFont(.callout)
                     .frame(width: 30, height: 30)
                     .background(
                         (onAccent ? Color.white.opacity(0.18) : Color.primary.opacity(0.07)),
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                     )
                 Text(file.name)
-                    .font(.caption.weight(.medium))
+                    .scaledFont(.caption.weight(.medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -625,6 +737,9 @@ struct GroupUserBubble<Footer: View>: View {
     let text: String
     let members: [GroupMember]
     let timestamp: Double?
+    /// The room event it is: its "Replying to" card scrolls to the message
+    /// it quoted; a send not in the log yet looks through all of it.
+    var eventID: String? = nil
     @ViewBuilder let footer: Footer
 
     var body: some View {
@@ -639,7 +754,7 @@ struct GroupUserBubble<Footer: View>: View {
                 VStack(alignment: .leading, spacing: 8) {
                     GroupMessageFiles(files: parts.files, onAccent: true)
                     if let reply {
-                        ReplyReferenceQuoteCard(quote: reply.quote, authorName: reply.author)
+                        ReplyReferenceQuoteCard(quote: reply.quote, authorName: reply.author, quotedIn: eventID)
                     }
                     if !ownText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         HugsIdealWidth {
@@ -670,7 +785,7 @@ struct GroupUserBubble<Footer: View>: View {
                     footer
                     if let timestamp {
                         Text(GroupBubbleTime.text(timestamp))
-                            .font(.caption2)
+                            .scaledFont(.caption2)
                             .foregroundStyle(.conduitTertiary)
                     }
                     // Like a chat, Copy takes only what the user wrote.
@@ -730,12 +845,12 @@ struct GroupMemberBubble: View {
                 if !continuesRun {
                     HStack(spacing: 6) {
                         Text(name)
-                            .font(.caption.weight(.semibold))
+                            .scaledFont(.caption.weight(.semibold))
                             .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
                             .lineLimit(1)
                         if let timestamp {
                             Text(GroupBubbleTime.text(timestamp))
-                                .font(.caption2)
+                                .scaledFont(.caption2)
                                 .foregroundStyle(.conduitTertiary)
                         }
                     }
@@ -775,7 +890,7 @@ struct GroupSystemEventCaption: View {
 
     var body: some View {
         Text(caption)
-            .font(.caption2)
+            .scaledFont(.caption2)
             .foregroundStyle(.conduitTertiary)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 2)
@@ -831,14 +946,14 @@ struct GroupRespondingRow: View {
             GroupMemberAvatar(member: member, name: name, size: GroupMemberBubble.avatarSize)
             VStack(alignment: .leading, spacing: 3) {
                 Text(name)
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
                     .lineLimit(1)
                 HStack(spacing: 6) {
                     ProgressView()
                         .controlSize(.mini)
                     Text(AppLocalization.string("Responding…"))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 14)
@@ -1048,7 +1163,7 @@ struct GroupMessageCopyButton: View {
             }
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 // A full-size tap target in the footer's 32 pt.
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
@@ -1093,7 +1208,7 @@ struct GroupMessageQuoteButton: View {
             appState.replyInRoomComposer(text: text, authorName: authorName, authorHandle: authorHandle)
         } label: {
             Image(systemName: "quote.bubble")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
                 .padding(-6)
@@ -1203,7 +1318,7 @@ private struct GroupReadAloudControl: View {
                     Image(systemName: isPaused ? "play.fill" : isActive ? "stop.fill" : "speaker.wave.2")
                 }
             }
-            .font(.footnote.weight(.semibold))
+            .scaledFont(.footnote.weight(.semibold))
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
             .padding(-6)
@@ -1240,11 +1355,11 @@ struct MentionSuggestionList: View {
                     } label: {
                         HStack(spacing: 10) {
                             Text(candidate.title)
-                                .font(.subheadline.weight(.semibold))
+                                .scaledFont(.subheadline.weight(.semibold))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
                             Text(verbatim: "@\(candidate.tag)")
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                             Spacer(minLength: 0)
@@ -1319,7 +1434,7 @@ struct GroupCreateSheet: View {
                     // surface INSIDE the sheet — the room surface's notice
                     // is behind the dismissal.
                     Text(error)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                         .listRowBackground(Color.clear)
                 }
@@ -1385,10 +1500,10 @@ struct GroupCreateSheet: View {
                 BotMonogramView(bot: bot)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(bot.displayLabel)
-                        .font(.body)
+                        .scaledFont(.body)
                         .foregroundStyle(.primary)
                     Text(bot.name)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
@@ -1479,14 +1594,14 @@ struct DesktopGroupChatView: View {
                         Text(AppLocalization.string(
                             "Created in Hermes Desktop. Desktop runs this group's conversation, so reply from there; this shows the latest synced messages."
                         ))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
                         .padding(.bottom, 4)
                         if group.omitted > 0 {
                             Text(AppLocalization.string("Earlier messages are only in Hermes Desktop."))
-                                .font(.caption2)
+                                .scaledFont(.caption2)
                                 .foregroundStyle(.conduitTertiary)
                                 .frame(maxWidth: .infinity)
                         }
@@ -1496,7 +1611,7 @@ struct DesktopGroupChatView: View {
                         }
                         if group.messages.isEmpty {
                             Text(AppLocalization.string("No messages yet."))
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                                 .padding(.top, 32)
                         }
@@ -1546,7 +1661,7 @@ struct DesktopGroupChatView: View {
             }
             if message.truncated {
                 Text(AppLocalization.string("Shortened — the full message is in Hermes Desktop."))
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.leading, message.isMember ? GroupMemberBubble.avatarSize + 9 : 0)
             }

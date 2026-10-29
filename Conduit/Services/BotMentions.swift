@@ -209,18 +209,6 @@ enum BotMentions {
         return annotated(text: text, mentions: mentions)
     }
 
-    /// The forever-chat guard, as a pure decision: `/new` and `/reset` inside
-    /// a bot's CANONICAL chat reroute to `/compact` (fresh working context,
-    /// SAME conversation); every other session — and every other text —
-    /// keeps full slash-command freedom. The caller supplies the canonical
-    /// verdict from roster/registry evidence; this function never guesses.
-    static func foreverChatRerouteText(for text: String, isCanonicalBotChat: Bool) -> String? {
-        guard isCanonicalBotChat else { return nil }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard ["/new", "/reset", "/clear"].contains(trimmed) else { return nil }
-        return "/compact"
-    }
-
     // MARK: - Internals
 
     private enum Owner {

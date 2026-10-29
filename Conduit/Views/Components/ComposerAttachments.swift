@@ -190,6 +190,22 @@ enum AttachmentStaging {
         case failed(String)
     }
 
+    /// Copies a file the user picked or dropped into the staging folder,
+    /// size checked before anything is copied, then finished like the rest.
+    static func stageCopy(of url: URL, name: String, type: UTType?, limitMegabytes: Int) -> StagedImport {
+        if let size = AttachmentSizeLimit.fileSize(at: url),
+           !AttachmentSizeLimit.allows(byteCount: size, megabytes: limitMegabytes) {
+            return .tooLarge(name)
+        }
+        do {
+            let staged = try destination(for: name)
+            try FileManager.default.copyItem(at: url, to: staged)
+            return finishStaging(fileAt: staged, name: name, type: type, limitMegabytes: limitMegabytes)
+        } catch {
+            return .failed(name)
+        }
+    }
+
     /// The composer's rules for a file already copied into the staging
     /// folder: the size limit, checked before anything is decoded, and a
     /// JPEG re-encode for image formats providers can't read.
@@ -388,11 +404,11 @@ struct ComposerAttachmentChip: View {
             preview
             VStack(alignment: .leading, spacing: 1) {
                 Text(attachment.name)
-                    .font(.caption.weight(.medium))
+                    .scaledFont(.caption.weight(.medium))
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                     .truncationMode(.middle)
                 Text(AttachmentTypePolicy.detailLabel(for: attachment, byteCount: byteCount))
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
             }
@@ -402,7 +418,7 @@ struct ComposerAttachmentChip: View {
                 onRemove()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.callout)
+                    .scaledFont(.callout)
                     .foregroundStyle(.secondary)
                     // A full-size tap target without growing the chip.
                     .frame(width: 44, height: 44)
@@ -445,7 +461,7 @@ struct ComposerAttachmentChip: View {
             } else {
                 Color.primary.opacity(0.06)
                 Image(systemName: AttachmentTypePolicy.symbolName(for: attachment))
-                    .font(.callout)
+                    .scaledFont(.callout)
                     .foregroundStyle(.secondary)
             }
             if attachment.kind == .video, thumbnail != nil {

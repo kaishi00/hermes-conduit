@@ -37,6 +37,9 @@ protocol GeminiLiveSessionControlling: AnyObject {
     /// `onSent` runs once the socket took the message; `onFailure` when it
     /// never reached the socket.
     func send(_ message: LiveVoiceClientMessage, onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?)
+    /// The user stopped the reply (the Interrupt button): the server stops
+    /// it too. A requirement, so the controller's call reaches Local Live's.
+    func cancelResponse()
 }
 
 extension GeminiLiveSessionControlling {
@@ -52,6 +55,11 @@ extension GeminiLiveSessionControlling {
     /// Only Local Live has a mode of its own; every other session here is
     /// the live model itself.
     var runsAgentTurns: Bool { false }
+    /// Only Local Live tells its server: the user's own speech server may
+    /// keep its microphone shut until the reply it sent has played (#1325).
+    /// Gemini's has no such message, and xAI and Qwen hear the user over
+    /// their own reply, so what plays here is all that stops.
+    func cancelResponse() {}
     func send(_ message: LiveVoiceClientMessage) { send(message, onSent: nil, onFailure: nil) }
     func send(_ message: LiveVoiceClientMessage, onFailure: (@MainActor () -> Void)?) {
         send(message, onSent: nil, onFailure: onFailure)

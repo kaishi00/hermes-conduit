@@ -33,6 +33,7 @@ struct LiveVoiceStyleSettingsModel {
 struct LiveVoiceStyleSettingsSection: View {
     let model: LiveVoiceStyleSettingsModel
     @State private var greets: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var greeting: String
     /// Empty is the model's own tone (a Picker tag can't be nil).
     @State private var tone: String
@@ -92,7 +93,7 @@ struct LiveVoiceStyleSettingsSection: View {
             Toggle("Greet me when a call connects", isOn: Binding(
                 get: { greets },
                 set: { requested in
-                    greets = requested
+                    withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { greets = requested }
                     save()
                 }
             ))
@@ -131,7 +132,7 @@ struct LiveVoiceStyleSettingsSection: View {
                     .onDisappear { flushPendingSave() }
             }
             Text("The voice model greets you as soon as a call connects, so you know it's live. Leave the greeting empty for one in its own words. GPT-Live needs an up-to-date Hermes notifier plugin for this. Applies to the next call.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             ConduitMenuPicker(
                 value: tone,
@@ -144,7 +145,7 @@ struct LiveVoiceStyleSettingsSection: View {
                 Text("Tone").foregroundStyle(.secondary)
             }
             Text("How live calls sound. Model default keeps the voice model's tone and your Hermes server's persona. Applies to the next call.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             ConduitMenuPicker(
                 value: answerLength,
@@ -157,7 +158,7 @@ struct LiveVoiceStyleSettingsSection: View {
                 Text("Answer length").foregroundStyle(.secondary)
             }
             Text("How much the voice model says when you ask something. Concise gives the key point in one to three sentences, Default adds the details that make it useful, and Detailed goes in depth. Applies to the next call.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             Toggle("Backchannels", isOn: Binding(
                 get: { backchannels },
@@ -167,7 +168,7 @@ struct LiveVoiceStyleSettingsSection: View {
                 }
             ))
             Text("Short sounds like “mm-hmm” while you talk. Turn them off for a quieter listener. Applies to the next call.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             Toggle("Ask before sending to Hermes", isOn: Binding(
                 get: { asksBeforeSending },
@@ -177,7 +178,7 @@ struct LiveVoiceStyleSettingsSection: View {
                 }
             ))
             Text("The voice model tells you what it will send and waits for your OK before Hermes starts on it. Say “send it to Hermes” to skip the question. Change it during a call with the call screen's button or by asking. Applies to the next call.")
-                .font(.caption)
+                .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             Button {
                 // A greeting still being typed is saved first, so the
@@ -244,10 +245,10 @@ struct LiveVoiceInstructionsPreview: View {
                 VStack(alignment: .leading, spacing: 12) {
                     if let preview {
                         Text(AppLocalization.string("Conduit adds this to \(preview.mode)'s instructions for every call. Your Hermes server adds its own voice persona before it. Memory and personality are read when a call starts."))
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                         Text(verbatim: preview.instructions)
-                            .font(.system(.footnote, design: .monospaced))
+                            .scaledFont(.footnote.monospaced())
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if let opening = preview.openingTurn {
@@ -258,16 +259,16 @@ struct LiveVoiceInstructionsPreview: View {
                                     Text("Sent as the call's first turn when it connects:")
                                 }
                             }
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                             Text(verbatim: opening)
-                                .font(.system(.footnote, design: .monospaced))
+                                .scaledFont(.footnote.monospaced())
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     } else {
                         Text("Turn on a live voice mode to see what Conduit sends.")
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }

@@ -58,9 +58,10 @@ final class LocalLiveTurnRunner {
         var respondToApproval: @MainActor (_ approval: ApprovalActivity, _ choice: String, _ profile: String?) async -> Bool
             = { _, _, _ in false }
         /// Answers one question of the clarify the followed reply waits on
-        /// (`questionID` nil for a single question); the card as it stands
-        /// after, or nil when Hermes didn't take it.
-        var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String) async -> ClarifyActivity?
+        /// (`questionID` nil for a single question; `answer` nil leaves one
+        /// of a form blank); the card as it stands after, or nil when
+        /// Hermes didn't take it.
+        var respondToClarify: @MainActor (_ clarify: ClarifyActivity, _ questionID: String?, _ answer: String?) async -> ClarifyActivity?
             = { _, _, _ in nil }
     }
 
@@ -102,6 +103,9 @@ final class LocalLiveTurnRunner {
     private var reply: Reply?
     /// The open turn's words, with what's to be seen kept out.
     private var splitter = SpokenVisualSplitter()
+    /// Leaves a persona's narrated actions and emoji out of what is said,
+    /// as in Classic voice.
+    private var actions = SpokenTextFilter()
     /// Hermes showed something with `conduit_show` while answering the
     /// open turn: what its reply writes isn't shown again.
     private var showedCard = false
@@ -125,6 +129,7 @@ final class LocalLiveTurnRunner {
         // still open here has nobody waiting for it.
         turn = (turnID, false)
         splitter.reset()
+        actions.reset()
         showedCard = false
         endedLine = true
         generation += 1
@@ -169,6 +174,7 @@ final class LocalLiveTurnRunner {
         turn = nil
         reply = nil
         splitter.reset()
+        actions.reset()
         showedCard = false
         endedLine = true
     }
@@ -364,7 +370,7 @@ final class LocalLiveTurnRunner {
     private func speak(_ text: String) {
         guard let current = turn, !text.isEmpty else { return }
         turn?.spoke = true
-        let spoken = splitter.feed(text)
+        let spoken = actions.feed(splitter.feed(text))
         if !spoken.isEmpty {
             endedLine = spoken.hasSuffix("\n")
             onDelta?(current.id, spoken)
@@ -376,8 +382,11 @@ final class LocalLiveTurnRunner {
         guard generation == self.generation, turn?.id == turnID else { return }
         turn?.spoke = true
         // What the reply still held ends with it: nothing of it follows the
-        // call's line.
-        splitter.reset()
+        // call's line. Words the action filter held back for a marker that
+        // never closed were said, so they go first.
+        splitter.dropSpeech()
+        let held = actions.finish()
+        if !held.isEmpty { onDelta?(turnID, held + (held.hasSuffix("\n") ? "" : "\n")) }
         onDelta?(turnID, text)
         finish(turnID)
     }
@@ -389,15 +398,19 @@ final class LocalLiveTurnRunner {
 
     private func finish(_ turnID: String) {
         guard turn?.id == turnID else { return }
-        let rest = splitter.finish()
+        let rest = actions.feed(splitter.finish()) + actions.finish()
         if !rest.isEmpty {
             endedLine = rest.hasSuffix("\n")
             onDelta?(turnID, rest)
         }
-        if splitter.hasVisual, !showedCard, onVisual?(splitter.visualMarkdown) == true {
+        // A card the model showed stands for the reply's tables and links;
+        // the files it attached still go on the screen.
+        let visual = showedCard ? splitter.fileMarkdown : splitter.visualMarkdown
+        if !visual.isEmpty, onVisual?(visual) == true {
             onDelta?(turnID, (endedLine ? "" : "\n") + Self.onScreenLine)
         }
         splitter.reset()
+        actions.reset()
         showedCard = false
         endedLine = true
         turn = nil

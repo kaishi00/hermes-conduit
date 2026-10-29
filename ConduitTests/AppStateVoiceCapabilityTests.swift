@@ -277,6 +277,28 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertTrue(appState.showsComposerVoiceButton)
     }
 
+    /// Settings > Voice shows the saved switch: a reconnect resets
+    /// `isVoiceEnabled`, and a switch shown off then reads as turned off.
+    func testVoiceSettingsShowTheSavedSwitchThroughAReconnectReset() async {
+        let appState = makeAppState(snapshot: readySnapshot, isVoiceEnabled: false)
+        XCTAssertTrue(appState.activeProfileVoiceSwitch, "on out of the box")
+        _ = await appState.setVoiceEnabled(true)
+        appState.installVoiceCapabilityStateForTesting(
+            bridge: DashboardTicketBridge(baseURL: "https://example.com"),
+            snapshot: .unavailable,
+            isVoiceEnabled: false
+        )
+        XCTAssertTrue(appState.activeProfileVoiceSwitch)
+
+        _ = await appState.setVoiceEnabled(false)
+        XCTAssertFalse(appState.activeProfileVoiceSwitch)
+
+        // No server to read the saved switch for: it reads as isVoiceEnabled,
+        // never the default of an unwritten key.
+        appState.connection = nil
+        XCTAssertEqual(appState.activeProfileVoiceSwitch, appState.isVoiceEnabled)
+    }
+
     /// Switching away from a voice-enabled profile must not leak its state
     /// while `isVoiceEnabled` still holds the previous profile's value.
     func testSwitchingToProfileWithVoiceOffHidesVoiceButton() async {
@@ -317,10 +339,27 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         )
     }
 
-    /// Dictation has its own button (#335): once dictated words make the
-    /// draft sendable, Send takes the slot even while still listening.
+    /// Dictation has its own button (#335): once the draft is sendable,
+    /// Send takes the slot from voice.
     func testSendableDraftTakesTheSlotFromVoice() {
         XCTAssertEqual(ComposerBar.trailingControl(action: .send, showsVoiceButton: true), .action)
+    }
+
+    /// #1309: while dictating, the slot is dictation's Stop, whatever the
+    /// draft or the turn would offer, so the words are read before they go.
+    func testDictationHoldsTheSlotUntilItsWordsAreIn() {
+        for action in [ComposerAction.send, .steer, .interrupt, .queue, .stop, .unavailable] {
+            XCTAssertEqual(
+                ComposerBar.trailingControl(action: action, showsVoiceButton: true, holdsDictation: true),
+                .dictation,
+                "\(action)"
+            )
+        }
+        XCTAssertEqual(
+            ComposerBar.trailingControl(action: .send, showsVoiceButton: true, holdsDictation: false),
+            .action,
+            "Send is back once the dictation is over"
+        )
     }
 
     func testDictatedTextGoesAfterTheDraftAndReplacesOnlyItsOwnSpan() {

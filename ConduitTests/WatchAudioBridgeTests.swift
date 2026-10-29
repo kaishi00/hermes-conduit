@@ -129,7 +129,7 @@ extension HermesVoiceGatewayTimeoutTests {
             WatchAudioBridgeWire.control(Data(#"{"type":"error","code":"busy","message":"Another Watch call is running."}"#.utf8)),
             .error(code: "busy", message: "Another Watch call is running.")
         )
-        // The plugin's refusal of a hello past the grant's streams (plugin_api.py _hello).
+        // The plugin's refusal of a hello past the grant's streams (dashboard/api/watch_audio.py _hello).
         XCTAssertEqual(
             WatchAudioBridgeWire.control(Data(#"{"type":"error","code":"streams_spent","message":"Start the call again."}"#.utf8)),
             .error(code: WatchAudioBridgeWire.streamsSpent, message: "Start the call again.")
@@ -401,5 +401,36 @@ private extension Data {
             index = next
         }
         self.init(bytes)
+    }
+}
+
+/// A Watch call whose sockets get no network (#1346): it ends on the
+/// second refusal while none has opened, and never once one has.
+extension HermesVoiceGatewayTimeoutTests {
+    private static let watchOffline: [String: Any] = ["domain": NSURLErrorDomain, "code": URLError.notConnectedToInternet.rawValue]
+
+    func testWatchNoNetworkEndsOnTheSecondRefusalBeforeAnySocketOpened() {
+        var noNetwork = WatchNoNetwork()
+        XCTAssertFalse(noNetwork.socketEnded(Self.watchOffline))
+        XCTAssertTrue(noNetwork.socketEnded(Self.watchOffline))
+        XCTAssertEqual(noNetwork.refusals, 2)
+    }
+
+    func testWatchNoNetworkLeavesDropsAfterAnOpenSocketToTheCall() {
+        var noNetwork = WatchNoNetwork()
+        XCTAssertFalse(noNetwork.socketEnded(Self.watchOffline))
+        noNetwork.socketOpened()
+        XCTAssertFalse(noNetwork.socketEnded(Self.watchOffline))
+        XCTAssertFalse(noNetwork.socketEnded(Self.watchOffline))
+    }
+
+    func testWatchNoNetworkCountsOnlyOfflineErrors() {
+        var noNetwork = WatchNoNetwork()
+        let hostDown: [String: Any] = ["domain": NSURLErrorDomain, "code": URLError.cannotConnectToHost.rawValue]
+        XCTAssertFalse(noNetwork.socketEnded(hostDown))
+        XCTAssertFalse(noNetwork.socketEnded(["code": 1006, "reason": ""]))
+        XCTAssertFalse(noNetwork.socketEnded(hostDown))
+        XCTAssertEqual(noNetwork.refusals, 0)
+        XCTAssertTrue(WatchNoNetwork.isOffline(["domain": NSURLErrorDomain, "code": URLError.dataNotAllowed.rawValue]))
     }
 }

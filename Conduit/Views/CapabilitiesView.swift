@@ -7,7 +7,7 @@ import SwiftUI
 struct CapabilitiesView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
-    @StateObject private var store = CapabilitiesStore()
+    @State private var store = CapabilitiesStore()
     @AppStorage("capabilities.tab") private var tabRaw = CapabilitiesTab.skills.rawValue
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
@@ -61,7 +61,6 @@ struct CapabilitiesView: View {
                 tabPicker
                 otherTabMatches
             }
-            .modifier(V2LegacyScrollEdge())
         }
         // The other settings pages' backdrop and small title.
         .background { SettingsBackdrop() }
@@ -98,12 +97,12 @@ struct CapabilitiesView: View {
         HStack(spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
                 TextField(searchPrompt, text: $searchText)
                     .textFieldStyle(.plain)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .submitLabel(.search)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -131,7 +130,7 @@ struct CapabilitiesView: View {
                     searchText = ""
                     searchFocused = false
                 }
-                .font(.subheadline.weight(.medium))
+                .scaledFont(.subheadline.weight(.medium))
                 .foregroundStyle(Color.conduitAccent)
                 .buttonStyle(.plain)
                 .frame(minHeight: 44)
@@ -158,14 +157,14 @@ struct CapabilitiesView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     Text(verbatim: AppLocalization.string("Also in"))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     ForEach(others) { other in
                         Button {
                             tabRaw = other.rawValue
                         } label: {
                             Text(verbatim: "\(other.title) \((counts[other] ?? 0).formatted())")
-                                .font(.footnote.weight(.semibold))
+                                .scaledFont(.footnote.weight(.semibold))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
                                 .background(Color.conduitAccent.opacity(0.15), in: Capsule())

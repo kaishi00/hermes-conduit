@@ -3,7 +3,7 @@
 //  Conduit
 //
 //  V2's voice button: a gold circle beside the tab bar on every tab and
-//  project page. A tap starts voice where the user is (a new call, or a
+//  project page, except split beside a chat that shows its own. A tap starts voice where the user is (a new call, or a
 //  new chat in the open project's folder); touch and hold on a tab lists
 //  the three most recent conversations to talk in instead. While a call is
 //  minimised the button brings it back, its bars moving. Beside a chat's
@@ -104,12 +104,9 @@ struct V2VoiceButton: View {
         return true
     }
 
-    /// The three most recently active conversations of this profile, but
-    /// Pulse's own chat, which the Pulse screen stands in for.
+    /// The three most recently active conversations of this profile.
     private var recentSessions: [SessionSummary] {
-        let sessions = appState.activeProfileSessions
-        guard appState.pulseHomeChat != nil else { return Self.mostRecent(sessions, limit: 3) }
-        return Self.mostRecent(sessions.filter { !appState.isPulseHomeChat($0) }, limit: 3)
+        Self.mostRecent(appState.activeProfileSessions, limit: 3)
     }
 
     /// The `limit` most recently active of `sessions`, newest first, ties
@@ -128,7 +125,7 @@ struct V2VoiceButton: View {
     }
 
     private var showsRecentMenu: Bool {
-        context == .home && !returnsToCall && !needsSetup && !recentSessions.isEmpty
+        context == .home && !returnsToCall && !needsSetup && !appState.activeProfileSessions.isEmpty
     }
 
     /// Touch and hold on the chat's big button: a live call or dictation,

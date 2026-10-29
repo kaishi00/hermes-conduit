@@ -566,6 +566,57 @@ final class GroupChatModelsTests: XCTestCase {
             current: false, userScrolling: true, distanceFromBottom: GroupRoomFollow.nearBottomTolerance))
     }
 
+    /// #887, #1358: the lazy stack can lay out no row under a following
+    /// room, which is built again then, as a chat is.
+    func testARoomWithNoRowLaidOutOnScreenIsBlank() {
+        let visible: ClosedRange<CGFloat> = 3000...3800
+        // Nothing laid out, or only rows far above with the latest unlaid.
+        XCTAssertTrue(GroupRoomFollow.isBlank(frames: [:], visible: visible, lastRowID: "e9"))
+        XCTAssertTrue(GroupRoomFollow.isBlank(frames: ["e2": 400...600], visible: visible, lastRowID: "e9"))
+        // The latest row ends above the screen, nothing below it drawn.
+        XCTAssertTrue(GroupRoomFollow.isBlank(frames: ["e9": 2000...2990], visible: visible, lastRowID: "e9"))
+        // The member's Responding row counts as a row.
+        XCTAssertTrue(GroupRoomFollow.isBlank(
+            frames: ["e9": 2000...2990], visible: visible, lastRowID: "responding-row"))
+        XCTAssertFalse(GroupRoomFollow.isBlank(
+            frames: ["e9": 2000...2990, "responding-row": 3000...3060], visible: visible, lastRowID: "responding-row"))
+        // A row on screen, or the latest one below it, isn't blank.
+        XCTAssertFalse(GroupRoomFollow.isBlank(frames: ["e9": 3200...3700], visible: visible, lastRowID: "e9"))
+        XCTAssertFalse(GroupRoomFollow.isBlank(frames: ["e9": 3900...4200], visible: visible, lastRowID: "e9"))
+        // An empty room isn't blank.
+        XCTAssertFalse(GroupRoomFollow.isBlank(frames: [:], visible: visible, lastRowID: nil))
+    }
+
+    func testALandingDecidesFollowingOnlyWhenItsOver() {
+        // Its own animated scroll passing near the bottom doesn't follow.
+        XCTAssertFalse(GroupRoomFollow.following(
+            current: false, userScrolling: false, distanceFromBottom: 0, landing: true))
+        XCTAssertFalse(GroupRoomFollow.following(
+            current: false, userScrolling: false, distanceFromBottom: 900, landing: true))
+        // The user's own scroll still decides.
+        XCTAssertTrue(GroupRoomFollow.following(
+            current: false, userScrolling: true, distanceFromBottom: 0, landing: true))
+    }
+
+    func testANewMemberMessageIsWhereTheRoomLands() {
+        let log = [
+            userMessage(seq: 1, text: "Hello everyone"),
+            memberMessage(seq: 2, member: "ayaka", round: 0, text: "Hi"),
+            userMessage(seq: 3, text: "Plan the trip", id: "user:d2"),
+            memberMessage(seq: 4, member: "zhongli", round: 0, text: "A long plan"),
+            memberMessage(seq: 5, member: "ayaka", round: 0, text: "More"),
+        ]
+        // The first member message after the row that was last before.
+        XCTAssertEqual(GroupRoomFollow.replyStart(in: log, after: "dmessage:2"), "dmessage:4")
+        XCTAssertEqual(GroupRoomFollow.replyStart(in: log, after: "dmessage:4"), "dmessage:5")
+        // Only the user's own message is new, or nothing is: the bottom.
+        XCTAssertNil(GroupRoomFollow.replyStart(in: Array(log.prefix(3)), after: "dmessage:2"))
+        XCTAssertNil(GroupRoomFollow.replyStart(in: log, after: "dmessage:5"))
+        // No row from before (the room just opened, or it's gone): the bottom.
+        XCTAssertNil(GroupRoomFollow.replyStart(in: log, after: nil))
+        XCTAssertNil(GroupRoomFollow.replyStart(in: log, after: "dmessage:99"))
+    }
+
     func testSendResultAdoptionAdvancesCursorExactlyOnce() {
         // The accepted `groups.send` event rides the same engine: the poll
         // that later returns it must not duplicate it.

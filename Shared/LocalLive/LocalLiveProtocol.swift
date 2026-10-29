@@ -50,10 +50,11 @@ enum LocalLiveProtocol {
 
     /// The relay socket's query: the dashboard's own profile goes without
     /// one, as the status and key requests do, so the call is filed under
-    /// the same profile the server's key names.
-    static func profileQueryItems(_ profile: String) -> [URLQueryItem] {
+    /// the same profile the server's key names. `parameter` is
+    /// `conduit_profile` for a plugin that takes it (DashboardPath).
+    static func profileQueryItems(_ profile: String, parameter: String = "profile") -> [URLQueryItem] {
         guard !profile.isEmpty, profile != "default" else { return [] }
-        return [URLQueryItem(name: "profile", value: profile)]
+        return [URLQueryItem(name: parameter, value: profile)]
     }
 
     // MARK: Client → server
@@ -161,6 +162,9 @@ enum LocalLiveProtocol {
         let body = result.sorted { $0.key < $1.key }.map { "\($0.key): \($0.value)" }.joined(separator: "\n")
         return "Update from \(name), which answered late:\n\(body)\nTell the user what matters from it, briefly."
     }
+
+    /// The user stopped the reply on the phone.
+    static let responseCancel: [String: Any] = ["type": "response.cancel"]
 
     static func turnDelta(turnID: String, text: String) -> [String: Any] {
         ["type": "conduit.turn.delta", "turn_id": turnID, "text": text]

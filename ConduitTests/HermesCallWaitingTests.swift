@@ -61,6 +61,68 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(HermesCallWaiting.pickedChoices(in: "one and three", choices: environmentQuestion(multiSelect: true).choices, multiSelect: true), [0, 2])
     }
 
+    func testSkipLeavesOnlyAFormsQuestionBlank() {
+        var question = environmentQuestion()
+        XCTAssertEqual(HermesCallWaiting.answerValue(for: "skip", question: question), "skip", "Outside a form the words go as they are")
+        XCTAssertFalse(HermesCallWaiting.spokenQuestion(question).contains("skip"))
+        question.mayLeaveBlank = true
+        XCTAssertNil(HermesCallWaiting.answerValue(for: "Skip it, please", question: question))
+        XCTAssertEqual(HermesCallWaiting.answerLabel(for: "skip", question: question), HermesCallWaiting.skippedLabel)
+        XCTAssertEqual(HermesCallWaiting.answerValue(for: "prod", question: question), "prod")
+        let pass = HermesCallWaiting.Question(
+            id: "q1", text: "Your kind of escape?",
+            choices: [.init(label: "Beach", value: "Beach"), .init(label: "Pass", value: "Pass")],
+            multiSelect: false, mayLeaveBlank: true
+        )
+        XCTAssertEqual(HermesCallWaiting.answerValue(for: "pass", question: pass), "Pass", "A choice named whole is picked first")
+        XCTAssertNil(HermesCallWaiting.answerValue(for: "I'll pass", question: pass), "Only named whole")
+        let cushion = HermesCallWaiting.Question(
+            id: "q2", text: "Which cushion?",
+            choices: [.init(label: "Blank", value: "Blank"), .init(label: "Striped", value: "Striped")],
+            multiSelect: false, mayLeaveBlank: true
+        )
+        XCTAssertNil(HermesCallWaiting.answerValue(for: "leave it blank", question: cushion), "Not the choice inside the words")
+        XCTAssertEqual(HermesCallWaiting.answerLabel(for: "leave it blank", question: cushion), HermesCallWaiting.skippedLabel)
+        XCTAssertEqual(HermesCallWaiting.answerValue(for: "the blank one", question: cushion), "Blank")
+
+        XCTAssertTrue(HermesCallWaiting(item: .questions([question])).block.contains(HermesCallWaiting.mayLeaveBlankNote))
+        XCTAssertEqual(WatchCallAnswer.mayLeaveBlankNote, HermesCallWaiting.mayLeaveBlankNote, "One note on the phone and the Watch")
+        XCTAssertTrue(HermesCallWaiting.spokenQuestion(question).hasSuffix(" Or say skip to leave it blank."))
+        let next = WatchCallAnswer.result(body: [
+            "ok": true, "status": "answered", "question": 1, "answer": "left blank", "skipped": true,
+            "next": ["number": 2, "question": "Total budget?", "choices": [String](), "may_leave_blank": true],
+        ])
+        XCTAssertTrue(next["message"]?.contains("Total budget?\n(No choices: they answer in their own words.)\n" + WatchCallAnswer.mayLeaveBlankNote) == true)
+    }
+
+    /// The same words as the plugin's test_call_waiting.py SKIPS and
+    /// NOT_SKIPS: a Watch call's words are read there, the phone's here.
+    func testSkipIsReadTheSameWayAsThePlugin() {
+        let skips = [
+            "skip", "Skip it.", "skip this one, please", "I'll pass", "leave it blank", "Leave that empty",
+            "go ahead and skip it please", "Überspringen", "lass es leer", "ich passe", "sáltala", "déjalo en blanco",
+            "je passe", "laisse-le vide", "lewati saja", "biarkan kosong", "salta questa domanda", "lascialo in bianco",
+            "pomiń to pytanie", "pode pular", "deixa em branco", "Пропусти этот вопрос", "оставь пустым", "bunu atla",
+            "boş bırak", "スキップ", "スキップでお願いします", "飛ばしてください", "空欄のままでお願いします", "跳过",
+            "这个问题跳过吧", "留空", "스킵해 주세요", "비워 두세요", "이건 패스할게요", "skip to the next question",
+            "Skip to the next one.", "überspringen, nächste Frage", "salta a la siguiente pregunta", "passons à la suivante",
+            "lewati, lanjut ke berikutnya", "salta alla prossima domanda", "pomiń, następne pytanie", "pula pra próxima",
+            "пропусти, следующий вопрос", "atla, sonraki soru", "スキップして次の質問へ", "跳过，下一题", "跳過，下一個",
+            "건너뛰어, 다음 질문으로", "다음으로 넘어가",
+        ]
+        let notSkips = [
+            "", "Toronto", "not sure yet", "next week", "don't skip it", "skip the hotel", "skip?", "blanco", "leer",
+            "go ahead and skip it now please", "nicht überspringen", "no lo saltes", "不要跳过", "跳过吗", "スキップしないで",
+            "건너뛰지 마세요", "the next one", "next question", "nächste Woche", "la siguiente", "次の質問", "下一个", "다음",
+        ]
+        for words in skips {
+            XCTAssertTrue(HermesCallWaiting.isSkip(words), words)
+        }
+        for words in notSkips {
+            XCTAssertFalse(HermesCallWaiting.isSkip(words), words)
+        }
+    }
+
     func testTheHostsCopyBriefsAWatchCallThatCanAnswer() throws {
         let waiting = try XCTUnwrap(HermesCallWaiting(host: [
             "kind": "question",

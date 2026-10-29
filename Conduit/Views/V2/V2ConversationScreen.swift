@@ -33,6 +33,16 @@ struct V2ComposerExpandedKey: PreferenceKey {
     }
 }
 
+/// The resting composer bar's height (0 while it is expanded), so the voice
+/// button beside it stays centred on it when the bar grows past the
+/// button: a placeholder that wraps (a long translation), a large Text Size.
+struct V2RestingComposerHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 /// Whether someone is typing in a resting composer (it has focus), so the
 /// minimised call bar steps aside for the keyboard. Only typing hides it:
 /// a running turn or a notice also expands the composer, and hiding the bar
@@ -49,6 +59,9 @@ struct V2ConversationScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
     @State private var composerExpanded = false
+    /// The last resting bar's height: kept while the composer is expanded,
+    /// so the button doesn't move as it steps aside.
+    @State private var restingComposerHeight: CGFloat = 0
     @AppStorage(V2ChatListPreference.key) private var chatListBeside = V2ChatListPreference.defaultValue
     @AppStorage(ChatVoiceButtonAction.key) private var appChatVoiceButton = ChatVoiceButtonAction.defaultValue.rawValue
     /// A voice message recorded while the big button is held keeps the
@@ -62,11 +75,41 @@ struct V2ConversationScreen: View {
     @State private var choosesRoomPicture: GroupRoomPictureRequest?
     /// The open chat's ids while its Artifacts sheet shows.
     @State private var artifactSessionIDs: ArtifactSheetIDs?
+    /// Artifacts beside the chat, on a window wide enough for both.
+    @AppStorage(ChatSidePanel.key) private var sidePanelOpen = false
+    @AppStorage(ChatSidePanel.widths.key) private var storedSidePanelWidth = Double(ChatSidePanel.widths.standard)
+    /// The panel's width while its line is dragged (`ColumnDivider`).
+    @State private var draggedSidePanelWidth: CGFloat?
+    @State private var sidePanelTab: ArtifactsTab = .made
+    /// The chat's ids when the panel opened.
+    @State private var sidePanelIDs: [String] = []
+    @State private var screenWidth: CGFloat = 0
+
+    private var fitsSidePanel: Bool { ChatSidePanel.fits(width: screenWidth) }
+    /// As wide as the user dragged it, less on a window without the room.
+    private var sidePanelWidth: CGFloat {
+        // A width dragged as the window narrows goes through the same bounds.
+        ChatSidePanel.widths.resolved(draggedSidePanelWidth.map { Double($0) } ?? storedSidePanelWidth, window: screenWidth, keeping: V2SplitLayout.minimumChatWidth)
+    }
+    private var showsSidePanel: Bool {
+        sidePanelOpen && fitsSidePanel && appState.activeRoomSurface == nil
+    }
 
     private var parent: SessionSummary? {
         guard appState.activeRoomSurface == nil,
               let session = appState.activeChatSessionSummary else { return nil }
         return appState.nestingParent(of: session)
+    }
+
+    /// The chat column's width, beside Artifacts when they show.
+    private var chatColumnWidth: CGFloat {
+        showsSidePanel ? screenWidth - sidePanelWidth - 1 : screenWidth
+    }
+
+    /// Expanded on a Mac and on an iPad with the room, so the voice button
+    /// stays beside it; resting on an iPhone (#1483).
+    private var composerStaysExpanded: Bool {
+        ComposerLayout.staysExpanded(width: chatColumnWidth)
     }
 
     @ViewBuilder private var conversation: some View {
@@ -75,20 +118,111 @@ struct V2ConversationScreen: View {
             GroupChatView()
                 .id(appState.activeRoomSurface?.room.roomID)
                 .environment(\.v2ComposerRests, true)
+                .environment(\.composerStaysExpanded, composerStaysExpanded)
         } else {
             ChatView()
                 .environment(\.v2ComposerRests, true)
+                .environment(\.composerStaysExpanded, composerStaysExpanded)
         }
     }
 
     var body: some View {
+        HStack(spacing: 0) {
+            chatColumn
+            if showsSidePanel {
+                // Drags the panel's width (#1487).
+                ColumnDivider(
+                    widths: ChatSidePanel.widths,
+                    width: sidePanelWidth,
+                    room: screenWidth - V2SplitLayout.minimumChatWidth - 1,
+                    columnEdge: .trailing,
+                    label: AppLocalization.string("Artifacts width"),
+                    stored: $storedSidePanelWidth,
+                    live: $draggedSidePanelWidth
+                )
+                ChatSidePanel(sessionIDs: sidePanelIDs, tab: $sidePanelTab) {
+                    sidePanelOpen = false
+                }
+                .frame(width: sidePanelWidth)
+                .transition(.move(edge: .trailing))
+            }
+        }
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showsSidePanel)
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { screenWidth = proxy.size.width }
+                    .onChange(of: proxy.size.width) { _, width in screenWidth = width }
+            }
+        }
+        // A file path tapped in a reply: the Folder tab beside the chat, or
+        // in the chat's Artifacts sheet on a phone. The tab takes the path.
+        .onChange(of: appState.workspaceReveal?.id) { _, id in
+            guard id != nil, appState.activeRoomSurface == nil else { return }
+            openArtifacts(tab: .folder)
+        }
+        .onAppear { sidePanelIDs = appState.activeChatArtifactSessionIDs }
+        .onChange(of: appState.activeSessionId) { _, _ in
+            sidePanelIDs = appState.activeChatArtifactSessionIDs
+        }
+        .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
+            composerExpanded = expanded
+        }
+        .onPreferenceChange(V2RestingComposerHeightKey.self) { height in
+            if height > 0 { restingComposerHeight = height }
+        }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
+        .toolbar { toolbarItems }
+        .sheet(item: $artifactSessionIDs) { sheet in
+            ChatArtifactsSheet(sessionIDs: sheet.ids, tab: sheet.tab) { artifactSessionIDs?.tab = $0 }
+                .environmentObject(appState)
+        }
+        .modifier(ConversationDialogs(
+            chatTitlePendingRename: $chatTitlePendingRename,
+            chatTitlePendingDeletion: $chatTitlePendingDeletion,
+            confirmsRoomDisband: $confirmsRoomDisband,
+            choosesRoomPicture: $choosesRoomPicture
+        ))
+    }
+
+    /// The chat's ⋯ › Artifacts, or a tapped file path: beside the chat
+    /// when the window has room, else the sheet.
+    private func openArtifacts(tab: ArtifactsTab) {
+        let ids = appState.activeChatArtifactSessionIDs
+        if fitsSidePanel {
+            sidePanelIDs = ids
+            sidePanelTab = tab
+            sidePanelOpen = true
+        } else if artifactSessionIDs?.tab != tab || tab == .made {
+            // An open sheet on the other tab comes back on this one, where
+            // its Folder takes the tapped path.
+            artifactSessionIDs = ArtifactSheetIDs(ids: ids, tab: tab)
+        }
+    }
+
+    /// The composer's own bottom padding, plus half of what the resting bar
+    /// stands taller than the button, so the two share a centre line. Beside
+    /// a composer that stays expanded, the button sits level with its
+    /// bottom, by the controls row, however tall the draft grows.
+    static func voiceButtonBottomPadding(restingComposerHeight: CGFloat, composerStaysExpanded: Bool = false) -> CGFloat {
+        guard !composerStaysExpanded else { return 10 }
+        return 10 + max(0, (restingComposerHeight - V2VoiceButton.diameter) / 2)
+    }
+
+    private var chatColumn: some View {
         ZStack {
-            V2Backdrop()
+            // A Bot Chat glows in its bot's color, as its working line does;
+            // a group room keeps the profile in use.
+            V2Backdrop(glowProfile: appState.activeRoomSurface == nil ? appState.conversationIdentityProfile : nil)
             conversation
                 .overlay(alignment: .bottomTrailing) {
                     if appState.activeRoomSurface == nil {
                         // Beside the resting composer; it slides aside,
-                        // shrinks and fades while the composer is expanded.
+                        // shrinks and fades while the composer is expanded
+                        // for use. One that stays expanded keeps it.
                         V2VoiceButton(context: .conversation, isHidden: hidesVoiceButton)
                             .scaleEffect(hidesVoiceButton && !reduceMotion ? 0.4 : 1)
                             .offset(x: hidesVoiceButton && !reduceMotion ? 30 : 0)
@@ -96,178 +230,237 @@ struct V2ConversationScreen: View {
                             .allowsHitTesting(!hidesVoiceButton)
                             .accessibilityHidden(hidesVoiceButton)
                             .padding(.trailing, 16)
-                            .padding(.bottom, 10)
+                            .padding(.bottom, Self.voiceButtonBottomPadding(restingComposerHeight: restingComposerHeight, composerStaysExpanded: composerStaysExpanded))
                             .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: hidesVoiceButton)
                     }
                 }
                 // On a wide window the transcript, the composer and the
-                // voice button beside it keep to a readable column; the
-                // backdrop still fills the window.
-                .readableContentWidth(ReadableWidth.chat)
+                // voice button beside it keep to a readable column that
+                // widens with the window, its text a size or more larger as
+                // it does; the backdrop still fills it.
+                .readableChatColumn()
         }
-        .modifier(V2FadingBarBackdrop())
-        .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
-            composerExpanded = expanded
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        // Beside the list on a wide window there is no Back: this
+        // closes the chat, as Back does on a phone, and the column goes
+        // back to offering a new one.
+        if shell.isSplit {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    Haptics.light()
+                    appState.showSidebar = true
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.primary)
+                        .frame(width: 40, height: 40)
+                        .modifier(V2PreGlassToolbarControl())
+                }
+                .accessibilityLabel(AppLocalization.string("Close"))
+                .accessibilityIdentifier("conversation.close")
+            }
         }
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar(.hidden, for: .tabBar)
-        .toolbar {
-            // Beside the list on a wide window there is no Back: this
-            // closes the chat, as Back does on a phone, and the column goes
-            // back to offering a new one.
-            if shell.isSplit {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        Haptics.light()
-                        appState.showSidebar = true
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.primary)
-                            .frame(width: 40, height: 40)
-                            .modifier(V2PreGlassToolbarControl())
-                    }
-                    .accessibilityLabel(AppLocalization.string("Close"))
-                    .accessibilityIdentifier("conversation.close")
+        // A window wide enough for two columns: hide the list for the
+        // whole width, or bring it back beside the chat (#1164).
+        if shell.canSplit {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    Haptics.light()
+                    chatListBeside.toggle()
+                } label: {
+                    Image(systemName: "sidebar.left")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.primary)
+                        .frame(width: 40, height: 40)
+                        .modifier(V2PreGlassToolbarControl())
                 }
+                // iPadOS's own sidebar shortcut. A tab kept behind the
+                // selected one still holds its chat, and a shortcut
+                // ignores opacity and hit testing: only the shown tab's.
+                .keyboardShortcut("s", modifiers: [.command, .control])
+                .disabled(!shell.isTabActive)
+                .accessibilityLabel(shell.isSplit ? AppLocalization.string("Hide chat list") : AppLocalization.string("Show chat list"))
+                .accessibilityIdentifier("conversation.chatListToggle")
             }
-            // A window wide enough for two columns: hide the list for the
-            // whole width, or bring it back beside the chat (#1164).
-            if shell.canSplit {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        Haptics.light()
-                        chatListBeside.toggle()
-                    } label: {
-                        Image(systemName: "sidebar.left")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.primary)
-                            .frame(width: 40, height: 40)
-                            .modifier(V2PreGlassToolbarControl())
-                    }
-                    // iPadOS's own sidebar shortcut. A tab kept behind the
-                    // selected one still holds its chat, and a shortcut
-                    // ignores opacity and hit testing: only the shown tab's.
-                    .keyboardShortcut("s", modifiers: [.command, .control])
-                    .disabled(!shell.isTabActive)
-                    .accessibilityLabel(shell.isSplit ? AppLocalization.string("Hide chat list") : AppLocalization.string("Show chat list"))
-                    .accessibilityIdentifier("conversation.chatListToggle")
-                }
-            }
-            // Session-only controls: an open room owns the title and actions.
-            if appState.activeRoomSurface == nil {
-                ToolbarItem(placement: .principal) {
-                    VStack(spacing: 1) {
-                        ChatTitleControl(
-                            onRename: { chatTitlePendingRename = $0 },
-                            onDelete: { chatTitlePendingDeletion = $0 },
-                            compact: parent != nil
-                        )
-                        if let parent {
-                            Button {
-                                Haptics.light()
-                                appState.requestOpenSession(parent.id)
-                            } label: {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "arrow.turn.left.up")
-                                        .font(.caption2.weight(.bold))
-                                    Text(parent.title)
-                                        .font(.caption.weight(.semibold))
-                                        .lineLimit(1)
-                                }
-                                .foregroundStyle(Color.conduitAccent)
-                                .frame(minHeight: 18)
+        }
+        // Session-only controls: an open room owns the title and actions.
+        if appState.activeRoomSurface == nil {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 1) {
+                    ChatTitleControl(
+                        onRename: { chatTitlePendingRename = $0 },
+                        onDelete: { chatTitlePendingDeletion = $0 },
+                        compact: parent != nil
+                    )
+                    if let parent {
+                        Button {
+                            Haptics.light()
+                            appState.requestOpenSession(parent.id)
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "arrow.turn.left.up")
+                                    .scaledFont(.caption2.weight(.bold))
+                                Text(parent.title)
+                                    .scaledFont(.caption.weight(.semibold))
+                                    .lineLimit(1)
                             }
-                            .buttonStyle(.plain)
-                            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
-                            .accessibilityLabel(AppLocalization.string("From \(parent.title)"))
-                            .accessibilityHint(AppLocalization.string("Opens the conversation this one came from"))
+                            .foregroundStyle(Color.conduitAccent)
+                            .frame(minHeight: 18)
                         }
-                        V2ConnectionLine()
+                        .buttonStyle(.plain)
+                        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                        .accessibilityLabel(AppLocalization.string("From \(parent.title)"))
+                        .accessibilityHint(AppLocalization.string("Opens the conversation this one came from"))
                     }
-                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isConnected)
-                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isRecoveringConnection)
-                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.hidesBriefReconnect)
+                    V2ConnectionLine()
                 }
+                .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isConnected)
+                .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isRecoveringConnection)
+                .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.hidesBriefReconnect)
             }
-            // The big button does something else: a live call stays one
-            // tap away up here.
-            if appState.activeRoomSurface == nil,
-               ChatVoiceButtonAction.resolved(profile: appState.chatVoiceButtonOverride, app: appChatVoiceButton) != .liveCall {
-                ToolbarItem(placement: .topBarTrailing) {
-                    V2VoiceButton(context: .conversation, style: .toolbar)
-                }
-            }
+        }
+        // The big button does something else: a live call stays one
+        // tap away up here.
+        if appState.activeRoomSurface == nil,
+           ChatVoiceButtonAction.resolved(profile: appState.chatVoiceButtonOverride, app: appChatVoiceButton) != .liveCall {
             ToolbarItem(placement: .topBarTrailing) {
-                V2ConversationMenu(
-                    onRename: { chatTitlePendingRename = $0 },
-                    onDelete: { chatTitlePendingDeletion = $0 },
-                    onDisbandRoom: { confirmsRoomDisband = true },
-                    onChooseRoomPicture: { choosesRoomPicture = $0 },
-                    onArtifacts: { artifactSessionIDs = ArtifactSheetIDs(ids: appState.activeChatArtifactSessionIDs) }
-                )
+                V2VoiceButton(context: .conversation, style: .toolbar)
             }
         }
-        .sheet(item: $artifactSessionIDs) { sheet in
-            ChatArtifactsSheet(sessionIDs: sheet.ids)
-                .environmentObject(appState)
+        ToolbarItem(placement: .topBarTrailing) {
+            V2ConversationMenu(
+                onRename: { chatTitlePendingRename = $0 },
+                onDelete: { chatTitlePendingDeletion = $0 },
+                onDisbandRoom: { confirmsRoomDisband = true },
+                onChooseRoomPicture: { choosesRoomPicture = $0 },
+                onArtifacts: { openArtifacts(tab: .made) }
+            )
         }
-        .sheet(item: $chatTitlePendingRename) { session in
-            RenameSheet.conversation(session) { title in
-                Task { await appState.renameSession(session, to: title) }
+        // Artifacts beside the chat, on a window with room for both.
+        if fitsSidePanel, appState.activeRoomSurface == nil {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Haptics.light()
+                    if sidePanelOpen {
+                        sidePanelOpen = false
+                    } else {
+                        openArtifacts(tab: sidePanelTab)
+                    }
+                } label: {
+                    Image(systemName: "sidebar.right")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(sidePanelOpen ? Color.conduitAccent : Color.primary)
+                        .frame(width: 40, height: 40)
+                        .modifier(V2PreGlassToolbarControl())
+                }
+                .keyboardShortcut("a", modifiers: [.command, .option])
+                .disabled(!shell.isTabActive)
+                .accessibilityLabel(sidePanelOpen ? AppLocalization.string("Hide artifacts") : AppLocalization.string("Show artifacts"))
+                .accessibilityIdentifier("conversation.sidePanelToggle")
             }
-        }
-        .alert("Delete conversation?", isPresented: Binding(
-            get: { chatTitlePendingDeletion != nil },
-            set: { if !$0 { chatTitlePendingDeletion = nil } }
-        )) {
-            Button("Delete", role: .destructive) {
-                guard let session = chatTitlePendingDeletion else { return }
-                chatTitlePendingDeletion = nil
-                Task { await appState.deleteSession(session) }
-            }
-            Button("Cancel", role: .cancel) { chatTitlePendingDeletion = nil }
-        } message: {
-            Text("This permanently deletes the conversation and cannot be undone.")
-        }
-        // On the screen, not the menu: a dialog raised as a menu closes
-        // may never show.
-        .modifier(GroupRoomPicturePicker(request: $choosesRoomPicture))
-        .confirmationDialog(
-            AppLocalization.string("Disband this group chat?"),
-            isPresented: $confirmsRoomDisband,
-            titleVisibility: .visible
-        ) {
-            Button(AppLocalization.string("Disband"), role: .destructive) {
-                Task { await appState.disbandActiveRoom() }
-            }
-            Button(AppLocalization.string("Cancel"), role: .cancel) {}
-        } message: {
-            Text(AppLocalization.string(
-                "The room, its history, and every member's session end permanently. This cannot be undone."
-            ))
         }
     }
 }
 
-/// Before iOS 26, a fading material behind the navigation bar, so the
-/// transcript fades out under the header instead of ending at a line.
-/// iOS 26 gets its soft scroll edge on the transcript itself (ChatView).
-private struct V2FadingBarBackdrop: ViewModifier {
-    @ViewBuilder
+/// The conversation's rename sheet, delete alert, room picture picker and
+/// disband confirmation.
+private struct ConversationDialogs: ViewModifier {
+    @EnvironmentObject private var appState: AppState
+    @Binding var chatTitlePendingRename: SessionSummary?
+    @Binding var chatTitlePendingDeletion: SessionSummary?
+    @Binding var confirmsRoomDisband: Bool
+    @Binding var choosesRoomPicture: GroupRoomPictureRequest?
+
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content
-        } else {
-            content.overlay(alignment: .top) {
-                // Zero height at the top of the content: ignoring the safe
-                // area grows it up over exactly the navigation bar.
-                V2ScrollEdgeBackground()
-                    .frame(height: 0)
+        content
+            .sheet(item: $chatTitlePendingRename) { session in
+                RenameSheet.conversation(session) { title in
+                    Task { await appState.renameSession(session, to: title) }
+                }
+            }
+            .alert("Delete conversation?", isPresented: Binding(
+                get: { chatTitlePendingDeletion != nil },
+                set: { if !$0 { chatTitlePendingDeletion = nil } }
+            )) {
+                Button("Delete", role: .destructive) {
+                    guard let session = chatTitlePendingDeletion else { return }
+                    chatTitlePendingDeletion = nil
+                    Task { await appState.deleteSession(session) }
+                }
+                Button("Cancel", role: .cancel) { chatTitlePendingDeletion = nil }
+            } message: {
+                Text("This permanently deletes the conversation and cannot be undone.")
+            }
+            // On the screen, not the menu: a dialog raised as a menu closes
+            // may never show.
+            .modifier(GroupRoomPicturePicker(request: $choosesRoomPicture))
+            .confirmationDialog(
+                AppLocalization.string("Disband this group chat?"),
+                isPresented: $confirmsRoomDisband,
+                titleVisibility: .visible
+            ) {
+                Button(AppLocalization.string("Disband"), role: .destructive) {
+                    Task { await appState.disbandActiveRoom() }
+                }
+                Button(AppLocalization.string("Cancel"), role: .cancel) {}
+            } message: {
+                Text(AppLocalization.string(
+                    "The room, its history, and every member's session end permanently. This cannot be undone."
+                ))
+            }
+    }
+}
+
+/// Artifacts beside the chat on a wide window (#1389): the chat's own
+/// files and its Folder, as the ⋯ › Artifacts sheet shows them on a phone.
+struct ChatSidePanel: View {
+    static let key = "chatSidePanelOpen"
+    /// The panel's widths as the user drags it (#1487). It shows on a
+    /// window with room for its standard width, as before the drag, and a
+    /// window too small for the user's gets less.
+    static let widths = ColumnWidth(key: "conduit.chatSidePanelWidth", standard: 340, minimum: 300, maximum: 720)
+
+    /// Whether a window this wide keeps a readable chat beside the panel.
+    static func fits(width: CGFloat) -> Bool {
+        width >= V2SplitLayout.minimumChatWidth + widths.standard + 1
+    }
+
+    @EnvironmentObject private var appState: AppState
+    let sessionIDs: [String]
+    @Binding var tab: ArtifactsTab
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Artifacts")
+                    .scaledFont(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button {
+                    Haptics.light()
+                    onClose()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(AppLocalization.string("Hide artifacts"))
+            }
+            .padding(.leading, 16)
+            .padding(.trailing, 8)
+            .padding(.top, 8)
+            ChatArtifactsContent(sessionIDs: sessionIDs, tab: $tab, inPanel: true) { item in
+                appState.showArtifactInChat(item, chatIsOpen: true)
             }
         }
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
     }
 }
 
@@ -282,9 +475,9 @@ private struct V2ConnectionLine: View {
             let connecting = appState.isRecoveringConnection
             HStack(spacing: 4) {
                 Image(systemName: connecting ? "arrow.triangle.2.circlepath" : "wifi.slash")
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
                 Text(connecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Disconnected"))
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .lineLimit(1)
             }
             .foregroundStyle(connecting ? Color.orange : Color.red)
@@ -404,4 +597,5 @@ private struct V2PreGlassToolbarControl: ViewModifier {
 private struct ArtifactSheetIDs: Identifiable {
     let id = UUID()
     let ids: [String]
+    var tab: ArtifactsTab = .made
 }

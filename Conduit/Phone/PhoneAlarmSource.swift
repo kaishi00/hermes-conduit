@@ -77,12 +77,26 @@ struct PhoneAlarmRecord: Codable, Equatable {
 }
 
 enum PhoneAlarmSources {
-    /// AlarmKit on iOS 26, a source that can't set anything before it.
-    static func system(defaults: UserDefaults = .standard) -> PhoneAlarmSource {
+    /// AlarmKit on iOS 26, a source that can't set anything before it. The
+    /// iPad app on a Vision Pro reports iOS 26 but has no AlarmKit: its
+    /// weak-linked `AlarmManager.shared` is address 0 there, and calling it
+    /// crashed at launch.
+    static func system(
+        defaults: UserDefaults = .standard,
+        hasAlarmKit: Bool? = nil
+    ) -> PhoneAlarmSource {
         #if canImport(AlarmKit)
-        if #available(iOS 26.0, *) { return AlarmKitPhoneSource(defaults: defaults) }
+        if #available(iOS 26.0, *), hasAlarmKit ?? alarmKitLoaded {
+            return AlarmKitPhoneSource(defaults: defaults)
+        }
         #endif
         return UnsupportedPhoneAlarmSource()
+    }
+
+    /// Whether `AlarmManager.shared`'s getter is bound in this process: the
+    /// symbol AlarmKit.tbd lists for it.
+    static var alarmKitLoaded: Bool {
+        dlsym(UnsafeMutableRawPointer(bitPattern: -2), "$s8AlarmKit0A7ManagerC6sharedACvgZ") != nil
     }
 
     /// The next time a clock-time alarm rings after `now`.
@@ -119,7 +133,8 @@ struct ConduitAlarmMetadata: AlarmMetadata {}
 
 @available(iOS 26.0, *)
 final class AlarmKitPhoneSource: PhoneAlarmSource {
-    private let manager = AlarmManager.shared
+    /// Read when used, not when made.
+    private var manager: AlarmManager { AlarmManager.shared }
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults) {

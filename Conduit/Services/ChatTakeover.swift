@@ -34,8 +34,10 @@ struct ChatTakeoverState: Equatable {
     let sessionID: String
     /// Every id the chat goes by: the host matches its claim on any of them.
     let sessionIDs: [String]
-    /// The app that holds the chat (`desktop`, `cli`, …), when Hermes named it.
-    let surface: String?
+    /// The app that holds the chat (`desktop`, `cli`, …), when Hermes named
+    /// it, or the plugin's busy answer did (`bot` while another bot's message
+    /// runs in a Bot Chat).
+    var surface: String?
     /// The text whose send was refused. The composer only resends after a
     /// takeover when its draft is this message, so a refused voice or other
     /// non-composer turn never sends an unrelated draft.
@@ -46,7 +48,16 @@ struct ChatTakeoverState: Equatable {
 
     /// The app that holds the chat, as the sentences below name it.
     enum Owner: Equatable {
-        case desktop, terminal, otherWindow
+        /// `desktop`: Hermes Desktop.
+        case desktop
+        /// `cli` or `tui`: a Hermes terminal.
+        case terminal
+        /// `bot`: Hermes is answering another bot's message in this Bot Chat.
+        case otherBot
+        /// Anything else, or no name: another Hermes surface, like a
+        /// gateway platform (`gateway` is other work Hermes' gateway queued
+        /// in the chat, such as a Discord message it's answering).
+        case otherWindow
     }
 
     var owner: Owner { Self.owner(surface) }
@@ -55,6 +66,7 @@ struct ChatTakeoverState: Equatable {
         switch surface?.lowercased() {
         case "desktop": return .desktop
         case "cli", "tui": return .terminal
+        case "bot": return .otherBot
         default: return .otherWindow
         }
     }
@@ -67,6 +79,7 @@ struct ChatTakeoverState: Equatable {
         switch owner {
         case .desktop: return AppLocalization.string("This chat is open in Hermes Desktop. Take it over to send from here.")
         case .terminal: return AppLocalization.string("This chat is open in a Hermes terminal. Take it over to send from here.")
+        case .otherBot: return AppLocalization.string("This bot is answering a message from another bot. Take the chat over, and Conduit sends yours when it finishes.")
         case .otherWindow: return AppLocalization.string("This chat is open in another Hermes window. Take it over to send from here.")
         }
     }
@@ -76,6 +89,7 @@ struct ChatTakeoverState: Equatable {
         switch owner {
         case .desktop: return AppLocalization.string("Taking this chat over from Hermes Desktop. If it's replying, Conduit waits for the reply to finish.")
         case .terminal: return AppLocalization.string("Taking this chat over from a Hermes terminal. If it's replying, Conduit waits for the reply to finish.")
+        case .otherBot: return AppLocalization.string("This bot is answering a message from another bot. Conduit sends yours when it finishes.")
         case .otherWindow: return AppLocalization.string("Taking this chat over from another Hermes window. If it's replying, Conduit waits for the reply to finish.")
         }
     }
@@ -85,6 +99,7 @@ struct ChatTakeoverState: Equatable {
         switch owner {
         case .desktop: return AppLocalization.string("Hermes Desktop is still replying in this chat. Try again when it finishes.")
         case .terminal: return AppLocalization.string("A Hermes terminal is still replying in this chat. Try again when it finishes.")
+        case .otherBot: return AppLocalization.string("This bot is still answering a message from another bot. Try again when it finishes.")
         case .otherWindow: return AppLocalization.string("Another Hermes window is still replying in this chat. Try again when it finishes.")
         }
     }
@@ -144,7 +159,10 @@ enum ChatTakeoverOutcome: Equatable {
     /// The other app's claim is gone (or there was none): send again.
     case ready
     /// The other app is running a turn on the chat: ask again shortly.
-    case busy
+    /// `surface` names who, when the plugin said (`bot`: another bot's
+    /// message running in a Bot Chat, which Hermes' refusal doesn't name;
+    /// `gateway`: other work Hermes' gateway queued in the chat).
+    case busy(surface: String?)
     /// This dashboard process itself holds the chat (Conduit on another
     /// device, or the web chat). The route never touches that claim.
     case sameHost
@@ -159,15 +177,19 @@ final class ChatTakeoverClient {
     typealias Request = @MainActor (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
 
     private let request: Request
+    /// The query parameter naming the profile: the claims this route drops
+    /// are judged by the dashboard process's pid (DashboardPath.conduitProfileParameter).
+    private let profileParameter: @MainActor () -> String
 
-    init(request: @escaping Request) {
+    init(request: @escaping Request, profileParameter: @escaping @MainActor () -> String = { "profile" }) {
         self.request = request
+        self.profileParameter = profileParameter
     }
 
     func takeOver(sessionIDs: [String], profile: String) async throws -> ChatTakeoverOutcome {
         let body: [String: Any] = ["session_ids": Array(sessionIDs.prefix(Self.maxSessionIDs))]
         do {
-            let response = try await request(DashboardPath.withProfile(Self.path, profile: profile), "POST", body)
+            let response = try await request(DashboardPath.withProfile(Self.path, profile: profile, parameter: profileParameter()), "POST", body)
             return try Self.outcome(from: response)
         } catch let error as DashboardTicketBridgeError {
             throw Self.mapped(error) ?? error
@@ -189,7 +211,9 @@ final class ChatTakeoverClient {
         }
         switch status {
         case "taken_over", "free": return .ready
-        case "busy": return .busy
+        case "busy":
+            let surface = (response["surface"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .busy(surface: surface?.isEmpty == false ? surface : nil)
         case "same_host": return .sameHost
         default: throw ChatTakeoverError.malformed
         }

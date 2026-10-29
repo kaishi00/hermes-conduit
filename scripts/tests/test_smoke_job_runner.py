@@ -23,7 +23,7 @@ import sys
 import tempfile
 import unittest
 
-from _util import SCRIPTS_DIR
+from _util import SCRIPTS_DIR, workflow_step_script
 
 REPO_ROOT = os.path.dirname(SCRIPTS_DIR)
 WORKFLOW = os.path.join(REPO_ROOT, ".github", "workflows", "ci.yml")
@@ -80,39 +80,7 @@ exit 0
 
 def _step_script(step_name):
     """Return the dedented `run:` block of the named workflow step."""
-    workflow = STEP_WORKFLOWS[step_name]
-    with open(workflow, encoding="utf-8") as fh:
-        lines = fh.read().splitlines()
-    start = None
-    for i, line in enumerate(lines):
-        if line.strip() == "- name: " + step_name:
-            start = i
-            break
-    if start is None:
-        raise AssertionError("step {0!r} not found in {1}".format(
-            step_name, os.path.basename(workflow)))
-    run_at = None
-    for j in range(start + 1, len(lines)):
-        if lines[j].strip().startswith("run:"):
-            run_at = j
-            break
-    if run_at is None:
-        raise AssertionError("step {0!r} has no run block".format(step_name))
-    inline = lines[run_at].strip()[len("run:"):].strip()
-    if inline != "|":
-        return inline + "\n"
-    run_indent = len(lines[run_at]) - len(lines[run_at].lstrip(" "))
-    body = []
-    for line in lines[run_at + 1:]:
-        if not line.strip():
-            body.append("")
-            continue
-        if len(line) - len(line.lstrip(" ")) <= run_indent:
-            break
-        body.append(line)
-    widths = [len(l) - len(l.lstrip(" ")) for l in body if l.strip()]
-    pad = min(widths) if widths else 0
-    return "\n".join(l[pad:] if l.strip() else "" for l in body) + "\n"
+    return workflow_step_script(STEP_WORKFLOWS[step_name], step_name)
 
 
 class SmokeJobRunnerTests(unittest.TestCase):
@@ -648,14 +616,16 @@ class SmokeJobRunnerTests(unittest.TestCase):
         self.assertEqual(selection["unit_csv"].split(","), selection["unit"])
         self.assertEqual(selection["ui_csv"].split(","), selection["ui"])
         self.assertEqual(selection["unit_csv"].count(",") + 1, len(selection["unit"]))
-        # Size is policy, not taste (docs/CI.md): one curated class per risk
-        # area. The source contracts and the change's own classes (within
+        # Size is policy, not taste (docs/CI.md): pinned single tests under
+        # a cap, so a test added to one of their classes never joins every
+        # PR's run. The source contracts and the change's own classes (within
         # changed_budget_s) ride in the same single invocation.
-        self.assertEqual(
-            len(selection["curated_unit"]), 7,
-            "the hosted selection is one class per risk area - growing it adds a "
-            "whole xcodebuild invocation, not just one class")
-        self.assertEqual(len(selection["ui"]), 2)
+        self.assertLessEqual(len(selection["curated_unit"]), selection["max_unit_tests"])
+        self.assertLessEqual(len(selection["ui"]), selection["max_ui_tests"])
+        self.assertLessEqual(selection["max_unit_tests"], 70)
+        self.assertLessEqual(selection["max_ui_tests"], 4)
+        for test in selection["curated_unit"] + selection["ui"]:
+            self.assertRegex(test, r"^[A-Za-z_][A-Za-z0-9_]*/test[A-Za-z0-9_]*$")
 
 
 if __name__ == "__main__":

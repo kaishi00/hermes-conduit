@@ -45,6 +45,10 @@ final class ComposerFullEditorTests: XCTestCase {
     func testLongDraftsOfferTheFullEditor() {
         XCTAssertTrue(ComposerBar.showsFullEditorButton(measuredHeight: ComposerBar.fullEditorThreshold))
         XCTAssertTrue(ComposerBar.showsFullEditorButton(measuredHeight: ComposerPasteTextView.maximumHeight))
+        // A wide Mac column grows the text: a single line there waits too.
+        let grown = ComposerPasteTextView.minimumHeight(for: ComposerPasteTextView.bodyFont(in: .large, from: ColumnText(base: .large, scale: 2.2)))
+        XCTAssertFalse(ComposerBar.showsFullEditorButton(measuredHeight: grown, restingHeight: grown))
+        XCTAssertTrue(ComposerBar.showsFullEditorButton(measuredHeight: grown + 20, restingHeight: grown))
     }
 
     func testTheFullEditorTellsDictationFromTyping() {

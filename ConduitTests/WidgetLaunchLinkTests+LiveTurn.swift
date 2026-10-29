@@ -221,6 +221,23 @@ extension WidgetLaunchLinkTests {
         XCTAssertFalse(ends("D2", token: nil, keeping: true))
     }
 
+    /// A token no relay installation took yet is sent again when Conduit is
+    /// back on screen (#1361); one without a token waits for it.
+    func testOnlyATokenNoRelayTookIsRegisteredAgain() {
+        XCTAssertTrue(LiveTurnActivities.needsRegistration(pushToken: "aa", tokenInstallationID: nil))
+        XCTAssertFalse(LiveTurnActivities.needsRegistration(pushToken: "aa", tokenInstallationID: "I1"))
+        XCTAssertFalse(LiveTurnActivities.needsRegistration(pushToken: nil, tokenInstallationID: nil))
+    }
+
+    /// The relay hears how long ago the activity started, so it can end one
+    /// whose turn ended first (#1361): never negative or unreadable.
+    func testLiveActivityStartedAgoIsNeverNegativeOrUnreadable() {
+        XCTAssertEqual(PushNotificationService.liveActivityStartedAgo(12.5), 12.5)
+        XCTAssertEqual(PushNotificationService.liveActivityStartedAgo(-3), 0, "The clock moved back")
+        XCTAssertEqual(PushNotificationService.liveActivityStartedAgo(.nan), 0)
+        XCTAssertEqual(PushNotificationService.liveActivityStartedAgo(.infinity), 0)
+    }
+
     /// Only a relay that took a Live Activity token counts as a route the
     /// plugin can end activities through; an error or no answer settles
     /// nothing.

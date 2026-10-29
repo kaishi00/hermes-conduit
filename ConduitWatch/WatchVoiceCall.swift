@@ -25,6 +25,9 @@ enum WatchCallEnd {
     /// A call from Hermes the iPhone kept on its headset (#1204): the
     /// model's part is over, and the call goes on as `onPhone`.
     static let onPhone = "kept on the iPhone's headset"
+    /// watchOS gave the call's socket no network, and none ever opened
+    /// (WatchNoNetwork, #1346).
+    static let noNetwork = String(localized: "Your Watch couldn't get a network connection for the call. Keep your iPhone nearby with Bluetooth on, or join Wi-Fi on the Watch, and try again.")
 
     static func isNormal(_ reason: String?) -> Bool {
         guard let reason else { return true }

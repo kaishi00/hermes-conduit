@@ -123,12 +123,38 @@ enum ProjectChatsInChats: String, CaseIterable, Identifiable {
     case all
 
     static let key = "conduit.v2.projectChatsInChats"
-    static let defaultValue = ProjectChatsInChats.hidden
+    /// Recent since #1317; an install from before keeps Off (`settleDefault`).
+    static let defaultValue = ProjectChatsInChats.recent
+    /// This device's default, settled once by `settleDefault`. Apart from
+    /// `key`, which syncs across devices: the default isn't a choice, so it
+    /// never overwrites one made on another device.
+    static let deviceDefaultKey = "conduit.v2.projectChatsDeviceDefault"
 
     var id: String { rawValue }
 
-    static func stored(_ raw: String?) -> ProjectChatsInChats {
-        raw.flatMap(ProjectChatsInChats.init(rawValue:)) ?? defaultValue
+    static func stored(_ raw: String?, deviceDefault: String? = nil) -> ProjectChatsInChats {
+        raw.flatMap(ProjectChatsInChats.init(rawValue:))
+            ?? deviceDefault.flatMap(ProjectChatsInChats.init(rawValue:))
+            ?? defaultValue
+    }
+
+    /// The choice, or this device's default when none was made.
+    static func stored(in defaults: UserDefaults) -> ProjectChatsInChats {
+        stored(defaults.string(forKey: key), deviceDefault: defaults.string(forKey: deviceDefaultKey))
+    }
+
+    /// What Settings shows before a choice is made.
+    static func deviceDefault(in defaults: UserDefaults = .standard) -> ProjectChatsInChats {
+        stored(nil, deviceDefault: defaults.string(forKey: deviceDefaultKey))
+    }
+
+    /// An install from before Recent became the default saved nothing for
+    /// Off, which was the default then: it keeps Off rather than change
+    /// under its user. Runs once; a new install (no saved dashboards) keeps
+    /// Recent, even after it signs in.
+    static func settleDefault(in defaults: UserDefaults, existingInstall: Bool) {
+        guard defaults.string(forKey: deviceDefaultKey) == nil else { return }
+        defaults.set((existingInstall ? ProjectChatsInChats.hidden : defaultValue).rawValue, forKey: deviceDefaultKey)
     }
 
     /// Whether a project's chat with this last activity is listed. A chat
@@ -142,5 +168,33 @@ enum ProjectChatsInChats: String, CaseIterable, Identifiable {
             let section = ChatListSection.dateSection(for: lastActivity, now: now, calendar: calendar)
             return section == .today || section == .yesterday
         }
+    }
+}
+
+/// The projects whose chats Chats leaves out (Filter ▸ Projects), kept per
+/// profile since each profile has its own projects. Chats in no project
+/// (Home's) are one more choice. Saved as profile → project ids.
+enum HiddenChatProjects {
+    static let key = "conduit.v2.hiddenChatProjects"
+    /// Stands for the chats in no project.
+    static let noProject = "~no-project"
+
+    static func ids(in stored: Any?, profile: String) -> Set<String> {
+        Set((stored as? [String: [String]])?[profile] ?? [])
+    }
+
+    /// `stored` with `profile`'s choice replaced; an empty one is dropped.
+    static func setting(_ ids: Set<String>, profile: String, in stored: Any?) -> [String: [String]] {
+        var all = stored as? [String: [String]] ?? [:]
+        all[profile] = ids.isEmpty ? nil : ids.sorted()
+        return all
+    }
+
+    /// Whether a row in `projectID` (nil: in no project) is left out. A
+    /// pinned one stays, since pinning asks for it in Chats.
+    /// `listedWait` is a wait for approval while Needs approval is on: it
+    /// lists every wait, as the amber dot counts them.
+    static func hides(projectID: String?, pinned: Bool, listedWait: Bool = false, hidden: Set<String>) -> Bool {
+        !pinned && !listedWait && hidden.contains(projectID ?? noProject)
     }
 }

@@ -218,7 +218,7 @@ struct LiveVoiceCallSheet: View {
                 if waitsToStart { onEnd() } else { dismiss() }
             } label: {
                 Image(systemName: isMinimisable ? "chevron.down" : "xmark")
-                    .font(.body.weight(.semibold))
+                    .scaledFont(.body.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 44, height: 44)
                     .contentShape(Circle())
@@ -240,7 +240,7 @@ struct LiveVoiceCallSheet: View {
                         )
                     } else {
                         Text(verbatim: title)
-                            .font(.headline)
+                            .scaledFont(.headline)
                             .lineLimit(1)
                     }
                     if let billingBadge {
@@ -290,11 +290,11 @@ struct LiveVoiceCallSheet: View {
                 .accessibilityHidden(true)
             VStack(spacing: 6) {
                 Text(statusText)
-                    .font(.title3.weight(.semibold))
+                    .scaledFont(.title3.weight(.semibold))
                     .multilineTextAlignment(.center)
                 if let note {
                     Text(note)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -328,12 +328,12 @@ struct LiveVoiceCallSheet: View {
                 .accessibilityHidden(true)
             VStack(spacing: 6) {
                 Text(statusText)
-                    .font(.headline)
+                    .scaledFont(.headline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 if let note {
                     Text(note)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -364,7 +364,7 @@ struct LiveVoiceCallSheet: View {
             ForEach(Array(lines.enumerated()), id: \.element.id) { index, entry in
                 let isLatest = index == lines.count - 1
                 Text(entry.text)
-                    .font(isLatest ? .body : .subheadline)
+                    .scaledFont(isLatest ? .body : .subheadline)
                     .foregroundStyle(isLatest ? Color.primary : Color.secondary)
                     .multilineTextAlignment(.center)
                     .lineLimit(isLatest ? 4 : 2)
@@ -407,11 +407,11 @@ struct LiveVoiceCallSheet: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(statusText)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     if let note {
                         Text(note)
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                     }
@@ -426,7 +426,7 @@ struct LiveVoiceCallSheet: View {
                 LazyVStack(spacing: 10) {
                     if transcript.isEmpty {
                         Text("What you and the assistant say will appear here.")
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
@@ -463,10 +463,7 @@ struct LiveVoiceCallSheet: View {
                 // A mode that keeps refusing (a plan's limit, a provider's
                 // outage) needn't end the conversation (#964).
                 if let modeSwitch {
-                    VoiceModeMenu(modeSwitch: modeSwitch) {
-                        LiveVoiceCallButtonFace(symbol: "arrow.triangle.swap", title: AppLocalization.string("Switch voice"))
-                    }
-                    .accessibilityLabel(Text(verbatim: AppLocalization.string("Switch voice")))
+                    LiveVoiceCallModeMenuButton(modeSwitch: modeSwitch)
                 }
             } else {
                 LiveVoiceCallButton(
@@ -537,7 +534,7 @@ struct LiveVoiceBillingBadge: View {
         } icon: {
             Image(systemName: billing == .api ? "creditcard" : "person.crop.circle")
         }
-        .font(.caption.weight(.semibold))
+        .scaledFont(.caption.weight(.semibold))
         .foregroundStyle(tint)
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
@@ -556,7 +553,7 @@ private struct LiveVoiceCallThreadLabel: View {
         if let thread = jobs.liveThread {
             CallChatTitleLink(link: thread.appLink, onOpenChat: onOpenChat) {
                 Text(verbatim: thread.title)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
             }
             .foregroundStyle(.secondary)
         }
@@ -579,7 +576,7 @@ private struct CallChatTitleLink<Title: View>: View {
                 HStack(spacing: 3) {
                     label().lineLimit(1)
                     Image(systemName: "chevron.forward")
-                        .font(.caption2.weight(.semibold))
+                        .scaledFont(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
                 }
@@ -619,7 +616,7 @@ private struct LiveVoiceAskFirstButton: View {
             jobs.setAsksBeforeSending(!isOn)
         } label: {
             Image(systemName: isOn ? "hand.raised.fill" : "hand.raised.slash")
-                .font(.body.weight(.semibold))
+                .scaledFont(.body.weight(.semibold))
                 .foregroundStyle(isOn ? Color.conduitAccent : Color.secondary)
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
@@ -633,7 +630,7 @@ private struct LiveVoiceAskFirstButton: View {
         .overlay(alignment: .topTrailing) {
             if let caption {
                 Text(verbatim: caption)
-                    .font(.footnote.weight(.medium))
+                    .scaledFont(.footnote.weight(.medium))
                     .foregroundStyle(.primary)
                     // Wraps rather than running off the leading edge, at
                     // large text sizes and in longer languages. Capped since
@@ -712,9 +709,70 @@ struct LiveVoiceCallButton: View {
 }
 
 /// A call button's round glyph and caption, for a button or a menu.
-struct LiveVoiceCallButtonFace: View {
+struct LiveVoiceCallButtonFace<Icon: View>: View {
     let symbol: String
     let title: String
+    /// The round glyph, or a control around it.
+    let icon: Icon
+    /// True when `icon` is its own control, named for VoiceOver: the
+    /// caption is then only for the eye.
+    var iconIsControl = false
+
+    var body: some View {
+        VStack(spacing: 6) {
+            icon
+            Text(verbatim: title)
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.7)
+                // A fifth of the width can't hold larger titles;
+                // touch and hold shows the name large.
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                .accessibilityHidden(iconIsControl)
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .accessibilityShowsLargeContentViewer {
+            Label { Text(verbatim: title) } icon: { Image(systemName: symbol) }
+        }
+    }
+}
+
+extension LiveVoiceCallButtonFace where Icon == LiveVoiceCallButtonIcon {
+    init(symbol: String, title: String, style: LiveVoiceCallButton.Style = .normal) {
+        self.init(symbol: symbol, title: title, icon: LiveVoiceCallButtonIcon(symbol: symbol, style: style))
+    }
+}
+
+/// A call button that opens the voice mode menu. Only the round glyph is the
+/// menu's label: on iOS 26 a menu draws its label's glass over the whole
+/// label, so with the caption inside, the button became a large rounded
+/// slab that clipped its caption.
+struct LiveVoiceCallModeMenuButton: View {
+    let modeSwitch: VoiceModeSwitch
+
+    private static let symbol = "arrow.triangle.swap"
+
+    var body: some View {
+        let title = AppLocalization.string("Switch voice")
+        LiveVoiceCallButtonFace(
+            symbol: Self.symbol,
+            title: title,
+            icon: VoiceModeMenu(modeSwitch: modeSwitch) {
+                LiveVoiceCallButtonIcon(symbol: Self.symbol)
+                    .contentShape(Circle())
+            }
+            .accessibilityLabel(Text(verbatim: title)),
+            iconIsControl: true
+        )
+    }
+}
+
+/// A call button's round glyph.
+struct LiveVoiceCallButtonIcon: View {
+    let symbol: String
     var style: LiveVoiceCallButton.Style = .normal
 
     @ScaledMetric(relativeTo: .title3) private var scaledDiameter: CGFloat = 62
@@ -723,29 +781,8 @@ struct LiveVoiceCallButtonFace: View {
     private var diameter: CGFloat { min(scaledDiameter, 66) }
 
     var body: some View {
-        VStack(spacing: 6) {
-            icon
-            Text(verbatim: title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.7)
-                // A fifth of the width can't hold larger titles;
-                // touch and hold shows the name large.
-                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-        }
-        .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
-        .accessibilityShowsLargeContentViewer {
-            Label { Text(verbatim: title) } icon: { Image(systemName: symbol) }
-        }
-    }
-
-    @ViewBuilder
-    private var icon: some View {
         let glyph = Image(systemName: symbol)
-            .font(.title3.weight(.semibold))
+            .scaledFont(.title3.weight(.semibold))
             .frame(width: diameter, height: diameter)
         switch style {
         case .normal:
@@ -774,7 +811,7 @@ struct LiveVoiceTranscriptBubble: View {
 
     var body: some View {
         Text(entry.text)
-            .font(.body)
+            .scaledFont(.body)
             .textSelection(.enabled)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
@@ -953,7 +990,7 @@ struct V2CallHeaderTitle: View {
         VStack(spacing: 2) {
             CallChatTitleLink(link: jobs.liveThread?.appLink, onOpenChat: onOpenChat) {
                 Text(verbatim: jobs.liveThread?.title ?? AppLocalization.string("Voice call"))
-                    .font(.headline)
+                    .scaledFont(.headline)
             }
             // The subtitle is hidden below; VoiceOver still hears the
             // profile and engine, just not the ticking clock.
@@ -962,7 +999,7 @@ struct V2CallHeaderTitle: View {
             // before it starts or after it ends.
             TimelineView(.animation(minimumInterval: 1, paused: jobs.liveCallStartedAt == nil)) { context in
                 Text(verbatim: subtitle(at: context.date))
-                    .font(.footnote.monospacedDigit())
+                    .scaledFont(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }

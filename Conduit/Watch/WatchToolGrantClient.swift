@@ -22,9 +22,13 @@ final class WatchToolGrantClient {
     static let timeoutMilliseconds = 4_000
 
     private let request: GeminiLiveTokenClient.Request
+    /// The query parameter naming the profile: a grant's bridge, jobs and
+    /// chats live in the dashboard process (DashboardPath.conduitProfileParameter).
+    private let profileParameter: @MainActor () -> String
 
-    init(request: @escaping GeminiLiveTokenClient.Request) {
+    init(request: @escaping GeminiLiveTokenClient.Request, profileParameter: @escaping @MainActor () -> String = { "profile" }) {
         self.request = request
+        self.profileParameter = profileParameter
     }
 
     /// A client for whichever Hermes dashboard is active when it asks.
@@ -32,7 +36,13 @@ final class WatchToolGrantClient {
         WatchToolGrantClient(request: { path, method, body, timeout in
             guard let bridge = AppStateRuntimeRegistry.shared.appState.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
             return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+        }, profileParameter: {
+            AppStateRuntimeRegistry.shared.appState.notifierPlugin.dashboardProfileParameter
         })
+    }
+
+    private func path(_ path: String, profile: String) -> String {
+        DashboardPath.withProfile(path, profile: profile, parameter: profileParameter())
     }
 
     /// Throws when the host can't grant one: an older plugin or relay, no
@@ -61,7 +71,7 @@ final class WatchToolGrantClient {
             if !jobProfiles.isEmpty { body["job_profiles"] = jobProfiles }
         }
         let response = try await request(
-            DashboardPath.withProfile(Self.grantPath, profile: profile),
+            path(Self.grantPath, profile: profile),
             "POST",
             body,
             Self.timeoutMilliseconds
@@ -73,7 +83,7 @@ final class WatchToolGrantClient {
     /// Best effort: an unrevoked grant ends on its own within the half hour.
     func revoke(grantID: String, profile: String) async {
         _ = try? await request(
-            DashboardPath.withProfile(Self.revokePath, profile: profile),
+            path(Self.revokePath, profile: profile),
             "POST",
             ["grant_id": grantID],
             Self.timeoutMilliseconds
@@ -93,12 +103,12 @@ final class WatchToolGrantClient {
     /// Starts making the runtime unless it's there or on its way. The host
     /// makes it in the background and answers at once.
     func prepareAudio(profile: String) async throws -> AudioRuntime {
-        let response = try await request(DashboardPath.withProfile(Self.audioPreparePath, profile: profile), "POST", [:], Self.timeoutMilliseconds)
+        let response = try await request(path(Self.audioPreparePath, profile: profile), "POST", [:], Self.timeoutMilliseconds)
         return Self.audioRuntime(from: response)
     }
 
     func audioStatus(profile: String) async throws -> AudioRuntime {
-        let response = try await request(DashboardPath.withProfile(Self.audioStatusPath, profile: profile), "GET", nil, Self.timeoutMilliseconds)
+        let response = try await request(path(Self.audioStatusPath, profile: profile), "GET", nil, Self.timeoutMilliseconds)
         return Self.audioRuntime(from: response)
     }
 

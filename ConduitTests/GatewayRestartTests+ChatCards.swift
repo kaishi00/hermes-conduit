@@ -290,4 +290,16 @@ extension GatewayRestartTests {
         cards.transcriptChanged([todoRow("t1", output: result([("1", "A", "pending")]))], for: rotated)
         XCTAssertTrue(cards.planExpanded, "a card the user opened stays open across a runtime id change")
     }
+
+    /// Issue 1510: a Mac's composer keeps focus between messages, and
+    /// neither it nor a hardware keyboard puts an on-screen keyboard up, so
+    /// the line still opens into the card there.
+    func testThePlanKeepsToItsLineOnlyUnderAnOnScreenKeyboard() {
+        XCTAssertTrue(ChatPlanDock.keepsToLine(composerFocused: true, onMac: false, hardwareKeyboard: false))
+        XCTAssertFalse(ChatPlanDock.keepsToLine(composerFocused: false, onMac: false, hardwareKeyboard: false))
+        XCTAssertFalse(ChatPlanDock.keepsToLine(composerFocused: true, onMac: true, hardwareKeyboard: false))
+        XCTAssertFalse(ChatPlanDock.keepsToLine(composerFocused: true, onMac: true, hardwareKeyboard: true))
+        XCTAssertFalse(ChatPlanDock.keepsToLine(composerFocused: true, onMac: false, hardwareKeyboard: true),
+                       "an iPad with a hardware keyboard has no on-screen keyboard up")
+    }
 }

@@ -15,57 +15,9 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertEqual(ModelCatalogState.of(providers: [row], failed: true), .ready)
     }
 
-    func testModelPickerYoloDraftStartsFromCurrentRuntimeValue() {
-        let draft = ModelPickerYoloDraft(runtimeYolo: true)
-
-        XCTAssertTrue(draft.initial)
-        XCTAssertTrue(draft.selected)
-    }
-
-    func testModelPickerYoloDraftSeedsWhenInitialBaselineIsMissing() {
-        let draft = ModelPickerYoloDraft.seededIfNeeded(initial: nil, runtimeYolo: true)
-
-        XCTAssertEqual(draft, ModelPickerYoloDraft(runtimeYolo: true))
-    }
-
-    func testModelPickerYoloDraftDoesNotReseedAnExistingBaseline() {
-        let draft = ModelPickerYoloDraft.seededIfNeeded(initial: false, runtimeYolo: true)
-
-        XCTAssertNil(draft)
-    }
-
-    func testUnchangedYoloSelectionDoesNotPersistASessionOverride() {
-        XCTAssertFalse(sessionYoloSelectionChanged(from: true, to: true))
-    }
-
-    func testChangedYoloSelectionPersistsTheNewSessionOverride() {
-        XCTAssertTrue(sessionYoloSelectionChanged(from: false, to: true))
-        XCTAssertTrue(sessionYoloSelectionChanged(from: true, to: false))
-    }
-
-    func testSelectionBeforeInitialLoadDoesNotPersistAnOverride() {
-        XCTAssertFalse(sessionYoloSelectionChanged(from: nil, to: true))
-    }
-
-    func testFloorBoundaryOnlyCrossesBetweenOffAndNonOff() {
-        // Boundary crossings re-seed the toggle.
-        XCTAssertTrue(yoloFloorBoundaryCrossed(from: nil, to: "off"))
-        XCTAssertTrue(yoloFloorBoundaryCrossed(from: "manual", to: "off"))
-        XCTAssertTrue(yoloFloorBoundaryCrossed(from: "manual", to: "OFF"))
-        XCTAssertTrue(yoloFloorBoundaryCrossed(from: "Off", to: "manual"))
-        XCTAssertTrue(yoloFloorBoundaryCrossed(from: "off", to: "manual"))
-        XCTAssertTrue(yoloFloorBoundaryCrossed(from: "off", to: nil))
-        // Same-side transitions must not discard an in-progress draft.
-        XCTAssertFalse(yoloFloorBoundaryCrossed(from: nil, to: "manual"))
-        XCTAssertFalse(yoloFloorBoundaryCrossed(from: "manual", to: "smart"))
-        XCTAssertFalse(yoloFloorBoundaryCrossed(from: "smart", to: "manual"))
-        XCTAssertFalse(yoloFloorBoundaryCrossed(from: "off", to: "off"))
-        XCTAssertFalse(yoloFloorBoundaryCrossed(from: nil, to: nil))
-    }
-
     // MARK: - Model switch
 
-    func testApplyOnlySwitchesModelWhenTheSelectionDiffers() {
+    func testTapOnlySwitchesModelWhenTheSelectionDiffers() {
         XCTAssertFalse(modelPickerSelectionChanged(
             selectedModel: "gpt-5", selectedProvider: "openrouter",
             runtimeModel: "gpt-5", runtimeProvider: "OpenRouter"))
@@ -77,7 +29,7 @@ final class ModelPickerTests: XCTestCase {
             runtimeModel: "gpt-5", runtimeProvider: "openrouter"))
     }
 
-    func testApplyDoesNotSwitchWithoutACompleteSelection() {
+    func testTapDoesNotSwitchWithoutACompleteSelection() {
         XCTAssertFalse(modelPickerSelectionChanged(
             selectedModel: "", selectedProvider: "openrouter",
             runtimeModel: "gpt-5", runtimeProvider: "openrouter"))
@@ -158,149 +110,105 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertEqual(outcome.confirmMessage, "Expensive model")
     }
 
-    // MARK: - Apply flow
+    // MARK: - Switch on tap
 
-    private let draft = ModelPickerApplyDraft(
-        model: "big-model", provider: "openrouter",
-        yoloChanged: true, yolo: true,
-        reasoningEffort: "high", speedChanged: true, speed: .ultrafast
-    )
-
-    /// Records the order of gateway writes and answers each model switch
-    /// with the next queued outcome.
+    /// Counts the switches sent and answers each with the next queued outcome.
     @MainActor
-    private final class GatewayRecorder {
+    private final class SwitchRecorder {
         var calls: [String] = []
-        var modelOutcomes: [ModelSwitchOutcome] = []
-        var yoloFailure: AppState.YoloWriteFailure?
-        var reasoningError: Error?
+        var outcomes: [ModelSwitchOutcome] = []
+        var error: Error?
 
-        var actions: ModelPickerApplyActions {
-            ModelPickerApplyActions(
-                setModel: { model, _, confirmed in
-                    self.calls.append(confirmed ? "model(confirmed)" : "model")
-                    return self.modelOutcomes.isEmpty ? ModelSwitchOutcome(model: model) : self.modelOutcomes.removeFirst()
-                },
-                setYolo: { _ in
-                    self.calls.append("yolo")
-                    return self.yoloFailure
-                },
-                setReasoning: { _ in
-                    self.calls.append("reasoning")
-                    if let error = self.reasoningError { throw error }
-                },
-                setSpeed: { speed in self.calls.append(speed.rawValue) }
-            )
+        func setModel(_ confirmed: Bool) async throws -> ModelSwitchOutcome {
+            calls.append(confirmed ? "model(confirmed)" : "model")
+            if let error { throw error }
+            return outcomes.isEmpty ? ModelSwitchOutcome(model: "big-model") : outcomes.removeFirst()
         }
     }
 
     private struct StubError: LocalizedError {
-        var errorDescription: String? { "reasoning failed" }
+        var errorDescription: String? { "offline" }
     }
 
     @MainActor
-    func testGuardedSwitchStopsBeforeAnyOtherWrite() async {
-        let gateway = GatewayRecorder()
-        gateway.modelOutcomes = [ModelSwitchOutcome(model: "big-model", confirmRequired: true, confirmMessage: "Expensive")]
+    func testTappedRowSwitchesAtOnceWithTheResolvedModel() async {
+        let gateway = SwitchRecorder()
+        gateway.outcomes = [ModelSwitchOutcome(model: "anthropic/claude-sonnet")]
 
-        let result = await runModelPickerApply(draft, sendModelSwitch: true, confirmedModelSwitch: false, actions: gateway.actions)
+        let result = await runModelPickerSwitch(to: "sonnet", confirmed: false, setModel: gateway.setModel)
+
+        XCTAssertEqual(result, .switched(model: "anthropic/claude-sonnet", deferred: false))
+        XCTAssertEqual(gateway.calls, ["model"])
+    }
+
+    @MainActor
+    func testSwitchMidTurnSaysItIsDeferred() async {
+        let gateway = SwitchRecorder()
+        gateway.outcomes = [ModelSwitchOutcome(model: "next-model", deferred: true)]
+
+        let result = await runModelPickerSwitch(to: "next-model", confirmed: false, setModel: gateway.setModel)
+
+        XCTAssertEqual(result, .switched(model: "next-model", deferred: true))
+    }
+
+    @MainActor
+    func testGuardedRowAsksBeforeSwitching() async {
+        let gateway = SwitchRecorder()
+        gateway.outcomes = [ModelSwitchOutcome(model: "big-model", confirmRequired: true, confirmMessage: "Expensive")]
+
+        let result = await runModelPickerSwitch(to: "big-model", confirmed: false, setModel: gateway.setModel)
 
         XCTAssertEqual(result, .needsConfirmation("Expensive"))
         XCTAssertEqual(gateway.calls, ["model"])
     }
 
     @MainActor
-    func testConfirmedRetrySendsTheFlagThenTheRestInOrder() async {
-        let gateway = GatewayRecorder()
+    func testGuardWithoutAMessageNamesTheModel() async {
+        let gateway = SwitchRecorder()
+        gateway.outcomes = [ModelSwitchOutcome(model: "big-model", confirmRequired: true)]
 
-        let result = await runModelPickerApply(draft, sendModelSwitch: false, confirmedModelSwitch: true, actions: gateway.actions)
+        let result = await runModelPickerSwitch(to: "big-model", confirmed: false, setModel: gateway.setModel)
 
-        XCTAssertEqual(gateway.calls, ["model(confirmed)", "yolo", "reasoning", "ultrafast"])
-        XCTAssertEqual(result, .completed(ModelPickerApplyProgress(
-            switchedModel: "big-model", yoloApplied: true, reasoningApplied: true, speedApplied: true)))
+        XCTAssertEqual(result, .needsConfirmation("Hermes asks you to confirm switching to big-model."))
     }
 
     @MainActor
-    func testGatewayThatKeepsAskingAfterConfirmationIsReportedNotLooped() async {
-        let gateway = GatewayRecorder()
-        gateway.modelOutcomes = [ModelSwitchOutcome(model: "big-model", confirmRequired: true, confirmMessage: "Still no")]
+    func testConfirmedRetrySendsTheFlag() async {
+        let gateway = SwitchRecorder()
 
-        let result = await runModelPickerApply(draft, sendModelSwitch: true, confirmedModelSwitch: true, actions: gateway.actions)
+        let result = await runModelPickerSwitch(to: "big-model", confirmed: true, setModel: gateway.setModel)
 
-        XCTAssertEqual(result, .failed("Still no", ModelPickerApplyProgress()))
+        XCTAssertEqual(result, .switched(model: "big-model", deferred: false))
         XCTAssertEqual(gateway.calls, ["model(confirmed)"])
     }
 
     @MainActor
-    func testUnchangedModelSkipsTheSwitch() async {
-        let gateway = GatewayRecorder()
+    func testGatewayThatKeepsAskingAfterConfirmationIsReportedNotLooped() async {
+        let gateway = SwitchRecorder()
+        gateway.outcomes = [ModelSwitchOutcome(model: "big-model", confirmRequired: true, confirmMessage: "Still no")]
 
-        _ = await runModelPickerApply(draft, sendModelSwitch: false, confirmedModelSwitch: false, actions: gateway.actions)
+        let result = await runModelPickerSwitch(to: "big-model", confirmed: true, setModel: gateway.setModel)
 
-        XCTAssertEqual(gateway.calls, ["yolo", "reasoning", "ultrafast"])
+        XCTAssertEqual(result, .failed("Still no"))
     }
 
     @MainActor
-    func testLaterFailureKeepsTheStepsAlreadyApplied() async {
-        let gateway = GatewayRecorder()
-        gateway.modelOutcomes = [ModelSwitchOutcome(model: "anthropic/claude-sonnet")]
-        gateway.reasoningError = StubError()
+    func testFailedSwitchIsReported() async {
+        let gateway = SwitchRecorder()
+        gateway.error = StubError()
 
-        let result = await runModelPickerApply(draft, sendModelSwitch: true, confirmedModelSwitch: false, actions: gateway.actions)
+        let result = await runModelPickerSwitch(to: "big-model", confirmed: false, setModel: gateway.setModel)
 
-        XCTAssertEqual(result, .failed("reasoning failed", ModelPickerApplyProgress(
-            switchedModel: "anthropic/claude-sonnet", yoloApplied: true)))
-        XCTAssertEqual(gateway.calls, ["model", "yolo", "reasoning"])
+        XCTAssertEqual(result, .failed("offline"))
     }
 
-    @MainActor
-    func testYoloFailureStopsBeforeReasoning() async {
-        let gateway = GatewayRecorder()
-        gateway.yoloFailure = AppState.YoloWriteFailure(message: "Unable to change YOLO mode: offline")
-
-        let result = await runModelPickerApply(draft, sendModelSwitch: false, confirmedModelSwitch: false, actions: gateway.actions)
-
-        XCTAssertEqual(result, .failed("Unable to change YOLO mode: offline", ModelPickerApplyProgress()))
-        XCTAssertEqual(gateway.calls, ["yolo"])
-    }
-
-    @MainActor
-    func testUnchangedYoloSkipsTheWrite() async {
-        let gateway = GatewayRecorder()
-        var unchangedYolo = draft
-        unchangedYolo.yoloChanged = false
-
-        let result = await runModelPickerApply(unchangedYolo, sendModelSwitch: false, confirmedModelSwitch: false, actions: gateway.actions)
-
-        XCTAssertEqual(gateway.calls, ["reasoning", "ultrafast"])
-        XCTAssertEqual(result, .completed(ModelPickerApplyProgress(reasoningApplied: true, speedApplied: true)))
-    }
-
-    @MainActor
-    func testApplyWithoutReasoningLeavesReasoningAlone() async {
-        let gateway = GatewayRecorder()
-        var sheetDraft = draft
-        sheetDraft.yoloChanged = false
-        sheetDraft.reasoningEffort = nil
-
-        let result = await runModelPickerApply(sheetDraft, sendModelSwitch: false, confirmedModelSwitch: false, actions: gateway.actions)
-
-        XCTAssertEqual(gateway.calls, ["ultrafast"])
-        XCTAssertEqual(result, .completed(ModelPickerApplyProgress(speedApplied: true)))
-    }
-
-    @MainActor
-    func testUnchangedSpeedSkipsTheWrite() async {
-        let gateway = GatewayRecorder()
-        var sheetDraft = draft
-        sheetDraft.yoloChanged = false
-        sheetDraft.reasoningEffort = nil
-        sheetDraft.speedChanged = false
-
-        let result = await runModelPickerApply(sheetDraft, sendModelSwitch: false, confirmedModelSwitch: false, actions: gateway.actions)
-
-        XCTAssertEqual(gateway.calls, [])
-        XCTAssertEqual(result, .completed(ModelPickerApplyProgress()))
+    func testUltrafastFallsBackToFastOnAModelWithoutIt() {
+        XCTAssertEqual(modelPickerSpeedAfterSwitch(.ultrafast, ultrafastOffered: false), .fast)
+        // A row that says nothing about Ultrafast counts as lacking it.
+        XCTAssertEqual(modelPickerSpeedAfterSwitch(.ultrafast, ultrafastOffered: nil), .fast)
+        XCTAssertNil(modelPickerSpeedAfterSwitch(.ultrafast, ultrafastOffered: true))
+        XCTAssertNil(modelPickerSpeedAfterSwitch(.fast, ultrafastOffered: false))
+        XCTAssertNil(modelPickerSpeedAfterSwitch(.normal, ultrafastOffered: nil))
     }
 
     // MARK: - Speed
@@ -384,5 +292,58 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertTrue(modelPickerShouldSwitch(
             sonnetRow, lastSwitched: nil,
             runtimeModel: "anthropic/claude-sonnet", runtimeProvider: "anthropic"))
+    }
+
+    // MARK: - Search (#1388)
+
+    private let searchCatalog = [
+        ProviderInfo(
+            name: "openrouter",
+            models: [
+                ModelInfo(id: "anthropic/claude-sonnet-4.5", label: nil, reasoningCapable: true),
+                ModelInfo(id: "openai/gpt-5", label: nil, reasoningCapable: true),
+            ],
+            displayName: "OpenRouter"
+        ),
+        ProviderInfo(
+            name: "anthropic",
+            models: [ModelInfo(id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5", reasoningCapable: true)]
+        ),
+    ]
+
+    /// The same model from two providers comes back twice, each match
+    /// carrying the provider that serves it.
+    func testSearchKeepsEachProviderOfTheSameModel() {
+        let matches = modelSearchMatches(in: searchCatalog, query: "sonnet")
+        XCTAssertEqual(matches.map(\.provider.name), ["openrouter", "anthropic"])
+        XCTAssertEqual(matches.map(\.model.id), ["anthropic/claude-sonnet-4.5", "claude-sonnet-4-5"])
+        XCTAssertEqual(matches.map(\.provider.title), ["OpenRouter", "anthropic"])
+        XCTAssertEqual(Set(matches.map(\.id)).count, 2)
+    }
+
+    /// Every word must match the model or its provider, so a provider's
+    /// name narrows a model several serve down to one of them.
+    func testSearchWordsCanNameTheProvider() {
+        XCTAssertEqual(modelSearchMatches(in: searchCatalog, query: "Sonnet  openrouter").map(\.provider.name), ["openrouter"])
+        XCTAssertEqual(modelSearchMatches(in: searchCatalog, query: "OPENROUTER").count, 2)
+        // A label matches too.
+        XCTAssertEqual(modelSearchMatches(in: searchCatalog, query: "sonnet 4.5").count, 2)
+        XCTAssertTrue(modelSearchMatches(in: searchCatalog, query: "luna").isEmpty)
+        XCTAssertTrue(modelSearchMatches(in: searchCatalog, query: "   ").isEmpty)
+    }
+
+    func testArrowKeysStayOnTheResults() {
+        XCTAssertEqual(modelSearchHighlight(0, moving: 1, count: 3), 1)
+        XCTAssertEqual(modelSearchHighlight(2, moving: 1, count: 3), 2)
+        XCTAssertEqual(modelSearchHighlight(0, moving: -1, count: 3), 0)
+        XCTAssertEqual(modelSearchHighlight(4, moving: 0, count: 0), 0)
+    }
+
+    /// Only a Mac or a hardware keyboard opens the sheet typing; a touch
+    /// phone keeps its keyboard down.
+    func testSearchTakesFocusOnlyWithAKeyboard() {
+        XCTAssertTrue(modelSearchFocusesOnOpen(onMac: true, hardwareKeyboard: false))
+        XCTAssertTrue(modelSearchFocusesOnOpen(onMac: false, hardwareKeyboard: true))
+        XCTAssertFalse(modelSearchFocusesOnOpen(onMac: false, hardwareKeyboard: false))
     }
 }

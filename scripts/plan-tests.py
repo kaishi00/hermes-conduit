@@ -1020,13 +1020,24 @@ def _human_report(plan: dict, discovery: dict, source: str) -> str:
 _CLASS_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
+_SMOKE_TEST_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)/(test[A-Za-z0-9_]*)$")
+
+
 def load_smoke_suite(path: str) -> tuple:
-    """Read the curated smoke selection. Returns (unit_names, ui_names).
+    """Read the curated smoke selection. Returns (unit_tests, ui_tests,
+    max_unit_tests, max_ui_tests).
+
+    The curated lists name single tests, `Class/testMethod`, never whole
+    classes: a class grows with every test added to it, and a list of classes
+    let the PR gate grow with it (unit smoke 195 -> 240 s from 2026-10-18 to
+    10-29 while the list stayed the same). `max_unit_tests` and
+    `max_ui_tests` cap each list, so Smoke grows only when someone raises a
+    cap on purpose.
 
     Fails closed on anything that is not a well-formed suite: the file must be
-    a JSON object declaring non-empty `unit` and `ui` lists of plain Swift class
-    names. Defaulting an absent key to an empty list would turn a malformed
-    edit into a silently empty hosted selection.
+    a JSON object declaring non-empty `unit` and `ui` lists and both caps.
+    Defaulting an absent key to an empty list would turn a malformed edit into
+    a silently empty hosted selection.
     """
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
@@ -1040,11 +1051,51 @@ def load_smoke_suite(path: str) -> tuple:
             raise ValueError(
                 "smoke suite {0!r} must be a non-empty list".format(key))
         for name in names:
-            if not isinstance(name, str) or not _CLASS_NAME_RE.match(name):
+            if not isinstance(name, str) or not _SMOKE_TEST_RE.match(name):
                 raise ValueError(
-                    "smoke suite {0!r} names an invalid class: {1!r}".format(
-                        key, name))
-    return list(data["unit"]), list(data["ui"])
+                    "smoke suite {0!r} entries name one test as Class/testMethod, "
+                    "not {1!r}".format(key, name))
+    caps = []
+    for key in ("max_unit_tests", "max_ui_tests"):
+        value = data.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise ValueError("smoke suite must declare {0!r} as a positive integer".format(key))
+        caps.append(value)
+    return list(data["unit"]), list(data["ui"]), caps[0], caps[1]
+
+
+_TOP_DECL_RE = re.compile(
+    r"^(?:(?:@\w+(?:\([^)]*\))?|public|internal|fileprivate|private|final|open)\s+)*"
+    r"(?:class|extension)\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+_TEST_FUNC_RE = re.compile(
+    r"^(?:    |\t)(?:(?:@\w+(?:\([^)]*\))?|override|public|internal|open|nonisolated)\s+)*"
+    r"func\s+(test[A-Za-z0-9_]*)\s*\(\s*\)")
+
+
+def discover_test_methods(repo_root: str, target: str, classes: set) -> dict:
+    """The test methods each of `classes` declares in `target`, in its body or
+    in an extension of it, as {class: set(method)}. A declaration starts a
+    body at column 0 and a `}` at column 0 ends it (the repo's formatting).
+    Only parameterless `test...` methods at the body's own level count:
+    XCTest runs only those, and a nested type's are not the class's."""
+    found = {name: set() for name in classes}
+    root = os.path.join(repo_root, target)
+    for path in _swift_files(root) if os.path.isdir(root) else []:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            current = None
+            for line in fh:
+                m = _TOP_DECL_RE.match(line)
+                if m:
+                    current = m.group(1) if m.group(1) in found else None
+                    continue
+                if line.startswith("}"):
+                    current = None
+                    continue
+                if current:
+                    t = _TEST_FUNC_RE.match(line)
+                    if t:
+                        found[current].add(t.group(1))
+    return found
 
 
 def load_smoke_extras(path: str) -> tuple:
@@ -1186,7 +1237,7 @@ def _nightly_only(path: str):
 def cmd_smoke(args) -> int:
     """Validate the curated smoke selection against the discovered inventory.
 
-    PR and main CI runs only these classes (docs/CI.md, CI v5): every other
+    A PR or push run runs only these classes (docs/CI.md, CI v5): every other
     class runs in the nightly workflow (`cmd_hosted`). This subcommand is what
     keeps that selection honest - a class that is renamed, deleted or moved
     between targets fails the plan job instead of silently shrinking PR
@@ -1205,7 +1256,7 @@ def cmd_smoke(args) -> int:
     ui_inventory = {entry["name"] for entry in discovery["ui"]}
     try:
         suite_path = _resolve_in_repo(args.repo_root, args.suite)
-        unit, ui = load_smoke_suite(suite_path)
+        unit, ui, max_unit, max_ui = load_smoke_suite(suite_path)
         contracts, changed_budget, changed_max = load_smoke_extras(suite_path)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"::error::smoke suite unreadable: {exc}")
@@ -1215,26 +1266,51 @@ def cmd_smoke(args) -> int:
     # Validated per TARGET, never against the union of both: a class moved
     # between ConduitTests/ and ConduitUITests/ would otherwise still validate
     # while the smoke job filters it against the wrong bundle - which runs zero
-    # tests for it and silently shrinks hosted coverage.
-    for target, names, inventory in (("unit", unit, unit_inventory),
-                                     ("ui", ui, ui_inventory)):
+    # tests for it and silently shrinks hosted coverage. A renamed or deleted
+    # test fails the same way.
+    for target, tests, inventory, cap, dirname in (
+            ("unit", unit, unit_inventory, max_unit, UNIT_TARGET),
+            ("ui", ui, ui_inventory, max_ui, UI_TARGET)):
+        if len(tests) > cap:
+            problems.append(
+                f"smoke suite lists {len(tests)} {target} tests, over its cap of "
+                f"{cap} (max_{target}_tests): the PR gate stays small on purpose, "
+                f"so pin fewer tests or raise the cap in the same change")
+        methods = discover_test_methods(
+            args.repo_root, dirname,
+            {t.split("/")[0] for t in tests} & inventory)
         seen = set()
-        for name in names:
-            if name in seen:
-                problems.append(f"smoke suite lists {name!r} twice in {target}")
-            seen.add(name)
-            if name not in inventory:
+        for test in tests:
+            cls, method = test.split("/")
+            if test in seen:
+                problems.append(f"smoke suite lists {test!r} twice in {target}")
+            seen.add(test)
+            if cls not in inventory:
                 problems.append(
-                    f"smoke suite lists {name!r} in {target}, but it is not a "
+                    f"smoke suite lists {test!r} in {target}, but {cls} is not a "
                     f"{target} test class")
-    for name in sorted(set(unit) & set(ui)):
-        problems.append(f"smoke suite lists {name!r} in both unit and ui")
+            elif method not in methods.get(cls, set()):
+                problems.append(
+                    f"smoke suite lists {test!r} in {target}, but {cls} has no "
+                    f"test method {method}()")
+    # The timing families run with repeats at night; on every PR's shared
+    # runner they flake (docs/CI.md).
+    nightly_only_pinned = _nightly_only(_resolve_in_repo(args.repo_root, args.hosted_suite))
+    if nightly_only_pinned is None:
+        warn(f"hosted suite {args.hosted_suite} unreadable: the pinned tests "
+             f"aren't checked against the nightly-only timing families")
+    else:
+        for test in unit:
+            if test.split("/")[0] in nightly_only_pinned:
+                problems.append(
+                    f"smoke suite pins {test!r}, from a nightly-only timing family "
+                    f"(hosted-suite.json nightly_only_unit)")
     for name in contracts:
         if name not in unit_inventory:
             problems.append(
                 f"smoke suite lists {name!r} in source_contracts, but it is not "
                 f"a unit test class")
-        elif name in unit:
+        elif any(t.split("/")[0] == name for t in unit):
             problems.append(f"smoke suite lists {name!r} in both unit and source_contracts")
     # Report failures before the split: the delegated counts are only
     # meaningful once every curated name has been validated.
@@ -1245,12 +1321,12 @@ def cmd_smoke(args) -> int:
         return 1
 
     curated_unit = list(unit)
-    unit = curated_unit + [c for c in contracts if c not in curated_unit]
+    unit = curated_unit + list(contracts)
 
     # The change's own unit classes join the same invocation (no extra
     # fixed cost), cheapest first within the budget. Timing families stay
     # nightly-only whatever changed.
-    changed_unit, changed_skipped = [], []
+    changed_unit, changed_skipped, replaced = [], [], []
     changed = []
     if args.changed_files:
         try:
@@ -1274,8 +1350,8 @@ def cmd_smoke(args) -> int:
         baseline = _baseline_seconds(_resolve_in_repo(args.repo_root, args.baseline))
         direct, related = unit_classes_for_changes(
             args.repo_root, changed, discovery["unit"])
-        direct = [c for c in direct if c not in unit and c not in nightly_only]
-        related = [c for c in related if c not in unit and c not in nightly_only]
+        direct = [c for c in direct if c not in contracts and c not in nightly_only]
+        related = [c for c in related if c not in contracts and c not in nightly_only]
 
         def cost(name):
             # Same rules as load_estimates: only a finite positive number
@@ -1312,7 +1388,9 @@ def cmd_smoke(args) -> int:
                       f"change fit")
         changed_unit.sort()
         changed_skipped.sort()
-        unit = unit + changed_unit
+        # A changed class runs whole, so its pinned tests would only repeat.
+        replaced = [t for t in curated_unit if t.split("/")[0] in changed_unit]
+        unit = [t for t in unit if t not in replaced] + changed_unit
         if changed_unit:
             print(f"changed unit classes added: {', '.join(changed_unit)} "
                   f"(~{spent:.0f}s of {changed_budget:.0f}s)")
@@ -1321,9 +1399,16 @@ def cmd_smoke(args) -> int:
                   f"{', '.join(changed_skipped)} exceed the smoke budget "
                   f"({changed_budget:.0f}s, {changed_max} classes)")
 
-    delegated_unit = len(discovery["unit"]) - len(unit)
-    delegated_ui = len(discovery["ui"]) - len(ui)
-    print(f"smoke selection: {len(unit)} unit + {len(ui)} UI classes")
+    # Classes Smoke runs nothing of; a class it runs a few tests of still runs
+    # whole at night.
+    unit_classes = {t.split("/")[0] for t in unit}
+    ui_classes = {t.split("/")[0] for t in ui}
+    delegated_unit = len(discovery["unit"]) - len(unit_classes)
+    delegated_ui = len(discovery["ui"]) - len(ui_classes)
+    print(f"smoke selection: {len(curated_unit) - len(replaced)} of {max_unit} pinned unit tests"
+          f"{f' ({len(replaced)} more run in their whole changed class)' if replaced else ''}, "
+          f"{len(contracts)} source contract classes, {len(changed_unit)} changed "
+          f"classes; {len(ui)} of {max_ui} pinned UI tests")
     print(f"not in the smoke set: {delegated_unit} unit + "
           f"{delegated_ui} UI classes (they run only in the nightly workflow: "
           f"the unit shards, the timing families and the full UI suite)")
@@ -1333,7 +1418,10 @@ def cmd_smoke(args) -> int:
             "schema_version": 1,
             "unit": unit,
             "curated_unit": curated_unit,
-            "source_contracts": [c for c in contracts if c not in curated_unit],
+            "replaced_unit": replaced,
+            "source_contracts": list(contracts),
+            "max_unit_tests": max_unit,
+            "max_ui_tests": max_ui,
             "changed_unit": changed_unit,
             "changed_skipped": changed_skipped,
             "ui": ui,
@@ -1402,7 +1490,7 @@ def cmd_hosted(args) -> int:
     `unit_shards` balanced shards; the timing families, run with repeats; and
     the whole UI suite split into `nightly_ui_shards` shards. Every discovered
     class lands in exactly one of those lists, so nothing is silently unrun
-    (PR and main runs only run the smoke sample of `cmd_smoke`).
+    (PR and push runs only run the smoke sample of `cmd_smoke`).
     """
     discovery = discover_test_classes(args.repo_root)
     for w in discovery["warnings"]:

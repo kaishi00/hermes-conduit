@@ -64,6 +64,14 @@ final class ComposerDraftStoreTests: XCTestCase {
         let subscription = updates.objectWillChange.sink { sends += 1 }
         defer { subscription.cancel() }
         func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        // Hosted runners can stall the main queue past a fixed settle: wait
+        // for the redraw itself, capped at 10 s, then settle once more so an
+        // extra one would still show.
+        func settle(until done: () -> Bool) {
+            let deadline = Date().addingTimeInterval(10)
+            while !done(), Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+            settle()
+        }
 
         appState.objectWillChange.send()
         appState.objectWillChange.send()
@@ -72,11 +80,11 @@ final class ComposerDraftStoreTests: XCTestCase {
 
         appState.composerNotice = "Reconnecting"
         appState.activeAgents = 2
-        settle()
+        settle(until: { sends >= 1 })
         XCTAssertEqual(sends, 1, "changes in one turn redraw it once")
 
         appState.showModelPicker = true
-        settle()
+        settle(until: { sends >= 2 })
         XCTAssertEqual(sends, 2)
     }
 

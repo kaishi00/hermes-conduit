@@ -275,6 +275,28 @@ final class AppStateReasoningStreamTests: XCTestCase {
 
     // MARK: - Interim commentary
 
+    func testInterimCommentaryReachesTheVoiceObserverWithItsStreamingFlag() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        var events: [VoiceAssistantEvent] = []
+        let observer = state.addVoiceAssistantObserver { events.append($0) }
+        defer { state.removeVoiceAssistantObserver(observer) }
+
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+        state.handleStreamEvent(.messageInterim(sessionId: "stored-a", text: "Checking", alreadyStreamed: false))
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "Done."))
+        state.handleStreamEvent(.messageInterim(sessionId: "stored-a", text: "Done.", alreadyStreamed: true))
+        state.handleStreamEvent(.messageComplete(sessionId: "stored-a", messageId: nil, content: "Done.", reasoning: nil, alreadyShown: true))
+
+        XCTAssertEqual(events, [
+            .started(sessionID: "stored-a"),
+            .interim(sessionID: "stored-a", text: "Checking", alreadyStreamed: false),
+            .delta(sessionID: "stored-a", text: "Done."),
+            .interim(sessionID: "stored-a", text: "Done.", alreadyStreamed: true),
+            .completed(sessionID: "stored-a", content: "Done.", alreadyShown: true)
+        ])
+    }
+
     /// A gateway frame as HermesClient hands it to AppState.
     private func frame(_ json: String) throws -> StreamEvent {
         let data = try XCTUnwrap(json.data(using: .utf8))

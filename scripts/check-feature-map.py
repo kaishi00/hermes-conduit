@@ -14,10 +14,10 @@ date and the PR or commit it was checked at.
 On a pull request, CI also passes the PR's number and the base's copy of the
 map: an entry the PR adds or edits names that PR on its Checked line, so the
 line says who checked it last, not the commit the branch started from. A PR
-into another branch (`pulse`) that merges main also gets main's copies where
-the PR meets main and where its base did: an entry main changed between the
-two that matches main's copy came in with the merge and keeps main's Checked
-line.
+into another branch (`pulse`, `linked-rooms`) that merges main also gets
+main's copies where the PR meets main and where its base did: an entry main
+changed between the two that matches main's copy came in with the merge and
+keeps main's Checked line.
 
 A notifier file missing on main fails. If GitHub can't be reached for that
 lookup, the check warns and skips it, so an outage doesn't block every PR.

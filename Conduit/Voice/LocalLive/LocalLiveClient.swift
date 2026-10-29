@@ -35,17 +35,21 @@ final class LocalLiveClient: LocalLiveConnecting {
     private let mintTicket: MintTicket
     private let makeSocketRequest: SocketRequest
     private let profile: @MainActor () -> String
+    /// The query parameter naming the profile (DashboardPath.conduitProfileParameter).
+    private let profileParameter: @MainActor () -> String
     /// The dashboard address, for the model address the status shows.
     private let dashboardBaseURL: @MainActor () -> String?
 
     init(
         profile: @escaping @MainActor () -> String = { "default" },
+        profileParameter: @escaping @MainActor () -> String = { "profile" },
         dashboardBaseURL: @escaping @MainActor () -> String? = { nil },
         request: @escaping Request,
         mintTicket: @escaping MintTicket,
         socketRequest: @escaping SocketRequest
     ) {
         self.profile = profile
+        self.profileParameter = profileParameter
         self.dashboardBaseURL = dashboardBaseURL
         self.request = request
         self.mintTicket = mintTicket
@@ -57,7 +61,7 @@ final class LocalLiveClient: LocalLiveConnecting {
     func status() async throws -> SpeechServerVoiceStatus {
         let response: [String: Any]
         do {
-            response = try await request(DashboardPath.withProfile(LocalLiveProtocol.statusPath, profile: profile()), "GET", nil, 30_000)
+            response = try await request(DashboardPath.withProfile(LocalLiveProtocol.statusPath, profile: profile(), parameter: profileParameter()), "GET", nil, 30_000)
         } catch let error as DashboardTicketBridgeError {
             if GeminiLiveTokenClient.isMissingRoute(error) { return Self.pluginMissing }
             throw error
@@ -68,7 +72,7 @@ final class LocalLiveClient: LocalLiveConnecting {
     func socketRequest() async throws -> URLRequest {
         let ticket = try await mintTicket()
         return try await makeSocketRequest(LocalLiveProtocol.socketPath,
-                                           [URLQueryItem(name: "ticket", value: ticket)] + LocalLiveProtocol.profileQueryItems(profile()))
+                                           [URLQueryItem(name: "ticket", value: ticket)] + LocalLiveProtocol.profileQueryItems(profile(), parameter: profileParameter()))
     }
 
     static var pluginMissing: SpeechServerVoiceStatus {

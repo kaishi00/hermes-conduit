@@ -398,6 +398,30 @@ final class ComposerPasteTextViewTests: XCTestCase {
         await fulfillment(of: [callback], timeout: 5.0)
     }
 
+    func testDroppedFilesOnTheFieldGoToTheComposerAsFiles() async throws {
+        let view = ImagePasteTextView()
+        let provider = NSItemProvider()
+        provider.suggestedName = "report.pdf"
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.pdf.identifier, visibility: .all) { completion in
+            completion(Data("%PDF".utf8), nil)
+            return nil
+        }
+        let words = NSItemProvider(object: NSString(string: "dragged words"))
+        view.onPastedImage = { _ in XCTFail("A PDF is not an image paste") }
+
+        let callback = expectation(description: "dropped files callback")
+        view.onDroppedFiles = { providers in
+            XCTAssertEqual(providers.count, 1, "The dragged words go to the text, not the files")
+            XCTAssertTrue(providers.first === provider)
+            callback.fulfill()
+        }
+        XCTAssertTrue(view.canPaste([provider]))
+
+        view.paste(itemProviders: [provider, words])
+
+        await fulfillment(of: [callback], timeout: 5.0)
+    }
+
     func testCanPasteAcceptsImageItemProvider() {
         let view = ImagePasteTextView()
         let provider = NSItemProvider()

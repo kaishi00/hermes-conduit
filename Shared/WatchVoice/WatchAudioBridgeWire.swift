@@ -17,8 +17,8 @@
 //  bytes and the counter, which starts at 0 and must rise. The relay's
 //  own notices are [0, n] in clear.
 //
-//  The sealing mirrors conduit_push's dashboard/plugin_api.py ("Watch
-//  audio"), checked by shared test vectors.
+//  The sealing mirrors conduit_push's dashboard/api/watch_audio.py, checked
+//  by shared test vectors.
 //
 
 import CryptoKit

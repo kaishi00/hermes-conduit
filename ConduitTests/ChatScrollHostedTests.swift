@@ -11,6 +11,16 @@ final class ChatScrollHostedTests: XCTestCase {
     private var window: UIWindow?
     private var host: UIViewController?
     private var appState: AppState?
+    private var savedReplyStartPreference: Any?
+
+    override func setUp() {
+        super.setUp()
+        // These tests follow a reply to its end. Stopping at the start of a
+        // long reply (#1256, on by default) has its own test below and in
+        // ChatScrollEngineTests.
+        savedReplyStartPreference = UserDefaults.standard.object(forKey: ChatReplyStartPreference.key)
+        UserDefaults.standard.set(false, forKey: ChatReplyStartPreference.key)
+    }
 
     override func tearDown() {
         // Stop streaming, remove the hosted view synchronously and drain
@@ -31,6 +41,11 @@ final class ChatScrollHostedTests: XCTestCase {
         window = nil
         host = nil
         appState = nil
+        if let savedReplyStartPreference {
+            UserDefaults.standard.set(savedReplyStartPreference, forKey: ChatReplyStartPreference.key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: ChatReplyStartPreference.key)
+        }
         super.tearDown()
     }
 
@@ -542,6 +557,94 @@ final class ChatScrollHostedTests: XCTestCase {
         print("[ChatScrollHostedTests] completion trace:\n\(recorder.dump(since: mark))")
         assertAtLatest(mounted, "a completed turn leaves no empty space under it\n\(recorder.dump(since: mark))")
         XCTAssertTrue(mounted.engine.isFollowingLatest)
+    }
+
+    /// #1436: with Long replies on, the user's message moves to the top of
+    /// the viewport once it is sent, and its reply streams into the room
+    /// under it: nothing moves while it grows, nor once it outgrows the
+    /// screen, where the reader is left browsing, nor when the turn
+    /// completes. Each appended step row first lays out at an estimate
+    /// taller than its measured height, so the content can shrink under the
+    /// stop while the reply still fits (#1256, #1313).
+    func testAReplyStreamsUnderTheUsersMessageAtTheTopWithoutMoving() throws {
+        UserDefaults.standard.set(true, forKey: ChatReplyStartPreference.key)
+        let mounted = try mount(Self.uneven(0..<60))
+        let recorder = ScrollRecorder(mounted.scrollView)
+        let appState = mounted.appState
+
+        appState.messages.append(ChatMessage(id: "turn-user", role: .user, content: "Do the thing.", timestamp: "2026-01-01T00:00:00Z"))
+        // The room is laid out and the message moves up, animated.
+        settle(mounted.host.view, seconds: 0.8)
+        checkpoint("landed", mounted, recorder)
+        let userRow = try XCTUnwrap(mounted.engine.rowFrame(for: "turn-user"), "the user's message is laid out")
+        let surface = try XCTUnwrap(mounted.engine.surface)
+        let rowTop = surface.transcriptOriginY + userRow.minY - mounted.scrollView.contentOffset.y
+        XCTAssertEqual(
+            rowTop,
+            surface.insetTop + ChatScrollEngine.replyStartTopGap,
+            accuracy: 2,
+            "the sent message sits at the top\n\(recorder.dump())"
+        )
+        assertAtLatest(mounted, "the room makes the stop the bottom")
+        XCTAssertTrue(mounted.engine.isFollowingLatest)
+
+        let landed = mounted.scrollView.contentOffset.y
+        let mark = recorder.mark()
+        for step in 0..<4 {
+            appState.messages.append(ChatMessage(
+                id: "turn-partial-\(step)",
+                role: .partial,
+                content: String(repeating: "Working on step \(step) of the task with plenty of detail. ", count: 12),
+                timestamp: "2026-01-01T00:00:00Z"
+            ))
+            settle(mounted.host.view, seconds: 0.15)
+            XCTAssertEqual(
+                mounted.scrollView.contentOffset.y,
+                landed,
+                accuracy: 1,
+                "step \(step) streams in without moving the reader\n\(recorder.dump(since: mark))"
+            )
+        }
+        let answer = String(repeating: "The final answer streams in with several lines. ", count: 30)
+        appState.setStreamingTextForTesting(answer)
+        settle(mounted.host.view, seconds: 0.3)
+        checkpoint("hold", mounted, recorder)
+
+        XCTAssertEqual(mounted.scrollView.contentOffset.y, landed, accuracy: 1, "the answer doesn't move the reader\n\(recorder.dump(since: mark))")
+        XCTAssertEqual(mounted.engine.mode, .browsing, "the reader is left browsing at the stop")
+        XCTAssertGreaterThan(maxOffset(mounted.scrollView) - mounted.scrollView.contentOffset.y, 40, "the reply runs on below")
+
+        let completionMark = recorder.mark()
+        appState.messages.removeAll { $0.role == .partial }
+        appState.messages.append(ChatMessage(id: "turn-final", role: .assistant, content: answer, timestamp: "2026-01-01T00:00:00Z"))
+        appState.setStreamingTextForTesting("")
+        settle(mounted.host.view, seconds: 0.6)
+        checkpoint("hold after completion", mounted, recorder)
+        XCTAssertEqual(mounted.scrollView.contentOffset.y, landed, accuracy: 1, "completion leaves the reader at the stop\n\(recorder.dump(since: completionMark))")
+        XCTAssertEqual(mounted.engine.mode, .browsing)
+    }
+
+    /// A short reply ends well above the composer, in the room under the
+    /// message, and the turn completing doesn't move it either.
+    func testAShortReplyStaysInTheRoomUnderTheUsersMessage() throws {
+        UserDefaults.standard.set(true, forKey: ChatReplyStartPreference.key)
+        let mounted = try mount(Self.uneven(0..<60))
+        let recorder = ScrollRecorder(mounted.scrollView)
+        let appState = mounted.appState
+
+        appState.messages.append(ChatMessage(id: "turn-user", role: .user, content: "Say hi.", timestamp: "2026-01-01T00:00:00Z"))
+        settle(mounted.host.view, seconds: 0.8)
+        let landed = mounted.scrollView.contentOffset.y
+        let mark = recorder.mark()
+        appState.setStreamingTextForTesting("Hi there.")
+        settle(mounted.host.view, seconds: 0.3)
+        appState.messages.append(ChatMessage(id: "turn-final", role: .assistant, content: "Hi there.", timestamp: "2026-01-01T00:00:00Z"))
+        appState.setStreamingTextForTesting("")
+        settle(mounted.host.view, seconds: 0.6)
+        checkpoint("short reply done", mounted, recorder)
+        XCTAssertEqual(mounted.scrollView.contentOffset.y, landed, accuracy: 1, "nothing moved\n\(recorder.dump(since: mark))")
+        XCTAssertTrue(mounted.engine.isFollowingLatest)
+        assertAtLatest(mounted, "the room is still there, so no empty space past the bottom")
     }
 
     /// A finished run of steps shows as one collapsed line. Its other

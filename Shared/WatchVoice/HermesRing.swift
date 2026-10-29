@@ -40,23 +40,34 @@ struct HermesRing: Equatable {
 /// the iPhone and the Watch alike: the calling profile by the name Conduit
 /// gives it, with the job's title when the call carries one. The main
 /// ("default") profile goes by the name the user gave it in Conduit, never
-/// Hermes' own "Default"; "Hermes" when nothing names the caller.
+/// Hermes' own "Default", else by its bot's name; "Hermes" when nothing
+/// names the caller. Another bot goes by its name in Hermes, else its
+/// capitalized profile id.
 enum HermesCallerName {
     static let fallback = "Hermes"
     static let maximumNameCharacters = 40
 
     /// `mainName`: the name the user gave the main profile on the call's
-    /// dashboard, nil when there is none.
-    static func name(profile: String?, mainName: String?) -> String {
+    /// dashboard, nil when there is none. `profileName`: the bot's name in
+    /// Hermes as the Bots list shows it (the push's `profile_name`), nil
+    /// when Hermes gave it none or the push doesn't say.
+    static func name(profile: String?, mainName: String?, profileName: String? = nil) -> String {
         let id = oneLine(profile)
         guard !id.isEmpty else { return fallback }
+        // A name that is only the profile id says nothing more than the id.
+        let given = oneLine(profileName)
+        let named = given.lowercased() == id.lowercased() ? "" : given
         guard id.lowercased() != "default" else {
+            // The name set in Conduit wins; one never set reads "Hermes"
+            // (as does one set to "Hermes"), where the bot's own name says more.
             let main = oneLine(mainName)
-            return main.isEmpty ? fallback : String(main.prefix(maximumNameCharacters))
+            let shown = main.isEmpty || main == fallback ? (named.isEmpty ? fallback : named) : main
+            return String(shown.prefix(maximumNameCharacters))
         }
-        // As Conduit shows a profile everywhere else (AppState.profileDisplayName),
-        // on one line: CallKit shows a caller name on one.
-        let shown = String(id.prefix(1)).uppercased() + String(id.dropFirst())
+        // The bot's name, else the profile as Conduit shows one with no
+        // name (AppState.profileDisplayName), on one line: CallKit shows a
+        // caller name on one.
+        let shown = named.isEmpty ? String(id.prefix(1)).uppercased() + String(id.dropFirst()) : named
         return String(shown.prefix(maximumNameCharacters))
     }
 
@@ -144,6 +155,12 @@ enum HermesRingPush {
         let conduit = (userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any]
         let dashboard = (conduit?["dashboard_id"] as? String).flatMap { UUID(uuidString: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
         return (conduit?["profile"] as? String, dashboard)
+    }
+
+    /// The calling bot's name (`profile_name`), when the push carries it in
+    /// the clear; nil from a sealed push.
+    static func profileName(_ userInfo: [AnyHashable: Any]) -> String? {
+        ((userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any])?["profile_name"] as? String
     }
 
     static func isID(_ value: String) -> Bool { value.count == 22 && value.allSatisfy(isBase64URL) }

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Stamp every source file with a modification time derived from its content.
 
-CI restores the previous main build's DerivedData so a job recompiles only
-what changed (ci.yml, "Restore the build cache"). Xcode decides what changed
+CI restores an earlier build's DerivedData so a job recompiles only what
+changed (ci.yml, "Restore the build cache"). Xcode decides what changed
 from file timestamps, and a fresh checkout gives every file the clone time, so
 without this step every file looks edited and everything rebuilds anyway.
 

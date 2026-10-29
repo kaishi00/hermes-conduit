@@ -8,8 +8,9 @@
 //  diagnostics, and slow-launch diagnostics (MXDiagnosticPayload). Kept on
 //  this device as the payloads' own JSON, newest few weeks only, so a
 //  battery or data question about a real day of use can be answered with
-//  numbers. Settings > Gateway > Diagnostics & logs shares them as one
-//  file; nothing is uploaded.
+//  numbers. Settings > Connection > Diagnostics & logs shares them as one
+//  file. A new crash or hang is offered once to Conduit's developer
+//  (CrashReportOffer); nothing else is uploaded.
 //
 //  The summary is a diagnostic log, English only like the connection
 //  timeline next to it. watchOS has no MetricKit, so this is iPhone and iPad
@@ -87,7 +88,7 @@ struct MetricKitReportStore {
                 && (kind == .metrics || entry.contentHash == hash)
         }
         guard !duplicate else { return false }
-        let url = directory.appendingPathComponent("\(kind.rawValue)-\(beginSeconds)-\(endSeconds)-\(hash).json")
+        let url = directory.appendingPathComponent(Self.fileName(kind: kind, beginSeconds: beginSeconds, endSeconds: endSeconds, hash: hash))
         do {
             try prepareDirectory()
             try normalized.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
@@ -183,7 +184,7 @@ struct MetricKitReportStore {
             }
         }
         let document: [String: Any] = [
-            "about": "MetricKit reports iOS delivered to Conduit on this device: daily usage numbers, and crash, hang, launch and resource diagnostics with their call stacks and exception messages. Nothing was uploaded.",
+            "about": "MetricKit reports iOS delivered to Conduit on this device: daily usage numbers, and crash, hang, launch and resource diagnostics with their call stacks and exception messages, kept on the device. Only the crashes and hangs the user chose to send went to Conduit's developer, without exception messages.",
             "generated": ISO8601DateFormatter().string(from: now),
             "appVersion": appVersion,
             "summary": summary(timeZone: timeZone).text,
@@ -233,10 +234,79 @@ struct MetricKitReportStore {
         try folder.setResourceValues(values)
     }
 
+    /// The file `save` keeps a payload in, whether or not it's there.
+    static func fileName(of json: Data, kind: MetricKitReportKind, begin: Date, end: Date) -> String? {
+        guard let normalized = normalized(json) else { return nil }
+        return fileName(
+            kind: kind,
+            beginSeconds: Int(begin.timeIntervalSince1970.rounded(.down)),
+            endSeconds: Int(end.timeIntervalSince1970.rounded(.down)),
+            hash: hash(normalized)
+        )
+    }
+
+    private static func fileName(kind: MetricKitReportKind, beginSeconds: Int, endSeconds: Int, hash: String) -> String {
+        "\(kind.rawValue)-\(beginSeconds)-\(endSeconds)-\(hash).json"
+    }
+
     /// Sorted keys, so the same payload hashes the same however it arrived.
     private static func normalized(_ json: Data) -> Data? {
-        guard let object = try? JSONSerialization.jsonObject(with: json), object is [String: Any] else { return nil }
+        guard let object = try? JSONSerialization.jsonObject(with: shallowed(json)), object is [String: Any] else { return nil }
         return try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    }
+
+    /// JSONSerialization reads and writes nothing nested past 512, and a
+    /// stack that overflowed nests its frames thousands deep. Below this
+    /// depth a payload keeps everything; a container at it is emptied.
+    static let maxJSONDepth = 500
+
+    /// `json` with every container at `maxDepth` emptied, so a crash from a
+    /// stack overflow is kept (its frames deeper than about 245 levels go)
+    /// rather than refused. It scans the bytes once, without recursing, and
+    /// returns a payload with nothing that deep as it came.
+    static func shallowed(_ json: Data, maxDepth: Int = maxJSONDepth) -> Data {
+        var emptiedAny = false
+        var out = Data()
+        out.reserveCapacity(json.count)
+        var depth = 0
+        var emptiedDepth = 0
+        var inString = false
+        var escaped = false
+        for byte in json {
+            let keep = emptiedDepth == 0
+            if inString {
+                if keep { out.append(byte) }
+                if escaped {
+                    escaped = false
+                } else if byte == UInt8(ascii: "\\") {
+                    escaped = true
+                } else if byte == UInt8(ascii: "\"") {
+                    inString = false
+                }
+                continue
+            }
+            switch byte {
+            case UInt8(ascii: "\""):
+                inString = true
+                if keep { out.append(byte) }
+            case UInt8(ascii: "{"), UInt8(ascii: "["):
+                depth += 1
+                if keep {
+                    out.append(byte)
+                    if depth == maxDepth {
+                        emptiedDepth = depth
+                        emptiedAny = true
+                    }
+                }
+            case UInt8(ascii: "}"), UInt8(ascii: "]"):
+                if emptiedDepth == depth { emptiedDepth = 0 }
+                depth -= 1
+                if emptiedDepth == 0 { out.append(byte) }
+            default:
+                if keep { out.append(byte) }
+            }
+        }
+        return emptiedAny ? out : json
     }
 
     private static func hash(_ data: Data) -> String {
@@ -473,10 +543,15 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
 
     private let queue = DispatchQueue(label: "com.milim.relay.metrickit", qos: .utility)
     private let store: MetricKitReportStore
+    private let crashReports: CrashReportQueue
     private var started = false
 
-    init(store: MetricKitReportStore = MetricKitReportStore(directory: MetricKitReportStore.defaultDirectory)) {
+    init(
+        store: MetricKitReportStore = MetricKitReportStore(directory: MetricKitReportStore.defaultDirectory),
+        crashReports: CrashReportQueue = CrashReportQueue()
+    ) {
         self.store = store
+        self.crashReports = crashReports
     }
 
     /// Subscribes, and keeps what iOS delivered before the subscriber
@@ -488,7 +563,37 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
             MXMetricManager.shared.add(self)
             let manager = MXMetricManager.shared
             receive(metrics: manager.pastPayloads, diagnostics: manager.pastDiagnosticPayloads)
+            if queueStoredCrashReports() {
+                Task { @MainActor in await CrashReportOffer.shared.refresh() }
+            }
         }
+    }
+
+    /// Once per device: the crashes and hangs from the last week that a
+    /// build before the card kept, since iOS doesn't hand them over again.
+    /// A folder or files that can't be read yet (before first unlock) leave
+    /// the look for the next launch.
+    func queueStoredCrashReports(now: Date = Date()) -> Bool {
+        guard !crashReports.lookedAtStoredReports else { return false }
+        var queued = false
+        // A folder that can't be listed yet reads as empty.
+        let listed = store.canReadReports
+        var read = 0
+        var unread = 0
+        for entry in store.entries(.diagnostics) where now.timeIntervalSince(entry.end) < CrashReportUpload.maxAge {
+            guard let data = try? Data(contentsOf: entry.url) else {
+                unread += 1
+                continue
+            }
+            read += 1
+            guard CrashReportUpload.kind(ofPayloadJSON: data) != nil else { continue }
+            crashReports.add(entry.url.lastPathComponent)
+            queued = true
+        }
+        // Locked files fail together; one that fails alone isn't worth
+        // asking about the rest twice.
+        if listed && (read > 0 || unread == 0) { crashReports.markLookedAtStoredReports() }
+        return queued
     }
 
     /// What Diagnostics & logs shows: the summary and the share file, or
@@ -561,8 +666,25 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
         for payload in metrics {
             store.save(payload.jsonRepresentation(), kind: .metrics, begin: payload.timeStampBegin, end: payload.timeStampEnd)
         }
+        var offer = false
         for payload in diagnostics {
-            store.save(payload.jsonRepresentation(), kind: .diagnostics, begin: payload.timeStampBegin, end: payload.timeStampEnd)
+            let json = payload.jsonRepresentation()
+            guard store.save(json, kind: .diagnostics, begin: payload.timeStampBegin, end: payload.timeStampEnd) else { continue }
+            offer = queueCrashReport(json, begin: payload.timeStampBegin, end: payload.timeStampEnd) || offer
         }
+        if offer {
+            Task { @MainActor in await CrashReportOffer.shared.refresh() }
+        }
+    }
+
+    /// A new crash or hang from the last week waits for the "send this
+    /// report?" card (CrashReportOffer). Returns whether one was queued.
+    func queueCrashReport(_ json: Data, begin: Date, end: Date, now: Date = Date()) -> Bool {
+        guard now.timeIntervalSince(end) < CrashReportUpload.maxAge,
+              CrashReportUpload.kind(ofPayloadJSON: json) != nil,
+              let name = MetricKitReportStore.fileName(of: json, kind: .diagnostics, begin: begin, end: end),
+              store.entries(.diagnostics).contains(where: { $0.url.lastPathComponent == name }) else { return false }
+        crashReports.add(name)
+        return true
     }
 }

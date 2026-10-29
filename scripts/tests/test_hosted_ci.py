@@ -28,6 +28,26 @@ class RetrySelectionTests(unittest.TestCase):
         self.detail["failures"].append({"class": "ConnectionSetupUITests"})
         self.assertEqual(self.retry.retry_classes(self.detail, self.selected), self.selected)
 
+    def test_pinned_tests_retry_only_the_failed_test(self):
+        selected = ["ProfilePickerUITests/testReorderArrowMovesTheProfileLater",
+                    "ProfilePickerUITests/testTappingTheCardBodyInvokesSelection",
+                    "ConnectionSetupUITests/testWizardAdvancesThroughQuestionsToTailscaleBranchAndBack"]
+        detail = {"attempts": [
+            {"class": "ProfilePickerUITests", "test": "testReorderArrowMovesTheProfileLater()",
+             "final": "Passed"},
+            {"class": "ProfilePickerUITests", "test": "testTappingTheCardBodyInvokesSelection()",
+             "final": "Failed"},
+            {"class": "ConnectionSetupUITests",
+             "test": "testWizardAdvancesThroughQuestionsToTailscaleBranchAndBack()",
+             "final": "Passed"}],
+            "failures": [{"class": "ProfilePickerUITests",
+                          "test": "testTappingTheCardBodyInvokesSelection()"}]}
+        self.assertEqual(self.retry.retry_classes(detail, selected), [selected[1]])
+        # A pinned test that produced no result cannot narrow the retry.
+        detail["attempts"].pop(0)
+        with self.assertRaises(ValueError):
+            self.retry.retry_classes(detail, selected)
+
     def _raw_result(self, children, result="Failed"):
         # Real xcresulttool assertion failures carry diagnostic children on
         # the Test Case, rather than another test attempt or an orphan failure.

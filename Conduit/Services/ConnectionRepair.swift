@@ -116,6 +116,24 @@ enum ConnectionRepairSignIn {
         }
         return nil
     }
+
+    /// Whether Sign In to Reconnect (and Settings' Sign In Again) can open a
+    /// native sign-in, so the Private sign-in page switch does something
+    /// there: the tested sign-in is native, or a choice's sign-in that the
+    /// capability check may still send to Safari. A sign-in the test
+    /// already decided is the embedded browser never reads the switch.
+    static func mayOpenNativeSignIn(for testState: ConnectionSetupTestState) -> Bool {
+        if let signIn = testState.interactiveSignIn {
+            if case .nativeOAuth = signIn { return true }
+            return false
+        }
+        if let offer = testState.browserSignInOffer {
+            guard let decided = offer.decidedSignIn else { return true }
+            if case .nativeOAuth = decided { return true }
+            return false
+        }
+        return false
+    }
 }
 
 /// One Sign In to Reconnect resolution, bound to the draft revision and test
@@ -157,6 +175,10 @@ struct ConnectionSetupRepairReview {
     let signInToReconnect: () -> Void
     let enterCredentials: () -> Void
     let testAgain: () -> Void
+    /// Sign In to Reconnect can open a native sign-in
+    /// (`ConnectionRepairSignIn.mayOpenNativeSignIn`), so the Private
+    /// sign-in page switch shows above it.
+    var showsPrivateSignInSwitch = false
 }
 
 /// The result of an explicit repair activation. Session identity questions
@@ -230,6 +252,9 @@ struct ConnectionSetupSettingsReview {
     /// The classified failure of the last Sign In Again.
     let signInFailure: ConnectionFailure?
     let signInAgain: () -> Void
+    /// Sign In Again can open a native sign-in, so the Private sign-in
+    /// page switch shows above it.
+    var showsPrivateSignInSwitch = false
 
     /// Sign In Again applies to the dashboard Conduit is set up for only:
     /// another address signs in from the login card, never as a side

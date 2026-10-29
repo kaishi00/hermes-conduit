@@ -319,6 +319,90 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    /// A room opened again shows the events it had at once, while its tail
+    /// loads, and the tail replaces them (#1352).
+    func testReopenedRoomShowsItsEventsWhileItsTailLoads() async throws {
+        final class LogBox {
+            var events = 1
+            var gate: ControlledSuspension?
+        }
+        let box = LogBox()
+        let room = self.room()
+        func message(_ seq: Int) -> GroupEvent {
+            GroupDecoders.event(AnyCodable.from([
+                "room_id": room.roomID,
+                "seq": seq,
+                "event_id": "srv-\(seq)",
+                "kind": "message.user",
+                "actor": ["kind": "user", "id": "human"],
+                "payload": ["text": "hello \(seq)", "thread_id": "main"],
+                "created_at": Double(seq),
+            ]))!
+        }
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                if let gate = box.gate { await gate.suspend() }
+                let events = (1...box.events).map(message).filter { $0.seq > sinceSeq }
+                return GroupLogPage(events: events, cursor: box.events, latestSeq: box.events, hasMore: false,
+                                    authorityGatewayID: "gw-a", authorityEpoch: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1])
+        appState.closeGroupRoom()
+
+        box.events = 2
+        let gate = ControlledSuspension()
+        box.gate = gate
+        let reopening = Task { @MainActor in await appState.openGroupRoom(room) }
+        await gate.waitUntilSuspended()
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1], "What it had shows while the tail loads")
+
+        box.gate = nil
+        gate.resume()
+        await reopening.value
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1, 2])
+        appState.closeGroupRoom()
+    }
+
+    /// A dictation Retry that lands after its room was left: the words go
+    /// after the room's kept draft and are there on reopen.
+    func testRetriedDictationWordsReachALeftRoomsDraft() async throws {
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        appState.saveActiveRoomDraft("half a thought")
+        let dashboardID = try XCTUnwrap(appState.activeRoomSurface?.dashboardID)
+        appState.closeGroupRoom()
+
+        XCTAssertTrue(appState.appendToRoomDraft("and the rest", dashboardID: dashboardID, roomID: room.roomID))
+        XCTAssertFalse(
+            appState.appendToRoomDraft("lost", dashboardID: dashboardID, roomID: "room-gone"),
+            "A room off the list can't be reopened: the recording stays"
+        )
+
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.activeRoomDraft(), "half a thought and the rest")
+        appState.closeGroupRoom()
+    }
+
     /// A send still in flight when the user leaves: the response settles the
     /// retry key wherever it now lives — the reopened room's active outbox
     /// (leave then reopen before the answer) or the parked copy.
@@ -977,6 +1061,8 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             XCTAssertNotNil(member["handle"])
             XCTAssertNotNil(member["display_name"])
         }
+        XCTAssertEqual(Set(recorder.members.compactMap { $0["display_name"] as? String }), ["Alpha", "Beta"],
+                       "an unnamed bot joins by its id capitalized, as Bots names it (#1448)")
         // Creation opens the fresh room; closing leaves session state alone.
         XCTAssertEqual(appState.activeRoomSurface?.room.roomID, "room-1")
         appState.closeGroupRoom()

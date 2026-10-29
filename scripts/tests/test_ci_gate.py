@@ -22,12 +22,28 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(ci_gate.REQUIRED_SUCCESS, ("plan", "smoke", "self-test"))
 
     def test_smoke_skipped_fails_gate(self):
-        # No hosted job has a legitimate skip path: the plan job fails closed
+        # Unless the plan job says the change doesn't need it (below), a
+        # skipped smoke job is a failure: the plan job fails closed
         # on an empty curated selection and every test step refuses to run
         # unfiltered, so a skipped smoke job is an upstream failure cascade.
         passed, reason = ci_gate.verdict("success", "skipped", "success")
         self.assertFalse(passed)
         self.assertIn("smoke", reason)
+
+    def test_smoke_skipped_passes_when_the_plan_says_it_is_not_needed(self):
+        # A PR that changes only docs and review config skips the smoke job.
+        passed, _reason = ci_gate.verdict("success", "skipped", "success", "false")
+        self.assertTrue(passed)
+
+    def test_smoke_skipped_fails_when_the_plan_failed_or_said_needed(self):
+        for plan, needed in (("failure", "false"), ("success", "true"), ("success", "")):
+            passed, reason = ci_gate.verdict(plan, "skipped", "success", needed)
+            self.assertFalse(passed, (plan, needed))
+            self.assertIn("smoke", reason)
+
+    def test_smoke_not_needed_still_fails_a_failed_smoke(self):
+        passed, _reason = ci_gate.verdict("success", "failure", "success", "false")
+        self.assertFalse(passed)
 
     def test_smoke_failure_fails_gate(self):
         # A failed unit smoke step or a failed UI smoke step both fail the job.

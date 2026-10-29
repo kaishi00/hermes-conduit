@@ -166,7 +166,7 @@ enum NotificationE2E {
         /// provisioned for (never the relay's routing stub).
         var routingPayload: [String: Any] {
             var payload = content
-            for banner in ["title", "body", "title_label", "session_title"] { payload.removeValue(forKey: banner) }
+            for banner in ["title", "body", "title_label", "session_title", "headline"] { payload.removeValue(forKey: banner) }
             payload["type"] = type
             payload["gateway_id"] = record.gatewayID
             if let dashboardID = record.dashboardID { payload["dashboard_id"] = dashboardID }
@@ -548,6 +548,14 @@ enum NotificationSharedSettings {
         set { defaults?.set(newValue, forKey: showPreviewsKey) }
     }
 
+    private static let showChatNamesKey = "conduit.notifications.showChatNames"
+
+    /// Show previews off but the chat's title and the profile shown (#1415).
+    static var showChatNames: Bool {
+        get { defaults?.bool(forKey: showChatNamesKey) ?? false }
+        set { defaults?.set(newValue, forKey: showChatNamesKey) }
+    }
+
     private static let appLanguageKey = "conduit.notifications.appLanguage"
 
     /// The App Language ("system" or a localization identifier), so the
@@ -555,6 +563,22 @@ enum NotificationSharedSettings {
     static var appLanguage: String? {
         get { defaults?.string(forKey: appLanguageKey) }
         set { defaults?.set(newValue, forKey: appLanguageKey) }
+    }
+
+    private static let mainProfileNamesKey = "conduit.notifications.mainProfileNames"
+    private static let activeDashboardIDKey = "conduit.notifications.activeDashboardID"
+
+    /// The main profile's Conduit name per dashboard (UUID string), so a
+    /// push from it names it as the app does (NotificationCopy.named).
+    static var mainProfileNames: [String: String] {
+        get { defaults?.dictionary(forKey: mainProfileNamesKey) as? [String: String] ?? [:] }
+        set { defaults?.set(newValue, forKey: mainProfileNamesKey) }
+    }
+
+    /// The dashboard open in the app, standing in for a push that names none.
+    static var activeDashboardID: String? {
+        get { defaults?.string(forKey: activeDashboardIDKey) }
+        set { defaults?.set(newValue, forKey: activeDashboardIDKey) }
     }
 
     private static let knownGatewayIDsKey = "conduit.notifications.knownGatewayIDs"
@@ -598,14 +622,5 @@ enum NotificationSharedSettings {
     static var knownGatewayIDs: Set<String> {
         get { Set(defaults?.stringArray(forKey: knownGatewayIDsKey) ?? []) }
         set { defaults?.set(newValue.sorted(), forKey: knownGatewayIDsKey) }
-    }
-
-    private static let pulseQuietGatewaysKey = "conduit.notifications.pulseQuietGateways"
-
-    /// The relay gateways whose host's plugin takes Quiet for today, so the
-    /// extension offers it on their Pulse pushes (PulseNotifications).
-    static var pulseQuietGateways: Set<String> {
-        get { Set(defaults?.stringArray(forKey: pulseQuietGatewaysKey) ?? []) }
-        set { defaults?.set(newValue.sorted(), forKey: pulseQuietGatewaysKey) }
     }
 }

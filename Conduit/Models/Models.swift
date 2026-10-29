@@ -20,8 +20,9 @@ enum MessageRole: String, Codable, Equatable {
     case tool
     case clarify
     case approval
-    /// A masked single-value prompt from a Hermes server→client request:
-    /// sudo password, skill/setup secret, or password-manager unlock.
+    /// A private-input prompt from a Hermes server→client request: sudo
+    /// password, skill/setup secret, password-manager unlock, a website's
+    /// login or its one-time code.
     case inputPrompt
 }
 
@@ -80,6 +81,51 @@ enum SessionSource: String, Codable, CaseIterable {
         case .other: return .gray
         }
     }
+}
+
+extension SessionSource {
+    /// Hermes' source for a Kanban worker's transcript. Hermes refuses to
+    /// reopen one as a chat (`session.resume` 4132): the board runs it, and
+    /// the task's Worker Log shows it.
+    static let hermesKanbanSource = "kanban"
+
+    /// Sessions that aren't conversations, which every Hermes picker hides
+    /// (Hermes' `INTERNAL_LISTING_SOURCES`): Kanban workers, third-party
+    /// tool integrations (`hermes chat --source tool`) and finite one-shot
+    /// runs (`chat -q`, `-z`). Lowercased, as Hermes stores them.
+    static let hermesInternalSources: Set<String> = [hermesKanbanSource, "tool", "oneshot"]
+
+    /// `exclude_sources` for search: the sessions that aren't conversations.
+    static let nonChatExcludedSources = hermesInternalSources.sorted().joined(separator: ",")
+
+    /// `exclude_sources` for the chat lists: cron runs have a list of their
+    /// own, and the sessions that aren't conversations stay out, as Hermes
+    /// Desktop's sidebar leaves them out.
+    static let chatListExcludedSources = "cron,\(nonChatExcludedSources)"
+
+    /// Whether a Hermes session row's `source` is one that isn't a chat.
+    static func isHermesInternalSource(_ source: String?) -> Bool {
+        guard let source else { return false }
+        return hermesInternalSources.contains(source.lowercased())
+    }
+
+    /// Whether a session row is a Kanban worker that Hermes stored before it
+    /// tagged workers `kanban`. Those ran as `cli` sessions on the
+    /// dispatcher's one-line prompt, which is the row's preview; Hermes only
+    /// retags the ones whose folder is under the board's workspaces, so the
+    /// rest still list as chats (#1459).
+    static func isLegacyKanbanWorker(source: String?, preview: String?) -> Bool {
+        guard legacyKanbanWorkerSources.contains(source?.lowercased() ?? ""),
+              let preview = preview?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              preview.hasPrefix(legacyKanbanWorkerPrompt) else { return false }
+        let taskID = preview.dropFirst(legacyKanbanWorkerPrompt.count)
+        return !taskID.isEmpty && !taskID.contains(where: \.isWhitespace)
+    }
+
+    private static let legacyKanbanWorkerPrompt = "work kanban task "
+    /// Where Hermes kept those workers: `cli`, which a peer refresh rewrites
+    /// to `local`. A Telegram or cron row that only reads the same is a chat.
+    private static let legacyKanbanWorkerSources: Set<String> = ["cli", "local"]
 }
 
 struct Attachment: Codable, Identifiable, Equatable {
@@ -201,6 +247,11 @@ struct ClarifyQuestion: Codable, Equatable, Identifiable {
     /// Whether this question can accept an answer or retry.
     var isAnswerable: Bool { status == .pending || status == .error }
 
+    /// Left blank: a form's field the user didn't fill in, which Hermes
+    /// reads as skipped. Its answer is empty, where one answered on another
+    /// device has none.
+    var isSkipped: Bool { status == .answered && answer?.isEmpty == true }
+
     init(
         id: String,
         question: String,
@@ -269,6 +320,17 @@ struct ClarifyQuestion: Codable, Equatable, Identifiable {
     static func multiSelectAnswer(_ values: [String]) -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: values) else { return "" }
         return String(decoding: data, as: UTF8.self)
+    }
+
+    /// A form field's answer from what the user filled in: the picked
+    /// choice, or the typed text; a multi-select's picks in choice order,
+    /// with any typed text after them. Empty when the field was left blank.
+    func formAnswer(picked: Set<String>, typed: String) -> String {
+        let typed = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let values = choices.map(\.value).filter { picked.contains($0) }
+        guard multiSelect else { return values.first ?? typed }
+        let all = typed.isEmpty ? values : values + [typed]
+        return all.isEmpty ? "" : Self.multiSelectAnswer(all)
     }
 }
 
@@ -375,6 +437,13 @@ struct ClarifyActivity: Codable, Equatable {
         if questions.contains(where: { $0.status == .pending }) { return .pending }
         if questions.contains(where: { $0.status == .error }) { return .error }
         return .expired
+    }
+
+    /// Several questions, at least one typed: shown as a form whose fields
+    /// are sent together, any of them left blank. A question on its own,
+    /// or a batch of choices only, keeps the card that answers each one.
+    var isForm: Bool {
+        questions.count > 1 && questions.contains(where: \.isFreeText)
     }
 
     /// Visible question text for the transcript row: the joined question
@@ -490,9 +559,11 @@ struct ApprovalActivity: Codable, Equatable {
     }
 }
 
-/// One masked single-value prompt Hermes asks through a server→client
-/// request (`tui_gateway/contracts/server_requests.py`): `sudo`, `secret`
-/// or `vault.unlock_prompt`, each answered with `{value}` ('' = skip).
+/// One private-input prompt Hermes asks through a server→client request
+/// (`tui_gateway/contracts/server_requests.py`): `sudo`, `secret`,
+/// `vault.unlock_prompt`, `vault.save_login` (a website's login, answered
+/// as JSON `{identifier, password}`) or `vault.code` (a website's one-time
+/// code), each answered with `{value}` ('' = skip).
 ///
 /// Deliberately NOT Codable: the card is live-only (a resume re-announces
 /// it from `open_requests`), so it can never reach the presentation or
@@ -503,6 +574,8 @@ struct InputPromptActivity: Equatable {
         case sudo
         case secret
         case vaultUnlock = "vault.unlock_prompt"
+        case vaultSaveLogin = "vault.save_login"
+        case vaultCode = "vault.code"
     }
 
     enum Status: Equatable {
@@ -525,11 +598,21 @@ struct InputPromptActivity: Equatable {
     var prompt: String = ""
     /// vault.unlock_prompt: the password manager's name.
     var displayName: String = ""
+    /// vault.save_login: the sign-in page's origin (`https://host`), which
+    /// the login is saved for.
+    var origin: String = ""
+    /// vault.save_login and vault.code: the site, by host.
+    var site: String = ""
     var status: Status = .pending
     var error: String?
+    /// The profile whose chat showed the card (AppState sets it), so an
+    /// answer typed after a profile switch never goes out on the new
+    /// profile's connection. Empty until shown.
+    var profile: String = ""
 
     /// Parses a server request (live frame or `open_requests` entry).
-    /// Returns nil for any other method or a request without a session.
+    /// Returns nil for any other method, a request without a session, or
+    /// a login request without the origin it is saved for.
     static func from(requestId: String, method: String, params: [String: AnyCodable]) -> InputPromptActivity? {
         guard let kind = Kind(rawValue: method), !requestId.isEmpty else { return nil }
         let sessionId = params["session_id"]?.stringValue?
@@ -547,12 +630,21 @@ struct InputPromptActivity: Equatable {
             activity.prompt = text("prompt")
         case .vaultUnlock:
             activity.displayName = text("display_name").isEmpty ? text("backend") : text("display_name")
+        case .vaultSaveLogin:
+            // A login is bound to the origin it is saved for; without one
+            // the card could not say which site gets it. The title names
+            // the origin's own host, so it can never name another site.
+            activity.origin = text("origin")
+            guard !activity.origin.isEmpty else { return nil }
+            activity.site = URL(string: activity.origin)?.host ?? activity.origin
+        case .vaultCode:
+            activity.site = text("site")
         }
         return activity
     }
 
-    /// Every sudo / secret / vault-unlock entry of a resume's
-    /// `open_requests`, oldest first as the gateway lists them.
+    /// Every input-prompt entry of a resume's `open_requests`, oldest first
+    /// as the gateway lists them.
     static func pending(inOpenRequests openRequests: AnyCodable?) -> [InputPromptActivity] {
         (openRequests?.arrayValue ?? []).compactMap { entry in
             guard let object = entry.objectValue,
@@ -573,7 +665,34 @@ struct InputPromptActivity: Equatable {
             return displayName.isEmpty
                 ? AppLocalization.string("Unlock your password manager")
                 : AppLocalization.string("Unlock \(displayName)")
+        case .vaultSaveLogin:
+            return AppLocalization.string("Save your \(site) login?")
+        case .vaultCode:
+            return site.isEmpty
+                ? AppLocalization.string("Verification code")
+                : AppLocalization.string("Verification code for \(site)")
         }
+    }
+
+    /// The `vault.save_login` answer: the JSON Hermes hands to its vault
+    /// store. Nil when either part is missing, which is not an answer
+    /// (Hermes reads that as declined). A password of spaces alone is
+    /// missing too, as on the other cards; one containing spaces goes as
+    /// typed.
+    static func loginAnswer(identifier: String, password: String) -> String? {
+        let identifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !identifier.isEmpty, !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let data = try? JSONSerialization.data(
+                  withJSONObject: ["identifier": identifier, "password": password],
+                  options: [.sortedKeys]
+              ) else { return nil }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// The `vault.code` answer: the code as typed, without the spaces and
+    /// dashes a site groups it with ("123 456"), as Hermes types it.
+    static func codeAnswer(_ typed: String) -> String {
+        typed.filter { !$0.isWhitespace && $0 != "-" }
     }
 
     var isAnswerable: Bool { status == .pending || status == .error }
@@ -700,10 +819,14 @@ struct MessageReaction: Codable, Equatable, Hashable {
     }
 }
 
-struct WorkspaceEntry: Identifiable, Equatable {
+struct WorkspaceEntry: Identifiable, Equatable, Hashable {
     var name: String
     var path: String
     var isDirectory: Bool
+    /// A file's size; nil for a folder, and where the listing has none
+    /// (Hermes' own folder listing).
+    var size: Int64? = nil
+    var modified: Date? = nil
 
     var id: String { path }
 }
@@ -1181,14 +1304,70 @@ enum BusyInputMode: String, CaseIterable, Codable, Identifiable {
 /// Display preferences are owned by the active Hermes profile, not this
 /// device. Keeping them together ensures chat and Settings render the same
 /// source of truth after a profile switch or reconnect.
-struct ProfileDisplayPreferences: Equatable {
+struct ProfileDisplayPreferences: Equatable, Codable {
     var showReasoning = true
+    /// `display.conduit_thinking_on_request` isn't false: with thinking
+    /// hidden, a run's menu and its reply's ⋯ still offer Show thinking
+    /// (ReasoningDisplayMode).
+    var thinkingOnRequest = true
     var showToolProgress = true
     var expandToolsByDefault = false
+    /// `display.memory_notifications` isn't "off": the self-improvement
+    /// review rows draw, the ones a chat already has included.
+    var showReviews = true
+
+    /// Hermes' reading of `display.memory_notifications`: a YAML bool is
+    /// on or off, anything else but "off" (unset, "default", "verbose")
+    /// shows them.
+    static func showsReviews(_ value: Any?) -> Bool {
+        if let bool = value as? Bool { return bool }
+        guard let string = value as? String else { return true }
+        return string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "off"
+    }
+
+    var reasoningMode: ReasoningDisplayMode {
+        ReasoningDisplayMode(showReasoning: showReasoning, onRequest: thinkingOnRequest)
+    }
+
+    /// Thinking is hidden and Show thinking is offered.
+    var offersShowThinking: Bool { reasoningMode == .onRequest }
+}
+
+/// The Thinking choice in Settings > Chat. Hermes' own `display.show_reasoning`
+/// stays a switch other clients read too, so Show is that switch on, and
+/// Conduit's `display.conduit_thinking_on_request` tells On request from Off
+/// while it is off. Unset reads as On request, so an install that had the
+/// switch off keeps its Show thinking menus.
+enum ReasoningDisplayMode: String, CaseIterable {
+    case show
+    case onRequest = "on_request"
+    case off
+
+    /// The settings row's own key: no config value of that name is kept.
+    static let settingKey = "conduit.reasoning_display"
+    static let onRequestConfigKey = "conduit_thinking_on_request"
+
+    init(showReasoning: Bool, onRequest: Bool) {
+        self = showReasoning ? .show : (onRequest ? .onRequest : .off)
+    }
+
+    /// Read from the profile's `display` block, Hermes' defaults applied.
+    init(display: [String: Any]) {
+        self.init(
+            showReasoning: display["show_reasoning"] as? Bool ?? true,
+            onRequest: display[Self.onRequestConfigKey] as? Bool ?? true
+        )
+    }
+
+    /// Written into the `display` block. Show leaves Conduit's own key as
+    /// it is, so turning Show off again goes back to the last of the two.
+    func write(into display: inout [String: Any]) {
+        display["show_reasoning"] = self == .show
+        if self != .show { display[Self.onRequestConfigKey] = self == .onRequest }
+    }
 }
 
 enum DisplayPreferenceKey: CaseIterable, Identifiable {
-    case reasoning
     case toolProgress
     case expandTools
 

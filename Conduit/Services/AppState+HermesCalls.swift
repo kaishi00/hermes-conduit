@@ -224,6 +224,7 @@ extension AppState {
     /// accent the Watch app draws in, and whether the active dashboard's
     /// notifications are end-to-end encrypted (the Watch's Settings).
     func shareWatchCallVoices() {
+        shareMainProfileNamesWithNotifications()
         let notifications = PushNotificationService.shared
         WatchVoiceLink.shared.share(WatchPhoneContext(
             voices: Self.watchContextVoices(
@@ -237,6 +238,15 @@ extension AppState {
             accent: UserDefaults.standard.string(forKey: ConduitAccent.storageKey) ?? ConduitAccent.defaultValue.rawValue,
             notificationsEncryption: Self.watchNotificationsEncryption(activeDashboardID.flatMap(notificationsEncryption(of:)))
         ))
+    }
+
+    /// The Notification Service Extension names the main bot's pushes as
+    /// the app does (NotificationCopy.named), from these.
+    func shareMainProfileNamesWithNotifications() {
+        let names = mainProfileNamesByDashboard
+        if NotificationSharedSettings.mainProfileNames != names { NotificationSharedSettings.mainProfileNames = names }
+        let active = activeDashboardID?.uuidString
+        if NotificationSharedSettings.activeDashboardID != active { NotificationSharedSettings.activeDashboardID = active }
     }
 
     /// The Watch's word for a dashboard's notifications encryption: nil
@@ -389,7 +399,8 @@ extension AppState {
             // Local Live outside agent mode has no model of its own to say
             // the call's news: classic voice takes it, as
             // openVoiceConversation does. In agent mode its fast model does.
-            if let engine = self.configuredLiveVoiceEngine(profile: profile), engine != .localLive || self.isLocalLiveAgent {
+            if let engine = self.configuredLiveVoiceEngine(profile: profile),
+               engine != .localLive || self.usesLocalLiveAgent(profile: profile) {
                 HermesCallTrace.shared.note("Opening live voice (\(engine))")
                 self.pendingHermesCall = opening
                 opened = await self.openVoiceConversation(intent)
@@ -535,14 +546,6 @@ extension AppState {
         }
     }
 
-    /// What the live call from Hermes waits on, read from its chat's card
-    /// with the choices and what Hermes wrote before asking; nil while the
-    /// card isn't there, when the push's reason stands in.
-    func liveHermesCallWaiting() -> HermesCallWaiting? {
-        guard let call = liveHermesCall else { return nil }
-        return hermesCallWaiting(call)
-    }
-
     /// `liveHermesCall`'s instructions for the live model, with what its
     /// chat's card says. Read by the session builders, so a reconnect gets
     /// the card as it stands then.
@@ -665,7 +668,7 @@ extension AppState {
         // choice the words point at sends what its tap sends.
         let asked = HermesCallWaiting.Question(id: question.id, text: question.question,
                                                choices: question.choices.map { .init(label: $0.label, value: $0.value) },
-                                               multiSelect: question.multiSelect)
+                                               multiSelect: question.multiSelect, mayLeaveBlank: clarify.isForm)
         let value = HermesCallWaiting.answerValue(for: answer, question: asked)
         await respondToClarify(requestId: clarify.requestId, questionId: clarify.questions.count == 1 ? nil : question.id, answer: value)
         // The chat may have reloaded meanwhile: the same question, by its

@@ -113,7 +113,7 @@ struct BotRosterView: View {
                 managementNotice = nil
             } label: {
                 Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -178,14 +178,14 @@ struct BotRosterView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: showsHiddenBots ? "chevron.down" : "chevron.right")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                         .accessibilityHidden(true)
                     Text(AppLocalization.string("Hidden"))
                     Text(verbatim: String(hiddenBots.count))
                         .foregroundStyle(.tertiary)
                     Spacer()
                 }
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 8)
                 .contentShape(Rectangle())
@@ -283,7 +283,7 @@ struct BotRosterView: View {
                 Section {
                     botRows
                     Text("Each bot is its own profile with one ongoing conversation.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.top, 10)
                         .padding(.bottom, 8)
@@ -373,7 +373,7 @@ struct BotRosterView: View {
                     // As the Chats list's section headers, in line with the
                     // pictures.
                     Text(AppLocalization.string("Group Chats"))
-                        .font(.footnote.weight(.semibold))
+                        .scaledFont(.footnote.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .textCase(nil)
                         .padding(.leading, 16)
@@ -495,6 +495,7 @@ struct BotRosterView: View {
 struct GroupRosterRow: View {
     let room: GroupRoom
     @EnvironmentObject private var appState: AppState
+    @Environment(\.v2OpenBeside) private var openBeside
 
     var body: some View {
         Button {
@@ -507,10 +508,11 @@ struct GroupRosterRow: View {
             }
         }
         .buttonStyle(.plain)
-        .rosterListRow()
+        .rosterListRow(selection: .room(room.roomID, beside: openBeside))
         .accessibilityLabel(Text(room.name))
         .accessibilityValue(Text(subtitleText))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
+        .v2SelectedTrait(.room(room.roomID, beside: openBeside))
     }
 
     private var subtitleText: String {
@@ -534,6 +536,7 @@ private struct BotRosterRow: View {
     let canStartGroup: Bool
     let actions: Actions
     @EnvironmentObject private var appState: AppState
+    @Environment(\.v2OpenBeside) private var openBeside
 
     /// What the row's menu and swipe actions do (Desktop's row menu).
     struct Actions {
@@ -560,24 +563,24 @@ private struct BotRosterRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(bot.displayLabel)
-                            .font(.callout.weight(.semibold))
+                            .scaledFont(.callout.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         if bot.isPinned {
                             Image(systemName: "pin.fill")
-                                .font(.caption2.weight(.bold))
+                                .scaledFont(.caption2.weight(.bold))
                                 .foregroundStyle(Color.primary.opacity(0.35))
                         }
                         Spacer(minLength: 4)
                         if let activity = activityLabel {
                             Text(activity)
-                                .font(.footnote)
+                                .scaledFont(.footnote)
                                 .foregroundStyle(Color.primary.opacity(0.45))
                                 .lineLimit(1)
                         }
                     }
                     subtitleText
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
                 }
@@ -586,13 +589,14 @@ private struct BotRosterRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowBackground(Color.clear)
+        .listRowBackground(Color.clear.v2RowSelection(selection))
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
         .overlay(alignment: .bottom) { V2RowDivider(leadingInset: 48) }
         .accessibilityLabel(Text(bot.displayLabel))
         .accessibilityValue(Text(accessibilityValue))
         .accessibilityHint(Text(AppLocalization.string("Opens this bot's chat.")))
+        .v2SelectedTrait(selection)
         .contextMenu {
             Button(action: actions.newChat) {
                 Label(AppLocalization.string("New Chat"), systemImage: "square.and.pencil")
@@ -647,9 +651,12 @@ private struct BotRosterRow: View {
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if canManage {
                 if canDelete {
-                    Button(role: .destructive, action: actions.delete) {
+                    // Not a destructive role: that removes the row before the
+                    // confirmation is answered, and on a Mac it can blank the list (#1364).
+                    Button(action: actions.delete) {
                         Label(AppLocalization.string("Delete Bot"), systemImage: "trash")
                     }
+                    .tint(.red)
                 }
                 Button(action: actions.edit) {
                     Label(AppLocalization.string("Edit Bot"), systemImage: "pencil")
@@ -662,6 +669,12 @@ private struct BotRosterRow: View {
     @ViewBuilder
     private var subtitleText: some View {
         Text(subtitleString)
+    }
+
+    /// Beside its open Bot Chat on a split window. A bot's row had no
+    /// shade in one column, and keeps none.
+    private var selection: V2RowSelection {
+        .chat(isActive: appState.activeBotChatProfile == bot.name, beside: openBeside, faintAlone: false)
     }
 
     /// The latest preview, else the description, else the canonical chat's
@@ -735,7 +748,7 @@ private struct BotModeNoticeRow: View {
             Image(systemName: icon)
                 .foregroundStyle(.yellow)
             Text(message)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
     }
@@ -762,12 +775,12 @@ struct RosterIconRow<Icon: View>: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.callout.weight(.semibold))
+                    .scaledFont(.callout.weight(.semibold))
                     .foregroundStyle(isAction ? Color.conduitAccent : Color.primary)
                     .lineLimit(1)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.58))
                         .lineLimit(1)
                 }
@@ -775,7 +788,7 @@ struct RosterIconRow<Icon: View>: View {
             Spacer(minLength: 4)
             if let trailingSymbol {
                 Image(systemName: trailingSymbol)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.conduitTertiary)
                     .accessibilityHidden(true)
             }
@@ -799,7 +812,7 @@ struct RosterGlyphRow: View {
                 Circle()
                     .fill(Color.conduitAccent.opacity(0.16))
                 Image(systemName: symbol)
-                    .font(Font.caption.weight(isAction ? .bold : .regular))
+                    .scaledFont(ScaledFont.caption.weight(isAction ? .bold : .regular))
                     .foregroundStyle(Color.conduitAccent)
             }
         }
@@ -809,9 +822,9 @@ struct RosterGlyphRow: View {
 extension View {
     /// A Bots list row's chrome: no system background or separator, 16 pt
     /// side insets, and the row's hairline from the text column.
-    func rosterListRow(divider: Bool = true) -> some View {
+    func rosterListRow(divider: Bool = true, selection: V2RowSelection = .none) -> some View {
         self
-            .listRowBackground(Color.clear)
+            .listRowBackground(Color.clear.v2RowSelection(selection))
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
             .overlay(alignment: .bottom) {

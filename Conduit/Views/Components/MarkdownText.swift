@@ -1299,13 +1299,7 @@ private struct MarkdownList: View {
     /// (rather than a size frozen at body-evaluation time), so a system
     /// text-size change re-resolves them wherever the list re-evaluates.
     private var markerFont: UIFont {
-        ChatTypography.font(
-            for: .body,
-            appearance: chatTextSize,
-            compatibleWith: UITraitCollection(
-                preferredContentSizeCategory: UIContentSizeCategory(sizeCategory)
-            )
-        )
+        ChatTypography.font(for: .body, appearance: chatTextSize, environmentCategory: sizeCategory)
     }
 
     var body: some View {
@@ -1433,7 +1427,7 @@ private struct MarkdownCallout: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(detail.title, systemImage: detail.icon)
-                .font(.caption.weight(.bold))
+                .scaledFont(.caption.weight(.bold))
                 .foregroundStyle(detail.color)
             InlineMarkdown(
                 source: text,
@@ -2065,7 +2059,7 @@ struct LargeMarkdownTable: View {
                     Label(AppLocalization.string("Show \(min(Self.rowBatch, rows.count - renderedRowCount)) more rows")
                         + " " + AppLocalization.string("(\(String(rows.count - renderedRowCount)) of \(String(rows.count)) left)"),
                         systemImage: "chevron.down")
-                        .font(.caption.weight(.semibold))
+                        .scaledFont(.caption.weight(.semibold))
                 }
                 .tint(usesAccentSurface ? .white : .conduitAccent)
                 .padding(.vertical, 8)
@@ -2091,11 +2085,11 @@ struct GuardedSourceCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Label(title, systemImage: icon)
-                    .font(.caption2.monospaced().weight(.semibold))
+                    .scaledFont(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("Too large to render")
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
             }
             SelectableTextView(
@@ -2115,7 +2109,7 @@ struct GuardedSourceCard: View {
                 }
             } label: {
                 Label(copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy full source"), systemImage: copied ? "checkmark" : "doc.on.doc")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
             }
             .tint(.conduitAccent)
         }
@@ -2135,45 +2129,66 @@ private struct RemoteMarkdownImage: View {
     /// Scopes where a `MEDIA:` picture is kept on the phone; without one
     /// (a surface that sets no resolver) it is fetched each time.
     @Environment(\.gatewayMediaFiles) private var gatewayMediaFiles
+    /// The chat's scroll engine, which says when a picture that will grow
+    /// its row shows (#1238).
+    @Environment(\.chatRowDisclosure) private var disclosure
+    /// The row's frame, and the picture waiting to show in it.
+    @StateObject private var arrival = ChatRowArrival()
     @State private var gatewayImage: UIImage?
     /// The cache key `gatewayImage` was loaded for, so a row kept across a
     /// dashboard or profile switch never shows the picture it held before.
     @State private var gatewayImageKey: String?
-    /// The picture whose load failed, so a row handed another picture
-    /// never shows it as unavailable.
-    @State private var gatewayFailedURL: String?
-    private var gatewayLoadFailed: Bool { gatewayFailedURL == url }
+    /// The picture whose load failed (`loadIdentity`), so a row handed
+    /// another picture never shows it as unavailable, and one loading the
+    /// same picture again keeps its label meanwhile.
+    @State private var gatewayFailedLoad: String?
+    private var gatewayLoadFailed: Bool { gatewayFailedLoad == loadIdentity }
     /// A web picture, fetched and decoded within bounds; nil while loading.
     @State private var remoteOutcome: BoundedRemoteImage.Outcome?
     /// The address `remoteOutcome` is for: a row handed another picture
     /// never shows the one it held before.
     @State private var remoteOutcomeURL: String?
-    @State private var openingRemote = false
-    @State private var openTask: Task<Void, Never>?
+    /// The pictures around this one, which the viewer pages through.
+    @Environment(\.imageGallery) private var imageGallery
 
     /// Shown at most 360 pt tall and a phone's width: twice that, at 3x,
     /// stays sharp.
     private static let remoteMaxPixelSize: CGFloat = 2048
+    private static let maxHeight: CGFloat = 360
 
     private var isGatewayMedia: Bool { url.hasPrefix("MEDIA:") }
     private var gatewayCacheKey: String? {
         isGatewayMedia ? gatewayMediaFiles?.imageCacheKey(forMediaPath: gatewayPath) : nil
     }
+    /// Which picture the row loads: its address, and for one from Hermes
+    /// where it is kept, since another dashboard's same path is another
+    /// picture.
+    private var loadIdentity: String { "\(url)|\(gatewayCacheKey ?? "")" }
     /// A web picture's size is remembered under its address.
     private var remoteSizeKey: String { "web|\(url)" }
 
     /// A picture still in memory shows on the row's first frame, so a row
     /// scrolled back into view doesn't grow from its loading line (#1238).
+    /// A row laid out with its loading line (another row of the same
+    /// picture showed it since) takes it through the task, which asks the
+    /// scroll engine.
     private var shownGatewayImage: UIImage? {
         let key = gatewayCacheKey
         if let gatewayImage, gatewayImageKey == key { return gatewayImage }
-        return key.flatMap(TranscriptPictureMemory.image(for:))
+        guard let kept = key.flatMap(TranscriptPictureMemory.image(for:)),
+              arrival.holds(rowHeight(showing: kept.size)) else { return nil }
+        return kept
     }
 
     private var shownRemoteOutcome: BoundedRemoteImage.Outcome? {
         if let remoteOutcome, remoteOutcomeURL == url { return remoteOutcome }
+        // A picture decoded already shows on the row's first frame, or where
+        // the row has its height already (its size was remembered). One that
+        // would grow the row waits for the task, which asks the scroll
+        // engine (#1238).
         guard !isGatewayMedia, let remoteURL = URL(string: url),
-              let cached = BoundedRemoteImage.cachedImage(remoteURL, maxPixelSize: Self.remoteMaxPixelSize) else { return nil }
+              let cached = BoundedRemoteImage.cachedImage(remoteURL, maxPixelSize: Self.remoteMaxPixelSize),
+              arrival.holds(rowHeight(showing: cached.size)) else { return nil }
         return .image(cached)
     }
 
@@ -2208,58 +2223,67 @@ private struct RemoteMarkdownImage: View {
             } else {
             switch shownRemoteOutcome {
             case .image(let image):
-                Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 360).clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                    .overlay { if openingRemote { ProgressView() } }
-                    .opensMediaPreview(openRemoteImage)
+                Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: Self.maxHeight).clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .opensMediaPreview { openImage(showing: image) }
                     .accessibilityLabel(alt.isEmpty ? Text("Image") : Text(verbatim: alt))
             case .unavailable:
-                WebFallbackImage(url: url, alt: alt)
+                WebFallbackImage(url: url, alt: alt, arrival: arrival, engine: disclosure?.engine)
             case .tooLarge:
-                WebFallbackImage(url: url, alt: alt, loadsInPage: false)
+                WebFallbackImage(url: url, alt: alt, loadsInPage: false, arrival: arrival, engine: disclosure?.engine)
             case nil:
                 loadingLabel
             }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .chatRowFrame(arrival)
         .onDisappear {
-            openTask?.cancel()
-            openTask = nil
-            openingRemote = false
+            // A picture still waiting to show is dropped with the row; the
+            // task loads it again when the row is back.
+            arrival.rowDisappeared()
         }
-        .task(id: "\(url)|\(gatewayCacheKey ?? "")") {
+        // Handed another picture: whatever still waits was the last one's.
+        .onChange(of: loadIdentity) { arrival.rowDisappeared() }
+        .task(id: loadIdentity) {
             guard isGatewayMedia else {
+                // An outcome for another address goes; this one's stays
+                // while it loads again (the task restarting as the row
+                // comes back), so the row doesn't flash its loading line.
+                if remoteOutcomeURL != url {
+                    remoteOutcomeURL = url
+                    remoteOutcome = nil
+                }
                 // A URL that isn't RFC-valid goes to the web view, which
                 // escapes it.
-                remoteOutcomeURL = url
                 guard let remoteURL = URL(string: url) else {
-                    remoteOutcome = .unavailable
+                    placeRemoteFailure(.unavailable)
                     return
                 }
                 if let cached = BoundedRemoteImage.cachedImage(remoteURL, maxPixelSize: Self.remoteMaxPixelSize) {
-                    remoteOutcome = .image(cached)
+                    placeRemoteImage(cached, generation: TranscriptImageCache.generation, fades: false)
                     return
                 }
-                remoteOutcome = nil
                 let started = TranscriptImageCache.generation
                 let outcome = await BoundedRemoteImage.load(remoteURL, maxPixelSize: Self.remoteMaxPixelSize)
                 guard !Task.isCancelled else { return }
-                if case .image(let image) = outcome, started == TranscriptImageCache.generation {
-                    TranscriptPictureMemory.rememberSize(image.size, for: remoteSizeKey)
+                guard case .image(let image) = outcome else {
+                    placeRemoteFailure(outcome)
+                    return
                 }
-                withAnimation(.easeInOut(duration: 0.2)) { remoteOutcome = outcome }
+                placeRemoteImage(image, generation: started, fades: true)
                 return
             }
             guard gatewayFileKind == nil else { return }
             let cacheKey = gatewayCacheKey
+            // Still in memory: in the row since its first frame, or, shown
+            // since by another row of it, arriving like a load.
             if let cacheKey, let kept = TranscriptPictureMemory.image(for: cacheKey) {
-                gatewayImage = kept
-                gatewayImageKey = cacheKey
+                placeGatewayImage(kept, for: cacheKey, generation: TranscriptImageCache.generation)
                 return
             }
+            // One that failed keeps its label while it loads again.
             gatewayImage = nil
             gatewayImageKey = nil
-            gatewayFailedURL = nil
             let maxPixelSize = Self.remoteMaxPixelSize
             // Kept on the phone from an earlier load: no request, and the
             // read and decode stay off the main thread. After a sign-out
@@ -2267,11 +2291,7 @@ private struct RemoteMarkdownImage: View {
             let keptGeneration = TranscriptImageCache.generation
             if let cacheKey, let kept = await Self.keptGatewayImage(cacheKey, maxPixelSize: maxPixelSize) {
                 guard !Task.isCancelled else { return }
-                if keptGeneration == TranscriptImageCache.generation {
-                    TranscriptPictureMemory.remember(kept, for: cacheKey)
-                }
-                gatewayImage = kept
-                gatewayImageKey = cacheKey
+                placeGatewayImage(kept, for: cacheKey, generation: keptGeneration)
                 return
             }
             guard !Task.isCancelled else { return }
@@ -2281,7 +2301,7 @@ private struct RemoteMarkdownImage: View {
                   let dataURL = await gatewayMediaDataURL(gatewayPath),
                   !Task.isCancelled else {
                 guard !Task.isCancelled else { return }
-                gatewayFailedURL = url
+                placeGatewayFailure()
                 return
             }
             // The data URL (up to 16 MB of base64) is decoded, kept and
@@ -2301,9 +2321,19 @@ private struct RemoteMarkdownImage: View {
             }.value
             guard !Task.isCancelled else { return }
             guard case .image(let image) = decoded else {
-                gatewayFailedURL = url
+                placeGatewayFailure()
                 return
             }
+            placeGatewayImage(image, for: cacheKey, generation: generation)
+        }
+    }
+
+    /// Puts a picture from Hermes in the row once the reader's scrolling
+    /// allows (ChatRowArrival), remembering it then: remembered first,
+    /// its size would resize the loading line on its own. After a sign-out
+    /// it shows, but isn't remembered.
+    private func placeGatewayImage(_ image: UIImage, for cacheKey: String?, generation: Int) {
+        arrival.arrive(rowHeight: rowHeight(showing: image.size), engine: disclosure?.engine) {
             if let cacheKey, generation == TranscriptImageCache.generation {
                 TranscriptPictureMemory.remember(image, for: cacheKey)
             }
@@ -2312,20 +2342,90 @@ private struct RemoteMarkdownImage: View {
         }
     }
 
+    /// Puts a web picture in the row the same way, its size remembered as
+    /// it shows. Outside a chat a fresh load fades in; in a chat it lands
+    /// in one pass, which the engine makes good above the reader.
+    private func placeRemoteImage(_ image: UIImage, generation: Int, fades: Bool) {
+        let engine = disclosure?.engine
+        let sizeKey = remoteSizeKey
+        let placedURL = url
+        arrival.arrive(rowHeight: rowHeight(showing: image.size), engine: engine) {
+            // The row moved on to another address while this one waited.
+            guard remoteOutcomeURL == placedURL else { return }
+            if generation == TranscriptImageCache.generation {
+                TranscriptPictureMemory.rememberSize(image.size, for: sizeKey)
+            }
+            if fades, engine == nil {
+                withAnimation(.easeInOut(duration: 0.2)) { remoteOutcome = .image(image) }
+            } else {
+                remoteOutcome = .image(image)
+            }
+        }
+    }
+
+    /// A picture from Hermes that won't load gives its place to its label
+    /// the same way, a height only the label's layout tells.
+    private func placeGatewayFailure() {
+        let failedLoad = loadIdentity
+        // Its label shows already (the task restarting as the row comes back).
+        guard gatewayFailedLoad != failedLoad else { return }
+        arrival.arrive(rowHeight: nil, engine: disclosure?.engine) {
+            gatewayFailedLoad = failedLoad
+        }
+    }
+
+    /// A web picture that won't show here gives its place to its fallback
+    /// the same way: the page that tries it, at its starting height, or the
+    /// link, which only its layout measures. Outside a chat it fades in.
+    private func placeRemoteFailure(_ outcome: BoundedRemoteImage.Outcome) {
+        guard !showsFallback(for: outcome) else { return }
+        let engine = disclosure?.engine
+        let placedURL = url
+        var rowHeight: CGFloat?
+        if case .unavailable = outcome { rowHeight = WebFallbackImage.startingHeight }
+        arrival.arrive(rowHeight: rowHeight, engine: engine) {
+            // The row moved on to another address while this one waited.
+            guard remoteOutcomeURL == placedURL else { return }
+            if engine == nil {
+                withAnimation(.easeInOut(duration: 0.2)) { remoteOutcome = outcome }
+            } else {
+                remoteOutcome = outcome
+            }
+        }
+    }
+
+    /// Whether the row shows `outcome`'s fallback for its address already
+    /// (the task restarting as the row comes back).
+    private func showsFallback(for outcome: BoundedRemoteImage.Outcome) -> Bool {
+        guard remoteOutcomeURL == url else { return false }
+        switch (remoteOutcome, outcome) {
+        case (.unavailable?, .unavailable), (.tooLarge?, .tooLarge): return true
+        default: return false
+        }
+    }
+
+    /// The height the row takes with a picture of `size` in it: scaled to
+    /// the row's width, up to the ceiling, which a placeholder at the
+    /// remembered size already has. The arrival compares it with the row's
+    /// frame, since a row laid out before a cold launch's kept sizes loaded
+    /// still draws its loading line.
+    private func rowHeight(showing size: CGSize) -> CGFloat {
+        ChatRowArrival.fittedHeight(of: size, inWidth: arrival.stackFrame?.width ?? 0, maxHeight: Self.maxHeight)
+    }
+
     @ViewBuilder
     private var gatewayMediaContent: some View {
         if let gatewayImage = shownGatewayImage {
             Image(uiImage: gatewayImage)
                 .resizable()
                 .scaledToFit()
-                .frame(maxHeight: 360)
+                .frame(maxHeight: Self.maxHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                .overlay { if openingRemote { ProgressView() } }
-                .opensMediaPreview(openGatewayImage)
+                .opensMediaPreview { openImage(showing: gatewayImage) }
                 .accessibilityLabel(alt.isEmpty ? Text("Image") : Text(verbatim: alt))
         } else if gatewayLoadFailed {
             Label(alt.isEmpty ? AppLocalization.string("Image unavailable") : AppLocalization.string("\(alt) unavailable"), systemImage: "photo.badge.exclamationmark")
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(12)
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
@@ -2335,19 +2435,21 @@ private struct RemoteMarkdownImage: View {
     }
 
     /// At the picture's own size when that's known, so the row doesn't
-    /// change height when it arrives.
+    /// change height when it arrives: known as the row was first laid out,
+    /// since a size remembered after (another row of the same picture, or
+    /// a cold launch's kept sizes loading) would resize the line on its own.
     @ViewBuilder
     private var loadingLabel: some View {
         let label = HStack(spacing: 8) {
             ProgressView()
             Text(alt.isEmpty ? AppLocalization.string("Loading image…") : alt)
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
-        if let size = reservedSize {
+        if let size = reservedSize, arrival.holds(rowHeight(showing: size)) {
             Color.primary.opacity(0.05)
                 .aspectRatio(size, contentMode: .fit)
-                .frame(maxHeight: 360)
+                .frame(maxHeight: Self.maxHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                 .overlay { label.padding(12) }
         } else {
@@ -2366,41 +2468,16 @@ private struct RemoteMarkdownImage: View {
         }.value
     }
 
-    /// The row keeps only the decoded image, not the original bytes (up to
-    /// 16 MB each across a whole transcript), so opening re-fetches them.
-    private func openGatewayImage() {
-        guard !openingRemote else { return }
-        // The original kept on the phone, which stays after Hermes sweeps
-        // its copy.
-        if let key = gatewayCacheKey,
-           let kept = TranscriptImageCache.cachedFile(for: key, touch: true),
-           MediaPreviewPresenter.shared.present(fileURL: kept, title: alt.isEmpty ? MarkdownParser.mediaName(gatewayPath) : alt) {
-            return
-        }
-        guard let gatewayMediaDataURL else { return }
-        let path = gatewayPath
-        openingRemote = true
-        openTask = Task {
-            if let dataURL = await gatewayMediaDataURL(path), !Task.isCancelled {
-                await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: path)
-            }
-            guard !Task.isCancelled else { return }
-            openingRemote = false
-        }
-    }
-
-    /// AsyncImage keeps only the rendered image, so the original bytes are
-    /// fetched again (usually from URLCache) to share them at full quality.
-    private func openRemoteImage() {
-        guard !openingRemote, let destination = WebFallbackImageDestination.resolve(url) else { return }
-        openingRemote = true
-        // Cancelled on disappear, so a slow download can't pop a preview
-        // over whatever screen the user moved on to.
-        openTask = Task {
-            _ = await MediaPreviewPresenter.shared.presentRemote(url: destination, fallbackName: alt.isEmpty ? "image" : alt)
-            guard !Task.isCancelled else { return }
-            openingRemote = false
-        }
+    /// Opens the original among the pictures around it, with the row's
+    /// copy shown until it's in. The row keeps only the decoded image, not
+    /// the original bytes (up to 16 MB each across a whole transcript), so
+    /// opening re-fetches them: from the copy kept on the phone, which stays
+    /// after Hermes sweeps its own, else from Hermes; a web picture again
+    /// (usually from URLCache) to share it at full quality.
+    private func openImage(showing image: UIImage) {
+        guard let item = ImageGalleryItem.markdownImage(url: url, alt: alt, resolver: gatewayMediaFiles,
+                                                        dataURL: gatewayMediaDataURL) else { return }
+        ImageGallery.open(item, in: imageGallery, placeholder: image)
     }
 }
 
@@ -2446,17 +2523,17 @@ private struct GatewayMediaFileCard: View {
     private var fileCard: some View {
         HStack(spacing: 12) {
             Image(systemName: failed ? "exclamationmark.triangle.fill" : kind.systemImage)
-                .font(.title2)
+                .scaledFont(.title2)
                 .foregroundStyle(failed ? Color.secondary : Color.conduitAccent)
                 .frame(width: 44, height: 44)
                 .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: displayName)
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(verbatim: failed ? failureLabel : kind.label)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
@@ -2464,7 +2541,7 @@ private struct GatewayMediaFileCard: View {
                 ProgressView()
             } else {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
         }
@@ -2721,8 +2798,24 @@ private struct WebFallbackImage: View {
     let alt: String
     /// False for a picture too large to load here: just the link.
     var loadsInPage = true
-    @State private var height: CGFloat = 220
+    /// The row's arrival, which what the page reports goes through, as the
+    /// picture would have (#1238).
+    let arrival: ChatRowArrival
+    /// The chat's scroll engine, nil outside a chat.
+    let engine: ChatScrollEngine?
+    /// The page's height before it has measured the picture.
+    static let startingHeight: CGFloat = 220
+    @State private var height: CGFloat = WebFallbackImage.startingHeight
     @State private var failed = false
+    /// What the page last reported, kept until the row takes it: a row
+    /// that left the screen first takes it when it's back, since the page
+    /// doesn't report again.
+    @State private var reported: PageReport? = nil
+
+    enum PageReport {
+        case height(CGFloat)
+        case failed
+    }
 
     var body: some View {
         Group {
@@ -2735,10 +2828,50 @@ private struct WebFallbackImage: View {
                     .padding(12)
                     .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
             } else {
-                RemoteImageWebView(url: url, height: $height, failed: $failed)
-                    .frame(height: min(max(height, 80), 420))
+                RemoteImageWebView(url: url, height: measuredHeight, failed: pageFailed)
+                    .frame(height: Self.shownHeight(height))
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
+        }
+        .onAppear {
+            if let reported { take(reported) }
+        }
+    }
+
+    private static func shownHeight(_ height: CGFloat) -> CGFloat {
+        min(max(height, 80), 420)
+    }
+
+    /// The page measured the picture.
+    private var measuredHeight: Binding<CGFloat> {
+        Binding(get: { height }, set: { measured in
+            // Web view callbacks arrive on the main thread; said so,
+            // whatever isolation the SDK gives this closure.
+            MainActor.assumeIsolated { take(.height(measured)) }
+        })
+    }
+
+    /// The page couldn't show it either.
+    private var pageFailed: Binding<Bool> {
+        Binding(get: { failed }, set: { didFail in
+            MainActor.assumeIsolated {
+                if didFail { take(.failed) }
+            }
+        })
+    }
+
+    /// The row takes what the page reported once the reader's scrolling
+    /// allows: the picture's height, or the link, a height only its layout
+    /// tells.
+    private func take(_ report: PageReport) {
+        reported = report
+        guard !failed else { return }
+        switch report {
+        case .height(let measured):
+            guard measured != height else { return }
+            arrival.arrive(rowHeight: Self.shownHeight(measured), engine: engine) { height = measured }
+        case .failed:
+            arrival.arrive(rowHeight: nil, engine: engine) { failed = true }
         }
     }
 
@@ -2750,7 +2883,7 @@ private struct WebFallbackImage: View {
                     WebFallbackImageLabel.title(alt: alt, destinationAvailable: true),
                     systemImage: "photo.badge.exclamationmark"
                 )
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
             }
                 .tint(.conduitAccent)
         } else {
@@ -2758,7 +2891,7 @@ private struct WebFallbackImage: View {
                 WebFallbackImageLabel.title(alt: alt, destinationAvailable: false),
                 systemImage: "photo.badge.exclamationmark"
             )
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
     }
@@ -2852,7 +2985,7 @@ struct ChatCodeBlock: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(normalizedLanguage == "plain" ? AppLocalization.string("Code") : normalizedLanguage)
-                    .font(.caption2.monospaced().weight(.semibold))
+                    .scaledFont(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.86) : .secondary)
                 Spacer()
                 Button {
@@ -2861,7 +2994,7 @@ struct ChatCodeBlock: View {
                     copied = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { copied = false }
                 } label: {
-                    Label(copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy"), systemImage: copied ? "checkmark" : "doc.on.doc").font(.caption2.weight(.semibold))
+                    Label(copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy"), systemImage: copied ? "checkmark" : "doc.on.doc").scaledFont(.caption2.weight(.semibold))
                 }
                 .tint(usesAccentSurface ? .white : .conduitAccent)
             }
@@ -2930,7 +3063,7 @@ enum MarkdownParser {
         }
     }
 
-    nonisolated(unsafe) private static func recordParseSize(_ bytes: Int) {
+    nonisolated private static func recordParseSize(_ bytes: Int) {
         parseSizeLock.lock()
         defer { parseSizeLock.unlock() }
         parseSizes.append(bytes)

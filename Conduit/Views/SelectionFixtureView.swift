@@ -46,7 +46,7 @@ struct SelectionFixtureView: View {
                 _ = MarkdownSelectionCoordinator.copyActiveSelectionToPasteboard()
             } label: {
                 Label("Copy selection", systemImage: "doc.on.doc")
-                    .font(.footnote.weight(.semibold))
+                    .scaledFont(.footnote.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
             .accessibilityIdentifier("fixture.copySelection")
@@ -56,7 +56,7 @@ struct SelectionFixtureView: View {
             Divider()
             Text(verbatim: pasteboardText.isEmpty ? "pasteboard:empty" : "pasteboard:\(pasteboardText)")
                 .accessibilityIdentifier("fixture.pasteboard")
-                .font(.footnote.monospaced())
+                .scaledFont(.footnote.monospaced())
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)

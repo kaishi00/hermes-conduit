@@ -60,19 +60,19 @@ struct VoiceJobLinkCard: View {
                         : AnyLayout(HStackLayout(spacing: 6))
                     header {
                         Text(verbatim: kicker)
-                            .font(.caption2.weight(.bold))
+                            .scaledFont(.caption2.weight(.bold))
                             .tracking(0.6)
                             .textCase(.uppercase)
                             .foregroundStyle(.secondary)
                         if let time {
                             Text(verbatim: time)
-                                .font(.caption2.weight(.medium))
+                                .scaledFont(.caption2.weight(.medium))
                                 .foregroundStyle(.conduitTertiary)
                                 .monospacedDigit()
                         }
                     }
                     Text(verbatim: note.title)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(3)
                         .multilineTextAlignment(.leading)
@@ -107,9 +107,9 @@ struct VoiceJobLinkCard: View {
     private var actionCapsule: some View {
         HStack(spacing: 3) {
             Text(verbatim: action)
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
             Image(systemName: "chevron.right")
-                .font(.caption2.weight(.bold))
+                .scaledFont(.caption2.weight(.bold))
                 .accessibilityHidden(true)
         }
         .foregroundStyle(.conduitAccent)

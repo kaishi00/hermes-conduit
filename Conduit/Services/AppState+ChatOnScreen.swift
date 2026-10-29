@@ -25,6 +25,8 @@ extension AppState {
     /// change of the open chat, the list, a group room, the scene, the
     /// profile and the turn.
     func updateChatOnScreen() {
+        // The suggestion row follows the same edges (AppState+Predictive.swift).
+        updatePredictiveScreen()
         for action in chatOnScreenTracker.update(wanted: chatOnScreenClaim, turnRunning: turnState.isRunning) {
             switch action {
             case .startRenewing(let claim):
@@ -58,7 +60,11 @@ extension AppState {
         let interval = ChatOnScreen.renewalInterval(under: deviceConditions())
         // The chat's ids as they stand now: a stored id learned mid-turn
         // rides the next renewal. Nothing on screen holds nothing.
-        if let current = chatOnScreenClaim, InteractionIdleState.shared.usedWithin(ChatOnScreen.engagedWindow) {
+        // A turn Hermes took on its own (Predictive follow-ups) is watched
+        // by someone sitting still: it holds too.
+        if let current = chatOnScreenClaim,
+           InteractionIdleState.shared.usedWithin(ChatOnScreen.engagedWindow)
+            || (predictiveFollowUpTurn != nil && predictiveFollowUpTurn?.sessionID == activeSessionId) {
             sendChatOnScreen(current, holdSeconds: ChatOnScreen.holdSeconds(renewingEvery: interval))
             holding = true
         } else if holding {

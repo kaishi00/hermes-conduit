@@ -433,24 +433,6 @@ enum DashboardTicketBridgeError: LocalizedError {
         }
     }
 
-    /// A FastAPI `detail` that is an object with a `code` (the notifier's
-    /// Pulse routes answer `{"detail": {"code": "pulse_off"}}`), kept as its
-    /// JSON text so the caller can read the code and its data. Nil for any
-    /// other detail.
-    static func structuredDetail(_ value: Any?) -> String? {
-        guard let object = value as? [String: Any], object["code"] is String,
-              JSONSerialization.isValidJSONObject(object),
-              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
-    /// Whether a detail is one structuredDetail kept: a JSON object with a "code".
-    static func isStructuredDetail(_ text: String) -> Bool {
-        guard text.hasPrefix("{"), let data = text.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
-        return object["code"] is String
-    }
-
     /// The dashboard answered but handed back no session ticket.
     static var noSessionTicketDetail: String {
         AppLocalization.string("The dashboard didn't let Conduit start a session. Try again.")
@@ -468,11 +450,6 @@ enum DashboardTicketBridgeError: LocalizedError {
     /// browser fetch errors become what happened and what to do.
     static func describe(status: Int, detail: String) -> String {
         let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
-        // A coded refusal (structuredDetail) is for the screen that sent the
-        // request to word; anywhere else it reads as the plain failure.
-        if isStructuredDetail(trimmed) {
-            return AppLocalization.string("Dashboard request failed (\(String(status))).")
-        }
         let isMeaningful = !trimmed.isEmpty
             && !genericDetails.contains(trimmed.lowercased())
             && trimmed != AppLocalization.string("Dashboard request failed (\(String(status))).")
@@ -866,7 +843,19 @@ final class DashboardTicketBridge: NSObject {
         pendingRequests.rejectAll(with: DashboardTicketBridgeError.notReady)
         // The bridge registers exactly one handler; removing them all keeps
         // this nonisolated deinit off the main-actor `DashboardScriptWorld`.
-        webView.configuration.userContentController.removeAllScriptMessageHandlers()
+        // WebKit is main-thread only, and the last release that runs this
+        // deinit can come from any thread: off the main thread, the removal
+        // waits for it.
+        let webView = webView
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                webView.configuration.userContentController.removeAllScriptMessageHandlers()
+            }
+        } else {
+            Task { @MainActor in
+                webView.configuration.userContentController.removeAllScriptMessageHandlers()
+            }
+        }
     }
 
     /// Saves the dashboard's current WebKit cookies as its Keychain mirror.
@@ -1454,9 +1443,10 @@ extension DashboardTicketBridge: WKNavigationDelegate {
             // The mirror is dashboard-owned: without a dashboard identity
             // there is no record to write.
             if let dashboardID = self.dashboardID {
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
                     await DashboardCookiePersistence.capture(
-                        from: webView.configuration.websiteDataStore.httpCookieStore,
+                        from: self.webView.configuration.websiteDataStore.httpCookieStore,
                         for: expectedURL,
                         shouldPersist: { [weak self] in
                             guard let self else { return false }
@@ -1595,9 +1585,7 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
         }
 
         let status = payload["status"] as? Int ?? 0
-        let detail = payload["error"] as? String
-            ?? DashboardTicketBridgeError.structuredDetail(payload["error"])
-            ?? AppLocalization.string("Dashboard request failed (\(String(status))).")
+        let detail = payload["error"] as? String ?? AppLocalization.string("Dashboard request failed (\(String(status))).")
         // Hermes' own 403 (its `detail` says why, such as a chat this
         // sign-in may not change or a file it won't serve) is a verdict on
         // the request, not an expired sign-in: signing in again can't change

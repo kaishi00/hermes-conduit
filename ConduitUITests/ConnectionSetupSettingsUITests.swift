@@ -39,8 +39,8 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
 
         openSettings(app)
 
-        // The Connection section carries the current dashboard (the Gateway
-        // row) and the new Connection Setup entry.
+        // Settings carries the current dashboard (V2's Connection row) and
+        // the Connection Setup entry.
         openConnectionSetup(app)
 
         // The passwordless seed opens straight on the staged test with the
@@ -96,7 +96,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         XCTAssertTrue(gatewayRow.waitForExistence(timeout: 5))
         XCTAssertTrue(
             gatewayRow.label.contains(Identity.stubDashboardHost),
-            "The Gateway row still shows the current dashboard, got: \(gatewayRow.label)"
+            "The Connection row still shows the current dashboard, got: \(gatewayRow.label)"
         )
         XCTAssertFalse(gatewayRow.label.contains("https://"), "V2 shows the host, not the address, got: \(gatewayRow.label)")
     }

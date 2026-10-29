@@ -151,16 +151,22 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// The dashboard address this phone uses, which the speech server's
     /// model address starts with. Nil when the service has no bridge.
     let dashboardBaseURL: String?
+    /// The query parameter naming `profile` on Local Live's status and key
+    /// routes (DashboardPath.conduitProfileParameter), read at each request:
+    /// the plugin's capabilities can arrive after Settings opened.
+    let profileParameter: @MainActor () -> String
 
-    init(requester: VoiceConfigurationRequesting, profile: String, dashboardBaseURL: String? = nil) {
+    init(requester: VoiceConfigurationRequesting, profile: String, dashboardBaseURL: String? = nil,
+         profileParameter: @escaping @MainActor () -> String = { "profile" }) {
         self.requester = requester
         self.profile = profile
         self.dashboardBaseURL = dashboardBaseURL
+        self.profileParameter = profileParameter
         snapshot = .unavailable(profile: profile, reason: AppLocalization.string("Voice settings have not been loaded."))
     }
 
-    convenience init(bridge: DashboardTicketBridge, profile: String) {
-        self.init(requester: bridge, profile: profile, dashboardBaseURL: bridge.baseURL)
+    convenience init(bridge: DashboardTicketBridge, profile: String, profileParameter: @escaping @MainActor () -> String = { "profile" }) {
+        self.init(requester: bridge, profile: profile, dashboardBaseURL: bridge.baseURL, profileParameter: profileParameter)
     }
 
     func reload() async {
@@ -416,7 +422,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
         let status: SpeechServerVoiceStatus
         do {
             let response = try await requester.requestJSON(
-                path: profilePath(SpeechServerSpeechStream.statusPath), method: "GET", body: nil)
+                path: dashboardProfilePath(SpeechServerSpeechStream.statusPath), method: "GET", body: nil)
             status = SpeechServerVoiceStatus(response: response, dashboardBaseURL: dashboardBaseURL)
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
             status = .pluginMissing
@@ -431,7 +437,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
     func rotateSpeechServerVoiceKey() async -> Bool {
         do {
             let response = try await requester.requestJSON(
-                path: profilePath(SpeechServerSpeechStream.keyPath), method: "POST", body: [:])
+                path: dashboardProfilePath(SpeechServerSpeechStream.keyPath), method: "POST", body: [:])
             if (response["api_key"] as? String)?.isEmpty == false {
                 errorMessage = nil
                 return true
@@ -498,16 +504,6 @@ final class HermesVoiceConfigurationService: ObservableObject {
         }
     }
 
-    /// Call after a live voice operation reports that a route is absent. This
-    /// does not disconnect Hermes or change ordinary text-chat capabilities.
-    func markAudioEndpointUnavailable(kind: VoiceProviderDescriptor.Kind, reason: String) {
-        switch kind {
-        case .stt: snapshot.capability.supportsTranscription = false
-        case .tts: snapshot.capability.supportsSpeech = false
-        }
-        snapshot.capability.unavailableReason = reason
-    }
-
     private func result(for path: String) async -> Result<[String: Any], Error> {
         do { return .success(try await requester.requestJSON(path: profilePath(path), method: "GET", body: nil)) }
         catch { return .failure(error) }
@@ -515,6 +511,11 @@ final class HermesVoiceConfigurationService: ObservableObject {
 
     private func profilePath(_ path: String) -> String {
         DashboardPath.withProfile(path, profile: profile)
+    }
+
+    /// A route that needs the dashboard process (Local Live's key check).
+    private func dashboardProfilePath(_ path: String) -> String {
+        DashboardPath.withProfile(path, profile: profile, parameter: profileParameter())
     }
 
     private func replaceCredential(_ credential: VoiceCredentialStatus) {

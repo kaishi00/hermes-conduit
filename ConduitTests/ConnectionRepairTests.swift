@@ -133,10 +133,12 @@ final class ConnectionRepairTests: XCTestCase {
             ConnectionSetupFlow.initialPath(for: .repairConnection, draft: draft, repairFailure: .cloudflareTokenRejected),
             [.connectionDetails, .cloudflareTroubleshooting]
         )
-        XCTAssertEqual(
-            ConnectionSetupFlow.initialPath(for: .repairConnection, draft: draft, repairFailure: .tlsUntrusted),
-            [.connectionDetails, .tlsTroubleshooting]
-        )
+        for failure: ConnectionFailure in [.tlsUntrusted, .tlsBadDate, .tlsFailure, .tlsHostnameMismatch, .tlsNotStandardsCompliant] {
+            XCTAssertEqual(
+                ConnectionSetupFlow.initialPath(for: .repairConnection, draft: draft, repairFailure: failure),
+                [.connectionDetails, .tlsTroubleshooting]
+            )
+        }
         for failure: ConnectionFailure in [.invalidAddress, .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline, .dashboardUnavailable, .unexpectedServerResponse] {
             XCTAssertEqual(
                 ConnectionSetupFlow.initialPath(for: .repairConnection, draft: draft, repairFailure: failure),
@@ -156,6 +158,11 @@ final class ConnectionRepairTests: XCTestCase {
         )
         XCTAssertEqual(
             ConnectionSetupFlow.initialPath(for: .repairConnection, draft: draft, repairFailure: nil),
+            [.connectionDetails, .connectionTest]
+        )
+        // A sign-in page that didn't open says nothing about the address.
+        XCTAssertEqual(
+            ConnectionSetupFlow.initialPath(for: .repairConnection, draft: draft, repairFailure: .signInPageFailed),
             [.connectionDetails, .connectionTest]
         )
         XCTAssertEqual(ConnectionSetupFlow.entryStep(for: .repairConnection), .connectionDetails)
@@ -308,6 +315,26 @@ final class ConnectionRepairTests: XCTestCase {
             XCTAssertEqual(opened, signIn)
             XCTAssertEqual(seam.calls, 0, "\(signIn)")
         }
+    }
+
+    func testPrivateSignInSwitchShowsOnlyWhereSignInCanBeNative() throws {
+        // A tested native sign-in, or a choice the capability check may still
+        // send to Safari, reads the switch; the embedded browser never does.
+        for (terminal, shows) in [
+            (ConnectionSetupTestEvent.requiresInteractiveSignIn(.authentication, .nativeOAuth(provider: "self-hosted")), true),
+            (.requiresInteractiveSignIn(.authentication, .browser(.legacyOAuth)), false),
+            (.requiresInteractiveSignIn(.authentication, .browser(.authProxyRedirect)), false),
+            (.requiresSignInChoice(.authentication, .nativeCapable(provider: "self-hosted")), true),
+            (.requiresSignInChoice(
+                .authentication,
+                .nativeCapable(provider: "self-hosted", advertisedFlows: ["cookie", "native_pkce"])
+            ), true),
+            (.requiresSignInChoice(.authentication, .legacyOAuth), false)
+        ] {
+            let flow = try repairFlowAtReview(ending: terminal)
+            XCTAssertEqual(ConnectionRepairSignIn.mayOpenNativeSignIn(for: flow.testState), shows, "\(terminal)")
+        }
+        XCTAssertFalse(ConnectionRepairSignIn.mayOpenNativeSignIn(for: ConnectionSetupTestState()))
     }
 
     func testSignInToReconnectFromAChoiceChecksCapabilityOnlyForANativeCapableOffer() async throws {

@@ -14,7 +14,7 @@ import SwiftUI
 /// - Saving is ownership-safe through KanbanStore and never touches
 ///   HermesClient / session transport; upstream nudges nothing for settings.
 struct KanbanOrchestrationSettingsSheet: View {
-    @EnvironmentObject private var store: KanbanStore
+    @Environment(KanbanStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
     // Editor draft, seeded ONCE from the current server snapshot so a
@@ -101,7 +101,7 @@ struct KanbanOrchestrationSettingsSheet: View {
                             }
                             .pickerStyle(.menu)
                             Text(footnote(configured: orchestratorProfile, resolved: store.orchestration?.resolvedOrchestratorProfile ?? ""))
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                         }
 
@@ -114,21 +114,21 @@ struct KanbanOrchestrationSettingsSheet: View {
                             }
                             .pickerStyle(.menu)
                             Text(footnote(configured: defaultAssignee, resolved: store.orchestration?.resolvedDefaultAssignee ?? ""))
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                         }
 
                         if let errorMessage {
                             Section {
                                 Label(errorMessage, systemImage: "exclamationmark.triangle")
-                                    .font(.footnote)
+                                    .scaledFont(.footnote)
                                     .foregroundStyle(.red)
                             }
                         }
                         if let notice {
                             Section {
                                 Label(notice, systemImage: "checkmark.circle")
-                                    .font(.footnote)
+                                    .scaledFont(.footnote)
                                     .foregroundStyle(.secondary)
                             }
                         }

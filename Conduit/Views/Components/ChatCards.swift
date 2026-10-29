@@ -7,12 +7,25 @@
 //  whole card. ChatCardsModel decides when; this only draws it.
 //
 
+import GameController
 import SwiftUI
 
 struct ChatPlanDock: View {
     @ObservedObject var cards: ChatCardsModel
-    /// Someone is typing: the plan keeps to its one line.
+    /// The keyboard is up: the plan keeps to its one line.
     let isCompact: Bool
+
+    /// The composer has focus with the on-screen keyboard up. A Mac has
+    /// none, and its composer keeps focus between messages; a hardware
+    /// keyboard puts it away. There the plan opens whatever the focus
+    /// (issue 1510).
+    static func keepsToLine(
+        composerFocused: Bool,
+        onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac,
+        hardwareKeyboard: Bool = GCKeyboard.coalesced != nil
+    ) -> Bool {
+        composerFocused && !onMac && !hardwareKeyboard
+    }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showsPlanSheet = false
@@ -31,7 +44,16 @@ struct ChatPlanDock: View {
                     )
                     .transition(openTransition)
                 } else {
-                    PlanStrip(plan: plan, pulses: pulses) { cards.setPlanExpanded(true) }
+                    PlanStrip(plan: plan, pulses: pulses) {
+                        cards.setPlanExpanded(true)
+                        // A tap on the line asks for the card: the
+                        // keyboard goes, and the card opens.
+                        if isCompact {
+                            UIApplication.shared.sendAction(
+                                #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
+                            )
+                        }
+                    }
                         .transition(popTransition)
                 }
             }
@@ -93,7 +115,7 @@ private struct CardIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.caption.weight(.semibold))
+                .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(isOn ? Color.conduitAccent : .secondary)
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
@@ -120,10 +142,10 @@ private struct PlanCard: View {
                         Image(systemName: plan.isFinished ? "checkmark.circle.fill" : "checklist")
                             .foregroundStyle(plan.isFinished ? Color.green : Color.conduitAccent)
                         Text("Tasks")
-                            .font(.subheadline.weight(.semibold))
+                            .scaledFont(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
                         Text(PlanText.count(plan))
-                            .font(.caption.monospacedDigit())
+                            .scaledFont(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                     .contentShape(Rectangle())
@@ -181,10 +203,10 @@ private struct PlanFoldRow: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: systemImage)
-                    .font(.caption2.weight(.bold))
+                    .scaledFont(.caption2.weight(.bold))
                     .frame(width: 16)
                 Text(verbatim: text)
-                    .font(.caption)
+                    .scaledFont(.caption)
             }
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -203,12 +225,12 @@ struct PlanItemRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: symbol)
-                .font(.footnote.weight(.semibold))
+                .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(tint)
                 .frame(width: 16)
                 .modifier(PulsesWhileActive(isOn: item.status == .inProgress))
             Text(verbatim: item.content)
-                .font(.footnote.weight(item.status == .inProgress ? .semibold : .regular))
+                .scaledFont(.footnote.weight(item.status == .inProgress ? .semibold : .regular))
                 .foregroundStyle(item.status.isOpen ? Color.primary : Color.secondary)
                 .strikethrough(item.status == .cancelled)
                 .lineLimit(lineLimit)
@@ -269,21 +291,21 @@ private struct PlanStrip: View {
                         .frame(width: 16, height: 16)
                 }
                 Text("Tasks")
-                    .font(.subheadline.weight(.semibold))
+                    .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                 Text(verbatim: PlanText.fraction(plan))
-                    .font(.subheadline.monospacedDigit())
+                    .scaledFont(.subheadline.monospacedDigit())
                     .foregroundStyle(.secondary)
                 if let current = plan.current {
                     Text(verbatim: current.content)
-                        .font(.subheadline)
+                        .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
                 Spacer(minLength: 4)
                 Image(systemName: "chevron.up")
-                    .font(.caption.weight(.semibold))
+                    .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 14)
@@ -325,7 +347,7 @@ private struct PlanSheet: View {
                         Section {
                             ProgressView(value: plan.progress) {
                                 Text(PlanText.count(plan))
-                                    .font(.subheadline.monospacedDigit())
+                                    .scaledFont(.subheadline.monospacedDigit())
                                     .foregroundStyle(.secondary)
                             }
                             .tint(plan.isFinished ? .green : .conduitAccent)

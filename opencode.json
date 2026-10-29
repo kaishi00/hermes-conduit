@@ -1,16 +1,20 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
-    "go-custom": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "OpenCode Go (Custom)",
+    "anthropic": {
       "options": {
-        "baseURL": "https://opencode.ai/zen/go/v1",
-        "apiKey": "{env:OPENCODE_GO_API_KEY}"
+        "apiKey": "{env:ANTHROPIC_API_KEY}"
       },
+      "whitelist": ["claude-haiku-5-5"],
       "models": {
-        "deepseek-flash": {
-          "name": "DeepSeek V4.1 Flash"
+        "claude-haiku-5-5": {
+          "name": "Claude Haiku 5.5",
+          "options": {
+            "thinking": {
+              "type": "adaptive"
+            },
+            "effort": "high"
+          }
         }
       }
     },
@@ -22,8 +26,11 @@
         "apiKey": "{env:ZAI_API_KEY}"
       },
       "models": {
-        "glm-5.3-flash": {
-          "name": "GLM-5.3-Flash"
+        "glm-5.3": {
+          "name": "GLM-5.3",
+          "options": {
+            "reasoningEffort": "max"
+          }
         }
       }
     }

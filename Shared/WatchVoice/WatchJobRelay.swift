@@ -48,8 +48,10 @@ enum WatchJobAnswer {
     static func arguments(name: String, _ arguments: [String: String]) -> [String: Any]? {
         switch name {
         case startJob:
-            let instructions = WatchBridgeDelegation.removingQuickMarker(arguments["instructions"] ?? "")
-            return instructions.isEmpty ? nil : ["instructions": instructions]
+            let requested = arguments["instructions"] ?? ""
+            let instructions = WatchBridgeDelegation.removingQuickMarker(requested)
+            guard !instructions.isEmpty else { return nil }
+            return ["instructions": instructions, "joins_call": joinsCall(requested, profile: arguments["profile"])]
         case cancelJob:
             let jobID = arguments["job_id"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             return jobID.isEmpty ? [:] : ["job_id": jobID]
@@ -69,6 +71,16 @@ enum WatchJobAnswer {
         default:
             return nil
         }
+    }
+
+    /// Whether a start_job is ordinary work, which goes to the chat the
+    /// call's first such job made (#1250): not asked for in the background,
+    /// in a separate chat or quickly, and not for another profile. Read on
+    /// the words as the model sent them, "Quick:" included. A plugin before
+    /// 0.78 ignores it and starts a chat for each job.
+    static func joinsCall(_ instructions: String, profile: String?) -> Bool {
+        (profile ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !VoiceJobRouting.wantsJobOfItsOwn(instructions)
     }
 
     /// GeminiLiveToolBridge's answers to an interrupt_job it can't send.
@@ -387,6 +399,7 @@ enum WatchJobAnswer {
 
     /// VoiceBackgroundJobSupervisor.completionPrompt.
     static func completionPrompt(title: String, result: String) -> String {
+        let result = GatewayMediaTags.namingFiles(in: result)
         let clipped = result.count > maximumResultCharacters
             ? String(result.prefix(maximumResultCharacters)) + "\n[…]"
             : result

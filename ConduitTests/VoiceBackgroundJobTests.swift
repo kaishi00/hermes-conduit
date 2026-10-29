@@ -64,6 +64,9 @@ final class FakeVoiceJobBackend {
     var cancelError: Error?
     /// When true, the next createSession parks until `releaseCreate()`.
     var parksCreate = false
+    /// When false, createSession names only the runtime, as a gateway that
+    /// learns the stored id later does.
+    var storedIDs = true
     let createParked = AwaitableCounter()
     /// Runs inside submit, so a test can deliver events mid-submission.
     var onSubmit: (@MainActor (_ sessionID: String) -> Void)?
@@ -132,7 +135,7 @@ final class FakeVoiceJobBackend {
                     }
                 }
                 self.created += 1
-                return ("rt-\(self.created)", "st-\(self.created)")
+                return ("rt-\(self.created)", self.storedIDs ? "st-\(self.created)" : nil)
             },
             setTitle: { [self] id, title in self.titles.append((id, title)) },
             submit: { [self] id, text in
@@ -1913,7 +1916,7 @@ extension VoiceConversationControllerTests {
 
         XCTAssertEqual(outcome, .interrupted(title: job.title))
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.first?.1, "wait, make it Alex", "a background job's words carry no chat mark")
+        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it Alex", "marked as voice's, as in the chat")
         XCTAssertEqual(fake.submissions.count, 2, "a follow-up is never a new turn")
         // Hermes' marker for the cut-off reply is never the result.
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: Self.correctionNotice, reasoning: nil))
@@ -1934,7 +1937,7 @@ extension VoiceConversationControllerTests {
 
         XCTAssertEqual(outcome, .interrupted(title: job.title))
         XCTAssertEqual(fake.steers.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.steers.map(\.1), ["also ask for a quiet table"])
+        XCTAssertEqual(fake.steers.map(\.1), ["(voice) also ask for a quiet table"])
         XCTAssertTrue(fake.redirects.isEmpty)
     }
 
@@ -1948,7 +1951,7 @@ extension VoiceConversationControllerTests {
 
             XCTAssertTrue(fake.steers.isEmpty, "\(String(describing: kind))")
             XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"], "\(String(describing: kind))")
-            XCTAssertEqual(fake.redirects.map(\.1), ["make it Alex"], "\(String(describing: kind))")
+            XCTAssertEqual(fake.redirects.map(\.1), ["(voice) make it Alex"], "\(String(describing: kind))")
         }
     }
 
@@ -1961,7 +1964,7 @@ extension VoiceConversationControllerTests {
         _ = await supervisor.followUp(jobID: job.id, words: "also make it quiet", kind: "add")
         XCTAssertEqual(fake.steers.count, 1)
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.map(\.1), ["also make it quiet"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) also make it quiet"])
 
         let (timedOutSupervisor, timedOutFake) = makeSupervisor()
         _ = await timedOutSupervisor.startJob(instructions: "book a table for Sam")
@@ -2154,7 +2157,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(result["status"], "sent")
         XCTAssertNil(result["job_id"])
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.first?.1, "wait, make it Alex")
+        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it Alex")
 
         supervisor.observe(.messageDelta(sessionId: "rt-1", text: "Alex"))
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked for Alex.", reasoning: nil))
@@ -2179,7 +2182,7 @@ extension VoiceConversationControllerTests {
         guard case .toolResponse("call_2", "interrupt_job", let result, _)? = sent.first else { return XCTFail("\(sent)") }
         XCTAssertEqual(result["status"], "sent", "a Watch call's correction reaches the job, not a no-op default")
         XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
-        XCTAssertEqual(fake.redirects.first?.1, "wait, make it Alex", "a background job's words carry no chat mark")
+        XCTAssertEqual(fake.redirects.first?.1, "(voice) wait, make it Alex", "marked as voice's, as in the chat")
     }
 
     func testWatchCallsAreNotOfferedAskingFirst() {
@@ -2250,7 +2253,7 @@ extension VoiceConversationControllerTests {
 
         XCTAssertEqual(firstOutcome, .interrupted(title: job.title))
         XCTAssertEqual(secondOutcome, .interrupted(title: job.title))
-        XCTAssertEqual(fake.redirects.map(\.1), ["make it Alex", "and four people"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) make it Alex", "(voice) and four people"])
         XCTAssertEqual(supervisor.jobs.first?.followUp, .accepted)
     }
 
@@ -2679,6 +2682,32 @@ extension VoiceConversationControllerTests {
 
 @MainActor
 extension VoiceConversationControllerTests {
+    func testLiveModelsAreToldOfAFileNotItsPath() {
+        // A live model says a job's result in its own words, so it gets the
+        // file's name, never the path to read out.
+        let reply = "Done.\nMEDIA:/opt/data/cache/audio/tts_1.mp3\nSee [the report](MEDIA:/r/q3.pdf) now [[as_document]]"
+        XCTAssertEqual(GatewayMediaTags.namingFiles(in: reply),
+                       "Done.\n(a file in the chat: tts_1.mp3)\nSee the report (a file in the chat: q3.pdf) now")
+        XCTAssertEqual(GatewayMediaTags.namingFiles(in: "Social media: fine"), "Social media: fine")
+        let read: String = VoiceChatToolText.readResult(chat: reply)["chat"] ?? ""
+        var prompts: [String] = [VoiceBackgroundJobSupervisor.completionPrompt(title: "Briefing", result: reply)]
+        prompts.append(VoiceBackgroundJobSupervisor.threadReplyPrompt(result: reply))
+        prompts.append(WatchJobAnswer.completionPrompt(title: "Briefing", result: reply))
+        prompts.append(read)
+        prompts.append(VoiceChatToolText.delegatedRead(chat: reply))
+        prompts.append(VoiceBackgroundJobSupervisor.chatContextPrompt(typed: nil, reply: reply))
+        for prompt in prompts {
+            XCTAssertFalse(prompt.contains("MEDIA:"), prompt)
+            XCTAssertTrue(prompt.contains("(a file in the chat: q3.pdf)"), prompt)
+        }
+        XCTAssertEqual(WatchJobAnswer.completionPrompt(title: "Briefing", result: reply),
+                       VoiceBackgroundJobSupervisor.completionPrompt(title: "Briefing", result: reply))
+        // A clip never cuts a path in two.
+        let filler = String(repeating: "a", count: VoiceBackgroundJobSupervisor.maximumChatContextReplyCharacters - 10)
+        let long = filler + "\nMEDIA:/opt/data/cache/audio/tts_1.mp3"
+        XCTAssertFalse(VoiceBackgroundJobSupervisor.chatContextPrompt(typed: nil, reply: long).contains("MEDIA:"))
+    }
+
     func testReadBackIsPlainSpeech() {
         let markdown = [
             "## Plan for **Friday**",
@@ -2714,6 +2743,12 @@ extension VoiceConversationControllerTests {
         ].joined(separator: "\n")
         XCTAssertEqual(VoiceReadBack.plainSpeech(markdown), expected)
         XCTAssertEqual(VoiceReadBack.plainSpeech("Already plain."), "Already plain.")
+        XCTAssertEqual(VoiceReadBack.plainSpeech("# Done\nMEDIA:/opt/data/cache/audio/tts_1.mp3\n- Here it is: MEDIA:/tmp/a.mp3 enjoy"),
+                       "Done.\nHere it is: enjoy.", "an attached file's tag isn't read")
+        XCTAssertEqual(VoiceReadBack.plainSpeech("*sets down the gavel* Order.\n- Fine, *really*: 5 * 3"), "Order.\nFine, really: 5 * 3.",
+                       "a narrated action is left out; emphasis and a spaced * are read")
+        XCTAssertEqual(VoiceReadBack.plainSpeech("Use `*three word pattern*` here *nods very slowly* ok"), "Use three word pattern here ok",
+                       "a code span is read as written, an action beside it isn't")
         XCTAssertEqual(VoiceReadBack.plainSpeech("Summary\n=======\nAll good."), "Summary\nAll good.", "a heading's underline isn't read")
         XCTAssertEqual(VoiceReadBack.plainSpeech("Item | Cost\n--- | ---\nMilk | $2"), "Item, Cost.\nMilk, $2.", "a table without outer pipes")
         XCTAssertEqual(VoiceReadBack.plainSpeech("## Done | Blocked"), "Done, Blocked.", "a heading isn't a table row, and its pipe isn't read")

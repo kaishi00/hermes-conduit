@@ -28,7 +28,7 @@ struct V2BotsView: View {
         .v2EdgeBar(.top) {
             HStack(spacing: 10) {
                 Text(V2Tab.bots.title)
-                    .font(.title2.weight(.bold))
+                    .scaledFont(.title2.weight(.bold))
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 0)
                 Button {
@@ -49,7 +49,6 @@ struct V2BotsView: View {
             .padding(.top, 4)
             .padding(.bottom, 8)
             .frame(minHeight: 52)
-            .modifier(V2LegacyScrollEdge())
             .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {

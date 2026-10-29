@@ -52,7 +52,7 @@ extension AppState {
                 return try await self.reopenVoiceThreadRuntime(self.scopedShortcutChat(chat))
             },
             submit: { [weak self] chat, runtimeID, text in
-                guard let self, let client = self.client else { throw HermesError.notConnected }
+                guard let self, self.client != nil else { throw HermesError.notConnected }
                 let scoped = self.scopedShortcutChat(chat)
                 // Shortcut text is literal: "/…" never runs a composer command.
                 if self.isOpenChat(scoped), self.activeSessionId == runtimeID,

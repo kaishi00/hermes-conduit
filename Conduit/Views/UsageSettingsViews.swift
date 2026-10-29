@@ -61,7 +61,7 @@ struct UsageSettingsDetail: View {
             if report != nil, let failure {
                 // A failed refresh says so over the numbers it couldn't renew.
                 Label(failureText(failure), systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.orange)
             }
 
@@ -76,7 +76,7 @@ struct UsageSettingsDetail: View {
             } else if let failure {
                 ConduitSettingsSection(title: AppLocalization.string("Usage"), symbol: "chart.bar", tint: .conduitAccent) {
                     Text(failureText(failure))
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
             } else {
@@ -161,7 +161,7 @@ struct UsageSettingsDetail: View {
         ConduitSettingsSection(title: AppLocalization.string("Totals"), symbol: "sum", tint: .conduitAccent) {
             if report.totals.sessions == 0 && report.totals.total == 0 {
                 Text("No usage in this period.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             } else {
                 SettingsMetricRow(
@@ -180,7 +180,7 @@ struct UsageSettingsDetail: View {
                 SettingsMetricRow(label: AppLocalization.string("API calls"), value: count(report.totals.apiCalls))
                 if report.costIsEstimate {
                     Text("Costs are Hermes' estimates from each model's prices, unless the provider reports what it billed.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -233,17 +233,17 @@ struct UsageSettingsDetail: View {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(verbatim: entry.model)
-                            .font(.subheadline.weight(.medium))
+                            .scaledFont(.subheadline.weight(.medium))
                             .lineLimit(2)
                             .truncationMode(.middle)
                         Text(modelDetail(entry))
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 8)
                     if entry.usage.cost > 0 {
                         Text(verbatim: money(entry.usage.cost))
-                            .font(.subheadline.monospacedDigit())
+                            .scaledFont(.subheadline.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -264,7 +264,7 @@ struct UsageSettingsDetail: View {
             ForEach(quotas) { quota in
                 VStack(alignment: .leading, spacing: 10) {
                     Text(verbatim: quota.title)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                     if let limit = quota.limit {
                         limitView(limit)
                     }
@@ -277,7 +277,7 @@ struct UsageSettingsDetail: View {
                 }
             }
             Text("Shown for providers that report a quota, such as subscription sign-ins. Hermes checks it in the background, so refresh if one is missing.")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
     }
@@ -286,17 +286,17 @@ struct UsageSettingsDetail: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(verbatim: window.label)
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                 Spacer(minLength: 8)
                 Text(AppLocalization.string("\(percent(window.usedPercent / 100)) used"))
-                    .font(.footnote.monospacedDigit())
+                    .scaledFont(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             ProgressView(value: window.fraction)
                 .tint(window.fraction >= 1 ? .red : (window.fraction >= 0.8 ? .orange : .conduitAccent))
             if let resetsAt = window.resetsAt {
                 Text(AppLocalization.string("Resets \(relative(resetsAt))"))
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -307,11 +307,11 @@ struct UsageSettingsDetail: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(verbatim: account.label.isEmpty ? AppLocalization.string("Account \(String(number))") : account.label)
-                    .font(.footnote.weight(.medium))
+                    .scaledFont(.footnote.weight(.medium))
                 Spacer(minLength: 8)
                 if let state = accountState(account) {
                     Text(state)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(account.state == .limited ? Color.orange : Color.secondary)
                 }
             }
@@ -344,7 +344,7 @@ struct UsageSettingsDetail: View {
                 resetsAt.map { AppLocalization.string("Rate limited until \(absolute($0))") } ?? AppLocalization.string("Rate limited"),
                 systemImage: "exclamationmark.triangle"
             )
-            .font(.footnote)
+            .scaledFont(.footnote)
             .foregroundStyle(.orange)
         case .models(let models):
             ForEach(models) { model in
@@ -353,7 +353,7 @@ struct UsageSettingsDetail: View {
                         ?? AppLocalization.string("\(model.model) limited"),
                     systemImage: "exclamationmark.triangle"
                 )
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.orange)
             }
         }

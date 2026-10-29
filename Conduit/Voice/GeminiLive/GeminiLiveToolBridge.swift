@@ -55,7 +55,9 @@ import Foundation
 @MainActor
 protocol GeminiLiveJobSupervising: AnyObject {
     var jobs: [VoiceBackgroundJob] { get }
-    func startJob(instructions: String, profile: String?, onJobCreated: (@MainActor (UUID) -> Void)?) async -> String
+    /// `joinsCall`: an ordinary request, whose chat an unattached call
+    /// takes as its own (#1250).
+    func startJob(instructions: String, profile: String?, joinsCall: Bool, onJobCreated: (@MainActor (UUID) -> Void)?) async -> String
     func statusSummary() -> String
     /// The background jobs list_jobs names: running, waiting, or settled
     /// with an outcome the user hasn't heard yet.
@@ -287,13 +289,13 @@ final class GeminiLiveToolBridge {
 
     static let answerQuestionDeclaration = GeminiLiveProtocol.FunctionDeclaration(
         name: Tool.answerQuestion.rawValue,
-        description: "Give Hermes the user's answer to the question it is waiting on: the one this call is about, or one a job of this call asks (a job update reads it out with its choices). Read the choices out with their numbers first, and say which one is marked (Recommended). Only with what the user picked or said; never answer it yourself. A question of several is answered one at a time, in order. To have Hermes explain more before they choose, send their request starting \"Before I choose:\": Hermes is paused until it gets an answer, so this is the only way to ask it. Then tell the user what it says, in a few words.",
+        description: "Give Hermes the user's answer to the question it is waiting on: the one this call is about, or one a job of this call asks (a job update reads it out with its choices). Read the choices out with their numbers first, and say which one is marked (Recommended). Only with what the user picked or said; never answer it yourself. A question of several is answered one at a time, in order; one that says they may leave it blank takes skip when they want it blank. To have Hermes explain more before they choose, send their request starting \"Before I choose:\": Hermes is paused until it gets an answer, so this is the only way to ask it. Then tell the user what it says, in a few words.",
         parameters: [
             "type": "OBJECT",
             "properties": [
                 "answer": [
                     "type": "STRING",
-                    "description": "The number of the choice the user picked (like 2, or 1, 3 when they may pick several), or, with no fitting choice, their answer in their own words.",
+                    "description": "The number of the choice the user picked (like 2, or 1, 3 when they may pick several), or, with no fitting choice, their answer in their own words; skip leaves blank a question they may leave blank.",
                 ],
             ],
             "required": ["answer"],
@@ -432,7 +434,7 @@ final class GeminiLiveToolBridge {
     static let functionDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [
         .init(
             name: Tool.startJob.rawValue,
-            description: "Start a background job on the user's Hermes agent for work that takes more than a moment (research, coding, checking systems, anything needing Hermes' tools). Only call this when the user asks for such work; in a call attached to a chat, also for quick work the user starts with \"quick\" that needs Hermes' tools. The job runs in its own Hermes chat; its result arrives later on this call. In a call attached to a chat, work goes to that chat unless the instructions start with \"Quick:\", say \"in the background\" or \"in a separate chat\", or profile is set: add those words only when the user asked for quick, background or separate-chat work. Do not describe job progress unless asked.",
+            description: "Start a background job on the user's Hermes agent for work that takes more than a moment (research, coding, checking systems, anything needing Hermes' tools). Only call this when the user asks for such work; in a call attached to a chat, also for quick work the user starts with \"quick\" that needs Hermes' tools. Its result arrives later on this call. In a call not attached to a chat, the first job's chat becomes the call's: later work goes there as its next message, so Hermes has the earlier requests. In a call attached to a chat, or once it has one, work goes to that chat unless the instructions start with \"Quick:\", say \"in the background\" or \"in a separate chat\", or profile is set: add those words only when the user asked for quick, background or separate-chat work. Do not describe job progress unless asked.",
             parameters: [
                 "type": "OBJECT",
                 "properties": [
@@ -647,7 +649,11 @@ final class GeminiLiveToolBridge {
         var createdJobID: UUID?
         // The call is registered the moment the job exists, so a
         // withdrawal arriving during Hermes' session setup is honored.
-        let reply = await supervisor.startJob(instructions: task, profile: profile.isEmpty ? nil : profile) { [weak self] jobID in
+        // Work the user didn't ask to keep apart: an unattached call's first
+        // such job makes the chat its later requests go to (#1250).
+        let joinsCall = profile.isEmpty && !VoiceThreadRouting.wantsBackgroundJob(instructions)
+            && !supervisor.namesOtherProfile(instructions)
+        let reply = await supervisor.startJob(instructions: task, profile: profile.isEmpty ? nil : profile, joinsCall: joinsCall) { [weak self] jobID in
             createdJobID = jobID
             guard self?.isEnding == false else { return }
             self?.openCalls[jobID] = call.id
@@ -676,12 +682,16 @@ final class GeminiLiveToolBridge {
         guard !holdsJobCalls, openCalls[jobID] == call.id else { return settled }
         openCalls[jobID] = nil
         callNames[call.id] = nil
-        let title = supervisor.jobs.first(where: { $0.id == jobID })?.title ?? ""
+        let job = supervisor.jobs.first(where: { $0.id == jobID })
+        // Said while the call's chat was being made, it joined that chat (#1250).
+        let message = job?.isThreadTurn == true
+            ? "Sent to the call's chat as its next message. Hermes' reply will arrive later as a message; don't wait for it."
+            : "The job is running on Hermes. Its result will arrive later as a message; don't wait for it."
         return settled + [.toolResponse(id: call.id, name: call.name, result: [
             "job_id": jobID.uuidString,
-            "title": title,
+            "title": job?.title ?? "",
             "status": "started",
-            "message": "The job is running on Hermes. Its result will arrive later as a message; don't wait for it.",
+            "message": message,
         ], scheduling: nil)]
     }
 
@@ -1115,7 +1125,8 @@ final class GeminiLiveToolBridge {
             switch job.status {
             case .finished:
                 if let text = job.result?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
-                    result["result"] = Self.clipped(text)
+                    // An attached file is named, not given by its path.
+                    result["result"] = Self.clipped(GatewayMediaTags.namingFiles(in: text))
                 } else {
                     result["result"] = VoiceBackgroundJobSupervisor.finishedNotice(job.title)
                 }

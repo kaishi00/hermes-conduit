@@ -13,7 +13,7 @@ import SwiftUI
 
 struct CapabilityConnectorsTab: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     let query: String
     @State private var installing: ConnectorCatalogEntry?
     @State private var actionError: String?
@@ -59,7 +59,7 @@ struct CapabilityConnectorsTab: View {
                 }
                 if let actionError {
                     Text(verbatim: actionError)
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.red)
                         .padding(.horizontal, 16)
                 }
@@ -203,7 +203,7 @@ private struct ConnectorServerRow: View {
     let server: ConnectorServer
     let state: ConnectorState
     let catalogEntry: ConnectorCatalogEntry?
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     let onError: (String?) -> Void
 
     var body: some View {
@@ -248,7 +248,7 @@ private struct ConnectorServerRow: View {
 
 private struct ConnectorCatalogRow: View {
     let entry: ConnectorCatalogEntry
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     let install: () -> Void
 
     private var state: CapabilityInstallState? { store.connectorInstalls[entry.name] }
@@ -269,7 +269,7 @@ private struct ConnectorCatalogRow: View {
             }
             if case .failed(let reason) = state {
                 Text(verbatim: reason)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
                     .padding(.leading, 41)
                     .padding(.bottom, 8)
@@ -284,8 +284,9 @@ struct ConnectorDetailPage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let name: String
-    @ObservedObject var store: CapabilitiesStore
+    let store: CapabilitiesStore
     @State private var signInFlow: String?
     @State private var signInTask: Task<Void, Never>?
     @State private var message: String?
@@ -313,7 +314,7 @@ struct ConnectorDetailPage: View {
                     }
                     if let message {
                         Text(verbatim: message)
-                            .font(.footnote)
+                            .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -332,15 +333,18 @@ struct ConnectorDetailPage: View {
                 }
             } else {
                 Text("This server isn't configured anymore.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
             }
             Text("Changes apply to new sessions.")
-                .font(.footnote)
+                .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
         }
+        // Turned on lands after the host answers, so the actions and tools
+        // it reveals animate on the value, page-wide.
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: server?.enabled)
         .navigationTitle(Text(verbatim: name))
         .task(id: name) {
             if let server, server.enabled, probe == nil, !store.probing.contains(name) {
@@ -371,13 +375,13 @@ struct ConnectorDetailPage: View {
     private func header(_ server: ConnectorServer, state: ConnectorState) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(verbatim: server.name)
-                .font(.title3.weight(.semibold))
+                .scaledFont(.title3.weight(.semibold))
             Text(verbatim: ConnectorStyle.kind(server, inCatalog: catalogEntry != nil))
-                .font(.subheadline)
+                .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
             if let description = catalogEntry?.description, !description.isEmpty {
                 Text(verbatim: description)
-                    .font(.subheadline)
+                    .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
             }
             if let word = ConnectorStyle.word(state) {
@@ -386,12 +390,12 @@ struct ConnectorDetailPage: View {
                         Circle().fill(dot).frame(width: 7, height: 7).accessibilityHidden(true)
                     }
                     Text(verbatim: word)
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                 }
             }
             if case .failed(let error) = state, !error.isEmpty {
                 Text(verbatim: error)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
                     .textSelection(.enabled)
             }
@@ -399,7 +403,7 @@ struct ConnectorDetailPage: View {
                 Text(verbatim: plugin.isEmpty
                     ? AppLocalization.string("A plugin provides this server. Change it from Plugins.")
                     : AppLocalization.string("The \(plugin) plugin provides this server. Change it from Plugins."))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             } else {
                 Toggle(isOn: Binding(
@@ -416,7 +420,7 @@ struct ConnectorDetailPage: View {
                     }
                 )) {
                     Text("Turned on")
-                        .font(.subheadline.weight(.semibold))
+                        .scaledFont(.subheadline.weight(.semibold))
                 }
                 .tint(.conduitAccent)
             }
@@ -473,28 +477,28 @@ struct ConnectorDetailPage: View {
         ConduitSettingsSection(title: AppLocalization.string("Tools"), symbol: "wrench.and.screwdriver", tint: .conduitAccent) {
             if !server.enabled {
                 Text(verbatim: AppLocalization.string("\(server.name) is off. Turn it on to read the tools it brings."))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             } else if state == .checking || (probe == nil && state == .unknown) {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text("Reading the tool list…")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
             } else if let probe, probe.ok {
                 if probe.tools.isEmpty {
                     Text("This server brings no tools.")
-                        .font(.footnote)
+                        .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(probe.tools) { tool in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(verbatim: tool.name)
-                                .font(.caption.monospaced().weight(.semibold))
+                                .scaledFont(.caption.monospaced().weight(.semibold))
                             if !tool.description.isEmpty {
                                 Text(verbatim: tool.description)
-                                    .font(.caption)
+                                    .scaledFont(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(3)
                             }
@@ -504,11 +508,11 @@ struct ConnectorDetailPage: View {
                 }
             } else if state == .needsSignIn {
                 Text(verbatim: AppLocalization.string("Sign in to \(server.name) to read its tools."))
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             } else {
                 Text("Tool list unavailable.")
-                    .font(.footnote)
+                    .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
@@ -604,18 +608,18 @@ struct ConnectorInstallSheet: View {
                 if !entry.description.isEmpty {
                     Section {
                         Text(verbatim: entry.description)
-                            .font(.subheadline)
+                            .scaledFont(.subheadline)
                     }
                 }
                 Section {
                     if let url = entry.url {
                         Text(verbatim: url)
-                            .font(.caption.monospaced())
+                            .scaledFont(.caption.monospaced())
                             .textSelection(.enabled)
                     }
                     if let command = entry.command {
                         Text(verbatim: ([command] + entry.args).joined(separator: " "))
-                            .font(.caption.monospaced())
+                            .scaledFont(.caption.monospaced())
                             .textSelection(.enabled)
                     }
                 } header: {

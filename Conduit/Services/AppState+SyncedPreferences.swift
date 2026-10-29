@@ -129,6 +129,7 @@ extension AppState {
             .defaults("app.chat_font_style", ChatTypography.fontStylePreferenceKey, .string, in: defaults),
             .defaults("app.haptics", Haptics.preferenceKey, .bool, in: defaults),
             .defaults("app.return_key_sends", ComposerReturnKey.preferenceKey, .bool, in: defaults),
+            .defaults("app.stop_at_reply_start", ChatReplyStartPreference.key, .bool, in: defaults),
             .defaults("app.main_button_new_chat", V2MainButtonPreference.key, .bool, in: defaults),
             .defaults("app.chat_voice_button", ChatVoiceButtonAction.key, .string, in: defaults),
             .defaults("app.project_chats", ProjectChatsInChats.key, .string, in: defaults),
@@ -152,9 +153,33 @@ extension AppState {
                 carPlay.reload()
             }))
         }
+        slots.append(hiddenChatProjectsSlot)
         slots.append(voicePreferencesSlot)
         slots.append(savedDashboardsSlot)
+        slots.append(pinnedChatOrderSlot)
         return slots
+    }
+
+    /// The active profile's projects left out of Chats (Filter ▸ Projects):
+    /// project ids are the profile's own, as is the host's copy.
+    private var hiddenChatProjectsSlot: SyncedPreferenceSlot {
+        let defaults = syncedPreferences.defaults
+        let profile = activeProfile
+        return SyncedPreferenceSlot(
+            key: "app.hidden_chat_projects",
+            read: {
+                let ids = HiddenChatProjects.ids(in: defaults.object(forKey: HiddenChatProjects.key), profile: profile)
+                return ids.isEmpty ? nil : ids.sorted()
+            },
+            write: { value in
+                let stored = HiddenChatProjects.setting(
+                    Set(value as? [String] ?? []),
+                    profile: profile,
+                    in: defaults.object(forKey: HiddenChatProjects.key)
+                )
+                defaults.set(stored, forKey: HiddenChatProjects.key)
+            }
+        )
     }
 
     /// Fields of the Voice preferences that stay on this device: who pays

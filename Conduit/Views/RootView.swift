@@ -110,6 +110,9 @@ struct RootView: View {
 struct MainView: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("conduit.ipadPersistentSidebar") private var prefersPersistentSidebar = false
+    @AppStorage(SidebarLayoutMetrics.persistentSidebarWidths.key) private var storedSidebarWidth = Double(SidebarLayoutMetrics.persistentSidebarWidth)
+    /// The sidebar's width while its line is dragged (`ColumnDivider`).
+    @State private var draggedSidebarWidth: CGFloat?
     /// Conduit V2's tab shell (V2Shell.swift). Off brings back the drawer
     /// shell, the fallback while V2 is on its branch.
     @AppStorage(V2ShellPreference.key) private var useV2Shell = V2ShellPreference.defaultValue
@@ -133,6 +136,14 @@ struct MainView: View {
 
     private var isPersistentSidebarActive: Bool { !useV2Shell && sidebarPresentation == .persistent }
 
+    private var persistentSidebarWidth: CGFloat {
+        SidebarLayoutMetrics.persistentSidebarWidths.resolved(
+            draggedSidebarWidth.map { Double($0) } ?? storedSidebarWidth,
+            window: availableWindowWidth,
+            keeping: SidebarLayoutMetrics.minimumChatWidth
+        )
+    }
+
     private var isVoiceConversationShown: Bool {
         appState.showVoiceSheet || appState.showQwenLiveSheet || appState.showGeminiLiveSheet || appState.showGPTLiveSheet
             || appState.showGrokLiveSheet || appState.showLocalLiveSheet
@@ -146,6 +157,8 @@ struct MainView: View {
                 AgentSettingsBanner(sync: appState.agentSettings)
                 // A newer Conduit plugin for this dashboard's host.
                 NotifierPluginUpdateBanner()
+                // Send the report of a crash or freeze? (CrashReportOffer.swift)
+                CrashReportBanner()
                 // Calendar changes Hermes asked for (AppState+PhoneSync.swift);
                 // a call's screen shows them over the call.
                 if !appState.isVoiceCallScreenPresented {
@@ -174,7 +187,7 @@ struct MainView: View {
                 .environmentObject(appState)
         }
         .sheet(isPresented: $appState.showWorkspaceSheet) {
-            WorkspaceBrowserSheet()
+            WorkspaceSheet()
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
                 .environmentObject(appState)
@@ -343,7 +356,6 @@ struct MainView: View {
                 persistProfileMainModel: { provider, model, reasoning in
                     await appState.setProfileMainModel(provider: provider, model: model, reasoning: reasoning)
                 },
-                saveDefaultProfileName: { appState.saveDefaultProfileName($0) },
                 reconnect: {
                     await appState.reconnect()
                     return appState.isConnected
@@ -401,6 +413,13 @@ struct MainView: View {
             appState.settingsLinkRequest = nil
             openSettings(at: page)
         }
+        // A file path tapped in a reply: V2 shows a chat's in its
+        // Artifacts; a group room (no Artifacts) and the drawer shell
+        // show the Folder on its own.
+        .onChange(of: appState.workspaceReveal?.id) { _, id in
+            guard id != nil, !useV2Shell || appState.activeRoomSurface != nil else { return }
+            appState.showWorkspaceSheet = true
+        }
     }
 
     /// An in-app settings link (`conduit://settings/calls` or `/voice`, in a reply):
@@ -457,10 +476,18 @@ struct MainView: View {
                     onRequestSettings: presentSettingsFromPersistentSidebar,
                     presentation: .persistent
                 )
-                .frame(width: SidebarLayoutMetrics.persistentSidebarWidth)
+                .frame(width: persistentSidebarWidth)
 
-                Divider()
-                    .ignoresSafeArea(.container, edges: .vertical)
+                // Drags the sidebar's width, as V2's list (#1487).
+                ColumnDivider(
+                    widths: SidebarLayoutMetrics.persistentSidebarWidths,
+                    width: persistentSidebarWidth,
+                    room: availableWindowWidth - SidebarLayoutMetrics.minimumChatWidth - 1,
+                    columnEdge: .leading,
+                    label: AppLocalization.string("Chat list width"),
+                    stored: $storedSidebarWidth,
+                    live: $draggedSidebarWidth
+                )
 
                 chatNavigationContent
             }
@@ -480,13 +507,21 @@ struct MainView: View {
         NavigationStack {
             ZStack {
                 ConduitBackdrop(drifts: true)
-                if appState.activeRoomSurface != nil {
-                    // Keyed by room: another room starts with its own draft.
-                    GroupChatView()
-                        .id(appState.activeRoomSurface?.room.roomID)
-                } else {
-                    ChatView()
+                Group {
+                    if appState.activeRoomSurface != nil {
+                        // Keyed by room: another room starts with its own draft.
+                        GroupChatView()
+                            .id(appState.activeRoomSurface?.room.roomID)
+                    } else {
+                        ChatView()
+                    }
                 }
+                // A room's composer rests on an iPhone and stays expanded
+                // on a Mac or a wide iPad, as V2's does (#1483).
+                .composerLayoutFromWidth()
+                // The same readable column as V2's chat on a wide window;
+                // the backdrop still fills it.
+                .readableChatColumn()
             }
             .overlay(alignment: .leading) {
                 if !isPersistentSidebarActive {
@@ -739,13 +774,13 @@ struct ChatTitleControl: View {
     private var titleLabel: some View {
         if compact {
             Text(appState.displayedChatTitle)
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         } else {
             Text(appState.displayedChatTitle)
-                .font(.subheadline.weight(.semibold))
+                .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .padding(.horizontal, 12)

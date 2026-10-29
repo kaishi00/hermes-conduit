@@ -4,11 +4,10 @@ name: CI
 # purpose (see docs/CI.md):
 #
 #   PR / push (this file)   the cheap Linux validation, then ONE macOS job that
-#                           compiles the app (without its Watch app and
-#                           extensions unless a PR touches them, see the plan
-#                           job's ui-spec) and all test targets once, and runs
-#                           the curated unit smoke classes and the curated UI
-#                           smoke classes (scripts/smoke-suite.json) on that
+#                           compiles the full app and all test targets once,
+#                           incrementally from main's latest build, and runs
+#                           the pinned unit smoke tests and the pinned UI
+#                           smoke tests (scripts/smoke-suite.json) on that
 #                           build and simulator.
 #   Nightly (nightly.yml)   EVERY unit class in balanced shards, the
 #                           timing/performance/dormancy families with repeats,
@@ -20,33 +19,30 @@ name: CI
 #                        plugin version, CI-tooling tests, the smoke selection
 #                        (scripts/smoke-suite.json) and the nightly partition
 #                        (scripts/hosted-suite.json), both validated against
-#                        the discovered inventory, and the smoke build's
-#                        project (ui-spec).
+#                        the discovered inventory.
 #   self-test  (ubuntu)  the CI-tooling suites, bash wrapper tests included.
 #   smoke      (macos)   builds its test products while its simulator boots in
-#                        the background, then runs the unit smoke classes (one
-#                        invocation, no retry) and the UI smoke classes (one
+#                        the background, then runs the unit smoke tests (one
+#                        invocation, no retry) and the UI smoke tests (one
 #                        invocation, one targeted retry). A unit failure does
 #                        not skip the UI step; the job fails if either did.
 #   ci-gate    (ubuntu)  the single stable branch-protection check.
 #
 # One macOS job per run: GitHub allows 5 concurrent macOS jobs per account,
 # and runner queueing, not test time, was what made the three-job CI v4 shape
-# slow. A PR's superseded runs are cancelled. A newer push to main never
-# cancels an older one's run, so back-to-back merges overlap and each adds one
-# macOS job.
+# slow. A PR's superseded runs are cancelled. A newer push never cancels an
+# older one's run, so back-to-back merges overlap and each adds one macOS job.
 
 on:
   push:
-    branches: [main, pulse]
+    branches: [main]
   pull_request:
-    # pulse: the internal-tester branch with the Pulse settings page (never merged into main).
-    branches: [main, pulse]
+    branches: [main]
 
-# A PR's newer push supersedes its older run. A push to main is grouped by its
-# own commit instead, so every merge gets a full run: branch protection does
-# not require PRs to be up to date with main, so this run is what catches two
-# PRs that pass alone but break together.
+# A PR's newer push supersedes its older run. A push is grouped by its own
+# commit instead, so every merge gets a full run: branch protection does not
+# require PRs to be up to date with main, so this run is what catches two PRs
+# that pass alone but break together.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
@@ -70,10 +66,16 @@ jobs:
     name: Plan & validate
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      # The smoke job's runs on this PR's earlier commits (Does the change
+      # need the macOS build).
+      actions: read
+      pull-requests: read
     outputs:
       unit-csv: "${{ steps.smoke.outputs.unit-csv }}"
       ui-csv: "${{ steps.smoke.outputs.ui-csv }}"
-      ui-spec: "${{ steps.spec.outputs.ui-spec }}"
+      smoke: "${{ steps.needs-build.outputs.smoke }}"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -122,13 +124,13 @@ jobs:
         # where their code lives; a path that moved would send it to the
         # wrong file. notifier/ paths are checked on the plugin's main. On a
         # PR, an entry it adds or edits names it on its Checked line. A PR
-        # into pulse (pulse's copy of this workflow runs on those) that
-        # merges main, so it leaves fewer of main's commits to take than its
-        # base does, also passes main's maps where the PR and its base meet
-        # main (their merge bases): an entry main changed between the two
-        # that matches main's copy came in with the merge and keeps main's
-        # Checked line. If GitHub can't say, the check warns and runs without
-        # them, as it would have before.
+        # into pulse or linked-rooms (that branch's copy of this workflow
+        # runs on those) that merges main, so it leaves fewer of main's
+        # commits to take than its base does, also passes main's maps where
+        # the PR and its base meet main (their merge bases): an entry main
+        # changed between the two that matches main's copy came in with the
+        # merge and keeps main's Checked line. If GitHub can't say, the check
+        # warns and runs without them, as it would have before.
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
@@ -170,9 +172,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ci-artifacts
-          # HEAD^1 is the base (a PR's merge commit) or the previous main
-          # commit (a push; main takes squash merges, one commit each): the
-          # unit classes this change touches join the curated ones, so a
+          # HEAD^1 is the base (a PR's merge commit) or the branch's previous
+          # commit (a push; main takes squash merges, one commit each, and a
+          # merge of main into another branch brings main's changes too): the
+          # unit classes this change touches join the pinned tests, so a
           # PR's new or edited tests run before merge.
           python3 scripts/plan-tests.py smoke --repo-root . \
             --suite scripts/smoke-suite.json --out ci-artifacts/smoke.json \
@@ -198,33 +201,77 @@ jobs:
             echo "- timing families (nightly only): $(jq -r '.nightly_unit_csv' ci-artifacts/hosted.json)"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Choose the smoke project
-        # The smoke job builds project-tests.yml (the app without its Watch
-        # app and extensions, which no test runs) unless the change could
-        # break those targets: their own folders, the shared code they
-        # compile, the project spec, or any push to main. Then it builds the
-        # whole app as shipped.
-        id: spec
+      - name: Does the change need the macOS build
+        # A PR skips the smoke job, and CI Gate passes it on this step's word,
+        # when it changes only what the app build and the smoke tests never
+        # read (Markdown, docs/, LICENSE, review config, .github/ other than
+        # this workflow), or when its change (scripts/pr-change-id.py) is the
+        # same as at an earlier commit of it whose smoke job passed: merging
+        # main, or resolving a feature map conflict, doesn't rebuild (Eric,
+        # 2026-10-29, #1467). So a merge commit can pass without being built,
+        # as a PR that isn't up to date with main always could; main's own run
+        # after the merge still builds and catches two PRs that break
+        # together. A file under an app or test folder (Markdown included)
+        # always builds, and a rename counts by both names. Fails closed like
+        # the step above: any push, anything but this PR's merge commit, an
+        # unreadable or empty diff, or a lookup that fails builds.
+        id: needs-build
         env:
           EVENT: ${{ github.event_name }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.base_ref }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Fails closed: anything but GitHub's merge commit for this PR (its
-          # second parent, HEAD^2, is the PR head) or an unreadable or empty
-          # diff builds the full app.
-          spec=project.yml
+          smoke=true
+          why=''
           if [ "$EVENT" = "pull_request" ] && [ -n "$PR_HEAD" ] \
             && [ "$(git rev-parse -q --verify 'HEAD^2' || true)" = "$PR_HEAD" ] \
-            && changed=$(git diff --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
-            # grep reads all its input (no -q): stopping at the first match could
-            # kill printf with SIGPIPE, which pipefail would read as "no match".
-            if ! printf '%s\n' "$changed" | grep -E '^(ConduitWatch|ConduitWidgets|ConduitNotificationService|ConduitLocationPush|ConduitShareExtension|Shared)/|^project(-tests)?\.yml$|^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$' >/dev/null; then
-              spec=project-tests.yml
+            && changed=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
+            # grep reads all its input (no -q), as in the step above.
+            if ! printf '%s\n' "$changed" \
+              | grep -Ev '\.md$|^docs/|^LICENSE$|^opencode\.json$|^\.coderabbit\.ya?ml$|^\.github/' >/dev/null \
+              && ! printf '%s\n' "$changed" | grep -E '^\.github/workflows/ci\.yml$|^(Conduit[^/]*|Shared)/' >/dev/null; then
+              smoke=false
+              why="the change is only docs and config"
             fi
           fi
-          echo "ui-spec=$spec" >> "$GITHUB_OUTPUT"
-          echo "- smoke project: \`$spec\`" >> "$GITHUB_STEP_SUMMARY"
+          # The change id counts Markdown by its words, so Markdown under an
+          # app or test folder (which may ship in the app) always builds.
+          if [ "$smoke" = true ] && [ "$EVENT" = "pull_request" ] && [ -n "$PR_NUMBER" ] \
+            && [ "$(git rev-parse -q --verify 'HEAD^2' || true)" = "$PR_HEAD" ] \
+            && changed=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD) && [ -n "$changed" ] \
+            && ! printf '%s\n' "$changed" | grep -E '^"?(Conduit[^/]*|Shared)/.*\.md"?$' >/dev/null; then
+            repo="repos/$GITHUB_REPOSITORY"
+            change_id() {
+              local diff
+              diff=$(gh api -H 'Accept: application/vnd.github.diff' "$repo/compare/$BASE_REF...$1") || diff=''
+              python3 scripts/pr-change-id.py <<<"$diff" || true
+            }
+            # The newest of the PR's last 20 commits whose smoke job passed.
+            commits=$(gh api --paginate "$repo/pulls/$PR_NUMBER/commits" --jq '.[].sha') || commits=''
+            passed=''
+            for sha in $(tail -n 20 <<<"$commits" | tac); do
+              [ "$sha" != "$PR_HEAD" ] || continue
+              runs=$(gh api -X GET "$repo/actions/workflows/ci.yml/runs" \
+                -f event=pull_request -f head_sha="$sha" --jq '.workflow_runs[].id') || runs=''
+              for run_id in $runs; do
+                ok=$(gh api "$repo/actions/runs/$run_id/jobs" \
+                  --jq '[.jobs[] | select(.name == "Smoke" and .conclusion == "success")] | length') || ok=0
+                if [ "$ok" -gt 0 ]; then passed=$sha; break 2; fi
+              done
+            done
+            if [ -n "$passed" ]; then
+              now=$(change_id "$PR_HEAD")
+              if [ -n "$now" ] && [ "$now" = "$(change_id "$passed")" ]; then
+                smoke=false
+                why="the change is the same as at $passed, whose smoke job passed"
+              fi
+            fi
+          fi
+          echo "smoke=$smoke" >> "$GITHUB_OUTPUT"
+          echo "- smoke job: \`$smoke\`${why:+ ($why)}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke selection summary
         run: |
@@ -252,10 +299,11 @@ jobs:
           python3 scripts/ci-self-test.py
 
   smoke:
-    # The only macOS job of a PR or main run: one build, one booted simulator,
-    # then the unit smoke classes and the UI smoke classes on them.
+    # The only macOS job of a PR or push run: one build, one booted simulator,
+    # then the unit smoke tests and the UI smoke tests on them.
     name: Smoke
     needs: plan
+    if: needs.plan.outputs.smoke != 'false'
     runs-on: macos-26
     # 75: the UI smoke job alone needed 45 (a stalled first attempt plus the
     # one targeted retry ran past 30 minutes, which GitHub reports as
@@ -269,19 +317,20 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode.app
 
       - name: Pick the build cache
-        # DerivedData from the newest main build of the same project and
-        # Xcode (the same runner image preferred), so ci-build-for-testing.sh
-        # recompiles only what changed since. A new Xcode starts clean.
+        # DerivedData from the newest build of the same project and Xcode
+        # that this run can reach (see "Save the build cache"), the same
+        # runner image preferred, so ci-build-for-testing.sh recompiles only
+        # what changed since. A new Xcode starts clean.
         id: cache-key
-        env:
-          SPEC: ${{ needs.plan.outputs.ui-spec }}
         run: |
           set -euo pipefail
+          # The full app, as every push to main builds and saves it: a PR
+          # recompiles only what changed since main's latest merge. The
+          # app-only build (project-tests.yml, kind slim) is nightly's.
           kind=full
-          if [ "$SPEC" = project-tests.yml ]; then kind=slim; fi
           xcode=$(xcodebuild -version | awk 'NR==1 {v=$2} /Build version/ {b=$3} END {print v "-" b}')
           prefix="dd-v1-$kind-$xcode-${ImageVersion:-image}"
-          echo "build cache: $prefix (spec $SPEC, runner image ${ImageOS:-?} ${ImageVersion:-?})"
+          echo "build cache: $prefix (runner image ${ImageOS:-?} ${ImageVersion:-?})"
           echo "kind=$kind" >> "$GITHUB_OUTPUT"
           echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
           echo "xcode-prefix=dd-v1-$kind-$xcode" >> "$GITHUB_OUTPUT"
@@ -304,8 +353,7 @@ jobs:
         run: brew install xcodegen
 
       - name: Generate Xcode project
-        # project.yml or project-tests.yml, chosen by the plan job.
-        run: xcodegen generate --spec "${{ needs.plan.outputs.ui-spec }}"
+        run: xcodegen generate --spec project.yml
 
       - name: Build and boot the simulator in parallel
         id: build
@@ -321,7 +369,7 @@ jobs:
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run the curated unit smoke classes
-        # One representative class per risk area (scripts/smoke-suite.json),
+        # A few pinned tests per risk area (scripts/smoke-suite.json, capped),
         # plus the static source contracts and the change's own unit classes
         # (within a time budget), as ONE xcodebuild invocation on the booted
         # simulator: each
@@ -342,7 +390,7 @@ jobs:
           set -euo pipefail
           # Fail closed: an empty list would expand to no -only-testing filter,
           # and a bare xcodebuild would run the ENTIRE unit suite instead of the
-          # curated classes.
+          # pinned tests.
           if [ -z "$UNIT_CLASSES" ]; then
             echo "::error::unit smoke selection is empty - refusing to run unfiltered"
             exit 1
@@ -359,7 +407,7 @@ jobs:
             args+=("-only-testing:ConduitTests/${cls}")
           done
 
-          echo "unit smoke: ${#CLASSES[@]} classes in one invocation"
+          echo "unit smoke: ${#CLASSES[@]} tests and classes in one invocation"
           started=$(date +%s)
           rc=0
           xcodebuild test-without-building \
@@ -442,7 +490,7 @@ jobs:
           set -euo pipefail
           # Fail closed: an empty list would expand to no -only-testing filter,
           # and a bare xcodebuild would run the ENTIRE UI suite instead of the
-          # two curated classes.
+          # pinned tests.
           if [ -z "$UI_CLASSES" ]; then
             echo "::error::UI smoke selection is empty - refusing to run unfiltered"
             exit 1
@@ -479,7 +527,7 @@ jobs:
               "${args[@]}"
           }
 
-          echo "UI smoke: ${#CLASSES[@]} classes"
+          echo "UI smoke: ${#CLASSES[@]} tests"
           rc=0
           run_classes "$RESULT_DIR/initial.xcresult" "${CLASSES[@]}" 2>&1 | tee "$UI_SMOKE_LOG" || rc=$?
           if [ "$rc" -ne 0 ]; then
@@ -503,14 +551,15 @@ jobs:
           fi
 
       - name: Save the build cache
-        # Main's builds only (PRs restore the newest of them). A push to main
-        # always builds project.yml, so this saves the full app; the app-only
-        # (slim) build PRs restore is saved by nightly unit shard 1 on main.
+        # Pushes' builds only. A PR restores the newest it can reach: main's,
+        # and on a PR into pulse or linked-rooms (each runs its own copy of
+        # this workflow) that branch's too, never another branch's. Smoke
+        # always builds the full app (project.yml); the app-only (slim) build
+        # the nightly unit shards restore is saved by nightly unit shard 1.
         # After the tests, so a test failure still saves a good build.
         if: >-
           always() && steps.build.outcome == 'success'
           && steps.cache.outputs.cache-hit != 'true'
-          && steps.cache-key.outputs.kind == 'full'
           && github.event_name == 'push'
         uses: actions/cache/save@v5
         with:
@@ -553,4 +602,5 @@ jobs:
           python3 scripts/ci-gate.py \
             --plan "${{ needs.plan.result }}" \
             --smoke "${{ needs.smoke.result }}" \
+            --smoke-needed "${{ needs.plan.outputs.smoke }}" \
             --self-test "${{ needs.self-test.result }}"

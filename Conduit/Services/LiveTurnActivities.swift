@@ -247,6 +247,9 @@ final class LiveTurnActivities {
                 MainActor.assumeIsolated { LiveTurnActivities.shared.sendAllHeld() }
             }
         }
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { LiveTurnActivities.shared.registerUnregistered() }
+        }
     }
 
     /// A prompt is about to be submitted: its chat's events are held until
@@ -569,16 +572,53 @@ final class LiveTurnActivities {
     }
 
     private func register(token: String, for id: String, sessionIDs: Set<String>) async {
-        guard running[id] != nil else { return }
-        let previous = running[id]?.pushToken
+        guard let entry = running[id] else { return }
+        // Finished even if Conduit leaves the screen right after sending:
+        // until the relay has the token, nothing from the host can end the
+        // activity.
+        let endBackground = BackgroundTaskHold.begin("conduit.liveActivity.register")
+        defer { endBackground() }
+        let previous = entry.pushToken
         running[id]?.pushToken = token
         if previous != token { running[id]?.tokenInstallationID = nil }
         if let previous, previous != token {
             await PushNotificationService.shared.unregisterLiveActivity(token: previous)
         }
-        let installationID = await PushNotificationService.shared.registerLiveActivity(token: token, sessionIDs: Array(sessionIDs).sorted())
-        // Unless a newer token replaced it meanwhile.
-        if running[id]?.pushToken == token { running[id]?.tokenInstallationID = installationID }
+        let installationID = await PushNotificationService.shared.registerLiveActivity(
+            token: token,
+            sessionIDs: Array(sessionIDs).sorted(),
+            startedAgo: Date().timeIntervalSince(entry.activity.attributes.startedAt)
+        )
+        // Unless a newer token replaced it meanwhile. One that ended, or
+        // was replaced, while the registration was on its way goes again,
+        // in case the removal reached the relay first.
+        guard running[id]?.pushToken == token else {
+            if installationID != nil {
+                await PushNotificationService.shared.unregisterLiveActivity(token: token)
+            }
+            return
+        }
+        running[id]?.tokenInstallationID = installationID
+    }
+
+    /// Whether an activity's token still has to reach the relay: it has
+    /// one, and no relay installation took it yet.
+    nonisolated static func needsRegistration(pushToken: String?, tokenInstallationID: String?) -> Bool {
+        pushToken != nil && tokenInstallationID == nil
+    }
+
+    /// Conduit is back on screen: an activity whose registration didn't
+    /// reach the relay (no network, or Conduit was suspended first) tries
+    /// again. One whose turn ended meanwhile is ended by the relay at once.
+    private func registerUnregistered() {
+        for (id, entry) in running {
+            guard Self.needsRegistration(pushToken: entry.pushToken, tokenInstallationID: entry.tokenInstallationID),
+                  let token = entry.pushToken else { continue }
+            let sessionIDs = entry.sessionIDs
+            Task { [weak self] in
+                await self?.register(token: token, for: id, sessionIDs: sessionIDs)
+            }
+        }
     }
 
     private func finish(_ id: String, phase: HermesTurnPhase, dismissal: ActivityUIDismissalPolicy, endKnown: Bool = true) {
