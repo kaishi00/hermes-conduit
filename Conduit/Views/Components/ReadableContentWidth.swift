@@ -176,6 +176,11 @@ enum MacTextStepsReport {
     static func noteOnce(column: String, steps: Int, from base: DynamicTypeSize, onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac) {
         guard onMac, !noted else { return }
         noted = true
+        // Off SwiftUI's update pass: the measuring hosts a view of its own.
+        Task { @MainActor in measure(column: column, steps: steps, from: base) }
+    }
+
+    private static func measure(column: String, steps: Int, from base: DynamicTypeSize) {
         let uikit = [UIContentSizeCategory.large, .extraExtraExtraLarge].map {
             Double(UIFont.preferredFont(forTextStyle: .body, compatibleWith: UITraitCollection(preferredContentSizeCategory: $0)).pointSize)
         }
