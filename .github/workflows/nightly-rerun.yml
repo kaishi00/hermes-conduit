@@ -36,8 +36,9 @@ jobs:
           # A job that ran and lost has a runner and steps; one GitHub never
           # placed has neither.
           lost=$(jq -r '[.[] | select(.conclusion != "success" and .conclusion != "skipped")] | length' <<<"$jobs")
-          unacquired=$(jq -r '[.[] | select(.conclusion == "cancelled" and (.runner_id // 0) == 0 and (.steps | length) == 0)] | length' <<<"$jobs")
-          names=$(jq -r '[.[] | select(.conclusion == "cancelled" and (.runner_id // 0) == 0 and (.steps | length) == 0) | .name] | join(", ")' <<<"$jobs")
+          unacq=$(jq -c '[.[] | select(.conclusion == "cancelled" and (.runner_id // 0) == 0 and (.steps | length) == 0)]' <<<"$jobs")
+          unacquired=$(jq -r 'length' <<<"$unacq")
+          names=$(jq -r 'map(.name) | join(", ")' <<<"$unacq")
           echo "attempt $ATTEMPT: $lost job(s) not successful, $unacquired never got a runner"
           if [ "$lost" -eq 0 ] || [ "$unacquired" -ne "$lost" ]; then
             echo "::notice::Nightly attempt $ATTEMPT has a job that ran and failed; not rerunning."
