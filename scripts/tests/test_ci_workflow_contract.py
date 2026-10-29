@@ -177,6 +177,10 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertTrue(app_markdown.search(path), path)
         for path in ("docs/FEATURE_MAP.md", "README.md", "Conduit/App.swift"):
             self.assertFalse(app_markdown.search(path), path)
+        # ...and the same-change branch is gated on it and on a non-empty diff.
+        self.assertIn("&& changed=$(git diff --no-renames --name-only HEAD^1 HEAD) && [ -n \"$changed\" ] \\\n"
+                      "            && ! printf '%s\\n' \"$changed\" | grep -E '^(Conduit[^/]*|Shared)/.*\\.md$' >/dev/null; then\n"
+                      "            repo=", step)
         # The lookup takes only a passing Smoke job on another of the PR's
         # commits, built as this PR's merge commit, with a non-empty id.
         self.assertIn('select(.name == "Smoke" and .conclusion == "success")', step)

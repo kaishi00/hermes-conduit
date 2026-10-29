@@ -243,9 +243,9 @@ jobs:
         # as a PR that isn't up to date with main always could; main's own run
         # after the merge still builds and catches two PRs that break
         # together. A file under an app or test folder (Markdown included)
-        # always builds, and a rename counts by both names. Fails closed like the step above: any push, anything but
-        # this PR's merge commit, an unreadable or empty diff, or a lookup
-        # that fails builds.
+        # always builds, and a rename counts by both names. Fails closed like
+        # the step above: any push, anything but this PR's merge commit, an
+        # unreadable or empty diff, or a lookup that fails builds.
         id: needs-build
         env:
           EVENT: ${{ github.event_name }}
