@@ -63,6 +63,9 @@ struct ColumnDivider: View {
 
     /// Reset when the drag ends or the system cancels it.
     @GestureState private var dragStart: CGFloat?
+    /// The width the drag began at, which `commit` compares with, as the
+    /// gesture state is reset by then.
+    @State private var dragBegan: CGFloat?
     @State private var isHovering = false
 
     private static let gripWidth: CGFloat = 12
@@ -112,19 +115,25 @@ struct ColumnDivider: View {
     /// Measured in the window, so the line moving with the column doesn't
     /// move the drag's own frame of reference.
     private var drag: some Gesture {
-        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+        DragGesture(minimumDistance: 4, coordinateSpace: .global)
             .updating($dragStart) { value, start, _ in
                 let from = start ?? width
+                if start == nil { dragBegan = from }
                 start = from
                 live = widths.dragged(from: from, by: value.translation.width * direction, room: room)
             }
     }
 
-    /// Stores the dragged width, once, and hands the layout back to it.
+    /// Stores the dragged width, once, and hands the layout back to it. A
+    /// press that didn't move the line keeps the stored width, which a
+    /// smaller window may be showing less of.
     private func commit() {
-        guard let width = live else { return }
+        defer {
+            live = nil
+            dragBegan = nil
+        }
+        guard let width = live, abs(width - (dragBegan ?? width)) >= 1 else { return }
         stored = Double(width)
-        live = nil
     }
 
     private func set(_ newWidth: CGFloat) {

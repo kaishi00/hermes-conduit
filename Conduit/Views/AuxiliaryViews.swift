@@ -3450,9 +3450,11 @@ private struct AppearanceSettingsDetail: View {
                     }
                     .pickerStyle(.segmented)
                     // #1487: the list's width follows the user's drag.
-                    Text("Drag the line beside the list to make it wider or narrower.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    if chatListBeside {
+                        Text("Drag the line beside the list to make it wider or narrower.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             } else if isPad {
                 ConduitSettingsSection(title: AppLocalization.string("Layout"), symbol: "sidebar.left", tint: .conduitAura) {
