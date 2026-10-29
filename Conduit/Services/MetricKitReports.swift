@@ -9,7 +9,8 @@
 //  this device as the payloads' own JSON, newest few weeks only, so a
 //  battery or data question about a real day of use can be answered with
 //  numbers. Settings > Connection > Diagnostics & logs shares them as one
-//  file; nothing is uploaded.
+//  file. A new crash or hang is offered once to Conduit's developer
+//  (CrashReportOffer); nothing else is uploaded.
 //
 //  The summary is a diagnostic log, English only like the connection
 //  timeline next to it. watchOS has no MetricKit, so this is iPhone and iPad
@@ -183,7 +184,7 @@ struct MetricKitReportStore {
             }
         }
         let document: [String: Any] = [
-            "about": "MetricKit reports iOS delivered to Conduit on this device: daily usage numbers, and crash, hang, launch and resource diagnostics with their call stacks and exception messages. Nothing was uploaded.",
+            "about": "MetricKit reports iOS delivered to Conduit on this device: daily usage numbers, and crash, hang, launch and resource diagnostics with their call stacks and exception messages, kept on the device. Only the crashes and hangs the user chose to send went to Conduit's developer, without exception messages.",
             "generated": ISO8601DateFormatter().string(from: now),
             "appVersion": appVersion,
             "summary": summary(timeZone: timeZone).text,
@@ -473,10 +474,15 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
 
     private let queue = DispatchQueue(label: "com.milim.relay.metrickit", qos: .utility)
     private let store: MetricKitReportStore
+    private let crashReports: CrashReportQueue
     private var started = false
 
-    init(store: MetricKitReportStore = MetricKitReportStore(directory: MetricKitReportStore.defaultDirectory)) {
+    init(
+        store: MetricKitReportStore = MetricKitReportStore(directory: MetricKitReportStore.defaultDirectory),
+        crashReports: CrashReportQueue = CrashReportQueue()
+    ) {
         self.store = store
+        self.crashReports = crashReports
     }
 
     /// Subscribes, and keeps what iOS delivered before the subscriber
@@ -561,8 +567,27 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
         for payload in metrics {
             store.save(payload.jsonRepresentation(), kind: .metrics, begin: payload.timeStampBegin, end: payload.timeStampEnd)
         }
+        var offer = false
         for payload in diagnostics {
-            store.save(payload.jsonRepresentation(), kind: .diagnostics, begin: payload.timeStampBegin, end: payload.timeStampEnd)
+            let json = payload.jsonRepresentation()
+            guard store.save(json, kind: .diagnostics, begin: payload.timeStampBegin, end: payload.timeStampEnd) else { continue }
+            offer = queueCrashReport(json, begin: payload.timeStampBegin, end: payload.timeStampEnd) || offer
         }
+        if offer {
+            Task { @MainActor in CrashReportOffer.shared.refresh() }
+        }
+    }
+
+    /// A new crash or hang from the last week waits for the "send this
+    /// report?" card (CrashReportOffer). Returns whether one was queued.
+    func queueCrashReport(_ json: Data, begin: Date, end: Date, now: Date = Date()) -> Bool {
+        guard now.timeIntervalSince(end) < CrashReportUpload.maxAge,
+              CrashReportUpload.kind(ofPayloadJSON: json) != nil,
+              let entry = store.entries(.diagnostics).last(where: {
+                  Int($0.begin.timeIntervalSince1970) == Int(begin.timeIntervalSince1970.rounded(.down))
+                      && Int($0.end.timeIntervalSince1970) == Int(end.timeIntervalSince1970.rounded(.down))
+              }) else { return false }
+        crashReports.add(entry.url.lastPathComponent)
+        return true
     }
 }

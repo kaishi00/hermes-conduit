@@ -3675,6 +3675,39 @@ and the widget's pickers (no status), and no Settings caption or doc names it
 
 **Checked:** 2026-10-27, #1369.
 
+## Crash and freeze reports
+
+After Conduit crashes or freezes, iOS hands it a MetricKit diagnostic on the
+next launch; Conduit asks once, on a card over the main screen, whether to
+send it to its developer, and Send posts it to Conduit's relay.
+
+**Siblings:** the card over the main screen (both shells; the iPad app on a
+Mac too) · Settings > Connection > Diagnostics & logs (its Device reports
+caption, and the shared reports file's `about` line) · the relay's route and
+store (notifier relay) · the privacy policy and the relay README (notifier) ·
+not needed: the Apple Watch (watchOS has no MetricKit), CarPlay (the phone's
+card shows when the app is next opened), the widgets and the share extension
+(they don't keep MetricKit reports)
+
+**Code**
+- Offer and upload: `Conduit/Services/CrashReportOffer.swift` (CrashReportUpload: what a report sends; CrashReportQueue; CrashReportOffer)
+- Which diagnostics are offered: `Conduit/Services/MetricKitReports.swift` (queueCrashReport)
+- Card: `Conduit/Views/CrashReportBanner.swift`, shown by `Conduit/Views/RootView.swift` (MainView's top overlay)
+- Settings caption: `Conduit/Views/ChatSupportSheets.swift` (DeviceReportsSection)
+- Relay: `notifier/relay/src/crash-reports.mjs`, `notifier/relay/test/crash-reports.test.mjs`; privacy: `notifier/docs/privacy/index.html`
+- Tests: `ConduitTests/ConnectionFailureTests+CrashReports.swift`
+
+**Rulings**
+- Ask once, upload to the relay: Not now drops the report from the offer (it stays in Diagnostics & logs), and nothing is sent without Send (2026-10-29, Eric chose it in the TestFlight crashes thread; #NNNN, notifier #459).
+- A report is the diagnostic's crashes and hangs only, with the version, build, iOS version and device model; an exception's composed message and arguments are left out, since they can quote anything. It goes to Conduit's own relay whichever relay the user's notifications use, and carries no installation credential (#NNNN, notifier #459).
+- Only a new crash or hang from the last 7 days is offered, the newest 5 at most. A relay that answers 404 (no `CRASH_REPORTS_TOKEN`) stops the offers on that device (#NNNN).
+
+**Open gaps**
+- A kill for memory (jetsam) leaves no MetricKit diagnostic, so a freeze that ends that way is never offered.
+- MetricKit may hold diagnostics back on a device that doesn't share analytics with developers.
+
+**Checked:** 2026-10-29, #NNNN.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
