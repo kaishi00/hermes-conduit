@@ -842,7 +842,7 @@ final class HermesCallsClient {
         (value as? String).flatMap(HermesCallRequest.Kind.init(rawValue:))
     }
 
-    /// The host's refusals of a watch (dashboard/plugin_api.py
+    /// The host's refusals of a watch (dashboard/api/hermes_calls.py
     /// add_call_watch); nil for anything a retry may fix.
     static func refusal(from error: Error) -> HermesCallRefusal? {
         guard case DashboardTicketBridgeError.http(let status, let detail) = error else { return nil }

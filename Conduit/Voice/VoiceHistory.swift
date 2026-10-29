@@ -215,7 +215,8 @@ final class VoiceHistoryClient {
     }
 
     /// What one save may carry: the plugin refuses more turns or a larger
-    /// body (plugin_api VOICE_MAX_TURNS, and VOICE_MAX_BODY_BYTES at 1 MiB).
+    /// body (dashboard/api/voice_calls.py VOICE_MAX_TURNS, and
+    /// VOICE_MAX_BODY_BYTES at 1 MiB).
     static let maxTurnsPerSave = 500
     static let maxBytesPerSave = 900_000
 
@@ -537,7 +538,7 @@ final class VoiceTranscriptRecorder {
         append(.assistant, text, cards: card.cardsJSON)
     }
 
-    /// The longest turn the plugin keeps whole (plugin_api
+    /// The longest turn the plugin keeps whole (dashboard/api/voice_calls.py
     /// VOICE_MAX_TURN_CHARS, counted in code points); it cuts a longer one.
     static let maxTurnCharacters = 16_000
 

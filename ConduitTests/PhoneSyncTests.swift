@@ -1468,7 +1468,7 @@ private final class FakePhoneHost {
             }
             let size = try JSONSerialization.data(withJSONObject: body).count
             ingestBodyBytes.append(size)
-            // plugin_api PHONE_MAX_INGEST_BODY_BYTES
+            // dashboard/api/phone_data.py PHONE_MAX_INGEST_BODY_BYTES
             if size > 4 * 1024 * 1024 {
                 throw DashboardTicketBridgeError.http(status: 413, detail: "Request body is too large")
             }
