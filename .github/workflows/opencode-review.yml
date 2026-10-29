@@ -13,13 +13,21 @@ concurrency:
   # later push supersedes that review and is reviewed itself); any other label,
   # or any label on an own-branch or trusted contributor's PR, gets one group
   # per run, so it can't cancel anything. The trusted list here and in the
-  # job's if must match.
+  # plan job's if must match.
   group: opencode-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}${{ github.event.action == 'labeled' && (github.event.label.name != 'run-review' || github.event.pull_request.head.repo.full_name == github.repository || contains(fromJSON('["malaiwah"]'), github.event.pull_request.user.login)) && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 jobs:
-  review:
-    name: review (${{ matrix.reviewer }})
+  # Picks who reviews, so a run that needn't call a model ends here on one
+  # runner. It waits a minute first: a push in that minute cancels this run
+  # (the concurrency group above) before any model is called. Then it skips
+  # the review when the PR's change is the same as one a review already ran
+  # on (a clean merge of main, a reopen), and gives a PR that only touches
+  # docs and config files (Markdown, text, JSON, YAML, TOML; not .github/,
+  # opencode.json, or manifests that declare code or dependencies) to GLM-5.3
+  # alone. A manual run, or adding run-review to a fork's PR, always reviews.
+  plan:
+    name: plan
     # The reviewer is an agent holding the review secrets, and a PR's title,
     # body and diff all reach its prompt. PRs from this repository's own
     # branches (people with push access) get it on every push, and so do fork
@@ -37,14 +45,153 @@ jobs:
         ((github.event.action == 'labeled' && github.event.label.name == 'run-review') ||
          (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'run-review'))))
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      reviewers: ${{ steps.pick.outputs.reviewers }}
+    steps:
+      - name: Debounce (wait for rapid commits to settle)
+        if: github.event_name == 'pull_request_target' && github.event.action != 'labeled'
+        run: sleep 60
+      - name: Pick reviewers
+        id: pick
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          WORKFLOW_FILE: opencode-review.yml
+          ALL_REVIEWERS: >-
+            [{"reviewer": "Claude Haiku 5.5", "model": "anthropic/claude-haiku-5-5"},
+             {"reviewer": "GLM-5.3", "model": "zai-custom/glm-5.3"}]
+          DOCS_REVIEWER: GLM-5.3
+          CHANGE_ID_PY: |
+            import collections, hashlib, sys
+            out, md, index = [], False, ""
+            added, removed = collections.Counter(), collections.Counter()
+            def words():
+                if md:
+                    out.append(repr(sorted((added - removed).items())) + repr(sorted((removed - added).items())))
+            for line in sys.stdin.read().split("\n"):
+                if line.startswith("diff --git "):
+                    words()
+                    added.clear(); removed.clear()
+                    md = line.endswith(".md")
+                    out.append(line)
+                elif line.startswith("index "):
+                    index = line
+                elif line.startswith("@@"):
+                    continue
+                elif line.startswith(("Binary files ", "GIT binary patch")):
+                    out.extend([index, line])
+                elif md and line.startswith(("+++ ", "--- ")):
+                    out.append(line)
+                elif md and line.startswith("+"):
+                    added.update(line[1:].split())
+                elif md and line.startswith("-"):
+                    removed.update(line[1:].split())
+                elif not md:
+                    out.append(line)
+            words()
+            print(hashlib.sha256("\n".join(out).encode()).hexdigest())
+        run: |
+          case "$PR_NUMBER" in
+            '' | *[!0-9]*) echo "pr_number must be a PR number, not '$PR_NUMBER'" >&2; exit 1 ;;
+          esac
+          repo="repos/$GITHUB_REPOSITORY"
+          pick() {
+            echo "reviewers=$(jq -c . <<<"$1")" >> "$GITHUB_OUTPUT"
+            echo "$2" | tee -a "$GITHUB_STEP_SUMMARY"
+          }
+          # Every lookup below fails open: when one doesn't load, every
+          # reviewer runs.
+          if ! pr=$(gh api "$repo/pulls/$PR_NUMBER"); then
+            pick "$ALL_REVIEWERS" "Couldn't load PR $PR_NUMBER: reviewing with every reviewer."
+            exit 0
+          fi
+          head=$(jq -r .head.sha <<<"$pr")
+          base=$(jq -r .base.ref <<<"$pr")
+
+          # The PR's change as the reviewers see it: its diff from where it
+          # meets the base, without hunk headers and blob ids, so merging main
+          # doesn't change it. Whitespace and modes are kept, and so is a binary
+          # file's blob id, its only trace of its content.
+          # A Markdown file counts by the words the PR adds and removes, so a
+          # resolved conflict in the feature map, where main changed the same
+          # Checked line, still matches when the PR's own words didn't change. An
+          # empty diff, or one too large for the compare API, never matches, so
+          # that PR is reviewed.
+          change_id() {
+            local diff
+            diff=$(gh api -H 'Accept: application/vnd.github.diff' "$repo/compare/$base...$1") || diff=''
+            if [ -z "$diff" ]; then
+              echo "No diff for $1 from $base, so it can't match." | tee -a "$GITHUB_STEP_SUMMARY" >&2
+              return
+            fi
+            python3 -I -c "$CHANGE_ID_PY" <<<"$diff"
+          }
+
+          if [ "$EVENT_NAME" = pull_request_target ] && [ "$EVENT_ACTION" != labeled ]; then
+            # The newest of this PR's commits (the last 20) with a successful
+            # run whose review job passed. A run this job skipped has no
+            # passing review job, so it never stands in for a review. (A run
+            # can't say which PR it reviewed: GitHub fills its pull_requests
+            # from the branch's open PRs at read time.)
+            commits=$(gh api --paginate "$repo/pulls/$PR_NUMBER/commits" --jq '.[].sha') || commits=''
+            reviewed=''
+            for sha in $(tail -n 20 <<<"$commits" | tac); do
+              runs=$(gh api -X GET "$repo/actions/workflows/$WORKFLOW_FILE/runs" \
+                -f event=pull_request_target -f status=success -f head_sha="$sha" \
+                --jq '.workflow_runs[].id') || runs=''
+              for run_id in $runs; do
+                passed=$(gh api "$repo/actions/runs/$run_id/jobs" \
+                  --jq '[.jobs[] | select((.name | startswith("review (")) and .conclusion == "success")] | length') || passed=0
+                if [ "$passed" -gt 0 ]; then reviewed=$sha; break 2; fi
+              done
+            done
+            if [ -n "$reviewed" ]; then
+              now=$(change_id "$head")
+              if [ -n "$now" ] && [ "$now" = "$(change_id "$reviewed")" ]; then
+                pick '[]' "Skipped: $head changes the same as $reviewed, which was reviewed."
+                exit 0
+              fi
+            fi
+          fi
+
+          # .github/ counts as code (workflows and actions run with this repo's
+          # secrets), and so do opencode.json and .coderabbit.yaml (review
+          # config), the notifier's skills/ (instructions its agent loads) and
+          # manifests that declare code, targets or dependencies. A rename
+          # counts by both names. So does a file list that didn't load, so
+          # every reviewer runs.
+          files=$(gh api --paginate "$repo/pulls/$PR_NUMBER/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)') || files=''
+          code_config='^\.github/|^skills/|^(opencode\.json|\.coderabbit\.ya?ml)$|(^|/)((requirements|constraints)[^/]*\.txt|package(-lock)?\.json|[^/]*lock\.ya?ml|pyproject\.toml|plugin\.yaml|manifest\.json|project[^/]*\.yml)$'
+          if [ -z "$files" ] || grep -Eq "$code_config" <<<"$files" \
+            || grep -Evq '\.(md|txt|json|ya?ml|toml)$' <<<"$files"; then
+            pick "$ALL_REVIEWERS" "Reviewing with every reviewer."
+          else
+            docs=$(jq -c --arg r "$DOCS_REVIEWER" 'map(select(.reviewer == $r))' <<<"$ALL_REVIEWERS") || docs='[]'
+            if [ "$docs" = '[]' ]; then
+              pick "$ALL_REVIEWERS" "Docs and config only, but $DOCS_REVIEWER isn't a reviewer: reviewing with every reviewer."
+            else
+              pick "$docs" "Docs and config only: reviewing with $DOCS_REVIEWER."
+            fi
+          fi
+
+  review:
+    name: review (${{ matrix.reviewer }})
+    needs: plan
+    if: needs.plan.outputs.reviewers != '[]'
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - reviewer: Claude Haiku 5.5
-            model: anthropic/claude-haiku-5-5
-          - reviewer: GLM-5.3
-            model: zai-custom/glm-5.3
+        include: ${{ fromJSON(needs.plan.outputs.reviewers) }}
     # No id-token: opencode uses the run's token (USE_GITHUB_TOKEN), not OIDC.
     permissions:
       contents: read
