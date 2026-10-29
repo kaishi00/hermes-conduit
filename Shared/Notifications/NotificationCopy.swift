@@ -41,7 +41,9 @@ enum NotificationCopy {
     /// a call composes its line from the call's outcome. Any other title or
     /// body is the host's own text (an older plugin, a tool's prompt title).
     /// The subtitle names the profile (`profileLine`). A reply whose
-    /// notification Hermes wrote shows its `headline` as the title.
+    /// notification Hermes wrote shows its `headline` as the title. A
+    /// private Pulse push (`private`) answers with a generic line, not the
+    /// host's own words.
     static func preview(_ content: [String: Any]) -> (title: String?, subtitle: String?, body: String?) {
         let hostTitle = nonEmpty(content["title"])
         let hostBody = nonEmpty(content["body"])
@@ -55,12 +57,23 @@ enum NotificationCopy {
             let subtitle = [chat, profileLine(content, title: chat)].compactMap { $0 }.joined(separator: " · ")
             return (headline, subtitle.isEmpty ? nil : subtitle, hostBody)
         }
-        let title = labelTitle(label, content: content) ?? hostTitle
-        let subtitle = profileLine(content, title: title)
-        if label == "call.requested", let call = content["call"] as? [String: Any], let line = callLine(call) {
-            return (title, subtitle, line)
+        var title = labelTitle(label, content: content)
+        if title == nil, label.hasPrefix("pulse.") {
+            // Main's label list doesn't know pulse labels; pulse's table
+            // does (the brief's count and friends).
+            title = pulseTitle(for: label, count: content["count"] as? Int)
         }
-        return (title, subtitle, hostBody)
+        let finalTitle = title ?? hostTitle
+        let subtitle = profileLine(content, title: finalTitle)
+        if label == "call.requested", let call = content["call"] as? [String: Any], let line = callLine(call) {
+            return (finalTitle, subtitle, line)
+        }
+        if label.hasPrefix("pulse."), content["private"] as? Bool == true {
+            // A private Pulse push (a birthday, a gift, health or money;
+            // notifier 0.104.0): the host sent only this line, in English.
+            return (finalTitle, subtitle, AppLocalization.string("Pulse has something for you."))
+        }
+        return (finalTitle, subtitle, hostBody)
     }
 
     /// What a verified push shows with Chat names (#1415): the chat's title
@@ -140,6 +153,19 @@ enum NotificationCopy {
         case "turn.failed": return AppLocalization.string("Turn failed")
         case "background_task.finished": return AppLocalization.string("Task finished")
         case "call.requested": return AppLocalization.string("Hermes wants to talk")
+        default: return nil
+        }
+    }
+
+    /// What Pulse brings (`pulse.<kind>`), titled by itself: its chat is
+    /// hidden. A report says how many things it noticed (`count`).
+    private static func pulseTitle(for label: String, count: Int?) -> String? {
+        switch label {
+        case "pulse.noticed":
+            guard let count, count > 1 else { return AppLocalization.string("Pulse noticed something") }
+            return AppLocalization.string("Pulse noticed \(count) things")
+        case "pulse.brief": return AppLocalization.string("Your morning brief")
+        case "pulse.followup": return AppLocalization.string("Pulse · Follow-up")
         default: return nil
         }
     }
