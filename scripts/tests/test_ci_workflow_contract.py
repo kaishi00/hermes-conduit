@@ -177,6 +177,10 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertTrue(app_markdown.search(path), path)
         for path in ("docs/FEATURE_MAP.md", "README.md", "Conduit/App.swift"):
             self.assertFalse(app_markdown.search(path), path)
+        # The review plan counts the same Markdown as code (both reviewers).
+        review = _read(os.path.join(REPO_ROOT, ".github", "workflows", "opencode-review.yml"))
+        code_config = re.search(r"code_config='([^']+)'", review).group(1)
+        self.assertIn("|" + app_markdown.pattern + "|", code_config)
         # ...and the same-change branch is gated on it and on a non-empty diff.
         self.assertIn("&& changed=$(git diff --no-renames --name-only HEAD^1 HEAD) && [ -n \"$changed\" ] \\\n"
                       "            && ! printf '%s\\n' \"$changed\" | grep -E '^(Conduit[^/]*|Shared)/.*\\.md$' >/dev/null; then\n"
