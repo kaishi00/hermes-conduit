@@ -38,6 +38,23 @@ struct ColumnWidth {
         max(minimum, min(start + translation, maximum, max(minimum, room)))
     }
 
+    /// What a drag that ended at `live` stores, if anything: a press that
+    /// didn't move the line keeps the stored width, which a smaller window
+    /// may be showing less of.
+    static func storedAfterDrag(live: CGFloat?, began: CGFloat?) -> CGFloat? {
+        guard let live, abs(live - (began ?? live)) >= 1 else { return nil }
+        return live
+    }
+
+    /// What a VoiceOver step to `wanted` stores, if anything: a step that
+    /// can't move the line (at a bound, or a window showing less than the
+    /// stored width) keeps the stored width.
+    func storedAfterStep(to wanted: CGFloat, showing width: CGFloat, room: CGFloat) -> CGFloat? {
+        let stepped = dragged(from: wanted, by: 0, room: room)
+        guard abs(stepped - width) >= 1 else { return nil }
+        return stepped
+    }
+
     /// One VoiceOver adjustment's step.
     static let accessibilityStep: CGFloat = 40
 }
@@ -70,10 +87,15 @@ struct ColumnDivider: View {
     /// distance), left out so the line doesn't jump to catch up.
     @State private var dragSlop: CGFloat = 0
     @State private var isHovering = false
+    @Environment(\.layoutDirection) private var layoutDirection
 
     private static let gripWidth: CGFloat = 12
 
-    private var direction: CGFloat { columnEdge == .leading ? 1 : -1 }
+    /// The drag is measured in the window, which doesn't mirror right to
+    /// left, so there a leading column is on the right.
+    private var direction: CGFloat {
+        (columnEdge == .leading) == (layoutDirection == .leftToRight) ? 1 : -1
+    }
     private var isActive: Bool { isHovering || dragStart != nil }
 
     var body: some View {
@@ -92,21 +114,23 @@ struct ColumnDivider: View {
                     .onTapGesture(count: 2) { reset() }
                     .gesture(drag)
                     .macTooltip(AppLocalization.string("Drag to resize. Double-click to reset."))
+                    // On the grip, so VoiceOver's frame is as wide as what
+                    // a finger finds, not the 1 pt line.
+                    .accessibilityElement()
+                    .accessibilityLabel(label)
+                    .accessibilityValue(Text(Double(width / widths.standard), format: .percent.precision(.fractionLength(0))))
+                    .accessibilityAdjustableAction { direction in
+                        switch direction {
+                        case .increment: set(width + ColumnWidth.accessibilityStep)
+                        case .decrement: set(width - ColumnWidth.accessibilityStep)
+                        @unknown default: break
+                        }
+                    }
+                    .accessibilityAction(named: Text("Reset width")) { reset() }
             }
             .ignoresSafeArea()
             .zIndex(1)
             .animation(.easeOut(duration: 0.12), value: isActive)
-            .accessibilityElement()
-            .accessibilityLabel(label)
-            .accessibilityValue(Text(Double(width / widths.standard), format: .percent.precision(.fractionLength(0))))
-            .accessibilityAdjustableAction { direction in
-                switch direction {
-                case .increment: set(width + ColumnWidth.accessibilityStep)
-                case .decrement: set(width - ColumnWidth.accessibilityStep)
-                @unknown default: break
-                }
-            }
-            .accessibilityAction(named: Text("Reset width")) { reset() }
             .onChange(of: dragStart == nil) { _, ended in
                 if ended { commit() }
             }
@@ -132,23 +156,18 @@ struct ColumnDivider: View {
             }
     }
 
-    /// Stores the dragged width, once, and hands the layout back to it. A
-    /// press that didn't move the line keeps the stored width, which a
-    /// smaller window may be showing less of.
+    /// Stores the dragged width, once, and hands the layout back to it.
     private func commit() {
         defer {
             live = nil
             dragBegan = nil
         }
-        guard let width = live, abs(width - (dragBegan ?? width)) >= 1 else { return }
+        guard let width = ColumnWidth.storedAfterDrag(live: live, began: dragBegan) else { return }
         stored = Double(width)
     }
 
-    /// A step that can't move the line (at a bound, or a window showing
-    /// less than the stored width) keeps the stored width.
     private func set(_ newWidth: CGFloat) {
-        let width = widths.dragged(from: newWidth, by: 0, room: room)
-        guard abs(width - self.width) >= 1 else { return }
+        guard let width = widths.storedAfterStep(to: newWidth, showing: self.width, room: room) else { return }
         stored = Double(width)
     }
 
