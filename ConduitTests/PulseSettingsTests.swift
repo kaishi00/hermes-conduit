@@ -408,4 +408,22 @@ final class PulseSettingsTests: XCTestCase {
         let date = PulseReportTime.date("07:45", calendar: calendar)
         XCTAssertEqual(PulseReportTime.text(from: date, calendar: calendar), "07:45")
     }
+
+    /// Settings > Pulse and the Pulse screen follow the plugin alone, on
+    /// every build, App Store ones included (#1517).
+    func testPulseShowsWhereverThePluginServesIt() throws {
+        let suite = "PulseSettingsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let state = AppState(defaults: defaults, loadSavedConnection: false, clearSessionPresentationCache: {})
+
+        state.setNotifierPluginStateForTesting(.reported(version: "0.120.0",
+                                                         capabilities: [PulseClient.capability, PulseClient.feedCapability]))
+        XCTAssertTrue(state.showsPulseSettings)
+        XCTAssertTrue(state.showsPulseScreen)
+
+        state.setNotifierPluginStateForTesting(.reported(version: "0.120.0", capabilities: []))
+        XCTAssertFalse(state.showsPulseSettings)
+        XCTAssertFalse(state.showsPulseScreen)
+    }
 }
