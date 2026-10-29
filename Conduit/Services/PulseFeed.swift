@@ -419,7 +419,7 @@ struct PulseLayout: Equatable {
 
     /// The newest brief, even when it's all handled (it folds to one row):
     /// each morning's replaces the one before. Also an older one a Pulse
-    /// mark or Bring it up opened.
+    /// mark or Bring it up opened, at it or at one of its cards.
     var briefs: [Brief] = []
     /// What's still open, older briefs' open cards among it: each stays on
     /// the screen as a card of its own once a newer brief has come.
@@ -445,12 +445,14 @@ struct PulseLayout: Equatable {
         for card in cards where card.kind == "brief" && !card.brief.isEmpty {
             var items = (grouped[card.brief] ?? []).sorted { ($0.createdAt ?? .distantPast, $0.id) < ($1.createdAt ?? .distantPast, $1.id) }
             taken.insert(card.id)
-            if newest || keeping.contains(card.id) {
+            // One a Pulse mark or Bring it up opened, at it or at one of its
+            // cards (the screen keeps the card's id), stays whole while it's kept.
+            if newest || keeping.contains(card.id) || items.contains(where: { keeping.contains($0.id) }) {
                 briefs.append(Brief(card: card, items: items))
             } else {
                 // A newer brief came: this one goes to Done with what it
                 // brought that's handled, and the rest stay as cards of their own.
-                items = items.filter { $0.isCleared && !keeping.contains($0.id) }
+                items = items.filter(\.isCleared)
                 clearedBriefs.append(Brief(card: card, items: items))
             }
             taken.formUnion(items.map(\.id))
