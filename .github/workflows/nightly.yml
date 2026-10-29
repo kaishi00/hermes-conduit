@@ -99,7 +99,7 @@ jobs:
         # DerivedData from the newest main build of the same project and
         # Xcode (the same runner image preferred), so ci-build-for-testing.sh
         # recompiles only what changed since. A new Xcode starts clean. The
-        # slim (app-only) kind: these shards are what saves it for PR builds.
+        # slim (app-only) kind: these shards alone build, save and restore it.
         id: cache-key
         env:
           SPEC: project-tests.yml
@@ -285,11 +285,10 @@ jobs:
           echo "unit shard: $batch batch invocation(s) completed"
 
       - name: Save the build cache
-        # Main's builds only (PRs restore the newest of them), one job per
-        # project kind: shard 1 saves the app-only (slim) build that PR smoke
-        # runs restore when they need no Watch app or extensions; ci.yml's
-        # smoke job saves the full app on every push. After the tests,
-        # so a test failure still saves a good build.
+        # Main's builds only, one job per project kind: shard 1 saves the
+        # app-only (slim) build the nightly unit shards restore; ci.yml's
+        # smoke job saves the full app, which PRs restore, on every push.
+        # After the tests, so a test failure still saves a good build.
         if: >-
           always() && steps.build.outcome == 'success'
           && steps.cache.outputs.cache-hit != 'true'

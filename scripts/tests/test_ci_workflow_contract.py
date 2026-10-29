@@ -6,10 +6,9 @@ again (e.g. passing observation files positionally when the script requires
 
 CI v5 shape (docs/CI.md): GitHub-hosted CI is the merge gate, and it is light.
 A PR or a push runs the cheap Linux validation and ONE macOS `smoke` job
-that compiles the app (without its Watch app and extensions unless the plan
-job's ui-spec says otherwise, incrementally from an earlier build) and every
-test target once, then runs the curated unit smoke classes and the curated UI
-smoke classes (scripts/smoke-suite.json) on that build and simulator.
+that compiles the full app (incrementally from main's latest build) and every
+test target once, then runs the pinned unit smoke tests and the pinned UI
+smoke tests (scripts/smoke-suite.json) on that build and simulator.
 nightly.yml runs every other unit class in balanced shards
 (scripts/hosted-suite.json), the timing families with repeats and the complete
 UI suite. There is NO lane matrix, NO timing-history job and NO native flake
@@ -293,33 +292,22 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("::error title=unit smoke failures::", unit,
                       "the failing cases must reach an annotation")
 
-    def test_smoke_job_builds_the_plan_jobs_project(self):
-        """The smoke job builds the plan job's choice: the app alone
-        (project-tests.yml), or the full app whenever a change reaches the
-        targets the overlay drops."""
-        self.assertIn('xcodegen generate --spec "${{ needs.plan.outputs.ui-spec }}"',
-                      self._job_text("smoke"))
-        self.assertIn("SPEC: ${{ needs.plan.outputs.ui-spec }}", self._job_text("smoke"))
+    def test_smoke_job_builds_the_full_app(self):
+        """Smoke builds the full app on every PR and push, so a PR starts from
+        the build main's latest merge saved and recompiles only its change.
+        The app-only build (project-tests.yml) restored last night's cache,
+        so a PR recompiled the whole day's main: 682 s against 537 s to
+        a finished build, medians of 2026-10-22..29."""
+        smoke = self._job_text("smoke")
+        self.assertIn("xcodegen generate --spec project.yml", smoke)
+        self.assertNotIn("project-tests.yml\n", smoke)
+        self.assertNotIn("ui-spec", self._workflow_text())
+        self.assertIn("kind=full\n", smoke)
+        self.assertNotIn("kind=slim", smoke)
         overlay = _read(os.path.join(REPO_ROOT, "project-tests.yml"))
         self.assertIn("- path: project.yml", overlay)
         self.assertIn("dependencies:REPLACE:", overlay)
         self.assertNotIn("- target:", overlay)
-        plan = self._job_text("plan")
-        self.assertIn("fetch-depth: 2", plan)
-        self.assertIn("^(ConduitWatch|ConduitWidgets|ConduitNotificationService"
-                      "|ConduitLocationPush|ConduitShareExtension|Shared)/", plan,
-                      "a change to any dropped target's folder must build the full app")
-        self.assertIn(r"^project(-tests)?\.yml$", plan)
-        self.assertIn(r"^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$", plan)
-        self.assertIn("HEAD^2", plan, "only a merge-commit checkout may pick the slim build")
-        self.assertIn('= "$PR_HEAD" ]', plan, "the merge commit's second parent must be this PR's head")
-        self.assertIn("spec=project.yml\n", plan, "the plan job must fail closed to the full app")
-        spec = _read(os.path.join(REPO_ROOT, "project.yml"))
-        # Every target the overlay drops must still be a dependency in the
-        # real spec, or the list above is out of date.
-        for target in ("ConduitWatch", "ConduitNotificationService",
-                       "ConduitWidgets", "ConduitLocationPush"):
-            self.assertIn(f"- target: {target}", spec)
 
     def test_smoke_job_builds_incrementally_and_pushes_save_the_full_build(self):
         """The smoke job restores the newest DerivedData it can reach (main's,
@@ -329,7 +317,7 @@ class WorkflowContractTests(unittest.TestCase):
         after a successful build, with the same path list (a different list
         is a different cache)."""
         text = self._job_text("smoke")
-        _assert_cache_round_trip(self, text, "steps.cache-key.outputs.kind == 'full'", "smoke")
+        _assert_cache_round_trip(self, text, "github.event_name == 'push'", "smoke")
         self.assertIn("&& github.event_name == 'push'\n", text)
         build = _read(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"))
         self.assertIn("ci-normalize-mtimes.py", build)
@@ -504,8 +492,8 @@ class NightlyWorkflowTests(unittest.TestCase):
         self.assertIn("xcodegen generate --spec project-tests.yml", unit)
 
     def test_unit_shard_one_saves_the_slim_build_cache_on_main(self):
-        """PR smoke builds of project-tests.yml restore the slim cache, and
-        only the nightly unit shards build that kind on main now."""
+        """Only the nightly unit shards build project-tests.yml and restore
+        the slim cache; shard 1 saves it on main. Smoke builds the full app."""
         unit = _job_text(NIGHTLY, "unit")
         _assert_cache_round_trip(self, unit, "matrix.shard == 1", "nightly unit")
         self.assertIn("SPEC: project-tests.yml", unit)

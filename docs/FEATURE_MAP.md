@@ -349,7 +349,7 @@ entry)
 **Code**
 - Start paths: `Conduit/Voice/VoiceTypes.swift` (PendingVoiceIntent.Source), `Conduit/Services/AppState.swift` (prepareVoiceConversation, voiceWaitsForRunningTurn)
 - Which chat: `Conduit/Services/AppState.swift` (liveVoiceThreadForOpenChat, savedCallToResume, keepVoiceCallWithAdoptedChat); an unattached call's first request's chat: `Conduit/Voice/VoiceBackgroundJobs.swift` (adoptCallChat, callChatJobRuns, callChatClaim, waitForCallChatClaim), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (startBackgroundJob), `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` (send), `Shared/WatchVoice/VoiceJobRouting.swift` (wantsJobOfItsOwn); on the Watch: `Shared/WatchVoice/WatchJobRelay.swift` (joinsCall), `ConduitWatch/WatchBridgeCallModel.swift` (startArguments), `ConduitWatch/WatchDirectCallModel.swift` (joins_call), `Conduit/Watch/WatchDirectBroker.swift` (WatchCallJobSupervisor.callChat, startingCallChat, callIsLive), `Conduit/Voice/VoiceBackgroundJobs.swift` (markOpensCallChat), `Conduit/Voice/VoiceBackgroundJobs.swift` (continueJob), `notifier/dashboard/api/watch_jobs.py` (_WatchJobs._continue_session)
-- Chat voice button: `Conduit/Views/V2/V2VoiceButton.swift`, `Conduit/Views/V2/ChatVoiceButtonAction.swift`, `Conduit/Views/V2/V2ConversationScreen.swift` (voiceButtonBottomPadding, V2RestingComposerHeightKey: level with the resting composer), `Conduit/Views/Components/ComposerBar.swift` (the resting bar's height), `Conduit/Services/AppState+VoiceMessage.swift`, `Conduit/Voice/VoiceMessageRecorder.swift`
+- Chat voice button: `Conduit/Views/V2/V2VoiceButton.swift`, `Conduit/Views/V2/ChatVoiceButtonAction.swift`, `Conduit/Views/V2/V2ConversationScreen.swift` (voiceButtonBottomPadding, V2RestingComposerHeightKey: level with the resting composer, or with the bottom of one that stays expanded, see Composer at rest and expanded), `Conduit/Views/Components/ComposerBar.swift` (the resting bar's height, keepsVoiceButtonBeside), `Conduit/Services/AppState+VoiceMessage.swift`, `Conduit/Voice/VoiceMessageRecorder.swift`
 - Siri and Shortcuts: `Conduit/Intents/StartVoiceConversationIntent.swift`; wake phrase: `Conduit/Voice/Wake/WakeLifecycleCoordinator.swift`
 - CarPlay: `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (CarPlayVoiceMode current and listed, conversationStartingOnPhone, prepareWaitingForConnection, establishLiveVoice, performOpenChat, openChatOnPhone, selectVoiceMode), `Conduit/CarPlay/CarPlayBrowseTemplates.swift` (CarPlayVoiceMode.all, choice), `Conduit/Services/AppState.swift` (start…ForCarPlay, releaseCarPlay… per live mode)
 - A start's late answers: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (callEpoch, isStarting; Gemini, Qwen, Grok, Local Live), `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (startAttempt), `Conduit/Voice/VoiceConversationController.swift` (operationGeneration), `ConduitWatch/WatchDirectCallModel.swift` (callID)
@@ -374,7 +374,7 @@ entry)
 - Group rooms have no voice button setting, and the Watch and CarPlay don't follow it (#1134).
 - When a Classic call can't take over its chat, it shows a generic error (#1066).
 
-**Checked:** 2026-10-29, #1476 (the chat's voice button centres on a resting composer taller than it, as when a long placeholder wraps); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1413 (the Siri and Shortcuts profile picker shows each profile's Conduit name, see Profile names); 2026-10-28, #1424 (a call starts its trace; Qwen Live calls are traced too); 2026-10-27, #1378 (CarPlay starts Local Live, agent mode and Classic's hands-free option, #1376); 2026-10-27, at #1370 (a chat picked in CarPlay shows Thinking, and a live call waits at most 3 s for the phone to open it); 2026-10-26, at #1319 (Home's main button points to its own entry); 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-29, #1512 (the voice button stays beside a composer that stays expanded on a Mac or a wide iPad, issue 1483); 2026-10-29, #1476 (the chat's voice button centres on a resting composer taller than it, as when a long placeholder wraps); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1413 (the Siri and Shortcuts profile picker shows each profile's Conduit name, see Profile names); 2026-10-28, #1424 (a call starts its trace; Qwen Live calls are traced too); 2026-10-27, #1378 (CarPlay starts Local Live, agent mode and Classic's hands-free option, #1376); 2026-10-27, at #1370 (a chat picked in CarPlay shows Thinking, and a live call waits at most 3 s for the phone to open it); 2026-10-26, at #1319 (Home's main button points to its own entry); 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
 
 ## Switching voice mode in a call
 
@@ -1751,6 +1751,52 @@ Keyboard caption is unchanged, as it describes the option)
 
 **Checked:** 2026-10-28, #1460 (inline prediction off on a Mac).
 
+## Composer at rest and expanded
+
+Whether the composer rests as a slim bar (attach, the field, the mic) until
+it is used, or stays expanded with its controls row showing: attach, the
+model chip, the context ring, agents, the mic and Send.
+
+**Siblings:** the chat composer (chats, project chats, Bot Chat; done, #1512)
+· group rooms' composer (done, #1512) · the chat's voice button beside it
+(done, #1512: it stays beside a composer that stays expanded, level with its
+bottom, and the composer's own voice and mic buttons give way to it, see
+Starting a call) · the composer bar the transcript fades under (not needed:
+the bar takes the composer's height, see Bars lists scroll under) · the
+drawer shell's chat (not needed: its chat composer never rests; its rooms'
+composer follows the same rule, #1512) · iPhone, iPad and Mac · text:
+docs/VOICE_SETTINGS.md "Dictate into the composer" (done, #1512); no
+Settings caption describes it
+
+**Code**
+- Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.staysExpanded, expandedMinimumWidth, composerStaysExpanded, composerLayoutFromWidth)
+- V2: `Conduit/Views/V2/V2ConversationScreen.swift` (chatColumnWidth, composerStaysExpanded, voiceButtonBottomPadding), `Conduit/Views/Components/ComposerBar.swift` (rests, inUseOrHeld, keepsVoiceButtonBeside, showsEmptyDraftSend, controlsRowShowsDictate, composerInUse), `Conduit/Views/Components/GroupRoomComposer.swift` (rests, inUse)
+- Drawer shell: `Conduit/Views/RootView.swift` (chatNavigationContent)
+- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerRestsOnIPhoneAndStaysExpandedOnMacAndWideIPad, testBigButtonSitsLevelWithTheBottomOfAComposerThatStaysExpanded)
+
+**Rulings**
+- iPhone: the composer rests and expands while it is used (focus, a draft,
+  dictation, a notice, a control's sheet), at any width. iPad: it stays
+  expanded when the chat's column has the room (600 pt, Artifacts beside it
+  taken off) and rests below that. Mac: it stays expanded at any width, with
+  its controls always in reach. There is no setting (Eric, 2026-10-29,
+  #1512, issue 1483).
+- A composer that stays expanded keeps the big voice button beside it, as the
+  resting bar does, rather than sliding it aside while typing; the controls
+  row then leaves out its own voice button, and its mic when the big button
+  dictates. With an empty draft its Send shows dimmed, not the lock a
+  composer that can't send (reconnecting, an offline copy, a chat still being made) shows (2026-10-29, #1512).
+- Only use opens and closes the composer with its animation; the layout
+  rule changing (a chat's first measured width, a window resized) switches
+  it at once (2026-10-29, #1512).
+
+**Open gaps**
+- Not yet seen on a device: an iPad crossing 600 pt as a split or Artifacts
+  resizes, and a Mac window at its narrowest. On an iPad the first frame
+  of a chat may still show the resting bar before its width is measured.
+
+**Checked:** 2026-10-29, #1512 (new entry, issue 1483).
+
 ## A chat's last reply
 
 Reading the newest reply in a chat without opening it, from the open chat's
@@ -1787,19 +1833,21 @@ Settings > Chat's Long replies switch and captions (shared by Sync across
 devices)
 
 **Code**
-- Chats: `Conduit/Services/ChatScrollEngine.swift` (pin, bottomBarResized, replyHoldOffset, replyStartLandingRequested, landAtReplyStartIfPending, ChatReplyStartPreference, checkForBlankViewport and scheduleBlankViewportCheckDuringLiveTurn; the same engine moves a browsing reader's offset in the pass that lands a prepend or a card's growth above them, see Cards drawn in web pages), `Conduit/Views/ChatScrollSurfaceLocator.swift`, `Conduit/Views/ChatView.swift` (jumpToLatest, bottomBar's height reaching bottomBarResized, the send pulse arming the hold, the unread landing observer, transcriptScrollID, the live rows' reportsLiveRowFrame)
+- Chats: `Conduit/Services/ChatScrollEngine.swift` (pin, bottomBarResized, replyHoldOffset, refreshReplyRoom and ChatReplyRoom, replyStartLandingRequested, landAtReplyStartIfPending, ChatReplyStartPreference, checkForBlankViewport and scheduleBlankViewportCheckDuringLiveTurn; the same engine moves a browsing reader's offset in the pass that lands a prepend or a card's growth above them, see Cards drawn in web pages), `Conduit/Views/ChatScrollSurfaceLocator.swift`, `Conduit/Views/ChatView.swift` (jumpToLatest, bottomBar's height reaching bottomBarResized, the send pulse arming the hold, ChatReplyRoomFrame, the unread landing observer, transcriptScrollID, the live rows' reportsLiveRowFrame)
 - Unread open: `Conduit/Services/AppState.swift` (performSessionOpenNotingRefusal, chatReplyStartLandingRequest, takeChatReplyStartLanding)
 - Another device's message: `Conduit/Services/AppState.swift` (noteUserMessageElsewhere: one Hermes announces under a row id this chat doesn't show; its words decide only while this iPhone's latest send has no row id yet)
 - Group rooms: `Conduit/Views/GroupRoomScrollFollow.swift` (GroupRoomFollow, replyStart, isBlank, GroupRoomScrollLocator's checkForBlankViewport), `Conduit/Views/GroupChatView.swift` (isFollowingLatest, landAtTop, jumpToLatestButton, transcriptScrollID)
 - Delegate tail sheet (its own follow state and Latest button): `Conduit/Views/ChatSupportSheets.swift` (DelegateAgentTailSheet)
 - Room history kept: `Conduit/Services/GroupChatModels.swift` (GroupRoomReplay tailWindow, retainedLimit), `Conduit/Services/AppState.swift` (the open and resync tail windows)
 - Setting: `Conduit/Views/AuxiliaryViews.swift` (ReplyStartSettings), `Conduit/Services/AppState+SyncedPreferences.swift` (`app.stop_at_reply_start`)
-- Tests: `ConduitTests/ChatScrollEngineTests.swift` (Blank viewport, Long replies stop at their start, An unread chat opens at its latest reply), `ConduitTests/ChatScrollHostedTests.swift` (the real ChatView: a long reply's stop, and following to the end with Long replies off), `ConduitTests/GroupChatModelsTests.swift`
+- Tests: `ConduitTests/ChatScrollEngineTests.swift` (Blank viewport, Long replies stop at their start, An unread chat opens at its latest reply), `ConduitTests/ChatScrollHostedTests.swift` (the real ChatView: a reply streaming under the sent message without moving, long and short, and following to the end with Long replies off), `ConduitTests/GroupChatModelsTests.swift`
 
 **Rulings**
 - Only the user's own scroll leaves following, except a long reply's stop below. Being near the bottom (40 pt), the jump button or sending returns to it (chats: ChatScrollEngine; group rooms 2026-10-24, #1184).
 - Following keeps the end above the bar under it as the bar grows or shrinks: Predictive's chips, the plan dock or a call's bar coming and going. On iOS 26 only the scroll view's bottom inset changes then, which nothing reported, so the chips covered the reply's actions. The bar's height change is checked at once and for a few main-queue turns after; a finger or fling on the chat holds the pin until it lets go, and whether a reader who lets go is near the bottom is measured against the bottom as it was when the finger came down. A reader browsing stays browsing; one a shrinking bar leaves past the new bottom is moved up to it, so no empty space shows (Michel, #1431; accepted by Eric 2026-10-28, #1455).
-- A reply longer than the screen stops at its start: following never pins past the bottom of the user's message it answers, and once the reply runs on, the reader is left browsing there. On by default, switchable in Settings > Chat (Eric, 2026-10-25, #1256, notifier issue 365).
+- A reply longer than the screen stops at its start: following never pins past the user's message it answers, and once the reply runs on, the reader is left browsing there. On by default, switchable in Settings > Chat (Eric, 2026-10-25, #1256, notifier issue 365).
+- The stop puts the user's message at the top, 37 pt below the viewport's top (where a new chat's first message sits), with the reply under it; a message taller than a third of the screen shows its last third. It was the bottom of the message (#1256), which scrolled the message away a line at a time as the reply reached the bottom, and with little room left kept the chat moving for a whole screen of reply (2026-10-29, issue 1436, #1509; the chat scroll's design is Claude's, 2026-09-28).
+- A send, or a turn started on another device, makes room under the message: the transcript's content is at least the stop plus a screen tall, so the message moves to the top in one animated move once that room is laid out (none with Reduce Motion), and the reply streams into the room without moving anything. A short reply ends with empty room under it, as in Claude's and Gemini's apps. The room stays until the hold disarms (the jump button, the title tap, a jump to a question, a session switch, a reader below the reply's start) or the next send, which lands in it and keeps it until the new message has a frame; while the content is no taller than the room, following holds the stop even if the room lags a pass behind a keyboard, a bar or a row shrinking. A send goes to the end before its message reaches the engine, never to the last message's stop, so whichever arrives first the new message lands at the top. Switching Long replies off takes the room away at once. Group rooms, which share the switch, make no room: a room's send still goes to the end, and members' replies arrive whole and land at their top, so the Settings caption names chats for the move to the top. An unread chat opened at its reply makes no room: the reply is already there; it lands with the message at the top when the message is laid out, and with the reply's first row at the top when it isn't (2026-10-29, issue 1436, #1509).
 - The stop never moves the offset up: a reader already below the reply's start (back at its end, or a reply that outgrew the screen before its message was laid out) follows on to the end. It holds at the turn's start, not the answer text, because a turn's steps fold and their summaries arrive below that point (2026-10-25, #1256).
 - What arms it: a send, a new user message from another device, and opening a chat that was unread, which lands at the start of its latest reply once its transcript is in. The jump button, the title tap, a jump to a question and a session switch disarm it (2026-10-25, #1256).
 - Group rooms land a following transcript at the top of the first new member message, and stop following when it doesn't fit (2026-10-25, #1256).
@@ -1818,7 +1866,7 @@ devices)
 - A browsing reader (a chat or a room) is never rebuilt under, so a blank screen there waits until they reach the bottom or reopen the chat.
 - A group room that opens empty scrolls its first events to the end: that batch is usually the room's history arriving, which should open at its newest row, so only events after a row already seen land at a member message's start.
 
-**Checked:** 2026-10-28, #1455 (carrying #1431; following pins when the composer bar's height changes; Code, Rulings, gap); 2026-10-27, #1367 (the blank viewport check counts live rows and runs during a turn, and group rooms have it too; Code, Rulings, gaps); 2026-10-26, #1313 (the stop stays armed, so a reader a shrinking row estimate clamps back to the bottom stops again instead of following the reply to its end; ChatScrollHostedTests in Tests); 2026-10-26, #1290 (the check for another device's message goes by row id; Code); 2026-10-25, at #1270.
+**Checked:** 2026-10-29, #1509 (issue 1436: the stop puts the sent message at the top and the reply streams into room under it; group rooms not needed: their events arrive whole and already land at a member message's top, and the caption names chats for the send's move; Code, Rulings, Tests, Settings caption); 2026-10-28, #1455 (carrying #1431; following pins when the composer bar's height changes; Code, Rulings, gap); 2026-10-27, #1367 (the blank viewport check counts live rows and runs during a turn, and group rooms have it too; Code, Rulings, gaps); 2026-10-26, #1313 (the stop stays armed, so a reader a shrinking row estimate clamps back to the bottom stops again instead of following the reply to its end; ChatScrollHostedTests in Tests); 2026-10-26, #1290 (the check for another device's message goes by row id; Code); 2026-10-25, at #1270.
 
 ## Reconnecting to Hermes
 
@@ -2427,7 +2475,7 @@ notifier (not needed, dictation is app-side)
 **Code**
 - Policy: `Conduit/Voice/ComposerDictationService.swift` (ComposerDictation.holdsSendSlot, slotFace, slotTap; the service's settleGrace, settleCanEnd, slotFace and tapSlot; reserveStart and startToken, which let Cancel call off a start; receive clears isTranscribing once words land)
 - The Stop: `Conduit/Views/Components/ComposerDictationStopButton.swift`
-- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (trailingControl, dictationHoldsSendSlot, submitFromReturnKey, applyDictationRequest for the big voice button, the full editor's buttons)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (trailingControl, dictationHoldsSendSlot, controlsRowShowsDictate, submitFromReturnKey, applyDictationRequest for the big voice button, the full editor's buttons)
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (sendSlot, dictationHoldsSendSlot, isDictationActive, submitFromReturnKey)
 - Tests: `ConduitTests/DictationEngineTests.swift`, `ConduitTests/AppStateVoiceCapabilityTests.swift`
 
@@ -2440,7 +2488,7 @@ notifier (not needed, dictation is app-side)
 - A Hermes upload none of whose words reached the draft can't be cut short: Transcribing waits until the words come or the watchdog ends it with its message. A dropped connection now adds up to about two minutes of retries to that wait, longer when each attempt runs to its timeout, up to the watchdog; Cancel ends it and keeps the recording for Retry (2026-10-27, #1380).
 - Not yet checked on a device: the Stop's width and the swap in the controls row and the full editor, with long translations and large text.
 
-**Checked:** 2026-10-27, at #1385.
+**Checked:** 2026-10-29, #1512 (on a composer that stays expanded, the controls row's mic gives way to a big button set to Dictation, as beside the resting bar; see Composer at rest and expanded); 2026-10-27, at #1385.
 
 ## Hermes dictation kept until transcribed
 
@@ -2664,7 +2712,10 @@ whole plan. [docs/PLAN_CARD.md](PLAN_CARD.md) is the design.
 **Siblings:** the line · the card · the whole-plan sheet · chats, project
 chats and Bot Chat (one chat screen) · group rooms (no plan) · the `todo`
 tool result in the transcript, which draws the same items · VoiceOver's
-reading of the line and its new-plan announcement
+reading of the line and its new-plan announcement · iPhone, iPad and Mac
+(the keyboard rule differs on a Mac and with a hardware keyboard) · the
+classic shell (never reports the composer's focus, so the line never
+keeps to itself there)
 
 **Code**
 - Model: `Conduit/Services/ChatCardsModel.swift` (present, announcement, planRetired), `Conduit/Services/AgentPlan.swift` (AgentPlanTranscript, AgentPlanWindow)
@@ -2677,12 +2728,14 @@ reading of the line and its new-plan announcement
 - Docked at the bottom above the composer, a line that announces a new plan without opening over the chat; the artifact card was dropped (2026-10-23, #1135, Eric).
 - An announced plan is on screen: a new plan, even one that arrives finished after the last one went, clears the hidden state and gets its own 60 s (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
 - The line and the card cap Dynamic Type at accessibility1; the sheet, a scrolling list, takes every size (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
+- The plan keeps to its one line only while an on-screen keyboard can be up: a Mac's composer keeps focus between messages and a hardware keyboard puts it away, so there the line opens whatever the focus, and a tap on the line under the keyboard puts the keyboard away and opens the card (2026-10-29, #1511, issue #1510).
 
 **Open gaps**
 - The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
 - Two announcements within 450 ms race on the pulse (#1135 review).
+- With a hardware keyboard the line opens even if the on-screen keyboard is summoned; the check is for a connected keyboard, not a visible one (#1511 review).
 
-**Checked:** 2026-10-24, at #1208, carried in #1229.
+**Checked:** 2026-10-29, #1511.
 
 ## White text on the accent
 
@@ -3065,7 +3118,7 @@ nightly partition, which runs everything Smoke leaves out · docs/CI.md
 - Lists and caps: `scripts/smoke-suite.json`; validation and the change's own classes: `scripts/plan-tests.py` (`smoke`)
 - Workflow steps: `.github/workflows/ci.yml` (the plan job's selection, the Smoke job's unit and UI steps)
 - UI retry: `scripts/smoke-retry-classes.py`; step summary: `scripts/smoke-summary.py`
-- Nightly partition: `scripts/hosted-suite.json`, `.github/workflows/nightly.yml`
+- Nightly partition: `scripts/hosted-suite.json`, `.github/workflows/nightly.yml`; the app-only overlay its unit shards build: `project-tests.yml`
 - Tests: `scripts/tests/test_ci_workflow_contract.py`, `scripts/tests/test_smoke_job_runner.py`, `scripts/tests/test_hosted_ci.py`
 - Docs: `docs/CI.md`
 
@@ -3073,12 +3126,13 @@ nightly partition, which runs everything Smoke leaves out · docs/CI.md
 - Smoke pins single tests (Class/testMethod), never whole classes, under `max_unit_tests` (70) and `max_ui_tests` (4); `plan-tests.py smoke` fails a whole-class entry, a test its class doesn't declare, a pinned nightly-only timing family and a list over its cap. Add coverage by swapping a test; raising a cap is a deliberate change with its reason in the PR (Eric, 2026-10-29, #1508: whole classes let unit smoke grow from 195 s to 240 s with the list unchanged).
 - The source contracts and the change's own unit classes run whole; a changed class runs in place of the tests pinned from it (2026-10-29, #1508).
 - Everything Smoke leaves out runs every night; the nightly run is the exhaustive authority (CI v5, #739).
+- Smoke builds the full app (`project.yml`) on every PR and push, from the cache main's latest merge saved; the app-only overlay (`project-tests.yml`) is built only by the nightly unit shards and the App Store screenshots capture job (`.github/workflows/app-store-screenshots.yml`). An app-only PR build restored only nightly's cache and recompiled the day's main: 682 s to a finished build against 537 s, medians of 275 runs 2026-10-22..29 (2026-10-29, #1513).
 
 **Open gaps**
 - A changed UI test class doesn't join Smoke: a UI test a PR adds or edits first runs at night. UI tests are the slow ones (36-150 s each) and the list is capped at 4 (2026-10-29, #1508).
 - A changed unit class with no timing baseline is charged 3 s of `changed_budget_s`, and `scripts/test-timings.json` was last seeded in August, so a PR adding several slow new classes isn't held to the budget (2026-10-29, #1508).
 
-**Checked:** 2026-10-29, #1508.
+**Checked:** 2026-10-29, #1513 (Smoke builds the full app); #1508.
 
 ## Settings connection page
 
@@ -3688,7 +3742,7 @@ describes them
 
 **Code**
 - Bar and fade: `Conduit/Views/V2/V2TopBar.swift` (v2EdgeBar, V2SystemScrollEdge, V2LegacyEdgeBar); a screen's backdrop under the fade: `Conduit/Theme.swift` (ConduitBackdrop, ConduitBackdropBehindFade)
-- Composer bars: `Conduit/Views/ChatView.swift` (bottomBar, whose height change tells the scroll engine, see Following the latest message), `Conduit/Views/GroupChatView.swift` (bottomBar)
+- Composer bars: `Conduit/Views/ChatView.swift` (bottomBar, whose height change tells the scroll engine, see Following the latest message), `Conduit/Views/GroupChatView.swift` (bottomBar); the composers in them: `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, resting or expanded per Composer at rest and expanded
 - Tab bar: `Conduit/Views/V2/V2Shell.swift` (tabBarClearance, V2TabBarClearance)
 - Headers: `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2BotsView.swift`, `Conduit/Views/V2/V2TasksView.swift`, `Conduit/Views/CapabilitiesView.swift` (v2EdgeBar(.top)), Settings' home header in `Conduit/Views/AuxiliaryViews.swift` (SettingsView, v2EdgeBar(.top)) with `Conduit/Views/V2/V2SettingsTab.swift` (homeHeader); the Settings sheet's header: `Conduit/Views/Components/ConduitSheetHeader.swift`; a chat's header: `Conduit/Views/ChatView.swift` (V2SoftTopScrollEdge, underChatHeader), also on `Conduit/Views/GroupChatView.swift` and `Conduit/Views/OfflineChatTranscriptView.swift`
 
@@ -3700,7 +3754,7 @@ describes them
 - The Mac fallback isn't confirmed on macOS 27; it waits on the reporter's TestFlight check (#1357).
 - The navigation bar over a chat keeps the system's top edge on a Mac too (`V2SoftTopScrollEdge` in `Conduit/Views/ChatView.swift`; before iOS 26 the transcript fades itself under it, `underChatHeader`): #1357 only showed the bottom. If macOS 27 draws it too tall as well, it moves to the same switch.
 
-**Checked:** 2026-10-29, #1468 (the content fades itself instead of a material behind the bars; Code, Rulings); 2026-10-28, #1455 (carrying #1431; a chat's bar growing keeps a following transcript's end above it; Code); 2026-10-28, #1444; 2026-10-27, #1397.
+**Checked:** 2026-10-29, #1512 (a composer that stays expanded on a Mac or a wide iPad is taller, and the bar takes and reports its height as before; see Composer at rest and expanded); 2026-10-29, #1468 (the content fades itself instead of a material behind the bars; Code, Rulings); 2026-10-28, #1455 (carrying #1431; a chat's bar growing keeps a following transcript's end above it; Code); 2026-10-28, #1444; 2026-10-27, #1397.
 
 ## Readable width on wide windows
 
@@ -3748,7 +3802,7 @@ on top
 **Open gaps**
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-10-29, #1514 (a Mac composer's first frame at the column's height; sheets from the chat column noted in Code). Earlier 2026-10-29, #1503: on a Mac, a column takes 80% of the window and its text, text styles through `scaledFont` included, grows by point size with it. Earlier 2026-10-29, #1498 (a dragged list narrows the chat's column, from #1492; Rulings); 2026-10-29, #1507 (the listed cards' text moved below their caption row, sizes unchanged); 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text; 2026-10-27, #1393; 2026-10-26, #1320.
+**Checked:** 2026-10-29, #1514 (a Mac composer's first frame at the column's height; sheets from the chat column noted in Code). Earlier 2026-10-29, #1512 (the drawer shell's chat column also sets whether its composer stays expanded, composerLayoutFromWidth; see Composer at rest and expanded); #1503: on a Mac, a column takes 80% of the window and its text, text styles through `scaledFont` included, grows by point size with it. Earlier 2026-10-29, #1498 (a dragged list narrows the chat's column, from #1492; Rulings); 2026-10-29, #1507 (the listed cards' text moved below their caption row, sizes unchanged); 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text; 2026-10-27, #1393; 2026-10-26, #1320.
 
 ## A split window's columns fill the window
 

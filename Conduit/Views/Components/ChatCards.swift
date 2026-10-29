@@ -7,12 +7,25 @@
 //  whole card. ChatCardsModel decides when; this only draws it.
 //
 
+import GameController
 import SwiftUI
 
 struct ChatPlanDock: View {
     @ObservedObject var cards: ChatCardsModel
-    /// Someone is typing: the plan keeps to its one line.
+    /// The keyboard is up: the plan keeps to its one line.
     let isCompact: Bool
+
+    /// The composer has focus with the on-screen keyboard up. A Mac has
+    /// none, and its composer keeps focus between messages; a hardware
+    /// keyboard puts it away. There the plan opens whatever the focus
+    /// (issue 1510).
+    static func keepsToLine(
+        composerFocused: Bool,
+        onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac,
+        hardwareKeyboard: Bool = GCKeyboard.coalesced != nil
+    ) -> Bool {
+        composerFocused && !onMac && !hardwareKeyboard
+    }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showsPlanSheet = false
@@ -31,7 +44,16 @@ struct ChatPlanDock: View {
                     )
                     .transition(openTransition)
                 } else {
-                    PlanStrip(plan: plan, pulses: pulses) { cards.setPlanExpanded(true) }
+                    PlanStrip(plan: plan, pulses: pulses) {
+                        cards.setPlanExpanded(true)
+                        // A tap on the line asks for the card: the
+                        // keyboard goes, and the card opens.
+                        if isCompact {
+                            UIApplication.shared.sendAction(
+                                #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
+                            )
+                        }
+                    }
                         .transition(popTransition)
                 }
             }

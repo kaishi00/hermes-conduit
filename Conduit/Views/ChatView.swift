@@ -313,6 +313,9 @@ struct ChatView: View {
     /// typography, while non-chat subtrees keep the `.default` environment
     /// value and today's appearance.
     @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
+    /// Settings > Chat's Long replies switch, so the scroll engine hears a
+    /// change while the chat is open (ChatReplyRoom).
+    @AppStorage(ChatReplyStartPreference.key) private var stopsAtReplyStart = ChatReplyStartPreference.defaultOn
     /// The chat text style (typeface), stored and injected beside the size.
     @AppStorage(ChatTypography.fontStylePreferenceKey) private var chatFontStyleRaw = ChatFontStyle.standard.rawValue
 
@@ -544,6 +547,8 @@ struct ChatView: View {
             }
             .padding(.horizontal, 18)
             .padding(.top, 18)
+            // Room under a sent message for its reply to stream into (#1436).
+            .modifier(ChatReplyRoomFrame(room: scrollEngine.replyRoom))
             .background {
                 GeometryReader { _ in
                     Color.clear.preference(
@@ -588,7 +593,12 @@ struct ChatView: View {
     @ViewBuilder
     private var planDock: some View {
         if appState.showsChatCards {
-            ChatPlanDock(cards: appState.chatCards, isCompact: composerTyping)
+            // composerTyping is V2's focused-composer flag; the classic
+            // shell never sets it, so there the plan never keeps to its line.
+            ChatPlanDock(
+                cards: appState.chatCards,
+                isCompact: ChatPlanDock.keepsToLine(composerFocused: composerTyping)
+            )
         }
     }
 
@@ -667,6 +677,9 @@ struct ChatView: View {
             }
             .onPreferenceChange(ChatScrollRowFramesPreferenceKey.self) { frames in
                 scrollEngine.rowFramesChanged(frames)
+            }
+            .onChange(of: stopsAtReplyStart) { _, _ in
+                scrollEngine.replyStartPreferenceChanged()
             }
             .onPreferenceChange(ChatScrollLiveRowFramesPreferenceKey.self) { frames in
                 scrollEngine.liveRowFramesChanged(frames)
@@ -1162,6 +1175,18 @@ private struct ChatRenderedScrollContentPreferenceKey: PreferenceKey {
         nextValue: () -> ChatRenderedScrollContent?
     ) {
         value = nextValue() ?? value
+    }
+}
+
+/// The transcript's content takes at least the height the scroll engine
+/// asks for while a sent message's reply is on its way, so the message can
+/// sit at the top with the reply streaming in under it (ChatReplyRoom).
+/// Observed here alone, so a change re-runs only this frame.
+private struct ChatReplyRoomFrame: ViewModifier {
+    @ObservedObject var room: ChatReplyRoom
+
+    func body(content: Content) -> some View {
+        content.frame(minHeight: room.minContentHeight, alignment: .top)
     }
 }
 

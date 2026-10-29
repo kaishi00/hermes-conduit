@@ -343320,84 +343320,84 @@
         }
       }
     },
-    "A reply longer than the screen stops at its first line, so you can read it from the top. The arrow button goes to its end." : {
+    "In a chat, your message moves to the top of the screen when you send, and the reply appears under it. A reply longer than the screen stops at its start, so you can read it from the top. The arrow button goes to its end." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eine Antwort, die länger als der Bildschirm ist, hält an ihrer ersten Zeile an, damit du sie von oben lesen kannst. Die Pfeiltaste springt zu ihrem Ende."
+            "value" : "In einem Chat rückt deine Nachricht beim Senden an den oberen Bildschirmrand und die Antwort erscheint darunter. Eine Antwort, die länger als der Bildschirm ist, hält an ihrem Anfang an, damit du sie von oben lesen kannst. Die Pfeiltaste springt zu ihrem Ende."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Una respuesta más larga que la pantalla se detiene en su primera línea, para que puedas leerla desde arriba. El botón de flecha lleva al final."
+            "value" : "En un chat, al enviar, tu mensaje sube a la parte superior de la pantalla y la respuesta aparece debajo. Una respuesta más larga que la pantalla se detiene en su inicio, para que puedas leerla desde arriba. El botón de flecha lleva al final."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Une réponse plus longue que l'écran s'arrête à sa première ligne, pour la lire depuis le début. Le bouton fléché mène à la fin."
+            "value" : "Dans un chat, ton message monte en haut de l'écran à l'envoi et la réponse s'affiche en dessous. Une réponse plus longue que l'écran s'arrête à son début, pour la lire depuis le début. Le bouton fléché mène à la fin."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Balasan yang lebih panjang dari layar berhenti di baris pertamanya, jadi bisa dibaca dari atas. Tombol panah membawa ke bagian akhirnya."
+            "value" : "Di chat, pesanmu naik ke bagian atas layar saat kamu mengirim, dan balasannya muncul di bawahnya. Balasan yang lebih panjang dari layar berhenti di awalnya, jadi bisa dibaca dari atas. Tombol panah membawa ke bagian akhirnya."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Una risposta più lunga dello schermo si ferma alla sua prima riga, così puoi leggerla dall'inizio. Il pulsante con la freccia porta alla fine."
+            "value" : "In una chat, quando invii il tuo messaggio sale in cima allo schermo e la risposta compare sotto. Una risposta più lunga dello schermo si ferma al suo inizio, così puoi leggerla dall'inizio. Il pulsante con la freccia porta alla fine."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "画面より長い返信は最初の行で止まり、上から読めます。矢印ボタンで末尾に移動します。"
+            "value" : "チャットでは、送信するとメッセージが画面の上部に移動し、その下に返信が表示されます。画面より長い返信は冒頭で止まり、上から読めます。矢印ボタンで末尾に移動します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "화면보다 긴 답장은 첫 줄에서 멈춰서 처음부터 읽을 수 있어요. 화살표 버튼을 누르면 끝으로 가요."
+            "value" : "채팅에서는 보내면 내 메시지가 화면 맨 위로 올라가고 그 아래에 답장이 나타나요. 화면보다 긴 답장은 시작 부분에서 멈춰서 처음부터 읽을 수 있어요. 화살표 버튼을 누르면 끝으로 가요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Odpowiedź dłuższa niż ekran zatrzymuje się na pierwszym wierszu, więc można ją czytać od początku. Przycisk ze strzałką przenosi na jej koniec."
+            "value" : "W czacie po wysłaniu twoja wiadomość przesuwa się na górę ekranu, a odpowiedź pojawia się pod nią. Odpowiedź dłuższa niż ekran zatrzymuje się na swoim początku, więc można ją czytać od początku. Przycisk ze strzałką przenosi na jej koniec."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Uma resposta maior que a tela para na primeira linha, para você ler desde o início. O botão de seta leva ao fim."
+            "value" : "Em um chat, ao enviar, sua mensagem sobe para o topo da tela e a resposta aparece embaixo dela. Uma resposta maior que a tela para no início, para você ler desde o começo. O botão de seta leva ao fim."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ответ длиннее экрана останавливается на первой строке, чтобы его можно было читать с начала. Кнопка со стрелкой переносит в конец."
+            "value" : "В чате после отправки ваше сообщение поднимается к верху экрана, а ответ появляется под ним. Ответ длиннее экрана останавливается на своём начале, чтобы его можно было читать с начала. Кнопка со стрелкой переносит в конец."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ekrandan uzun bir yanıt ilk satırında durur, böylece baştan okunabilir. Ok düğmesi sonuna götürür."
+            "value" : "Bir sohbette gönderdiğinde mesajın ekranın üstüne çıkar ve yanıt altında görünür. Ekrandan uzun bir yanıt başında durur, böylece baştan okunabilir. Ok düğmesi sonuna götürür."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "比屏幕更长的回复会停在第一行，方便从头阅读。点按箭头按钮可跳到末尾。"
+            "value" : "在聊天中，发送后你的消息会移到屏幕顶部，回复显示在它下方。比屏幕更长的回复会停在开头，方便从头阅读。点按箭头按钮可跳到末尾。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "比螢幕更長的回覆會停在第一行，方便從頭閱讀。點一下箭頭按鈕可跳到結尾。"
+            "value" : "在聊天中，傳送後你的訊息會移到螢幕頂端，回覆顯示在它下方。比螢幕更長的回覆會停在開頭，方便從頭閱讀。點一下箭頭按鈕可跳到結尾。"
           }
         }
       }
