@@ -134,9 +134,13 @@ def branches(argument):
 
 def without_comment(line):
     """The line up to a `//` comment outside a string literal."""
-    quoted = False
+    quoted, escaped = False, False
     for index, char in enumerate(line):
-        if char == '"' and (index == 0 or line[index - 1] != "\\"):
+        if escaped:
+            escaped = False
+        elif quoted and char == "\\":
+            escaped = True
+        elif char == '"':
             quoted = not quoted
         elif not quoted and line.startswith("//", index):
             return line[:index]

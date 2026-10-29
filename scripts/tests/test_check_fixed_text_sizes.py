@@ -115,6 +115,8 @@ class TextStyleFontTests(unittest.TestCase):
         Text(line).font(lineFont)
         let font = ChatTypography.font(for: .body, appearance: chatTextSize)
         // .font(.caption) in a comment
+        Text("\\\\") // .font(.caption) after an escaped backslash
+        Text("say \\"hi\\"") // .font(.caption) after escaped quotes
         """), [])
 
     def test_a_stated_reason_exempts_the_font(self):
