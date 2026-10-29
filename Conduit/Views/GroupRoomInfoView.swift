@@ -21,6 +21,12 @@ struct GroupRoomInfoSheet: View {
     @State private var working = false
     /// A refusal's title and the plugin's words.
     @State private var refusal: (title: String, message: String)?
+    /// Whether the sheet is still up, for a room chat that fails after Done.
+    @State private var presence = Presence()
+
+    private final class Presence {
+        var shown = true
+    }
 
     var body: some View {
         NavigationStack {
@@ -76,6 +82,8 @@ struct GroupRoomInfoSheet: View {
             }
             .navigationTitle(appState.activeRoomSurface?.room.name ?? AppLocalization.string("Group Info"))
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear { presence.shown = true }
+            .onDisappear { presence.shown = false }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(AppLocalization.string("Done")) { dismiss() }
@@ -164,7 +172,7 @@ extension GroupRoomInfoSheet {
     private func openRoomChat(with agent: RoomChatAgent, wrapUp: Bool) {
         working = true
         Task { @MainActor in
-            let failure = await appState.openRoomChat(with: agent, wrapUp: wrapUp)
+            let failure = await appState.openRoomChat(with: agent, wrapUp: wrapUp) { [presence] in presence.shown }
             working = false
             if let failure {
                 Haptics.error()

@@ -27,6 +27,8 @@ extension GroupChatModelsTests {
         var kept: [RoomChat] = []
         var failsChats = false
         var failsRegister = false
+        /// The id Hermes keeps a new chat by (none from a Hermes that didn't say).
+        var storedID: String? = "new-chat"
         /// What each open answers, by chat id (opened when unset).
         var opens: [String: RoomChatOpenOutcome] = [:]
         private(set) var log: [String] = []
@@ -40,15 +42,15 @@ extension GroupChatModelsTests {
                 },
                 create: { [unowned self] profile in
                     self.log.append("create \(profile)")
-                    return "new-chat"
+                    return ("run-new", self.storedID)
                 },
                 register: { [unowned self] roomID, chatID, profile in
                     self.log.append("register \(roomID) \(chatID) \(profile)")
                     if self.failsRegister { throw HermesError.invalidResponse }
                     return RoomChat(roomID: roomID, chatID: chatID, notesSeq: 7)
                 },
-                title: { [unowned self] chatID, profile, title in
-                    self.log.append("title \(chatID) \(title)")
+                title: { [unowned self] runtimeID, profile, title in
+                    self.log.append("title \(runtimeID) \(title)")
                 },
                 open: { [unowned self] chatID, profile, title in
                     self.log.append("open \(chatID) \(profile)")
@@ -138,7 +140,7 @@ extension GroupChatModelsTests {
             "chats research",
             "create research",
             "register conduit-9 new-chat research",
-            "title new-chat \(RoomChatText.chatTitle("Zoo trip"))",
+            "title run-new \(RoomChatText.chatTitle("Zoo trip"))",
             "open new-chat research",
         ])
         XCTAssertEqual(RoomChatText.chatTitle(" Zoo trip "), AppLocalization.string("About \("Zoo trip")"))
@@ -157,7 +159,7 @@ extension GroupChatModelsTests {
         XCTAssertEqual(steps.log.suffix(4), [
             "create default",
             "register conduit-9 new-chat default",
-            "title new-chat \(RoomChatText.chatTitle("Zoo trip"))",
+            "title run-new \(RoomChatText.chatTitle("Zoo trip"))",
             "open new-chat default",
         ])
     }
@@ -196,6 +198,18 @@ extension GroupChatModelsTests {
         XCTAssertFalse(unregistered.log.contains { $0.hasPrefix("open") })
         // Nor titled: untitled and unwritten, it's a lazy row Hermes prunes, not a stray chat.
         XCTAssertFalse(unregistered.log.contains { $0.hasPrefix("title") })
+    }
+
+    @MainActor
+    func testANewChatHermesGaveNoStoredIDIsNeverTheRooms() async throws {
+        let steps = RoomChatSteps()
+        steps.storedID = nil
+        do {
+            _ = try await steps.opener.run(roomID: "conduit-9", roomName: "Zoo trip", profile: "default", wrapUp: true)
+            XCTFail("a chat known only by the id it runs under can't be the room's")
+        } catch {}
+        // Its runtime id names nothing once it closes: never registered, titled, opened or sent to.
+        XCTAssertEqual(steps.log, ["chats default", "create default"])
     }
 
     @MainActor
