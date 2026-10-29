@@ -461,7 +461,7 @@ no Settings caption or doc describes it
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1456 (rows match the open chat by its aliases); 2026-10-27, added at #1371.
+**Checked:** 2026-10-29, #1492 (tabs() gained the bar's width under a widened list; what shows beside the list is unchanged); 2026-10-28, #1456 (rows match the open chat by its aliases); 2026-10-27, added at #1371.
 
 ## A new chat in the list
 
@@ -1341,7 +1341,7 @@ README.md
 **Open gaps**
 - Group rooms have no Artifacts: a path tapped in a room opens the Folder on its own, at the projects' folders.
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1407 with notifier #431 and its follow-up; 2026-10-27, #1399 with notifier #431.
+**Checked:** 2026-10-29, #1492 (ChatSidePanel's width drags; the Folder in it is unchanged); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1407 with notifier #431 and its follow-up; 2026-10-27, #1399 with notifier #431.
 
 ## Bots: create and edit
 
@@ -3645,7 +3645,7 @@ layout)
 - Under a widened list the tab bar keeps its width, centered under the list's column (2026-10-29, #1492).
 - A window with room for Artifacts beside a chat at the list's standard width keeps that room whatever the list's width, the panel open or not: widening the list never hides the panel or its toggle, and the list doesn't jump as a chat or the panel opens. The list's most is then the window less 772 pt: 408 pt on a 1180 pt iPad in landscape, 422 pt on an 11-inch's 1194 pt, the full 560 pt on a maximized Mac. Artifacts beside the chat then reaches the window less the list and 431 pt: about 373 pt on 1180 pt, 387 pt on 1194 pt (2026-10-29, #1492, from review).
 - A drag lays the column out at its live width and stores it once, when the drag ends or is cancelled: every defaults write redraws each `@AppStorage` view. A press that doesn't move the line (under 4 pt) keeps the stored width, which a smaller window may show less of (2026-10-29, #1492, from review).
-- The caption shows only where there is a line: the list beside the chat (V2), the persistent sidebar on (the drawer shell) (2026-10-29, #1492, from review).
+- The caption shows only with the setting that puts a line on a wide window: the list set beside the chat (V2), the persistent sidebar on (the drawer shell); a window too narrow to split still shows it (2026-10-29, #1492, from review).
 
 **Open gaps**
 - No resize cursor on a Mac: a Designed-for-iPad app can't set one from SwiftUI on iOS 17, so the line highlights on hover and a tooltip names it.
