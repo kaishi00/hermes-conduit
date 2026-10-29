@@ -28,6 +28,8 @@ extension GroupChatModelsTests {
         var failsChats = false
         var failsRegister = false
         var failsTitle = false
+        /// The titles the profile already has.
+        var takenTitles: Set<String> = []
         /// The id Hermes keeps a new chat by (none from a Hermes that didn't say).
         var storedID: String? = "new-chat"
         /// What each open answers, by chat id (opened when unset).
@@ -53,12 +55,13 @@ extension GroupChatModelsTests {
                 title: { [unowned self] runtimeID, profile, title in
                     self.log.append("title \(runtimeID) \(title)")
                     if self.failsTitle { throw HermesError.invalidResponse }
+                    if self.takenTitles.contains(title) { throw RpcError(code: 4022, message: "title already in use") }
                 },
                 open: { [unowned self] chatID, profile, title in
                     self.log.append("open \(chatID) \(profile)")
                     return self.opens[chatID] ?? .opened
                 },
-                send: { [unowned self] text in
+                send: { [unowned self] _, text in
                     self.log.append("send \(text)")
                     return true
                 }
@@ -225,6 +228,33 @@ extension GroupChatModelsTests {
         // Registered, so the next try finds it gone and replaces it.
         XCTAssertEqual(steps.log.last, "title run-new \(RoomChatText.chatTitle("Zoo trip"))")
         XCTAssertFalse(steps.log.contains { $0.hasPrefix("open") || $0.hasPrefix("send") })
+    }
+
+    @MainActor
+    func testANewChatTakesTheNextFreeTitle() async throws {
+        let steps = RoomChatSteps()
+        let title = RoomChatText.chatTitle("Zoo trip")
+        steps.takenTitles = [title, "\(title) (2)"]
+
+        let outcome = try await steps.opener.run(roomID: "conduit-9", roomName: "Zoo trip", profile: "default",
+                                                 wrapUp: false)
+
+        XCTAssertEqual(outcome, .opened)
+        XCTAssertEqual(steps.log.suffix(4), [
+            "title run-new \(title)",
+            "title run-new \(title) (2)",
+            "title run-new \(title) (3)",
+            "open new-chat default",
+        ])
+
+        // Only so many tries: then it says why, and nothing opens.
+        let full = RoomChatSteps()
+        full.takenTitles = Set((1...RoomChatOpener.titleTries).map { $0 == 1 ? title : "\(title) (\($0))" })
+        do {
+            _ = try await full.opener.run(roomID: "conduit-9", roomName: "Zoo trip", profile: "default", wrapUp: false)
+            XCTFail("no free title")
+        } catch {}
+        XCTAssertFalse(full.log.contains { $0.hasPrefix("open") })
     }
 
     @MainActor

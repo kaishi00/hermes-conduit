@@ -22854,8 +22854,9 @@ final class AppState: ObservableObject {
         switch outcome {
         case .opened: return .opened
         case .failed:
-            // A chat link refused for a call that started meanwhile is no answer about the chat.
-            guard !isVoiceCallInProgress else { return .failed }
+            // Gone only once the route reached the chat's profile and Hermes refused it there: a dashboard
+            // that couldn't be reached, or a call that started meanwhile, is no answer about the chat.
+            guard !isVoiceCallInProgress, profilesMatch(profile, activeProfile) else { return .failed }
             errorMessage = shownError
             return .gone
         case .retry, .unverified, .afterCall: return .failed

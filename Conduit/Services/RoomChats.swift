@@ -113,8 +113,15 @@ struct RoomChatOpener {
     var title: (_ runtimeID: String, _ profile: String, _ title: String) async throws -> Void
     /// Opens the chat on screen.
     var open: (_ chatID: String, _ profile: String, _ title: String) async -> RoomChatOpenOutcome
-    /// Sends a message in the chat on screen.
-    var send: (_ text: String) async -> Bool
+    /// Sends a message in the chat, while it's the one on screen.
+    var send: (_ chatID: String, _ text: String) async -> Bool
+    /// Whether a title write was refused for a title the profile already
+    /// has: Hermes keeps titles unique per profile, so two rooms of one
+    /// name, or a replaced chat that's still there, take the next number.
+    var titleTaken: (Error) -> Bool = BotChatTitleCollision.isError
+
+    /// Tries for a free title before giving up.
+    static let titleTries = 5
 
     /// A chat the plugin keeps that Hermes no longer has is replaced by a
     /// new one; one that didn't open for another reason stays the room's.
@@ -138,13 +145,33 @@ struct RoomChatOpener {
             _ = try await register(roomID, chatID, profile)
             // Untitled, it's a lazy row its stored id doesn't open yet: the next try finds it gone and
             // replaces it, as a Bot Chat whose title didn't land isn't opened either.
-            try await self.title(created.runtimeID, profile, title)
-            outcome = await open(chatID, profile, title)
+            let taken = try await freeTitle(created.runtimeID, profile: profile, title: title)
+            outcome = await open(chatID, profile, taken)
+            if outcome == .opened, wrapUp {
+                _ = await send(chatID, RoomChatText.wrapUpPrompt)
+            }
+            return outcome
         }
-        if outcome == .opened, wrapUp {
-            _ = await send(RoomChatText.wrapUpPrompt)
+        if outcome == .opened, wrapUp, let kept {
+            _ = await send(kept.chatID, RoomChatText.wrapUpPrompt)
         }
         return outcome
+    }
+
+    /// Titles the new chat `title`, else "`title` (2)" and on while the
+    /// profile has the title already: the title it took.
+    @MainActor
+    private func freeTitle(_ runtimeID: String, profile: String, title: String) async throws -> String {
+        for number in 1...Self.titleTries {
+            let candidate = number == 1 ? title : "\(title) (\(number))"
+            do {
+                try await self.title(runtimeID, profile, candidate)
+                return candidate
+            } catch {
+                guard number < Self.titleTries, titleTaken(error) else { throw error }
+            }
+        }
+        throw HermesError.invalidResponse
     }
 }
 
@@ -259,8 +286,11 @@ extension AppState {
                 guard let self else { return .failed }
                 return await self.openRoomChatSession(chatID, profile: profile, title: title)
             },
-            send: { [weak self] text in
+            send: { [weak self] chatID, text in
                 guard let self else { return false }
+                // Only into the room's chat: another chat opened meanwhile gets nothing.
+                guard let active = self.activeSessionId,
+                      active == chatID || self.chatOwnSessionIDs(for: active).contains(chatID) else { return false }
                 // A chat still settling on screen, or with a turn running, takes it into its composer, to
                 // send: Wrap Up never steers, queues or interrupts by the busy setting.
                 let shown = self.errorMessage
