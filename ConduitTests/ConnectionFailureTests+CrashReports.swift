@@ -99,6 +99,8 @@ extension ConnectionFailureTests {
         XCTAssertEqual(queue.pending, (2..<7).map { "diagnostics-\($0).json" })
         queue.remove(["diagnostics-2.json"])
         XCTAssertEqual(queue.pending.count, 4)
+        XCTAssertTrue(queue.firstLookAtStoredReports())
+        XCTAssertFalse(queue.firstLookAtStoredReports())
         queue.stopOffering()
         queue.add("diagnostics-9.json")
         XCTAssertTrue(queue.pending.isEmpty, "a relay without the route: this build offers nothing more")
