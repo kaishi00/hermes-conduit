@@ -509,7 +509,23 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
             MXMetricManager.shared.add(self)
             let manager = MXMetricManager.shared
             receive(metrics: manager.pastPayloads, diagnostics: manager.pastDiagnosticPayloads)
+            if queueStoredCrashReports() {
+                Task { @MainActor in await CrashReportOffer.shared.refresh() }
+            }
         }
+    }
+
+    /// Once per device: the crashes and hangs from the last week that a
+    /// build before the card kept, since iOS doesn't hand them over again.
+    func queueStoredCrashReports(now: Date = Date()) -> Bool {
+        guard crashReports.firstLookAtStoredReports() else { return false }
+        var queued = false
+        for entry in store.entries(.diagnostics) where now.timeIntervalSince(entry.end) < CrashReportUpload.maxAge {
+            guard let data = try? Data(contentsOf: entry.url), CrashReportUpload.kind(ofPayloadJSON: data) != nil else { continue }
+            crashReports.add(entry.url.lastPathComponent)
+            queued = true
+        }
+        return queued
     }
 
     /// What Diagnostics & logs shows: the summary and the share file, or

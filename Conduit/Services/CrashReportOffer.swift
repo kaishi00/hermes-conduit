@@ -86,6 +86,14 @@ enum CrashReportUpload {
         ]
     }
 
+    /// When a stored diagnostic's span ended, from its file name
+    /// (MetricKitReportStore: kind-begin-end-hash.json).
+    static func end(ofFileName name: String) -> Date? {
+        let parts = (name as NSString).deletingPathExtension.split(separator: "-")
+        guard parts.count == 4, let seconds = TimeInterval(parts[2]) else { return nil }
+        return Date(timeIntervalSince1970: seconds)
+    }
+
     /// "iPhone17,2".
     static var deviceModel: String {
         var info = utsname()
@@ -181,6 +189,7 @@ struct CrashReportQueue {
     /// The build that found the relay taking no reports: that build offers
     /// none, and the next one asks again.
     static let unsupportedKey = "conduit.crashReports.unsupportedBuild"
+    static let storedKey = "conduit.crashReports.lookedAtStored"
     private static let lock = NSLock()
     var defaults: UserDefaults = .standard
     var build: String = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
@@ -203,6 +212,16 @@ struct CrashReportQueue {
     }
 
     func clear() { change { names in names = [] } }
+
+    /// True the first time it's asked on this device, for the reports kept
+    /// before the card existed.
+    func firstLookAtStoredReports() -> Bool {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+        guard !defaults.bool(forKey: Self.storedKey) else { return false }
+        defaults.set(true, forKey: Self.storedKey)
+        return true
+    }
 
     /// Conduit's relay doesn't take reports: drop these, and offer no more
     /// from this build.
@@ -280,12 +299,12 @@ final class CrashReportOffer: ObservableObject {
         // A second tap while sending sends nothing twice.
         guard state != .sending else { return }
         state = .sending
-        let reports = await pendingReports()
+        // The reports the card asked about, not one that came in since.
+        let reports = await pendingReports(named: shown)
         guard !reports.isEmpty else {
             state = .hidden
             return
         }
-        shown = reports.map(\.fileName)
         var sent: [String] = []
         var failed = false
         for report in reports {
@@ -318,17 +337,25 @@ final class CrashReportOffer: ObservableObject {
         let body: [String: Any]
     }
 
-    /// Pending reports whose files are still kept, read off the main
-    /// thread (a diagnostic can run to megabytes); one gone, unreadable or
-    /// too big leaves the queue.
-    private func pendingReports() async -> [Report] {
-        let names = queue.pending
+    /// Pending reports (only those named, when given) whose files are kept
+    /// and from the last week, read off the main thread (a diagnostic can
+    /// run to megabytes). One gone, too old, or not a report that can be
+    /// sent leaves the queue; one that can't be read just now stays.
+    private func pendingReports(named only: [String]? = nil) async -> [Report] {
+        let names = queue.pending.filter { only?.contains($0) ?? true }
         let directory = directory
         let (reports, gone) = await Task.detached(priority: .utility) { () -> ([Report], [String]) in
             var gone: [String] = []
             let reports: [Report] = names.compactMap { name in
-                guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
-                      let kind = CrashReportUpload.kind(ofPayloadJSON: data),
+                let url = directory.appendingPathComponent(name)
+                guard FileManager.default.fileExists(atPath: url.path),
+                      let end = CrashReportUpload.end(ofFileName: name),
+                      Date().timeIntervalSince(end) < CrashReportUpload.maxAge else {
+                    gone.append(name)
+                    return nil
+                }
+                guard let data = try? Data(contentsOf: url) else { return nil }
+                guard let kind = CrashReportUpload.kind(ofPayloadJSON: data),
                       let body = CrashReportUpload.body(fromPayloadJSON: data) else {
                     gone.append(name)
                     return nil

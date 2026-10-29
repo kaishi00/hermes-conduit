@@ -127,22 +127,49 @@ extension ConnectionFailureTests {
         XCTAssertEqual(CrashReportQueue(defaults: defaults).pending.count, 1)
     }
 
+    func testStoredCrashReportsQueueOnceOnFirstLook() {
+        let defaults = crashDefaults()
+        let store = MetricKitReportStore(directory: crashDirectory())
+        let reports = MetricKitReports(store: store, crashReports: CrashReportQueue(defaults: defaults))
+        let now = Date(timeIntervalSince1970: 1_793_000_000)
+        store.save(diagnosticJSON(), kind: .diagnostics, begin: now.addingTimeInterval(-7200), end: now.addingTimeInterval(-3600))
+        store.save(diagnosticJSON(crashes: 0, hangs: 1), kind: .diagnostics, begin: now.addingTimeInterval(-9 * 86_400), end: now.addingTimeInterval(-8 * 86_400))
+        store.save(diagnosticJSON(crashes: 0, hangs: 0, cpu: 1), kind: .diagnostics, begin: now.addingTimeInterval(-600), end: now.addingTimeInterval(-60))
+        XCTAssertTrue(reports.queueStoredCrashReports(now: now))
+        XCTAssertEqual(CrashReportQueue(defaults: defaults).pending.count, 1, "the recent crash only")
+        CrashReportQueue(defaults: defaults).clear()
+        XCTAssertFalse(reports.queueStoredCrashReports(now: now), "once per device")
+        XCTAssertTrue(CrashReportQueue(defaults: defaults).pending.isEmpty)
+    }
+
     @MainActor
     func testCrashReportOfferSendsOrStopsAsking() async throws {
         CrashReportStubProtocol.status = 201
         CrashReportStubProtocol.paths = []
         let directory = crashDirectory()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try diagnosticJSON().write(to: directory.appendingPathComponent("diagnostics-1-2-abc.json"))
+        let recent = Int(Date().timeIntervalSince1970) - 3600
+        let name = "diagnostics-\(recent - 60)-\(recent)-abc.json"
+        try diagnosticJSON().write(to: directory.appendingPathComponent(name))
+        let old = "diagnostics-1-2-abc.json"
+        try diagnosticJSON().write(to: directory.appendingPathComponent(old))
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CrashReportStubProtocol.self]
         let session = URLSession(configuration: configuration)
         let relay = URL(string: "https://relay.example")!
 
-        // Not now: asked once.
+        // A week old by the time it would show: dropped, not offered.
         var defaults = crashDefaults()
-        CrashReportQueue(defaults: defaults).add("diagnostics-1-2-abc.json")
+        CrashReportQueue(defaults: defaults).add(old)
         var offer = CrashReportOffer(queue: CrashReportQueue(defaults: defaults), directory: directory, relayURL: relay, session: session)
+        await offer.refresh()
+        XCTAssertEqual(offer.state, .hidden)
+        XCTAssertTrue(CrashReportQueue(defaults: defaults).pending.isEmpty)
+
+        // Not now: asked once.
+        defaults = crashDefaults()
+        CrashReportQueue(defaults: defaults).add(name)
+        offer = CrashReportOffer(queue: CrashReportQueue(defaults: defaults), directory: directory, relayURL: relay, session: session)
         await offer.refresh()
         XCTAssertEqual(offer.state, .asking(crashed: true))
         offer.dismiss()
@@ -152,7 +179,7 @@ extension ConnectionFailureTests {
 
         // Send: posted to the relay's route, then thanked.
         defaults = crashDefaults()
-        CrashReportQueue(defaults: defaults).add("diagnostics-1-2-abc.json")
+        CrashReportQueue(defaults: defaults).add(name)
         offer = CrashReportOffer(queue: CrashReportQueue(defaults: defaults), directory: directory, relayURL: relay, session: session, thanksFor: .zero)
         await offer.refresh()
         CrashReportStubProtocol.status = 201
@@ -164,7 +191,7 @@ extension ConnectionFailureTests {
 
         // A refused post keeps the report for Try Again.
         defaults = crashDefaults()
-        CrashReportQueue(defaults: defaults).add("diagnostics-1-2-abc.json")
+        CrashReportQueue(defaults: defaults).add(name)
         offer = CrashReportOffer(queue: CrashReportQueue(defaults: defaults), directory: directory, relayURL: relay, session: session)
         await offer.refresh()
         CrashReportStubProtocol.status = 503
