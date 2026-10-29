@@ -3908,25 +3908,25 @@ card shows when the app is next opened), the widgets and the share extension
 
 **Code**
 - Offer and upload: `Conduit/Services/CrashReportOffer.swift` (CrashReportUpload: what a report sends; CrashReportQueue; CrashReportOffer)
-- Which diagnostics are offered: `Conduit/Services/MetricKitReports.swift` (queueCrashReport)
+- Which diagnostics are offered: `Conduit/Services/MetricKitReports.swift` (queueCrashReport; MetricKitReportStore.save, normalized and shallowed, which keep a stack overflow's payload readable)
 - Card: `Conduit/Views/CrashReportBanner.swift`, shown by `Conduit/Views/RootView.swift` (MainView's top overlay)
 - Settings caption: `Conduit/Views/ChatSupportSheets.swift` (DeviceReportsSection)
 - Relay: `notifier/relay/src/crash-reports.mjs`, `notifier/relay/test/crash-reports.test.mjs`; privacy: `notifier/docs/privacy/index.html`
 - Privacy manifest: `Conduit/PrivacyInfo.xcprivacy`, `ConduitTests/PrivacyManifestTests.swift`
-- Tests: `ConduitTests/ConnectionFailureTests+CrashReports.swift`
+- Tests: `ConduitTests/ConnectionFailureTests+CrashReports.swift`, `ConduitTests/ConnectionFailureTests+MetricKit.swift` (testMetricKitSaveKeepsAStackThatOverflowed)
 
 **Rulings**
 - Ask once, upload to the relay: Not now drops the report from the offer (it stays in Diagnostics & logs), and nothing is sent without Send (2026-10-29, Eric chose it in the TestFlight crashes thread; #1477, notifier #459).
 - A report is the diagnostic's crashes and hangs only, with the version, build, iOS version and device model; an exception's composed message and arguments are left out, since they can quote anything. It goes to the developer's relay (`push.milim.dev`) even when the user's notifications use another relay, and carries no installation credential (#1477, notifier #459).
 - Only a crash or hang from the last 7 days is offered, checked again when the card would show, the newest 5 at most, and one too big to send even trimmed to its first crash and hang is not. Those an earlier build kept are queued once per device, on the first launch with the card. Send sends only the reports the card asked about. A relay that answers 404 (no `CRASH_REPORTS_TOKEN`) stops the offers from that build on that device; what's still queued waits for the next build, so a build that ships before the relay route is deployed loses nothing, and a report declined or sent isn't asked about again. The look at reports earlier builds kept waits for a launch that can list the folder and finds none or reads at least one of them (locked files before first unlock fail together); a single file that can't be read is skipped (part of the ask-once design Eric delegated in the TestFlight crashes thread, 2026-10-29; #1477).
-- A report is built from named keys only (the diagnostic's metadata, exception and stack frames); a key MetricKit adds later stays on the phone until it's named (#1477).
+- A report is built from named keys only (the diagnostic's metadata, exception and stack frames); a key MetricKit adds later stays on the phone until it's named (#1477). A stack keeps its first 240 levels (one that overflowed can nest thousands, which would overflow the walk too, and JSONSerialization reads and writes nothing nested past 512, which a sent level-L frame is at 7 + 2L), and the relay keeps at most 512 frame levels. The stored payload has every container 500 deep emptied, so a stack overflow's crash is kept and offered rather than refused as unreadable (MetricKit's root frame is the one that was running and its subFrames lead out toward the thread's entry, so the crash site is what's kept: a real crash payload posted on Apple's developer forums, attachment 18fdc26d-396d-4950-950f-e4d2dffa25cc, nests libsystem_kernel, CoreFoundation, GraphicsServices, UIKitCore, the app, then dyld, root first). Both numbers are Claude's pick, under the ask-once design Eric delegated in the TestFlight crashes thread, after the 0.24.0 deploy, 2026-10-29; Eric hasn't ruled on them (#1505, notifier #469).
 
 **Open gaps**
 - A kill for memory (jetsam) leaves no MetricKit diagnostic, so a freeze that ends that way is never offered.
 - MetricKit may hold diagnostics back on a device that doesn't share analytics with developers.
 - App Store Connect's privacy label doesn't yet list Crash Data and Performance Data (not linked, not tracked), which the privacy manifest now declares; the maintainer updates it before the next App Store submission.
 
-**Checked:** 2026-10-29, #1481.
+**Checked:** 2026-10-29, #1505.
 
 ## Feature map rules
 
