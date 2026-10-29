@@ -2892,12 +2892,12 @@ private struct ReviewSummaryCard: View {
                             .foregroundStyle(.conduitAura)
                             .frame(width: 28, height: 28)
                             .background(Color.conduitAura.opacity(0.14), in: Circle())
-                        Text("SELF-IMPROVEMENT REVIEW")
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.6)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        CardHeaderTimestamp(timestamp: timestamp)
+                        CardHeaderCaption(timestamp: timestamp) {
+                            Text("SELF-IMPROVEMENT REVIEW")
+                                .font(.caption2.weight(.bold))
+                                .tracking(0.6)
+                                .foregroundStyle(.secondary)
+                        }
                         if !details.isEmpty {
                             Image(systemName: expanded ? "chevron.up" : "chevron.down")
                                 .font(.caption.weight(.semibold))
@@ -2971,12 +2971,12 @@ private struct ModelChangeSummaryCard: View {
                     .foregroundStyle(.conduitAccent)
                     .frame(width: 28, height: 28)
                     .background(Color.conduitAccent.opacity(0.14), in: Circle())
-                Text("MODEL UPDATED")
-                    .font(.caption2.weight(.bold))
-                    .tracking(0.6)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                CardHeaderTimestamp(timestamp: timestamp)
+                CardHeaderCaption(timestamp: timestamp) {
+                    Text("MODEL UPDATED")
+                        .font(.caption2.weight(.bold))
+                        .tracking(0.6)
+                        .foregroundStyle(.secondary)
+                }
             }
             SelectableTextView(
                 text: AppLocalization.string("Model has been changed to \(provider)/\(model)"),
@@ -3208,16 +3208,26 @@ private struct MessageTimestampLabel: View {
     }
 }
 
-/// The time in an activity card's top row, right of its caption (#1440).
-/// It keeps its one line; a long caption wraps beside it instead, and the
-/// card's text runs the full width below the row.
-private struct CardHeaderTimestamp: View {
+/// An activity card's caption with its time on the right (#1440); the
+/// card's text runs the full width below the row. The time keeps its one
+/// line, so a long caption wraps beside it, and at the accessibility text
+/// sizes the time goes under the caption, as on VoiceJobLinkCard.
+private struct CardHeaderCaption<Caption: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let timestamp: String
+    @ViewBuilder let caption: Caption
 
     var body: some View {
-        MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
-            .lineLimit(1)
-            .fixedSize()
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+            : AnyLayout(HStackLayout(spacing: 8))
+        layout {
+            caption
+                .frame(maxWidth: .infinity, alignment: .leading)
+            MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
+                .lineLimit(1)
+                .fixedSize()
+        }
     }
 }
 
@@ -3616,11 +3626,12 @@ struct ClarifyCard: View {
                     HStack(spacing: 8) {
                         Image(systemName: "questionmark.bubble")
                             .foregroundStyle(.orange)
-                        Text(statusTitle(for: displayStatus))
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.5)
-                            .foregroundStyle(statusColor(for: displayStatus))
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        CardHeaderCaption(timestamp: message.timestamp) {
+                            Text(statusTitle(for: displayStatus))
+                                .font(.caption2.weight(.bold))
+                                .tracking(0.5)
+                                .foregroundStyle(statusColor(for: displayStatus))
+                        }
                         if displayStatus == .submitting {
                             ProgressView().controlSize(.small)
                         } else if displayStatus == .answered,
@@ -3631,7 +3642,6 @@ struct ClarifyCard: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
                         }
-                        CardHeaderTimestamp(timestamp: message.timestamp)
                     }
                     SelectableTextView(
                         text: layout.headerText(for: clarify),
@@ -4261,11 +4271,12 @@ struct ApprovalCard: View {
                         Image(systemName: "checkmark.shield")
                             .foregroundStyle(statusColor(for: approval.status))
                             .accessibilityHidden(true)
-                        Text(statusTitle(for: approval.status))
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.5)
-                            .foregroundStyle(statusColor(for: approval.status))
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        CardHeaderCaption(timestamp: message.timestamp) {
+                            Text(statusTitle(for: approval.status))
+                                .font(.caption2.weight(.bold))
+                                .tracking(0.5)
+                                .foregroundStyle(statusColor(for: approval.status))
+                        }
                         if approval.status == .submitting {
                             ProgressView().controlSize(.small)
                         } else if approval.status == .approved || approval.status == .rejected {
@@ -4276,7 +4287,6 @@ struct ApprovalCard: View {
                                 .foregroundStyle(.secondary)
                                 .accessibilityHidden(true)
                         }
-                        CardHeaderTimestamp(timestamp: message.timestamp)
                     }
                     SelectableTextView(
                         text: ApprovalDisplayText.revealingHidden(approval.description),
@@ -4484,11 +4494,12 @@ struct InputPromptCard: View {
                         Image(systemName: iconName(for: prompt.kind))
                             .foregroundStyle(statusColor(for: prompt.status))
                             .accessibilityHidden(true)
-                        Text(statusTitle(for: prompt.status))
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.5)
-                            .foregroundStyle(statusColor(for: prompt.status))
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        CardHeaderCaption(timestamp: message.timestamp) {
+                            Text(statusTitle(for: prompt.status))
+                                .font(.caption2.weight(.bold))
+                                .tracking(0.5)
+                                .foregroundStyle(statusColor(for: prompt.status))
+                        }
                         if prompt.status == .submitting {
                             ProgressView().controlSize(.small)
                         } else if prompt.status == .expired {
@@ -4496,7 +4507,6 @@ struct InputPromptCard: View {
                                 .foregroundStyle(.secondary)
                                 .accessibilityHidden(true)
                         }
-                        CardHeaderTimestamp(timestamp: message.timestamp)
                     }
                     Text(prompt.title)
                         .font(.subheadline.weight(.bold))
