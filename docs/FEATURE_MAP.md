@@ -2965,7 +2965,7 @@ notifier's copies of both
 **Open gaps**
 - The workflow runs main's config, so a change to either file is first exercised by the review after it merges.
 - A clean merge of main isn't reviewed again, so a main change that breaks the PR's code without touching its diff goes unreviewed until the next push; a reviewer or prompt change on main doesn't re-review a change already reviewed either. A manual run covers both (2026-10-29, #1466).
-- Data files the app or CI reads (`Conduit/Cards/card-schema.json`, `scripts/*-suite.json`, test fixtures) count as config, so a PR that changes only those gets GLM-5.3 alone (2026-10-29, #1466).
+- Data files the app or CI reads (`Conduit/Cards/card-schema.json`, `scripts/smoke-suite.json`, `scripts/hosted-suite.json`, test fixtures) count as config, so a PR that changes only those gets GLM-5.3 alone (2026-10-29, #1466).
 - A run can't say which PR it reviewed (GitHub fills a run's PRs from the branch's open PRs when read), so the same commit reviewed in a PR into main counts as reviewed in a PR into `pulse` or `linked-rooms` from the same branch (2026-10-29, #1466).
 - Re-running a review from the Actions page still reviews: the run being rerun isn't finished, so it doesn't count as reviewed (2026-10-29, #1466).
 
