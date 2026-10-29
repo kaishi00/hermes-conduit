@@ -3746,7 +3746,7 @@ on top
 **Open gaps**
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-10-29, #1503: on a Mac, a column takes 80% of the window and its text, text styles through `scaledFont` included, grows by point size with it. Earlier 2026-10-29, #1498 (a dragged list narrows the chat's column, from #1492; Rulings); 2026-10-29, #1507 (the listed cards' text moved below their caption row, sizes unchanged); 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text; 2026-10-27, #1393; 2026-10-26, #1320.
+**Checked:** 2026-10-29, #1514 (a Mac composer's first frame at the column's height; sheets keep a column's text size). Earlier 2026-10-29, #1503: on a Mac, a column takes 80% of the window and its text, text styles through `scaledFont` included, grows by point size with it. Earlier 2026-10-29, #1498 (a dragged list narrows the chat's column, from #1492; Rulings); 2026-10-29, #1507 (the listed cards' text moved below their caption row, sizes unchanged); 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text; 2026-10-27, #1393; 2026-10-26, #1320.
 
 ## A split window's columns fill the window
 
