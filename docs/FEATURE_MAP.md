@@ -2870,12 +2870,12 @@ and Share or Save
 **Rulings**
 - Each download goes in a folder of its own, removed when the preview or share sheet that asked for it closes, or when it is dismissed or switched to another file while still downloading; a previous run's leftovers are swept at launch (2026-10-24, #1220, from #1002).
 - The Folder opens files through the media preview presenter, so its copies follow the same rule; the workspace browser's own download folder is gone (2026-10-27, #1399).
-- The picture viewer fetches each picture into a folder of its own the same way, and removes every one it fetched when it closes, including one still arriving then; a photo on the device or a copy kept on the phone is shown in place and stays (2026-10-29, #PRNUM).
+- The picture viewer fetches each picture into a folder of its own the same way, and removes every one it fetched when it closes, including one still arriving then; a photo on the device or a copy kept on the phone is shown in place and stays (2026-10-29, #1491).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-29, #PRNUM (the picture viewer's copies); 2026-10-27, #1399; #1220.
+**Checked:** 2026-10-29, #1491 (the picture viewer's copies); 2026-10-27, #1399; #1220.
 
 ## Review labels
 
@@ -3119,11 +3119,11 @@ pictures' VoiceOver hint "Opens full screen with save and share")
 - Tests: `ConduitTests/MarkdownLargeDocumentTests+ImageGallery.swift`
 
 **Rulings**
-- Pictures page in Conduit's own viewer, not Quick Look: Quick Look shows one file and has no swipe down. Videos, audio and documents still open in Quick Look; a picture never pages to one (2026-10-29, #PRNUM, Eric asked for both gestures).
-- A picture pages through the pictures of what it was tapped in, in the order they show: a chat's (each message's pictures in its text, then the ones it attaches, then a tool's), the saved copy's, a room's, a job result's or card's, the Artifacts list's as filtered, or the Folder's (the search's names, else the file's folder, else Recently Changed). Each picture is listed once, where it first shows. One its list doesn't have (a reply still streaming) opens alone (2026-10-29, #PRNUM).
-- The list is read when a picture is tapped, never while scrolling: each screen holds one source, so no row redraws for it. Each picture fetches its original only as its page comes near (its own, then its neighbours), the way its row opened it alone: the photo on this device, the copy kept on the phone, then Hermes; a picture in a list fetches as Artifacts and the Folder open a file. The row's own copy shows until the original is in, and stays if the original can't be had (2026-10-29, #PRNUM).
-- A swipe down (or up) of a picture that isn't zoomed in drags it, fading the backdrop; past a fifth of the screen or flung it closes, short of that it springs back. A zoomed picture pans instead, and its edge hands a sideways swipe on to the next. One finger only: two are a pinch. A trackpad's two-finger swipe does the same; on a keyboard the arrows page and Escape closes; VoiceOver pages with a three-finger swipe and closes with the escape gesture (2026-10-29, #PRNUM).
-- A single tap shows or hides the bar (Done, the name, "3 / 12", Share); Share opens once the picture's original is in (2026-10-29, #PRNUM).
+- Pictures page in Conduit's own viewer, not Quick Look: Quick Look shows one file and has no swipe down. Videos, audio and documents still open in Quick Look; a picture never pages to one (2026-10-29, #1491, Eric asked for both gestures).
+- A picture pages through the pictures of what it was tapped in, in the order they show: a chat's (each message's pictures in its text, then the ones it attaches, then a tool's), the saved copy's, a room's, a job result's or card's, the Artifacts list's as filtered, or the Folder's (the search's names, else the file's folder, else Recently Changed). Each picture is listed once, where it first shows. One its list doesn't have (a reply still streaming) opens alone (2026-10-29, #1491).
+- The list is read when a picture is tapped, never while scrolling: each screen holds one source, so no row redraws for it. Each picture fetches its original only as its page comes near (its own, then its neighbours), the way its row opened it alone: the photo on this device, the copy kept on the phone, then Hermes; a picture in a list fetches as Artifacts and the Folder open a file. The row's own copy shows until the original is in, and stays if the original can't be had (2026-10-29, #1491).
+- A swipe down (or up) of a picture that isn't zoomed in drags it, fading the backdrop; past a fifth of the screen or flung it closes, short of that it springs back. A zoomed picture pans instead, and its edge hands a sideways swipe on to the next. One finger only: two are a pinch. A trackpad's two-finger swipe does the same; on a keyboard the arrows page and Escape closes; VoiceOver pages with a three-finger swipe and closes with the escape gesture (2026-10-29, #1491).
+- A single tap shows or hides the bar (Done, the name, "3 / 12", Share); Share opens once the picture's original is in (2026-10-29, #1491).
 - Copies fetched for the viewer are removed when it closes, as every preview's are (see Files prepared for preview and Save to Files).
 
 **Open gaps**
@@ -3132,7 +3132,7 @@ pictures' VoiceOver hint "Opens full screen with save and share")
 - An animated GIF plays at up to 120 frames, drawn at 1,024 px; Quick Look played every frame.
 - The Folder pages through its listed files only: a folder not opened in the tree isn't listed.
 
-**Checked:** 2026-10-29, #PRNUM.
+**Checked:** 2026-10-29, #1491.
 
 ## Cards drawn in web pages
 
