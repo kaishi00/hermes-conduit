@@ -98,7 +98,7 @@ extension ConnectionFailureTests {
             if let binary = frame["binaryName"] as? String { binaries.append(binary) }
             frames = frame["subFrames"] as? [Any]
         }
-        XCTAssertEqual(kept, CrashReportUpload.maxFrameDepth, "kept to the first levels, the root counted")
+        XCTAssertEqual(kept, 240, "kept to the first levels, the root counted")
         XCTAssertEqual(crashSite, "libsystem_kernel.dylib", "the frame that was running is kept")
         XCTAssertEqual(binaries, ["libsystem_kernel.dylib"], "the entry, past the levels kept, is dropped")
 
