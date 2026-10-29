@@ -12393,7 +12393,12 @@ final class AppState: ObservableObject {
     private func stampMainBotConduitName() {
         guard let index = botRoster.firstIndex(where: { BotManagement.isDefaultProfile($0.name) }) else { return }
         let name = profileDisplayName("default")
-        if botRoster[index].conduitName != name { botRoster[index].conduitName = name }
+        guard botRoster[index].conduitName != name else { return }
+        botRoster[index].conduitName = name
+        // An open main Bot Chat follows a name that changed elsewhere (Desktop's title).
+        if let open = activeBotChatProfile, BotManagement.isDefaultProfile(open), activeSessionTitle != name {
+            activeSessionTitle = name
+        }
     }
 
     /// Gateway profile IDs remain stable; this is only the label used for
