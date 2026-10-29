@@ -371573,6 +371573,88 @@
           }
         }
       }
+    },
+    "It can search the web and X, read web pages and look at images, and say when you're busy from the calendar you share with Hermes: only the times, never what, where or with whom, as What it may share allows." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Er kann im Web und auf X suchen, Webseiten lesen und Bilder ansehen und sagen, wann du beschäftigt bist, aus dem Kalender, den du mit Hermes teilst: nur die Zeiten, nie was, wo oder mit wem, so wie „Was er teilen darf“ es erlaubt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Puede buscar en la web y en X, leer páginas web y ver imágenes, y decir cuándo estás ocupado según el calendario que compartes con Hermes: solo las horas, nunca qué, dónde ni con quién, según lo que permita «Qué puede compartir»."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il peut chercher sur le web et sur X, lire des pages web et regarder des images, et dire quand tu es occupé d'après le calendrier que tu partages avec Hermes : seulement les horaires, jamais quoi, où ni avec qui, selon ce que permet « Ce qu'il peut partager »."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ia bisa mencari di web dan X, membaca halaman web, dan melihat gambar, serta mengatakan kapan kamu sibuk dari kalender yang kamu bagikan dengan Hermes: hanya waktunya, tidak pernah apa, di mana, atau dengan siapa, sesuai yang diizinkan \"Apa yang boleh dibagikannya\"."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Può cercare sul web e su X, leggere pagine web e guardare immagini, e dire quando sei impegnato dal calendario che condividi con Hermes: solo gli orari, mai cosa, dove o con chi, come consente «Cosa può condividere»."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Web と X を検索し、Web ページを読み、画像を見られます。また、Hermes と共有しているカレンダーから、あなたが忙しい時間を伝えられます。伝えるのは時間だけで、何を、どこで、誰と、は伝えません。伝え方は「共有してよいこと」の設定に従います。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "웹과 X를 검색하고, 웹 페이지를 읽고, 이미지를 볼 수 있으며, Hermes와 공유한 캘린더를 바탕으로 언제 바쁜지 말할 수 있어요. 시간만 알려 주고, 무엇을, 어디서, 누구와 하는지는 절대 알리지 않으며, '공유할 수 있는 내용'에서 허용한 만큼만 알려요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Może szukać w sieci i na X, czytać strony internetowe i oglądać obrazy oraz mówić, kiedy jesteś zajęty, na podstawie kalendarza, który udostępniasz Hermesowi: tylko godziny, nigdy co, gdzie ani z kim, na tyle, na ile pozwala „Co może udostępniać”."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ele pode pesquisar na web e no X, ler páginas e ver imagens, e dizer quando você está ocupado pelo calendário que você compartilha com o Hermes: só os horários, nunca o quê, onde ou com quem, conforme permite “O que ele pode compartilhar”."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Он может искать в интернете и в X, читать веб-страницы и смотреть изображения, а также говорить, когда вы заняты, по календарю, которым вы делитесь с Hermes: только время, никогда что, где и с кем, насколько позволяет «Чем он может делиться»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Web'de ve X'te arama yapabilir, web sayfalarını okuyabilir, görselleri inceleyebilir ve Hermes ile paylaştığın takvime göre ne zaman meşgul olduğunu söyleyebilir: yalnızca saatleri, asla ne, nerede ya da kiminle olduğunu değil; \"Neleri paylaşabilir\" ne kadar izin veriyorsa."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它可以搜索网页和 X、阅读网页、查看图片，还能根据你与 Hermes 共享的日历说出你什么时候有事：只说时间，从不说做什么、在哪里或和谁，并按“它可以分享什么”的设置来分享。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它可以搜尋網頁和 X、閱讀網頁、查看圖片，還能根據你與 Hermes 共享的行事曆說出你什麼時候有事：只說時間，從不說做什麼、在哪裡或和誰，並依「它可以分享什麼」的設定來分享。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

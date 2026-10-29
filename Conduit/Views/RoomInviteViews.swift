@@ -262,7 +262,8 @@ struct RoomInviteSheet: View {
             set: { edited[bot.name] = $0 }
         )
         return NavigationLink {
-            RoomInviteChoicesView(name: bot.displayLabel, original: original, choices: binding)
+            RoomInviteChoicesView(name: bot.displayLabel, original: original, choices: binding,
+                                  offersData: appState.canShareFreeBusy)
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(AppLocalization.string("\(bot.displayLabel)'s choices"))
@@ -360,6 +361,8 @@ struct RoomInviteChoicesView: View {
     /// either is this.
     let original: RoomChoices
     @Binding var choices: RoomChoices
+    /// The plugin's Use my data says when you're busy, so it's offered.
+    var offersData = false
     @ObservedObject private var appLanguage = AppLanguageStore.shared
 
     var body: some View {
@@ -368,8 +371,8 @@ struct RoomInviteChoicesView: View {
                 Picker(AppLocalization.string("What it can do"), selection: $choices.tools) {
                     Text(AppLocalization.string("Talk only")).tag("talk")
                     Text(AppLocalization.string("Look things up")).tag("look")
-                    // Set with the CLI: shown while it's the choice, not offered.
-                    if original.tools == "data" || choices.tools == "data" {
+                    // Offered where the plugin shares when you're busy; else shown while it's the choice.
+                    if RoomChoices.offersUseMyData(freeBusy: offersData, current: [original.tools, choices.tools]) {
                         Text(AppLocalization.string("Use my data")).tag("data")
                     }
                     if original.tools == "custom" || choices.tools == "custom" {
@@ -381,7 +384,7 @@ struct RoomInviteChoicesView: View {
             } header: {
                 Text(AppLocalization.string("What it can do"))
             } footer: {
-                Text(RoomAgentChoicesView.toolsDetail(choices))
+                Text(RoomAgentChoicesView.toolsDetail(choices, freeBusy: offersData))
             }
             Section {
                 Picker(AppLocalization.string("What it may share"), selection: $choices.share) {

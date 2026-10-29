@@ -42,6 +42,12 @@ struct RoomChoices: Equatable {
         ]
     }
 
+    /// Whether a choices page offers Use my data: where the plugin says when
+    /// you're busy (`freeBusy`), else only while it's a choice already made.
+    static func offersUseMyData(freeBusy: Bool, current: [String]) -> Bool {
+        freeBusy || current.contains("data")
+    }
+
     /// The turns a day the join card offers, with `value` among them when
     /// it's another (the plugin takes any from 1 to 500).
     static func dailyLimitSteps(including value: Int) -> [Int] {
@@ -53,6 +59,9 @@ struct RoomChoices: Equatable {
 /// profile. A refusal (400) carries the plugin's reason.
 struct RoomChoicesClient {
     static let capability = "room-rules"
+    /// Use my data lets the agent say when you're busy (the plugin's
+    /// conduit_free_busy): offered only on a plugin that has it.
+    static let freeBusyCapability = "room-free-busy"
     static let path = "/api/plugins/conduit_push/rooms/choices"
     /// room_choices.MAX_NOTE_CHARS, in code points as the plugin counts.
     static let noteLimit = 1000
@@ -132,6 +141,11 @@ extension AppState {
     /// offer them, with no update notice.
     var canSetRoomChoices: Bool {
         notifierPlugin.reports(RoomChoicesClient.capability)
+    }
+
+    /// Whether Use my data shares when you're busy, so the choices offer it.
+    var canShareFreeBusy: Bool {
+        notifierPlugin.reports(RoomChoicesClient.freeBusyCapability)
     }
 
     /// Requests stay with the dashboard they were made for.
