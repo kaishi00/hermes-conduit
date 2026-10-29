@@ -72,6 +72,48 @@ class ReturnKeyTextView: UITextView {
         (super.keyCommands ?? []) + [Self.returnKeyCommand]
     }
 
+    /// A paste too long for the field (`PastedText.becomesAttachment`),
+    /// offered to the composer to attach instead. True when it took the
+    /// paste; otherwise the words go into the field as usual. Nil keeps
+    /// every paste in the field.
+    var onLongTextPaste: ((String) -> Bool)?
+
+    override func paste(_ sender: Any?) {
+        if takesLongTextPaste() { return }
+        super.paste(sender)
+    }
+
+    override func pasteAndMatchStyle(_ sender: Any?) {
+        if takesLongTextPaste() { return }
+        super.pasteAndMatchStyle(sender)
+    }
+
+    /// Read only once the user has asked to paste, so it never raises the
+    /// "Paste from Other App" prompt by itself.
+    private func takesLongTextPaste() -> Bool {
+        let pasteboard = UIPasteboard.general
+        guard let onLongTextPaste,
+              let pasted = Self.longPastedText(
+                isEditable: isEditable,
+                hasStrings: pasteboard.hasStrings,
+                hasImages: pasteboard.hasImages,
+                read: { pasteboard.string }
+              ),
+              onLongTextPaste(pasted) else { return false }
+        // A paste replaces what was selected, wherever the words went.
+        if selectedRange.length > 0 { deleteBackward() }
+        return true
+    }
+
+    /// The paste to offer as an attachment, if any: words only (a picture
+    /// keeps its own paste), past the threshold, into an editable field.
+    /// The clipboard's text is read only once the rest allows it.
+    static func longPastedText(isEditable: Bool, hasStrings: Bool, hasImages: Bool, read: () -> String?) -> String? {
+        guard isEditable, hasStrings, !hasImages,
+              let pasted = read(), PastedText.becomesAttachment(pasted) else { return nil }
+        return pasted
+    }
+
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(returnKeyCommandPressed) {
             // Declining hands Return back to the text system: a newline,
@@ -264,6 +306,8 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
     var canSubmitFromReturn: Bool
     /// Sends, and reports whether anything was done.
     var onSubmitFromReturn: () -> Bool
+    /// A long paste, offered as an attachment (`ReturnKeyTextView`).
+    var onLongTextPaste: ((String) -> Bool)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -298,6 +342,7 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         uiView.delegate = nil
         uiView.onSubmitFromReturn = nil
         uiView.canSubmitFromReturn = false
+        uiView.onLongTextPaste = nil
     }
 
     private func configure(_ view: ReturnKeyTextView, context: Context) {
@@ -316,6 +361,7 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         view.returnKeySends = returnKeySends
         view.canSubmitFromReturn = canSubmitFromReturn
         view.onSubmitFromReturn = onSubmitFromReturn
+        view.onLongTextPaste = onLongTextPaste
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: ReturnKeyTextView, context: Context) -> CGSize? {

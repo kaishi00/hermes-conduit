@@ -26464,7 +26464,8 @@ final class AppState: ObservableObject {
                 outcome = try await client.sendPrompt(
                     sessionId, text: promptText, surface: surface,
                     voiceTurn: surface == Self.spokenPromptSurface,
-                    queued: queued
+                    queued: queued,
+                    titlePreview: PastedText.titlePreview(in: attachments)
                 )
             }
             // The gateway accepted the prompt. A session handoff may have

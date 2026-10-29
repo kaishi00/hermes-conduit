@@ -422,6 +422,40 @@ final class ComposerPasteTextViewTests: XCTestCase {
         await fulfillment(of: [callback], timeout: 5.0)
     }
 
+    func testALongDraggedSelectionStaysWordsInTheField() async {
+        await withClearedGeneralPasteboard {
+            let view = ImagePasteTextView()
+            view.isEditable = true
+            let long = String(repeating: "dragged words ", count: 300)
+            let offered = expectation(description: "a drop isn't offered as a paste")
+            offered.isInverted = true
+            view.onLongTextPaste = { _ in
+                offered.fulfill()
+                return true
+            }
+
+            view.paste(itemProviders: [NSItemProvider(object: NSString(string: long))])
+
+            await fulfillment(of: [offered], timeout: 1.5)
+        }
+    }
+
+    func testOnlyALongWordsPasteIntoAnEditableFieldIsOfferedAsAnAttachment() {
+        let long = String(repeating: "w", count: 3_001)
+        var reads = 0
+        let read = { () -> String? in
+            reads += 1
+            return long
+        }
+        XCTAssertEqual(ReturnKeyTextView.longPastedText(isEditable: true, hasStrings: true, hasImages: false, read: read), long)
+        XCTAssertNil(ReturnKeyTextView.longPastedText(isEditable: false, hasStrings: true, hasImages: false, read: read))
+        // A picture keeps its own paste.
+        XCTAssertNil(ReturnKeyTextView.longPastedText(isEditable: true, hasStrings: true, hasImages: true, read: read))
+        XCTAssertNil(ReturnKeyTextView.longPastedText(isEditable: true, hasStrings: false, hasImages: false, read: read))
+        XCTAssertEqual(reads, 1, "The clipboard is read only once the rest allows the paste")
+        XCTAssertNil(ReturnKeyTextView.longPastedText(isEditable: true, hasStrings: true, hasImages: false) { "short" })
+    }
+
     func testCanPasteAcceptsImageItemProvider() {
         let view = ImagePasteTextView()
         let provider = NSItemProvider()

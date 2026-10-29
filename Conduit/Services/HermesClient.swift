@@ -2791,13 +2791,18 @@ final class HermesClient: ObservableObject {
         surface: String? = nil,
         voiceTurn: Bool = false,
         queued: Bool = false,
-        hidden: Bool = false
+        hidden: Bool = false,
+        titlePreview: String? = nil
     ) async throws -> PromptSubmissionOutcome {
         var params: [String: Any] = [
             "session_id": sessionId,
             "text": text
         ]
         if let surface { params["surface"] = surface }
+        // What Hermes titles a new chat from when the message is a long
+        // paste's file, as Hermes Desktop sends it. Only the title reads it.
+        let sendsTitlePreview = titlePreview != nil && !gatewayRefusesTitlePreview
+        if sendsTitlePreview, let titlePreview { params["title_preview"] = titlePreview }
         // Seen by the model, never shown as the user's (Predictive follow-ups).
         if hidden {
             guard !gatewayRefusesHiddenPrompts else { throw HiddenPromptUnsupportedError() }
@@ -2809,22 +2814,30 @@ final class HermesClient: ObservableObject {
             guard !gatewayRefusesQueued else { throw QueueUnsupportedError() }
             params["queued"] = true
         }
-        let result: AnyCodable
-        do {
-            result = try await rpc("prompt.submit", params: params, timeout: Self.promptSubmitTimeout)
-        } catch let error as RpcError where marksVoiceTurn && error.refusesUnknownParam("voice_turn") {
-            gatewayRefusesVoiceTurn = true
-            params.removeValue(forKey: "voice_turn")
-            result = try await rpc("prompt.submit", params: params, timeout: Self.promptSubmitTimeout)
-        } catch let error as RpcError where queued && error.refusesUnknownParam("queued") {
-            gatewayRefusesQueued = true
-            throw QueueUnsupportedError()
-        } catch let error as RpcError where hidden && error.refusesUnknownParam("display_kind") {
-            // Never resent without it: that would show Conduit's nudge as
-            // the user's own message.
-            gatewayRefusesHiddenPrompts = true
-            throw HiddenPromptUnsupportedError()
+        // An older Hermes refuses one unknown key at a time: each optional
+        // key it refuses goes, and the prompt is resent, until it's taken.
+        var answer: AnyCodable?
+        while answer == nil {
+            do {
+                answer = try await rpc("prompt.submit", params: params, timeout: Self.promptSubmitTimeout)
+            } catch let error as RpcError where params["voice_turn"] != nil && error.refusesUnknownParam("voice_turn") {
+                gatewayRefusesVoiceTurn = true
+                params.removeValue(forKey: "voice_turn")
+            } catch let error as RpcError where params["title_preview"] != nil && error.refusesUnknownParam("title_preview") {
+                // A Hermes from before title previews: the prompt goes without.
+                gatewayRefusesTitlePreview = true
+                params.removeValue(forKey: "title_preview")
+            } catch let error as RpcError where queued && error.refusesUnknownParam("queued") {
+                gatewayRefusesQueued = true
+                throw QueueUnsupportedError()
+            } catch let error as RpcError where hidden && error.refusesUnknownParam("display_kind") {
+                // Never resent without it: that would show Conduit's nudge as
+                // the user's own message.
+                gatewayRefusesHiddenPrompts = true
+                throw HiddenPromptUnsupportedError()
+            }
         }
+        let result = answer ?? AnyCodable.null
         return PromptSubmissionOutcome(
             gatewayStatus: result.objectValue?["status"]?.stringValue
         )
@@ -2833,6 +2846,9 @@ final class HermesClient: ObservableObject {
     /// Set once this gateway refused `prompt.submit`'s `voice_turn` key
     /// (a Hermes from before `auxiliary.voice_chat`).
     private var gatewayRefusesVoiceTurn = false
+
+    /// Set once this gateway refused `prompt.submit`'s `title_preview` key.
+    private var gatewayRefusesTitlePreview = false
 
     /// Set once this gateway refused `prompt.submit`'s `queued` key.
     /// Internal so tests can stand in for that refusal.

@@ -1534,32 +1534,39 @@ Photos, camera shots and any other file go into the composer as
 attachments, staged on the device and sent with the next message.
 
 **Siblings:** chat composer (chats, project chats, Bot Chat) · the full
-editor · group rooms · the composer's text field (pasted pictures, files
-dropped on it) · README.md's feature list
+editor · group rooms · the composer's text field (pasted pictures, long
+pasted text, files dropped on it) · iPad and Mac (the same fields; Cmd-V
+and Paste and Match Style) · the sent message and a room message (a paste
+reads "Pasted text") · Hermes Desktop (the same threshold and file name) ·
+README.md's feature list
 
 | Way in | Chat composer and its full editor | Group room and its full editor |
 |---|---|---|
 | Attach › Camera, Photo Library, Document | yes | yes, with a plugin that stores room files |
 | A picture pasted in the field | yes, one picture | no |
+| Text pasted in the field, over 3,000 characters | yes, as a text attachment | yes, with a plugin that stores room files |
 | Files dragged onto the chat, the room, the field or the full editor | yes | yes, with a plugin that stores room files |
 
 **Code**
 - Staging and its limits: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, AttachmentTypePolicy, AttachmentStaging's stageCopy and finishStaging)
 - Dropped files: `Conduit/Views/Components/AttachmentDrop.swift` (AttachmentDrop, attachmentDropTarget), `Conduit/Views/ChatView.swift` and `Conduit/Views/GroupChatView.swift` (the drop targets), `Conduit/Services/AppState.swift` (dropIntoComposer, dropIntoRoomComposer), `Conduit/Views/Components/ComposerFullEditor.swift` (onDropFiles)
-- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (attachmentButton, handleDocumentSelection, handleDroppedFiles, handlePastedImage), `Conduit/Views/Components/ComposerPasteTextView.swift` (paste(itemProviders:), onDroppedFiles)
-- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (attachButton, importDocuments, importDroppedFiles, finishImport)
-- Tests: `ConduitTests/ComposerAttachmentPolicyTests.swift`, `ConduitTests/ComposerPasteTextViewTests.swift`
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (attachmentButton, handleDocumentSelection, handleDroppedFiles, handlePastedImage, attachLongPaste, pastedTextActions), `Conduit/Views/Components/ComposerPasteTextView.swift` (paste(itemProviders:), onDroppedFiles)
+- Long pastes: `Conduit/Views/Components/PastedTextAttachment.swift` (PastedText: threshold, name, staging; PastedTextSheet), `Conduit/Views/Components/ReturnKeyTextView.swift` (onLongTextPaste, paste and pasteAndMatchStyle, for every composer field), `Conduit/Views/Components/ComposerAttachments.swift` (ComposerAttachmentChip, AttachmentTypePolicy.displayName), `Conduit/Views/ChatView.swift` (UserDocumentAttachmentChip), `Conduit/Views/GroupChatView.swift` (GroupMessageFiles)
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (attachButton, importDocuments, importDroppedFiles, finishImport, attachLongPaste, pastedTextActions)
+- Tests: `ConduitTests/ComposerAttachmentPolicyTests.swift`, `ConduitTests/PastedTextAttachmentTests.swift`, `ConduitTests/ComposerPasteTextViewTests.swift`
 
 **Rulings**
 - Every way in stages the same way: copied into the staging folder, size checked against the device's limit before it is read, images providers can't read re-encoded as JPEG, and anything left out named in the composer's notice. Nothing is sent until the user presses Send (2026-10-28, #1411).
 - A drop attaches files and leaves the rest: words dragged from another app go into the draft only when dropped on the field, and a link stays a link. Text counts as a file only when it comes as a named file. One picture dropped or pasted on the field keeps the picture paste; several items, or any other file, are staged like picked documents (2026-10-28, #1411, from #1408).
 - A locked chat composer takes no drop, as its Attach menu is off then; a room on a plugin that can't store its files says what fixes it, as its Attach menu does (2026-10-28, #1411).
 - A dropped folder is taken but not attached: the composer's notice names it and says to drop the files inside. Files dropped with it still attach (2026-10-28, #1422).
+- Text pasted in a composer field (inline or full editor, chat or room) over 3,000 characters, Hermes Desktop's threshold, goes in as a removable text attachment instead of into the field: a `.txt` named as Desktop names a paste (`pasted_content_<time>_<hex>.txt`), staged and sent like any file, so Hermes puts its text in the prompt through the `@file:` reference and a reopened chat, here or in Desktop, shows it as pasted text. Pasted over a selection, it still replaces the selection. Its chip shows the first words; a tap shows the whole paste to read or edit, and Paste as text puts it back in the field after what was typed, and clearing its text removes it, as × does. The file is written off the main actor; if it can't be written, the words go into the field after all. Only the Paste command (`paste(_:)`: Cmd-V, the edit menu, the keyboard's Paste) attaches it; words that come through the item-provider route, dropped or from a keyboard action, stay words, so the clipboard is read only when the user pastes. A shorter paste, a picture, or a paste where the composer can't take files (locked, a chat still on its way, whose waiting message is words only, or a room on a plugin that can't store files) goes into the field as before, and so does one too big for the attachment limit, which can't go as a file. Dropped words stay words, as above. The message also sends the paste's first 1,000 characters as `title_preview`, as Desktop does, so a chat that opens with a paste gets a title from its words, not its file name; a Hermes that refuses the key gets the message without it (Eric asked for it, 2026-10-29, #1515).
+- A paste is an attachment like any other: while Hermes replies it goes as Queue (#1154), `/new` in a Bot Chat refuses it, Edit and resend is off for its message, and the draft keeps it. Paste as text turns it back into words to Steer with (2026-10-29, #1515).
 
 **Open gaps**
 - A dropped folder's files aren't attached for the user; they drop the files themselves.
 
-**Checked:** 2026-10-28, #1422 (folder drops say why they aren't attached).
+**Checked:** 2026-10-29, #1515 (long pastes become text attachments); 2026-10-28, #1422 (folder drops say why they aren't attached).
 
 ## A chat while it opens
 
@@ -1633,6 +1640,7 @@ the composer's Sending… while a send checks Hermes
 - A send's words leave the field when Send is tapped. If it doesn't go, they come back through AppState's restore requests, never through the composer that sent them: leaving the chat mid-send replaces that composer, and words put back into it were lost, so the user had to type them again. The composer on screen puts them in its field when they're its chat's, otherwise in their chat's stored draft. A send that stopped with no error to say so (its chat was left before its message showed) leaves the waiting message's notice: back in the composer, or back in that chat's draft, by name, and only while its dashboard and profile are on screen. One whose reply was lost after its chat was left may have reached Hermes, so its words come back without that notice, a waiting message's included. Sending… keeps the V2 composer open, as other notices do (2026-10-27, #1403, from #1401).
 - Until a send's message shows in the transcript, the composer says "Sending…" in the chat it was sent from: on a slow or dropped connection the checks before it (whether Hermes is still busy, whether the transcript is current, starting the chat) can take seconds, and an emptied field with nothing else read as a message that went nowhere (2026-10-27, #1403, from #1401).
 - A waiting message is never sent on its own after it's handed back. When Hermes says its chat is gone, its words go into the composer on screen, unsent, with a notice saying so (2026-10-24, #1185).
+- A waiting message is words only, so a long paste while its chat is on its way stays in the field as text instead of becoming an attachment, and can wait like typed words. Once the chat is open, a long paste becomes a text attachment, which the draft keeps like any file ("Attaching files", 2026-10-29, #1515).
 
 **Open gaps**
 - Drafts don't outlive Conduit being stopped; only a waiting message does (as a file).
@@ -1640,7 +1648,7 @@ the composer's Sending… while a send checks Hermes
 - A room's quoted message and its "To" picks aren't kept when the room is left.
 - A room that's disbanded while another dashboard is in use keeps its staged files until that dashboard is opened again or the user signs out.
 
-**Checked:** 2026-10-27, #1403 (failed sends' words outlast the composer; Sending… before the message shows); 2026-10-24, at #1185; a failed '/command' put back without its suggestion list over it at #1191 (#891 review).
+**Checked:** 2026-10-29, #1515 (a long paste stays words while the chat is on its way); 2026-10-27, #1403 (failed sends' words outlast the composer; Sending… before the message shows); 2026-10-24, at #1185; a failed '/command' put back without its suggestion list over it at #1191 (#891 review).
 
 ## A new chat that something waits on
 
@@ -1749,7 +1757,7 @@ Keyboard caption is unchanged, as it describes the option)
   command sending, Shift-Return and the IME's Return still reaching the
   text, in chats, rooms and the full editor.
 
-**Checked:** 2026-10-28, #1460 (inline prediction off on a Mac).
+**Checked:** 2026-10-29, #1515 (the same fields take a long paste as an attachment, `onLongTextPaste`; Return unchanged); 2026-10-28, #1460 (inline prediction off on a Mac).
 
 ## Composer at rest and expanded
 
@@ -2186,14 +2194,14 @@ message · the group room composer · the Settings caption for the limit
 - A pasted picture link whose header claims more pixels than a reply's picture may have is refused as "The image provider returned invalid image data.", not as too large.
 - The Settings caption doesn't say that a group room takes at most 50 MB whatever the limit.
 
-**Checked:** 2026-10-28, #1411 (dropped files refused with the same limit and message as picked ones); 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
+**Checked:** 2026-10-29, #1515 (a long paste over the limit isn't attached: it goes into the field, as pastes did before); 2026-10-28, #1411 (dropped files refused with the same limit and message as picked ones); 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
 
 ## Sending files in a chat
 
 How a message's pictures and files go up to Hermes before the prompt, and
 how long a large one may take on a slow link.
 
-**Siblings:** the chat composer (picker, drop, camera, paste) · the share
+**Siblings:** the chat composer (picker, drop, camera, paste, a long paste as a text file) · the share
 extension · Ask Hermes About Screen · a recorded voice message · Bot Chat and
 project chats (the same send) · the group room composer (its own upload) ·
 the socket's keepalive, the network path change's probe and the foreground
@@ -2202,7 +2210,7 @@ README (none describes upload size or timing) · the notifier (the upload is
 Hermes' own RPC)
 
 **Code**
-- The send: `Conduit/Services/AppState.swift` (sendMessage: image.attach_bytes, file.attach when Hermes refuses the image, file.attach for every other file)
+- The send: `Conduit/Services/AppState.swift` (sendMessage: image.attach_bytes, file.attach when Hermes refuses the image, file.attach for every other file; a long paste's `title_preview`, `Conduit/Services/HermesClient.swift` sendPrompt, from `Conduit/Views/Components/PastedTextAttachment.swift` titlePreview)
 - Resizing a picture: `Conduit/Services/PictureUpload.swift`, `Conduit/Services/AppState.swift` (AttachmentHelper.pictureForHermes)
 - Budgets and the socket: `Conduit/Services/HermesClient.swift` (uploadTimeout, attachImage, attachFile, requestsBeingWritten, keepaliveQuietTimeLeft, probe, healthCheck; canHandOffSocket, which keeps a profile switch from handing on a socket mid-write, #1452)
 - Group rooms: `Conduit/Services/GroupRoomFiles.swift` (timeoutMilliseconds)
@@ -2218,7 +2226,7 @@ Hermes' own RPC)
 - The foreground check skipped behind an upload counts as passed, so a chat resumed then finds a dead socket only when that upload's budget ends or its write fails.
 - An upload whose budget ends while its frame is still going out stops counting as written then, not when the socket finishes the write: the keepalive pings again, and a profile switch can hand the socket on behind it (#1452).
 
-**Checked:** 2026-10-28, #1452 (a profile switch's socket hand-off waits out a large write too); 2026-10-25, at #1268.
+**Checked:** 2026-10-29, #1515 (a long paste goes as a text file with Desktop's title preview); 2026-10-28, #1452 (a profile switch's socket hand-off waits out a large write too); 2026-10-25, at #1268.
 
 ## Phone change errors
 
