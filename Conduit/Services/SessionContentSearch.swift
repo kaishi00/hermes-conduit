@@ -209,6 +209,10 @@ enum SessionContentSearch {
     static let minimumQueryCharacters = 2
     /// Enough to scroll through; Hermes caps a page at 100.
     static let resultLimit = 20
+    /// Rows asked of Hermes for those twenty: a worker stored before the
+    /// `kanban` tag passes the source filter and is dropped after (hits), so
+    /// a query its prompt matches ("task") mustn't crowd real chats out.
+    static let searchLimit = resultLimit * 3
 
     /// The words of `raw` Hermes can search, or nil while there's too little
     /// to ask about.
@@ -224,7 +228,7 @@ enum SessionContentSearch {
         // Kanban workers, tool integrations and one-shot runs aren't chats
         // (see SessionSource.hermesInternalSources), so they aren't results.
         return DashboardPath.withProfile(
-            "\(path)?q=\(encoded)&limit=\(resultLimit)&exclude_sources=\(SessionSource.nonChatExcludedSources)",
+            "\(path)?q=\(encoded)&limit=\(searchLimit)&exclude_sources=\(SessionSource.nonChatExcludedSources)",
             profile: profile
         )
     }
@@ -235,15 +239,18 @@ enum SessionContentSearch {
         return status == 404 || status == 405 || status == 410
     }
 
-    /// The response's conversations in Hermes' order, one per id. Nil when
-    /// the body isn't a search response at all (a host answering the path
-    /// with something else).
+    /// The response's conversations in Hermes' order, one per id, the first
+    /// `resultLimit` of them. Nil when the body isn't a search response at
+    /// all (a host answering the path with something else).
     static func hits(from response: [String: Any], query: String) -> [SessionContentSearchHit]? {
         guard let rows = response["results"] as? [[String: Any]] else { return nil }
         var seen = Set<String>()
-        return rows.compactMap { row -> SessionContentSearchHit? in
+        let hits = rows.compactMap { row -> SessionContentSearchHit? in
             let id = (text(row["session_id"]) ?? text(row["id"]) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !id.isEmpty, seen.insert(id).inserted else { return nil }
+            // A worker stored before Hermes tagged them `kanban` passes the
+            // source filter; newer hosts send the row's preview to tell one.
+            guard !SessionSource.isLegacyKanbanWorker(source: text(row["source"]), preview: text(row["preview"])) else { return nil }
             let root = text(row["lineage_root"])?.trimmingCharacters(in: .whitespacesAndNewlines)
             return SessionContentSearchHit(
                 sessionID: id,
@@ -254,6 +261,7 @@ enum SessionContentSearch {
                 isArchived: row["archived"] as? Bool ?? false
             )
         }
+        return Array(hits.prefix(resultLimit))
     }
 
     /// The content matches the list doesn't already show: a hit for a chat
