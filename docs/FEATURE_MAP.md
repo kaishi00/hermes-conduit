@@ -1480,7 +1480,7 @@ reply's elements) · long-press Open Link · file paths, linked to the Folder
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
+**Checked:** 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
 
 ## Markdown lists in messages
 
@@ -3501,7 +3501,7 @@ captions, Settings captions, the invite's share message
 - Changing the tools rooms may use says the agent stops answering in rooms already started, but not in which.
 - An invite opened from another app while a sheet is already up (classic Settings, say) can't show over it, as a sign-in code link can't: open it again once the sheet is closed.
 
-**Checked:** 2026-10-29, #1475 (the room chats routes, the tool's "you were taken out", the README section in the text sibling), with notifier #457; 2026-10-29, #1470 (your agent reading your rooms, the room chats and their notes, N7a's minors), with notifier #448; 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1448 (a member known only by name matches a bot's own name before an unnamed bot's id capitalized); #1450 (posting in rooms hosted elsewhere), with notifier #441; #1410 (copies of rooms hosted elsewhere), with notifier #434; 2026-10-27, #1381 (the invite push and quiet room turns), with notifier #425; #1360 (new drafts and the setup on a profile the dashboard didn't start with), with notifier #387, #390, #396, #397, #398, #401, #406, #409, #411, #416 and #419.
+**Checked:** 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-29, #1475 (the room chats routes, the tool's "you were taken out", the README section in the text sibling), with notifier #457; 2026-10-29, #1470 (your agent reading your rooms, the room chats and their notes, N7a's minors), with notifier #448; 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1448 (a member known only by name matches a bot's own name before an unnamed bot's id capitalized); #1450 (posting in rooms hosted elsewhere), with notifier #441; #1410 (copies of rooms hosted elsewhere), with notifier #434; 2026-10-27, #1381 (the invite push and quiet room turns), with notifier #425; #1360 (new drafts and the setup on a profile the dashboard didn't start with), with notifier #387, #390, #396, #397, #398, #401, #406, #409, #411, #416 and #419.
 
 ## Kanban workers' transcripts
 

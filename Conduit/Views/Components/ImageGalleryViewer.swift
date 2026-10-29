@@ -480,7 +480,10 @@ final class ImageGalleryViewController: UIViewController {
                 return
             }
             self.loads[index] = nil
-            if let file = outcome.file {
+            if let file = outcome.file, abs(index - self.index) > 1, file.ownedDirectory != nil {
+                // Paged well past while it arrived.
+                MediaPreviewPresenter.removeDirectory(file.ownedDirectory)
+            } else if let file = outcome.file {
                 self.files[index] = file
                 self.madePages(index).forEach { $0.show(file: file) }
                 if index == self.index { self.shareButton.isEnabled = true }
