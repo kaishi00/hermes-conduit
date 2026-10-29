@@ -3572,6 +3572,31 @@ on top
 
 **Checked:** 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
 
+## A split window's columns fill the window
+
+A wide window's columns (an iPad, a Mac, an iPhone Duo's inner screen in
+landscape) draw their backdrop to the window's edges, as a one-column screen
+does.
+
+**Siblings:** the Chats list column · the Bots list column · the chat column
+(a chat, its side panel, the empty column, Settings beside the list) · the
+drawer shell's persistent sidebar beside its chat (Appearance, V2 off), never
+clipped · the one-column screens they match (Tasks, a list shown alone, a
+phone)
+
+**Code**
+- `Conduit/Views/V2/V2Shell.swift` (splitColumns, v2ClippedToColumn)
+- Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent)
+- The backdrop: `Conduit/Theme.swift` (ConduitBackdrop ignores the safe area)
+
+**Rulings**
+- Each column's backdrop stays clipped at the divider, so the glows don't cross it, and runs under the window's safe areas at the top, the bottom and its own outer side: the home indicator, and a landscape status bar or sensor. Clipped at the safe area, every split tab showed black bars along the bottom and the right of an iPhone Duo's inner screen while Tasks filled it (2026-10-29, #1472, a tester's report).
+
+**Open gaps**
+- Not seen on a device yet: the simulator suites have no Duo before Xcode 27.1, so a Duo or a split iPad from TestFlight confirms it.
+
+**Checked:** 2026-10-29, #1472.
+
 ## Voice on a profile the dashboard didn't start with
 
 Voice and Watch calls, chat takeover, Desktop views, predictions, and

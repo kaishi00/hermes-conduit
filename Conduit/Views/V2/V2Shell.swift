@@ -788,7 +788,7 @@ struct V2Shell: View {
             }
             .frame(width: V2SplitLayout.listWidth)
             // Each column's backdrop stays in its own column.
-            .clipped()
+            .v2ClippedToColumn(outerEdge: .leading)
             Rectangle()
                 .fill(Color.primary.opacity(0.08))
                 .frame(width: 1)
@@ -830,7 +830,7 @@ struct V2Shell: View {
                 }
             }
             .animation(nil, value: selectedTab)
-            .clipped()
+            .v2ClippedToColumn(outerEdge: .trailing)
         }
     }
 
@@ -1053,6 +1053,21 @@ struct V2QueuedProfilePick: Equatable {
         }
         guard self.dashboardID == dashboardID else { return nil }
         return profile == landed ? nil : profile
+    }
+}
+
+private extension View {
+    /// Clips a split window's column at the divider: its backdrop still
+    /// runs under the window's safe areas (the home indicator, a landscape
+    /// status bar or sensor) at the top, bottom and its `outerEdge`, as a
+    /// one-column screen's does. `clipped()` stopped it at the safe area:
+    /// black bars along the bottom and side of an iPhone Duo's inner
+    /// screen, on every tab split in columns.
+    func v2ClippedToColumn(outerEdge: HorizontalEdge) -> some View {
+        let outer: Edge.Set = outerEdge == .leading ? .leading : .trailing
+        return mask {
+            Rectangle().ignoresSafeArea(edges: outer.union(.vertical))
+        }
     }
 }
 
