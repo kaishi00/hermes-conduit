@@ -365,7 +365,7 @@ struct RoomAgentChoicesView: View {
                 Text(AppLocalization.string("Talk only")).tag("talk")
                 Text(AppLocalization.string("Look things up")).tag("look")
                 // Offered where the plugin shares when you're busy; else shown while it's the choice.
-                if appState.canShareFreeBusy || choices.tools == "data" {
+                if RoomChoices.offersUseMyData(freeBusy: appState.canShareFreeBusy, current: [choices.tools]) {
                     Text(AppLocalization.string("Use my data")).tag("data")
                 }
                 if choices.tools == "custom" {
@@ -442,7 +442,7 @@ struct RoomAgentChoicesView: View {
         case "talk":
             return AppLocalization.string("It answers from what it knows, without tools.")
         case "data" where freeBusy:
-            return AppLocalization.string("It can search the web and X, read web pages and look at images, and say when you're busy from the calendar you share with Hermes: only the times, never what, where or with whom. It shares those times without asking.")
+            return AppLocalization.string("It can search the web and X, read web pages and look at images, and say when you're busy from the calendar you share with Hermes: only the times, never what, where or with whom, as What it may share allows.")
         case "look", "data":
             return AppLocalization.string("It can search the web and X, read web pages and look at images.")
         case "custom" where choices.customTools.isEmpty:

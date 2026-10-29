@@ -355,6 +355,19 @@ extension GroupChatModelsTests {
             AppLocalization.string("It can search the web and X, read web pages and look at images.")
         )
         XCTAssertEqual(RoomChoicesClient.freeBusyCapability, "room-free-busy")
+        XCTAssertTrue(busy.contains("as What it may share allows"), busy)
+    }
+
+    @MainActor
+    func testUseMyDataIsOfferedWhereThePluginHasFreeBusyOrWhileItsTheChoice() {
+        let plugin = NotifierPluginStatus(state: .reported(version: "0.119.0", capabilities: ["room-rules", "room-free-busy"]))
+        let older = NotifierPluginStatus(state: .reported(version: "0.118.1", capabilities: ["room-rules"]))
+        XCTAssertTrue(plugin.reports(RoomChoicesClient.freeBusyCapability))
+        XCTAssertFalse(older.reports(RoomChoicesClient.freeBusyCapability))
+        XCTAssertTrue(RoomChoices.offersUseMyData(freeBusy: true, current: ["talk"]))
+        XCTAssertFalse(RoomChoices.offersUseMyData(freeBusy: false, current: ["talk", "look"]))
+        // Set with the CLI on an older plugin: shown while it's the choice, the join card's original too.
+        XCTAssertTrue(RoomChoices.offersUseMyData(freeBusy: false, current: ["data", "talk"]))
     }
 
     @MainActor

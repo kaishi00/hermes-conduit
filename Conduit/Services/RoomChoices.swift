@@ -42,6 +42,12 @@ struct RoomChoices: Equatable {
         ]
     }
 
+    /// Whether a choices page offers Use my data: where the plugin says when
+    /// you're busy (`freeBusy`), else only while it's a choice already made.
+    static func offersUseMyData(freeBusy: Bool, current: [String]) -> Bool {
+        freeBusy || current.contains("data")
+    }
+
     /// The turns a day the join card offers, with `value` among them when
     /// it's another (the plugin takes any from 1 to 500).
     static func dailyLimitSteps(including value: Int) -> [Int] {

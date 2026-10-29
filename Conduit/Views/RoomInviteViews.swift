@@ -372,7 +372,7 @@ struct RoomInviteChoicesView: View {
                     Text(AppLocalization.string("Talk only")).tag("talk")
                     Text(AppLocalization.string("Look things up")).tag("look")
                     // Offered where the plugin shares when you're busy; else shown while it's the choice.
-                    if offersData || original.tools == "data" || choices.tools == "data" {
+                    if RoomChoices.offersUseMyData(freeBusy: offersData, current: [original.tools, choices.tools]) {
                         Text(AppLocalization.string("Use my data")).tag("data")
                     }
                     if original.tools == "custom" || choices.tools == "custom" {
