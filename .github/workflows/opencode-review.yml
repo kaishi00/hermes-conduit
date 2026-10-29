@@ -22,10 +22,10 @@ jobs:
   # runner. It waits a minute first: a push in that minute cancels this run
   # (the concurrency group above) before any model is called. Then it skips
   # the review when the PR's change is the same as one a review already ran
-  # on (merging main, a rerun), and gives a PR that only touches docs and
-  # config files (Markdown, text, JSON, YAML, TOML, docs/; not .github/,
-  # opencode.json or dependency manifests) to GLM-5.3 alone. Adding run-review, or a manual run
-  # where this workflow has one, always reviews.
+  # on (a clean merge of main, a reopen), and gives a PR that only touches
+  # docs and config files (Markdown, text, JSON, YAML, TOML; not .github/,
+  # opencode.json, or manifests that declare code or dependencies) to GLM-5.3
+  # alone. A manual run, or adding run-review to a fork's PR, always reviews.
   plan:
     name: plan
     # The reviewer is an agent holding the review secrets, and a PR's title,
@@ -54,7 +54,7 @@ jobs:
       reviewers: ${{ steps.pick.outputs.reviewers }}
     steps:
       - name: Debounce (wait for rapid commits to settle)
-        if: github.event_name == 'pull_request_target'
+        if: github.event_name == 'pull_request_target' && github.event.action != 'labeled'
         run: sleep 60
       - name: Pick reviewers
         id: pick
@@ -88,8 +88,8 @@ jobs:
           base=$(jq -r .base.ref <<<"$pr")
 
           # The PR's change as the reviewers see it: its diff from where it
-          # meets the base, without hunk line numbers and blob ids, so merging
-          # main doesn't change it. Whitespace is kept (indentation is code). An
+          # meets the base, without hunk headers and blob ids, so merging main
+          # doesn't change it. Whitespace, modes and binary markers are kept. An
           # empty diff, or one too large for the compare API, never matches, so
           # that PR is reviewed.
           change_id() {
@@ -99,7 +99,7 @@ jobs:
               echo "No diff for $1 from $base, so it can't match." | tee -a "$GITHUB_STEP_SUMMARY" >&2
               return
             fi
-            grep -E '^(diff --git |[-+ ])' <<<"$diff" | sha256sum | cut -d' ' -f1
+            grep -Ev '^(index |@@)' <<<"$diff" | sha256sum | cut -d' ' -f1
           }
 
           if [ "$EVENT_NAME" = pull_request_target ] && [ "$EVENT_ACTION" != labeled ]; then
@@ -128,13 +128,15 @@ jobs:
           fi
 
           # .github/ counts as code (workflows and actions run with this repo's
-          # secrets), and so do opencode.json (the reviewers' own config) and
-          # dependency manifests. So does a file list that didn't load, so
+          # secrets), and so do opencode.json and .coderabbit.yaml (review config) and
+          # manifests that declare code, targets or dependencies. A rename
+          # counts by both names. So does a file list that didn't load, so
           # every reviewer runs.
-          files=$(gh api --paginate "$repo/pulls/$PR_NUMBER/files" --jq '.[].filename') || files=''
-          if [ -z "$files" ] \
-            || grep -Eq '(^\.github/|^opencode\.json$|(^|/)(requirements[^/]*\.txt|package(-lock)?\.json)$)' <<<"$files" \
-            || grep -Evq '(^docs/|\.(md|txt|json|ya?ml|toml)$)' <<<"$files"; then
+          files=$(gh api --paginate "$repo/pulls/$PR_NUMBER/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)') || files=''
+          code_config='^\.github/|^(opencode\.json|\.coderabbit\.ya?ml)$|(^|/)((requirements|constraints)[^/]*\.txt|package(-lock)?\.json|[^/]*lock\.ya?ml|pyproject\.toml|plugin\.yaml|manifest\.json|project[^/]*\.yml)$'
+          if [ -z "$files" ] || grep -Eq "$code_config" <<<"$files" \
+            || grep -Evq '\.(md|txt|json|ya?ml|toml)$' <<<"$files"; then
             pick "$ALL_REVIEWERS" "Reviewing with every reviewer."
           else
             docs=$(jq -c --arg r "$DOCS_REVIEWER" 'map(select(.reviewer == $r))' <<<"$ALL_REVIEWERS")
