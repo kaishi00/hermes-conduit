@@ -49,6 +49,9 @@ final class ComposerFullEditorTests: XCTestCase {
         let grown = ComposerPasteTextView.minimumHeight(for: ComposerPasteTextView.bodyFont(in: .large, from: ColumnText(base: .large, scale: 2.2)))
         XCTAssertFalse(ComposerBar.showsFullEditorButton(measuredHeight: grown, restingHeight: grown))
         XCTAssertTrue(ComposerBar.showsFullEditorButton(measuredHeight: grown + 20, restingHeight: grown))
+        // Before it measures, the field already stands one grown line tall.
+        XCTAssertEqual(ComposerBar.textFrameHeight(measured: ComposerPasteTextView.minimumHeight, resting: grown), grown)
+        XCTAssertEqual(ComposerBar.textFrameHeight(measured: grown + 30, resting: grown), grown + 30)
     }
 
     func testTheFullEditorTellsDictationFromTyping() {

@@ -132,6 +132,13 @@ struct ComposerBar: View, Equatable {
         measuredHeight >= max(fullEditorThreshold, restingHeight + 20)
     }
 
+    /// The text field's height: what it measured, never under one line of
+    /// its own font. The state starts at the system's line, and a wide Mac
+    /// column's is taller, so its first frame doesn't jump once it measures.
+    static func textFrameHeight(measured: CGFloat, resting: CGFloat) -> CGFloat {
+        max(measured, resting)
+    }
+
     /// One line of the text view's own font: what the composer goes back
     /// to after a send.
     private var restingTextHeight: CGFloat {
@@ -808,7 +815,7 @@ struct ComposerBar: View, Equatable {
             .padding(.leading, 5)
             // Room for the expand icon, so the text wraps before it.
             .padding(.trailing, showsFullEditorButton ? 40 : 5)
-            .frame(height: composerTextHeight)
+            .frame(height: Self.textFrameHeight(measured: composerTextHeight, resting: restingTextHeight))
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .overlay(alignment: .topTrailing) {
