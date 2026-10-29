@@ -2465,11 +2465,10 @@ struct ComposerBar: View, Equatable {
             waitsForChat: appState.composerWaitsForChat
         ) else { return false }
         let limitMegabytes = attachmentLimitMegabytes
+        // Past the attachment limit it can't go as a file: the words go in
+        // the field, as every paste did before.
+        guard PastedText.fits(pasted, limitMegabytes: limitMegabytes) else { return false }
         composerErrorMessage = nil
-        guard PastedText.fits(pasted, limitMegabytes: limitMegabytes) else {
-            reportImportProblems(oversized: [PastedText.displayName], failed: [], limitMegabytes: limitMegabytes)
-            return true
-        }
         let origin = asyncAttachmentContext
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {

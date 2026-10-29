@@ -92,12 +92,26 @@ class ReturnKeyTextView: UITextView {
     /// "Paste from Other App" prompt by itself.
     private func takesLongTextPaste() -> Bool {
         let pasteboard = UIPasteboard.general
-        guard let onLongTextPaste, isEditable, pasteboard.hasStrings, !pasteboard.hasImages,
-              let pasted = pasteboard.string, PastedText.becomesAttachment(pasted),
+        guard let onLongTextPaste,
+              let pasted = Self.longPastedText(
+                isEditable: isEditable,
+                hasStrings: pasteboard.hasStrings,
+                hasImages: pasteboard.hasImages,
+                read: { pasteboard.string }
+              ),
               onLongTextPaste(pasted) else { return false }
         // A paste replaces what was selected, wherever the words went.
         if selectedRange.length > 0 { deleteBackward() }
         return true
+    }
+
+    /// The paste to offer as an attachment, if any: words only (a picture
+    /// keeps its own paste), past the threshold, into an editable field.
+    /// The clipboard's text is read only once the rest allows it.
+    static func longPastedText(isEditable: Bool, hasStrings: Bool, hasImages: Bool, read: () -> String?) -> String? {
+        guard isEditable, hasStrings, !hasImages,
+              let pasted = read(), PastedText.becomesAttachment(pasted) else { return nil }
+        return pasted
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {

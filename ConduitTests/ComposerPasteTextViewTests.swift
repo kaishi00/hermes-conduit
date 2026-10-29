@@ -440,6 +440,22 @@ final class ComposerPasteTextViewTests: XCTestCase {
         }
     }
 
+    func testOnlyALongWordsPasteIntoAnEditableFieldIsOfferedAsAnAttachment() {
+        let long = String(repeating: "w", count: 3_001)
+        var reads = 0
+        let read = { () -> String? in
+            reads += 1
+            return long
+        }
+        XCTAssertEqual(ReturnKeyTextView.longPastedText(isEditable: true, hasStrings: true, hasImages: false, read: read), long)
+        XCTAssertNil(ReturnKeyTextView.longPastedText(isEditable: false, hasStrings: true, hasImages: false, read: read))
+        // A picture keeps its own paste.
+        XCTAssertNil(ReturnKeyTextView.longPastedText(isEditable: true, hasStrings: true, hasImages: true, read: read))
+        XCTAssertNil(ReturnKeyTextView.longPastedText(isEditable: true, hasStrings: false, hasImages: false, read: read))
+        XCTAssertEqual(reads, 1, "The clipboard is read only once the rest allows the paste")
+        XCTAssertNil(ReturnKeyTextView.longPastedText(isEditable: true, hasStrings: true, hasImages: false) { "short" })
+    }
+
     func testCanPasteAcceptsImageItemProvider() {
         let view = ImagePasteTextView()
         let provider = NSItemProvider()

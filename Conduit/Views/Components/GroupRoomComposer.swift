@@ -991,11 +991,10 @@ struct GroupRoomComposer: View {
         ) else { return false }
         let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
         let roomID = surface?.room.roomID
+        // Past the attachment limit it can't go as a file: the words go in
+        // the field, as every paste did before.
+        guard PastedText.fits(pasted, limitMegabytes: limit) else { return false }
         composerError = nil
-        guard PastedText.fits(pasted, limitMegabytes: limit) else {
-            finishImport([.tooLarge(PastedText.displayName)], roomID: roomID)
-            return true
-        }
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
                 PastedText.stage(pasted, limitMegabytes: limit)
