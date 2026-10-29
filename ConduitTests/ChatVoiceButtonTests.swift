@@ -80,7 +80,8 @@ extension ComposerFullEditorTests {
         // Level with a one-line bar, as before.
         XCTAssertEqual(V2ConversationScreen.voiceButtonBottomPadding(restingComposerHeight: 0), 10)
         XCTAssertEqual(V2ConversationScreen.voiceButtonBottomPadding(restingComposerHeight: 56), 10)
-        // A bar 20 pt taller (large Text Size) lifts it by half that.
+        // A bar 20 pt taller (a wrapped placeholder, a large Text Size)
+        // lifts it by half that.
         XCTAssertEqual(V2ConversationScreen.voiceButtonBottomPadding(restingComposerHeight: 76), 20)
     }
 

@@ -35,7 +35,7 @@ struct V2ComposerExpandedKey: PreferenceKey {
 
 /// The resting composer bar's height (0 while it is expanded), so the voice
 /// button beside it stays centred on it when the bar grows past the
-/// button, at a large Text Size.
+/// button: a placeholder that wraps (a long translation), a large Text Size.
 struct V2RestingComposerHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {

@@ -732,9 +732,6 @@ struct ComposerBar: View, Equatable {
             if text.isEmpty {
                 Text(appState.composerPlaceholder)
                     .foregroundStyle(.secondary)
-                    // One line in every language: a wrapped placeholder made
-                    // the resting bar taller than the voice button beside it.
-                    .lineLimit(1)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
                     // Gone with the first keystroke. The send button's
