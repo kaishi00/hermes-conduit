@@ -3048,21 +3048,28 @@ private struct VoiceCallMarkerCard: View {
                     .frame(width: 28, height: 28)
                     .background(Color.conduitAccent.opacity(0.14), in: Circle())
                     .accessibilityHidden(true)
+                // The start time on the short detail line, so a long title
+                // ("Started from" a chat) keeps the row's width (#1440).
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(2)
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 8)
-                if let started {
-                    Text(started)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(Color.conduitAccent.opacity(0.78))
-                        .monospacedDigit()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 8) {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if let started {
+                            Text(started)
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(Color.conduitAccent.opacity(0.78))
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .layoutPriority(1)
+                        }
+                    }
                 }
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
@@ -3210,7 +3217,9 @@ private struct MessageTimestampLabel: View {
 
 /// An activity card's caption with its time on the right (#1440); the
 /// card's text runs the full width below the row. The time keeps its one
-/// line, so a long caption wraps beside it, and at the accessibility text
+/// line and is laid out first, so a long caption wraps beside it (a raw
+/// time Hermes sent that doesn't parse truncates rather than taking the
+/// row), and at the accessibility text
 /// sizes the time goes under the caption, as on VoiceJobLinkCard.
 private struct CardHeaderCaption<Caption: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -3226,7 +3235,8 @@ private struct CardHeaderCaption<Caption: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
                 .lineLimit(1)
-                .fixedSize()
+                .truncationMode(.middle)
+                .layoutPriority(1)
         }
     }
 }
