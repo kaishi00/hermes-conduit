@@ -1132,7 +1132,10 @@ final class ChatScrollEngine: ObservableObject {
             surface.setContentOffsetY(surface.maxOffsetY, animated: true)
         } else {
             latestAnimationUntil = nil
-            pin(surface)
+            // A send's hold is for the message being sent. Its row may reach
+            // the engine after this command, and the stop of the message
+            // before it would leave the reader browsing above the new one.
+            pin(surface, ignoringHold: armsReplyHold)
         }
         refreshTrackedMessageVisibility()
         refreshJumpButton()
@@ -1567,10 +1570,10 @@ final class ChatScrollEngine: ObservableObject {
         mode == .following && !surface.isTracking && !surface.isDecelerating && !latestAnimationInFlight
     }
 
-    private func pin(_ surface: ChatScrollSurface) {
+    private func pin(_ surface: ChatScrollSurface, ignoringHold: Bool = false) {
         var target = surface.maxOffsetY
         var landsAtHold = false
-        if let hold = replyHoldOffset(on: surface) {
+        if !ignoringHold, let hold = replyHoldOffset(on: surface) {
             if replyRoomArmed, replyRoomMinContentHeight > 0,
                surface.contentHeight >= replyRoomMinContentHeight - 0.5 {
                 replyRoomLaidOut = true
@@ -1683,6 +1686,8 @@ final class ChatScrollEngine: ObservableObject {
         guard latest != latestUserRowID else { return }
         let previous = latestUserRowID
         latestUserRowID = latest
+        // No user message left to stop under (the transcript was cleared).
+        if latest == nil { replyHoldArmed = false }
         if arming, previous != nil, latest != nil {
             replyHoldArmed = true
             replyRoomArmed = true

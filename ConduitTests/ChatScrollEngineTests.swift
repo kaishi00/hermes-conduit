@@ -2736,6 +2736,39 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.sets.map(\.animated), [true])
     }
 
+    /// The send pulse can reach the engine before the sent message does.
+    /// A reader at the last reply's stop goes to the end for the send, not
+    /// to that stop, and the new message moves to the top once it has a
+    /// frame and room.
+    func testASendFromTheLastStopBeforeItsMessageArrivesLandsTheNewMessage() {
+        let (engine, surface) = sendIntoHold()
+        surface.layOut(contentHeight: 5200)
+        XCTAssertEqual(surface.contentOffsetY, 3481)
+        XCTAssertEqual(engine.mode, .browsing)
+        engine.explicitLatestRequested(animated: false, armsReplyHold: true)
+        XCTAssertEqual(surface.contentOffsetY, 4400)
+        XCTAssertTrue(engine.isFollowingLatest)
+        engine.transcriptChanged(
+            messages: Self.messages(0..<13),
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 1
+        )
+        surface.layOut(contentHeight: 5300)
+        engine.rowFramesChanged(["m12": ChatScrollRowFrame(minY: 5000, maxY: 5080, order: 12)])
+        XCTAssertEqual(engine.replyRoomMinContentHeight, 5781)
+        surface.sets = []
+        layOutWithRoom(engine, surface, reply: 5300)
+        XCTAssertEqual(surface.sets.map(\.y), [4981])
+        XCTAssertEqual(surface.sets.map(\.animated), [true])
+    }
+
+    func testClearingTheTranscriptDisarmsTheHoldAndItsRoom() {
+        let (engine, _) = sendIntoHold()
+        engine.transcriptChanged(messages: [], transcriptRevision: 3, viewportTransitionGeneration: 1)
+        XCTAssertFalse(engine.replyHoldArmed)
+        XCTAssertEqual(engine.replyRoomMinContentHeight, 0)
+    }
+
     /// A message taller than a third of the screen stops with its last
     /// third showing, so the reply still has the screen under it.
     func testATallMessageStopsWithItsLastThirdShowing() {
