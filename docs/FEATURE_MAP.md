@@ -3127,7 +3127,7 @@ profiles line)
 - A gateway without bot looks (`botModePhase == .gatewayUnsupported`) has nowhere to keep another profile's name, so the name stays on the device per dashboard, as photos there do, and comes first until the roster says the gateway keeps bot looks (at launch and offline too); from then its title and display name name the profile, and a roster that answers drops the device names, so they don't come back offline (2026-10-28, #1413).
 
 **Open gaps**
-- None known.
+- A pairing without notification keys gets the relay's plain copy, which the extension delivers as written, so its pushes name the main bot by its bot's name or "Hermes", not a name given only on the phone (#1457: the relay never sees that name).
 
 **Checked:** 2026-10-28, #1457 (the main bot goes by its Conduit name in Bot Mode and its pushes); 2026-10-28, #1448 (an unnamed profile goes by its id capitalized in Bots, rooms, the widget, Artifacts and pushes); 2026-10-28, #1413.
 
