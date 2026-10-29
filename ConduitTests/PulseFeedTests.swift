@@ -616,7 +616,7 @@ final class PulseFeedTests: XCTestCase {
           {"id": 3, "kind": "followup", "level": "screen", "news": "Deck", "chat_id": "work"}
         ]}
         """)))
-        state.setNotifierPluginStateForTesting(.reported(version: "0.116.1", capabilities: [
+        state.setNotifierPluginStateForTesting(.reported(version: "0.117.1", capabilities: [
             PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.actedCapability,
             PulseClient.foundActionsCapability
         ]))
