@@ -50,8 +50,13 @@ enum GatewayMediaTags {
         // Longest first, so "tar" never wins over "tar.gz"'s "gz" or "m4a"
         // over a longer name.
         let alternation = knownExtensions.sorted { $0.count > $1.count }.joined(separator: "|")
+        // A quoted path starts at a root or ends in a known extension, so
+        // quoted prose ("social media: \"we're live!\"") stays words.
+        func quoted(_ q: String) -> String {
+            q + #"(?:(?:~/|/|[A-Za-z]:[/\\])[^"# + q + #"\n]+?|[^"# + q + #"\n]+?\.(?:"# + alternation + "))" + q
+        }
         let pattern = #"[`"'*_]{0,3}MEDIA:[^\S\n]*"#
-            + #"(`[^`\n]+?`|"[^"\n]+?"|'[^'\n]+?'|"#
+            + "(" + quoted("`") + "|" + quoted("\"") + "|" + quoted("'") + "|"
             + #"(?:~/|/|[A-Za-z]:[/\\])\S+?(?:[^\S\n]+\S+?)*?\.(?:"# + alternation + #"))"#
             + #"(?=[\s`"'*_,;:)\]}\["# + cjkTerminators + #"]|MEDIA:|\.(?:\s|$)|$)[`"'*_]{0,3}\.?"#
         // The pattern is a compile-time constant; a failure here is a
@@ -101,7 +106,11 @@ enum GatewayMediaTags {
 
         let nsLine = trimmed as NSString
         if let image = markdownImageExpression.firstMatch(in: trimmed, range: NSRange(location: 0, length: nsLine.length)),
-           let path = normalizedPath(nsLine.substring(with: image.range(at: 2))) {
+           let path = normalizedPath(nsLine.substring(with: image.range(at: 2))),
+           // Two tags, a tag and a link, or a tag and words in brackets, on
+           // the line: each is read on its own below.
+           path.range(of: "MEDIA:", options: .caseInsensitive) == nil, !path.contains("]("),
+           path.range(of: #"\)\s"#, options: .regularExpression) == nil {
             let alt = nsLine.substring(with: image.range(at: 1)).trimmingCharacters(in: .whitespaces)
             return [.media(path, alt: alt.isEmpty ? nil : alt)]
         }
@@ -158,15 +167,29 @@ enum GatewayMediaTags {
     /// `text` with every tag and directive removed, for places that read a
     /// reply rather than render it (Read Aloud).
     static func removingTags(from text: String) -> String {
+        // A link's label is words the reader wrote; the path is not.
+        rewritingTags(in: text) { _, alt in alt }
+    }
+
+    /// `text` with each tag written as the file it attaches, for a voice
+    /// model that tells the user about a reply: it can say a file came
+    /// without reading its path out. Directives are removed.
+    static func namingFiles(in text: String) -> String {
+        rewritingTags(in: text) { path, alt in
+            let name = path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
+            return (alt.map { $0 + " " } ?? "") + "(a file in the chat: \(name))"
+        }
+    }
+
+    private static func rewritingTags(in text: String, media: (_ path: String, _ alt: String?) -> String?) -> String {
         guard text.range(of: "MEDIA:", options: .caseInsensitive) != nil
                 || directives.contains(where: { text.contains($0) }) else { return text }
         return text.components(separatedBy: "\n").compactMap { line -> String? in
             guard let segments = segments(in: line) else { return line }
-            // A link's label is words the reader wrote; the path is not.
             let kept = segments.compactMap { segment -> String? in
                 switch segment {
                 case .text(let value): return value
-                case .media(_, let alt): return alt
+                case .media(let path, let alt): return media(path, alt)
                 }
             }
             return kept.isEmpty ? nil : kept.joined(separator: " ")
@@ -215,7 +238,7 @@ enum GatewayMediaTags {
         result.append(.text(text))
     }
 
-    private static let leftoverMarkers: Set<Character> = ["-", "+", "*", "_", "~", "`", "'", "\"", "(", ")", "[", "]", "{", "}", ".", ",", ";", ":", "!", "?", ">", "#"]
+    static let leftoverMarkers: Set<Character> = ["-", "+", "*", "_", "~", "`", "'", "\"", "(", ")", "[", "]", "{", "}", ".", ",", ";", ":", "!", "?", ">", "#"]
 
     /// Ranges of single-backtick inline code, so a tag shown as an example
     /// (`` `MEDIA:/path` ``) stays text.

@@ -122,6 +122,9 @@ targets:
       # GPT-Live's events, which the Watch reads and answers through the
       # host's audio bridge (designs/apple-watch-gpt-live.md).
       - path: Conduit/Voice/GPTLive/GPTLiveProtocol.swift
+      # Hermes' file tags, which job results and chats read into a call
+      # name as files rather than paths.
+      - path: Conduit/Views/Components/GatewayMediaTags.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.watchkitapp

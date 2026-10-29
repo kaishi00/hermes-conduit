@@ -620,6 +620,17 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(done.watchOpeningTurn.hasPrefix("[" + HermesCallOpening.speakFirst))
         XCTAssertTrue(done.openingTurn.contains("what they want to do next"), "#544: the opening ends asking what's next")
         XCTAssertTrue(done.instructionBlock(delegation: true).contains("what they want to do next"))
+        // A live model is told of an attached file by name, never its path.
+        let attached = HermesCallOpening(kind: .done, title: "Briefing", result: "Here it is.\nMEDIA:/opt/data/cache/audio/tts_1.mp3")
+        XCTAssertFalse(attached.instructionBlock(delegation: false).contains("MEDIA:"))
+        XCTAssertTrue(attached.instructionBlock(delegation: false).contains("(a file in the chat: tts_1.mp3)"))
+        XCTAssertFalse(attached.spokenBrief.contains("MEDIA:"))
+        // A tag the clip would cut in half goes with its line.
+        let long = String(repeating: "a", count: HermesCallOpening.maximumResultCharacters - 10) + "\nMEDIA:/opt/data/cache/audio/tts_1.mp3"
+        XCTAssertFalse(HermesCallOpening(kind: .done, title: "Briefing", result: long).result?.contains("MEDIA") ?? true)
+        // Prose that only mentions media keeps its words, on one long line too.
+        let prose = "Posted on social media: " + String(repeating: "word ", count: HermesCallOpening.maximumResultCharacters / 5)
+        XCTAssertTrue(HermesCallOpening(kind: .done, title: "Briefing", result: prose).result?.hasPrefix("Posted on social media: word") ?? false)
         XCTAssertTrue(approval.watchOpeningTurn.hasPrefix("[" + HermesCallOpening.speakFirst))
         XCTAssertFalse(approval.spokenBrief.contains("Earlier reply"))
 

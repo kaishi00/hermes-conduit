@@ -87,11 +87,11 @@ final class SessionContentSearchTests: XCTestCase {
     func testPathCarriesQueryLimitAndNamedProfile() {
         XCTAssertEqual(
             SessionContentSearch.path(query: "recycling pickup", profile: "work"),
-            "/api/sessions/search?q=recycling%20pickup&limit=\(SessionContentSearch.resultLimit)&exclude_sources=kanban&profile=work"
+            "/api/sessions/search?q=recycling%20pickup&limit=\(SessionContentSearch.resultLimit)&exclude_sources=kanban,oneshot,tool&profile=work"
         )
         XCTAssertEqual(
             SessionContentSearch.path(query: "recycling", profile: "default"),
-            "/api/sessions/search?q=recycling&limit=\(SessionContentSearch.resultLimit)&exclude_sources=kanban"
+            "/api/sessions/search?q=recycling&limit=\(SessionContentSearch.resultLimit)&exclude_sources=kanban,oneshot,tool"
         )
     }
 

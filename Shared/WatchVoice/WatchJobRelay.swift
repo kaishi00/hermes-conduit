@@ -399,6 +399,7 @@ enum WatchJobAnswer {
 
     /// VoiceBackgroundJobSupervisor.completionPrompt.
     static func completionPrompt(title: String, result: String) -> String {
+        let result = GatewayMediaTags.namingFiles(in: result)
         let clipped = result.count > maximumResultCharacters
             ? String(result.prefix(maximumResultCharacters)) + "\n[…]"
             : result

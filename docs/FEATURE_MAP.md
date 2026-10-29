@@ -127,7 +127,7 @@ several details only the user can give (notifier 0.82).
 - Group rooms: the card's failure line shows the error text raw, while the chat card reveals hidden characters in its error and expiry text (#951 follow-up).
 - Your agents' approvals in rooms other people host have no card in the app yet, and their notification opens a hidden chat the app doesn't show, whose card couldn't answer them. C3 (on `linked-rooms`) adds the card, matched to the notification by its `session_key`; until then `hermes conduit-push rooms approvals`, `approve` and `deny` answer them, as does a call from Hermes about one.
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1351 (your agents' approvals in rooms other people host, notifier #416); 2026-10-26, #1301 (the jump button goes to input cards too); 2026-10-26, #1294 (clarify forms: a field for each question and one Send, blanks skipped on every transport, "skip" by voice; notifier #391); 2026-10-26, #1247 (the Watch broker's grant answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, the table and the Watch row, at #1182, carried in #1235; 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
+**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files); 2026-10-27, #1351 (your agents' approvals in rooms other people host, notifier #416); 2026-10-26, #1301 (the jump button goes to input cards too); 2026-10-26, #1294 (clarify forms: a field for each question and one Send, blanks skipped on every transport, "skip" by voice; notifier #391); 2026-10-26, #1247 (the Watch broker's grant answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, the table and the Watch row, at #1182, carried in #1235; 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
 
 ## Passwords, logins and codes Hermes asks for
 
@@ -257,7 +257,7 @@ the saved transcript's job cards · `docs/VOICE_BACKGROUND_JOBS.md`
 **Open gaps**
 - GPT-Live's model can't put a card on the call screen: Gemini, Grok and Local Live agent have `show_on_screen`, GPT-Live has no marker for it. Cards Hermes shows still appear (#366).
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1424 (tool steps in the call trace stay with their call); 2026-10-28, #1407 (a line ending in a file-path link isn't read as a saved call's job note); 2026-10-26, #1247 (the Watch broker's tool and poll answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for the request whose chat an unattached call took; Qwen in the siblings, at #1182, carried in #1235; at #1224: a result counts as told once the model says something after it or once it has gone out twice (one resend, GPT-Live and Watch included), and a job stays on the job lists until then (#1210), a direct Watch call's iPhone-run jobs included; one already sent when the call ends counts as told, never carried into the next call. Earlier at #1223, for GPT-Live's replies that couldn't go out; at #1221, for the Watch's late refusals and answers lost to a reconnect; at 78f21da; at #1191; at #1220: a cut screen card reads fences as "Code fences in messages" says.
+**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (live models are told of a file by name, never its path); 2026-10-28, #1424 (tool steps in the call trace stay with their call); 2026-10-28, #1407 (a line ending in a file-path link isn't read as a saved call's job note); 2026-10-26, #1247 (the Watch broker's tool and poll answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for the request whose chat an unattached call took; Qwen in the siblings, at #1182, carried in #1235; at #1224: a result counts as told once the model says something after it or once it has gone out twice (one resend, GPT-Live and Watch included), and a job stays on the job lists until then (#1210), a direct Watch call's iPhone-run jobs included; one already sent when the call ends counts as told, never carried into the next call. Earlier at #1223, for GPT-Live's replies that couldn't go out; at #1221, for the Watch's late refusals and answers lost to a reconnect; at 78f21da; at #1191; at #1220: a cut screen card reads fences as "Code fences in messages" says.
 
 ## Tools and consent in calls
 
@@ -292,7 +292,7 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 - Watch GPT-Live and Local Live calls have no phone tools, and the Watch doesn't announce Hermes' phone changes (#994).
 - Classic finds and reads old chats through Hermes' session_search but can't open one in Conduit (#535).
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-26, #1305 (VoiceChatFinder's search leaves Kanban workers out; see Kanban workers' transcripts); 2026-10-26, #1247 (the Watch broker's token and tool answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and a Watch token minted after consent was withdrawn, at #1182, carried in #1235; 2026-10-24, at #1223, for send_request's yes; 2026-10-23, seeded from main at 64d53c3; at #1191, Location's rule delete says when no dashboard is open (#972 review), which changes nothing about consent.
+**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (live models are told of a file by name, never its path); 2026-10-26, #1305 (VoiceChatFinder's search leaves Kanban workers out; see Kanban workers' transcripts); 2026-10-26, #1247 (the Watch broker's token and tool answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and a Watch token minted after consent was withdrawn, at #1182, carried in #1235; 2026-10-24, at #1223, for send_request's yes; 2026-10-23, seeded from main at 64d53c3; at #1191, Location's rule delete says when no dashboard is open (#972 review), which changes nothing about consent.
 
 ## Acknowledging work handed to Hermes
 
@@ -711,7 +711,7 @@ log of where a call rang)
 - A sealed push carries no profile to the Watch, so its call screen says "Hermes" (#541).
 - The first push after install, before the first status read, can still switch dashboards, and missed-call outcomes are keyed by the pushed dashboard id (#1096).
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1441 (the Watch's ring follows a re-pair to a new iPhone, with notifier #440; the iPhone sends the token the Watch reports at each Watch launch, held or not, so a Watch back with it asks for its ring again; the Pair button says what it did); 2026-10-27, #1378 (a call on Local Live in agent mode opens Local Live, on the phone and in CarPlay); 2026-10-26, #1291 (a call from a cron job's worker waits for the relay before the worker exits, notifier #389, issue #388); 2026-10-26, #1247 (the ring's settle and a Watch answer's start, keep, mute and end keep Conduit running through BackgroundTaskHold); 2026-10-25, #1257 (the caller's name from `profile_name` on the phone, the Watch and the missed call); Qwen among the modes that answer, and its mute on a call kept on the iPhone's headset (nativeCallVoiceMuted), at #1182, carried in #1235; 2026-10-24, #1225: a call answered on the Watch stays on the iPhone's headset (#1204); at #1194.
+**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (a file in the reply a call is about is named, never its path); 2026-10-28, #1441 (the Watch's ring follows a re-pair to a new iPhone, with notifier #440; the iPhone sends the token the Watch reports at each Watch launch, held or not, so a Watch back with it asks for its ring again; the Pair button says what it did); 2026-10-27, #1378 (a call on Local Live in agent mode opens Local Live, on the phone and in CarPlay); 2026-10-26, #1291 (a call from a cron job's worker waits for the relay before the worker exits, notifier #389, issue #388); 2026-10-26, #1247 (the ring's settle and a Watch answer's start, keep, mute and end keep Conduit running through BackgroundTaskHold); 2026-10-25, #1257 (the caller's name from `profile_name` on the phone, the Watch and the missed call); Qwen among the modes that answer, and its mute on a call kept on the iPhone's headset (nativeCallVoiceMuted), at #1182, carried in #1235; 2026-10-24, #1225: a call answered on the Watch stays on the iPhone's headset (#1204); at #1194.
 
 ## Audio route, Speaker and mute
 
@@ -782,6 +782,46 @@ docs/OWN_VOICE_SERVER.md · the notifier's README (read-back)
 - Push to talk is Classic only: not the live modes, the Watch, or the Action, headset and CarPlay buttons (#1106).
 
 **Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1390 (Classic: cutting Hermes' acknowledgement short steers); 2026-10-27, #1378 (CarPlay's Stop on Local Live tells the server too); 2026-10-27, #1331 (Interrupt tells a Local Live server, #1325); 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
+
+## Files Hermes attaches, in what voices say
+
+A reply can attach a file with Hermes' `MEDIA:<path>` tag (text_to_speech
+answers with one) or carry a delivery directive (`[[audio_as_voice]]`). The
+chat shows the file; nothing that speaks the reply reads the tag out, and
+no live model is handed the path to read out either.
+
+**Siblings:** Read Aloud · Classic voice's spoken reply (phone, CarPlay) ·
+Local Live's spoken and shown split (the call's screen shows the file) ·
+live read-back of a reply asked for again, and the result a Hermes call
+reads out · job results, chat replies (a job's thread reply, and the open
+chat's latest reply in a chat call's instructions) and read_chat as Gemini, Qwen, Grok,
+GPT-Live and Local Live get them, on the phone and the Watch, and a
+Hermes call's reply in its instructions · the
+notifier's line for a spoken turn, which tells the model its answer is
+heard · chat bubbles (the file card)
+
+**Code**
+- The tag grammar: `Conduit/Views/Components/GatewayMediaTags.swift` (removingTags, namingFiles; also built into the Watch app, `project.yml`)
+- Streaming speech: `Conduit/Voice/SpokenMediaTagFilter.swift`, used by `Conduit/Voice/SpokenTextFilter.swift` (Classic, Read Aloud's Now Playing) and `Conduit/Voice/LocalLive/SpokenVisualSplitter.swift` (Local Live, which puts the files on the call's screen)
+- Read Aloud: `Conduit/Voice/MessageReadAloudController.swift` (toggle)
+- Live read-back: `Conduit/Voice/VoiceReadBack.swift` (plainSpeech)
+- What live models are handed: `Conduit/Voice/VoiceBackgroundJobs.swift` (completionPrompt, threadReplyPrompt, replyBlock), `Conduit/Services/AppState.swift` (liveVoiceThreadInstructions: the open chat's latest reply), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (a job's tool response, read_chat), `Shared/WatchVoice/WatchJobRelay.swift` (WatchJobAnswer.completionPrompt), `Shared/WatchVoice/VoiceChatToolText.swift` (readResult, and delegatedRead for GPT-Live's "Read chat:" in `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` and the Watch's `Shared/WatchVoice/WatchToolRelay.swift`)
+- A Hermes call's result: `Conduit/Voice/HermesCalls.swift` (instructionBlock names files; spokenBrief uses plainSpeech)
+- Local Live's screen: `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift` (finish)
+- What the model reads: `notifier/turn_surface.py` (SPOKEN_HINT)
+- Tests: `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift` (testSpokenVisualSplitterLeavesFileTagsUnsaid), `ConduitTests/GeminiLiveVoiceTests.swift` (testSpokenMediaTagFilter…, testSpokenTextFilterLeavesFileTagsUnsaid), `ConduitTests/VoiceBackgroundJobTests.swift` (testLiveModelsAreToldOfAFileNotItsPath, plainSpeech), `notifier/tests/test_turn_surface.py`
+
+**Rulings**
+- A tag is never said, and a line that was only a tag says nothing; the words around it, and a link's label or an image's alt text, are said as written. A tag in a `>` quote is text, as Hermes doesn't deliver it, and is said like the rest of the quote. A quoted tag needs a path: one starting at a root, a home folder or a drive, or ending in a known extension, so "social media: \"we're live!\"" is words in speech, for live models and in the chat bubble alike (#1449). A quoted line's path is text too, so it is said and handed to live models as written; Hermes sends no file for it (2026-10-28, #1434, after a Local voice call on the farm read "MEDIA:/opt/data/cache/audio/tts_….mp3" out and its microphone heard "media." back).
+- Streaming voices hold from where a tag may begin (with its emphasis or `[label](`) to the end of its line, and only while it can still be one: `MEDIA:` with a path after it, or a directive. Prose such as "social media: we shipped" is said as it comes; a `[` with no `]` waits up to 80 characters, then is said as it comes (Local Live's splitter, older than this, holds a `[` until its `)` or the line's end, for links). Once a tag may have begun, the rest of its line waits for the line's end, the price of a reply being said the same however it is split (#1449). Text that can't start a tag goes out as it came, its chunks unchanged ("One " then "turn."), so a space said before a tag that arrives later stays, and "Hello!" is said while a "!" after a space or mark waits for a possible image.
+- Local Live puts a tagged file on the call's screen, as the chat shows it (a tag written as a link included), even when the model showed its own card or the call cut the reply off for its own line (#1449).
+- A live model is told of a file by name ("(a file in the chat: report.pdf)"), never its path: a job's result, a chat reply, a chat read into the call and the reply a Hermes call is about alike (#1449).
+- A spoken message's line tells the model its answer is heard: say it in words, not with text_to_speech or a sound file of its own; a file the user asks for is still fine. Hermes' own spoken-reply note isn't on every Hermes (2026-10-28, #1434, notifier #444, 0.115.1).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-28, #1434, carried in #1449.
 
 ## Qwen direct voice
 
@@ -1432,7 +1472,7 @@ Read Aloud and live voice read-back · chat list previews and quotes
 - A single list item too big for one long-reply chunk is split into paragraphs that each repeat its number.
 - A long reply's continuation chunks draw list items as paragraphs with the number baked in, so they lose the list's styled marker column.
 
-**Checked:** 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
+**Checked:** 2026-10-28, #1449 (speech leaves Hermes' file tags out, see Files Hermes attaches); 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
 
 ## Attaching files
 
@@ -1489,23 +1529,25 @@ Watch and CarPlay (not needed: neither shows a transcript)
 **Code**
 - Chats: `Conduit/Services/AppState.swift` (performSessionOpenNotingRefusal, presentSavedCopyWhileOpening, recordOfflineChatCopy; presentRestoredChatAfterProfileChange and its rollback in switchProfile), `Conduit/Services/OfflineChatCache.swift` (loadTranscript, keptTranscripts), `Conduit/Views/OfflineChatTranscriptView.swift`, `Conduit/Views/ChatView.swift` (the copy's overlay)
 - Bot Chat: `Conduit/Services/AppState.swift` (keepBotChatCopy, botChatCopyOwner, noteBotChatOpen, outgoingBotChatCopyOwner and where it's cleared: flushPendingPresentationCache, performSessionOpenNotingRefusal, switchDashboard, createNewSession; presentKeptBotChatCopy, keptBotChatCopies)
-- Group rooms: `Conduit/Services/AppState.swift` (openGroupRoom, parkActiveRoomSend, keptRoomReplays)
-- Tests: `ConduitTests/OfflineChatCacheTests.swift`, `ConduitTests/GroupChatSessionSafetyTests.swift`, `ConduitTests/CrossProfilePresentationCacheTests.swift` (testTheOutgoingTranscriptLeavesWhenTheProfileChangesOver)
+- Group rooms: `Conduit/Services/AppState.swift` (openGroupRoom, parkActiveRoomSend, keptRoomReplays; chatSyncErrorMessage, chatErrorBehindRoom and closeRoomSurfaceBackToChat for the chat's error under a room)
+- Tests: `ConduitTests/OfflineChatCacheTests.swift`, `ConduitTests/GroupChatSessionSafetyTests.swift`, `ConduitTests/CrossProfilePresentationCacheTests.swift` (testTheOutgoingTranscriptLeavesWhenTheProfileChangesOver), `ConduitTests/AppStateChatResumeTests.swift` (testAChatSyncErrorWaitsBehindAnOpenRoom)
 
 **Rulings**
 - What shows while a chat opens is presentation only: it never enters the live transcript, so approvals, paging and resume never read it, and the live transcript replaces it wholesale (2026-10-27, #1404, Eric picked this over seeding the live transcript or keeping chat views alive).
 - Copies are kept per dashboard and profile (Bot Chat: per bot), so another profile's history never shows (2026-10-27, #1404).
 - A profile switch takes the outgoing profile's transcript, and any reply still streaming into it, off the screen as the profile changes over: the chat the new profile opens on shows its saved copy (a Bot Chat, its kept copy), or nothing, until Hermes sends it, and a chat opened in that profile replaces it as it opens. It used to stay up under the new chat's title for the whole switch, several seconds on a real dashboard. A switch that fails puts the outgoing chat and its transcript back as they were, over a chat opened during the switch (the transcript never onto another dashboard), until the reconnect resolves it (2026-10-28, #1447, Eric asked for it, from issue #1442).
+- A group room on screen shows only its own errors. The chat under it can still sync (a return to the app), and its error used to land in the room's banner, read as the room failing (issue #1459). A chat sync's error raised while a room is on screen waits and shows when the room closes back to that chat (closed, or gone: disbanded or not found); opening another chat or a new one, switching profile, a reconnect or the chat resuming meanwhile drops it (2026-10-28, #1461, from issue #1459, which Eric asked to fix).
 - A Bot Chat's copy is kept only for the bot owning the id the chat is open as (the registry first, then the roster and the saved last-chat reference). The chat's other ids never decide the bot: the scroll identity's aliases can name the chat it replaced, another bot's, so an ordinary chat left after a Bot Chat keeps no copy for it, and reopening one bot never shows another's chat. The owner is taken before a bot open notes its own ids, so a bot opening as the same id never takes the copy of the chat being left (2026-10-28, #1432).
 
 **Open gaps**
 - A chat whose live transcript lands somewhere other than its newest row (an unread reply, a restored reading place) moves there at the handover.
 - Bot Chat copies and group room events are memory only, so they don't outlive Conduit being stopped.
+- An error already on the chat when a room opens is cleared by the open (openGroupRoom) and doesn't come back when the room closes; only a sync error raised while the room is up waits (#1461 review). `errorMessage` holds non-chat errors too, so carrying it needs a rule for which ones are the chat's.
 - Settings' Data handling caption says recent conversations are kept so Conduit opens straight to them while it connects. It doesn't mention reopening, because what's kept on the device hasn't changed.
 - The first open of a chat after launch reads its file on the main thread (repeat opens come from memory); kept as is unless it shows in profiling (#1404).
 - While the copy is up, VoiceOver reads its rows with no "opening" announcement; the header and composer say Conduit is connecting, as for a chat picked in the saved list (#1404).
 
-**Checked:** 2026-10-28, #1447 (a profile switch shows the new profile's chat, not the outgoing transcript); 2026-10-28, #1432.
+**Checked:** 2026-10-28, #1461 (a chat's sync error stays out of a room on screen); 2026-10-28, #1447 (a profile switch shows the new profile's chat, not the outgoing transcript); 2026-10-28, #1432.
 
 ## Composer drafts
 
@@ -1637,6 +1679,7 @@ Keyboard caption is unchanged, as it describes the option)
 - Tests: `ConduitTests/ComposerReturnKeyTests.swift`
 
 **Rulings**
+- On a Mac the composer fields (a chat's, a room's, the full editor) show no inline prediction (autocorrect and spelling stay on; ReturnKeyTextView). macOS draws it in a correction panel with its own nested event loop, and both Mac freezes captured on 2.2.1 (237) ran inside three or four of them, the chat's LazyVStack re-laying out forever (2026-10-28, #1460).
 - The caption describes the option, not current behaviour, because the
   option starts off on iPhone and iPad (2026-10-24, #1208, review of #1190).
 - While dictating, Return does what the Stop in Send's place does: stops
@@ -1652,7 +1695,7 @@ Keyboard caption is unchanged, as it describes the option)
   command sending, Shift-Return and the IME's Return still reaching the
   text, in chats, rooms and the full editor.
 
-**Checked:** 2026-10-27, #1394.
+**Checked:** 2026-10-28, #1460 (inline prediction off on a Mac).
 
 ## A chat's last reply
 
@@ -1867,7 +1910,7 @@ from Hermes: commentary is said, see Acknowledging work handed to Hermes)
 **Open gaps**
 - `Haptics.signal` still plays the writing haptic only for `message.delta`.
 
-**Checked:** 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
+**Checked:** 2026-10-28, #1449 (Local Live's screen shows a reply's attached files, even beside a card); 2026-10-28, #1430 (Local Live's spoken stream passes the action filter; its writing state is unchanged); 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
 
 ## Live Activity for a running turn
 
@@ -2160,7 +2203,8 @@ calls (no trace) · docs/VOICE_SETTINGS.md
 ## Narrated actions left out of speech
 
 What a spoken reply leaves out that the chat keeps: a persona's narrated
-actions in single asterisks or underscores, and emoji.
+actions in single asterisks or underscores, and emoji. Hermes' file tags
+have their own entry, Files Hermes attaches, in what voices say.
 
 **Siblings:** Classic voice (phone, CarPlay; streamed) · Read Aloud and its
 Now Playing title · live read-back of a reply ("read me the last reply", in
@@ -2186,7 +2230,7 @@ transcript (never filtered)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1429, carried in #1430.
+**Checked:** 2026-10-28, #1449 (Hermes' file tags are left out too, with their own entry, Files Hermes attaches); #1429, carried in #1430.
 
 ## Speech stream failures
 
@@ -2761,7 +2805,7 @@ split · Read Aloud and live read-back · chat list previews and quotes
 - Previews and quotes only drop fence lines and track no block, so they need no closing rule (not a gap, noted so nobody adds one).
 - A ```` block holding a ``` line in a Bot Chat can route a mention after that line, as Hermes does; changing it starts in Hermes.
 
-**Checked:** 2026-10-28, #1430 (read-back's action filter runs only on lines outside a code block); 2026-10-24, at #1220.
+**Checked:** 2026-10-28, #1449 (Local Live's split leaves file tags unsaid and shows their files); 2026-10-28, #1430 (read-back's action filter runs only on lines outside a code block); 2026-10-24, at #1220.
 
 ## Files prepared for preview and Save to Files
 
@@ -3356,7 +3400,9 @@ A Kanban task's worker runs in a Hermes session of its own (source
 `kanban`). Hermes refuses to reopen one as a chat (`session.resume` 4132):
 only the board may run it, so it can supervise the worker. Conduit leaves
 these sessions out wherever it offers chats, and the task's Worker Log is
-where to follow one.
+where to follow one. The other sessions Hermes' pickers hide as not
+conversations (`INTERNAL_LISTING_SOURCES`: `kanban`, `tool`, `oneshot`) stay
+out the same way, and so do workers Hermes stored before it tagged them.
 
 **Siblings:** each profile's chats list and its archived list (and their
 `session.list` fallback) · All profiles · project chats (lanes and
@@ -3371,8 +3417,8 @@ link or notification (the message shown) · the Kanban task's Worker Log ·
 Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 
 **Code**
-- Sources: `Conduit/Models/Models.swift` (SessionSource.hermesKanbanSource, chatListExcludedSources)
-- Lists: `Conduit/Services/AppState.swift` (profileSessionsPath, archivedSessionsPath), `Conduit/Models/AllProfilesChats.swift` (sessionsPath), `Conduit/Services/HermesClient.swift` (MessageNormalizer.normalizeSessions drops `kanban` rows from every list it builds: the `session.list` fallback, project lanes and previews)
+- Sources: `Conduit/Models/Models.swift` (SessionSource.hermesKanbanSource, hermesInternalSources, nonChatExcludedSources, chatListExcludedSources, isLegacyKanbanWorker)
+- Lists: `Conduit/Services/AppState.swift` (profileSessionsPath, archivedSessionsPath), `Conduit/Models/AllProfilesChats.swift` (sessionsPath), `Conduit/Services/HermesClient.swift` (MessageNormalizer.normalizeSessions drops `kanban`, `tool` and `oneshot` rows and legacy workers from every list it builds: the `session.list` fallback, project lanes and previews)
 - Search: `Conduit/Services/SessionContentSearch.swift` (path), `Conduit/Voice/VoiceChatFinder.swift` (path), `notifier/dashboard/api/watch_tools.py` (run_watch_find_chat, CHAT_SEARCH_EXCLUDED_SOURCES)
 - Opening one anyway: `Conduit/Services/AppState.swift` (the 4132 case where a resume fails, reconciliationWasKanbanWorker)
 - Pickers: `Conduit/Services/AppState+Widgets.swift` (publishWidgetSnapshot builds the widget and Share extension choices from the chats list), `Conduit/Services/AppState+WidgetLaunch.swift` (prepareWidgetLaunch says a choice no longer listed is unavailable), `Conduit/Services/AppState+ShareDraft.swift` (deliverSharedDraft's fallback to the chat on screen)
@@ -3385,12 +3431,17 @@ Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 - A 4132 counts as "not found" everywhere a missing chat is handled: a worker saved as the last conversation is retired on the next return (the newest chat opens instead, and its stored id isn't tried, since Hermes refuses a worker under any id) and a notification for one isn't retried; only the message differs (2026-10-26, #1305 review).
 - A launcher widget still holding a worker (picked or saved before this change) says the conversation is unavailable, since the worker isn't in the chats list any more; it doesn't try the resume that would show the board message. A share sent to a worker from a snapshot written before this change goes the same way: the draft lands in the chat on screen with "Conduit couldn't open the chat you picked". The next snapshot, written once the app reads its chats list, has no workers (2026-10-26, #1305 review).
 - Rows saved before this change stay in the saved chat list until a full, non-empty read replaces them: a saved `SessionSummary` keeps no raw Hermes source (a worker is `.other`), and storing one for that window isn't worth the code (2026-10-26, #1305 review).
+- Conduit hides what Hermes' own pickers hide: `tool` (third-party integrations, `hermes chat --source tool`) and `oneshot` (`chat -q`, `-z`) sessions as well as `kanban`, in the lists, search and voice (2026-10-28, #1461, from issue #1459, which Eric asked to fix).
+- A worker Hermes stored before it tagged workers `kanban` is a `cli` (or `local`) row whose preview is the dispatcher's one-line prompt, `work kanban task <task id>`. Hermes retags only those whose folder is under the board's workspaces, and resumes the rest, so they listed as chats (Eric's own list, 2026-10-28). The lists leave out a `cli` or `local` row whose preview is exactly that prompt; one where a person wrote more after it stays, and so does a row from another source (Telegram, cron) that reads the same; a chat whose whole first message is that prompt would hide too, which no one types (2026-10-28, #1461: follows from issue #1459's stated fix, which Eric asked for after the rows showed in his TestFlight list).
 
 **Open gaps**
 - A project card's count is Hermes' `session_count`, which may include workers in the project's folders; only the fallback (counting previews) leaves them out.
 - A worker's transcript (its messages, not the log) can't be read in Conduit. Hermes would serve it read-only over `GET /api/sessions/{id}/messages`; a read-only view is the maintainer's call.
+- Search "In messages" and voice's find chat can still match a legacy worker (the `work kanban task` rows): search results carry no preview to tell one by. Hermes resumes those, so one opens as a chat.
+- A legacy worker saved as the last chat (picked before #1461) still reopens on a return: Hermes resumes it, so nothing retires the saved pointer until another chat is opened. It opens as a readable chat, not an error (#1461 review).
+- The Watch's find chat still leaves out only `kanban` (notifier `CHAT_SEARCH_EXCLUDED_SOURCES`, in `notifier/dashboard/api/watch_tools.py`); `tool` and `oneshot` were waiting on the plugin_api.py split, which notifier #449 has made (#1459).
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
+**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1461 (`tool` and `oneshot` sessions and legacy workers left out, issue #1459); 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
 
 ## Bars lists scroll under
 
