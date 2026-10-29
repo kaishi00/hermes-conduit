@@ -78,7 +78,7 @@ enum ReadableWidth {
     /// size (a chat's 760, Settings' 720): one for each size whose body
     /// text still fits as many words to a line (body at the default size
     /// is 17, 19, 21 and 23 pt). A phone, and an iPad beside the list,
-    /// keep the system's size; a maximized window's 1040 pt chat column
+    /// keep the system's size; a chat column of 1040 pt or more
     /// steps up three.
     static func textSteps(column: CGFloat, base: CGFloat) -> Int {
         let growth = column / base
