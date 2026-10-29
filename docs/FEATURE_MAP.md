@@ -3052,6 +3052,34 @@ rule that every job of a candidate's dispatched Nightly passes
 
 **Checked:** 2026-10-29, #1506.
 
+## Smoke selection
+
+What the one macOS Smoke job runs on every PR and push, against what only the
+nightly run covers.
+
+**Siblings:** the pinned lists and their caps · the change's own unit classes
+· the source contracts · the UI targeted retry · the step summary · the
+nightly partition, which runs everything Smoke leaves out · docs/CI.md
+
+**Code**
+- Lists and caps: `scripts/smoke-suite.json`; validation and the change's own classes: `scripts/plan-tests.py` (`smoke`)
+- Workflow steps: `.github/workflows/ci.yml` (the plan job's selection, the Smoke job's unit and UI steps)
+- UI retry: `scripts/smoke-retry-classes.py`; step summary: `scripts/smoke-summary.py`
+- Nightly partition: `scripts/hosted-suite.json`, `.github/workflows/nightly.yml`
+- Tests: `scripts/tests/test_ci_workflow_contract.py`, `scripts/tests/test_smoke_job_runner.py`, `scripts/tests/test_hosted_ci.py`
+- Docs: `docs/CI.md`
+
+**Rulings**
+- Smoke pins single tests (Class/testMethod), never whole classes, under `max_unit_tests` (70) and `max_ui_tests` (4); `plan-tests.py smoke` fails a whole-class entry, a test its class doesn't declare, a pinned nightly-only timing family and a list over its cap. Add coverage by swapping a test; raising a cap is a deliberate change with its reason in the PR (Eric, 2026-10-29, #1508: whole classes let unit smoke grow from 195 s to 240 s with the list unchanged).
+- The source contracts and the change's own unit classes run whole; a changed class runs in place of the tests pinned from it (2026-10-29, #1508).
+- Everything Smoke leaves out runs every night; the nightly run is the exhaustive authority (CI v5, #739).
+
+**Open gaps**
+- A changed UI test class doesn't join Smoke: a UI test a PR adds or edits first runs at night. UI tests are the slow ones (36-150 s each) and the list is capped at 4 (2026-10-29, #1508).
+- A changed unit class with no timing baseline is charged 3 s of `changed_budget_s`, and `scripts/test-timings.json` was last seeded in August, so a PR adding several slow new classes isn't held to the budget (2026-10-29, #1508).
+
+**Checked:** 2026-10-29, #1508.
+
 ## Settings connection page
 
 The page with the server, Reconnect, Restart Gateway, Cloudflare Access,
@@ -3712,12 +3740,13 @@ on top
 - Transcript text grows by point size, body text's growth from the system's size to the stepped one (17 to 19, 21, 23 pt at the default size), not by resolving fonts at the stepped Dynamic Type size: an iPad app on a Mac appears to draw every size alike, so #1393's steps did nothing there (Eric, 2026-10-29, #1478: maximized or resized, the text didn't scale). In-column cards' UIKit text and the typed text of the chat's composer, a group room's field and the full editor (`UIFont.preferredFont(forTextStyle:in:)`) grow the same way wherever the system draws the stepped size smaller than iOS does, to the same size as the transcript: both land on iOS's body size for the stepped size, whatever the system draws at the column's base (`columnText`), and nothing is added outside a stepped column.
 - On a Mac a column's text doesn't step: it grows by point size in proportion to the column, transcript, cards, composers and SwiftUI text alike. A Mac build showed an iPad app there draws every text style at its default size for any Dynamic Type size (body 17, title2 22 pt), and only a point size grows; it also draws at about 77%, so iOS's largest standard size (23 pt) looks like ordinary Mac text and a 1040 pt column a narrow strip. So on a Mac the column takes 80% of the window, its text at the system's size until its lines hold 1.5 times a phone's words (1140 pt for a chat), then growing with it, up to 2.2 times (a 2508 pt chat column), the margins past that (Eric, 2026-10-29, #1503: the 1040 pt column looked far too narrow on a maximized Mac; he chose text that keeps growing so lines stay a readable length, and to have buttons and Settings grow with the chat's text). The app sets every text style with `scaledFont`, which is the text style itself wherever the system grows text styles, and in such a column the style's default size (what a Mac draws at any system size) times the column's scale (`ColumnText.scale`, in twentieths so a window drag re-lays the transcript only a few times), the column's plain text included. Navigation bar titles are UIKit's and keep their size. The Watch app and widgets keep `font`: they never sit in a wide column. An iPhone or iPad keeps the steps and the caps above.
 - Settings' column widens with the window as a chat's does, from 720 pt up to 980 pt, and its text steps up the same way from 720 pt (Eric, 2026-10-29, #1478: he expected Settings to scale too). This replaces Settings' fixed 720 pt from the 2026-10-26 ruling (#1320) below, which now keeps only a list shown alone and calls fixed.
+- The chat's column and its text steps measure the room the list leaves, so a list dragged wider (Resizable columns on a split window) narrows the chat's column and may take a step back, as hiding the list adds one (2026-10-29, #1498; the behavior since #1492).
 - A list shown alone (720 pt) and calls (640 pt) keep fixed widths: rows, cards and captions don't read better wider. The sign-in screens keep their own 560 pt column, which follows the text size (2026-10-26, #1320).
 
 **Open gaps**
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-10-29, #1503: on a Mac, a column takes 80% of the window and its text, text styles through `scaledFont` included, grows by point size with it. Earlier 2026-10-29, #1507 (the listed cards' text moved below their caption row, sizes unchanged); 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text; 2026-10-27, #1393; 2026-10-26, #1320.
+**Checked:** 2026-10-29, #1503: on a Mac, a column takes 80% of the window and its text, text styles through `scaledFont` included, grows by point size with it. Earlier 2026-10-29, #1498 (a dragged list narrows the chat's column, from #1492; Rulings); 2026-10-29, #1507 (the listed cards' text moved below their caption row, sizes unchanged); 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text; 2026-10-27, #1393; 2026-10-26, #1320.
 
 ## A split window's columns fill the window
 
@@ -3743,7 +3772,7 @@ phone)
 **Open gaps**
 - Not seen on a device yet: the simulator suites have no Duo before Xcode 27.1, so a Duo or a split iPad from TestFlight confirms it.
 
-**Checked:** 2026-10-29, #1492 (the 1 pt line between the columns is a draggable ColumnDivider above them; the drawer shell's sidebar threshold counts it); 2026-10-29, #1472.
+**Checked:** 2026-10-29, #1498 (ColumnDivider's store rules and drag direction are ColumnWidth functions; the layout is unchanged); 2026-10-29, #1492 (the 1 pt line between the columns is a draggable ColumnDivider above them; the drawer shell's sidebar threshold counts it); 2026-10-29, #1472.
 
 ## Resizable columns on a split window
 
@@ -3755,7 +3784,7 @@ beside the list (it opens in the chat's column) · a group room beside the
 list (the list drags; a room has no Artifacts) · Artifacts beside a chat ·
 the drawer shell's persistent sidebar (Appearance, V2 off) · the tab bar
 under the list (Voice beside the tabs) · the chat's readable column (it
-measures the room left to it: not needed) · hiding the list (#1164: the
+measures the room left to it; done, Readable width's ruling, #1498) · hiding the list (#1164: the
 width comes back with the list) · Settings > Appearance > Layout's caption
 in both shells (the drawer shell's only while its persistent sidebar is
 on) · not needed: README.md (it doesn't describe the split
@@ -3767,21 +3796,24 @@ layout)
 - Artifacts: `Conduit/Views/V2/V2ConversationScreen.swift` (ChatSidePanel.widths, sidePanelWidth)
 - Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent, persistentSidebarWidth), `Conduit/Views/SidebarLayout.swift` (SidebarLayoutMetrics.persistentSidebarWidths)
 - Caption: `Conduit/Views/AuxiliaryViews.swift` (Layout)
+- Widths and the line: what a drag or a VoiceOver step stores is ColumnWidth.storedAfterDrag and storedAfterStep, its direction ColumnWidth.dragSign
 - Tests: `ConduitTests/V2SplitLayoutTests.swift` (testDraggedColumnWidthsKeepToTheirBoundsAndTheWindow)
 
 **Rulings**
 - Both lines drag: the list (375 to 560 pt; it can't go under the tab bar's width) and Artifacts (300 to 720 pt, standard 340 pt); the drawer shell's sidebar 320 to 520 pt. A double-click or double-tap resets a line; VoiceOver adjusts it by 40 pt or resets it (Eric, 2026-10-29, #1492, issue 1487).
 - Each width is kept per device, as hiding the list is, not synced. A window smaller than a width needs gives the column what's left beside the chat's least width (430 pt); a window splits, and Artifacts shows, at the standard width whatever the user's, so a widened column never takes them away (2026-10-29, #1492).
 - Under a widened list the tab bar keeps its width, centered under the list's column (2026-10-29, #1492).
-- A window with room for Artifacts beside a chat at the list's standard width keeps that room whatever the list's width, the panel open or not: widening the list never hides the panel or its toggle, and the list doesn't jump as a chat or the panel opens. The list's most is then the window less 772 pt: 408 pt on a 1180 pt iPad in landscape, 422 pt on an 11-inch's 1194 pt, the full 560 pt on a maximized Mac. Artifacts beside the chat then reaches the window less the list and 431 pt: about 373 pt on 1180 pt, 387 pt on 1194 pt (2026-10-29, #1492, from review).
+- A window with room for Artifacts beside a chat at the list's standard width keeps that room whatever the list's width, the panel open or not: widening the list never hides the panel or its toggle, and the list doesn't jump as a chat or the panel opens. The list's most is then the window less 772 pt: 408 pt on a 1180 pt iPad in landscape, 422 pt on an 11-inch's 1194 pt, the full 560 pt on a maximized Mac. Artifacts beside the chat then reaches the window less the list and 432 pt (the chat's 430 pt and two lines): about 373 pt on 1180 pt, 387 pt on 1194 pt. Where the panel starts to fit, at a 1147 pt window, the list's most drops from 560 pt to its standard 375 pt: one point narrower it keeps only the chat's least width, one point wider the panel's room as well. The drop stays: it shows only while resizing a window across that width with a widened list, and either way round it costs more (Eric, 2026-10-29, #1498; the layout since #1492).
 - A drag lays the column out at its live width and stores it once, when the drag ends or is cancelled: every defaults write redraws each `@AppStorage` view. A press that doesn't move the line (under 4 pt) keeps the stored width, which a smaller window may show less of (2026-10-29, #1492, from review).
 - The caption shows only with the setting that puts a line on a wide window: the list set beside the chat (V2), the persistent sidebar on (the drawer shell); a window too narrow to split still shows it (2026-10-29, #1492, from review).
+- A drag follows the pointer right to left too: there a leading column is on the right, so dragging left widens it. VoiceOver finds the line by its 12 pt grip, not the 1 pt line (2026-10-29, #1498, from #1492's review).
+- The drawer shell's sidebar is named "Chat list width" as V2's list is: both hold the chats (2026-10-29, #1498, from #1492's review).
 
 **Open gaps**
 - No resize cursor on a Mac: a Designed-for-iPad app can't set one from SwiftUI on iOS 17, so the line highlights on hover and a tooltip names it.
 - Not seen on a device yet: a Mac or iPad from TestFlight confirms it.
 
-**Checked:** 2026-10-29, #1492.
+**Checked:** 2026-10-29, #1498 (store rules, right to left, the grip's VoiceOver frame, the 1147 pt drop; Code, Rulings); 2026-10-29, #1492.
 
 ## Voice on a profile the dashboard didn't start with
 
@@ -3878,25 +3910,25 @@ card shows when the app is next opened), the widgets and the share extension
 
 **Code**
 - Offer and upload: `Conduit/Services/CrashReportOffer.swift` (CrashReportUpload: what a report sends; CrashReportQueue; CrashReportOffer)
-- Which diagnostics are offered: `Conduit/Services/MetricKitReports.swift` (queueCrashReport)
+- Which diagnostics are offered: `Conduit/Services/MetricKitReports.swift` (queueCrashReport; MetricKitReportStore.save, normalized and shallowed, which keep a stack overflow's payload readable)
 - Card: `Conduit/Views/CrashReportBanner.swift`, shown by `Conduit/Views/RootView.swift` (MainView's top overlay)
 - Settings caption: `Conduit/Views/ChatSupportSheets.swift` (DeviceReportsSection)
 - Relay: `notifier/relay/src/crash-reports.mjs`, `notifier/relay/test/crash-reports.test.mjs`; privacy: `notifier/docs/privacy/index.html`
 - Privacy manifest: `Conduit/PrivacyInfo.xcprivacy`, `ConduitTests/PrivacyManifestTests.swift`
-- Tests: `ConduitTests/ConnectionFailureTests+CrashReports.swift`
+- Tests: `ConduitTests/ConnectionFailureTests+CrashReports.swift`, `ConduitTests/ConnectionFailureTests+MetricKit.swift` (testMetricKitSaveKeepsAStackThatOverflowed)
 
 **Rulings**
 - Ask once, upload to the relay: Not now drops the report from the offer (it stays in Diagnostics & logs), and nothing is sent without Send (2026-10-29, Eric chose it in the TestFlight crashes thread; #1477, notifier #459).
 - A report is the diagnostic's crashes and hangs only, with the version, build, iOS version and device model; an exception's composed message and arguments are left out, since they can quote anything. It goes to the developer's relay (`push.milim.dev`) even when the user's notifications use another relay, and carries no installation credential (#1477, notifier #459).
 - Only a crash or hang from the last 7 days is offered, checked again when the card would show, the newest 5 at most, and one too big to send even trimmed to its first crash and hang is not. Those an earlier build kept are queued once per device, on the first launch with the card. Send sends only the reports the card asked about. A relay that answers 404 (no `CRASH_REPORTS_TOKEN`) stops the offers from that build on that device; what's still queued waits for the next build, so a build that ships before the relay route is deployed loses nothing, and a report declined or sent isn't asked about again. The look at reports earlier builds kept waits for a launch that can list the folder and finds none or reads at least one of them (locked files before first unlock fail together); a single file that can't be read is skipped (part of the ask-once design Eric delegated in the TestFlight crashes thread, 2026-10-29; #1477).
-- A report is built from named keys only (the diagnostic's metadata, exception and stack frames); a key MetricKit adds later stays on the phone until it's named (#1477).
+- A report is built from named keys only (the diagnostic's metadata, exception and stack frames); a key MetricKit adds later stays on the phone until it's named (#1477). A stack keeps its first 240 levels (one that overflowed can nest thousands, which would overflow the walk too, and JSONSerialization reads and writes nothing nested past 512, which a sent level-L frame is at 7 + 2L), and the relay keeps at most 512 frame levels. The stored payload has every container 500 deep emptied, so a stack overflow's crash is kept and offered rather than refused as unreadable (MetricKit's root frame is the one that was running and its subFrames lead out toward the thread's entry, so the crash site is what's kept: a real crash payload posted on Apple's developer forums, attachment 18fdc26d-396d-4950-950f-e4d2dffa25cc, nests libsystem_kernel, CoreFoundation, GraphicsServices, UIKitCore, the app, then dyld, root first). Both numbers are Claude's pick, under the ask-once design Eric delegated in the TestFlight crashes thread, after the 0.24.0 deploy, 2026-10-29; Eric hasn't ruled on them (#1505, notifier #469).
 
 **Open gaps**
 - A kill for memory (jetsam) leaves no MetricKit diagnostic, so a freeze that ends that way is never offered.
 - MetricKit may hold diagnostics back on a device that doesn't share analytics with developers.
 - App Store Connect's privacy label doesn't yet list Crash Data and Performance Data (not linked, not tracked), which the privacy manifest now declares; the maintainer updates it before the next App Store submission.
 
-**Checked:** 2026-10-29, #1481.
+**Checked:** 2026-10-29, #1505.
 
 ## Feature map rules
 

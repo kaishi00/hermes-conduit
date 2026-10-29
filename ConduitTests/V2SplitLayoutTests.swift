@@ -62,6 +62,24 @@ extension SidebarLayoutTests {
         XCTAssertEqual(list.dragged(from: 375, by: 100, room: 420), 420)
         XCTAssertEqual(list.dragged(from: 375, by: 100, room: 200), list.minimum)
 
+        // Dragging away from the column widens it, right to left too,
+        // where a leading column is on the right.
+        XCTAssertEqual(ColumnWidth.dragSign(columnEdge: .leading, layoutDirection: .leftToRight), 1)
+        XCTAssertEqual(ColumnWidth.dragSign(columnEdge: .trailing, layoutDirection: .leftToRight), -1)
+        XCTAssertEqual(ColumnWidth.dragSign(columnEdge: .leading, layoutDirection: .rightToLeft), -1)
+        XCTAssertEqual(ColumnWidth.dragSign(columnEdge: .trailing, layoutDirection: .rightToLeft), 1)
+
+        // A drag stores its width once it moved the line; a press doesn't.
+        XCTAssertEqual(ColumnWidth.storedAfterDrag(live: 450, began: 375), 450)
+        XCTAssertNil(ColumnWidth.storedAfterDrag(live: 375.5, began: 375))
+        XCTAssertNil(ColumnWidth.storedAfterDrag(live: nil, began: 375))
+        // A VoiceOver step stores only when it moves the line: not at a
+        // bound, nor on a window showing less than the stored width.
+        XCTAssertEqual(list.storedAfterStep(to: 415, showing: 375, room: 1000), 415)
+        XCTAssertNil(list.storedAfterStep(to: 335, showing: 375, room: 1000))
+        XCTAssertNil(list.storedAfterStep(to: 600, showing: list.maximum, room: 1000))
+        XCTAssertNil(list.storedAfterStep(to: 455, showing: 415, room: 415))
+
         // Artifacts beside the chat shows at its standard width's window,
         // as before, and can then be dragged narrower or wider.
         let panel = ChatSidePanel.widths
@@ -84,6 +102,11 @@ extension SidebarLayoutTests {
         // Too small for the panel anyway: the list keeps only the chat's
         // least width.
         XCTAssertEqual(V2SplitLayout.chatKeeps(window: 1000), V2SplitLayout.minimumChatWidth)
+        // Where the panel starts to fit, the list's most drops from its
+        // own most to the standard width: one point wider, the window
+        // keeps the panel's room instead.
+        XCTAssertEqual(V2SplitLayout.ListColumn(window: 1146, stored: Double(list.maximum)).width, list.maximum)
+        XCTAssertEqual(V2SplitLayout.ListColumn(window: 1147, stored: Double(list.maximum)).width, list.standard)
         XCTAssertFalse(ChatSidePanel.fits(width: 1000 - V2SplitLayout.listWidth - 1))
         // A drag under way lays the list out at the dragged width.
         XCTAssertEqual(V2SplitLayout.ListColumn(window: 1440, stored: 400, dragged: 450).width, 450)

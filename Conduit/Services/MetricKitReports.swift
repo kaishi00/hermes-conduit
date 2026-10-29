@@ -251,8 +251,62 @@ struct MetricKitReportStore {
 
     /// Sorted keys, so the same payload hashes the same however it arrived.
     private static func normalized(_ json: Data) -> Data? {
-        guard let object = try? JSONSerialization.jsonObject(with: json), object is [String: Any] else { return nil }
+        guard let object = try? JSONSerialization.jsonObject(with: shallowed(json)), object is [String: Any] else { return nil }
         return try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    }
+
+    /// JSONSerialization reads and writes nothing nested past 512, and a
+    /// stack that overflowed nests its frames thousands deep. Below this
+    /// depth a payload keeps everything; a container at it is emptied.
+    static let maxJSONDepth = 500
+
+    /// `json` with every container at `maxDepth` emptied, so a crash from a
+    /// stack overflow is kept (its frames deeper than about 245 levels go)
+    /// rather than refused. It scans the bytes once, without recursing, and
+    /// returns a payload with nothing that deep as it came.
+    static func shallowed(_ json: Data, maxDepth: Int = maxJSONDepth) -> Data {
+        var emptiedAny = false
+        var out = Data()
+        out.reserveCapacity(json.count)
+        var depth = 0
+        var emptiedDepth = 0
+        var inString = false
+        var escaped = false
+        for byte in json {
+            let keep = emptiedDepth == 0
+            if inString {
+                if keep { out.append(byte) }
+                if escaped {
+                    escaped = false
+                } else if byte == UInt8(ascii: "\\") {
+                    escaped = true
+                } else if byte == UInt8(ascii: "\"") {
+                    inString = false
+                }
+                continue
+            }
+            switch byte {
+            case UInt8(ascii: "\""):
+                inString = true
+                if keep { out.append(byte) }
+            case UInt8(ascii: "{"), UInt8(ascii: "["):
+                depth += 1
+                if keep {
+                    out.append(byte)
+                    if depth == maxDepth {
+                        emptiedDepth = depth
+                        emptiedAny = true
+                    }
+                }
+            case UInt8(ascii: "}"), UInt8(ascii: "]"):
+                if emptiedDepth == depth { emptiedDepth = 0 }
+                depth -= 1
+                if emptiedDepth == 0 { out.append(byte) }
+            default:
+                if keep { out.append(byte) }
+            }
+        }
+        return emptiedAny ? out : json
     }
 
     private static func hash(_ data: Data) -> String {
