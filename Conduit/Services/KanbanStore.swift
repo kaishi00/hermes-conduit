@@ -1175,8 +1175,10 @@ final class KanbanStore: ObservableObject {
     }
 }
 
-/// A request to show a Kanban task, on whichever board holds it.
+/// A request to show a Kanban task, on whichever board holds it, on the
+/// dashboard it was made on.
 struct KanbanTaskOpenRequest: Equatable {
     let id = UUID()
     let taskID: String
+    let dashboardID: UUID?
 }

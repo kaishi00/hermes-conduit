@@ -480,9 +480,15 @@ struct KanbanView: View {
 
     /// Opens the task a request names, on whichever board holds it, once
     /// a board has loaded and shows; says so when no board has it. A board
-    /// that fails to load drops the request, so it never opens later.
+    /// that fails to load drops the request, so it never opens later, and
+    /// so does a switch to another dashboard. A newer request wins: an
+    /// older lookup that finishes later changes nothing.
     private func openRequestedTask() {
         guard shell.isTabActive, let request = appState.kanbanTaskOpenRequest, openingRequest != request.id else { return }
+        guard request.dashboardID == appState.activeDashboardID else {
+            appState.kanbanTaskOpenRequest = nil
+            return
+        }
         guard store.loadedBoardSlug != nil else {
             if store.errorMessage != nil, !store.isLoading { appState.kanbanTaskOpenRequest = nil }
             return
@@ -492,8 +498,11 @@ struct KanbanView: View {
             defer {
                 if appState.kanbanTaskOpenRequest?.id == request.id { appState.kanbanTaskOpenRequest = nil }
             }
+            let current = { appState.kanbanTaskOpenRequest?.id == request.id && appState.activeDashboardID == request.dashboardID }
             do {
-                guard let found = try await store.findTask(id: request.taskID) else {
+                let found = try await store.findTask(id: request.taskID)
+                guard current() else { return }
+                guard let found else {
                     store.showMutationError(KanbanServiceError.invalidResponse(
                         AppLocalization.string("Couldn't find Kanban task \(request.taskID) on your boards.")))
                     return
@@ -501,13 +510,13 @@ struct KanbanView: View {
                 if found.board != store.loadedBoardSlug {
                     await store.selectBoard(slug: found.board, includeArchived: includeArchived)
                     // The switch failed: its own error shows, and the old board's sheet would read the wrong board.
-                    guard store.loadedBoardSlug == found.board else { return }
+                    guard current(), store.loadedBoardSlug == found.board else { return }
                 }
                 selectedTask = found.task
             } catch is CancellationError {
                 return
             } catch {
-                store.showMutationError(error)
+                if current() { store.showMutationError(error) }
             }
         }
     }

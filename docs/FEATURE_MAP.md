@@ -984,7 +984,7 @@ meanwhile.
 Screen (the voice sheet's screenshot and a screen question) · Settings' Hermes
 test call and watch prompts · a Classic voice conversation's fresh chat ·
 New Chat and its focus · a widget's or Shortcut's New Chat · the /new command
-· Pulse's Do it on an item from no chat (the `pulse` branch)
+· Pulse's Do it on an item from no chat or from a Kanban task's worker (the `pulse` branch)
 
 **Code**
 - Creating the chat: `Conduit/Services/AppState.swift` (createNewSession and createAndReconcileSession return the chat they opened; startChatForComposerSubmission; startNewChat and focusNewChatComposer; prepareVoiceConversation)
@@ -997,12 +997,12 @@ New Chat and its focus · a widget's or Shortcut's New Chat · the /new command
 **Rulings**
 - What waits on a new chat goes in only when the chat createNewSession returned is still the one open. Another chat opened or created meanwhile (a voice action, a screen question, a notification) gets nothing. The message stays in the composer, the screenshot goes back or waits, and the user is told (2026-10-24, #941's review, #1191).
 - New Chat focuses the composer only on the chat it made. A Classic voice conversation files and archives only its own new chat under Voice; a fresh one asked for fails when another chat took the screen.
-- Pulse's Do it on an item from no chat starts a chat only when New Chat can start one at once, and puts the reminder only in the chat its own create returned, while that one is still open. The Pulse screen stays up until then, so a chat that didn't start leaves it there to say why (2026-10-25, #1240 on the `pulse` branch).
+- Pulse's Do it on an item from no chat (and, since #1473, on one from a Kanban task's worker, which Hermes won't reopen as a chat) starts a chat only when New Chat can start one at once, and puts the reminder only in the chat its own create returned, while that one is still open. The Pulse screen stays up until then, so a chat that didn't start leaves it there to say why (2026-10-25, #1240 on the `pulse` branch).
 
 **Open gaps**
 - A widget's or Shortcut's New Chat and /new put nothing in the chat, so they only report whether the open chat changed.
 
-**Checked:** 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
+**Checked:** 2026-10-29, at #1473 on the `pulse` branch (Do it on a card from a Kanban task's worker takes the same new chat); 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
 
 ## Composer Return key
 

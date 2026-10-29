@@ -1273,7 +1273,7 @@ extension AppState {
     /// Opens the Kanban task a card from its worker names, in Tasks.
     func openPulseCardTask(_ card: PulseCard) {
         guard let task = pulseCardTask(card) else { return }
-        kanbanTaskOpenRequest = KanbanTaskOpenRequest(taskID: task)
+        kanbanTaskOpenRequest = KanbanTaskOpenRequest(taskID: task, dashboardID: activeDashboardID)
     }
 
     /// Do it: opens the chat the card came from with the reminder in its
