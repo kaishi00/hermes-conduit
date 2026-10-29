@@ -481,8 +481,8 @@ struct KanbanView: View {
     /// Opens the task a request names, on whichever board holds it, once
     /// a board has loaded and shows; says so when no board has it. A load
     /// that fails while the request waits drops it, so it never opens
-    /// later (an error left from before doesn't), and so does a switch to
-    /// another dashboard. A newer request wins: an
+    /// later (an error left from before doesn't), and so do leaving Tasks
+    /// and a switch to another dashboard. A newer request wins: an
     /// older lookup that finishes later changes nothing.
     private func openRequestedTask() {
         guard shell.isTabActive, let request = appState.kanbanTaskOpenRequest, openingRequest != request.id else { return }
@@ -506,6 +506,8 @@ struct KanbanView: View {
                     return
                 }
                 if found.board != store.loadedBoardSlug {
+                    // Checked again after the lookup: a newer request mustn't have its board switched under it.
+                    guard current() else { return }
                     await store.selectBoard(slug: found.board, includeArchived: includeArchived)
                     // The switch failed: its own error shows, and the old board's sheet would read the wrong board.
                     guard current(), store.loadedBoardSlug == found.board else { return }
@@ -879,7 +881,13 @@ struct KanbanView: View {
         // A task to show (a Pulse card's), once the board is up and showing.
         .onChange(of: appState.kanbanTaskOpenRequest, initial: true) { _, _ in openRequestedTask() }
         .onChange(of: store.loadedBoardSlug) { _, _ in openRequestedTask() }
-        .onChange(of: shell.isTabActive) { _, _ in openRequestedTask() }
+        .onChange(of: shell.isTabActive) { _, isActive in
+            // Leaving Tasks before the task could open drops the request, so it never opens unasked later.
+            if !isActive, let request = appState.kanbanTaskOpenRequest, openingRequest != request.id {
+                appState.kanbanTaskOpenRequest = nil
+            }
+            openRequestedTask()
+        }
         .onChange(of: store.isLoading) { wasLoading, isLoading in
             // A load that just failed with no board to show: the request can't open.
             if wasLoading, !isLoading, store.loadedBoardSlug == nil, store.errorMessage != nil,
