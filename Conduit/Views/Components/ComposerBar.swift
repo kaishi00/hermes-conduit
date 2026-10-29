@@ -370,8 +370,23 @@ struct ComposerBar: View, Equatable {
         case .interrupt: return BusyInputMode.interrupt.symbol
         case .queue: return BusyInputMode.queue.symbol
         case .send: return "arrow.up"
-        case .unavailable: return "lock"
+        case .unavailable: return showsEmptyDraftSend ? "arrow.up" : "lock"
         }
+    }
+
+    /// Beside the big voice button, an empty draft in a chat that takes
+    /// messages shows Send dimmed, not the lock of a composer that can't
+    /// send at all.
+    private var showsEmptyDraftSend: Bool {
+        Self.showsEmptyDraftSend(
+            action: action,
+            voiceButtonBeside: keepsVoiceButtonBeside,
+            acceptsComposerActions: appState.turnState.acceptsComposerActions
+        )
+    }
+
+    static func showsEmptyDraftSend(action: ComposerAction, voiceButtonBeside: Bool, acceptsComposerActions: Bool) -> Bool {
+        voiceButtonBeside && action == .unavailable && acceptsComposerActions
     }
 
     private var actionTitle: String? {
@@ -430,7 +445,7 @@ struct ComposerBar: View, Equatable {
         .padding(.trailing, rests || keepsVoiceButtonBeside || voiceMessages.isHeld ? 84 : (restsWhenIdle ? 12 : 14))
         .padding(.top, 8)
         .padding(.bottom, 10)
-        .animation(restsWhenIdle ? ConduitMotion.ease(reduceMotion: reduceMotion) : nil, value: rests)
+        .animation(restsWhenIdle ? ConduitMotion.ease(reduceMotion: reduceMotion) : nil, value: inUseOrHeld)
         .preference(key: V2ComposerExpandedKey.self, value: restsWhenIdle && !keepsVoiceButtonBeside && !rests)
         .preference(key: V2ComposerTypingKey.self, value: Self.hidesMinimisedCallBar(restsWhenIdle: restsWhenIdle, isFocused: isFocused))
         .onChange(of: composerInUse, initial: true) { _, inUse in
@@ -914,7 +929,13 @@ struct ComposerBar: View, Equatable {
 
     /// V2's resting composer: attach and the placeholder in a slim bar.
     private var rests: Bool {
-        restsWhenIdle && !staysExpanded && !composerInUse && !holdsExpanded
+        restsWhenIdle && !staysExpanded && !inUseOrHeld
+    }
+
+    /// What animates the bar open and closed. The layout rule changing (a
+    /// chat's first measured width, a window resized) switches it at once.
+    private var inUseOrHeld: Bool {
+        composerInUse || holdsExpanded
     }
 
     /// V2's composer that stays expanded: the big voice button stays
@@ -1000,9 +1021,11 @@ struct ComposerBar: View, Equatable {
                 .accessibilityLabel(AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active"))
             }
 
-            // The big button beside a composer that stays expanded may
-            // dictate already, as beside the resting bar.
-            if !dictationHoldsSendSlot && (!keepsVoiceButtonBeside || showsRestingDictateButton) {
+            if Self.controlsRowShowsDictate(
+                holdsSendSlot: dictationHoldsSendSlot,
+                voiceButtonBeside: keepsVoiceButtonBeside,
+                showsRestingDictateButton: showsRestingDictateButton
+            ) {
                 dictateButton
             }
 
@@ -2141,6 +2164,13 @@ struct ComposerBar: View, Equatable {
         chatVoiceButton != .dictation
     }
 
+    /// The controls row's mic, unless dictation's Stop holds its slot, or
+    /// the big button beside a composer that stays expanded dictates
+    /// already, as beside the resting bar.
+    static func controlsRowShowsDictate(holdsSendSlot: Bool, voiceButtonBeside: Bool, showsRestingDictateButton: Bool) -> Bool {
+        !holdsSendSlot && (!voiceButtonBeside || showsRestingDictateButton)
+    }
+
     /// A quote from the transcript (#385): selected text joins the draft as
     /// a `>` quote with the cursor below it; a reply's Quote button attaches
     /// the whole reply as the "Replying to…" chip. Either way the composer
@@ -2739,7 +2769,8 @@ struct ComposerBar: View, Equatable {
         case .interrupt: return AppLocalization.string("Interrupt and correct response")
         case .queue: return AppLocalization.string("Queue message")
         case .send: return AppLocalization.string("Send message")
-        case .unavailable: return AppLocalization.string("Composer unavailable")
+        case .unavailable:
+            return showsEmptyDraftSend ? AppLocalization.string("Send message") : AppLocalization.string("Composer unavailable")
         }
     }
 

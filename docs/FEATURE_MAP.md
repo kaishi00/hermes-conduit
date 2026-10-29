@@ -1764,12 +1764,13 @@ bottom, and the composer's own voice and mic buttons give way to it, see
 Starting a call) · the composer bar the transcript fades under (not needed:
 the bar takes the composer's height, see Bars lists scroll under) · the
 drawer shell's chat (not needed: its chat composer never rests; its rooms'
-composer follows the same rule, #1512) · iPhone, iPad and Mac · text: no
-Settings caption or doc describes it
+composer follows the same rule, #1512) · iPhone, iPad and Mac · text:
+docs/VOICE_SETTINGS.md "Dictate into the composer" (done, #1512); no
+Settings caption describes it
 
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.staysExpanded, expandedMinimumWidth, composerStaysExpanded, composerLayoutFromWidth)
-- V2: `Conduit/Views/V2/V2ConversationScreen.swift` (chatColumnWidth, composerStaysExpanded, voiceButtonBottomPadding), `Conduit/Views/Components/ComposerBar.swift` (rests, keepsVoiceButtonBeside, composerInUse), `Conduit/Views/Components/GroupRoomComposer.swift` (rests)
+- V2: `Conduit/Views/V2/V2ConversationScreen.swift` (chatColumnWidth, composerStaysExpanded, voiceButtonBottomPadding), `Conduit/Views/Components/ComposerBar.swift` (rests, inUseOrHeld, keepsVoiceButtonBeside, showsEmptyDraftSend, controlsRowShowsDictate, composerInUse), `Conduit/Views/Components/GroupRoomComposer.swift` (rests, inUse)
 - Drawer shell: `Conduit/Views/RootView.swift` (chatNavigationContent)
 - Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerRestsOnIPhoneAndStaysExpandedOnMacAndWideIPad, testBigButtonSitsLevelWithTheBottomOfAComposerThatStaysExpanded)
 
@@ -1783,11 +1784,16 @@ Settings caption or doc describes it
 - A composer that stays expanded keeps the big voice button beside it, as the
   resting bar does, rather than sliding it aside while typing; the controls
   row then leaves out its own voice button, and its mic when the big button
-  dictates (2026-10-29, #1512).
+  dictates. With an empty draft its Send shows dimmed, not the lock a
+  composer that can't send shows (2026-10-29, #1512).
+- Only use opens and closes the composer with its animation; the layout
+  rule changing (a chat's first measured width, a window resized) switches
+  it at once (2026-10-29, #1512).
 
 **Open gaps**
 - Not yet seen on a device: an iPad crossing 600 pt as a split or Artifacts
-  resizes, and a Mac window at its narrowest.
+  resizes, and a Mac window at its narrowest. On an iPad the first frame
+  of a chat may still show the resting bar before its width is measured.
 
 **Checked:** 2026-10-29, #1512 (new entry, issue 1483).
 
@@ -2467,7 +2473,7 @@ notifier (not needed, dictation is app-side)
 **Code**
 - Policy: `Conduit/Voice/ComposerDictationService.swift` (ComposerDictation.holdsSendSlot, slotFace, slotTap; the service's settleGrace, settleCanEnd, slotFace and tapSlot; reserveStart and startToken, which let Cancel call off a start; receive clears isTranscribing once words land)
 - The Stop: `Conduit/Views/Components/ComposerDictationStopButton.swift`
-- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (trailingControl, dictationHoldsSendSlot, submitFromReturnKey, applyDictationRequest for the big voice button, the full editor's buttons)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (trailingControl, dictationHoldsSendSlot, controlsRowShowsDictate, submitFromReturnKey, applyDictationRequest for the big voice button, the full editor's buttons)
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (sendSlot, dictationHoldsSendSlot, isDictationActive, submitFromReturnKey)
 - Tests: `ConduitTests/DictationEngineTests.swift`, `ConduitTests/AppStateVoiceCapabilityTests.swift`
 
@@ -2480,7 +2486,7 @@ notifier (not needed, dictation is app-side)
 - A Hermes upload none of whose words reached the draft can't be cut short: Transcribing waits until the words come or the watchdog ends it with its message. A dropped connection now adds up to about two minutes of retries to that wait, longer when each attempt runs to its timeout, up to the watchdog; Cancel ends it and keeps the recording for Retry (2026-10-27, #1380).
 - Not yet checked on a device: the Stop's width and the swap in the controls row and the full editor, with long translations and large text.
 
-**Checked:** 2026-10-27, at #1385.
+**Checked:** 2026-10-29, #1512 (on a composer that stays expanded, the controls row's mic gives way to a big button set to Dictation, as beside the resting bar; see Composer at rest and expanded); 2026-10-27, at #1385.
 
 ## Hermes dictation kept until transcribed
 
@@ -3784,7 +3790,7 @@ on top
 - On a Mac, SwiftUI text (the chat column's chrome, Settings' pages) may not grow with its steps if an iPad app there ignores Dynamic Type for SwiftUI as well; MacTextStepsReport's line says which, from a TestFlight build (#1478).
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-10-29, #1498 (a dragged list narrows the chat's column, from #1492; Rulings); 2026-10-29, #1507 (the listed cards' text moved below their caption row, sizes unchanged); 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text. Earlier 2026-10-27, #1393; 2026-10-26, #1320.
+**Checked:** 2026-10-29, #1512 (the drawer shell's chat column also sets whether its composer stays expanded, composerLayoutFromWidth; see Composer at rest and expanded); 2026-10-29, #1498 (a dragged list narrows the chat's column, from #1492; Rulings); 2026-10-29, #1507 (the listed cards' text moved below their caption row, sizes unchanged); 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text. Earlier 2026-10-27, #1393; 2026-10-26, #1320.
 
 ## A split window's columns fill the window
 
