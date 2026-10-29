@@ -490,7 +490,9 @@ struct KanbanView: View {
             appState.kanbanTaskOpenRequest = nil
             return
         }
-        guard store.loadedBoardSlug != nil else { return }
+        // Waits out a load in flight too: an earlier request's board switch
+        // landing later would leave this task's sheet reading the wrong board.
+        guard store.loadedBoardSlug != nil, !store.isLoading else { return }
         openingRequest = request.id
         Task {
             defer {
@@ -894,6 +896,7 @@ struct KanbanView: View {
                appState.kanbanTaskOpenRequest != nil, openingRequest != appState.kanbanTaskOpenRequest?.id {
                 appState.kanbanTaskOpenRequest = nil
             }
+            openRequestedTask()
         }
         // V2 keeps a visited Tasks tab mounted behind the selected one: the
         // board listens and polls only while it shows and the app is on
