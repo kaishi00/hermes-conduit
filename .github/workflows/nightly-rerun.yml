@@ -21,8 +21,8 @@ jobs:
   rerun:
     name: Rerun unacquired jobs
     # Scheduled runs only: a dispatched run (a release candidate's) keeps its
-    # own result. One workflow_run event per attempt, so attempts 1 and 2
-    # can each start a rerun.
+    # own result. Assumes one workflow_run event per attempt, so attempts 1
+    # and 2 can each start a rerun (the feature map's Nightly reruns gap).
     if: github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt < 3
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -44,7 +44,11 @@ jobs:
           unacquired=$(jq -r 'length' <<<"$unacq")
           names=$(jq -r 'map(.name) | join(", ")' <<<"$unacq")
           echo "attempt $ATTEMPT: $lost job(s) not successful, $unacquired never got a runner"
-          if [ "$lost" -eq 0 ] || [ "$unacquired" -ne "$lost" ]; then
+          if [ "$lost" -eq 0 ]; then
+            echo "::notice::Nightly attempt $ATTEMPT lost no job; nothing to rerun."
+            exit 0
+          fi
+          if [ "$unacquired" -ne "$lost" ]; then
             echo "::notice::Nightly attempt $ATTEMPT has a job that ran and failed; not rerunning."
             exit 0
           fi
