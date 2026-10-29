@@ -475,13 +475,18 @@ protection. It passes only when:
 
 A PR doesn't need the smoke job when it changes only what the build and the
 smoke tests never read (Markdown, `docs/`, `LICENSE`, `opencode.json`,
-`.coderabbit.yaml`, `.github/` other than `ci.yml`), or when its change is the
+`.coderabbit.yaml`, `.github/` other than `ci.yml`; a file under `Conduit*/` or
+`Shared/` always builds, and a rename counts by both names), or when its change is the
 same as at an earlier commit of it whose smoke job passed:
 `scripts/pr-change-id.py` hashes the PR's diff from its base without hunk
 headers or blob ids, and its Markdown by the words the PR adds and removes, so
-merging main or resolving a feature map conflict keeps it. main's own run
-after the merge still builds, and catches two PRs that break together, as it
-does for any PR that wasn't up to date. Pushes always build, and every lookup
+merging main or resolving a feature map conflict keeps it. That merge commit
+is then never built on the PR, which is the ruling (Eric, 2026-10-29, #1467:
+resolving a feature map conflict shouldn't rerun CI); main's own run after
+the merge still builds, and catches two PRs that break together, as it does
+for any PR that wasn't up to date. The review plan in
+`opencode-review.yml` hashes the same way with an inline copy of the script,
+and `scripts/tests/test_pr_change_id.py` holds the two to the same ids. Pushes always build, and every lookup
 that fails builds too.
 
 Branch protection must require **CI Gate** (and nothing else from this

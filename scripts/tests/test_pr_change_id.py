@@ -59,5 +59,31 @@ class ChangeIdTests(unittest.TestCase):
         self.assertNotEqual(cid(doc("a b", "a b c")), cid(doc("a b", "a b d")))
 
 
+class ReviewCopyTests(unittest.TestCase):
+    """The review plan (opencode-review.yml) hashes with an inline copy of
+    the script; the two must give the same id, or a change one counts as
+    reviewed the other counts as new."""
+
+    def test_the_review_plans_copy_gives_the_same_ids(self):
+        import subprocess, sys, textwrap
+        workflow = os.path.join(os.path.dirname(SCRIPTS_DIR), ".github", "workflows", "opencode-review.yml")
+        with open(workflow, encoding="utf-8") as fh:
+            lines = fh.read().split("\n")
+        start = lines.index("          CHANGE_ID_PY: |") + 1
+        body = []
+        for line in lines[start:]:
+            if line.strip() and not line.startswith("            "):
+                break
+            body.append(line)
+        inline = textwrap.dedent("\n".join(body))
+        samples = [code(), code(index="ccc..ddd", hunk="@@ -40,2 +40,2 @@"), doc("a b", "a b c"),
+                   code() + doc("x", "y"),
+                   "diff --git a/i.png b/i.png\nindex aaa..bbb 100644\nBinary files a/i.png and b/i.png differ\n"]
+        for sample in samples:
+            run = subprocess.run([sys.executable, "-I", "-c", inline], input=sample.encode(),
+                                 capture_output=True, check=True)
+            self.assertEqual(run.stdout.decode().strip(), cid(sample), sample)
+
+
 if __name__ == "__main__":
     unittest.main()

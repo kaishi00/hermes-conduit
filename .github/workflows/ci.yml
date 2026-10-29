@@ -222,7 +222,7 @@ jobs:
           spec=project.yml
           if [ "$EVENT" = "pull_request" ] && [ -n "$PR_HEAD" ] \
             && [ "$(git rev-parse -q --verify 'HEAD^2' || true)" = "$PR_HEAD" ] \
-            && changed=$(git diff --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
+            && changed=$(git diff --no-renames --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
             # grep reads all its input (no -q): stopping at the first match could
             # kill printf with SIGPIPE, which pipefail would read as "no match".
             if ! printf '%s\n' "$changed" | grep -E '^(ConduitWatch|ConduitWidgets|ConduitNotificationService|ConduitLocationPush|ConduitShareExtension|Shared)/|^project(-tests)?\.yml$|^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$' >/dev/null; then
@@ -238,9 +238,12 @@ jobs:
         # read (Markdown, docs/, LICENSE, review config, .github/ other than
         # this workflow), or when its change (scripts/pr-change-id.py) is the
         # same as at an earlier commit of it whose smoke job passed: merging
-        # main, or resolving a feature map conflict, doesn't rebuild. main's
-        # own run after the merge still builds and catches two PRs that break
-        # together. Fails closed like the step above: any push, anything but
+        # main, or resolving a feature map conflict, doesn't rebuild (Eric,
+        # 2026-10-29, #1467). So a merge commit can pass without being built,
+        # as a PR that isn't up to date with main always could; main's own run
+        # after the merge still builds and catches two PRs that break
+        # together. A file under an app or test folder (Markdown included)
+        # always builds, and a rename counts by both names. Fails closed like the step above: any push, anything but
         # this PR's merge commit, an unreadable or empty diff, or a lookup
         # that fails builds.
         id: needs-build
@@ -256,11 +259,11 @@ jobs:
           why=''
           if [ "$EVENT" = "pull_request" ] && [ -n "$PR_HEAD" ] \
             && [ "$(git rev-parse -q --verify 'HEAD^2' || true)" = "$PR_HEAD" ] \
-            && changed=$(git diff --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
+            && changed=$(git diff --no-renames --name-only HEAD^1 HEAD) && [ -n "$changed" ]; then
             # grep reads all its input (no -q), as in the step above.
             if ! printf '%s\n' "$changed" \
               | grep -Ev '\.md$|^docs/|^LICENSE$|^opencode\.json$|^\.coderabbit\.ya?ml$|^\.github/' >/dev/null \
-              && ! printf '%s\n' "$changed" | grep -E '^\.github/workflows/ci\.yml$' >/dev/null; then
+              && ! printf '%s\n' "$changed" | grep -E '^\.github/workflows/ci\.yml$|^(Conduit[^/]*|Shared)/' >/dev/null; then
               smoke=false
               why="the change is only docs and config"
             fi

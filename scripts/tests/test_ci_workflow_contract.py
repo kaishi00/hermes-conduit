@@ -164,6 +164,26 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("check-plugin-version.py", plan)
         self.assertIn("check-feature-map.py", plan)
 
+    def test_the_smoke_skip_builds_for_anything_the_app_or_ci_reads(self):
+        step = _step_text(self._job_text("plan"), "Does the change need the macOS build")
+        self.assertIn("git diff --no-renames --name-only HEAD^1 HEAD", step,
+                      "a rename must count by both names")
+        greps = re.findall(r"grep -E(v?) '([^']+)'", step)
+        self.assertEqual([flag for flag, _ in greps], ["v", ""])
+        docs, builds = (re.compile(pattern) for _, pattern in greps)
+
+        def skips(*paths):
+            return all(docs.search(p) for p in paths) and not any(builds.search(p) for p in paths)
+
+        self.assertTrue(skips("README.md", "docs/FEATURE_MAP.md", "designs/x.md", "LICENSE",
+                              "opencode.json", ".coderabbit.yaml", ".github/workflows/opencode-review.yml"))
+        for path in (".github/workflows/ci.yml", "Conduit/Resources/Help.md", "Shared/notes.md",
+                     "ConduitWatch/README.md", "ConduitTests/fixture.md", "scripts/ci-gate.py",
+                     "project.yml", "Conduit/App.swift"):
+            self.assertFalse(skips("README.md", path), path)
+        # A Swift file moved to docs/ lists its old name too, so it builds.
+        self.assertFalse(skips("Conduit/X.swift", "docs/X.md"))
+
     def test_the_feature_map_check_knows_the_pr_and_its_base(self):
         """On a PR, an entry it edits names it on its Checked line: the step
         passes the PR's number and the base's map (HEAD^1 of the merge commit),
