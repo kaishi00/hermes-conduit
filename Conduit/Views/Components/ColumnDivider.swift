@@ -121,12 +121,14 @@ struct ColumnDivider: View {
         DragGesture(minimumDistance: 4, coordinateSpace: .global)
             .updating($dragStart) { value, start, _ in
                 let from = start ?? width
+                // State set here reads back only from the next update.
+                let slop = start == nil ? value.translation.width : dragSlop
                 if start == nil {
                     dragBegan = from
-                    dragSlop = value.translation.width
+                    dragSlop = slop
                 }
                 start = from
-                live = widths.dragged(from: from, by: (value.translation.width - dragSlop) * direction, room: room)
+                live = widths.dragged(from: from, by: (value.translation.width - slop) * direction, room: room)
             }
     }
 
