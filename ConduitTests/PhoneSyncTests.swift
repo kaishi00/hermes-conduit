@@ -886,6 +886,18 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(calendar.component(.weekday, from: soonest), 6, "Friday comes before Monday")
     }
 
+    func testPhoneAlarmsUnsupportedWithoutAlarmKit() {
+        let source = PhoneAlarmSources.system(hasAlarmKit: false)
+        XCTAssertFalse(source.isSupported, "A Vision Pro has no AlarmKit; touching it crashed at launch")
+        XCTAssertEqual(source.alarms(now: Date(), calendar: .current)?.count, 0)
+        // The symbol check finds AlarmKit where it is, or alarms would be
+        // off everywhere.
+        if #available(iOS 26.0, *) {
+            XCTAssertTrue(PhoneAlarmSources.alarmKitLoaded)
+            XCTAssertTrue(PhoneAlarmSources.system().isSupported)
+        }
+    }
+
     func testPhoneAlarmsAndPeopleSyncAndApply() async throws {
         let source = FakePhoneCalendarSource()
         let alarms = FakePhoneAlarmSource()
