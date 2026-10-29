@@ -461,11 +461,16 @@ final class ChatReadStateTests: XCTestCase {
         // Compressed since the tree loaded: the catalog lists it under a new id.
         var compressed = chat("compressed-new", unread: false)
         compressed.alternateIds = ["compressed-old"]
-        appState.sessions = [first, second, chat("read-since", unread: false), compressed]
+        // A newer branch answers to its parent's id as its lineage root, but
+        // the parent reads its own row.
+        var branch = chat("branch", unread: true)
+        branch.lineageRootId = "parent"
+        appState.sessions = [branch, first, second, chat("read-since", unread: false), compressed, chat("parent", unread: false)]
         appState.setProjectsForTesting([
             project("two-unread", [first, second]),
             project("read", [readSince]),
             project("compressed", [chat("compressed-old", unread: true)]),
+            project("parent", [chat("parent", unread: true)]),
             project("tree-only", [chat("not-listed", unread: true)]),
             // Home's chats are in no project, and Home gets the dot for them.
             project("home", [chat("home-unread", unread: true)], isHome: true),

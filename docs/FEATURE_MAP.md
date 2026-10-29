@@ -2566,7 +2566,7 @@ unread · VoiceOver · the profile strip's dot, the same signal a level up ·
 README.md
 
 **Code**
-- Which projects: `Conduit/Services/AppState+V2Shell.swift` (projectsWithUnread)
+- Which projects: `Conduit/Services/AppState+V2Shell.swift` (projectsWithUnread), `Conduit/Services/AppState.swift` (catalogRow: a chat's catalog copy, its own ids before the ids it shares, cached per catalog change)
 - Rows: `Conduit/Views/V2/V2ChatsView.swift` (projectsList, projectRow, V2ProjectRow), `Conduit/Views/SidebarView.swift` (the Projects section, ProjectRow)
 - Read state: `Conduit/Services/ChatReadState.swift` (isUnread), `Conduit/Services/AppState.swift` (isSessionUnread)
 - Docs: `README.md` (Features)

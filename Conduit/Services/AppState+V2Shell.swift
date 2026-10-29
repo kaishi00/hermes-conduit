@@ -59,26 +59,12 @@ extension AppState {
 
     /// Which projects hold a conversation with a reply the user hasn't
     /// seen (issue 1496): the chats the project tree lists, as its running
-    /// count reads them. A chat the catalog lists too reads its copy there,
-    /// which a reply or a read updates between loads of the tree. One walk
-    /// for the whole Projects list.
+    /// count reads them, each from its catalog copy when the catalog has one.
     func projectsWithUnread() -> Set<String> {
-        // Every id a chat answers to, so one whose id moved on since the
-        // tree loaded (a compression) still finds its catalog copy.
-        func ids(_ session: SessionSummary) -> [String] {
-            [session.id, session.storedSessionId, session.lineageRootId].compactMap { $0 } + session.alternateIds
-        }
-        var listed: [String: SessionSummary] = [:]
-        for session in sessions {
-            for id in ids(session) where listed[id] == nil {
-                listed[id] = session
-            }
-        }
         var unread = Set<String>()
         for project in projects {
             let hasUnread = project.previewSessions.contains { preview in
-                let current = ids(preview).lazy.compactMap { listed[$0] }.first
-                return isSessionUnread(current ?? preview)
+                isSessionUnread(catalogRow(answeringTo: preview) ?? preview)
             }
             if hasUnread { unread.insert(project.id) }
         }

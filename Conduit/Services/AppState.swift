@@ -764,6 +764,7 @@ final class AppState: ObservableObject {
     @Published var sessions: [SessionSummary] = [] {
         didSet {
             sessionsRevision &+= 1
+            catalogRowsByAnyID = nil
             refreshActiveChatScrollSessionIdentity()
             observeChatReadState()
             updateSessionReferenceTitles()
@@ -906,6 +907,9 @@ final class AppState: ObservableObject {
     /// `knownProjectID(for:)`, which the chat list asks for every row on
     /// every render.
     private var projectPositionsBySessionID: [String: Int]?
+    /// The catalog's rows under every id they answer to, built once per
+    /// `sessions` change for `catalogRow(answeringTo:)`.
+    private var catalogRowsByAnyID: [String: SessionSummary]?
     @Published private(set) var supportsProjects = false
     /// The client whose gateway rejected `session.workspace.move` as an
     /// unknown method. Scoped to that client so any new connection (a
@@ -31703,6 +31707,38 @@ final class AppState: ObservableObject {
             if let position = index[id], position < (first ?? .max) { first = position }
         }
         return first.map { projects[$0].id }
+    }
+
+    /// The catalog's copy of a chat another list carries (a project tree's
+    /// preview), which a reply or a read updates between loads of that list.
+    /// A row's own ids (`id`, `storedSessionId`) win over the ids it shares
+    /// with others (a branch's lineage root is its parent's id), so a parent
+    /// never reads a newer branch's copy; the shared ones still find a chat
+    /// compressed since the list loaded.
+    func catalogRow(answeringTo session: SessionSummary) -> SessionSummary? {
+        let index: [String: SessionSummary]
+        if let cached = catalogRowsByAnyID {
+            index = cached
+        } else {
+            var built: [String: SessionSummary] = [:]
+            for row in sessions {
+                for id in Self.ownIDs(row) where built[id] == nil { built[id] = row }
+            }
+            for row in sessions {
+                for id in Self.sharedIDs(row) where built[id] == nil { built[id] = row }
+            }
+            catalogRowsByAnyID = built
+            index = built
+        }
+        return (Self.ownIDs(session) + Self.sharedIDs(session)).lazy.compactMap { index[$0] }.first
+    }
+
+    private static func ownIDs(_ session: SessionSummary) -> [String] {
+        [session.id, session.storedSessionId].compactMap { $0 }.filter { !$0.isEmpty }
+    }
+
+    private static func sharedIDs(_ session: SessionSummary) -> [String] {
+        ([session.lineageRootId].compactMap { $0 } + session.alternateIds).filter { !$0.isEmpty }
     }
 
     private func projectPositionsIndex() -> [String: Int] {
