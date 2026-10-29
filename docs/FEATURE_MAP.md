@@ -3564,6 +3564,28 @@ on top
 
 **Checked:** 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
 
+## A split window's columns fill the window
+
+A wide window's columns (an iPad, a Mac, an iPhone Duo's inner screen in
+landscape) draw their backdrop to the window's edges, as a one-column screen
+does.
+
+**Siblings:** the Chats list column · the Bots list column · the chat column
+(a chat, its side panel, the empty column, Settings beside the list) · the
+one-column screens they match (Tasks, a list shown alone, a phone)
+
+**Code**
+- `Conduit/Views/V2/V2Shell.swift` (splitColumns, v2ClippedToColumn)
+- The backdrop: `Conduit/Theme.swift` (ConduitBackdrop ignores the safe area)
+
+**Rulings**
+- Each column's backdrop stays inside its column sideways, so the glows don't cross the divider, and runs under the window's safe areas: the home indicator, and a landscape status bar or sensor at the side. Clipped at the safe area, every split tab showed black bars along the bottom and the right of an iPhone Duo's inner screen while Tasks filled it (2026-10-29, #PRNUM, a tester's report).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-29, #PRNUM.
+
 ## Voice on a profile the dashboard didn't start with
 
 Voice and Watch calls, chat takeover, Desktop views, predictions, and
