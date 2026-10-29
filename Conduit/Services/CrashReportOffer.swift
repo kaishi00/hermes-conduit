@@ -224,9 +224,10 @@ struct CrashReportQueue {
     }
 
     /// Conduit's relay doesn't take reports: drop these, and offer no more
-    /// from this build.
+    /// from this build. The next build looks at the stored reports again.
     func stopOffering() {
         defaults.set(build, forKey: Self.unsupportedKey)
+        defaults.removeObject(forKey: Self.storedKey)
         clear()
     }
 
@@ -293,6 +294,7 @@ final class CrashReportOffer: ObservableObject {
         if case .asking = state { queue.remove(shown) }
         if state == .failed { queue.remove(shown) }
         state = .hidden
+        Task { await refresh() }
     }
 
     func send() async {

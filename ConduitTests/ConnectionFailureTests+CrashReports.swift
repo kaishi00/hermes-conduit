@@ -105,6 +105,7 @@ extension ConnectionFailureTests {
         let next = CrashReportQueue(defaults: defaults, build: "241")
         next.add("diagnostics-9.json")
         XCTAssertEqual(next.pending, ["diagnostics-9.json"], "the next build asks again")
+        XCTAssertTrue(next.firstLookAtStoredReports(), "and offers the reports earlier builds kept")
     }
 
     func testMetricKitQueuesOnlyARecentCrashOrHang() {
