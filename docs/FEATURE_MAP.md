@@ -2970,7 +2970,7 @@ notifier's copies of both
 - A Markdown file counts by its words, so a push that only reorders or re-indents Markdown the PR already changed matches the earlier review and isn't reviewed again; that keeps a resolved feature map conflict from costing a review (2026-10-29, #1466).
 - Re-running a review from the Actions page still reviews: the run being rerun isn't finished, so it doesn't count as reviewed (2026-10-29, #1466).
 
-**Checked:** 2026-10-29, #1466.
+**Checked:** 2026-10-29, #1467 (the change id hashes any bytes and a failing one counts as no match; the notifier's data files count as code, notifier #455); #1466.
 
 ## Settings connection page
 
