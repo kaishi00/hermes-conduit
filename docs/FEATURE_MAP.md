@@ -3737,13 +3737,14 @@ on top
 - A wider chat column shows bigger text rather than longer lines: the column's text goes up one system text size for each size whose lines still hold as many words as the 760 pt column does (none beside the list on an iPad, two with an iPad's list hidden, three on a maximized Mac). Everything in the column steps together, its chrome (timestamps, the reply's buttons, banners) with its text so they keep their proportions (the chrome through Dynamic Type, which holds them together wherever the system honors it; see the 2026-10-29 rulings for the Mac): transcript, thinking, step rows, cards, the composer and group rooms, on top of the user's Dynamic Type and Chat text size (which group rooms now follow too, size and style, as chats do); it stops at the largest standard size, so an accessibility size stays as set. The list beside the chat and the top bar keep their size: the list's column doesn't widen (Eric, 2026-10-27, #1393: maximized on a Mac the chat looked small in a big empty space).
 - Transcript text grows by point size, body text's growth from the system's size to the stepped one (17 to 19, 21, 23 pt at the default size), not by resolving fonts at the stepped Dynamic Type size: an iPad app on a Mac appears to draw every size alike, so #1393's steps did nothing there (Eric, 2026-10-29, #1478: maximized or resized, the text didn't scale). In-column cards' UIKit text and the typed text of the chat's composer, a group room's field and the full editor (`UIFont.preferredFont(forTextStyle:in:)`) grow the same way wherever the system draws the stepped size smaller than iOS does, to the same size as the transcript: both land on iOS's body size for the stepped size, whatever the system draws at the column's base (`chatColumnBaseTextSize`), and nothing is added outside a stepped column. The SwiftUI chrome still steps through Dynamic Type; whether a Mac honors that is logged once a launch (MacTextStepsReport) until a Mac build can be checked. Where it doesn't, the transcript, cards and composer grow and the SwiftUI chrome doesn't, the earlier ruling's proportions aside, rather than nothing growing.
 - Settings' column widens with the window as a chat's does, from 720 pt up to 980 pt, and its text steps up the same way from 720 pt (Eric, 2026-10-29, #1478: he expected Settings to scale too). This replaces Settings' fixed 720 pt from the 2026-10-26 ruling (#1320) below, which now keeps only a list shown alone and calls fixed.
+- The chat's column and its text steps measure the room the list leaves, so a list dragged wider (Resizable columns on a split window) narrows the chat's column and may take a step back, as hiding the list adds one (2026-10-29, #1498; the behavior since #1492).
 - A list shown alone (720 pt) and calls (640 pt) keep fixed widths: rows, cards and captions don't read better wider. The sign-in screens keep their own 560 pt column, which follows the text size (2026-10-26, #1320).
 
 **Open gaps**
 - On a Mac, SwiftUI text (the chat column's chrome, Settings' pages) may not grow with its steps if an iPad app there ignores Dynamic Type for SwiftUI as well; MacTextStepsReport's line says which, from a TestFlight build (#1478).
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-10-29, #1507 (the listed cards' text moved below their caption row, sizes unchanged); 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text. Earlier 2026-10-27, #1393; 2026-10-26, #1320.
+**Checked:** 2026-10-29, #1498 (a dragged list narrows the chat's column, from #1492; Rulings); 2026-10-29, #1507 (the listed cards' text moved below their caption row, sizes unchanged); 2026-10-29, #1478: transcript text grows by point size so a Mac scales it; Settings widens and steps its text. Earlier 2026-10-27, #1393; 2026-10-26, #1320.
 
 ## A split window's columns fill the window
 
@@ -3769,7 +3770,7 @@ phone)
 **Open gaps**
 - Not seen on a device yet: the simulator suites have no Duo before Xcode 27.1, so a Duo or a split iPad from TestFlight confirms it.
 
-**Checked:** 2026-10-29, #1492 (the 1 pt line between the columns is a draggable ColumnDivider above them; the drawer shell's sidebar threshold counts it); 2026-10-29, #1472.
+**Checked:** 2026-10-29, #1498 (ColumnDivider's store rules and drag direction are ColumnWidth functions; the layout is unchanged); 2026-10-29, #1492 (the 1 pt line between the columns is a draggable ColumnDivider above them; the drawer shell's sidebar threshold counts it); 2026-10-29, #1472.
 
 ## Resizable columns on a split window
 
@@ -3781,7 +3782,7 @@ beside the list (it opens in the chat's column) · a group room beside the
 list (the list drags; a room has no Artifacts) · Artifacts beside a chat ·
 the drawer shell's persistent sidebar (Appearance, V2 off) · the tab bar
 under the list (Voice beside the tabs) · the chat's readable column (it
-measures the room left to it: not needed) · hiding the list (#1164: the
+measures the room left to it; done, Readable width's ruling, #1498) · hiding the list (#1164: the
 width comes back with the list) · Settings > Appearance > Layout's caption
 in both shells (the drawer shell's only while its persistent sidebar is
 on) · not needed: README.md (it doesn't describe the split
@@ -3793,21 +3794,24 @@ layout)
 - Artifacts: `Conduit/Views/V2/V2ConversationScreen.swift` (ChatSidePanel.widths, sidePanelWidth)
 - Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent, persistentSidebarWidth), `Conduit/Views/SidebarLayout.swift` (SidebarLayoutMetrics.persistentSidebarWidths)
 - Caption: `Conduit/Views/AuxiliaryViews.swift` (Layout)
+- Widths and the line: what a drag or a VoiceOver step stores is ColumnWidth.storedAfterDrag and storedAfterStep, its direction ColumnWidth.dragSign
 - Tests: `ConduitTests/V2SplitLayoutTests.swift` (testDraggedColumnWidthsKeepToTheirBoundsAndTheWindow)
 
 **Rulings**
 - Both lines drag: the list (375 to 560 pt; it can't go under the tab bar's width) and Artifacts (300 to 720 pt, standard 340 pt); the drawer shell's sidebar 320 to 520 pt. A double-click or double-tap resets a line; VoiceOver adjusts it by 40 pt or resets it (Eric, 2026-10-29, #1492, issue 1487).
 - Each width is kept per device, as hiding the list is, not synced. A window smaller than a width needs gives the column what's left beside the chat's least width (430 pt); a window splits, and Artifacts shows, at the standard width whatever the user's, so a widened column never takes them away (2026-10-29, #1492).
 - Under a widened list the tab bar keeps its width, centered under the list's column (2026-10-29, #1492).
-- A window with room for Artifacts beside a chat at the list's standard width keeps that room whatever the list's width, the panel open or not: widening the list never hides the panel or its toggle, and the list doesn't jump as a chat or the panel opens. The list's most is then the window less 772 pt: 408 pt on a 1180 pt iPad in landscape, 422 pt on an 11-inch's 1194 pt, the full 560 pt on a maximized Mac. Artifacts beside the chat then reaches the window less the list and 431 pt: about 373 pt on 1180 pt, 387 pt on 1194 pt (2026-10-29, #1492, from review).
+- A window with room for Artifacts beside a chat at the list's standard width keeps that room whatever the list's width, the panel open or not: widening the list never hides the panel or its toggle, and the list doesn't jump as a chat or the panel opens. The list's most is then the window less 772 pt: 408 pt on a 1180 pt iPad in landscape, 422 pt on an 11-inch's 1194 pt, the full 560 pt on a maximized Mac. Artifacts beside the chat then reaches the window less the list and 432 pt (the chat's 430 pt and two lines): about 373 pt on 1180 pt, 387 pt on 1194 pt. Where the panel starts to fit, at a 1147 pt window, the list's most drops from 560 pt to its standard 375 pt: one point narrower it keeps only the chat's least width, one point wider the panel's room as well. The drop stays: it shows only while resizing a window across that width with a widened list, and either way round it costs more (Eric, 2026-10-29, #1498; the layout since #1492).
 - A drag lays the column out at its live width and stores it once, when the drag ends or is cancelled: every defaults write redraws each `@AppStorage` view. A press that doesn't move the line (under 4 pt) keeps the stored width, which a smaller window may show less of (2026-10-29, #1492, from review).
 - The caption shows only with the setting that puts a line on a wide window: the list set beside the chat (V2), the persistent sidebar on (the drawer shell); a window too narrow to split still shows it (2026-10-29, #1492, from review).
+- A drag follows the pointer right to left too: there a leading column is on the right, so dragging left widens it. VoiceOver finds the line by its 12 pt grip, not the 1 pt line (2026-10-29, #1498, from #1492's review).
+- The drawer shell's sidebar is named "Chat list width" as V2's list is: both hold the chats (2026-10-29, #1498, from #1492's review).
 
 **Open gaps**
 - No resize cursor on a Mac: a Designed-for-iPad app can't set one from SwiftUI on iOS 17, so the line highlights on hover and a tooltip names it.
 - Not seen on a device yet: a Mac or iPad from TestFlight confirms it.
 
-**Checked:** 2026-10-29, #1492.
+**Checked:** 2026-10-29, #1498 (store rules, right to left, the grip's VoiceOver frame, the 1147 pt drop; Code, Rulings); 2026-10-29, #1492.
 
 ## Voice on a profile the dashboard didn't start with
 
