@@ -583,7 +583,8 @@ final class ImagePasteTextView: ReturnKeyTextView {
     /// Words pasted through the item-provider route (the keyboard's Paste
     /// among them): a long one is offered as an attachment, as `paste(_:)`
     /// offers it, and anything the composer doesn't take goes into the
-    /// field as before.
+    /// field as before. Drops come this way too, and dropped words stay
+    /// words (`AttachmentDrop`), so only the clipboard's own text counts.
     private func pasteWords(_ itemProviders: [NSItemProvider]) {
         guard onLongTextPaste != nil, itemProviders.count == 1,
               let provider = itemProviders.first,
@@ -598,12 +599,22 @@ final class ImagePasteTextView: ReturnKeyTextView {
             DispatchQueue.main.async {
                 guard let self, self.editorIdentity == pasteEditorIdentity else { return }
                 if let pasted, PastedText.becomesAttachment(pasted), self.isEditable,
+                   Self.isTheClipboardsText(pasted),
                    self.onLongTextPaste?(pasted) == true {
                     return
                 }
                 self.pasteProvidersIntoField(itemProviders)
             }
         }
+    }
+
+    /// Whether long words are what the clipboard holds: a paste of them,
+    /// not a drag. The clipboard is read only for a long text, once its
+    /// metadata says it holds words.
+    static func isTheClipboardsText(_ text: String) -> Bool {
+        let pasteboard = UIPasteboard.general
+        guard pasteboard.hasStrings else { return false }
+        return pasteboard.string == text
     }
 
     /// The field's own paste, from outside the override.

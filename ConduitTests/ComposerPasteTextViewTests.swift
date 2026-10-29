@@ -422,6 +422,43 @@ final class ComposerPasteTextViewTests: XCTestCase {
         await fulfillment(of: [callback], timeout: 5.0)
     }
 
+    func testALongDraggedSelectionStaysWordsInTheField() async {
+        await withClearedGeneralPasteboard {
+            let view = ImagePasteTextView()
+            view.isEditable = true
+            let long = String(repeating: "dragged words ", count: 300)
+            let offered = expectation(description: "a drop isn't offered as a paste")
+            offered.isInverted = true
+            view.onLongTextPaste = { _ in
+                offered.fulfill()
+                return true
+            }
+
+            view.paste(itemProviders: [NSItemProvider(object: NSString(string: long))])
+
+            await fulfillment(of: [offered], timeout: 1.5)
+        }
+    }
+
+    func testALongPasteOfTheClipboardsTextIsOfferedAsAnAttachment() async {
+        await withClearedGeneralPasteboard {
+            let view = ImagePasteTextView()
+            view.isEditable = true
+            let long = String(repeating: "log line\n", count: 400)
+            UIPasteboard.general.string = long
+            let offered = expectation(description: "the long paste is offered")
+            view.onLongTextPaste = { pasted in
+                XCTAssertEqual(pasted, long)
+                offered.fulfill()
+                return true
+            }
+
+            view.paste(itemProviders: [NSItemProvider(object: NSString(string: long))])
+
+            await fulfillment(of: [offered], timeout: 5.0)
+        }
+    }
+
     func testCanPasteAcceptsImageItemProvider() {
         let view = ImagePasteTextView()
         let provider = NSItemProvider()
