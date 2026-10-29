@@ -23,7 +23,7 @@ extension View {
     }
 
     /// A chat's column: `ReadableWidth.chat(available:)` wide, its text a
-    /// size or more larger as the column grows (`ReadableWidth.chatTextSteps`),
+    /// size or more larger as the column grows (`ReadableWidth.textSteps`),
     /// so a maximized window shows bigger text rather than longer lines.
     func readableChatColumn() -> some View {
         modifier(ReadableContentWidth(maxWidth: ReadableWidth.chat(available:), textBase: ReadableWidth.chat, scalesChatText: true))
@@ -70,18 +70,13 @@ enum ReadableWidth {
         min(settingsMax, max(settings, (available * chatShare).rounded(.down)))
     }
 
-    /// How many text sizes a chat's column of `column` points steps up
-    /// from the system's: one for each size whose body text still fits
-    /// as many words to a line as the 760 pt column holds (body at the
-    /// default size is 17, 19, 21 and 23 pt). A phone, and an iPad
-    /// beside the list, keep the system's size; a maximized window's
-    /// 1040 pt column steps up three.
-    static func chatTextSteps(column: CGFloat) -> Int {
-        textSteps(column: column, base: chat)
-    }
-
-    /// The same for any column that is `base` points wide at the system's
-    /// text size (Settings' 720).
+    /// How many text sizes a column of `column` points steps up from the
+    /// system's, for a column that is `base` points wide at the system's
+    /// size (a chat's 760, Settings' 720): one for each size whose body
+    /// text still fits as many words to a line (body at the default size
+    /// is 17, 19, 21 and 23 pt). A phone, and an iPad beside the list,
+    /// keep the system's size; a maximized window's 1040 pt chat column
+    /// steps up three.
     static func textSteps(column: CGFloat, base: CGFloat) -> Int {
         let growth = column / base
         return chatTextGrowth.filter { growth >= $0 }.count

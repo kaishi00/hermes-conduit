@@ -16,9 +16,12 @@ struct ToolResultBodyView: View {
     let presentation: ToolResultPresentation
     let gatewayResolver: GatewayMediaDataURLResolver?
     @Environment(\.openURL) private var openURL
+    /// The column's text size, which a wide window steps up
+    /// (`readableChatColumn`), as the raw Input and Output below follow.
+    @Environment(\.sizeCategory) private var sizeCategory
 
-    private static var monospaced: UIFont {
-        .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular)
+    private var monospaced: UIFont {
+        .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory).pointSize, weight: .regular)
     }
 
     var body: some View {
@@ -68,8 +71,8 @@ struct ToolResultBodyView: View {
             }
         case .diff(let diff):
             SelectableTextView(
-                attributedText: Self.coloredDiff(ToolCard.truncateForDisplay(diff, maxLines: ToolResultPresentation.displayLineLimit), font: Self.monospaced),
-                font: Self.monospaced,
+                attributedText: Self.coloredDiff(ToolCard.truncateForDisplay(diff, maxLines: ToolResultPresentation.displayLineLimit), font: monospaced),
+                font: monospaced,
                 textColor: .secondaryLabel,
                 maximumNumberOfLines: 0,
                 keepsParagraphStyles: true
@@ -78,7 +81,7 @@ struct ToolResultBodyView: View {
         case .text(let text):
             SelectableTextView(
                 attributedText: NSAttributedString(string: ToolCard.truncateForDisplay(text, maxLines: ToolResultPresentation.displayLineLimit)),
-                font: Self.monospaced,
+                font: monospaced,
                 textColor: .label,
                 maximumNumberOfLines: 0
             )

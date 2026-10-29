@@ -148,15 +148,15 @@ extension SidebarLayoutTests {
     func testChatTextStepsUpWithTheColumn() {
         // A phone, and an iPad beside the list, keep the system's size.
         for width: CGFloat in [375, 1001, 1056, 1180] {
-            XCTAssertEqual(ReadableWidth.chatTextSteps(column: ReadableWidth.chat(available: width)), 0, "\(width) pt keeps the size.")
+            XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chat(available: width), base: ReadableWidth.chat), 0, "\(width) pt keeps the size.")
         }
         // Each step once the column holds as many words a line at it.
-        XCTAssertEqual(ReadableWidth.chatTextSteps(column: 850), 1)
-        XCTAssertEqual(ReadableWidth.chatTextSteps(column: 938), 1)
-        XCTAssertEqual(ReadableWidth.chatTextSteps(column: 939), 2)
+        XCTAssertEqual(ReadableWidth.textSteps(column: 850, base: ReadableWidth.chat), 1)
+        XCTAssertEqual(ReadableWidth.textSteps(column: 938, base: ReadableWidth.chat), 1)
+        XCTAssertEqual(ReadableWidth.textSteps(column: 939, base: ReadableWidth.chat), 2)
         // An iPad's whole window with the list hidden, and a maximized Mac.
-        XCTAssertEqual(ReadableWidth.chatTextSteps(column: ReadableWidth.chat(available: 1376)), 2)
-        XCTAssertEqual(ReadableWidth.chatTextSteps(column: ReadableWidth.chat(available: 1800)), 3)
+        XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chat(available: 1376), base: ReadableWidth.chat), 2)
+        XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.chat(available: 1800), base: ReadableWidth.chat), 3)
     }
 
     func testSettingsColumnWidensAndStepsItsText() {
@@ -171,7 +171,6 @@ extension SidebarLayoutTests {
         XCTAssertEqual(ReadableWidth.settings(available: 1800), ReadableWidth.settingsMax)
         XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.settingsMax, base: ReadableWidth.settings), 3)
         // A chat's steps are the same rule from its 760 pt.
-        XCTAssertEqual(ReadableWidth.chatTextSteps(column: 1040), ReadableWidth.textSteps(column: 1040, base: ReadableWidth.chat))
     }
 
     func testWideColumnStepsScaleTranscriptFonts() {

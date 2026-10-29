@@ -127,7 +127,7 @@ struct ChatTextAppearance: Hashable {
     var size: ChatTextSize
     var style: ChatFontStyle = .standard
     /// Text-size steps a wide window's chat column adds on top of the
-    /// system's (`ReadableWidth.chatTextSteps`). Zero on a phone and
+    /// system's (`ReadableWidth.textSteps`). Zero on a phone and
     /// beside the list.
     var widthSteps: Int = 0
     /// How much those steps grow transcript text: body text's growth from
@@ -458,8 +458,11 @@ extension UIFont {
         let growth = ChatTypography.missingGrowth(
             at: category,
             body: preferredFont(forTextStyle: .body, compatibleWith: traits).pointSize,
-            defaultBody: preferredFont(forTextStyle: .body, compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)).pointSize
+            defaultBody: defaultBodySize
         )
         return growth == 1 ? font : font.withSize(font.pointSize * growth)
     }
+
+    /// Body text's size at the default text size, as this system draws it.
+    private static let defaultBodySize = preferredFont(forTextStyle: .body, compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)).pointSize
 }

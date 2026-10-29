@@ -55,7 +55,18 @@ struct ComposerPasteTextView: UIViewRepresentable {
     }
 
     private static func bodyLineHeight(for traits: UITraitCollection?) -> CGFloat {
-        UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits).lineHeight
+        bodyFont(for: traits).lineHeight
+    }
+
+    /// Body text at the view's own size, which a wide window's chat column
+    /// steps up (`readableChatColumn`), grown by point size where the
+    /// system draws it no larger, as an iPad app on a Mac appears to
+    /// (`UIFont.preferredFont(forTextStyle:in:)`).
+    static func bodyFont(for traits: UITraitCollection?) -> UIFont {
+        guard let category = traits.flatMap({ ContentSizeCategory($0.preferredContentSizeCategory) }) else {
+            return UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits)
+        }
+        return UIFont.preferredFont(forTextStyle: .body, in: category)
     }
 
     @Binding var text: String
@@ -110,8 +121,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
     func makeUIView(context: Context) -> ImagePasteTextView {
         let view = ImagePasteTextView()
         view.delegate = context.coordinator
-        view.font = .preferredFont(forTextStyle: .body)
-        view.adjustsFontForContentSizeCategory = true
+        // Set here and on each text size change below rather than
+        // adjusted by UIKit, which would undo the Mac's point-size growth.
+        view.font = Self.bodyFont(for: nil)
         view.backgroundColor = .clear
         view.textColor = .label
         view.tintColor = .systemOrange
@@ -144,12 +156,13 @@ struct ComposerPasteTextView: UIViewRepresentable {
 
     func updateUIView(_ uiView: ImagePasteTextView, context: Context) {
         TranscriptPerf.note(.composerUpdateUIView)
-        // Text Size changed while the app was open: the font follows on its
-        // own, the height bounds need re-reading. Checked by category so the
-        // hot update path doesn't look up fonts.
+        // Text Size changed while the app was open, or a wide column
+        // stepped it: the font and the height bounds follow. Checked by
+        // category so the hot update path doesn't look up fonts.
         let category = uiView.traitCollection.preferredContentSizeCategory
         if uiView.boundsContentSizeCategory != category {
             uiView.boundsContentSizeCategory = category
+            uiView.font = Self.bodyFont(for: uiView.traitCollection)
             uiView.minimumReportedHeight = Self.minimumHeight(for: uiView.traitCollection)
             uiView.maximumReportedHeight = Self.maximumHeight(for: uiView.traitCollection)
             uiView.setNeedsLayout()
