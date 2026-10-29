@@ -635,17 +635,13 @@ struct V2PulsePage: View {
                     clearedUndoButton(card)
                 }
                 .padding(.vertical, 4)
-                if appState.pulseCardHasChat(card) {
-                    chatLink(card)
-                }
+                sourceLink(card)
             } else {
                 topicLine(card)
                 Text(card.formattedNews)
                     .font(.body)
                     .fixedSize(horizontal: false, vertical: true)
-                if appState.pulseCardHasChat(card) {
-                    chatLink(card)
-                }
+                sourceLink(card)
                 whyNote(card)
                 actionRow(card)
             }
@@ -839,9 +835,7 @@ struct V2PulsePage: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if appState.pulseCardHasChat(card) {
-                chatLink(card)
-            }
+            sourceLink(card)
             whyNote(card)
             actionRow(card)
             // Put away by Wrong time, its cleared label says so already, unless it got done meanwhile.
@@ -930,6 +924,36 @@ struct V2PulsePage: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.quaternary))
         }
+    }
+
+    /// Where it came from, a tap away: its chat, or the Kanban task whose
+    /// worker it came from, which Hermes won't reopen as a chat.
+    @ViewBuilder private func sourceLink(_ card: PulseCard) -> some View {
+        if appState.pulseCardHasChat(card) {
+            chatLink(card)
+        } else if let task = appState.pulseCardTask(card) {
+            taskLink(card, task: task)
+        }
+    }
+
+    /// The Kanban task, opened in Tasks, where it can be unblocked or run again.
+    private func taskLink(_ card: PulseCard, task: String) -> some View {
+        Button {
+            appState.openPulseCardTask(card)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "checklist")
+                Text(verbatim: AppLocalization.string("Kanban task \(task)"))
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityHint(Text(AppLocalization.string("Opens the task on the board")))
+        .accessibilityIdentifier("pulse.card.task")
     }
 
     /// The chat it came from, a tap away.

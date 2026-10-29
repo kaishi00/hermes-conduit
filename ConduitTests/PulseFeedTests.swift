@@ -605,6 +605,48 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "fresh", profile: "default"))
     }
 
+    func testACardFromAKanbanWorkerShowsItsTaskAndDoItStartsANewChatAboutIt() async throws {
+        let state = try appState()
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"home_chat_id": "pulse_chat", "cards": [
+          {"id": 1, "kind": "followup", "level": "screen", "news": "The task hasn't gone on since the reset",
+           "chat_id": "worker", "kanban_task": "t_c64b17a2"},
+          {"id": 2, "kind": "followup", "level": "screen", "news": "A worker stalled", "chat_id": "worker2",
+           "kanban_task": ""},
+          {"id": 3, "kind": "followup", "level": "screen", "news": "Deck", "chat_id": "work"}
+        ]}
+        """)))
+        state.setNotifierPluginStateForTesting(.reported(version: "0.116.1", capabilities: [
+            PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.actedCapability,
+            PulseClient.foundActionsCapability
+        ]))
+        state.applyPulseFeed(page)
+        let named = page.cards[0], unnamed = page.cards[1], chat = page.cards[2]
+        // Hermes won't reopen a worker as a chat: the card links its task instead.
+        XCTAssertFalse(state.pulseCardHasChat(named) || state.pulseCardHasChat(unnamed))
+        XCTAssertEqual(state.pulseCardTask(named), "t_c64b17a2")
+        XCTAssertNil(state.pulseCardTask(unnamed))
+        XCTAssertNil(state.pulseCardTask(chat))
+        XCTAssertTrue(state.pulseCardHasChat(chat))
+        state.openPulseCardTask(named)
+        XCTAssertEqual(state.kanbanTaskOpenRequest?.taskID, "t_c64b17a2")
+        // Do it asks Hermes to get the task going, in a new chat.
+        XCTAssertEqual(named.actionMessage, "Pulse reminded me: The task hasn't gone on since the reset\n\n"
+            + "It came up in the work on Kanban task t_c64b17a2. Check the task on the board, and if it's stuck, "
+            + "get it going again.")
+        XCTAssertEqual(unnamed.actionMessage, "Pulse reminded me: A worker stalled\n\n"
+            + "It came up in the work on a Kanban task. Find the task on the board, and if it's stuck, get it going again.")
+        state.isConnected = true
+        state.client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+                                    profile: "default")
+        state.activeSessionId = "elsewhere"
+        state.widgetSessionCreatorOverride = { _, _ in ("fresh", "fresh", "default") }
+        let opened = await state.actOnPulseCard(named)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(state.activeSessionId, "fresh")
+        XCTAssertEqual(state.composerPrefillText, named.actionMessage)
+    }
+
     func testDoItNeverFillsAChatAnotherCreateOpenedWhileItsOwnWasStarting() async throws {
         let state = try appState()
         let page = try XCTUnwrap(PulseFeedPage(json: json("""

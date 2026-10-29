@@ -53,6 +53,11 @@ struct PulseCard: Equatable, Identifiable {
     let profile: String
     let chatID: String
     let chatTitle: String
+    /// The Kanban task whose worker's session its chat is (0.116.1): Hermes
+    /// won't reopen that as a chat, so the card shows the task instead and
+    /// Do it starts a new chat. "" for a worker whose task wasn't named,
+    /// nil for a card from a chat or from no chat.
+    let kanbanTask: String?
     /// Hermes' `messages.id` of the promise in its chat.
     let messageID: Int?
     let createdAt: Date?
@@ -114,6 +119,7 @@ struct PulseCard: Equatable, Identifiable {
         profile = object["profile"] as? String ?? ""
         chatID = object["chat_id"] as? String ?? ""
         chatTitle = object["chat_title"] as? String ?? ""
+        kanbanTask = object["kanban_task"] as? String
         messageID = PulseJSON.int(object["message_id"])
         createdAt = PulseJSON.date(object["created_at"])
         seenAt = PulseJSON.date(object["seen_at"])
@@ -247,8 +253,15 @@ struct PulseCard: Equatable, Identifiable {
     /// step (0.106.0), taking care of it like a plan; something
     /// watched, where it stands; an interest, more about it; anything else,
     /// a look.
+    /// One from a Kanban task's worker asks Hermes to get the task going
+    /// again: the work happens on the board, not in a chat.
     var actionMessage: String {
         let reminder = news.isEmpty ? title : news
+        if let kanbanTask {
+            return kanbanTask.isEmpty
+                ? AppLocalization.string("Pulse reminded me: \(reminder)\n\nIt came up in the work on a Kanban task. Find the task on the board, and if it's stuck, get it going again.")
+                : AppLocalization.string("Pulse reminded me: \(reminder)\n\nIt came up in the work on Kanban task \(kanbanTask). Check the task on the board, and if it's stuck, get it going again.")
+        }
         switch kind == "followup" ? "promise" : topic {
         case "promise":
             return AppLocalization.string("Pulse reminded me: \(reminder)\n\nGo ahead with it now.")
@@ -1152,9 +1165,15 @@ extension AppState {
     }
 
     /// The card links a chat to open: not Pulse's own, which is hidden (a
-    /// report's or brief's cards point there).
+    /// report's or brief's cards point there), nor a Kanban task's worker,
+    /// which Hermes won't reopen as a chat (the card shows its task).
     func pulseCardHasChat(_ card: PulseCard) -> Bool {
-        !card.chatID.isEmpty && card.chatID != pulseHomeChat
+        !card.chatID.isEmpty && card.chatID != pulseHomeChat && card.kanbanTask == nil
+    }
+
+    /// The Kanban task a card from a worker links to, when it was named.
+    func pulseCardTask(_ card: PulseCard) -> String? {
+        card.kanbanTask.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// Done on this card: a follow-up's or a remembered report item's
@@ -1249,9 +1268,16 @@ extension AppState {
         openAppLink(.session(id: card.chatID, profile: card.profile.isEmpty ? Self.pulseHomeProfile : card.profile))
     }
 
+    /// Opens the Kanban task a card from its worker names, in Tasks.
+    func openPulseCardTask(_ card: PulseCard) {
+        guard let task = pulseCardTask(card) else { return }
+        kanbanTaskOpenRequest = KanbanTaskOpenRequest(taskID: task)
+    }
+
     /// Do it: opens the chat the card came from with the reminder in its
     /// composer, ready to send. A card from no chat (a report item from the
-    /// calendar, reminders or the Shortcuts inbox) gets a new chat in Pulse's
+    /// calendar, reminders or the Shortcuts inbox) or from a Kanban task's
+    /// worker gets a new chat in Pulse's
     /// profile, where Pulse reads what came of it, and only the chat that
     /// New Chat made gets the reminder (startPulseNewChat). False when no
     /// chat opened.

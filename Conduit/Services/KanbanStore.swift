@@ -293,6 +293,24 @@ final class KanbanStore: ObservableObject {
         return try await service.fetchTask(id: id, board: loadedBoardSlug ?? effectiveBoardSlug)
     }
 
+    /// The board holding task `id`, and the task: the loaded board first,
+    /// then the others, since a Pulse card names a task, not its board.
+    /// Nil when no board it could read has it.
+    func findTask(id: String) async throws -> (board: String, task: KanbanTask)? {
+        guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")) }
+        let first = loadedBoardSlug ?? resolvedSelectedBoardSlug
+        for slug in [first] + boards.map(\.slug).filter({ $0 != first }) {
+            do {
+                return (slug, try await service.fetchTask(id: id, board: slug).task)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                continue  // not on this board, or it can't be read: the next one
+            }
+        }
+        return nil
+    }
+
     func fetchTaskLog(id: String, tailBytes: Int = 16_384) async throws -> KanbanWorkerLog {
         guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")) }
         return try await service.fetchTaskLog(id: id, board: loadedBoardSlug ?? effectiveBoardSlug, tailBytes: tailBytes)
@@ -1156,4 +1174,10 @@ final class KanbanStore: ObservableObject {
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
     }
+}
+
+/// A request to show a Kanban task, on whichever board holds it.
+struct KanbanTaskOpenRequest: Equatable {
+    let id = UUID()
+    let taskID: String
 }

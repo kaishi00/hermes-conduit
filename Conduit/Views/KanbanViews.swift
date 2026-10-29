@@ -379,6 +379,8 @@ struct KanbanView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var store: KanbanStore
     @State private var selectedTask: KanbanTask?
+    /// The task request being opened (AppState.kanbanTaskOpenRequest).
+    @State private var openingRequest: UUID?
     @State private var showNewTask = false
     @State private var newTaskStatus = "todo"
     @State private var newTaskContext: KanbanBoardContextStamp?
@@ -479,6 +481,34 @@ struct KanbanView: View {
     /// Prune selected IDs against the authoritative loaded board (polling
     /// keeps running during selection mode). Tasks that disappeared from the
     /// board are dropped; lane switches never prune.
+    /// Opens the task a request names, on whichever board holds it, once
+    /// a board has loaded and shows; says so when no board has it.
+    private func openRequestedTask() {
+        guard shell.isTabActive, let request = appState.kanbanTaskOpenRequest, openingRequest != request.id,
+              store.loadedBoardSlug != nil else { return }
+        openingRequest = request.id
+        Task {
+            defer {
+                if appState.kanbanTaskOpenRequest?.id == request.id { appState.kanbanTaskOpenRequest = nil }
+            }
+            do {
+                guard let found = try await store.findTask(id: request.taskID) else {
+                    store.showMutationError(KanbanServiceError.invalidResponse(
+                        AppLocalization.string("Couldn't find Kanban task \(request.taskID) on your boards.")))
+                    return
+                }
+                if found.board != store.loadedBoardSlug {
+                    await store.selectBoard(slug: found.board, includeArchived: includeArchived)
+                }
+                selectedTask = found.task
+            } catch is CancellationError {
+                return
+            } catch {
+                store.showMutationError(error)
+            }
+        }
+    }
+
     private func pruneSelectionAgainstBoard() {
         guard let board = store.board, !selectedTaskIDs.isEmpty else { return }
         let alive = Set(board.columns.flatMap { $0.tasks.map(\.id) })
@@ -833,6 +863,10 @@ struct KanbanView: View {
         .onChange(of: store.board) { _, _ in
             pruneSelectionAgainstBoard()
         }
+        // A task to show (a Pulse card's), once the board is up and showing.
+        .onChange(of: appState.kanbanTaskOpenRequest, initial: true) { _, _ in openRequestedTask() }
+        .onChange(of: store.loadedBoardSlug) { _, _ in openRequestedTask() }
+        .onChange(of: shell.isTabActive) { _, _ in openRequestedTask() }
         // V2 keeps a visited Tasks tab mounted behind the selected one: the
         // board listens and polls only while it shows and the app is on
         // screen, and catches up when it comes back. Outside V2 the board is
