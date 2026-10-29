@@ -478,14 +478,15 @@ struct KanbanView: View {
         showBulkFailures = false
     }
 
-    /// Prune selected IDs against the authoritative loaded board (polling
-    /// keeps running during selection mode). Tasks that disappeared from the
-    /// board are dropped; lane switches never prune.
     /// Opens the task a request names, on whichever board holds it, once
-    /// a board has loaded and shows; says so when no board has it.
+    /// a board has loaded and shows; says so when no board has it. A board
+    /// that fails to load drops the request, so it never opens later.
     private func openRequestedTask() {
-        guard shell.isTabActive, let request = appState.kanbanTaskOpenRequest, openingRequest != request.id,
-              store.loadedBoardSlug != nil else { return }
+        guard shell.isTabActive, let request = appState.kanbanTaskOpenRequest, openingRequest != request.id else { return }
+        guard store.loadedBoardSlug != nil else {
+            if store.errorMessage != nil, !store.isLoading { appState.kanbanTaskOpenRequest = nil }
+            return
+        }
         openingRequest = request.id
         Task {
             defer {
@@ -499,6 +500,8 @@ struct KanbanView: View {
                 }
                 if found.board != store.loadedBoardSlug {
                     await store.selectBoard(slug: found.board, includeArchived: includeArchived)
+                    // The switch failed: its own error shows, and the old board's sheet would read the wrong board.
+                    guard store.loadedBoardSlug == found.board else { return }
                 }
                 selectedTask = found.task
             } catch is CancellationError {
@@ -509,6 +512,9 @@ struct KanbanView: View {
         }
     }
 
+    /// Prune selected IDs against the authoritative loaded board (polling
+    /// keeps running during selection mode). Tasks that disappeared from the
+    /// board are dropped; lane switches never prune.
     private func pruneSelectionAgainstBoard() {
         guard let board = store.board, !selectedTaskIDs.isEmpty else { return }
         let alive = Set(board.columns.flatMap { $0.tasks.map(\.id) })
@@ -867,6 +873,7 @@ struct KanbanView: View {
         .onChange(of: appState.kanbanTaskOpenRequest, initial: true) { _, _ in openRequestedTask() }
         .onChange(of: store.loadedBoardSlug) { _, _ in openRequestedTask() }
         .onChange(of: shell.isTabActive) { _, _ in openRequestedTask() }
+        .onChange(of: store.errorMessage) { _, _ in openRequestedTask() }
         // V2 keeps a visited Tasks tab mounted behind the selected one: the
         // board listens and polls only while it shows and the app is on
         // screen, and catches up when it comes back. Outside V2 the board is

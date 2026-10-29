@@ -30,7 +30,9 @@
 //  From 0.106.0 (`pulse_next`) a report can bring up a next step, after
 //  something got done or an event ended, with a level of its own in What
 //  Pulse learned. From 0.107.0 a card whose Do it stalled comes back once,
-//  and its Why? says when Do it was tapped.
+//  and its Why? says when Do it was tapped. From 0.116.1 a card from a
+//  Kanban task's worker names the task: it links the task, and Do it
+//  starts a new chat.
 //
 
 import Foundation
@@ -208,7 +210,7 @@ struct PulseCard: Equatable, Identifiable {
 
     /// It can be acted on in the chat the remembered thing came from, or in
     /// a new one for a deadline from the Shortcuts inbox (0.90.0), which
-    /// came from no chat.
+    /// came from no chat, or for one from a Kanban task's worker (0.116.1).
     var isActionable: Bool {
         (kind == "followup" || (isNoticed && itemID != nil)) && (!chatID.isEmpty || topic == "deadline")
             && hasReminder

@@ -295,17 +295,16 @@ final class KanbanStore: ObservableObject {
 
     /// The board holding task `id`, and the task: the loaded board first,
     /// then the others, since a Pulse card names a task, not its board.
-    /// Nil when no board it could read has it.
+    /// Nil when no board has it; any failure but a board's 404 is thrown,
+    /// so a lost connection doesn't read as a missing task.
     func findTask(id: String) async throws -> (board: String, task: KanbanTask)? {
         guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")) }
         let first = loadedBoardSlug ?? resolvedSelectedBoardSlug
         for slug in [first] + boards.map(\.slug).filter({ $0 != first }) {
             do {
                 return (slug, try await service.fetchTask(id: id, board: slug).task)
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                continue  // not on this board, or it can't be read: the next one
+            } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
+                continue  // not on this board
             }
         }
         return nil

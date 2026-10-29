@@ -691,6 +691,39 @@ final class KanbanTests: XCTestCase {
         XCTAssertEqual(store.loadedBoardSlug, "alpha")
     }
 
+    func testFindTaskLooksOnTheLoadedBoardFirstThenTheOthers() async throws {
+        var responses = standardKanbanResponses()
+        responses["/api/plugins/kanban/tasks/t9?board=beta"] = ["task": ["id": "t9", "title": "On beta", "status": "blocked"]]
+        let notHere = DashboardTicketBridgeError.http(status: 404, detail: "not found")
+        let requester = MockKanbanRequester(responsesByPath: responses, errorsByPath: [
+            "/api/plugins/kanban/tasks/t9?board=default": notHere,
+            "/api/plugins/kanban/tasks/gone?board=default": notHere,
+            "/api/plugins/kanban/tasks/gone?board=beta": notHere,
+            "/api/plugins/kanban/tasks/gone?board=alpha": notHere
+        ])
+        let store = makeStore(requester: requester)
+        await store.refresh()
+        XCTAssertEqual(store.loadedBoardSlug, "default")
+
+        let found = try await store.findTask(id: "t9")
+        XCTAssertEqual(found?.board, "beta")
+        XCTAssertEqual(found?.task.title, "On beta")
+        let asked = requester.calls.map(\.path).filter { $0.hasPrefix("/api/plugins/kanban/tasks/t9") }
+        XCTAssertEqual(asked, ["/api/plugins/kanban/tasks/t9?board=default", "/api/plugins/kanban/tasks/t9?board=beta"])
+
+        let missing = try await store.findTask(id: "gone")
+        XCTAssertNil(missing)
+
+        // Anything but a board's 404 is the real failure, not a missing task.
+        requester.errorsByPath["/api/plugins/kanban/tasks/t9?board=default"] = DashboardTicketBridgeError.http(status: 503, detail: "down")
+        do {
+            _ = try await store.findTask(id: "t9")
+            XCTFail("a failed read must throw")
+        } catch DashboardTicketBridgeError.http(let status, _) {
+            XCTAssertEqual(status, 503)
+        }
+    }
+
     func testDotSegmentIdentifiersFailBeforeTransport() async throws {
         let requester = MockKanbanRequester(responsesByPath: standardKanbanResponses())
         let service = KanbanService(requester: requester)
