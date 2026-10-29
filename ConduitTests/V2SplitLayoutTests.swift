@@ -178,6 +178,30 @@ extension SidebarLayoutTests {
         XCTAssertEqual(ReadableWidth.textSteps(column: ReadableWidth.settingsMax, base: ReadableWidth.settings), 3)
     }
 
+    func testColumnsSetTheirTextForTheirContent() {
+        // A maximized chat steps its own text and its transcript, and is
+        // the base for the cards inside it.
+        let chat = ReadableWidth.columnText(column: ReadableWidth.chatMax, base: ReadableWidth.chat, scalesChatText: true, size: .large)
+        XCTAssertEqual(chat.size, .xxxLarge)
+        XCTAssertEqual(chat.chatSteps, 3)
+        XCTAssertEqual(chat.base, .large)
+        // Settings steps its own text; no transcript takes the steps.
+        let settings = ReadableWidth.columnText(column: ReadableWidth.settingsMax, base: ReadableWidth.settings, scalesChatText: false, size: .large)
+        XCTAssertEqual(settings.size, .xxxLarge)
+        XCTAssertEqual(settings.chatSteps, 0)
+        XCTAssertEqual(settings.base, .large)
+        // A fixed column (a call, a list alone) changes nothing and is no base.
+        let fixed = ReadableWidth.columnText(column: 2000, base: nil, scalesChatText: false, size: .large)
+        XCTAssertEqual(fixed.size, .large)
+        XCTAssertEqual(fixed.chatSteps, 0)
+        XCTAssertNil(fixed.base)
+        // An accessibility size stays as the user set it.
+        let accessible = ReadableWidth.columnText(column: ReadableWidth.chatMax, base: ReadableWidth.chat, scalesChatText: true, size: .accessibility2)
+        XCTAssertEqual(accessible.size, .accessibility2)
+        XCTAssertEqual(accessible.chatSteps, 0)
+        XCTAssertEqual(accessible.base, .accessibility2)
+    }
+
     func testWideColumnStepsScaleTranscriptFonts() {
         let traits = UITraitCollection(preferredContentSizeCategory: .large)
         let base = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits)
@@ -225,10 +249,17 @@ extension SidebarLayoutTests {
         let mac = [CGFloat](repeating: 17, count: 7)
         XCTAssertEqual(ChatTypography.missingGrowth(at: .extraExtraExtraLarge, from: .large), 1)
         XCTAssertEqual(ChatTypography.missingGrowth(at: .extraExtraExtraLarge, from: nil, drawn: mac), 1)
-        XCTAssertEqual(ChatTypography.missingGrowth(at: .extraExtraExtraLarge, from: .large, drawn: mac), ChatTypography.widthScale(steps: 3, from: .large), accuracy: 0.0001)
-        XCTAssertEqual(ChatTypography.missingGrowth(at: .large, from: .medium, drawn: mac), ChatTypography.widthScale(steps: 1, from: .medium), accuracy: 0.0001)
         XCTAssertEqual(ChatTypography.missingGrowth(at: .small, from: .small, drawn: mac), 1)
         XCTAssertEqual(ChatTypography.missingGrowth(at: .accessibilityLarge, from: .large, drawn: mac), 1)
+        // There, transcript and cards both land on iOS's size for the
+        // stepped size, whatever the base: the transcript resolves at the
+        // system's 17 pt and grows by widthScale, the cards resolve at the
+        // stepped size (17 pt too) and grow by missingGrowth.
+        for (base, steps, expected) in [(DynamicTypeSize.large, 3, CGFloat(23)), (.xxLarge, 1, 23), (.medium, 1, 17), (.xLarge, 1, 21)] {
+            let stepped = ChatTypography.standardCategories[ChatTypography.standardDynamicTypeSizes.firstIndex(of: base)! + steps]
+            XCTAssertEqual(17 * ChatTypography.widthScale(steps: steps, from: base, drawn: mac), expected, accuracy: 0.001, "\(base) + \(steps)")
+            XCTAssertEqual(17 * ChatTypography.missingGrowth(at: stepped, from: base, drawn: mac), expected, accuracy: 0.001, "\(base) + \(steps)")
+        }
         XCTAssertEqual(
             UIFont.preferredFont(forTextStyle: .subheadline, in: .extraExtraExtraLarge, from: .large).pointSize,
             UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: UITraitCollection(preferredContentSizeCategory: .extraExtraExtraLarge)).pointSize,

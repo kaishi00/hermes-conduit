@@ -91,6 +91,21 @@ enum ReadableWidth {
         return min(textSteps(column: column, base: base), sizes.count - 1 - index)
     }
 
+    /// What a column `column` points wide sets for its content at the
+    /// system's `size`: the Dynamic Type size its own text draws at, the
+    /// steps a chat's transcript takes (none outside a chat), and the
+    /// system's size as the column's base (nil in a column that doesn't
+    /// step its text, `base` nil, so a fixed column inside a stepped one
+    /// keeps its base).
+    static func columnText(column: CGFloat, base: CGFloat?, scalesChatText: Bool, size: DynamicTypeSize)
+        -> (size: DynamicTypeSize, chatSteps: Int, base: DynamicTypeSize?) {
+        guard let base else { return (size, 0, nil) }
+        let steps = textSteps(column: column, base: base, from: size)
+        let sizes = ChatTypography.standardDynamicTypeSizes
+        let boosted = sizes.firstIndex(of: size).map { sizes[min(sizes.count - 1, $0 + steps)] } ?? size
+        return (boosted, scalesChatText ? steps : 0, size)
+    }
+
     /// The body text growth each step brings at the default size
     /// (19, 21 and 23 pt over 17).
     static let chatTextGrowth: [CGFloat] = ChatTypography.standardBodySizes
@@ -121,7 +136,7 @@ private struct ReadableContentWidth: ViewModifier {
         // not lay its rows out twice.
         GeometryReader { proxy in
             let column = maxWidth(proxy.size.width)
-            let steps = textBase.map { ReadableWidth.textSteps(column: column, base: $0, from: dynamicTypeSize) } ?? 0
+            let text = ReadableWidth.columnText(column: column, base: textBase, scalesChatText: scalesChatText, size: dynamicTypeSize)
             content
                 .safeAreaPadding(.horizontal, ReadableWidth.margin(available: proxy.size.width, maxWidth: column))
                 // Centered for content narrower than the window too; the
@@ -131,26 +146,20 @@ private struct ReadableContentWidth: ViewModifier {
                 // through Dynamic Type; transcript text, which resolves
                 // UIKit fonts, by the steps' scale from the system's size
                 // (ChatTextAppearance.widened).
-                .dynamicTypeSize(Self.boosted(dynamicTypeSize, by: steps))
-                .environment(\.chatWidthTextSteps, scalesChatText ? steps : 0)
+                .dynamicTypeSize(text.size)
+                .environment(\.chatWidthTextSteps, text.chatSteps)
                 // Only in a column that steps its text: nil elsewhere, and a
                 // fixed column inside one keeps its base.
                 .transformEnvironment(\.chatColumnBaseTextSize) { base in
-                    if textBase != nil { base = dynamicTypeSize }
+                    if let columnBase = text.base { base = columnBase }
                 }
-                .onChange(of: steps, initial: true) { _, steps in
-                    if textBase != nil {
+                .onChange(of: text.size, initial: true) { _, _ in
+                    if let textBase {
+                        let steps = ReadableWidth.textSteps(column: column, base: textBase, from: dynamicTypeSize)
                         MacTextStepsReport.noteOnce(column: scalesChatText ? "chat" : "settings", steps: steps, from: dynamicTypeSize)
                     }
                 }
         }
-    }
-
-    private static var standardSizes: [DynamicTypeSize] { ChatTypography.standardDynamicTypeSizes }
-
-    private static func boosted(_ size: DynamicTypeSize, by steps: Int) -> DynamicTypeSize {
-        guard steps > 0, let index = standardSizes.firstIndex(of: size) else { return size }
-        return standardSizes[min(standardSizes.count - 1, index + steps)]
     }
 }
 

@@ -276,13 +276,15 @@ enum ChatTypography {
     static let standardBodySizes: [CGFloat] = [14, 15, 16, 17, 19, 21, 23]
 
     /// How much `steps` sizes up from `base` grow body text, stopping at
-    /// the largest standard size (iOS's growth, whatever the system draws:
-    /// a Mac's appears to be the same at every size). An accessibility
-    /// size, already larger, doesn't grow.
-    static func widthScale(steps: Int, from base: DynamicTypeSize) -> CGFloat {
-        guard steps > 0, let index = standardDynamicTypeSizes.firstIndex(of: base) else { return 1 }
+    /// the largest standard size: from what the system draws at `base` to
+    /// iOS's size at the stepped one, so the column shows iOS's stepped
+    /// size whatever the system draws (a Mac's body text appears to be the
+    /// same at every size). An accessibility size, already larger, doesn't
+    /// grow.
+    static func widthScale(steps: Int, from base: DynamicTypeSize, drawn: [CGFloat] = ChatTypography.drawnBodySizes) -> CGFloat {
+        guard steps > 0, let index = standardDynamicTypeSizes.firstIndex(of: base), drawn[index] > 0 else { return 1 }
         let grown = min(standardBodySizes.count - 1, index + steps)
-        return standardBodySizes[grown] / standardBodySizes[index]
+        return max(1, standardBodySizes[grown] / drawn[index])
     }
 
     /// The default size's place among the standard sizes (`.large`).
@@ -296,11 +298,11 @@ enum ChatTypography {
     }
 
     /// What text a column stepped up from `base` to `category` should grow
-    /// by that the system didn't give it: iOS's growth between the two
-    /// over what the system drew (`drawn`, body text at each standard
-    /// size), so it matches the transcript's `widthScale`. One without a
-    /// stepped column, where the system grows text as iOS does, and at an
-    /// accessibility size; never less than one.
+    /// by that the system didn't give it: iOS's body size at `category`
+    /// over what the system drew there (`drawn`, body text at each
+    /// standard size), so it lands where the transcript's `widthScale`
+    /// does. One without a stepped column, where the system sizes text as
+    /// iOS does, and at an accessibility size; never less than one.
     static func missingGrowth(
         at category: UIContentSizeCategory,
         from base: DynamicTypeSize?,
@@ -309,10 +311,8 @@ enum ChatTypography {
         guard let base,
               let index = standardCategories.firstIndex(of: category),
               let baseIndex = standardDynamicTypeSizes.firstIndex(of: base),
-              index > baseIndex, drawn[baseIndex] > 0, drawn[index] > 0 else { return 1 }
-        let expected = standardBodySizes[index] / standardBodySizes[baseIndex]
-        let given = drawn[index] / drawn[baseIndex]
-        return max(1, expected / given)
+              index > baseIndex, drawn[index] > 0 else { return 1 }
+        return max(1, standardBodySizes[index] / drawn[index])
     }
 
     /// `category` moved `steps` sizes down: the system's size under a
