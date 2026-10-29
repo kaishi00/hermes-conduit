@@ -517,14 +517,22 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
 
     /// Once per device: the crashes and hangs from the last week that a
     /// build before the card kept, since iOS doesn't hand them over again.
+    /// A file that can't be read yet (before first unlock) leaves the look
+    /// for the next launch.
     func queueStoredCrashReports(now: Date = Date()) -> Bool {
-        guard crashReports.firstLookAtStoredReports() else { return false }
+        guard !crashReports.lookedAtStoredReports else { return false }
         var queued = false
+        var unread = false
         for entry in store.entries(.diagnostics) where now.timeIntervalSince(entry.end) < CrashReportUpload.maxAge {
-            guard let data = try? Data(contentsOf: entry.url), CrashReportUpload.kind(ofPayloadJSON: data) != nil else { continue }
+            guard let data = try? Data(contentsOf: entry.url) else {
+                unread = true
+                continue
+            }
+            guard CrashReportUpload.kind(ofPayloadJSON: data) != nil else { continue }
             crashReports.add(entry.url.lastPathComponent)
             queued = true
         }
+        if !unread { crashReports.markLookedAtStoredReports() }
         return queued
     }
 

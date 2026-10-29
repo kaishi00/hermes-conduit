@@ -187,7 +187,7 @@ enum CrashReportUpload {
 struct CrashReportQueue {
     static let key = "conduit.crashReports.pending"
     /// The build that found the relay taking no reports: that build offers
-    /// none, and the next one asks again.
+    /// none, and the next one asks about what's still queued.
     static let unsupportedKey = "conduit.crashReports.unsupportedBuild"
     static let storedKey = "conduit.crashReports.lookedAtStored"
     private static let lock = NSLock()
@@ -198,7 +198,6 @@ struct CrashReportQueue {
     var isUnsupported: Bool { defaults.string(forKey: Self.unsupportedKey) == build }
 
     func add(_ fileName: String) {
-        guard !isUnsupported else { return }
         change { names in
             guard !names.contains(fileName) else { return }
             names.append(fileName)
@@ -213,22 +212,17 @@ struct CrashReportQueue {
 
     func clear() { change { names in names = [] } }
 
-    /// True the first time it's asked on this device, for the reports kept
-    /// before the card existed.
-    func firstLookAtStoredReports() -> Bool {
-        Self.lock.lock()
-        defer { Self.lock.unlock() }
-        guard !defaults.bool(forKey: Self.storedKey) else { return false }
-        defaults.set(true, forKey: Self.storedKey)
-        return true
-    }
+    /// Whether the reports kept before the card existed were queued on this
+    /// device.
+    var lookedAtStoredReports: Bool { defaults.bool(forKey: Self.storedKey) }
 
-    /// Conduit's relay doesn't take reports: drop these, and offer no more
-    /// from this build. The next build looks at the stored reports again.
+    func markLookedAtStoredReports() { defaults.set(true, forKey: Self.storedKey) }
+
+    /// Conduit's relay doesn't take reports: this build offers no more. What's
+    /// queued stays for the next build, so a build out before the relay
+    /// takes reports loses none, and one declined or sent isn't asked again.
     func stopOffering() {
         defaults.set(build, forKey: Self.unsupportedKey)
-        defaults.removeObject(forKey: Self.storedKey)
-        clear()
     }
 
     private func change(_ body: (inout [String]) -> Void) {
@@ -315,6 +309,7 @@ final class CrashReportOffer: ObservableObject {
                 sent.append(report.fileName)
             case .unsupported:
                 // This relay takes no reports: stop asking.
+                queue.remove(sent)
                 queue.stopOffering()
                 state = .hidden
                 return
@@ -344,6 +339,7 @@ final class CrashReportOffer: ObservableObject {
     /// run to megabytes). One gone, too old, or not a report that can be
     /// sent leaves the queue; one that can't be read just now stays.
     private func pendingReports(named only: [String]? = nil) async -> [Report] {
+        guard !queue.isUnsupported else { return [] }
         let names = queue.pending.filter { only?.contains($0) ?? true }
         let directory = directory
         let (reports, gone) = await Task.detached(priority: .utility) { () -> ([Report], [String]) in

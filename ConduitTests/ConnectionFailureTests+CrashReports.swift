@@ -99,15 +99,11 @@ extension ConnectionFailureTests {
         XCTAssertEqual(queue.pending, (2..<7).map { "diagnostics-\($0).json" })
         queue.remove(["diagnostics-2.json"])
         XCTAssertEqual(queue.pending.count, 4)
-        XCTAssertTrue(queue.firstLookAtStoredReports())
-        XCTAssertFalse(queue.firstLookAtStoredReports())
         queue.stopOffering()
+        XCTAssertTrue(queue.isUnsupported)
         queue.add("diagnostics-9.json")
-        XCTAssertTrue(queue.pending.isEmpty, "a relay without the route: this build offers nothing more")
-        let next = CrashReportQueue(defaults: defaults, build: "241")
-        next.add("diagnostics-9.json")
-        XCTAssertEqual(next.pending, ["diagnostics-9.json"], "the next build asks again")
-        XCTAssertTrue(next.firstLookAtStoredReports(), "and offers the reports earlier builds kept")
+        XCTAssertEqual(queue.pending.count, 5, "kept for the next build")
+        XCTAssertFalse(CrashReportQueue(defaults: defaults, build: "241").isUnsupported, "the next build asks again")
     }
 
     func testMetricKitQueuesOnlyARecentCrashOrHang() {
@@ -207,8 +203,13 @@ extension ConnectionFailureTests {
         CrashReportStubProtocol.status = 404
         await offer.send()
         XCTAssertEqual(offer.state, .hidden)
-        XCTAssertTrue(CrashReportQueue(defaults: defaults).pending.isEmpty)
         XCTAssertTrue(CrashReportQueue(defaults: defaults).isUnsupported)
+        await offer.refresh()
+        XCTAssertEqual(offer.state, .hidden, "this build offers no more")
+        XCTAssertEqual(CrashReportQueue(defaults: defaults).pending.count, 1, "kept for the next build")
+        let next = CrashReportOffer(queue: CrashReportQueue(defaults: defaults, build: "next"), directory: directory, relayURL: relay, session: session)
+        await next.refresh()
+        XCTAssertEqual(next.state, .asking(crashed: true), "the next build asks about it")
     }
 }
 

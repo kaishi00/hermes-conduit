@@ -226,7 +226,7 @@ Key places:
 
 ## Privacy
 
-Conduit has no analytics, telemetry, crash-reporting or ad SDKs, and its developer never receives your conversations, voice or phone data. After a crash or freeze, Conduit asks once whether to send that report (call stacks and codes, the version, iOS version and device model) to its developer; it goes only if you tap Send. Chats, attachments and opt-in phone data go to your own Hermes host. Live voice calls go to the voice provider you choose (Google, Alibaba Cloud, OpenAI or xAI) or your own speech server. The optional push relay delivers notifications and calls through Apple; with end-to-end encryption on, it sees only routing data, not their content.
+Conduit has no analytics, telemetry, crash-reporting or ad SDKs, and its developer never receives your conversations, voice or phone data. After a crash or freeze, Conduit asks once whether to send that report (call stacks and codes, the version, iOS version and device model) to its developer, through the developer's push relay; it goes only if you tap Send. Chats, attachments and opt-in phone data go to your own Hermes host. Live voice calls go to the voice provider you choose (Google, Alibaba Cloud, OpenAI or xAI) or your own speech server. The optional push relay delivers notifications and calls through Apple; with end-to-end encryption on, it sees only routing data, not their content.
 
 The full [privacy policy](https://kaishi00.github.io/hermes-conduit-notifier/privacy/) says what each party receives.
 
