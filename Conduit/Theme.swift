@@ -471,7 +471,6 @@ struct ConduitBackdrop: View {
     /// Publishes only when Conduit goes idle or wakes, never per touch.
     @ObservedObject private var interactionIdle = InteractionIdleState.shared
     @State private var motionClock = ConduitBackdropMotionClock()
-    @Environment(\.conduitBackdropIsBehindFade) private var isBehindFade
     private let drifts: Bool
     /// The warm glow's color. V2 tints it with the active profile's color;
     /// nil keeps the gold accent.
@@ -497,15 +496,12 @@ struct ConduitBackdrop: View {
     }
 
     var body: some View {
-        if isBehindFade {
-            // Under a bar's fade the faded content leaves it out, and the
-            // bar draws it behind them instead (`V2LegacyEdgeBar`).
-            Color.clear
-                .preference(key: ConduitBackdropBehindFade.self,
-                            value: ConduitBackdropBehindFade.Request(drifts: drifts, glowTint: glowTint))
-        } else {
-            backdrop
-        }
+        backdrop
+            // A bar whose content fades out under it draws a copy behind
+            // that content, so the fade shows the backdrop rather than
+            // cutting through it (`V2LegacyEdgeBar`).
+            .preference(key: ConduitBackdropBehindFade.self,
+                        value: ConduitBackdropBehindFade.Request(drifts: drifts, glowTint: glowTint))
     }
 
     private var backdrop: some View {
@@ -588,9 +584,8 @@ struct ConduitBackdrop: View {
 }
 
 /// A backdrop inside content that fades out under a bar (`V2LegacyEdgeBar`,
-/// a mask): drawn in the content, the fade would cut through it too. It
-/// asks for itself here instead, and the bar draws it behind the faded
-/// content, so the text fades out over it.
+/// a mask): the fade cuts through it too, so the bar draws the same
+/// backdrop behind the faded content, and the text fades out over it.
 struct ConduitBackdropBehindFade: PreferenceKey {
     struct Request: Equatable {
         let drifts: Bool
@@ -601,19 +596,6 @@ struct ConduitBackdropBehindFade: PreferenceKey {
 
     static func reduce(value: inout Request?, nextValue: () -> Request?) {
         value = value ?? nextValue()
-    }
-}
-
-private struct ConduitBackdropIsBehindFadeKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
-extension EnvironmentValues {
-    /// Inside content that fades out under a bar: a backdrop there asks the
-    /// bar to draw it (`ConduitBackdropBehindFade`).
-    var conduitBackdropIsBehindFade: Bool {
-        get { self[ConduitBackdropIsBehindFadeKey.self] }
-        set { self[ConduitBackdropIsBehindFadeKey.self] = newValue }
     }
 }
 
