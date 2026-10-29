@@ -203,10 +203,11 @@ struct PinnedChatOrder: Equatable {
     }
 
     /// The mixed order a drag leaves in All's mixed Pinned section: `rows`
-    /// moved as `onMove` reports it, written into the places the mix held
-    /// them in, so a chat not shown (a profile left out of All for now)
-    /// keeps its place. Rows the mix didn't name were shown on top, so the
-    /// rows past its places go first.
+    /// moved as `onMove` reports it. The rows the mix names go into the
+    /// places it held them in, so a chat not shown (a profile left out of
+    /// All for now) keeps its place; a row it doesn't name (pinned since)
+    /// goes just before the named row it was dropped above, or after the
+    /// last one.
     static func mixedOrder<Row>(
         moving rows: [Row],
         fromOffsets source: IndexSet,
@@ -218,18 +219,43 @@ struct PinnedChatOrder: Equatable {
     ) -> [String] {
         var moved = rows
         moved.move(fromOffsets: source, toOffset: destination)
-        let movedKeys = moved.map { key(profile: profile($0), id: pinID($0)) }
-        let shownKeys = rows.reduce(into: Set<String>()) { keys, row in
+        func keys(_ row: Row) -> Set<String> {
             let owner = profile(row)
-            keys.formUnion(ids(row).map { key(profile: owner, id: $0) })
+            return Set(ids(row).map { key(profile: owner, id: $0) })
         }
-        let places = mixed.indices.filter { shownKeys.contains(mixed[$0]) }
-        let lead = max(0, movedKeys.count - places.count)
-        var result = mixed
-        for (place, placed) in zip(places, movedKeys.dropFirst(lead)) { result[place] = placed }
-        // A chat's older key beyond its rows' places goes.
-        let stale = Set(places.dropFirst(movedKeys.count - lead))
-        return Array(movedKeys.prefix(lead)) + result.indices.filter { !stale.contains($0) }.map { result[$0] }
+        let named = Set(mixed)
+        // The named rows in their new order, each after the unnamed rows
+        // dropped above it; the last group follows the last named row.
+        var placed: [String] = []
+        var unnamedBefore: [[String]] = [[]]
+        for row in moved {
+            let rowKey = key(profile: profile(row), id: pinID(row))
+            if keys(row).isDisjoint(with: named) {
+                unnamedBefore[unnamedBefore.count - 1].append(rowKey)
+            } else {
+                placed.append(rowKey)
+                unnamedBefore.append([])
+            }
+        }
+        guard !placed.isEmpty else { return unnamedBefore[0] + mixed }
+        let shownKeys = rows.reduce(into: Set<String>()) { $0.formUnion(keys($1)) }
+        var result: [String] = []
+        var next = 0
+        func placeNext() {
+            result += unnamedBefore[next] + [placed[next]]
+            next += 1
+            if next == placed.count { result += unnamedBefore[next] }
+        }
+        for saved in mixed {
+            if !shownKeys.contains(saved) {
+                result.append(saved)
+            } else if next < placed.count {
+                placeNext()
+            }
+            // Else a row's older key beyond its rows' places: it goes.
+        }
+        while next < placed.count { placeNext() }
+        return result
     }
 
     /// Where a move lands among the rows that can move, when a List section
