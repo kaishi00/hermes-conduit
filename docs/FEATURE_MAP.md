@@ -1560,13 +1560,13 @@ README.md's feature list
 - A drop attaches files and leaves the rest: words dragged from another app go into the draft only when dropped on the field, and a link stays a link. Text counts as a file only when it comes as a named file. One picture dropped or pasted on the field keeps the picture paste; several items, or any other file, are staged like picked documents (2026-10-28, #1411, from #1408).
 - A locked chat composer takes no drop, as its Attach menu is off then; a room on a plugin that can't store its files says what fixes it, as its Attach menu does (2026-10-28, #1411).
 - A dropped folder is taken but not attached: the composer's notice names it and says to drop the files inside. Files dropped with it still attach (2026-10-28, #1422).
-- Text pasted in a composer field (inline or full editor, chat or room) over 3,000 characters, Hermes Desktop's threshold, goes in as a removable text attachment instead of into the field: a `.txt` named as Desktop names a paste (`pasted_content_<time>_<hex>.txt`), staged and sent like any file, so Hermes puts its text in the prompt through the `@file:` reference and a reopened chat, here or in Desktop, shows it as pasted text. Its chip shows the first words; a tap shows the whole paste to read or edit, and Paste as text puts it back in the field after what was typed. A shorter paste, a picture, or a paste where the composer can't take files (locked, a chat still on its way, whose waiting message is words only, or a room on a plugin that can't store files) goes into the field as before; one too big for the attachment limit is refused with the limit's notice. Dropped words stay words, as above. The message also sends the paste's first 1,000 characters as `title_preview`, as Desktop does, so a chat that opens with a paste gets a title from its words, not its file name; a Hermes that refuses the key gets the message without it (Eric asked for it, 2026-10-29, #PRNUM).
-- A paste is an attachment like any other: while Hermes replies it goes as Queue (#1154), `/new` in a Bot Chat refuses it, Edit and resend is off for its message, and the draft keeps it. Paste as text turns it back into words to Steer with (2026-10-29, #PRNUM).
+- Text pasted in a composer field (inline or full editor, chat or room) over 3,000 characters, Hermes Desktop's threshold, goes in as a removable text attachment instead of into the field: a `.txt` named as Desktop names a paste (`pasted_content_<time>_<hex>.txt`), staged and sent like any file, so Hermes puts its text in the prompt through the `@file:` reference and a reopened chat, here or in Desktop, shows it as pasted text. Its chip shows the first words; a tap shows the whole paste to read or edit, and Paste as text puts it back in the field after what was typed. A shorter paste, a picture, or a paste where the composer can't take files (locked, a chat still on its way, whose waiting message is words only, or a room on a plugin that can't store files) goes into the field as before; one too big for the attachment limit is refused with the limit's notice. Dropped words stay words, as above. The message also sends the paste's first 1,000 characters as `title_preview`, as Desktop does, so a chat that opens with a paste gets a title from its words, not its file name; a Hermes that refuses the key gets the message without it (Eric asked for it, 2026-10-29, #1515).
+- A paste is an attachment like any other: while Hermes replies it goes as Queue (#1154), `/new` in a Bot Chat refuses it, Edit and resend is off for its message, and the draft keeps it. Paste as text turns it back into words to Steer with (2026-10-29, #1515).
 
 **Open gaps**
 - A dropped folder's files aren't attached for the user; they drop the files themselves.
 
-**Checked:** 2026-10-29, #PRNUM (long pastes become text attachments); 2026-10-28, #1422 (folder drops say why they aren't attached).
+**Checked:** 2026-10-29, #1515 (long pastes become text attachments); 2026-10-28, #1422 (folder drops say why they aren't attached).
 
 ## A chat while it opens
 
@@ -2177,7 +2177,7 @@ Hermes' own RPC)
 - The foreground check skipped behind an upload counts as passed, so a chat resumed then finds a dead socket only when that upload's budget ends or its write fails.
 - An upload whose budget ends while its frame is still going out stops counting as written then, not when the socket finishes the write: the keepalive pings again, and a profile switch can hand the socket on behind it (#1452).
 
-**Checked:** 2026-10-29, #PRNUM (a long paste goes as a text file with Desktop's title preview); 2026-10-28, #1452 (a profile switch's socket hand-off waits out a large write too); 2026-10-25, at #1268.
+**Checked:** 2026-10-29, #1515 (a long paste goes as a text file with Desktop's title preview); 2026-10-28, #1452 (a profile switch's socket hand-off waits out a large write too); 2026-10-25, at #1268.
 
 ## Phone change errors
 
