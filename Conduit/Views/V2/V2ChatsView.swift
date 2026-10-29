@@ -1857,23 +1857,16 @@ struct V2ChatsView: View, Equatable {
             return !appState.isSavedChatRow(node.session)
         }
         let movableIDs = Set(zip(items, movable).compactMap { item, canMove in canMove ? item.id : nil })
-        func sessions(_ marks: [Bool]) -> [SessionSummary] {
-            zip(items, marks).compactMap { item, marked in
-                guard marked, case .session(let node) = item.kind else { return nil }
-                return node.session
-            }
+        // Counted among every pinned chat shown, so one that can't move
+        // keeps its place.
+        let shown = zip(items, pinned).compactMap { item, isPinned -> SessionSummary? in
+            guard isPinned, case .session(let node) = item.kind else { return nil }
+            return node.session
         }
-        let shown = sessions(movable)
-        let section = sessions(pinned)
-        let move: ((IndexSet, Int) -> Void)? = shown.count > 1 ? { source, destination in
-            guard let offsets = PinnedChatOrder.movableOffsets(fromOffsets: source, toOffset: destination, movable: movable),
-                  let placed = PinnedChatOrder.movableOffsets(fromOffsets: source, toOffset: destination, movable: pinned) else { return }
-            appState.movePinnedChats(
-                shown,
-                fromOffsets: offsets.source,
-                toOffset: offsets.destination,
-                section: (section, placed.source, placed.destination)
-            )
+        let move: ((IndexSet, Int) -> Void)? = movableIDs.count > 1 ? { source, destination in
+            guard source.allSatisfy({ movable.indices.contains($0) && movable[$0] }),
+                  let offsets = PinnedChatOrder.movableOffsets(fromOffsets: source, toOffset: destination, movable: pinned) else { return }
+            appState.movePinnedChats(shown, fromOffsets: offsets.source, toOffset: offsets.destination)
         } : nil
         return ForEach(items) { item in
             V2ChatsRow(

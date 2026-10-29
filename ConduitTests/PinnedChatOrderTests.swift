@@ -139,18 +139,20 @@ extension SessionNestingModelTests {
         XCTAssertEqual(appState.pinnedChatOrder.ids(profile: "default"), ["d2", "d1"])
         XCTAssertTrue(appState.pinnedChatOrder.mixed.isEmpty, "one profile's drag leaves All's mix alone")
 
-        // d2 can't move (a saved row), so it isn't among the shown rows, but
-        // it keeps its place in the mix.
-        appState.movePinnedChats(
-            [d1, w1], fromOffsets: [1], toOffset: 0,
-            section: ([d2, d1, w1], [2], 0)
-        )
+        appState.movePinnedChats([d2, d1, w1], fromOffsets: [2], toOffset: 0)
         let key = PinnedChatOrder.key(profile:id:)
         XCTAssertEqual(appState.pinnedChatOrder.mixed, [key("work", "w1"), key("default", "d2"), key("default", "d1")])
+        XCTAssertEqual(appState.pinnedChatOrder.ids(profile: "default"), ["d2", "d1"], "the other profile's order stays")
 
         appState.toggleSessionPinned(d1)
         appState.toggleSessionPinned(d1)
         XCTAssertEqual(appState.pinnedChatOrder.mixed, [key("work", "w1"), key("default", "d2")], "an unpinned chat leaves the mix")
+
+        // The rows a drag reports include a pinned chat that can't move (a
+        // saved row, d2), so it keeps its place rather than going last.
+        let d3 = chat("d3", "default"), d4 = chat("d4", "default")
+        appState.movePinnedChats([d2, d3, d4], fromOffsets: [1], toOffset: 3)
+        XCTAssertEqual(appState.pinnedChatOrder.ids(profile: "default"), ["d2", "d4", "d3"])
     }
 
     func testPinnedOrderMovesSkipNestRowsAndStayAboveRecentChats() {

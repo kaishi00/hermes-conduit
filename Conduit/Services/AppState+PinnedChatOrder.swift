@@ -27,26 +27,19 @@ extension AppState {
         arrangePinned(nodes, session: \.session)
     }
 
-    /// A drag in a Pinned section: `shown` is that section's pinned chats
-    /// that can move, as they were shown, moved as a List's `onMove`
-    /// reports it. `section` is every pinned chat it shows, the ones that
-    /// can't move included, and the same move counted among them. In All's
-    /// mixed Pinned section the chat also stays where it was dropped among
-    /// the other profiles', and a chat that can't move keeps its place
-    /// (issue 1486).
-    func movePinnedChats(
-        _ shown: [SessionSummary],
-        fromOffsets source: IndexSet,
-        toOffset destination: Int,
-        section: (rows: [SessionSummary], source: IndexSet, destination: Int)? = nil
-    ) {
+    /// A drag in a Pinned section: `shown` is every pinned chat that
+    /// section shows, as they were shown, moved as a List's `onMove`
+    /// reports it counted among them. A pinned chat that can't move (a
+    /// saved row) is among them, so it keeps its place. In All's mixed
+    /// Pinned section the chat also stays where it was dropped among the
+    /// other profiles' (issue 1486).
+    func movePinnedChats(_ shown: [SessionSummary], fromOffsets source: IndexSet, toOffset destination: Int) {
         let order = pinnedChatOrder
-        let mixing = section ?? (rows: shown, source: source, destination: destination)
-        if Set(mixing.rows.map { rowProfile($0) }).count > 1 {
+        if Set(shown.map { rowProfile($0) }).count > 1 {
             setPinnedChatMixedOrder(PinnedChatOrder.mixedOrder(
-                moving: mixing.rows,
-                fromOffsets: mixing.source,
-                toOffset: mixing.destination,
+                moving: shown,
+                fromOffsets: source,
+                toOffset: destination,
                 profile: { rowProfile($0) },
                 pinID: { SessionPinSync.pinID(for: $0) },
                 ids: { SessionPinSync.pinIDs(for: $0) },
