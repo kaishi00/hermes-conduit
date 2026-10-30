@@ -3256,9 +3256,10 @@ pictures load)
 **Open gaps**
 - A picture never loaded on this phone, or kept by a build before #1239 and not shown since, or whose row was laid out before a cold launch's kept sizes loaded, still grows its row once, at rest: above the reader the offset moves with it, on screen it grows below what they look at, unanimated. Its height follows the row's width, so the memo can't reserve it before it loads, and only a read on the main thread before the first frame, which the ruling above keeps off it, would have the kept sizes in time.
 - Group rooms have no scroll engine: their transcript follows with its own scroll code and keeps its place by row id (see Following the latest message). So a web picture never loaded on this phone grows its row where it is, and above a reader scrolled back it moves what they read, as chats did before #1270. Bringing the gate there means moving group rooms onto the chat's engine, a change of its own. The saved copy and job sheets have no engine either and grow their rows the same way.
+- Group rooms show no `MEDIA:` pictures: their Markdown is given no gateway data URL (the resolver they have since #1524 reads Desktop cards only).
 - Past 4,000 remembered sizes the memo starts again (no LRU), so pictures grow once more until each loads again.
 
-**Checked:** 2026-10-30, #1524 (group rooms' Markdown gets the connected Hermes' resolver, so their `MEDIA:` pictures load; the resolver gains connectedDashboardBridge); 2026-10-29, #1491 (a tapped picture opens in the picture viewer among the chat's pictures); 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
+**Checked:** 2026-10-30, #1524 (group rooms get the connected Hermes' resolver for Desktop cards only, their `MEDIA:` pictures still don't load; the resolver gains connectedDashboardBridge); 2026-10-29, #1491 (a tapped picture opens in the picture viewer among the chat's pictures); 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
 
 ## The picture viewer
 
@@ -3331,9 +3332,9 @@ today: no Settings caption, briefing or doc says how these cards draw)
 - On a cold launch, a card laid out before the kept heights have loaded (read off the main thread as the app opens) holds its placeholder and grows once, at rest, like one never measured. Taking the kept height later would still be a growth, so only a read on the main thread before the first frame would save it.
 - A kept height is for the width and text size it was measured at: an iPad whose chat column changed width, or a formula after a text size change, takes the kept height and then its new one, announced like any growth.
 - Past 2,000 remembered heights the memo starts again (no LRU), so cards grow once more until each is measured again; the picture sizes have the same limit at 4,000 (see Pictures in messages).
-- The saved-chat copy, job sheets and group rooms have no scroll engine, so their cards grow where they are, and above a reader scrolled back move what they read; group rooms draw diagrams and formulas, and HTML previews (with the connected Hermes' resolver since #1524), this way. Group rooms follow with their own scroll code, so bringing the gate there means moving them onto the chat's engine, a change of its own (see Pictures in messages).
+- The saved-chat copy, job sheets and group rooms have no scroll engine, so their cards grow where they are, and above a reader scrolled back move what they read; group rooms draw diagrams and formulas this way, and show no HTML previews (no gateway data URL; the resolver they have since #1524 reads Desktop cards only). Group rooms follow with their own scroll code, so bringing the gate there means moving them onto the chat's engine, a change of its own (see Pictures in messages).
 
-**Checked:** 2026-10-30, #1524 (the `::preview` grammar moved to TranscriptDirectives.swift, shared with Desktop cards; group rooms show previews with the connected Hermes' resolver); 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
+**Checked:** 2026-10-30, #1524 (the `::preview` grammar moved to TranscriptDirectives.swift, shared with Desktop cards; group rooms still show no previews); 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
 
 ## Cards made for Hermes Desktop
 
