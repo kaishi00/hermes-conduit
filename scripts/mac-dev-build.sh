@@ -75,18 +75,24 @@ ipa="$(find "$out/export" -name '*.ipa' -maxdepth 1 | head -1)"
 echo "Built $ipa"
 
 if [ "$install" = 1 ]; then
-  osascript -e 'tell application id "com.milim.relay.dev" to quit' >/dev/null 2>&1 \
-    || echo "warning: couldn't quit a running Conduit Dev; quit it before opening the new build" >&2
+  if pgrep -f "Wrapper/Conduit Dev.app/Conduit Dev" >/dev/null; then
+    osascript -e 'tell application id "com.milim.relay.dev" to quit' >/dev/null 2>&1 \
+      || echo "warning: couldn't quit Conduit Dev; quit it before opening the new build" >&2
+  fi
   # iOS App Installer never replaces an installed copy: it adds
   # "Conduit Dev 2.app" beside it. The installed app is owned by root, so
   # Finder moves the old copies to the Trash (it asks for an admin password).
   shopt -s nullglob
-  old=(/Applications/Conduit\ Dev*.app)
+  old=(/Applications/Conduit\ Dev.app /Applications/Conduit\ Dev\ [0-9]*.app)
   shopt -u nullglob
   if [ "${#old[@]}" -gt 0 ]; then
     echo "Moving the installed Conduit Dev to the Trash (Finder may ask for your password)..."
     for app in "${old[@]}"; do
-      osascript -e "tell application \"Finder\" to delete (POSIX file \"$app\" as alias)" >/dev/null
+      if ! osascript -e "tell application \"Finder\" to delete (POSIX file \"$app\" as alias)" >/dev/null 2>&1; then
+        echo "Couldn't move $app to the Trash (password prompt cancelled?)." >&2
+        echo "Remove it yourself, then open: $ipa" >&2
+        exit 1
+      fi
     done
   fi
   open "$ipa"
