@@ -1792,9 +1792,12 @@ Settings caption describes it
   expanded when the chat's column has the room (600 pt, Artifacts beside it
   taken off) and rests below that. Mac: it stays expanded at any width, with
   its controls always in reach. There is no setting (Eric, 2026-10-29,
-  #1512, issue 1483). On a Mac or with a hardware keyboard a send keeps the
-  field focused, so a composer that rests stays expanded after it until a
-  tap elsewhere (2026-10-30, #1527, see Composer focus after a send).
+  #1512, issue 1483). A Mac's composer never rests, so a send that keeps
+  the field focused changes nothing there. With a hardware keyboard on an
+  iPhone or a narrow iPad a send keeps focus too, so a composer that rests
+  stays expanded after it until a tap on the transcript; that case waits on
+  the maintainer's decision (2026-10-30, #1527, see Composer focus after a
+  send).
 - A composer that stays expanded keeps the big voice button beside it, as the
   resting bar does, rather than sliding it aside while typing; the controls
   row then leaves out its own voice button, and its mic when the big button
