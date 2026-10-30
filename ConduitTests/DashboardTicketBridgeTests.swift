@@ -109,6 +109,11 @@ final class DashboardTicketBridgeTests: XCTestCase {
             readinessPollInterval: .milliseconds(10)
         )
         bridge.webViewCanRun = { true }
+        // Let the initial load settle first: it starts after the bridge's
+        // cookie restore, and starting it clears the failure modeled below.
+        for _ in 0..<80 where !bridge.isLoadFailed {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
         bridge.webViewWebContentProcessDidTerminate(bridge.webView)
 
         let first = Task { @MainActor in _ = try? await bridge.requestJSON(path: "/api/sessions") }

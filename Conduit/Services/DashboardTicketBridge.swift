@@ -1046,7 +1046,8 @@ final class DashboardTicketBridge: NSObject {
         // is never restarted: on a degraded link it may be about to finish.
         // Every request into the page was already rejected when it failed,
         // so the reload aborts none.
-        if isLoadFailed, !isInvalidated {
+        // A page parked on sign-in is left to the sign-in recovery.
+        if isLoadFailed, !didLandOnLogin, !isInvalidated {
             reload()
         }
         // Stop polling as soon as the navigation terminally fails or the
@@ -1528,12 +1529,12 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         // context still carry real signal.
         if let navigation, staleNavigations.remove(navigation) != nil { return }
         if let currentNavigation, let navigation, navigation !== currentNavigation { return }
-        // The load the bridge stopped on its way to sign-in reports that
-        // cancellation as a failure: the verdict stays sign-in required.
-        if didLandOnLogin { return }
         // The tracked load has resolved, as on didFinish: the next reload
         // has no live navigation to supersede, so none is kept as stale.
         currentNavigation = nil
+        // The load the bridge stopped on its way to sign-in reports that
+        // cancellation as a failure: the verdict stays sign-in required.
+        if didLandOnLogin { return }
         isReady = false
         isLoadFailed = true
         rejectPending(with: error)
@@ -1543,12 +1544,12 @@ extension DashboardTicketBridge: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         if let navigation, staleNavigations.remove(navigation) != nil { return }
         if let currentNavigation, let navigation, navigation !== currentNavigation { return }
-        // The load the bridge stopped on its way to sign-in reports that
-        // cancellation as a failure: the verdict stays sign-in required.
-        if didLandOnLogin { return }
         // The tracked load has resolved, as on didFinish: the next reload
         // has no live navigation to supersede, so none is kept as stale.
         currentNavigation = nil
+        // The load the bridge stopped on its way to sign-in reports that
+        // cancellation as a failure: the verdict stays sign-in required.
+        if didLandOnLogin { return }
         isReady = false
         isLoadFailed = true
         rejectPending(with: error)
