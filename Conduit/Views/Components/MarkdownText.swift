@@ -1700,8 +1700,9 @@ struct MarkdownTable: View {
     /// falls back to cap-and-scroll and re-resolves a frame later, once the
     /// width is known.
     @State private var availableWidth: CGFloat = MarkdownTableWidthProbe.lastWidth
-    /// Turned on from the long-press menu or by a pointer over the table;
-    /// kept until the row is taken down.
+    /// Turned on from the long-press menu, by a selection elsewhere in the
+    /// message or by a pointer over the table; kept until the row is taken
+    /// down.
     @State private var selectionTurnedOn = false
     @Environment(\.markdownTablePlainCells) private var drawsPlainCells
     @Environment(\.markdownReferences) private var references
@@ -1746,7 +1747,9 @@ struct MarkdownTable: View {
                 copyText: { [headers, rows, references] in
                     MarkdownTableLayout.plainText(headers: headers, rows: rows, references: references)
                 },
-                selectText: { selectionTurnedOn = true }
+                selectText: { selectionTurnedOn = true },
+                selectionCoordinator: selectionCoordinator,
+                selectionSegmentID: selectionSegment(row: 0, column: 0)?.id
             ))
         }
     }
@@ -1782,8 +1785,7 @@ struct MarkdownTableRowView: View {
     let foregroundStyle: Color
     let usesAccentSurface: Bool
     /// Each cell a selectable text view, or plain text: the chat's tables,
-    /// until the reader turns on selection from the long-press menu or a
-    /// pointer moves over the table.
+    /// until selection turns on (MarkdownTableMenu).
     let selectsText: Bool
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let segmentFor: (Int) -> MarkdownSelectionSegmentDescriptor?
@@ -1868,34 +1870,74 @@ private struct MarkdownPlainCell: View {
 
 /// A long press on a table whose cells are plain text copies the table or
 /// turns on text selection, which draws its cells as selectable text views
-/// until its row is taken down. VoiceOver offers both as actions. A pointer
-/// (a Mac, or an iPad's trackpad or mouse) turns selection on as it moves
-/// over the table, so a click and drag selects in a cell as it does in the
-/// reply's other text (#1531).
+/// until its row is taken down. VoiceOver offers both as actions, Copy
+/// Table whether or not selection is on. Selection also turns on when a
+/// selection starts elsewhere in the message, so a drag from the text above
+/// or below carries into the cells, and when a pointer (a Mac, or an iPad's
+/// trackpad or mouse) moves over the table, so a click and drag in a cell
+/// selects as it does in the reply's other text (#1531).
 private struct MarkdownTableMenu: ViewModifier {
     let isOn: Bool
     let copyText: @Sendable () -> String
     let selectText: () -> Void
+    let selectionCoordinator: MarkdownSelectionCoordinator?
+    /// The table's first cell segment, the key its deferred mount waits
+    /// under in the message's coordinator.
+    let selectionSegmentID: String?
+
+    /// Owns the deferred mount in the coordinator, which holds it weakly.
+    @State private var deferredMountOwner = DeferredMountOwner()
+
+    final class DeferredMountOwner {
+        var segmentID: String?
+    }
 
     func body(content: Content) -> some View {
-        if isOn {
-            content
-                .contextMenu {
-                    Button(action: copyTable) {
-                        Label("Copy Table", systemImage: "doc.on.doc")
+        Group {
+            if isOn {
+                content
+                    .contextMenu {
+                        Button(action: copyTable) {
+                            Label("Copy Table", systemImage: "doc.on.doc")
+                        }
+                        Button(action: selectText) {
+                            Label("Select Text", systemImage: "character.cursor.ibeam")
+                        }
                     }
-                    Button(action: selectText) {
-                        Label("Select Text", systemImage: "character.cursor.ibeam")
+                    .accessibilityAction(named: Text("Select Text"), selectText)
+                    .onHover { hovering in
+                        if hovering { selectText() }
                     }
-                }
-                .accessibilityAction(named: Text("Copy Table"), copyTable)
-                .accessibilityAction(named: Text("Select Text"), selectText)
-                .onHover { hovering in
-                    if hovering { selectText() }
-                }
-        } else {
-            content
+            } else {
+                content
+            }
         }
+        .accessibilityAction(named: Text("Copy Table"), copyTable)
+        .onAppear(perform: updateDeferredMount)
+        .onChange(of: isOn) { _, _ in updateDeferredMount() }
+        .onChange(of: selectionSegmentID) { _, _ in updateDeferredMount() }
+        .onDisappear(perform: cancelDeferredMount)
+    }
+
+    /// Waits in the coordinator like a drawn text segment: the selection
+    /// that mounts those mounts this table's cells too.
+    @MainActor
+    private func updateDeferredMount() {
+        if deferredMountOwner.segmentID != selectionSegmentID || !isOn {
+            cancelDeferredMount()
+        }
+        guard isOn, let selectionCoordinator, let selectionSegmentID else { return }
+        selectionCoordinator.deferRegistration(segmentID: selectionSegmentID, owner: deferredMountOwner) {
+            selectText()
+        }
+        deferredMountOwner.segmentID = selectionSegmentID
+    }
+
+    @MainActor
+    private func cancelDeferredMount() {
+        guard let segmentID = deferredMountOwner.segmentID else { return }
+        selectionCoordinator?.cancelDeferredRegistration(segmentID: segmentID, owner: deferredMountOwner)
+        deferredMountOwner.segmentID = nil
     }
 
     /// Resolving every cell's Markdown is the user's wait on a big table,
@@ -1949,8 +1991,9 @@ struct LargeMarkdownTable: View {
     /// zero means "unknown yet" (first pass), and the cap-and-scroll
     /// fallback re-resolves a frame later.
     @State private var availableWidth: CGFloat = MarkdownTableWidthProbe.lastWidth
-    /// Turned on from the long-press menu or by a pointer over the table;
-    /// kept until the row is taken down.
+    /// Turned on from the long-press menu, by a selection elsewhere in the
+    /// message or by a pointer over the table; kept until the row is taken
+    /// down.
     @State private var selectionTurnedOn = false
     @Environment(\.markdownTablePlainCells) private var drawsPlainCells
     @Environment(\.markdownReferences) private var references
@@ -2063,7 +2106,9 @@ struct LargeMarkdownTable: View {
                 copyText: { [headers, rows, references] in
                     MarkdownTableLayout.plainText(headers: headers, rows: rows, references: references)
                 },
-                selectText: { selectionTurnedOn = true }
+                selectText: { selectionTurnedOn = true },
+                selectionCoordinator: selectionCoordinator,
+                selectionSegmentID: segmentDescriptor(row: 0, column: 0)?.id
             ))
             if renderedRowCount < rows.count {
                 Button {
