@@ -1166,6 +1166,13 @@ struct PulseMemoryList: View {
                                     Label("Forget", systemImage: "trash")
                                 }
                             }
+                            .macSwipeActionsMenu {
+                                Button(role: .destructive) {
+                                    forget(item)
+                                } label: {
+                                    Label("Forget", systemImage: "trash")
+                                }
+                            }
                     }
                 } header: {
                     Text(verbatim: PulseMemoryKind.title(kind))
