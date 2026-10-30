@@ -76,7 +76,7 @@ extension MarkdownLargeDocumentTests {
 
     /// What a read answered and how often it was asked.
     private final class CardReads {
-        var answer: [String: Any]?
+        var answer: PluginRead = .failed
         var count = 0
         var now = Date(timeIntervalSince1970: 1_000)
     }
@@ -91,22 +91,30 @@ extension MarkdownLargeDocumentTests {
                 return reads.answer
             }
         }
-        // Not there: kept as missing, not asked again inside the interval.
+        // Hermes' page still loading: nothing kept, asked again soon.
+        reads.answer = .notReady
+        let loading = await read()
+        XCTAssertNil(loading)
+        XCTAssertEqual(DesktopCardContents.retryWait(key: key, now: reads.now), DesktopCardContents.notConnectedRetry)
+        // Not there: kept as missing, not asked again inside the interval,
+        // and a card on screen waits only for what's left of it.
+        reads.answer = .failed
         let missing = await read()
         XCTAssertNil(missing)
         let soon = await read()
         XCTAssertNil(soon)
-        XCTAssertEqual(reads.count, 1)
+        XCTAssertEqual(reads.count, 2)
         XCTAssertNil(DesktopCardContents.cached(key: key))
+        XCTAssertEqual(DesktopCardContents.retryWait(key: key, now: reads.now + 240), 60)
         // Asked again once the interval has passed, and kept for the launch.
-        reads.answer = ["ok": true, "card": ["surface": ["createSurface": ["dataModel": ["meta": ["title": " Rents ", "summary": "Up 4%."]]]]]]
+        reads.answer = .json(["ok": true, "card": ["surface": ["createSurface": ["dataModel": ["meta": ["title": " Rents ", "summary": "Up 4%."]]]]]])
         reads.now += DesktopCardContents.retryInterval
         let found = await read()
         XCTAssertEqual(found, DesktopCardContent(title: "Rents", summary: "Up 4%."))
-        reads.answer = nil
+        reads.answer = .failed
         let again = await read()
         XCTAssertEqual(again, found)
-        XCTAssertEqual(reads.count, 2)
+        XCTAssertEqual(reads.count, 3)
         XCTAssertEqual(DesktopCardContents.cached(key: key)?.title, "Rents")
     }
 
@@ -114,7 +122,7 @@ extension MarkdownLargeDocumentTests {
     func testDesktopCard_ACardWithNothingToShowIsMissing() async {
         let key = UUID().uuidString
         let empty = await DesktopCardContents.content(key: key, path: "/cards/x") { _ in
-            ["ok": true, "card": ["surface": ["createSurface": ["dataModel": ["meta": ["title": "  "]]]]]]
+            .json(["ok": true, "card": ["surface": ["createSurface": ["dataModel": ["meta": ["title": "  "]]]]]])
         }
         XCTAssertNil(empty)
         XCTAssertNil(DesktopCardContents.cached(key: key))
@@ -169,6 +177,12 @@ extension MarkdownLargeDocumentTests {
             XCTAssertEqual(blocks.count, 3, "\(blocks)")
             guard case .desktopCard = blocks[1] else { return XCTFail("\(blocks)") }
         }
+    }
+
+    func testDesktopCard_ALaterListItemThatIsAPreviewIsAPreview() {
+        let blocks = MarkdownParser.parse("- one\n- ::preview{file=\"/tmp/a.html\"}\n- three", recognizesGatewayMedia: true)
+        XCTAssertEqual(blocks.count, 3, "\(blocks)")
+        guard case .htmlPreview = blocks[1] else { return XCTFail("\(blocks)") }
     }
 
     // MARK: - The card's text

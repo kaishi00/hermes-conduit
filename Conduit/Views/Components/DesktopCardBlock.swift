@@ -80,13 +80,29 @@ enum DesktopCardContents {
 
     private static var entries: [String: Entry] = [:]
     static let retryInterval: TimeInterval = 300
+    static let notConnectedRetry: TimeInterval = 10
 
     static func content(for card: DesktopCardDirective, resolver: GatewayMediaDataURLResolver?) async -> DesktopCardContent? {
         // Not connected yet says nothing about the card: nothing is kept.
         guard let id = card.richUICardID, let resolver, resolver.connectedDashboardBridge != nil else { return nil }
         return await content(key: key(id, resolver), path: "/api/plugins/hermes-rich-ui/cards/\(id)") {
-            await resolver.pluginJSON(path: $0)
+            await resolver.pluginRead(path: $0)
         }
+    }
+
+    /// How long a card on screen waits before asking again: soon while
+    /// Hermes isn't connected or its page is loading, else what's left of
+    /// the retry interval since the last miss.
+    static func retryWait(for card: DesktopCardDirective, resolver: GatewayMediaDataURLResolver?) -> TimeInterval {
+        guard let id = card.richUICardID, let resolver else { return notConnectedRetry }
+        return retryWait(key: key(id, resolver))
+    }
+
+    static func retryWait(key: String, now: Date = Date()) -> TimeInterval {
+        // Nothing kept: the last read wasn't answered (not connected, or
+        // its page still loading).
+        guard case .missing(let since) = entries[key] else { return notConnectedRetry }
+        return max(1, retryInterval - now.timeIntervalSince(since))
     }
 
     /// The read itself, with what it reads through and the clock passed
@@ -95,15 +111,22 @@ enum DesktopCardContents {
         key: String,
         path: String,
         now: () -> Date = { Date() },
-        fetch: (String) async -> [String: Any]?
+        fetch: (String) async -> PluginRead
     ) async -> DesktopCardContent? {
         switch entries[key] {
         case .found(let content): return content
         case .missing(let since) where now().timeIntervalSince(since) < retryInterval: return nil
         default: break
         }
-        guard let json = await fetch(path) else {
+        let json: [String: Any]
+        switch await fetch(path) {
+        case .json(let answer):
+            json = answer
+        case .failed:
             if !Task.isCancelled { entries[key] = .missing(now()) }
+            return nil
+        case .notReady:
+            // Says nothing about the card: nothing is kept.
             return nil
         }
         guard let content = DesktopCardContent(richUIResponse: json) else {
@@ -130,16 +153,26 @@ enum DesktopCardContents {
     }
 }
 
+/// What reading a plugin's route came to.
+enum PluginRead {
+    case json([String: Any])
+    /// Not installed, not signed in, no network, or another dashboard now.
+    case failed
+    /// Not connected, or the dashboard's page still loading.
+    case notReady
+}
+
 extension GatewayMediaDataURLResolver {
-    /// A plugin's read-only JSON route on the connected Hermes, or nil when
-    /// it can't be read (not installed, not signed in, no network).
-    func pluginJSON(path: String) async -> [String: Any]? {
-        guard let bridge = connectedDashboardBridge else { return nil }
+    /// A plugin's read-only JSON route on the connected Hermes.
+    func pluginRead(path: String) async -> PluginRead {
+        guard let bridge = connectedDashboardBridge else { return .notReady }
         do {
             let json = try await bridge.requestJSON(path: path, maxResponseBytes: DataURLLimits.maxJSONResponseBytes)
-            return connectedDashboardBridge === bridge ? json : nil
+            return connectedDashboardBridge === bridge ? .json(json) : .failed
+        } catch DashboardTicketBridgeError.notReady {
+            return .notReady
         } catch {
-            return nil
+            return .failed
         }
     }
 }
@@ -208,16 +241,15 @@ struct DesktopCardBlock: View {
         .accessibilityHint(Text(AppLocalization.string("Shows the card's full summary and the line Hermes wrote.")))
         .task(id: card) {
             // One that can't be read yet is asked again while it's on
-            // screen: soon while Hermes isn't connected, else after the
-            // launch cache's retry interval.
+            // screen: soon while Hermes isn't connected or its page is
+            // loading, else once the retry interval since the miss is up.
             while loaded?.card != card, !Task.isCancelled {
                 if let content = await DesktopCardContents.content(for: card, resolver: gatewayMediaFiles) {
                     if !Task.isCancelled { loaded = (card, content) }
                     return
                 }
                 guard card.richUICardID != nil, gatewayMediaFiles != nil else { return }
-                let connected = gatewayMediaFiles?.connectedDashboardBridge != nil
-                try? await Task.sleep(for: .seconds(connected ? DesktopCardContents.retryInterval : 10))
+                try? await Task.sleep(for: .seconds(DesktopCardContents.retryWait(for: card, resolver: gatewayMediaFiles)))
             }
         }
         .sheet(isPresented: $showsDetails) {

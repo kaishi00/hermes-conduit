@@ -3274,9 +3274,9 @@ enum MarkdownParser {
 
             if unorderedItem(trimmed) != nil {
                 var items: [String] = []
-                // An item that is a Desktop card is the card's (#1522).
+                // An item that is a Desktop card or a preview is the block's (#1522).
                 while index < lines.count, let item = unorderedItem(lines[index].trimmingCharacters(in: .whitespaces)),
-                      items.isEmpty || !holdsDesktopCard(lines[index]) { items.append(item); index += 1 }
+                      items.isEmpty || !holdsDirective(lines[index], recognizesGatewayMedia: recognizesGatewayMedia) { items.append(item); index += 1 }
                 blocks.append(.unorderedList(items))
                 continue
             }
@@ -3285,7 +3285,7 @@ enum MarkdownParser {
                 let start = orderedNumber(trimmed)
                 var items: [String] = []
                 while index < lines.count, let item = orderedItem(lines[index].trimmingCharacters(in: .whitespaces)),
-                      items.isEmpty || !holdsDesktopCard(lines[index]) {
+                      items.isEmpty || !holdsDirective(lines[index], recognizesGatewayMedia: recognizesGatewayMedia) {
                     let itemLine = lines[index]
                     items.append(item); index += 1
                     // Blank lines between items make a loose list, not a
@@ -3296,7 +3296,7 @@ enum MarkdownParser {
                     // wins, as it does above.
                     var next = index
                     while next < lines.count, lines[next].trimmingCharacters(in: .whitespaces).isEmpty { next += 1 }
-                    if next > index, next < lines.count, continuesOrderedList(lines[next], from: itemLine), !isTableHeader(lines, at: next), !(recognizesGatewayMedia && claimsGatewayMedia(lines[next])), !holdsDesktopCard(lines[next]) { index = next }
+                    if next > index, next < lines.count, continuesOrderedList(lines[next], from: itemLine), !isTableHeader(lines, at: next), !(recognizesGatewayMedia && claimsGatewayMedia(lines[next])), !holdsDirective(lines[next], recognizesGatewayMedia: recognizesGatewayMedia) { index = next }
                 }
                 blocks.append(.orderedList(items, start: start))
                 continue
@@ -3455,10 +3455,11 @@ enum MarkdownParser {
         guard orderedItem(trimmed) != nil else { return false }
         return orderedDelimiter(trimmed) == orderedDelimiter(previous.trimmingCharacters(in: .whitespaces))
     }
-    /// Whether `line` holds a Desktop card, which takes its line out of a
-    /// list (#1522).
-    private static func holdsDesktopCard(_ line: String) -> Bool {
-        directiveSegments(in: line.trimmingCharacters(in: .whitespaces), recognizesGatewayMedia: false) != nil
+    /// Whether `line` holds a directive drawn as a block (a Desktop card,
+    /// or a preview with a host to read it from), which takes its line
+    /// out of a list (#1522).
+    private static func holdsDirective(_ line: String, recognizesGatewayMedia: Bool) -> Bool {
+        directiveSegments(in: line.trimmingCharacters(in: .whitespaces), recognizesGatewayMedia: recognizesGatewayMedia) != nil
     }
     /// A line's transcript directives as `parseBlocks` takes them: previews
     /// only with a host to read them from, Desktop cards everywhere, and

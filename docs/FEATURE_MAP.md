@@ -1519,7 +1519,7 @@ Read Aloud and live voice read-back · chat list previews and quotes
 **Rulings**
 - Ordered lists number as CommonMark and Hermes Desktop do: blank lines between items keep one list (2026-10-23, #1168), and a list starts at its first item's number, so steps split by a code block carry on; a marker is one to nine ASCII digits, anything else is text (2026-10-23, #1175, Eric).
 - Every view that draws a list reads the parsed block, so a numbering change is a parser change plus each renderer's marker; long replies bake ordinals into continuation chunks (#1168).
-- An item that is a Hermes Desktop card (`holdsDesktopCard`) ends the list: the card draws on its own, and the items after it start a new list from the number written on the first of them (2026-10-30, #1524, see Cards made for Hermes Desktop).
+- An item that is a Hermes Desktop card, or a preview where previews draw (`holdsDirective`), ends the list: the block draws on its own, and the items after it start a new list from the number written on the first of them (2026-10-30, #1524, see Cards made for Hermes Desktop).
 
 **Open gaps**
 - Nested lists are flattened: an indented sub-list draws as its own list at the left edge.
@@ -3354,8 +3354,8 @@ notifier's push text and the README line that describes it · `::preview`
 
 **Code**
 - The grammar: `Conduit/Views/Components/TranscriptDirectives.swift` (segments, rewriting, naming, DesktopCardDirective; also built into the Watch app, `project.yml`)
-- The card, its details sheet and the read of hermes-rich-ui's card: `Conduit/Views/Components/DesktopCardBlock.swift` (DesktopCardBlock, DesktopCardSheet, DesktopCardContents, DesktopCardContent, TranscriptDirectives.readable), through `Conduit/Views/Components/GatewayMediaDataURLResolver.swift` (connectedDashboardBridge)
-- Built from Markdown: `Conduit/Views/Components/MarkdownText.swift` (desktopCard block, directiveSegments, holdsDesktopCard), in group rooms with the connected Hermes' resolver, `Conduit/Views/GroupChatView.swift`
+- The card, its details sheet and the read of hermes-rich-ui's card: `Conduit/Views/Components/DesktopCardBlock.swift` (DesktopCardBlock, DesktopCardSheet, DesktopCardContents, DesktopCardContent, PluginRead, TranscriptDirectives.readable), through `Conduit/Views/Components/GatewayMediaDataURLResolver.swift` (connectedDashboardBridge, pluginRead)
+- Built from Markdown: `Conduit/Views/Components/MarkdownText.swift` (desktopCard block, directiveSegments, holdsDirective), in group rooms with the connected Hermes' resolver, `Conduit/Views/GroupChatView.swift`
 - Spoken: `Conduit/Voice/MessageReadAloudController.swift` (toggle), `Conduit/Voice/VoiceReadBack.swift` (plainSpeech), `Conduit/Voice/SpokenMediaTagFilter.swift` (Classic, Read Aloud's Now Playing, Local Live)
 - Live models: `Conduit/Views/Components/GatewayMediaTags.swift` (namingFiles)
 - Previews and quote chips: `Conduit/Services/PreviewText.swift` (strip), `Conduit/Views/Components/ChatQuote.swift` (excerpt)
@@ -3363,16 +3363,16 @@ notifier's push text and the README line that describes it · `::preview`
 - Tests: `ConduitTests/MarkdownLargeDocumentTests+DesktopCard.swift` (the grammar, the read cache with its clock and fetch passed in), `ConduitTests/GeminiLiveVoiceTests.swift` (testSpokenMediaTagFilterGivesTheSameSpeechHoweverTheReplyIsSplit), `notifier/tests/test_events.py` (test_no_push_shows_a_desktop_directive)
 
 **Rulings**
-- A card's line leaves a list (the list carries on after it), and a list or heading marker before it on its line goes with the directive; a directive in a table cell is table text, as a preview's is. A directive still being written while the reply streams shows as text until its closing brace, as a preview does.
+- A card's line, and a preview's where previews draw, leaves a list (the list carries on after it), and a list or heading marker before it on its line goes with the directive; a directive in a table cell is table text, as a preview's is. A directive still being written while the reply streams shows as text until its closing brace, as a preview does.
 - Never hidden without a trace: every directive Conduit can't draw becomes a visible card naming its plugin, and a tap shows the directive as written. Maintainer's ruling (2026-10-30, #1522).
 - Conduit doesn't draw a plugin's components (Table, Chart, Metric…) as its own cards: that would be the plugin's Desktop half rebuilt, kept in step with a plugin we don't control. Agents that want cards in both apps use `conduit_show` (2026-10-30, issue #1522).
-- hermes-rich-ui's card shows its own plain-text fallback, `meta.title` and `meta.summary`, from `GET /api/plugins/hermes-rich-ui/cards/<id>` on the connected Hermes, only for a well-formed id (`ru-` and 12 hex). Without it (plugin not installed, card gone, no network, no connected Hermes as in the saved copy) the card says "Card for Hermes Desktop" and to open the chat there. A read is kept for the launch; a failed one is tried again after five minutes, by a card on screen too, and one shown before Hermes connected asks again within seconds of it connecting.
+- hermes-rich-ui's card shows its own plain-text fallback, `meta.title` and `meta.summary`, from `GET /api/plugins/hermes-rich-ui/cards/<id>` on the connected Hermes, only for a well-formed id (`ru-` and 12 hex). Without it (plugin not installed, card gone, no network, no connected Hermes as in the saved copy) the card says "Card for Hermes Desktop" and to open the chat there. A read is kept for the launch; a failed one is tried again after five minutes, by a card on screen too, waiting only for what's left of them, and one shown before Hermes connected or while its page loads asks again within seconds (nothing is kept for it).
 - The card holds one title line and two summary lines from its first frame, so it never changes height as its text arrives; the whole summary is in the details sheet. VoiceOver hears that a tap shows the full summary and the line Hermes wrote.
 - A directive is one at a word's start, `::name{…}` holding only `key="value"` attributes, at least one: prose, code spans and CSS (`::selection{color:red}`) stay text. A quoted directive is an example and a table header cell is table text, as for previews. Desktop cards show on every Markdown surface; previews still need the connected Hermes.
 - Read Aloud and voices say "(There's a card here for Hermes Desktop.)" and leave a preview out, as Read Aloud already did; live models are told "(a card in the chat made for Hermes Desktop, from <plugin>)" and a preview as its file; previews and quote chips read "Card for Hermes Desktop" and a preview as its file; a push reads "🗂 <plugin> card" and a preview as its file, named as a MEDIA tag's (notifier 0.120.4). Lines in a fenced code block and directives in a code span stay as written everywhere.
 
 **Open gaps**
-- The on-screen retry has no unit test: it lives in the view's task (the read cache it calls is tested).
+- The on-screen retry loop has no unit test: it lives in the view's task (the read cache and the wait it sleeps for are tested).
 - Two rows showing the same card while it is first read each ask for it.
 
 **Checked:** 2026-10-30, #1524.
