@@ -16,6 +16,9 @@ private let backgroundPushLogger = Logger(subsystem: "com.milim.relay", category
 
 final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        #if DEBUG
+        MainThreadHangWatchdog.shared.start()
+        #endif
         UNUserNotificationCenter.current().delegate = self
         // A "Hermes wants to talk" notification's Talk button (#449), and a
         // Pulse push's Quiet for today.

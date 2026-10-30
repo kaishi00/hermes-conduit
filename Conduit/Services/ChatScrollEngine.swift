@@ -504,6 +504,7 @@ final class ChatScrollEngine: ObservableObject {
     /// bottom, they are moved up to it, still browsing, so no empty space
     /// shows under the last message.
     func bottomBarResized() {
+        ChatViewportTrace.shared.log("bottomBarResized")
         checkBottomBarInset()
         bottomBarChecksLeft = Self.bottomBarCheckDelays.count
         guard !bottomBarCheckScheduled else { return }
@@ -610,6 +611,7 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     func rowFramesChanged(_ frames: [String: ChatScrollRowFrame]) {
+        ChatViewportTrace.shared.log("rowFrames n=\(frames.count)")
         surfaceCallbackDepth += 1
         defer { surfaceCallbackDepth -= 1 }
         rowFrames = frames
@@ -630,6 +632,7 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     func liveRowFramesChanged(_ frames: [String: ChatScrollRowFrame]) {
+        ChatViewportTrace.shared.log("liveRowFrames n=\(frames.count)")
         let lostARow = liveRowFrames.keys.contains { frames[$0] == nil }
         liveRowFrames = frames
         // A stack that dropped its rows may change no size at all.
@@ -1046,6 +1049,7 @@ final class ChatScrollEngine: ObservableObject {
         isProvisional: Bool = false,
         activeSessionKey: ChatScrollSessionKey? = nil
     ) {
+        ChatViewportTrace.shared.log("transcript n=\(messages.count) revision \(transcriptRevision)")
         TranscriptPerf.note(.transcriptChanged)
         if let activeSessionKey {
             self.activeSessionKey = activeSessionKey
@@ -1684,6 +1688,7 @@ final class ChatScrollEngine: ObservableObject {
             height = (hold + surface.viewportHeight - surface.insetBottom).rounded(.up)
         }
         guard height != replyRoomMinContentHeight else { return }
+        ChatViewportTrace.shared.log(String(format: "replyRoom minContentHeight %.1f", height))
         replyRoomMinContentHeight = height
         guard isHandlingSurfaceCallback else {
             replyRoom.minContentHeight = height
