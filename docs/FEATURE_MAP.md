@@ -1815,12 +1815,12 @@ Whether the composer's field keeps focus once a message goes, so the next
 one can be typed straight away, or gives it up so the keyboard goes down.
 
 **Siblings:** the chat composer (chats, project chats, Bot Chat; done,
-#PRNUM) · Send, Return and the long-press choices (Steer, Queue,
+#1527) · Send, Return and the long-press choices (Steer, Queue,
 Interrupt), and a message that waits for its chat ("Sends when connected";
-done, #PRNUM) · Stop in Send's place (done, #PRNUM) · the full editor (done,
-#PRNUM: a send from it gives the field focus back as the sheet goes) · group
+done, #1527) · Stop in Send's place (done, #1527) · the full editor (done,
+#1527: a send from it gives the field focus back as the sheet goes) · group
 rooms' composer (not needed: its send never takes focus from the field, on
-any device) · a prediction sent from the suggestion row (done, #PRNUM:
+any device) · a prediction sent from the suggestion row (done, #1527:
 the same send, so it keeps whatever focus the field had) · the plan card, whose rule already
 counts on a Mac's composer keeping focus (not needed, see Plan card) ·
 iPhone, iPad and Mac · no Settings caption or doc describes it
@@ -1836,10 +1836,10 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   Stop leaves the field focused when the user was typing, as a desktop
   client does; a click or tap elsewhere (the transcript, another control)
   still takes focus away. With only the on-screen keyboard it goes down, so
-  the reply has the screen (Eric asked for it on a Mac, 2026-10-30, #PRNUM).
+  the reply has the screen (Eric asked for it on a Mac, 2026-10-30, #1527).
   The check is for a connected keyboard, as the plan card's is.
 - Opening a call from the composer still takes focus away on every device:
-  the call has the screen (2026-10-30, #PRNUM).
+  the call has the screen (2026-10-30, #1527).
 
 **Open gaps**
 - Not yet seen on a device: a Mac and an iPad with a keyboard sending from
@@ -1848,7 +1848,7 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   too, where a chat's keyboard goes down; the maintainer decides whether
   rooms follow the chat there.
 
-**Checked:** 2026-10-30, #PRNUM (new entry).
+**Checked:** 2026-10-30, #1527 (new entry).
 
 ## A chat's last reply
 
