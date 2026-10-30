@@ -33,18 +33,18 @@ struct OfflineChatBanner: View {
                 Text(title)
                     .scaledFont(.footnote.weight(.semibold))
                 if let savedAt {
-                    Text("Saved \(savedAt.formatted(.relative(presentation: .named)))")
+                    Text(AppLocalization.string("Saved \(savedAt.formatted(.relative(presentation: .named).locale(AppLocalization.formattingLocale)))"))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 8)
-            Button("Retry") { appState.retryFromOfflineChat() }
+            Button(AppLocalization.string("Retry")) { appState.retryFromOfflineChat() }
                 .scaledFont(.footnote.weight(.semibold))
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.conduitAccent)
             if appState.connection == nil {
-                Button("Sign In") { appState.signInFromOfflineChat() }
+                Button(AppLocalization.string("Sign In")) { appState.signInFromOfflineChat() }
                     .scaledFont(.footnote.weight(.semibold))
                     .buttonStyle(.plain)
                     .foregroundStyle(Color.conduitAccent)

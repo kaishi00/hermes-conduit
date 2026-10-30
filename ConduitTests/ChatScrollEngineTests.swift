@@ -2970,6 +2970,35 @@ final class ChatScrollEngineTests: XCTestCase {
         withExtendedLifetime(surface) {}
     }
 
+    /// Saved rows that matched Hermes' leave without the rows drawn
+    /// changing, and the view tells the engine with the same rows: the next
+    /// turn, one started elsewhere included, arms the hold (#1550 review).
+    func testSavedRowsThatMatchedHermesLeaveAndTheNextTurnArmsTheHold() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.transcriptChanged(
+            messages: Self.messages(0..<10),
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            isInitialSync: true,
+            isProvisional: true
+        )
+        // Hermes' rows are the saved ones: only the copy leaves.
+        engine.transcriptChanged(
+            messages: Self.messages(0..<10),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+
+        engine.transcriptChanged(
+            messages: Self.messages(0..<11),
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertTrue(engine.replyHoldArmed)
+        withExtendedLifetime(surface) {}
+    }
+
     func testAUserMessageNotLaidOutYetFollowsAsBefore() {
         let (engine, surface) = makeEngine()
         engine.holdsRepliesAtStart = { true }

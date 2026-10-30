@@ -730,6 +730,19 @@ struct ChatView: View {
                     activeSessionKey: drawnScrollSessionKey
                 )
             }
+            // Saved rows Hermes' matched leave without the rows drawn
+            // changing; the engine still learns they're the chat's now, so
+            // the next turn arms the hold. Either order with the rows'
+            // change works: the second call finds them unchanged.
+            .onChange(of: showsOfflineCopy) { _, _ in
+                scrollEngine.transcriptChanged(
+                    messages: appState.chatRowsOnScreen,
+                    transcriptRevision: appState.chatTranscriptRevision,
+                    viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                    isProvisional: showsOfflineCopy,
+                    activeSessionKey: drawnScrollSessionKey
+                )
+            }
             .onChange(of: appState.pendingClarifyMessageID) { _, id in
                 scrollEngine.trackMessageVisibility(of: id)
             }
