@@ -5480,11 +5480,15 @@ final class AppState: ObservableObject {
     }
 
     /// Keeps the process alive after suspension begins until the
-    /// presentation cache's queued disk writes have landed. Main actor only:
-    /// both callbacks that end the task arrive on the main queue.
-    private func holdBackgroundTaskUntilPresentationCacheWritesLand() {
+    /// presentation cache's queued disk writes have landed, then the saved
+    /// chats' (copies, held rows and the Chats list). Main actor only: both
+    /// callbacks that end the task arrive on the main queue.
+    private func holdBackgroundTaskUntilCacheWritesLand() {
         let end = BackgroundTaskHold.begin("conduit.sessionPresentationCache.flush")
-        sessionPresentationCache.notifyWhenPendingWritesLand(end)
+        let offlineChatCache = offlineChatCache
+        sessionPresentationCache.notifyWhenPendingWritesLand {
+            offlineChatCache.notifyWhenPendingWritesLand(end)
+        }
     }
 
     /// Flushes any pending presentation-cache write immediately (used on
@@ -5527,7 +5531,9 @@ final class AppState: ObservableObject {
             )
         }
         #endif
-        return OfflineChatCacheStore(directory: OfflineChatCacheStore.defaultDirectory())
+        // Leaving a chat, a reply settling or the list changing saves on the
+        // store's own queue, never on the tap.
+        return OfflineChatCacheStore(directory: OfflineChatCacheStore.defaultDirectory(), writesAsynchronously: true)
     }
 
     /// Saves the newest page of the conversation on screen. Only
@@ -5781,6 +5787,7 @@ final class AppState: ObservableObject {
     /// loads, so an older pinned chat doesn't blink out meanwhile.
     private func savedChatListReplacedByLiveList(newestPageOnly: Bool, dashboardID: UUID?) {
         savableChatListScope = dashboardID.map { WidgetWorkspaceID(dashboardID: $0, profile: activeProfile) }
+        if let dashboardID { prefetchSavedChats(dashboardID: dashboardID) }
         guard savedChatList != nil else { return }
         guard newestPageOnly, let saved = savedChatListForActiveScope else {
             savedChatList = nil
@@ -5792,6 +5799,23 @@ final class AppState: ObservableObject {
             missingFrom: activeProfileSessions,
             isPinned: { self.isSessionPinned($0) || saved.showedAsPinned($0) }
         )
+    }
+
+    /// The saved copies of this profile's chats opened last that the store
+    /// reads ahead once the live list is in, and the profiles it reads
+    /// ahead for a switch (each one's saved list and the chat it opens on).
+    static let prefetchedSavedCopies = 6
+    static let prefetchedSwitchProfiles = 8
+
+    /// Reads ahead, off the main thread, what a tap shows next, so it comes
+    /// from memory: the copies of this profile's chats opened last, and for
+    /// a profile switch, each other profile's saved list and last chat. The
+    /// store does it once per profile until something is removed.
+    private func prefetchSavedChats(dashboardID: UUID) {
+        offlineChatCache.prefetch(dashboardID: dashboardID, profile: activeProfile, transcripts: Self.prefetchedSavedCopies)
+        for profile in profiles.filter({ $0 != activeProfile }).prefix(Self.prefetchedSwitchProfiles) {
+            offlineChatCache.prefetch(dashboardID: dashboardID, profile: profile, transcripts: 1)
+        }
     }
 
     private func dismissSavedChatList() {
@@ -19279,13 +19303,13 @@ final class AppState: ObservableObject {
             recoverTransportForCarPlayIfNeeded()
             // Flush any pending coalesced cache writes before the app
             // suspends — iOS may kill the process before the debounce fires.
-            // The cache writes on a background queue: hold a background task
-            // until those writes land. Never block the main thread on that
-            // queue here (see SessionPresentationCache.waitForPendingWrites).
+            // The caches write on background queues: hold a background task
+            // until those writes land. Never block the main thread on those
+            // queues here (see SessionPresentationCache.waitForPendingWrites).
             flushPendingPresentationCache()
-            holdBackgroundTaskUntilPresentationCacheWritesLand()
             // The Chats list as it shows now, for the next cold launch.
             recordSavedChatList()
+            holdBackgroundTaskUntilCacheWritesLand()
             // A suspended socket may still look open. Invalidate incomplete
             // snapshots so foreground always obtains a fresh authoritative one.
             invalidateReconciliation()
@@ -30208,10 +30232,12 @@ final class AppState: ObservableObject {
         noteConnectionStep("History page: \(sentRows) of \(rebuilt.kept.rows.count) rows sent", since: startedAt)
         // Only while nothing was removed from the saved chats during the read
         // (a sign-out, a removed dashboard, Delete saved chats, a deleted
-        // chat) and the same sign-in still holds: these rows went too.
+        // chat) and the same sign-in still holds: these rows went too. The
+        // store writes them on its queue, and a removal from now on waits
+        // for them and takes them as well.
         if isTail, offlineChatCache.removals == removals, dashboardTicketBridge === bridge,
            activeDashboardID == dashboardID {
-            OfflineChatCacheStore.writeHeldRows(rebuilt.kept, to: heldURL)
+            offlineChatCache.recordHeldRows(rebuilt.kept, to: heldURL)
         }
         return .payload(rebuilt.page)
     }
