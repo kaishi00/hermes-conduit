@@ -332,6 +332,9 @@ struct ConduitApp: App {
             .background(WindowAccentTint(choice: accentChoice))
             // Notes touches app-wide so the backdrop can rest when idle.
             .background(InteractionIdleTouchProbe())
+            // On a Mac, a mouse wheel over a list with swipe actions
+            // crashed newer macOS (#1480).
+            .background(MacWheelSwipeGuardProbe())
             // The Watch app draws in the same accent. Shared once a pick
             // settles: dragging in the colour picker changes it many times.
             .task(id: accentChoice) {
