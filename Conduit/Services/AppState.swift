@@ -2197,6 +2197,9 @@ final class AppState: ObservableObject {
     /// A Settings page a link asked for (`conduit://settings/calls`):
     /// MainView opens Settings there and clears it.
     @Published var settingsLinkRequest: ConduitAppLink.SettingsLink?
+    /// A Kanban task to show (a Pulse card from its worker): the shell
+    /// opens Tasks › Board, and the board opens the task and clears it.
+    @Published var kanbanTaskOpenRequest: KanbanTaskOpenRequest?
     /// Bumped when something that opens a chat needs Settings out of the
     /// way (a widget's New Chat or Talk); MainView owns the sheet.
     @Published private(set) var settingsDismissRequest: UInt64 = 0
@@ -2274,6 +2277,124 @@ final class AppState: ObservableObject {
     /// the background, or CarPlay alone. Test seam.
     var phoneScreenIsAway: @MainActor () -> Bool = {
         !PhoneScenePresence.isInForeground
+    }
+    /// The Pulse screen (PulseFeed.swift): its unseen cards for the
+    /// button's badge, the chats' messages that have a card (chat id, then
+    /// Hermes' message id, to card id), a request to show it, and Pulse's
+    /// own chat, which the screen stands in for.
+    @Published var pulseUnseen = 0
+    @Published var pulseSources: [String: [Int: Int]] = [:]
+    @Published var pulseOpenRequest: PulseOpenRequest?
+    @Published var pulseHomeChatID: String?
+    /// Pulse's chat per dashboard as the last feed named it, kept across
+    /// launches: until the feed is read again after a launch or a
+    /// reconnect, the Pulse button and the hidden chat go by it. Views read
+    /// it through `pulseHomeChat`, so every change goes through
+    /// `storePulseHomes`, which tells them.
+    private(set) lazy var pulseRememberedHomes: [String: String] =
+        defaults.dictionary(forKey: Self.pulseHomesKey) as? [String: String] ?? [:]
+    static let pulseHomesKey = "conduit.pulse.homeChats"
+
+    func rememberPulseHome(_ chat: String?) {
+        guard let key = activeDashboardID?.uuidString, pulseRememberedHomes[key] != chat else { return }
+        var homes = pulseRememberedHomes
+        homes[key] = chat
+        storePulseHomes(homes)
+    }
+
+    /// A removed dashboard's Pulse chat goes with it.
+    func forgetPulseHome(of dashboardID: UUID) {
+        var homes = pulseRememberedHomes
+        guard homes.removeValue(forKey: dashboardID.uuidString) != nil else { return }
+        storePulseHomes(homes)
+    }
+
+    /// Do it's New Chat, for a Pulse item from no chat (PulseFeed.swift):
+    /// only when New Chat can start one at once, never one that waits. The
+    /// chat is the one this call's own create opened, as createNewSession
+    /// returns it, while it's still the one open: another create landing
+    /// meanwhile (a call's chat, Ask Hermes About, a widget) opens a chat
+    /// that isn't this one's. The Pulse screen stays up until it opened, so
+    /// a chat that didn't start leaves it there to say why. Nil when none
+    /// started.
+    func startPulseNewChat() async -> String? {
+        guard canStartNewChatNow, !isStartingNewChat, !showsPendingNewChat else { return nil }
+        guard let created = await createNewSessionMarkingStart(), activeSessionId == created else { return nil }
+        dismissSidebarDrawer()
+        return created
+    }
+
+    /// Do it's switch to Pulse's profile, for a new chat there: whether it
+    /// finished with that profile on screen. False when a newer navigation
+    /// took the screen meanwhile, which a new chat mustn't replace.
+    func switchProfileForPulse() async -> Bool {
+        await switchProfile(to: Self.pulseHomeProfile, reusing: nil)
+    }
+
+    private func storePulseHomes(_ homes: [String: String]) {
+        objectWillChange.send()
+        pulseRememberedHomes = homes
+        defaults.set(homes, forKey: Self.pulseHomesKey)
+    }
+
+    /// Morning briefs folded on the Pulse screen, per dashboard: each
+    /// brief's card id with the cards in it still open when it was folded,
+    /// each with when it came (PulseLayout.Brief.isFolded), kept across
+    /// launches, so a brief read and folded stays out of the way until it's
+    /// opened again or a card in it comes back open. `pulseFoldedBriefsKept`
+    /// briefs of each: the one just folded, and the others with the highest
+    /// ids, which are the newest: the host numbers cards in the order it
+    /// makes them.
+    private(set) lazy var pulseFoldedBriefs: [String: [String: [String: Double]]] =
+        defaults.dictionary(forKey: Self.pulseFoldedBriefsKey) as? [String: [String: [String: Double]]] ?? [:]
+    static let pulseFoldedBriefsKey = "conduit.pulse.foldedBriefs"
+    static let pulseFoldedBriefsKept = 30
+
+    /// The cards `brief` had open when it was folded, by id, each with when
+    /// it came; nil while it isn't folded.
+    func pulseBriefFold(_ brief: Int) -> [Int: Double]? {
+        guard let key = activeDashboardID?.uuidString,
+              let open = pulseFoldedBriefs[key]?[String(brief)] else { return nil }
+        let cards = open.compactMap { card, at in Int(card).map { ($0, at) } }
+        return Dictionary(cards, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Folds `brief` with `open`, the cards in it still open then
+    /// (PulseLayout.Brief.openCards), or opens it again (nil).
+    func foldPulseBrief(_ brief: Int, open: [Int: Double]?) {
+        guard let key = activeDashboardID?.uuidString else { return }
+        var briefs = pulseFoldedBriefs[key] ?? [:]
+        let noted = open.map { cards in Dictionary(uniqueKeysWithValues: cards.map { (String($0.key), $0.value) }) }
+        guard briefs[String(brief)] != noted else { return }
+        briefs[String(brief)] = noted
+        // An older brief folded now stays folded: the oldest other fold goes.
+        let others = briefs.keys.compactMap { Int($0) }.filter { $0 != brief }.sorted()
+        let kept = Set(others.suffix(Self.pulseFoldedBriefsKept - 1)).union([brief])
+        briefs = briefs.filter { id, _ in Int(id).map { kept.contains($0) } ?? false }
+        var all = pulseFoldedBriefs
+        all[key] = briefs.isEmpty ? nil : briefs
+        storePulseFoldedBriefs(all)
+    }
+
+    /// `card`, in `brief`, put back open with Undo or Put back: the fold no
+    /// longer counts it as open when it was folded, so a folded brief opens
+    /// to show it, and folds again once it's handled.
+    func unfoldPulseCard(_ card: Int, in brief: Int) {
+        guard var open = pulseBriefFold(brief), open.removeValue(forKey: card) != nil else { return }
+        foldPulseBrief(brief, open: open)
+    }
+
+    /// A removed dashboard's folded briefs go with it.
+    private func forgetPulseFoldedBriefs(of dashboardID: UUID) {
+        var all = pulseFoldedBriefs
+        guard all.removeValue(forKey: dashboardID.uuidString) != nil else { return }
+        storePulseFoldedBriefs(all)
+    }
+
+    private func storePulseFoldedBriefs(_ all: [String: [String: [String: Double]]]) {
+        objectWillChange.send()
+        pulseFoldedBriefs = all
+        defaults.set(all, forKey: Self.pulseFoldedBriefsKey)
     }
     @Published private(set) var composerPrefillText = ""
     @Published private(set) var composerPrefillToken = UUID()
@@ -7905,10 +8026,13 @@ final class AppState: ObservableObject {
             // The host's text, kept to one short line.
             let firstLine = detail.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
             var detail = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            // A coded refusal is for the screen that asked; here it's just the error.
+            // Checked before the cut, which would leave a long one unreadable.
+            if detail.isEmpty || DashboardTicketBridgeError.isStructuredDetail(detail) {
+                return AppLocalization.string("Hermes answered with error \(String(status)).")
+            }
             if detail.count > 200 { detail = String(detail.prefix(200)) + "…" }
-            return detail.isEmpty
-                ? AppLocalization.string("Hermes answered with error \(String(status)).")
-                : AppLocalization.string("Hermes answered: \(detail)")
+            return AppLocalization.string("Hermes answered: \(detail)")
         default:
             return error.localizedDescription
         }
@@ -12956,6 +13080,8 @@ final class AppState: ObservableObject {
         if visibilities.removeValue(forKey: bucket) != nil {
             persistModelVisibilities(visibilities)
         }
+        forgetPulseHome(of: id)
+        forgetPulseFoldedBriefs(of: id)
     }
 
     // MARK: Relay gateways each dashboard's host reported
@@ -12973,6 +13099,12 @@ final class AppState: ObservableObject {
 
     func relayGatewayIDs(of dashboardID: UUID) -> Set<String> {
         Set(storedRelayGatewayIDs()[dashboardID.uuidString]?.values.map { $0 } ?? [])
+    }
+
+    /// Every relay gateway a saved dashboard's host said it pairs this
+    /// iPhone through.
+    var knownRelayGatewayIDs: Set<String> {
+        Set(storedRelayGatewayIDs().values.flatMap(\.values))
     }
 
     /// Nil unless every pairing of this dashboard's hosts is end-to-end
@@ -13017,10 +13149,12 @@ final class AppState: ObservableObject {
         saveRelayGatewayIDs(stored)
     }
 
-    /// Settings > Notifications sorts pairings by these, so it redraws.
+    /// Settings > Notifications sorts pairings by these, so it redraws; and
+    /// Pulse pushes from a host's gateways offer Quiet for today by them.
     private func saveRelayGatewayIDs(_ stored: [String: [String: String]]) {
         objectWillChange.send()
         defaults.set(stored, forKey: Self.relayGatewayIDsByDashboardKey)
+        sharePulseQuiet()
     }
 
     private func storedRelayGatewayIDs() -> [String: [String: String]] {
@@ -14214,6 +14348,10 @@ final class AppState: ObservableObject {
         outgoingBotChatCopyOwner = nil
         recordSavedChatList()
         selectDashboardTarget(id)
+        // Pulse's badge, marks and chat are the outgoing dashboard's.
+        pulseUnseen = 0
+        pulseSources = [:]
+        pulseHomeChatID = nil
         rememberDashboardURL(dashboard.normalizedURL)
         let crossedServer = prepareChatResumeForConnection(to: dashboard.normalizedURL, dashboardID: id)
         retireConnectionRuntimeForDashboardSwitch()
@@ -18022,7 +18160,7 @@ final class AppState: ObservableObject {
         return nil
     }
 
-    private func canonicalSessionID(for sessionID: String?) -> String? {
+    func canonicalSessionID(for sessionID: String?) -> String? {
         ChatSessionPersistenceIdentity.canonicalID(
             for: sessionID,
             identity: activeChatScrollSessionIdentity,
@@ -23831,6 +23969,10 @@ final class AppState: ObservableObject {
             }
             return .failed
         }
+        if await opensPulseScreen(for: target) {
+            traceStage = "pulse"
+            return .opened
+        }
         traceStage = "open start"
         let notificationAttemptID = UUID()
         activeNotificationOpenAttemptID = notificationAttemptID
@@ -24334,7 +24476,9 @@ final class AppState: ObservableObject {
         !isStartingNewChat && (canStartNewChatNow || canQueueNewChat || showsPendingNewChat)
     }
 
-    private var canStartNewChatNow: Bool {
+    /// New Chat can start a chat right now, with nothing to wait for. Do
+    /// it's refusal on the Pulse screen goes by it too (PulseFeed.swift).
+    var canStartNewChatNow: Bool {
         isConnected && !isConnecting && !isProfileSwitching && client != nil
             && turnState != .synchronizing && offlineChatPresentation == nil
     }
@@ -25662,8 +25806,15 @@ final class AppState: ObservableObject {
     /// What the host's notifier plugin serves; Settings nudges an update.
     @Published private(set) var notifierPlugin = NotifierPluginStatus() {
         // A plugin that just said it takes on-screen reports gets the turn
-        // already running.
-        didSet { if oldValue.state != notifierPlugin.state { updateChatOnScreen() } }
+        // already running; one that answered without Pulse ends the Pulse
+        // this dashboard remembered.
+        didSet {
+            if oldValue.state != notifierPlugin.state {
+                updateChatOnScreen()
+                forgetPulseHomeIfGone()
+                sharePulseQuiet()
+            }
+        }
     }
     /// The plugin on its repository's main branch, once read. A reset for
     /// another host keeps it (`freshNotifierPluginStatus`).

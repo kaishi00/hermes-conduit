@@ -583,6 +583,51 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(source.applied, ["ch_once"])
     }
 
+    /// Add on a Pulse suggestion, or its Undo (0.98.0): the tap was the
+    /// asking, so this phone applies that change without its own card, if
+    /// the host hands it out within 15 minutes.
+    func testAChangeApprovedOnAPulseCardIsAppliedWithoutItsCard() async throws {
+        let source = FakePhoneCalendarSource()
+        let host = FakePhoneHost()
+        var clock = Date(timeIntervalSince1970: 1_760_400_000)
+        let engine = makePhoneEngine(source: source, now: { clock })
+        engine.savePreferences(phonePreferences())
+
+        // Approved before the host handed it out: applied when it comes, with
+        // no card, and reported on the next exchange. Another change still asks.
+        await engine.approveFromCard("ch_pulse")
+        host.changes = [
+            ["id": "ch_pulse", "kind": "add_event", "auto": false,
+             "fields": ["title": "Dinner", "start": "2026-10-25T19:00:00Z", "end": "2026-10-25T21:00:00Z"]],
+            ["id": "ch_other", "kind": "add_reminder", "auto": false, "fields": ["title": "Buy milk"]],
+        ]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(source.applied, ["ch_pulse"])
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_other"])
+        XCTAssertEqual(engine.state.unreported.map(\.id), ["ch_pulse"])
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.reported.map { $0["id"] as? String }, ["ch_pulse"])
+        XCTAssertEqual(host.reported.map { $0["outcome"] as? String }, ["applied"])
+
+        // Undo tapped once its delete already waits as a card: applied at once.
+        host.changes.append(["id": "ch_undo", "kind": "delete_event", "auto": false,
+                             "target": ["event_id": "item_ch_pulse"], "fields": [String: Any]()])
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_other", "ch_undo"])
+        await engine.approveFromCard("ch_undo")
+        XCTAssertEqual(source.applied, ["ch_pulse", "ch_undo"])
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_other"])
+
+        // One the host doesn't hand out within 15 minutes (another device's,
+        // or a relaunch's) gets its card, as any change does.
+        await engine.approveFromCard("ch_late")
+        clock = clock.addingTimeInterval(PhoneSyncEngine.cardApprovalWindow + 1)
+        host.changes.append(["id": "ch_late", "kind": "add_reminder", "auto": false, "fields": ["title": "Late"]])
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(source.applied, ["ch_pulse", "ch_undo"])
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_other", "ch_late"])
+    }
+
     func testPhoneVoiceCallsReadAnswerAndAdd() async throws {
         let source = FakePhoneCalendarSource()
         let host = FakePhoneHost()

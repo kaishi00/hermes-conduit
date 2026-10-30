@@ -730,7 +730,9 @@ struct ChatView: View {
                 // The published request disappeared on the AppState side
                 // (completed/abandoned/cancelled elsewhere).
                 scrollEngine.restorationSystemCancelled()
-                // A pinned reply waiting on the restore goes now.
+                // A pinned reply, artifact or Pulse card waiting on the
+                // restore goes now.
+                revealPendingArtifact()
                 revealPendingPinnedReply()
             }
     }
@@ -2815,6 +2817,10 @@ struct AssistantBubble: View {
             }
 
             HStack(spacing: 4) {
+                // Pulse follows up on what Hermes promised here: opens its card.
+                if let rowID = message.rowId, let card = rowState.pulseCards[rowID] {
+                    PulseMessageMark { appState.openPulse(card: card) }
+                }
                 Spacer(minLength: 0)
                 if message.role == .assistant {
                     MessageReactButton(message: message, isPresented: $showsTapback)

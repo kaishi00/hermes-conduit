@@ -299,6 +299,11 @@ struct PhoneSettingsPage: View {
             Text("Their nickname and company go too, when the contact has them.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
+            if appState.pulseBringsUpBirthdays {
+                Text("With Pulse and its memory on, it brings up their birthdays two weeks ahead, the day before and on the day.")
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+            }
             if choices.contacts {
                 ForEach(engine.people) { person in
                     PhonePersonRow(person: person) { relation in
