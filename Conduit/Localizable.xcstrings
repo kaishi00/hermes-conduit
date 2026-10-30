@@ -154247,88 +154247,6 @@
         }
       }
     },
-    "Hermes waits a minute before calling, or 10 minutes while you're talking to it in Hermes Desktop, the dashboard or a terminal, or have the chat open in Conduit. A failed request there only sends a notification.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes wartet eine Minute, bevor er anruft, oder 10 Minuten, während du mit ihm in Hermes Desktop, im Dashboard oder in einem Terminal sprichst oder den Chat in Conduit geöffnet hast. Eine fehlgeschlagene Anfrage sendet dort nur eine Mitteilung."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes espera un minuto antes de llamar, o 10 minutos mientras hablas con él en Hermes Desktop, el panel o un terminal, o tienes el chat abierto en Conduit. Ahí, una solicitud fallida solo envía una notificación."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes attend une minute avant d’appeler, ou 10 minutes pendant que vous lui parlez dans Hermes Desktop, le tableau de bord ou un terminal, ou que la discussion est ouverte dans Conduit. Une demande échouée n’envoie alors qu’une notification."
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes menunggu satu menit sebelum menelepon, atau 10 menit saat Anda berbicara dengannya di Hermes Desktop, dasbor, atau terminal, atau membuka obrolan di Conduit. Permintaan yang gagal di sana hanya mengirim notifikasi."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes aspetta un minuto prima di chiamare, o 10 minuti mentre gli parli in Hermes Desktop, nella dashboard o in un terminale, o hai la chat aperta in Conduit. Lì una richiesta non riuscita invia solo una notifica."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermesは電話をかける前に1分待ちます。Hermes Desktop、ダッシュボード、ターミナルで話しているときや、Conduitでチャットを開いているときは10分待ちます。その場合、失敗したリクエストは通知だけを送ります。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes는 전화하기 전에 1분을 기다려요. Hermes Desktop, 대시보드, 터미널에서 대화 중이거나 Conduit에서 채팅을 열어 두었다면 10분을 기다려요. 이때 실패한 요청은 알림만 보내요."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes czeka minutę, zanim zadzwoni, albo 10 minut, gdy rozmawiasz z nim w Hermes Desktop, panelu lub terminalu albo masz otwarty czat w Conduit. Nieudana prośba wysyła wtedy tylko powiadomienie."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "O Hermes espera um minuto antes de ligar, ou 10 minutos enquanto você fala com ele no Hermes Desktop, no painel ou em um terminal, ou está com a conversa aberta no Conduit. Nesses casos, um pedido com falha só envia uma notificação."
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes ждёт минуту, прежде чем позвонить, или 10 минут, пока вы общаетесь с ним в Hermes Desktop, на панели или в терминале либо чат открыт в Conduit. Неудачный запрос тогда только отправляет уведомление."
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes aramadan önce bir dakika bekler; Hermes Desktop’ta, panoda veya bir terminalde onunla konuşurken ya da sohbet Conduit’te açıkken 10 dakika bekler. Bu durumda başarısız bir istek yalnızca bildirim gönderir."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes 会先等一分钟再打电话；当你在 Hermes Desktop、仪表板或终端中与它交谈，或在 Conduit 中打开了该聊天时，会等 10 分钟。此时请求失败只会发送通知。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hermes 會先等一分鐘再打電話；當你在 Hermes Desktop、儀表板或終端機中與它交談，或在 Conduit 中開著該聊天時，會等 10 分鐘。此時請求失敗只會傳送通知。"
-          }
-        }
-      }
-    },
     "Hermes wants to add a reminder": {
       "localizations": {
         "de": {
@@ -369420,6 +369338,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "登入頁面開啟時會重新開始，並顯示所有登入方式，例如登入碼。"
+          }
+        }
+      }
+    },
+    "When this is on, Hermes waits 10 minutes instead of one while you're talking to it in Hermes Desktop, the dashboard or a terminal, or have the chat open in Conduit, and a failed request there only sends a notification.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn das an ist, wartet Hermes 10 Minuten statt einer, während du mit ihm in Hermes Desktop, im Dashboard oder in einem Terminal sprichst oder den Chat in Conduit geöffnet hast, und eine fehlgeschlagene Anfrage sendet dort nur eine Mitteilung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si está activado, Hermes espera 10 minutos en lugar de uno mientras hablas con él en Hermes Desktop, el panel o un terminal, o tienes el chat abierto en Conduit, y ahí una solicitud fallida solo envía una notificación."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quand c’est activé, Hermes attend 10 minutes au lieu d’une pendant que vous lui parlez dans Hermes Desktop, le tableau de bord ou un terminal, ou que la discussion est ouverte dans Conduit, et une demande échouée n’envoie alors qu’une notification."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jika aktif, Hermes menunggu 10 menit, bukan satu, saat Anda berbicara dengannya di Hermes Desktop, dasbor, atau terminal, atau membuka obrolan di Conduit, dan permintaan yang gagal di sana hanya mengirim notifikasi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se è attivo, Hermes aspetta 10 minuti invece di uno mentre gli parli in Hermes Desktop, nella dashboard o in un terminale, o hai la chat aperta in Conduit, e lì una richiesta non riuscita invia solo una notifica."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オンにすると、Hermes Desktop、ダッシュボード、ターミナルで話しているときや、Conduitでチャットを開いているときは、1分ではなく10分待ってから電話します。その場合、失敗したリクエストは通知だけを送ります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "켜 두면 Hermes Desktop, 대시보드, 터미널에서 대화 중이거나 Conduit에서 채팅을 열어 두었을 때 Hermes가 1분이 아니라 10분을 기다려요. 이때 실패한 요청은 알림만 보내요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gdy to jest włączone, Hermes czeka 10 minut zamiast jednej, gdy rozmawiasz z nim w Hermes Desktop, panelu lub terminalu albo masz otwarty czat w Conduit, a nieudana prośba wysyła wtedy tylko powiadomienie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando isso está ativado, o Hermes espera 10 minutos em vez de um enquanto você fala com ele no Hermes Desktop, no painel ou em um terminal, ou está com a conversa aberta no Conduit, e nesses casos um pedido com falha só envia uma notificação."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Если включено, Hermes ждёт 10 минут вместо одной, пока вы общаетесь с ним в Hermes Desktop, на панели или в терминале либо чат открыт в Conduit, а неудачный запрос тогда только отправляет уведомление."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Açıkken Hermes, Hermes Desktop’ta, panoda veya bir terminalde onunla konuşurken ya da sohbet Conduit’te açıkken bir yerine 10 dakika bekler; bu durumda başarısız bir istek yalnızca bildirim gönderir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启后，当你在 Hermes Desktop、仪表板或终端中与 Hermes 交谈，或在 Conduit 中打开了该聊天时，它会等 10 分钟而不是 1 分钟再打电话，此时请求失败只会发送通知。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟後，當你在 Hermes Desktop、儀表板或終端機中與 Hermes 交談，或在 Conduit 中開著該聊天時，它會等 10 分鐘而不是 1 分鐘再打電話，此時請求失敗只會傳送通知。"
           }
         }
       }
