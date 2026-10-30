@@ -11,6 +11,8 @@ struct ChatMessageScrollTarget: Identifiable, Equatable {
     let restorationMetadata: ChatScrollAnchorMetadata
     /// Derived once per rebuild, not re-parsed on every step-run scan.
     let isStep: Bool
+    /// A self-improvement review's card, derived once like `isStep`.
+    let isReview: Bool
     /// Transcript-order position, maintained by the cache so views can
     /// iterate the targets collection directly (no Array(enumerated()) copy
     /// per body evaluation) and still report stable row order to the
@@ -30,6 +32,14 @@ struct ChatMessageScrollTarget: Identifiable, Equatable {
     /// SwiftUI keeps the existing source-row identity for rendering and
     /// controls. Only scroll targeting uses the source-independent ID.
     var id: String { message.id }
+
+    /// The row a restored viewport lands on: a review inside a run of
+    /// reviews isn't laid out while the run is closed, as it is whenever a
+    /// chat opens, so its run's line stands in for it.
+    var restorationAnchorID: String {
+        if let run = reviewRun?.run, run.count >= 2 { return run.id }
+        return id
+    }
 }
 
 enum ChatMessageScrollTargetCacheUpdate: Equatable {
@@ -96,6 +106,7 @@ struct ChatMessageScrollTargetCache: Equatable {
                     semanticID: target.semanticID,
                     restorationMetadata: target.restorationMetadata,
                     isStep: ChatStepGroup.isStep(message),
+                    isReview: ChatMessageScrollTarget.drawsReviewCard(message),
                     order: target.order
                 )
             }
@@ -268,6 +279,7 @@ enum ChatMessageScrollTargets {
                     duplicateCount: duplicateCounts[fingerprint, default: 0]
                 ),
                 isStep: ChatStepGroup.isStep(message),
+                isReview: ChatMessageScrollTarget.drawsReviewCard(message),
                 order: baseOrder + offset
             )
         }

@@ -1916,13 +1916,9 @@ final class ChatScrollEngine: ObservableObject {
         case .latest:
             return .latest
         case .anchor(let semanticAnchor):
-            let target = targetCache.targets.first { $0.semanticID == semanticAnchor }
-            // A review inside a run of reviews isn't laid out while the run
-            // is closed, as it is whenever a chat opens: its run's line is.
-            if let run = target?.reviewRun?.run, run.count >= 2 {
-                return .anchor(run.id)
-            }
-            return .anchor(target?.id ?? semanticAnchor)
+            let sourceAnchor = targetCache.targets
+                .first { $0.semanticID == semanticAnchor }?.restorationAnchorID ?? semanticAnchor
+            return .anchor(sourceAnchor)
         }
     }
 }

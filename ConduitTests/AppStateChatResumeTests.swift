@@ -329,6 +329,11 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(run("r2"), ChatReviewPlacement(run: ChatReviewRun(memberIDs: ["r2", "r3", "r4"], lastTimestamp: "6"), index: 0))
         XCTAssertEqual(drawn(), ["u1", "r1", "a1", "r2"])
 
+        // A saved place on a folded review restores to its run's line.
+        XCTAssertEqual(cache.targets.first { $0.id == "r4" }?.restorationAnchorID, "r2")
+        XCTAssertEqual(cache.targets.first { $0.id == "r1" }?.restorationAnchorID, "r1")
+        XCTAssertEqual(cache.targets.first { $0.id == "a1" }?.restorationAnchorID, "a1")
+
         disclosure.willToggleGroup("r2", to: true)
         XCTAssertEqual(drawn(), ["u1", "r1", "a1", "r2", "r3", "r4"])
 

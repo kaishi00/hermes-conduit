@@ -529,7 +529,7 @@ struct ChatStepPlacement: Equatable {
 extension ChatMessageScrollTarget {
     /// A system row the transcript draws as a review card (MessageBubble):
     /// rows saved before reviews were tagged are told by their text.
-    var isReview: Bool {
+    static func drawsReviewCard(_ message: ChatMessage) -> Bool {
         message.role == .system
             && (message.review != nil || MessageNormalizer.reviewActivity(fromText: message.content) != nil)
     }

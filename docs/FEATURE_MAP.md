@@ -3345,7 +3345,7 @@ notifier's live read of the setting for chats already open
 
 **Code**
 - Setting: `Conduit/Views/AuxiliaryViews.swift` (ChatSettingsDetail fields, `display.memory_notifications`), `Conduit/Models/Models.swift` (ProfileDisplayPreferences.showReviews), `Conduit/Services/AppState.swift` (loadProfileDisplayPreferences, setProfileSetting)
-- Row: `Conduit/Services/StreamEventParser.swift` (`review.summary`), `Conduit/Services/HermesClient.swift` (reviewActivity), `Conduit/Services/AppState.swift` (the review cache, mergeCachedReviews), `Conduit/Views/ChatView.swift` (SELF-IMPROVEMENT REVIEW, ReviewSummaryCard, ReviewRunCard, and ModelChangeSummaryCard and CardHeaderCaption, which share its layout, drawnMessageScrollTargets), `Conduit/Views/ChatActivityRows.swift` (ChatMessageScrollTarget.drawsRow, isReview, ChatReviewRun, ChatReviewPlacement), `Conduit/Services/ChatScrollState.swift` (placeReviews), `Conduit/Services/ChatScrollEngine.swift` (a saved place on a folded review restores to its run), `Conduit/Views/ChatRowDisclosure.swift` (a run's open choice), `Conduit/Views/OfflineChatTranscriptView.swift` (the offline copy)
+- Row: `Conduit/Services/StreamEventParser.swift` (`review.summary`), `Conduit/Services/HermesClient.swift` (reviewActivity), `Conduit/Services/AppState.swift` (the review cache, mergeCachedReviews), `Conduit/Views/ChatView.swift` (SELF-IMPROVEMENT REVIEW, ReviewSummaryCard, ReviewRunCard, and ModelChangeSummaryCard and CardHeaderCaption, which share its layout, drawnMessageScrollTargets), `Conduit/Views/ChatActivityRows.swift` (ChatMessageScrollTarget.drawsRow, drawsReviewCard, ChatReviewRun, ChatReviewPlacement), `Conduit/Services/ChatScrollState.swift` (placeReviews, restorationAnchorID), `Conduit/Services/ChatScrollEngine.swift` (a saved place on a folded review restores to its run), `Conduit/Views/ChatRowDisclosure.swift` (a run's open choice), `Conduit/Views/OfflineChatTranscriptView.swift` (the offline copy)
 - Tests: `ConduitTests/AppStateChatResumeTests.swift` (testReviewRowsFollowTheSelfImprovementSetting, testConsecutiveReviewsFoldIntoOneRun)
 - Notifier: `notifier/review_notices.py`, `notifier/tests/test_review_notices.py`
 
@@ -3356,7 +3356,7 @@ notifier's live read of the setting for chats already open
 - Two or more reviews in a row fold into one line, "N self-improvement reviews" with the last one's time, closed every time the chat opens; a tap opens it to every card as before, and the choice lasts while the chat stays open, like a run of steps. Any other row ends the run, so an approval, a question or an error is never folded into it; a lone review keeps its own card. Live and in the offline copy, every chat kind. No setting of its own: Never show still hides them all (2026-10-30, #1519, issue #1518).
 
 **Open gaps**
-- None.
+- An open run of reviews keeps its choice by its first review, so loading older history that holds reviews right above it closes it again; runs of steps do the same.
 
 **Checked:** 2026-10-30, #1519 (runs of reviews fold into one line, #1518); 2026-10-29, #1507 (caption and time on the row's top line, summary full width below, #1440); 2026-10-26, #1282 (display settings kept on the phone, so the offline copy follows Never show from launch); 2026-10-25, #1260.
 
