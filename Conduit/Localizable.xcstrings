@@ -388635,6 +388635,88 @@
           }
         }
       }
+    },
+    "Shows the card's full summary and the line Hermes wrote.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zeigt die ganze Zusammenfassung der Karte und die Zeile, die Hermes geschrieben hat."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muestra el resumen completo de la tarjeta y la línea que escribió Hermes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affiche le résumé complet de la carte et la ligne écrite par Hermes."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menampilkan ringkasan lengkap kartu dan baris yang ditulis Hermes."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra il riepilogo completo della scheda e la riga scritta da Hermes."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "カードの要約全体と Hermes が書いた行を表示します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "카드의 전체 요약과 Hermes가 쓴 줄을 보여 줍니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pokazuje pełne podsumowanie karty i wiersz napisany przez Hermesa."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra o resumo completo do cartão e a linha que o Hermes escreveu."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывает полное описание карточки и строку, которую написал Hermes."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kartın tam özetini ve Hermes'in yazdığı satırı gösterir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示卡片的完整摘要和 Hermes 写下的那一行。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "顯示卡片的完整摘要和 Hermes 寫下的那一行。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

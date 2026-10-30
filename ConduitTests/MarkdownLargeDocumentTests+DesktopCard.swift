@@ -72,6 +72,54 @@ extension MarkdownLargeDocumentTests {
         XCTAssertFalse(blocks.contains { if case .htmlPreview = $0 { return true } else { return false } }, "\(blocks)")
     }
 
+    // MARK: - The card's read
+
+    /// What a read answered and how often it was asked.
+    private final class CardReads {
+        var answer: [String: Any]?
+        var count = 0
+        var now = Date(timeIntervalSince1970: 1_000)
+    }
+
+    @MainActor
+    func testDesktopCard_AReadIsKeptAndAFailedOneAskedAgainLater() async {
+        let key = UUID().uuidString
+        let reads = CardReads()
+        func read() async -> DesktopCardContent? {
+            await DesktopCardContents.content(key: key, path: "/cards/x", now: { reads.now }) { _ in
+                reads.count += 1
+                return reads.answer
+            }
+        }
+        // Not there: kept as missing, not asked again inside the interval.
+        let missing = await read()
+        XCTAssertNil(missing)
+        let soon = await read()
+        XCTAssertNil(soon)
+        XCTAssertEqual(reads.count, 1)
+        XCTAssertNil(DesktopCardContents.cached(key: key))
+        // Asked again once the interval has passed, and kept for the launch.
+        reads.answer = ["ok": true, "card": ["surface": ["createSurface": ["dataModel": ["meta": ["title": " Rents ", "summary": "Up 4%."]]]]]]
+        reads.now += DesktopCardContents.retryInterval
+        let found = await read()
+        XCTAssertEqual(found, DesktopCardContent(title: "Rents", summary: "Up 4%."))
+        reads.answer = nil
+        let again = await read()
+        XCTAssertEqual(again, found)
+        XCTAssertEqual(reads.count, 2)
+        XCTAssertEqual(DesktopCardContents.cached(key: key)?.title, "Rents")
+    }
+
+    @MainActor
+    func testDesktopCard_ACardWithNothingToShowIsMissing() async {
+        let key = UUID().uuidString
+        let empty = await DesktopCardContents.content(key: key, path: "/cards/x") { _ in
+            ["ok": true, "card": ["surface": ["createSurface": ["dataModel": ["meta": ["title": "  "]]]]]]
+        }
+        XCTAssertNil(empty)
+        XCTAssertNil(DesktopCardContents.cached(key: key))
+    }
+
     // MARK: - Read, named and previewed
 
     func testDesktopCard_ReadAloudSaysACardIsThere() {

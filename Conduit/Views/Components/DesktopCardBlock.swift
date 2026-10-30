@@ -84,18 +84,30 @@ enum DesktopCardContents {
     static func content(for card: DesktopCardDirective, resolver: GatewayMediaDataURLResolver?) async -> DesktopCardContent? {
         // Not connected yet says nothing about the card: nothing is kept.
         guard let id = card.richUICardID, let resolver, resolver.connectedDashboardBridge != nil else { return nil }
-        let key = "\(resolver.dashboardID?.uuidString ?? "")|\(id)"
+        return await content(key: key(id, resolver), path: "/api/plugins/hermes-rich-ui/cards/\(id)") {
+            await resolver.pluginJSON(path: $0)
+        }
+    }
+
+    /// The read itself, with what it reads through and the clock passed
+    /// in, so tests can hold both.
+    static func content(
+        key: String,
+        path: String,
+        now: () -> Date = { Date() },
+        fetch: (String) async -> [String: Any]?
+    ) async -> DesktopCardContent? {
         switch entries[key] {
         case .found(let content): return content
-        case .missing(let since) where Date().timeIntervalSince(since) < retryInterval: return nil
+        case .missing(let since) where now().timeIntervalSince(since) < retryInterval: return nil
         default: break
         }
-        guard let json = await resolver.pluginJSON(path: "/api/plugins/hermes-rich-ui/cards/\(id)") else {
-            if !Task.isCancelled { entries[key] = .missing(Date()) }
+        guard let json = await fetch(path) else {
+            if !Task.isCancelled { entries[key] = .missing(now()) }
             return nil
         }
         guard let content = DesktopCardContent(richUIResponse: json) else {
-            entries[key] = .missing(Date())
+            entries[key] = .missing(now())
             return nil
         }
         entries[key] = .found(content)
@@ -104,9 +116,17 @@ enum DesktopCardContents {
 
     /// What's already known, for a card's first frame.
     static func cached(for card: DesktopCardDirective, resolver: GatewayMediaDataURLResolver?) -> DesktopCardContent? {
-        guard let id = card.richUICardID, let resolver,
-              case .found(let content) = entries["\(resolver.dashboardID?.uuidString ?? "")|\(id)"] else { return nil }
+        guard let id = card.richUICardID, let resolver else { return nil }
+        return cached(key: key(id, resolver))
+    }
+
+    static func cached(key: String) -> DesktopCardContent? {
+        guard case .found(let content) = entries[key] else { return nil }
         return content
+    }
+
+    private static func key(_ id: String, _ resolver: GatewayMediaDataURLResolver) -> String {
+        "\(resolver.dashboardID?.uuidString ?? "")|\(id)"
     }
 }
 
@@ -185,6 +205,7 @@ struct DesktopCardBlock: View {
             .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityHint(Text(AppLocalization.string("Shows the card's full summary and the line Hermes wrote.")))
         .task(id: card) {
             // One that can't be read yet is asked again while it's on
             // screen: soon while Hermes isn't connected, else after the
