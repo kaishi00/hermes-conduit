@@ -3980,6 +3980,8 @@ iPad (swipes unchanged) · text: no Settings caption or doc describes it
 
 **Open gaps**
 - A list that opens under a pointer that hasn't moved is guarded within a quarter second (the resting check); a wheel turned there sooner isn't covered.
+- After a launch, nothing is guarded until the pointer first moves in the window: a wheel turned over a list before then, with the pointer resting where it was, isn't covered (whether a Mac sends a hover as the window opens under the pointer isn't checked).
+- A Pulse card with no Not now (done, cleared, or a plugin without it) gets an empty right-click menu on a Mac, as its swipe is empty.
 - Not reproduced on a device: the reporter's macOS version isn't known yet, and 26.6.2 refuses the event instead of asserting.
 
 **Checked:** 2026-10-30, #1528.
