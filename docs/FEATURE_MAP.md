@@ -869,7 +869,7 @@ heard · chat bubbles (the file card)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1434, carried in #1449.
+**Checked:** 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1434, carried in #1449.
 
 ## Qwen direct voice
 
@@ -1469,7 +1469,7 @@ the bot's SOUL messaging section · README.md's bots line
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1448 (an unnamed teammate is named by its id capitalized in its notes, replies and steps, through displayLabel); 2026-10-25, at #1259.
+**Checked:** 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1448 (an unnamed teammate is named by its id capitalized in its notes, replies and steps, through displayLabel); 2026-10-25, at #1259.
 
 ## Links in messages
 
@@ -2345,7 +2345,7 @@ transcript (never filtered)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1449 (Hermes' file tags are left out too, with their own entry, Files Hermes attaches); #1429, carried in #1430.
+**Checked:** 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1449 (Hermes' file tags are left out too, with their own entry, Files Hermes attaches); #1429, carried in #1430.
 
 ## Speech stream failures
 
@@ -3346,7 +3346,8 @@ nothing that reads a reply says the directive out.
 copy and call job sheets (every Markdown surface, with or without the
 connected Hermes) · Read Aloud, Classic voice's spoken reply and Local Live's
 split · live read-backs and a Hermes call's result · what live models are
-handed, on the phone and the Watch · chat list and bot list previews · the
+handed, on the phone and the Watch · chat list and bot list previews and
+quote chips · the
 notifier's push text and the README line that describes it · `::preview`
 (the same grammar, see Cards drawn in web pages)
 
@@ -3356,7 +3357,7 @@ notifier's push text and the README line that describes it · `::preview`
 - Built from Markdown: `Conduit/Views/Components/MarkdownText.swift` (desktopCard block, directiveSegments)
 - Spoken: `Conduit/Voice/MessageReadAloudController.swift` (toggle), `Conduit/Voice/VoiceReadBack.swift` (plainSpeech), `Conduit/Voice/SpokenMediaTagFilter.swift` (Classic, Read Aloud's Now Playing, Local Live)
 - Live models: `Conduit/Views/Components/GatewayMediaTags.swift` (namingFiles)
-- Previews: `Conduit/Services/PreviewText.swift` (strip)
+- Previews and quote chips: `Conduit/Services/PreviewText.swift` (strip), `Conduit/Views/Components/ChatQuote.swift` (excerpt)
 - Push text: `notifier/events.py` (media_free, _desktop_free), described in `notifier/README.md` (what notifications show)
 - Tests: `ConduitTests/MarkdownLargeDocumentTests+DesktopCard.swift`, `ConduitTests/GeminiLiveVoiceTests.swift` (testSpokenMediaTagFilterGivesTheSameSpeechHoweverTheReplyIsSplit), `notifier/tests/test_events.py` (test_no_push_shows_a_desktop_directive)
 
@@ -3366,7 +3367,7 @@ notifier's push text and the README line that describes it · `::preview`
 - hermes-rich-ui's card shows its own plain-text fallback, `meta.title` and `meta.summary`, from `GET /api/plugins/hermes-rich-ui/cards/<id>` on the connected Hermes, only for a well-formed id (`ru-` and 12 hex). Without it (plugin not installed, card gone, no network, no connected Hermes as in the saved copy) the card says "Card for Hermes Desktop" and to open the chat there. A read is kept for the launch; a failed one is tried again after five minutes.
 - The card holds one title line and two summary lines from its first frame, so it never changes height as its text arrives; the whole summary is in the details sheet.
 - A directive is one at a word's start, `::name{…}` holding only `key="value"` attributes, at least one: prose, code spans and CSS (`::selection{color:red}`) stay text. A quoted directive is an example and a table header cell is table text, as for previews. Desktop cards show on every Markdown surface; previews still need the connected Hermes.
-- Read Aloud and voices say "(There's a card here for Hermes Desktop.)"; live models are told "(a card in the chat made for Hermes Desktop, from <plugin>)"; previews read "Card for Hermes Desktop"; a push reads "🗂 <plugin> card". A preview reads as its file in each of these (notifier 0.120.4).
+- Read Aloud and voices say "(There's a card here for Hermes Desktop.)" and leave a preview out, as Read Aloud already did; live models are told "(a card in the chat made for Hermes Desktop, from <plugin>)" and a preview as its file; previews and quote chips read "Card for Hermes Desktop" and a preview as its file; a push reads "🗂 <plugin> card" and a preview as its file, named as a MEDIA tag's (notifier 0.120.4). Lines in a fenced code block and directives in a code span stay as written everywhere.
 
 **Open gaps**
 - None known.

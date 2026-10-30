@@ -50,7 +50,8 @@ struct DesktopCardContent: Equatable {
         let meta = (surface["dataModel"] as? [String: Any])?["meta"] as? [String: Any] ?? [:]
         let rootTitle = (surface["components"] as? [[String: Any]])?
             .first { $0["id"] as? String == "root" }?["title"] as? String
-        let title = Self.cleaned(meta["title"] as? String ?? rootTitle, limit: 200)
+        let metaTitle = Self.cleaned(meta["title"] as? String, limit: 200)
+        let title = metaTitle.isEmpty ? Self.cleaned(rootTitle, limit: 200) : metaTitle
         let summary = Self.cleaned(meta["summary"] as? String, limit: 2_000)
         guard !title.isEmpty || !summary.isEmpty else { return nil }
         self.title = title
@@ -128,11 +129,13 @@ struct DesktopCardBlock: View {
     let card: DesktopCardDirective
 
     @Environment(\.gatewayMediaFiles) private var gatewayMediaFiles
-    @State private var content: DesktopCardContent?
+    /// What was read, with the card it was read for: a view reused for
+    /// another card never shows the last one's text.
+    @State private var loaded: (card: DesktopCardDirective, content: DesktopCardContent?)?
     @State private var showsDetails = false
 
     var body: some View {
-        let content = self.content ?? DesktopCardContents.cached(for: card, resolver: gatewayMediaFiles)
+        let content = loaded?.card == card ? loaded?.content : DesktopCardContents.cached(for: card, resolver: gatewayMediaFiles)
         Button {
             showsDetails = true
         } label: {
@@ -182,8 +185,10 @@ struct DesktopCardBlock: View {
         }
         .buttonStyle(.plain)
         .task(id: card) {
-            guard self.content == nil else { return }
-            self.content = await DesktopCardContents.content(for: card, resolver: gatewayMediaFiles)
+            guard loaded?.card != card else { return }
+            let content = await DesktopCardContents.content(for: card, resolver: gatewayMediaFiles)
+            guard !Task.isCancelled else { return }
+            loaded = (card, content)
         }
         .sheet(isPresented: $showsDetails) {
             DesktopCardSheet(card: card, content: content)

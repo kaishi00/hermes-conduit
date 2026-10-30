@@ -89,6 +89,24 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(PreviewText.plain("Done. \(Self.richUILine)"), "Done. \(DesktopCardDirective.previewNote)")
     }
 
+    func testDesktopCard_QuoteChipNamesTheCard() {
+        XCTAssertEqual(ChatQuote.excerpt(of: "Rents:\n\(Self.richUILine)"), "Rents: \(DesktopCardDirective.previewNote)")
+    }
+
+    func testDesktopCard_FencedCodeStaysAsWritten() {
+        let text = "Example:\n```\n\(Self.richUILine)\n```\n\(Self.richUILine)"
+        XCTAssertEqual(
+            TranscriptDirectives.rewriting(text, preview: { _ in nil }, card: { _ in "CARD" }),
+            "Example:\n```\n\(Self.richUILine)\n```\nCARD"
+        )
+    }
+
+    func testDesktopCard_ListMarkerLeftBehindDrops() {
+        let blocks = MarkdownParser.parse("- \(Self.richUILine)")
+        XCTAssertEqual(blocks.count, 1, "\(blocks)")
+        guard case .desktopCard = blocks.first else { return XCTFail("\(blocks)") }
+    }
+
     // MARK: - The card's text
 
     func testDesktopCard_ReadsTitleAndSummaryFromTheRecord() {
@@ -113,7 +131,7 @@ extension MarkdownLargeDocumentTests {
             "ok": true,
             "card": ["surface": ["createSurface": [
                 "components": [["id": "root", "component": "Card", "title": "Root title"]],
-                "dataModel": ["meta": [:]]
+                "dataModel": ["meta": ["title": "  "]]
             ]]]
         ]
         XCTAssertEqual(DesktopCardContent(richUIResponse: json), DesktopCardContent(title: "Root title", summary: ""))

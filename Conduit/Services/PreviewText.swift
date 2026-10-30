@@ -38,7 +38,7 @@ enum PreviewText {
         // never as the directive.
         text = TranscriptDirectives.rewriting(
             text,
-            preview: { MarkdownParser.mediaName($0) },
+            preview: { TranscriptDirectives.fileName($0) },
             card: { _ in DesktopCardDirective.previewNote }
         )
         let lines = text

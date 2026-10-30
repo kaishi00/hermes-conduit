@@ -49,6 +49,12 @@ enum ChatQuote {
     static func excerpt(of markdown: String, limit: Int = 200) -> String {
         var words: [String] = []
         var length = 0
+        // A Desktop card reads as what it is, a preview as its file (#1522).
+        let markdown = TranscriptDirectives.rewriting(
+            markdown,
+            preview: { TranscriptDirectives.fileName($0) },
+            card: { _ in DesktopCardDirective.previewNote }
+        )
         for rawLine in markdown.components(separatedBy: .newlines) {
             // Enough for the preview; a long reply's tail is never scanned.
             if length > limit { break }

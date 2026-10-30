@@ -91,13 +91,27 @@ enum TranscriptDirectives {
     }
 
     /// `text` with each directive written as `preview` and `card` say; nil
-    /// drops it. A line left empty goes.
+    /// drops it. A line left empty goes; a fenced code block is code.
     static func rewriting(_ text: String, preview: (String) -> String?, card: (DesktopCardDirective) -> String?) -> String {
         guard text.contains("::") else { return text }
         // Line endings normalized as the parser does, so its table check sees the same lines.
         let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        var fence: (mark: Character, length: Int)?
         return lines.indices.compactMap { index -> String? in
             let line = lines[index]
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if let mark = trimmed.first, mark == "`" || mark == "~" {
+                let run = trimmed.prefix { $0 == mark }.count
+                if let open = fence {
+                    if mark == open.mark, run >= open.length, trimmed.dropFirst(run).allSatisfy(\.isWhitespace) { fence = nil }
+                    return line
+                }
+                if run >= 3, !(mark == "`" && trimmed.dropFirst(run).contains("`")) {
+                    fence = (mark, run)
+                    return line
+                }
+            }
+            if fence != nil { return line }
             // A quoted directive is an example and a table header cell is
             // table text; the chat shows both as written.
             guard !line.trimmingCharacters(in: .whitespaces).hasPrefix(">"),
@@ -154,9 +168,13 @@ enum TranscriptDirectives {
         return spans
     }
 
+    /// Text between directives, dropped when it is only list markers,
+    /// emphasis or punctuation a directive left behind ("- ", "**"), as
+    /// around a MEDIA: tag.
     private static func appendText(_ text: String, to segments: inout [Segment]) {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty { segments.append(.text(trimmed)) }
+        guard trimmed.contains(where: { !$0.isWhitespace && !GatewayMediaTags.leftoverMarkers.contains($0) }) else { return }
+        segments.append(.text(trimmed))
     }
 }
 
