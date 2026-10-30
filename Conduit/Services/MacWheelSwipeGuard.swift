@@ -9,8 +9,9 @@ import UIKit
 /// delta") while it gathers the recognizers under the pointer, before any
 /// of Conduit's code runs. Before a wheel turns over a list the pointer has
 /// hovered there, so each hover stops the swipe recognizers of the lists
-/// under the pointer from taking scroll events. Rows still swipe with a
-/// click and drag, and their context menus stay.
+/// under the pointer from taking scroll events. A trackpad no longer
+/// swipes a row on a Mac, so every row's swipe actions are on its
+/// right-click menu too (`macSwipeActionsMenu` where only a swipe had them).
 struct MacWheelSwipeGuardProbe: UIViewRepresentable {
     func makeUIView(context: Context) -> ProbeView {
         let view = ProbeView()
@@ -82,5 +83,18 @@ final class MacWheelSwipeGuardRecognizer: UIHoverGestureRecognizer, UIGestureRec
     /// private class's name. A UIScrollView's own pan is left alone.
     static func isSwipeActionPan(_ recognizer: UIPanGestureRecognizer) -> Bool {
         NSStringFromClass(type(of: recognizer)).contains("SwipeAction")
+    }
+}
+
+extension View {
+    /// A row whose actions are only in its swipe gets them on a right click
+    /// on a Mac, where the wheel guard keeps a trackpad from swiping it.
+    @ViewBuilder
+    func macSwipeActionsMenu<Menu: View>(@ViewBuilder _ menu: () -> Menu) -> some View {
+        if ProcessInfo.processInfo.isiOSAppOnMac {
+            contextMenu { menu() }
+        } else {
+            self
+        }
     }
 }

@@ -439,6 +439,7 @@ struct V2PulsePage: View {
             .accessibilityFocused($voiceOverCard, equals: card.id)
             .id(card.id)
             .swipeActions(edge: .trailing, allowsFullSwipe: true) { notNowButton(card) }
+            .macSwipeActionsMenu { notNowButton(card) }
             .pulseRow()
     }
 
@@ -546,6 +547,7 @@ struct V2PulsePage: View {
                     .accessibilityFocused($voiceOverCard, equals: item.id)
                     .id(item.id)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) { notNowButton(item) }
+                    .macSwipeActionsMenu { notNowButton(item) }
                     .pulseRow(top: 0, bottom: index == brief.items.count - 1 ? 6 : 0)
             }
         }
