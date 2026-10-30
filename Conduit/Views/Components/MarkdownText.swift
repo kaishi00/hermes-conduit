@@ -1599,6 +1599,16 @@ enum MarkdownTableLayout {
         return halfPointRounded(capped.map { $0 - max($0 - shrinkFloorContentWidth, 0) * factor })
     }
 
+    /// The drawn table's width from its column content widths: what the
+    /// cells' padding, the dividers and the border add to them.
+    static func tableWidth(columnContentWidths widths: [CGFloat]) -> CGFloat {
+        guard !widths.isEmpty else { return 0 }
+        return widths.reduce(0, +)
+            + CGFloat(widths.count) * cellHorizontalPadding * 2
+            + CGFloat(widths.count - 1) * dividerWidth
+            + borderAllowance
+    }
+
     /// The table as tab-separated lines, each cell's Markdown resolved to
     /// its text, so it pastes into a spreadsheet as a grid. A tab or line
     /// break inside a cell becomes a space, so it can't split the grid.
@@ -1749,7 +1759,8 @@ struct MarkdownTable: View {
                 },
                 selectText: { [turnedOn = $selectionTurnedOn] in turnedOn.wrappedValue = true },
                 selectionCoordinator: selectionCoordinator,
-                selectionSegmentID: selectionSegment(row: 0, column: 0)?.id
+                selectionSegmentID: selectionSegment(row: 0, column: 0)?.id,
+                tableWidth: MarkdownTableLayout.tableWidth(columnContentWidths: widths)
             ))
         }
     }
@@ -1871,7 +1882,8 @@ private struct MarkdownPlainCell: View {
 /// A long press on a table whose cells are plain text copies the table or
 /// turns on text selection, which draws its cells as selectable text views
 /// until its row is taken down. VoiceOver offers both as actions, Copy
-/// Table whether or not selection is on. Selection also turns on when a
+/// Table whether or not selection is on, and a pointer over the table shows
+/// a Copy Table button, since the cells' own menu replaces this one. Selection also turns on when a
 /// selection starts elsewhere in the message, so a drag from the text above
 /// or below carries into the cells, and when a pointer (a Mac, or an iPad's
 /// trackpad or mouse) moves over the table, so a click and drag in a cell
@@ -1884,9 +1896,18 @@ private struct MarkdownTableMenu: ViewModifier {
     /// The table's first cell segment, the key its deferred mount waits
     /// under in the message's coordinator.
     let selectionSegmentID: String?
+    /// The drawn table's width, so the Copy Table button sits at its
+    /// corner, not at the column's edge, when the table is narrower.
+    let tableWidth: CGFloat
 
     /// Owns the deferred mount in the coordinator, which holds it weakly.
     @State private var deferredMountOwner = DeferredMountOwner()
+    /// A pointer is over the table: shows the Copy Table button, the menu's
+    /// Copy Table once the cells' own menu has replaced it.
+    @State private var isPointerOver = false
+    @State private var copied = false
+    /// Counts copies, so only the latest one's timer clears the checkmark.
+    @State private var copyCount = 0
 
     final class DeferredMountOwner {
         var segmentID: String?
@@ -1905,12 +1926,21 @@ private struct MarkdownTableMenu: ViewModifier {
                         }
                     }
                     .accessibilityAction(named: Text("Select Text"), selectText)
-                    .onHover { hovering in
-                        if hovering { selectText() }
-                    }
             } else {
                 content
             }
+        }
+        .overlay(alignment: .topLeading) {
+            if isPointerOver {
+                GeometryReader { proxy in
+                    copyTableButton
+                        .frame(width: min(tableWidth, proxy.size.width), alignment: .topTrailing)
+                }
+            }
+        }
+        .onHover { hovering in
+            isPointerOver = hovering
+            if hovering, isOn { selectText() }
         }
         .accessibilityAction(named: Text("Copy Table"), copyTable)
         .onAppear(perform: updateDeferredMount)
@@ -1948,13 +1978,37 @@ private struct MarkdownTableMenu: ViewModifier {
         deferredMountOwner.segmentID = nil
     }
 
+    /// VoiceOver has Copy Table as an action, so the button is for the
+    /// pointer only.
+    private var copyTableButton: some View {
+        Button(action: copyTable) {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .scaledFont(.caption.weight(.semibold))
+                .frame(minWidth: 28, minHeight: 28)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .macTooltip(AppLocalization.string("Copy Table"))
+        .padding(6)
+        .accessibilityHidden(true)
+    }
+
     /// Resolving every cell's Markdown is the user's wait on a big table,
     /// so it runs off the main thread.
     private func copyTable() {
         let copyText = copyText
         Task.detached(priority: .userInitiated) {
             let text = copyText()
-            await MainActor.run { UIPasteboard.general.string = text }
+            await MainActor.run {
+                UIPasteboard.general.string = text
+                copied = true
+                copyCount += 1
+                let copy = copyCount
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                    if copyCount == copy { copied = false }
+                }
+            }
         }
     }
 }
@@ -2116,7 +2170,8 @@ struct LargeMarkdownTable: View {
                 },
                 selectText: { [turnedOn = $selectionTurnedOn] in turnedOn.wrappedValue = true },
                 selectionCoordinator: selectionCoordinator,
-                selectionSegmentID: segmentDescriptor(row: 0, column: 0)?.id
+                selectionSegmentID: segmentDescriptor(row: 0, column: 0)?.id,
+                tableWidth: MarkdownTableLayout.tableWidth(columnContentWidths: widths)
             ))
             if renderedRowCount < rows.count {
                 Button {

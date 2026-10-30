@@ -1544,7 +1544,7 @@ that draws Markdown.
 **Siblings:** chats, project chats and Bot Chat (one chat view: plain cells)
 · group rooms and other Markdown surfaces (selectable cells from the start) ·
 very long replies and big tables (paged) · the long-press menu (Copy Table,
-Select Text) and VoiceOver's actions for them (Copy Table on every surface) · a pointer on a Mac or an
+Select Text), the pointer's Copy Table button, and VoiceOver's actions for them (Copy Table on every surface) · a pointer on a Mac or an
 iPad · selection across the reply · Copy response · links in cells (plain cells open them through openURL, selectable cells as Links in messages does)
 
 **Code**
@@ -1557,14 +1557,16 @@ iPad · selection across the reply · Copy response · links in cells (plain cel
 **Rulings**
 - The chat draws table cells as plain text, the cheapest to build as rows scroll in (#693). A long press offers Copy Table and Select Text; Select Text draws the cells as selectable text until the row is taken down.
 - Selection on a table turns on as it does for the reply's drawn text: a selection that starts elsewhere in the message mounts the cells, so a drag from the text above or below carries into the table, and a pointer over the table (a Mac, an iPad's trackpad or mouse) turns it on, so a click and drag selects in a cell and Cmd+C and the context menu's Copy work (2026-10-30, issue 1531, #1535; Eric: most selections start in the text around the table).
+- A pointer over a table (a Mac, an iPad's trackpad or mouse) shows a Copy Table button at the table's top right, on every Markdown surface, since the cells' own right-click menu replaces the table's (2026-10-30, Eric, #1540).
 - VoiceOver's Copy Table is on every table, whether or not selection is on, group rooms' included: a VoiceOver user selecting cell by cell has no other way to take the whole table (#1535).
 
 **Open gaps**
-- Once selection is on, the long-press or right-click menu is the text's own (Copy for a selection), so the menu's Copy Table is gone for that table until its row is taken down. On a Mac that is almost always, since the pointer passes over the table first. Selecting across the table copies its cells, and Copy response copies the reply.
+- On a touch screen, once selection is on (Select Text, or a selection elsewhere in the message), the long-press menu is the text's own, so Copy Table is gone for that table until its row is taken down; selecting across the table copies its cells, and Copy response copies the reply.
 - No Copy cell or Copy row (asked for as optional in issue 1531).
+- The pointer's Copy Table button covers the corner of the last header cell while the pointer is over the table.
 - A big table mounts its rows in batches (`LargeMarkdownTable`), and a selection copies only mounted cells, so a selection across a table past its first batch leaves the rest out until Show more; Copy Table copies every row.
 
-**Checked:** 2026-10-30, #1535 (a selection in the message mounts the cells; VoiceOver's Copy Table kept).
+**Checked:** 2026-10-30, #1540 (the pointer's Copy Table button); #1535 (a selection in the message mounts the cells; VoiceOver's Copy Table kept).
 
 ## Attaching files
 
