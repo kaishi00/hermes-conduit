@@ -197,9 +197,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         // A field rebuilt with focus (a send on a Mac keeps it) is first
         // updated before it's in the window, where it can't take focus: it
         // takes it once it is (didMoveToWindow).
-        uiView.focusesInWindow = isFocused
-        if isFocused, !uiView.isFirstResponder, uiView.window != nil { uiView.becomeFirstResponder() }
-        if !isFocused, uiView.isFirstResponder { _ = uiView.resignFirstResponder() }
+        uiView.setFocusIntent(isFocused)
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
@@ -442,6 +440,14 @@ final class ImagePasteTextView: ReturnKeyTextView {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if focusesInWindow, window != nil, !isFirstResponder { becomeFirstResponder() }
+    }
+
+    /// Takes or gives up focus as the composer asks; out of a window, the
+    /// wish waits for `didMoveToWindow`.
+    func setFocusIntent(_ wantsFocus: Bool) {
+        focusesInWindow = wantsFocus
+        if wantsFocus, !isFirstResponder, window != nil { becomeFirstResponder() }
+        if !wantsFocus, isFirstResponder { _ = resignFirstResponder() }
     }
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {

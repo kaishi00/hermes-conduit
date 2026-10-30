@@ -1827,15 +1827,16 @@ iPhone too, see Open gaps) · a prediction sent from the suggestion row (done, #
 the same send, so it keeps whatever focus the field had) · the plan card, which opens whatever the focus on a Mac or with a hardware
 keyboard (not needed: its check is for the keyboard, not the focus; its
 ruling now says the focus stays, see Plan card) · the resting composer and
-the minimised call bar, which follow focus (done, #1527: with a hardware
-keyboard on an iPhone or a narrow iPad the composer stays expanded and the
-call bar stays hidden after a send while the field keeps focus, as while
-typing; a tap elsewhere rests it, see Composer at rest and expanded) ·
+the minimised call bar (done, #1527: with a hardware keyboard on an iPhone
+or a narrow iPad the composer stays expanded after a send while the field
+keeps focus, until a tap on the transcript, see Composer at rest and
+expanded; the call bar, on those and on a Mac, comes back after a send and
+hides again only once words are typed) ·
 iPhone, iPad and Mac · no Settings caption or doc describes it
 
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.keepsFocusAfterSend)
-- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; composerInUse and hidesMinimisedCallBar, which follow focus; `Conduit/Views/ChatView.swift` reads the latter through V2ComposerTypingKey), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView and ImagePasteTextView.didMoveToWindow: a field rebuilt with focus takes it once it's in the window)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; composerInUse and hidesMinimisedCallBar, which follow focus), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView, ImagePasteTextView.setFocusIntent and didMoveToWindow: a field rebuilt with focus takes it once it's in the window), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`, opened by ComposerBar's expand button (which takes focus from the field) and its sheet
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send)
 - Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow)
@@ -1848,6 +1849,9 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   screen (Eric asked for it on a Mac, 2026-10-30, #1527; the hardware
   keyboard case follows the plan card and model search, see Open gaps).
   The check is for a connected keyboard, as the plan card's is.
+- Where the field keeps focus, focus alone doesn't hide the minimised call
+  bar: it shows after a send and hides only while words are typed, so a
+  kept focus never hides a call (2026-10-30, #1527).
 - A send or Stop from the full editor gives the field focus once the sheet
   has gone, not while it is dismissing (2026-10-30, #1527).
 - Opening a call from the composer still takes focus away on every device:
@@ -1858,9 +1862,9 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   the field and from the full editor, and which controls besides the
   transcript take focus from the field on a Mac.
 - The hardware keyboard on an iPad or iPhone gets the Mac's rule without a
-  decision of its own from the maintainer: there a composer that rests stays
-  expanded after a send, and a minimised call bar stays hidden, until a tap
-  on the transcript.
+  decision of its own from the maintainer (asked 2026-10-30): there a
+  composer that rests stays expanded after a send until a tap on the
+  transcript.
 - Group rooms keep the field focused after a send on a touch-only iPhone
   too, where a chat's keyboard goes down; the maintainer decides whether
   rooms follow the chat there.

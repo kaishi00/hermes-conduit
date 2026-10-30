@@ -468,7 +468,12 @@ struct ComposerBar: View, Equatable {
         .padding(.bottom, 10)
         .animation(restsWhenIdle ? ConduitMotion.ease(reduceMotion: reduceMotion) : nil, value: inUseOrHeld)
         .preference(key: V2ComposerExpandedKey.self, value: restsWhenIdle && !keepsVoiceButtonBeside && !rests)
-        .preference(key: V2ComposerTypingKey.self, value: Self.hidesMinimisedCallBar(restsWhenIdle: restsWhenIdle, isFocused: isFocused))
+        .preference(key: V2ComposerTypingKey.self, value: Self.hidesMinimisedCallBar(
+            restsWhenIdle: restsWhenIdle,
+            isFocused: isFocused,
+            hasText: hasText,
+            keepsFocusAfterSend: ComposerLayout.keepsFocusAfterSend()
+        ))
         .onChange(of: composerInUse, initial: true) { _, inUse in
             guard restsWhenIdle else { return }
             composerUseChanged(inUse)
@@ -950,13 +955,19 @@ struct ComposerBar: View, Equatable {
         }
     }
 
-    /// The minimised call bar above a V2 composer hides only while the field
-    /// has focus, focus kept after a send on a Mac or with a hardware
-    /// keyboard included (`ComposerLayout.keepsFocusAfterSend`). A running
-    /// turn, a notice or a draft left unfocused keeps it, so a call
-    /// minimised in a chat can always be brought back (#695).
-    static func hidesMinimisedCallBar(restsWhenIdle: Bool, isFocused: Bool) -> Bool {
-        restsWhenIdle && isFocused
+    /// The minimised call bar above a V2 composer hides only while someone
+    /// types. A running turn, a notice or a draft left unfocused keeps it,
+    /// so a call minimised in a chat can always be brought back (#695).
+    /// Where the field keeps focus after a send (a Mac, a hardware
+    /// keyboard: `ComposerLayout.keepsFocusAfterSend`), focus alone isn't
+    /// typing: the bar hides only while the field holds words.
+    static func hidesMinimisedCallBar(
+        restsWhenIdle: Bool,
+        isFocused: Bool,
+        hasText: Bool = true,
+        keepsFocusAfterSend: Bool = false
+    ) -> Bool {
+        restsWhenIdle && isFocused && (hasText || !keepsFocusAfterSend)
     }
 
     /// V2's resting composer: attach and the placeholder in a slim bar.
