@@ -3371,7 +3371,7 @@ pages)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-30, #PRNUM.
+**Checked:** 2026-10-30, #1524.
 
 ## Self-improvement updates
 
