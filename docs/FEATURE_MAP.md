@@ -1669,6 +1669,42 @@ Watch and CarPlay (not needed: neither shows a transcript)
 
 **Checked:** 2026-10-30, #1550 (saved rows drawn as the chat's own and replaced in place, Eric's ruling replacing #1404's; an unread chat left mid-turn lands from its saved rows); 2026-10-30, #1547 (the saved lists and lists of copies kept in memory, in Kept; the newest page's answer parsed off the main thread when it's big, in Code); 2026-10-30, #1545 (copies, held rows and saved lists saved on the store's queue; recent copies and other profiles' lists read ahead into memory); 2026-10-30, #1536 (the newest page read without the rows the phone holds, through notifier #477; copies keep up to 500 rows for 100 chats within 64 MB); 2026-10-28, #1461 (a chat's sync error stays out of a room on screen); 2026-10-28, #1447 (a profile switch shows the new profile's chat, not the outgoing transcript); 2026-10-28, #1432.
 
+## Screens that open on their last answer
+
+A screen that reads Hermes draws what Hermes told it last time at once,
+kept on the phone, while it asks again, and the new answer changes only
+what changed.
+
+**Siblings:** the agent settings pages: Model (Default model, Fast mode and
+limits, Fallback models), Chat, Workspace, Memory & delegation (Delegate
+model, Pause delegation) and Advanced · the saved chats, whose wipes take the
+kept answers (Delete Saved Chats, a sign-out, a removed dashboard; a deleted
+bot takes its own) · Settings' Data handling caption and the Delete Saved
+Chats confirmation · the screens still waiting for Hermes (Open gaps): Pulse,
+Voice and Usage settings, the Model sheet's catalog, Capabilities' tabs, the
+Bots roster, Tasks boards, the Artifacts and Workspace listings · Watch and
+CarPlay (not needed: neither shows these screens)
+
+**Code**
+- Store: `Conduit/Services/OfflineChatCache.swift` (keptAnswer, recordAnswer, withoutCredentials, removeKeptAnswers, readKeptAnswersAhead from prefetch's answers, forgetMemory)
+- Reads and saves: `Conduit/Services/AppState.swift` (KeptRoute, readKeepingAnswer, keepAnswer, keptProfileSettings, keptProfileConfigOptions, keptProfileModelDefaults, keptProfileConfigSchema, keptProfileFallbackModels, keptDelegationPaused; updateProfileConfig and setProfileSetting keep what they saved; prefetchSavedChats; deleteBot; deleteSavedChats)
+- Pages: `Conduit/Views/AuxiliaryViews.swift` (ProfileConfigSettingsPage's showKept and reload, ProfileModelSettingsDetail, DelegationModelSettings, DelegationPauseSettings, FallbackModelsSettings, ChatSettingsDetail, MemorySettingsDetail; AboutSettingsDetail's caption and confirmation)
+- Tests: `ConduitTests/OfflineChatCacheTests.swift` (Kept answers), `ConduitTests/AppStateMultiDashboardTests.swift` (Kept settings answers)
+
+**Rulings**
+- Every screen shows its last saved state at once, and an update never redraws the whole screen (Eric, 2026-10-30, issue #1533).
+- An answer is kept per dashboard, profile and route in the saved chats' store, so every wipe of the saved chats takes it, and a deleted bot's go with it. A read is kept only while its dashboard is still the one open and nothing was wiped since it was asked. The open profile's are read ahead with its chats; memory holds the 32 used last, and an answer over 2 MB isn't kept.
+- The kept file leaves out credential-shaped keys at any depth (an API key, a token, a password or secret, an Authorization header, a cookie), since a config can hold a custom endpoint's key; `/api/env` is never kept.
+- A page draws its kept answer before its first frame, with its kept schema when it reads one, so no row comes or goes when Hermes answers; with nothing kept it shows its loader as before. A config Conduit saves is what the pages open on next.
+- Hermes' answer changes only the fields it changed: a field changed on the page since it asked (a save still in flight included), and the one being typed in, stay as they are. A read that fails keeps what's shown.
+- A save that writes several values or a whole list (Save model defaults, Save delegate defaults, Save fallbacks) waits for Hermes' answer, and the kept fallback list can't be edited until then: it may be stale and has no credentials to write back. A single setting saves at once, since its write reads Hermes' config first.
+
+**Open gaps**
+- Pulse, Voice and Usage settings, the Model sheet's catalog, Capabilities' tabs, the Bots roster, Tasks boards, and the Artifacts and Workspace listings still wait for Hermes; the next PRs of issue #1533's plan move them onto kept answers.
+- A page whose answers weren't read ahead (another profile's, or opened before the live list landed) reads its kept files on the main thread, a few kilobytes each.
+
+**Checked:** 2026-10-31, #1552 (the agent settings pages open on their kept answers).
+
 ## Composer drafts
 
 Unsent words, files and a quoted reply wait in the composer they were typed
@@ -2236,13 +2272,14 @@ voice reply model pickers · the Kanban task composer's catalog
 **Rulings**
 - A failed fetch says "Could not load models." with Try Again; "No models are available from this gateway." is only for a catalog that loaded empty; neither shows while loading. A re-load that fails keeps the rows it had (2026-10-24, from #1016's review).
 - A list that didn't load is never edited or saved: Save stays off until the catalog is in.
+- The Model page's editors open on the catalog kept from Hermes' last answer (see Screens that open on their last answer); a read that fails leaves it up with "Could not load models." and Try Again under it, and Save stays off until Hermes answers (#1552).
 
 **Open gaps**
 - The voice job and voice reply pickers get `[]` for a failed fetch (loadVoiceJobModelProviders), so they can't tell failed from empty.
 - The bot model picker says "Could not load models." without Try Again.
 - The Kanban composer shows a failed catalog as "No curated model catalog available", whose manual entry still works.
 
-**Checked:** 2026-10-27, at #1395 (search matches show only once the catalog is in; loading, failed and empty states unchanged, the Kanban composer's included); at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
+**Checked:** 2026-10-31, #1552 (the Model page's editors open on a kept catalog, with Try Again under it when the read fails); 2026-10-27, at #1395 (search matches show only once the catalog is in; loading, failed and empty states unchanged, the Kanban composer's included); at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
 
 ## The Model sheet's settings
 

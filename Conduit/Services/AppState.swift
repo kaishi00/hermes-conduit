@@ -5835,11 +5835,17 @@ final class AppState: ObservableObject {
     static let prefetchedSwitchProfiles = 8
 
     /// Reads ahead, off the main thread, what a tap shows next, so it comes
-    /// from memory: the copies of this profile's chats opened last, and for
-    /// a profile switch, each other profile's saved list and last chat. The
-    /// store does it once per profile until something is removed.
+    /// from memory: the copies of this profile's chats opened last and its
+    /// screens' kept answers, and for a profile switch, each other profile's
+    /// saved list and last chat. The store does it once per profile until
+    /// something is removed.
     private func prefetchSavedChats(dashboardID: UUID) {
-        offlineChatCache.prefetch(dashboardID: dashboardID, profile: activeProfile, transcripts: Self.prefetchedSavedCopies)
+        offlineChatCache.prefetch(
+            dashboardID: dashboardID,
+            profile: activeProfile,
+            transcripts: Self.prefetchedSavedCopies,
+            answers: true
+        )
         for profile in profiles.filter({ $0 != activeProfile }).prefix(Self.prefetchedSwitchProfiles) {
             offlineChatCache.prefetch(dashboardID: dashboardID, profile: profile, transcripts: 1)
         }
@@ -6177,9 +6183,9 @@ final class AppState: ObservableObject {
     }
 
     /// Settings' Delete Saved Chats: every dashboard's saved Chats lists,
-    /// conversation copies and kept pictures on this phone. The chat in use
-    /// and its picture reads carry on; the list is saved again once Hermes
-    /// next sends it.
+    /// conversation copies, kept pictures and the answers its screens last
+    /// showed, on this phone. The chat in use and its picture reads carry
+    /// on; the list is saved again once Hermes next sends it.
     func deleteSavedChats() {
         // Pending messages are the user's words, including those parked
         // on other dashboards. Keep their files rather than rewriting only
@@ -22879,8 +22885,12 @@ final class AppState: ObservableObject {
             forgetPinnedReplies(profile: bot.name)
             forgetBotChatPinnedReplies(of: bot)
         }
-        // Its chats' raw rows, kept for the history page, go on any dashboard.
-        if let dashboardID { offlineChatCache.removeHeldRows(dashboardID: dashboardID, profile: bot.name) }
+        // Its chats' raw rows, kept for the history page, go on any
+        // dashboard, and so do its settings pages' kept answers.
+        if let dashboardID {
+            offlineChatCache.removeHeldRows(dashboardID: dashboardID, profile: bot.name)
+            offlineChatCache.removeKeptAnswers(dashboardID: dashboardID, profile: bot.name)
+        }
         guard dashboardTicketBridge === bridge else { return nil }
         sessionStars.forget(profile: bot.name)
         sessionStars.save(to: defaults)
@@ -32757,26 +32767,41 @@ final class AppState: ObservableObject {
 
     func loadProfileSettings(keys: [String]) async -> [String: ProfileSettingValue] {
         let profile = activeProfile
-        guard let owner = currentDashboardRuntimeOwner() else { return keptDisplaySettings(keys: keys) }
-        let dashboardTicketBridge = owner.bridge
+        guard let owner = currentDashboardRuntimeOwner() else {
+            return keptProfileSettings(keys: keys) ?? keptDisplaySettings(keys: keys)
+        }
         do {
-            let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
+            let config = try await readKeepingAnswer(KeptRoute.config, profile: profile, owner: owner)
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return [:] }
-            return Dictionary(uniqueKeysWithValues: keys.compactMap { key -> (String, ProfileSettingValue)? in
-                if key == ReasoningDisplayMode.settingKey {
-                    // Worked out from two config values (ReasoningDisplayMode).
-                    let display = config["display"] as? [String: Any] ?? [:]
-                    return (key, .text(ReasoningDisplayMode(display: display).rawValue))
-                }
-                return profileSettingValue(in: config, key: key).map { (key, $0) }
-            })
+            return profileSettings(in: config, keys: keys)
         } catch {
             // A read that fails after a dashboard or profile switch belongs to
             // the settings page that was left; the one on screen has no error.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return [:] }
             errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
-            return keptDisplaySettings(keys: keys)
+            return keptProfileSettings(keys: keys) ?? keptDisplaySettings(keys: keys)
         }
+    }
+
+    /// What the settings pages open on before Hermes answers, and keep when
+    /// it can't: the config last read, kept on the phone, with the display
+    /// settings the chats follow meanwhile over it. Nil when no config is
+    /// kept, so a page waits rather than show Hermes' defaults as its own.
+    func keptProfileSettings(keys: [String]) -> [String: ProfileSettingValue]? {
+        guard let config = keptAnswer(KeptRoute.config) else { return nil }
+        return profileSettings(in: config, keys: keys)
+            .merging(keptDisplaySettings(keys: keys)) { _, display in display }
+    }
+
+    private func profileSettings(in config: [String: Any], keys: [String]) -> [String: ProfileSettingValue] {
+        Dictionary(uniqueKeysWithValues: keys.compactMap { key -> (String, ProfileSettingValue)? in
+            if key == ReasoningDisplayMode.settingKey {
+                // Worked out from two config values (ReasoningDisplayMode).
+                let display = config["display"] as? [String: Any] ?? [:]
+                return (key, .text(ReasoningDisplayMode(display: display).rawValue))
+            }
+            return profileSettingValue(in: config, key: key).map { (key, $0) }
+        })
     }
 
     /// Unread, the display rows show what the chats follow meanwhile: the
@@ -32796,54 +32821,52 @@ final class AppState: ObservableObject {
 
     func loadProfileConfigOptions() async -> ProfileConfigOptions {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return ProfileConfigOptions() }
-        var result = ProfileConfigOptions()
+        guard let owner = currentDashboardRuntimeOwner() else { return keptProfileConfigOptions() ?? ProfileConfigOptions() }
         do {
-            async let configRequest = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
-            async let pluginsRequest = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/dashboard/plugins/hub", profile: profile))
+            async let configRequest = readKeepingAnswer(KeptRoute.config, profile: profile, owner: owner)
+            async let pluginsRequest = readKeepingAnswer(KeptRoute.pluginsHub, profile: profile, owner: owner)
             let (config, plugins) = try await (configRequest, pluginsRequest)
-            guard profile == activeProfile else { return result }
-            if let personalities = ((config["agent"] as? [String: Any])?["personalities"] as? [String: Any])?.keys {
-                result.personalities = personalities.sorted()
-            }
-            let providers = plugins["providers"] as? [String: Any] ?? [:]
-            let memoryOptions = providers["memory_options"] as? [[String: Any]] ?? []
-            result.memoryProviders = memoryOptions.compactMap { option in
-                option["status"] as? String == "ready" ? option["name"] as? String : nil
-            }.sorted()
-            let contextOptions = providers["context_options"] as? [[String: Any]] ?? []
-            result.contextEngines = Array(Set(result.contextEngines + contextOptions.compactMap { $0["name"] as? String })).sorted()
+            guard profile == activeProfile else { return ProfileConfigOptions() }
+            return Self.profileConfigOptions(config: config, plugins: plugins)
         } catch {
             // Options are supplementary; retain safe built-ins when an older
             // dashboard does not expose its plugin hub.
+            return keptProfileConfigOptions() ?? ProfileConfigOptions()
         }
+    }
+
+    /// The choices last read, from the answers kept on the phone, or nil
+    /// when they aren't kept.
+    func keptProfileConfigOptions() -> ProfileConfigOptions? {
+        guard let config = keptAnswer(KeptRoute.config), let plugins = keptAnswer(KeptRoute.pluginsHub) else { return nil }
+        return Self.profileConfigOptions(config: config, plugins: plugins)
+    }
+
+    static func profileConfigOptions(config: [String: Any], plugins: [String: Any]) -> ProfileConfigOptions {
+        var result = ProfileConfigOptions()
+        if let personalities = ((config["agent"] as? [String: Any])?["personalities"] as? [String: Any])?.keys {
+            result.personalities = personalities.sorted()
+        }
+        let providers = plugins["providers"] as? [String: Any] ?? [:]
+        let memoryOptions = providers["memory_options"] as? [[String: Any]] ?? []
+        result.memoryProviders = memoryOptions.compactMap { option in
+            option["status"] as? String == "ready" ? option["name"] as? String : nil
+        }.sorted()
+        let contextOptions = providers["context_options"] as? [[String: Any]] ?? []
+        result.contextEngines = Array(Set(result.contextEngines + contextOptions.compactMap { $0["name"] as? String })).sorted()
         return result
     }
 
     func loadProfileModelDefaults() async -> ProfileModelDefaults? {
         let profile = activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { return nil }
-        let dashboardTicketBridge = owner.bridge
         do {
-            async let optionsRequest = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/model/options?explicit_only=true", profile: profile))
-            async let infoRequest = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/model/info", profile: profile))
-            async let configRequest = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
+            async let optionsRequest = readKeepingAnswer(KeptRoute.modelOptions, profile: profile, owner: owner)
+            async let infoRequest = readKeepingAnswer(KeptRoute.modelInfo, profile: profile, owner: owner)
+            async let configRequest = readKeepingAnswer(KeptRoute.config, profile: profile, owner: owner)
             let (options, info, config) = try await (optionsRequest, infoRequest, configRequest)
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
-            let optionsObject = AnyCodable.from(options).objectValue ?? [:]
-            let providers = (optionsObject["providers"]?.arrayValue ?? []).compactMap(ProviderInfo.init(from:))
-            // Profile config is the persisted default. Hermes stores it under
-            // `model.default` and `model.provider`, but `/api/config` flattens
-            // `model` to the bare model string and drops the provider, so the
-            // provider comes from `/api/model/info` (read from the same config)
-            // or the options payload's current selection.
-            let modelConfig = config["model"] as? [String: Any] ?? [:]
-            let model = [modelConfig["default"] as? String, config["model"] as? String, info["model"] as? String, optionsObject["model"]?.stringValue]
-                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first(where: { !$0.isEmpty }) ?? ""
-            let provider = [modelConfig["provider"] as? String, info["provider"] as? String, optionsObject["provider"]?.stringValue]
-                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first(where: { !$0.isEmpty }) ?? ""
-            let reasoning = Self.profileReasoningEffort(in: config)
-            return ProfileModelDefaults(providers: providers, model: model, provider: provider, reasoning: reasoning)
+            return Self.profileModelDefaults(options: options, info: info, config: config)
         } catch {
             // Same fence as the success path: a failure from the dashboard or
             // profile switched away from is not the on-screen page's error.
@@ -32851,6 +32874,36 @@ final class AppState: ObservableObject {
             errorMessage = AppLocalization.string("Could not load model defaults: \(UserFacingError.message(for: error))")
             return nil
         }
+    }
+
+    /// The Model page's catalog and defaults as last read, from the answers
+    /// kept on the phone, or nil when they aren't all kept.
+    func keptProfileModelDefaults() -> ProfileModelDefaults? {
+        guard let options = keptAnswer(KeptRoute.modelOptions),
+              let info = keptAnswer(KeptRoute.modelInfo),
+              let config = keptAnswer(KeptRoute.config) else { return nil }
+        return Self.profileModelDefaults(options: options, info: info, config: config)
+    }
+
+    static func profileModelDefaults(
+        options: [String: Any],
+        info: [String: Any],
+        config: [String: Any]
+    ) -> ProfileModelDefaults {
+        let optionsObject = AnyCodable.from(options).objectValue ?? [:]
+        let providers = (optionsObject["providers"]?.arrayValue ?? []).compactMap(ProviderInfo.init(from:))
+        // Profile config is the persisted default. Hermes stores it under
+        // `model.default` and `model.provider`, but `/api/config` flattens
+        // `model` to the bare model string and drops the provider, so the
+        // provider comes from `/api/model/info` (read from the same config)
+        // or the options payload's current selection.
+        let modelConfig = config["model"] as? [String: Any] ?? [:]
+        let model = [modelConfig["default"] as? String, config["model"] as? String, info["model"] as? String, optionsObject["model"]?.stringValue]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first(where: { !$0.isEmpty }) ?? ""
+        let provider = [modelConfig["provider"] as? String, info["provider"] as? String, optionsObject["provider"]?.stringValue]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first(where: { !$0.isEmpty }) ?? ""
+        let reasoning = profileReasoningEffort(in: config)
+        return ProfileModelDefaults(providers: providers, model: model, provider: provider, reasoning: reasoning)
     }
 
     func setProfileMainModel(provider: String, model: String, reasoning: String) async -> Bool {
@@ -32918,14 +32971,17 @@ final class AppState: ObservableObject {
         try await ProfileConfigWriteQueue.runThrowing { @MainActor [weak self] in
             guard let self, let owner, self.ownsDashboardRuntime(owner) else { throw CancellationError() }
             let bridge = owner.bridge
-            var config = try await bridge.requestJSON(path: self.dashboardPath("/api/config", profile: profile))
+            let removals = self.offlineChatCache.removals
+            var config = try await bridge.requestJSON(path: self.dashboardPath(KeptRoute.config, profile: profile))
             guard self.ownsDashboardRuntime(owner) else { throw CancellationError() }
             change(&config)
             _ = try await bridge.requestJSON(
-                path: self.dashboardPath("/api/config", profile: profile),
+                path: self.dashboardPath(KeptRoute.config, profile: profile),
                 method: "PUT",
                 body: ["config": config, "profile": profile]
             )
+            // What the settings pages open on next is what was just saved.
+            self.keepAnswer(config, for: KeptRoute.config, profile: profile, owner: owner, removals: removals)
         }
     }
 
@@ -32948,23 +33004,27 @@ final class AppState: ObservableObject {
     /// setting".
     func loadProfileConfigSchema() async -> ProfileConfigSchema {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return ProfileConfigSchema() }
+        guard let owner = currentDashboardRuntimeOwner() else { return keptProfileConfigSchema() ?? ProfileConfigSchema() }
         do {
-            let json = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config/schema", profile: profile))
+            let json = try await readKeepingAnswer(KeptRoute.configSchema, profile: profile, owner: owner)
             guard profile == activeProfile else { return ProfileConfigSchema() }
             return ProfileConfigSchema(json: json)
         } catch {
-            return ProfileConfigSchema()
+            return keptProfileConfigSchema() ?? ProfileConfigSchema()
         }
+    }
+
+    /// The schema last read, kept on the phone, or nil when none is.
+    func keptProfileConfigSchema() -> ProfileConfigSchema? {
+        keptAnswer(KeptRoute.configSchema).map(ProfileConfigSchema.init(json:))
     }
 
     /// The profile's `fallback_providers`, or nil when the config couldn't load.
     func loadProfileFallbackModels() async -> [ProfileFallbackModel]? {
         let profile = activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { return nil }
-        let dashboardTicketBridge = owner.bridge
         do {
-            let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
+            let config = try await readKeepingAnswer(KeptRoute.config, profile: profile, owner: owner)
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
             return ProfileFallbackModel.list(from: config["fallback_providers"])
         } catch {
@@ -32974,6 +33034,12 @@ final class AppState: ObservableObject {
             errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
             return nil
         }
+    }
+
+    /// The fallbacks last read, from the config kept on the phone, or nil
+    /// when none is kept.
+    func keptProfileFallbackModels() -> [ProfileFallbackModel]? {
+        keptAnswer(KeptRoute.config).map { ProfileFallbackModel.list(from: $0["fallback_providers"]) }
     }
 
     /// Saves the complete entries in order. `PUT /api/config` deep-merges
@@ -33006,12 +33072,18 @@ final class AppState: ObservableObject {
             if profile == "default" && (key == "context.engine" || key == "memory.provider") {
                 let raw = value.textValue ?? ""
                 let body = key == "context.engine" ? ["context_engine": raw] : ["memory_provider": raw]
+                let removals = offlineChatCache.removals
                 // Hermes writes the profile config for it: in turn with
                 // every other config save.
                 try await ProfileConfigWriteQueue.runThrowing {
                     _ = try await dashboardTicketBridge.requestJSON(path: "/api/dashboard/plugin-providers", method: "PUT", body: body)
                 }
                 guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
+                // The page opens on it next time, as on a config it saved.
+                if var config = keptAnswer(KeptRoute.config) {
+                    setProfileSettingValue(value, in: &config, key: key)
+                    keepAnswer(config, for: KeptRoute.config, profile: profile, owner: owner, removals: removals)
+                }
                 return true
             }
             let reasoning = key == ReasoningDisplayMode.settingKey ? value.textValue.flatMap(ReasoningDisplayMode.init(rawValue:)) : nil
@@ -33162,6 +33234,48 @@ final class AppState: ObservableObject {
 
     private func dashboardPath(_ path: String, profile: String) -> String {
         DashboardPath.withProfile(path, profile: profile)
+    }
+
+    /// The reads whose answers the settings pages keep (#1533): dashboard
+    /// routes, and a gateway call kept beside them.
+    enum KeptRoute {
+        static let config = "/api/config"
+        static let configSchema = "/api/config/schema"
+        static let modelOptions = "/api/model/options?explicit_only=true"
+        static let modelInfo = "/api/model/info"
+        static let pluginsHub = "/api/dashboard/plugins/hub"
+        static let delegationStatus = "rpc:delegation.status"
+    }
+
+    /// A read whose answer is kept for the screen that shows it, so that
+    /// screen opens on it next time (#1533): per dashboard, profile and
+    /// route, in the saved chats' store, which wipes it with them.
+    private func readKeepingAnswer(_ route: String, profile: String, owner: DashboardRuntimeOwner) async throws -> [String: Any] {
+        let removals = offlineChatCache.removals
+        let answer = try await owner.bridge.requestJSON(path: dashboardPath(route, profile: profile))
+        keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals)
+        return answer
+    }
+
+    /// Kept only while the read still belongs to the dashboard it asked,
+    /// with nothing wiped since it was asked (a sign-out, Delete Saved
+    /// Chats, a deleted bot).
+    private func keepAnswer(
+        _ answer: [String: Any],
+        for route: String,
+        profile: String,
+        owner: DashboardRuntimeOwner,
+        removals: Int
+    ) {
+        guard let dashboardID = owner.dashboardID, ownsDashboardRuntime(owner), offlineChatCache.removals == removals else { return }
+        offlineChatCache.recordAnswer(answer, route: route, dashboardID: dashboardID, profile: profile)
+    }
+
+    /// The answer the active profile's screen last read for the route, or
+    /// nil when none is kept.
+    private func keptAnswer(_ route: String) -> [String: Any]? {
+        guard let dashboardID = activeDashboardID else { return nil }
+        return offlineChatCache.keptAnswer(route, dashboardID: dashboardID, profile: activeProfile)
     }
 
     /// Hermes' value wins and is kept on the phone; a read that fails keeps
@@ -34291,14 +34405,34 @@ final class AppState: ObservableObject {
     /// Hermes can't say (#820).
     func loadDelegationPaused() async -> Bool? {
         guard let client else { return nil }
-        return try? await client.delegationPaused()
+        let owner = currentDashboardRuntimeOwner()
+        let profile = activeProfile
+        let removals = offlineChatCache.removals
+        guard let paused = try? await client.delegationPaused() else { return nil }
+        if let owner {
+            keepAnswer(["paused": paused], for: KeptRoute.delegationStatus, profile: profile, owner: owner, removals: removals)
+        }
+        return paused
+    }
+
+    /// Whether delegation was paused when the page last read it, kept on
+    /// the phone, or nil when that isn't kept.
+    func keptDelegationPaused() -> Bool? {
+        keptAnswer(KeptRoute.delegationStatus)?["paused"] as? Bool
     }
 
     /// Holds or releases new delegate agents; returns the state Hermes
     /// reports, or nil when it failed.
     func setDelegationPaused(_ paused: Bool) async -> Bool? {
         guard let client else { return nil }
-        return try? await client.setDelegationPaused(paused)
+        let owner = currentDashboardRuntimeOwner()
+        let profile = activeProfile
+        let removals = offlineChatCache.removals
+        guard let state = try? await client.setDelegationPaused(paused) else { return nil }
+        if let owner {
+            keepAnswer(["paused": state], for: KeptRoute.delegationStatus, profile: profile, owner: owner, removals: removals)
+        }
+        return state
     }
 
     /// Keeps only the delegate cards of the conversation now open (its

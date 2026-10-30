@@ -3084,3 +3084,168 @@ private final class OpenedChats {
 private final class SentPrompts {
     var prompts: [(sessionID: String, text: String)] = []
 }
+
+// MARK: - Kept answers (#1533)
+
+extension OfflineChatCacheTests {
+    /// A screen's answer is kept for its dashboard, profile and route, and
+    /// the next launch's store reads it from its file.
+    func testAKeptAnswerIsReadBackForItsDashboardProfileAndRoute() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        store.recordAnswer(["display": ["skin": "ares"]], route: "/api/config", dashboardID: dashboard, profile: "default")
+
+        let kept = store.keptAnswer("/api/config", dashboardID: dashboard, profile: "default")
+        XCTAssertEqual(kept?["display"] as? [String: String], ["skin": "ares"])
+        XCTAssertNil(store.keptAnswer("/api/config/schema", dashboardID: dashboard, profile: "default"), "Another route")
+        XCTAssertNil(store.keptAnswer("/api/config", dashboardID: dashboard, profile: "work"), "Another profile")
+        XCTAssertNil(store.keptAnswer("/api/config", dashboardID: UUID(), profile: "default"), "Another dashboard")
+
+        let file = store.keptAnswerFileURL("/api/config", dashboardID: dashboard, profile: "default")
+        let next = OfflineChatCacheStore(directory: file.deletingLastPathComponent())
+        let read = next.keptAnswer("/api/config", dashboardID: dashboard, profile: "default")
+        XCTAssertEqual(read?["display"] as? [String: String], ["skin": "ares"], "Read from its file")
+    }
+
+    /// Every wipe that takes the saved chats takes the kept answers:
+    /// Delete Saved Chats, a dashboard signed out of or removed, a wipe of
+    /// everything.
+    func testKeptAnswersGoWithTheSavedChats() {
+        let dashboard = UUID()
+        let wipes: [(OfflineChatCacheStore) -> Void] = [
+            { $0.removeSavedChats() },
+            { $0.removeDashboard(dashboard) },
+            { $0.removeAll() },
+        ]
+        for wipe in wipes {
+            let store = makeStore()
+            store.recordAnswer(["model": "m"], route: "/api/config", dashboardID: dashboard, profile: "default")
+            let file = store.keptAnswerFileURL("/api/config", dashboardID: dashboard, profile: "default")
+            XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+
+            wipe(store)
+
+            XCTAssertNil(store.keptAnswer("/api/config", dashboardID: dashboard, profile: "default"))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        }
+    }
+
+    /// A deleted bot's kept answers go, and only its: a new bot of the same
+    /// name doesn't open its settings on them.
+    func testADeletedProfileTakesOnlyItsKeptAnswers() {
+        let store = makeStore()
+        let dashboard = UUID()
+        for profile in ["bot", "bot2", "default"] {
+            store.recordAnswer(["profile": profile], route: "/api/config", dashboardID: dashboard, profile: profile)
+        }
+        let removals = store.removals
+
+        store.removeKeptAnswers(dashboardID: dashboard, profile: "bot")
+
+        XCTAssertNil(store.keptAnswer("/api/config", dashboardID: dashboard, profile: "bot"))
+        let file = store.keptAnswerFileURL("/api/config", dashboardID: dashboard, profile: "bot")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        for profile in ["bot2", "default"] {
+            XCTAssertEqual(store.keptAnswer("/api/config", dashboardID: dashboard, profile: profile)?["profile"] as? String, profile)
+        }
+        XCTAssertNotEqual(store.removals, removals, "A read in flight across the delete keeps nothing")
+    }
+
+    /// The open profile's kept answers are read ahead with its chats, so
+    /// its settings pages open on them without reading a file; a profile
+    /// read ahead only for a switch keeps its answers on disk.
+    func testTheOpenProfilesKeptAnswersAreReadAhead() throws {
+        let writer = makeStore()
+        let dashboard = UUID()
+        for profile in ["default", "work"] {
+            writer.recordAnswer(["profile": profile], route: "/api/config", dashboardID: dashboard, profile: profile)
+        }
+        let directory = writer.keptAnswerFileURL("/api/config", dashboardID: dashboard, profile: "default")
+            .deletingLastPathComponent()
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+        addTeardownBlock { store.waitForPendingWrites() }
+
+        store.prefetch(dashboardID: dashboard, profile: "default", transcripts: 0, answers: true)
+        store.prefetch(dashboardID: dashboard, profile: "work", transcripts: 1)
+        store.waitForPendingWrites()
+        for profile in ["default", "work"] {
+            try FileManager.default.removeItem(at: store.keptAnswerFileURL("/api/config", dashboardID: dashboard, profile: profile))
+        }
+
+        XCTAssertEqual(store.keptAnswer("/api/config", dashboardID: dashboard, profile: "default")?["profile"] as? String, "default")
+        XCTAssertNil(store.keptAnswer("/api/config", dashboardID: dashboard, profile: "work"), "Only the open profile's")
+    }
+
+    /// Memory holds the answers used last, up to its cap; an older one is
+    /// read from its file again.
+    func testMemoryHoldsTheKeptAnswersUsedLast() throws {
+        let store = makeStore(writesAsynchronously: true)
+        let dashboard = UUID()
+        let routes = (0...OfflineChatCacheStore.maxKeptAnswersInMemory).map { "/route/\($0)" }
+        for route in routes {
+            store.recordAnswer(["route": route], route: route, dashboardID: dashboard, profile: "default")
+        }
+        store.waitForPendingWrites()
+        let oldest = try XCTUnwrap(routes.first)
+        let newest = try XCTUnwrap(routes.last)
+        for route in [oldest, newest] {
+            try FileManager.default.removeItem(at: store.keptAnswerFileURL(route, dashboardID: dashboard, profile: "default"))
+        }
+
+        XCTAssertNil(store.keptAnswer(oldest, dashboardID: dashboard, profile: "default"), "Past the cap, and its file is gone")
+        XCTAssertEqual(store.keptAnswer(newest, dashboardID: dashboard, profile: "default")?["route"] as? String, newest)
+    }
+
+    /// An answer too big to keep isn't written, and the older one goes, so
+    /// the screen doesn't open on it next time.
+    func testAnAnswerTooBigToKeepDropsTheOlderOne() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let route = AppState.KeptRoute.modelOptions
+        store.recordAnswer(["providers": [String]()], route: route, dashboardID: dashboard, profile: "default")
+        let file = store.keptAnswerFileURL(route, dashboardID: dashboard, profile: "default")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+
+        let huge = String(repeating: "x", count: OfflineChatCacheStore.maxKeptAnswerBytes)
+        store.recordAnswer(["providers": [huge]], route: route, dashboardID: dashboard, profile: "default")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        let next = OfflineChatCacheStore(directory: file.deletingLastPathComponent())
+        XCTAssertNil(next.keptAnswer(route, dashboardID: dashboard, profile: "default"))
+    }
+
+    /// The file leaves out credentials at any depth (a custom endpoint's
+    /// API key, an MCP server's token and Authorization header, a
+    /// fallback's key), and keeps settings that only mention them.
+    func testAKeptAnswersFileLeavesOutCredentials() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let config: [String: Any] = [
+            "model": ["default": "m", "api_key": "sk-live-1"],
+            "mcp_servers": ["github": [
+                "env": ["GITHUB_TOKEN": "ghp-2"],
+                "headers": ["Authorization": "Bearer three", "X-Api-Key": "key-4"],
+            ]],
+            "fallback_providers": [["provider": "custom", "model": "f", "api_key": "sk-fallback-5"]],
+            "security": ["redact_secrets": true],
+            "agent": ["max_turns": 90],
+        ]
+
+        store.recordAnswer(config, route: AppState.KeptRoute.config, dashboardID: dashboard, profile: "default")
+
+        let file = store.keptAnswerFileURL(AppState.KeptRoute.config, dashboardID: dashboard, profile: "default")
+        let text = try XCTUnwrap(String(data: Data(contentsOf: file), encoding: .utf8))
+        for secret in ["sk-live-1", "ghp-2", "Bearer three", "key-4", "sk-fallback-5"] {
+            XCTAssertFalse(text.contains(secret), secret)
+        }
+        let next = OfflineChatCacheStore(directory: file.deletingLastPathComponent())
+        let kept = try XCTUnwrap(next.keptAnswer(AppState.KeptRoute.config, dashboardID: dashboard, profile: "default"))
+        XCTAssertEqual(kept["model"] as? [String: String], ["default": "m"])
+        let github = (kept["mcp_servers"] as? [String: Any])?["github"] as? [String: Any]
+        XCTAssertEqual(github?["env"] as? [String: String], [:])
+        XCTAssertEqual(github?["headers"] as? [String: String], [:])
+        XCTAssertEqual((kept["fallback_providers"] as? [[String: String]])?.first, ["provider": "custom", "model": "f"])
+        XCTAssertEqual((kept["security"] as? [String: Bool])?["redact_secrets"], true, "A setting about secrets stays")
+        XCTAssertEqual((kept["agent"] as? [String: Int])?["max_turns"], 90)
+    }
+}
