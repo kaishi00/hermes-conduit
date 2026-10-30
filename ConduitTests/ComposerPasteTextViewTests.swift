@@ -687,6 +687,29 @@ final class ComposerPasteTextViewTests: XCTestCase {
     /// existing clipboard content is what wedges CI simulators, while clears
     /// and writes stay safe. The trailing clear also keeps image payloads from
     /// leaking into later suites.
+    /// A field a send rebuilt with focus (a Mac, a hardware keyboard) is
+    /// updated before it's in the window; it takes focus as it arrives, and
+    /// one that no longer wants it doesn't (#1527).
+    func testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 120))
+        window.addSubview(UIView(frame: window.bounds))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        let wanted = ImagePasteTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        wanted.isEditable = true
+        wanted.focusesInWindow = true
+        window.addSubview(wanted)
+        XCTAssertTrue(wanted.isFirstResponder)
+        wanted.resignFirstResponder()
+        wanted.removeFromSuperview()
+
+        let unwanted = ImagePasteTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        unwanted.isEditable = true
+        window.addSubview(unwanted)
+        XCTAssertFalse(unwanted.isFirstResponder)
+    }
+
     private func withClearedGeneralPasteboard(_ body: () throws -> Void) rethrows {
         let pasteboard = UIPasteboard.general
         pasteboard.items = []

@@ -1761,7 +1761,7 @@ Keyboard caption is unchanged, as it describes the option)
   command sending, Shift-Return and the IME's Return still reaching the
   text, in chats, rooms and the full editor.
 
-**Checked:** 2026-10-29, #1515 (the same fields take a long paste as an attachment, `onLongTextPaste`; Return unchanged); 2026-10-28, #1460 (inline prediction off on a Mac).
+**Checked:** 2026-10-30, #1527 (a Return send keeps the field's focus on a Mac or with a hardware keyboard, see Composer focus after a send; ImagePasteTextView takes focus once in the window); 2026-10-29, #1515 (the same fields take a long paste as an attachment, `onLongTextPaste`; Return unchanged); 2026-10-28, #1460 (inline prediction off on a Mac).
 
 ## Composer at rest and expanded
 
@@ -1838,7 +1838,7 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; composerInUse and hidesMinimisedCallBar, which follow focus; `Conduit/Views/ChatView.swift` reads the latter through V2ComposerTypingKey), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView and ImagePasteTextView.didMoveToWindow: a field rebuilt with focus takes it once it's in the window)
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`, opened by ComposerBar's expand button (which takes focus from the field) and its sheet
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send)
-- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndWithAHardwareKeyboard)
+- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow)
 
 **Rulings**
 - On a Mac, or with a hardware keyboard on an iPad or iPhone, a send or
