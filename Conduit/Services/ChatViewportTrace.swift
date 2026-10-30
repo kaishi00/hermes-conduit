@@ -26,6 +26,7 @@ final class ChatViewportTrace {
             entries.removeFirst(entries.count - limit)
         }
         logger.debug("\(text, privacy: .public)")
+        MainThreadHangWatchdog.shared.record(String(format: "%.3f %@", CFAbsoluteTimeGetCurrent(), text))
     }
 
     func dump() -> String {
