@@ -1795,9 +1795,8 @@ Settings caption describes it
   #1512, issue 1483). A Mac's composer never rests, so a send that keeps
   the field focused changes nothing there. With a hardware keyboard on an
   iPhone or a narrow iPad a send keeps focus too, so a composer that rests
-  stays expanded after it until a tap on the transcript; that case waits on
-  the maintainer's decision (2026-10-30, #1527, see Composer focus after a
-  send).
+  stays expanded after it until a tap on the transcript (Eric, 2026-10-30,
+  #1527, see Composer focus after a send).
 - A composer that stays expanded keeps the big voice button beside it, as the
   resting bar does, rather than sliding it aside while typing; the controls
   row then leaves out its own voice button, and its mic when the big button
@@ -1849,8 +1848,8 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   Stop leaves the field focused when the user was typing, as a desktop
   client does; a click or tap on the transcript still takes focus away.
   With only the on-screen keyboard it goes down, so the reply has the
-  screen (Eric asked for it on a Mac, 2026-10-30, #1527; the hardware
-  keyboard case follows the plan card and model search, see Open gaps).
+  screen (Eric asked for it on a Mac, and chose the same for an iPad or
+  iPhone with a hardware keyboard, 2026-10-30, #1527).
   The check is for a connected keyboard, as the plan card's is.
 - Where the field keeps focus, focus alone doesn't hide the minimised call
   bar: it shows after a send and hides only while words are typed, so a
@@ -1864,10 +1863,6 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 - Not yet seen on a device: a Mac and an iPad with a keyboard sending from
   the field and from the full editor, and which controls besides the
   transcript take focus from the field on a Mac.
-- The hardware keyboard on an iPad or iPhone gets the Mac's rule without a
-  decision of its own from the maintainer (asked 2026-10-30): there a
-  composer that rests stays expanded after a send until a tap on the
-  transcript.
 - Group rooms keep the field focused after a send on a touch-only iPhone
   too, where a chat's keyboard goes down; the maintainer decides whether
   rooms follow the chat there.
