@@ -26,8 +26,8 @@
         "apiKey": "{env:ZAI_API_KEY}"
       },
       "models": {
-        "glm-5.3": {
-          "name": "GLM-5.3",
+        "glm-5.3-flash": {
+          "name": "GLM-5.3-Flash",
           "options": {
             "reasoningEffort": "max"
           }
