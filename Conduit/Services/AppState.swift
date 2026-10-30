@@ -30123,9 +30123,13 @@ final class AppState: ObservableObject {
         query: String,
         using bridge: DashboardTicketBridge
     ) async -> [String: Any]? {
-        if query == PersistedTranscriptPagination.tailQuery(offset: 0),
-           case .payload(let page)? = await historyPagePayload(sessionId: sessionId, profile: profile, query: query, using: bridge) {
-            return page
+        if query == PersistedTranscriptPagination.tailQuery(offset: 0) {
+            switch await historyPagePayload(sessionId: sessionId, profile: profile, query: query, using: bridge) {
+            case .payload(let page)?: return page
+            // The link's own trouble: no second wait on Hermes' route.
+            case .failed?: return nil
+            case .unavailable?, nil: break
+            }
         }
         return try? await bridge.requestJSON(
             path: Self.sessionMessagesPath(sessionId: sessionId, profile: profile, query: query)
@@ -30153,6 +30157,8 @@ final class AppState: ObservableObject {
               !historyPageRefusedScopes.contains(HistoryPage.scopeKey(dashboardID: dashboardID, profile: profile)) else { return nil }
         // Kept under the chat's durable id: a new chat opens by its runtime
         // id, and the same chat by its stored one after a relaunch.
+        // A query the route doesn't carry reads no held rows.
+        guard HistoryPage.body(sessionId: sessionId, query: query, known: []) != nil else { return nil }
         let heldID = canonicalSessionID(for: sessionId) ?? sessionId
         let heldURL = offlineChatCache.heldRowsFileURL(heldID, dashboardID: dashboardID, profile: profile)
         let removals = offlineChatCache.removals
