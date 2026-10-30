@@ -483,7 +483,8 @@ struct ChatView: View {
                         message: target.message,
                         gatewayResolver: appState.gatewayMediaResolver,
                         step: target.step,
-                        stepsAbove: target.stepsAbove
+                        stepsAbove: target.stepsAbove,
+                        reviewRun: target.reviewRun
                     )
                         .equatable()
                         .id(target.id)
@@ -1254,16 +1255,20 @@ struct MessageBubble: View, Equatable {
     /// On a reply, the run of steps above it when it has thinking (the
     /// reply's Show thinking). Nil outside the chat transcript.
     var stepsAbove: ChatStepGroup? = nil
+    /// A review's place in its run of reviews, which folds into one line.
+    /// Nil outside the chat transcript.
+    var reviewRun: ChatReviewPlacement? = nil
 
     nonisolated static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
         lhs.message == rhs.message && lhs.gatewayResolver === rhs.gatewayResolver && lhs.step == rhs.step
-            && lhs.stepsAbove == rhs.stepsAbove
+            && lhs.stepsAbove == rhs.stepsAbove && lhs.reviewRun == rhs.reviewRun
     }
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions
     /// Acted on, not observed: what a row shows comes from `rowState`.
     private var appState: AppState { rowActions.required }
     @Environment(\.openURL) private var openURL
+    @Environment(\.chatRowDisclosure) private var rowDisclosure
 
     var body: some View {
         let _ = TranscriptPerf.note(.settledBubbleBody)
@@ -1390,7 +1395,13 @@ struct MessageBubble: View, Equatable {
                     appState.openVoiceCallChat(markerID: link.originMarkerID)
                 }
             } else if let review = message.review ?? MessageNormalizer.reviewActivity(fromText: message.content) {
-                ReviewSummaryCard(activity: review, timestamp: message.timestamp)
+                if let reviewRun, reviewRun.run.count >= 2, reviewRun.index == 0, let disclosure = rowDisclosure {
+                    ReviewRunCard(run: reviewRun.run, disclosure: disclosure, toggles: disclosure.groupToggles) {
+                        ReviewSummaryCard(activity: review, timestamp: message.timestamp)
+                    }
+                } else {
+                    ReviewSummaryCard(activity: review, timestamp: message.timestamp)
+                }
             } else if let modelChange = MessageNormalizer.modelChangeActivity(
                 fromText: message.rawContent ?? message.content
             ) {
@@ -2980,6 +2991,61 @@ private struct ReviewSummaryCard: View {
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.conduitAura.opacity(0.18), lineWidth: 1)
+        }
+    }
+}
+
+/// A run of two or more reviews (ChatReviewRun): one line with the count
+/// and the last one's time, and the first review's card under it while
+/// open (the run's other rows draw theirs). Like ReviewSummaryCard, outside
+/// the chat text-size preference.
+private struct ReviewRunCard<FirstCard: View>: View {
+    let run: ChatReviewRun
+    let disclosure: ChatRowDisclosure
+    @ObservedObject var toggles: ChatStepGroupToggles
+    @ViewBuilder let firstCard: FirstCard
+
+    var body: some View {
+        let expanded = disclosure.isGroupExpanded(run.id, default: false)
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(ConduitMotion.response) {
+                    Haptics.light()
+                    disclosure.willToggleGroup(run.id, to: !expanded)
+                }
+            } label: {
+                HStack(alignment: .center, spacing: 10) {
+                    Image(systemName: "internaldrive.fill")
+                        .foregroundStyle(.conduitAura)
+                        .frame(width: 28, height: 28)
+                        .background(Color.conduitAura.opacity(0.14), in: Circle())
+                    CardHeaderCaption(timestamp: run.lastTimestamp) {
+                        Text("\(run.count) self-improvement reviews")
+                            .scaledFont(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                    }
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .scaledFont(.caption.weight(.semibold))
+                        .conduitFixedGlyph()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+                .chatCard(cornerRadius: 18, tint: .conduitAura.opacity(0.09))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color.conduitAura.opacity(0.18), lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
+
+            if expanded {
+                firstCard
+            }
         }
     }
 }

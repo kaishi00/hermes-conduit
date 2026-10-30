@@ -118,7 +118,8 @@ private struct OfflineChatRows: View {
                 message: row.message,
                 gatewayResolver: appState.gatewayMediaResolver,
                 step: row.step,
-                stepsAbove: row.stepsAbove
+                stepsAbove: row.stepsAbove,
+                reviewRun: row.reviewRun
             )
             .equatable()
         }
