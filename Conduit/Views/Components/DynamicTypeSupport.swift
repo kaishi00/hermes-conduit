@@ -86,3 +86,31 @@ struct EqualWidthHStack: Layout {
         }
     }
 }
+
+/// A composer's placeholder. At regular sizes it wraps like the text it
+/// stands for, so a long hint keeps the agent's name (#1476). At
+/// accessibility sizes a narrow field broke it mid-word, a few letters a
+/// line, and the bar grew to hold them; there it keeps to one line: the
+/// whole hint when it fits, then `short` (without the name), then the
+/// shortest one shrunk to fit and cut off.
+struct ComposerPlaceholderText: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let text: String
+    var short: String? = nil
+
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            ViewThatFits(in: .horizontal) {
+                Text(text).lineLimit(1)
+                if let short, short != text {
+                    Text(short).lineLimit(1)
+                }
+                Text(short ?? text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+            }
+        } else {
+            Text(text)
+        }
+    }
+}

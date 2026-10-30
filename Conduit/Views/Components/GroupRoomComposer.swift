@@ -140,7 +140,10 @@ struct GroupRoomComposer: View {
             }
             HStack(alignment: .bottom, spacing: 2) {
                 if rests {
+                    // Capped as in the controls row, so the field keeps
+                    // its width at accessibility sizes.
                     attachButton
+                        .conduitFixedGlyph()
                         .padding(.leading, 6)
                         .padding(.bottom, 6)
                         .transition(.opacity)
@@ -359,7 +362,7 @@ struct GroupRoomComposer: View {
         )
             .background(alignment: .topLeading) {
                 if draft.isEmpty {
-                    Text(AppLocalization.string("Message the room"))
+                    ComposerPlaceholderText(text: AppLocalization.string("Message the room"))
                         .foregroundStyle(.tertiary)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)

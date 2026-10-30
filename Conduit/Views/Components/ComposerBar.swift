@@ -723,7 +723,11 @@ struct ComposerBar: View, Equatable {
                 // row waits.
                 HStack(spacing: 2) {
                     if rests {
+                        // Capped as in the controls row: at accessibility
+                        // sizes its button chrome grew and left the field
+                        // a few letters a line.
                         attachmentButton
+                            .conduitFixedGlyph()
                             .padding(.leading, 6)
                             .transition(.opacity)
                     }
@@ -735,12 +739,14 @@ struct ComposerBar: View, Equatable {
                         // Spaced like the controls row, so its widened hit
                         // shape stays clear of the field and Stop.
                         dictateButton
+                            .conduitFixedGlyph()
                             .padding(.leading, 6)
                             .padding(.trailing, stopOnly ? 6 : 4)
                             .transition(.opacity)
                     }
                     if rests && stopOnly {
                         trailingSlot
+                            .conduitFixedGlyph()
                             .padding(.trailing, 4)
                             .transition(.opacity)
                     }
@@ -775,7 +781,10 @@ struct ComposerBar: View, Equatable {
         ZStack(alignment: .topLeading) {
             let currentEditorIdentity = editorIdentity
             if text.isEmpty {
-                Text(appState.composerPlaceholder)
+                ComposerPlaceholderText(
+                    text: appState.composerPlaceholder,
+                    short: appState.composerShortPlaceholder
+                )
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)

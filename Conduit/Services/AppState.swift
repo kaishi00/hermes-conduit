@@ -2065,10 +2065,23 @@ final class AppState: ObservableObject {
     }
 
     var composerPlaceholder: String {
+        composerPlaceholder(namingAgent: true)
+    }
+
+    /// The placeholder without the agent's or profile's name, for a field
+    /// too narrow to hold the whole hint on one line at an accessibility
+    /// Text Size (ComposerPlaceholderText).
+    var composerShortPlaceholder: String {
+        composerPlaceholder(namingAgent: false)
+    }
+
+    private func composerPlaceholder(namingAgent: Bool) -> String {
         // A chat on its way takes a message like any chat: the header says
         // Conduit is connecting, and the message says it will send then.
         if composerWaitsForChat {
-            return AppLocalization.string("Message \(profileDisplayName(activeProfile))…")
+            return namingAgent
+                ? AppLocalization.string("Message \(profileDisplayName(activeProfile))…")
+                : AppLocalization.string("Message…")
         }
         // A saved copy reads as the chat while Hermes is on its way, as a
         // New Chat does; only a real offline state says it is a copy.
@@ -2084,15 +2097,21 @@ final class AppState: ObservableObject {
         switch turnState {
         case .running:
             if busyInputMode == .queue {
-                return AppLocalization.string("Queue a message for \(conversationAgentIdentity.name)…")
+                return namingAgent
+                    ? AppLocalization.string("Queue a message for \(conversationAgentIdentity.name)…")
+                    : AppLocalization.string("Queue a message…")
             }
-            return AppLocalization.string("\(busyInputMode.title) \(conversationAgentIdentity.name)…")
+            return namingAgent
+                ? AppLocalization.string("\(busyInputMode.title) \(conversationAgentIdentity.name)…")
+                : AppLocalization.string("\(busyInputMode.title)…")
         case .synchronizing, .reconnecting:
             return AppLocalization.string("Checking agent activity…")
         case .unsupportedGateway:
             return AppLocalization.string("Update Hermes to use chat controls")
         case .idle:
-            return AppLocalization.string("Message \(conversationAgentIdentity.name)…")
+            return namingAgent
+                ? AppLocalization.string("Message \(conversationAgentIdentity.name)…")
+                : AppLocalization.string("Message…")
         }
     }
 

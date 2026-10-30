@@ -868,6 +868,8 @@ final class AppStateWidgetLaunchTests: XCTestCase {
             appState.composerPlaceholder,
             AppLocalization.string("Message \(appState.profileDisplayName(appState.activeProfile))…")
         )
+        // A field too narrow for the whole hint at a large Text Size.
+        XCTAssertEqual(appState.composerShortPlaceholder, AppLocalization.string("Message…"))
         appState.startNewChat()
         XCTAssertEqual(appState.pendingNewChat, workspace, "another tap shows the same new chat")
 
