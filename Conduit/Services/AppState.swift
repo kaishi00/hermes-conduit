@@ -5794,7 +5794,7 @@ final class AppState: ObservableObject {
     /// store does it once per profile until something is removed.
     private func prefetchSavedChats(dashboardID: UUID) {
         offlineChatCache.prefetch(dashboardID: dashboardID, profile: activeProfile, transcripts: Self.prefetchedSavedCopies)
-        for profile in profiles.prefix(Self.prefetchedSwitchProfiles) where profile != activeProfile {
+        for profile in profiles.filter({ $0 != activeProfile }).prefix(Self.prefetchedSwitchProfiles) {
             offlineChatCache.prefetch(dashboardID: dashboardID, profile: profile, transcripts: 1)
         }
     }

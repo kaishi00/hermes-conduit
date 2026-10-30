@@ -448,8 +448,14 @@ final class OfflineChatCacheStore {
     /// the disk.
     private var keptIndexes: [URL: OfflineChatSnapshot] = [:]
     private var keptChatLists: [URL: SavedChatList] = [:]
-    /// Scopes read ahead since the last removal.
-    private var prefetchedScopes: Set<String> = []
+    /// How many copies each scope has had read ahead since the last
+    /// removal: a later ask for more (the profile switched to, after its
+    /// last chat was read ahead for the switch) reads the rest.
+    private var prefetchedLimits: [String: Int] = [:]
+    /// Removals waiting for the queue: a read ahead still queued skips
+    /// itself, so a removal waits for the writes queued before it and at
+    /// most one read ahead in progress.
+    private var waitingRemovals = 0
     /// A copy whose file is larger than this isn't read ahead.
     static let maxPrefetchedTranscriptBytes = 4 * 1024 * 1024
     /// Where the files are written when the store writes asynchronously;
@@ -491,11 +497,13 @@ final class OfflineChatCacheStore {
     /// it's done: removals, so a copy queued before one never lands after
     /// it, and what they took is gone when they return.
     private func performAndWait(_ work: () -> Void) {
-        if let ioQueue {
-            ioQueue.sync(execute: work)
-        } else {
+        guard let ioQueue else {
             work()
+            return
         }
+        memoryLock.withLock { waitingRemovals += 1 }
+        ioQueue.sync(execute: work)
+        memoryLock.withLock { waitingRemovals -= 1 }
     }
 
     /// Blocks until every queued write and read ahead has landed: twice, as
@@ -629,7 +637,7 @@ final class OfflineChatCacheStore {
     private func noteRemoval() {
         memoryLock.withLock {
             removalCount &+= 1
-            prefetchedScopes.removeAll()
+            prefetchedLimits.removeAll()
         }
     }
 
@@ -1004,15 +1012,21 @@ final class OfflineChatCacheStore {
     /// shows first: its saved Chats list, and the copies of the chats opened
     /// there last, up to `transcripts`, so opening one of them shows its
     /// copy from memory instead of reading its file on the tap. Once per
-    /// scope until the next removal. A copy already in memory, or one whose
-    /// file is larger than `maxPrefetchedTranscriptBytes`, isn't read, and a
-    /// copy read ahead only takes room memory has free, never a place a chat
-    /// opened since holds. Asynchronous mode only.
+    /// scope until the next removal, unless asked for more copies than
+    /// before. A copy already in memory, or one whose file is larger than
+    /// `maxPrefetchedTranscriptBytes`, isn't read, and a copy read ahead only
+    /// takes room memory has free, never a place a chat opened since holds.
+    /// Asynchronous mode only.
     func prefetch(dashboardID: UUID, profile: String, transcripts limit: Int) {
         guard let ioQueue else { return }
         let scope = Self.scopeFileStem(dashboardID: dashboardID, profile: profile)
-        guard memoryLock.withLock({ prefetchedScopes.insert(scope).inserted }) else { return }
+        guard memoryLock.withLock({ () -> Bool in
+            guard limit > prefetchedLimits[scope, default: -1] else { return false }
+            prefetchedLimits[scope] = limit
+            return true
+        }) else { return }
         ioQueue.async { [self] in
+            guard memoryLock.withLock({ waitingRemovals == 0 }) else { return }
             _ = loadChatList(dashboardID: dashboardID, profile: profile)
             guard limit > 0, let snapshot = load(dashboardID: dashboardID, profile: profile) else { return }
             for entry in snapshot.transcripts.prefix(limit)
@@ -1044,9 +1058,10 @@ final class OfflineChatCacheStore {
     }
 
     /// Whether a copy read ahead fits in memory without pushing a kept one
-    /// out. Under `memoryLock`.
+    /// out, with no removal waiting. Under `memoryLock`.
     private func fitsAheadLocked(_ url: URL, bytes: Int) -> Bool {
-        keptTranscripts[url] == nil
+        waitingRemovals == 0
+            && keptTranscripts[url] == nil
             && keptTranscriptOrder.count < Self.maxKeptTranscripts
             && keptTranscriptBytes + bytes <= Self.maxKeptTranscriptBytes
     }

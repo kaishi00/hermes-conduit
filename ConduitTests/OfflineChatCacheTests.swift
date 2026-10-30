@@ -559,6 +559,70 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(store.loadChatList(dashboardID: dashboard, profile: "default"), list, "Its saved list too")
     }
 
+    /// A profile read ahead for a switch (its last chat) is read further
+    /// once it's the one open and asks for more copies.
+    func testAScopeReadAheadForASwitchIsReadFurtherOnceOpen() throws {
+        let writer = makeStore()
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        for id in ["a", "b", "c"] {
+            writer.record(dashboardID: dashboard, profile: "work", sessionID: id, title: id, messages: row, sessions: [])
+        }
+        let directory = writer.fileURL(dashboardID: dashboard, profile: "work").deletingLastPathComponent()
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+
+        store.prefetch(dashboardID: dashboard, profile: "work", transcripts: 1)
+        store.prefetch(dashboardID: dashboard, profile: "work", transcripts: 1)
+        store.waitForPendingWrites()
+        try FileManager.default.removeItem(at: store.transcriptFileURL("b", dashboardID: dashboard, profile: "work"))
+        XCTAssertNil(store.loadTranscript("b", dashboardID: dashboard, profile: "work"), "For a switch, only its last chat")
+
+        store.prefetch(dashboardID: dashboard, profile: "work", transcripts: 3)
+        store.waitForPendingWrites()
+        for id in ["a", "c"] {
+            try FileManager.default.removeItem(at: store.transcriptFileURL(id, dashboardID: dashboard, profile: "work"))
+        }
+        XCTAssertNotNil(store.loadTranscript("c", dashboardID: dashboard, profile: "work"))
+        XCTAssertNotNil(store.loadTranscript("a", dashboardID: dashboard, profile: "work"), "Open, it's read further")
+    }
+
+    /// Once the live list is in, the app reads ahead this profile's chats
+    /// opened last and, for a switch, each other profile's saved list and
+    /// last chat, so none of them reads a file on the tap.
+    func testTheLiveListReadsAheadWhatATapShowsNext() async throws {
+        let writer = makeStore()
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        for (profile, id) in [("default", "a"), ("work", "w")] {
+            writer.record(dashboardID: dashboard, profile: profile, sessionID: id, title: id, messages: row, sessions: [])
+            seedChatList(writer, dashboard: dashboard, profile: profile, sessions: [session(id, profile: profile)])
+        }
+        let directory = writer.fileURL(dashboardID: dashboard, profile: "default").deletingLastPathComponent()
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+        addTeardownBlock { store.waitForPendingWrites() }
+        let live = [session("a")]
+        let saved = SavedDashboard(id: dashboard, label: "One", normalizedURL: "https://one.example")
+        let (appState, _, _) = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: dashboard, dashboards: [saved]),
+            store: store,
+            sessionCatalogLoader: { _ in live }
+        )
+        appState.profiles = ["default", "work"]
+        appState.connection = HermesConnection(baseUrl: saved.normalizedURL, ticket: "ticket")
+        appState.showLogin = false
+
+        await appState.loadSessions()
+        store.waitForPendingWrites()
+
+        for (profile, id) in [("default", "a"), ("work", "w")] {
+            try FileManager.default.removeItem(at: store.transcriptFileURL(id, dashboardID: dashboard, profile: profile))
+            try FileManager.default.removeItem(at: store.chatListFileURL(dashboardID: dashboard, profile: profile))
+        }
+        XCTAssertNotNil(store.loadTranscript("a", dashboardID: dashboard, profile: "default"), "This profile's chat opened last")
+        XCTAssertNotNil(store.loadTranscript("w", dashboardID: dashboard, profile: "work"), "Another profile's last chat, for a switch")
+        XCTAssertEqual(store.loadChatList(dashboardID: dashboard, profile: "work")?.sessions.map(\.id), ["w"], "and its saved list")
+    }
+
     /// The last chat saved being deleted leaves no chat to open to.
     func testRemovingTheOnlySavedChatClearsTheChatALaunchOpensTo() throws {
         let store = makeStore()
