@@ -2,9 +2,9 @@ import Foundation
 import StoreKit
 
 /// Which plugin versions the update notice asks for (Settings > Conduit
-/// plugin > Update notices). Testers want every plugin release; App Store
-/// users would otherwise be nagged after each plugin merge between Conduit
-/// releases, so they only hear about the stable version.
+/// plugin > Update notices). Everyone hears about the stable version unless
+/// they choose otherwise: asking after each plugin merge between Conduit
+/// releases nags. Testers who want every release pick Every new version.
 enum NotifierPluginNoticeChannel: String, CaseIterable, Identifiable {
     /// Every version on TestFlight and Xcode builds, stable on App Store ones.
     case automatic
@@ -22,7 +22,7 @@ enum NotifierPluginNoticeChannel: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     static func load(from defaults: UserDefaults) -> NotifierPluginNoticeChannel {
-        defaults.string(forKey: key).flatMap(NotifierPluginNoticeChannel.init(rawValue:)) ?? .automatic
+        defaults.string(forKey: key).flatMap(NotifierPluginNoticeChannel.init(rawValue:)) ?? .stableOnly
     }
 
     /// Whether the notice asks for every version on main.

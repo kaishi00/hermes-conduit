@@ -353,6 +353,16 @@ extension GatewayRestartTests {
         XCTAssertFalse(status.updateRecommended)
     }
 
+    func testStableVersionsOnlyIsTheDefault() throws {
+        let suite = "GatewayRestartTests.defaultChannel.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(NotifierPluginNoticeChannel.load(from: defaults), .stableOnly)
+        // A choice made before keeps holding, Automatic included.
+        defaults.set(NotifierPluginNoticeChannel.automatic.rawValue, forKey: NotifierPluginNoticeChannel.key)
+        XCTAssertEqual(NotifierPluginNoticeChannel.load(from: defaults), .automatic)
+    }
+
     func testTheNoticeChannelFollowsWhereConduitCameFrom() {
         XCTAssertFalse(NotifierPluginNoticeChannel.automatic.followsMain(installedFrom: .appStore))
         XCTAssertTrue(NotifierPluginNoticeChannel.automatic.followsMain(installedFrom: .testFlight))

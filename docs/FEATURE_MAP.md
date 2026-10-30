@@ -1032,7 +1032,7 @@ confirmation and README say about restarts
 
 **Rulings**
 - No automatic updates: restarts are the user's call; the notice offers each version once (Only when needed offers only what this build needs, below), and Update runs the whole update (2026-10-13, #582, Eric).
-- App Store builds are asked only below the stable floor, TestFlight and Xcode builds for every version on notifier main (2026-10-20, #984; 2026-10-23, #1166, Eric).
+- App Store builds are asked only below the stable floor, TestFlight and Xcode builds for every version on notifier main (2026-10-20, #984; 2026-10-23, #1166, Eric). Superseded as the default: Stable versions only is the default for every build, so TestFlight and Xcode builds ask for the stable version too unless the user picks Automatic or Every new version; a choice already saved keeps holding (2026-10-30, #1529, Eric).
 - The notice stays until the update truly ends: after the host is done, it shows Reconnecting until Conduit is back, has read the new plugin and the gateway serves, and only then says the plugin is ready. A failure the plugin's report contradicts (the new version runs) reads as ready, not as a silent close (2026-10-24, Eric's report on build 228).
 - A gateway restart that takes the dashboard down with it (a service manager restarting both) still finishes the host job: the restarted dashboard marks it done when it loaded the new version (2026-10-24, notifier 0.69.1).
 - Every process the update restarts runs the new code at once, Pulse's loop included: a dashboard restarted by its service manager (a new pid) takes Pulse over from the old one without waiting out its lease (2026-10-26, notifier #392, Eric's report on 0.81.1).
