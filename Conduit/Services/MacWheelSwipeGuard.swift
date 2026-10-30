@@ -7,11 +7,12 @@ import UIKit
 /// mouse wheel's events (no trackpad phases) don't carry one, and macOS
 /// newer than 26.6 asserts on it ("Missing expected nonaccelerated scroll
 /// delta") while it gathers the recognizers under the pointer, before any
-/// of Conduit's code runs. Before a wheel turns over a list the pointer has
-/// hovered there, so each hover stops the swipe recognizers of the lists
-/// under the pointer from taking scroll events; while the pointer rests in
-/// the window, a check every quarter second catches a list that
-/// opened under it (a click that pushes a page with a list). A trackpad no longer
+/// of Conduit's code runs. Once the pointer has moved in the window, each
+/// hover stops the swipe recognizers of the lists under it from taking
+/// scroll events, and while it rests there a check every quarter second
+/// catches a list that opened under it (a click that pushes a page with a
+/// list). Before the first move after launch nothing is guarded (an open
+/// gap in docs/FEATURE_MAP.md). A trackpad no longer
 /// swipes a row on a Mac, so every row's swipe actions are on its
 /// right-click menu too (`macSwipeActionsMenu` where only a swipe had them).
 struct MacWheelSwipeGuardProbe: UIViewRepresentable {

@@ -3966,7 +3966,7 @@ wheel over such a list from crashing.
 
 **Siblings:** every List with swipe actions (the Chats list's and a project
 page's rows in V2, the drawer sidebar's chat, project and project-sheet rows,
-Bots, Tasks' scheduled jobs, pinned replies, the Pulse page's cards and brief
+Bots, Tasks' scheduled jobs (V2), the drawer sidebar's scheduled-jobs list, pinned replies, the Pulse page's cards and brief
 items, Pulse memory) · each row's right-click menu · not needed: iPhone and
 iPad (swipes unchanged) · text: no Settings caption or doc describes it
 
@@ -3976,7 +3976,7 @@ iPad (swipes unchanged) · text: no Settings caption or doc describes it
 - Tests: `ConduitTests/MacWheelSwipeGuardTests.swift`
 
 **Rulings**
-- On a Mac, UIKit's row swipe recognizer takes no scroll events: a notched mouse wheel's events carry no raw delta, which that recognizer asks for, and newer macOS asserts on it ("Missing expected nonaccelerated scroll delta", issue #1480). Hovering a list, or a list opening under a resting pointer, clears the recognizer's allowedScrollTypesMask, which UIKit checks before the delta. A trackpad no longer swipes rows on a Mac, so a row whose actions are only in its swipe gets them on a right-click menu there (Claude's pick for issue #1480, 2026-10-30, #1528; Eric okayed the issue reply that tells the reporter so, in the Mac crash thread, but hasn't ruled on the trade-off itself).
+- On a Mac, UIKit's row swipe recognizer takes no scroll events: a notched mouse wheel's events carry no raw delta, which that recognizer asks for, and newer macOS asserts on it ("Missing expected nonaccelerated scroll delta", issue #1480). Hovering a list, or a list opening under a resting pointer, clears the recognizer's allowedScrollTypesMask, which UIKit checks before the delta. A trackpad no longer swipes rows on a Mac, so a row whose actions are only in its swipe gets them on a right-click menu there (Eric ruled 2026-10-30, #1528: accept losing trackpad row swipes on a Mac to stop the crash).
 
 **Open gaps**
 - A list that opens under a pointer that hasn't moved is guarded within a quarter second (the resting check); a wheel turned there sooner isn't covered.
