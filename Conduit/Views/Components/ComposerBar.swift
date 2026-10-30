@@ -2354,8 +2354,12 @@ struct ComposerBar: View, Equatable {
             return
         }
         // After this update: the send rebuilds the field (a new editor
-        // identity).
-        Task { @MainActor in isFocused = true }
+        // identity). A chat opened meanwhile has a field of its own.
+        let focusEditorIdentity = editorIdentity
+        Task { @MainActor in
+            guard editorIdentity == focusEditorIdentity else { return }
+            isFocused = true
+        }
     }
 
     private func composerDraftKey(for sessionID: String?) -> ComposerDraftKey {
