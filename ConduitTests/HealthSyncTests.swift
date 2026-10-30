@@ -282,7 +282,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart, "All of it is in")
         let windows = host.batches.flatMap { $0["windows"] as? [[String: Any]] ?? [] }
         XCTAssertFalse(windows.isEmpty)
-        XCTAssertTrue(windows.compactMap { $0["from"] as? String }.allSatisfy { $0 >= "2000-01-01T00:00:00Z" })
+        // Each from carries the local offset, so compare instants.
+        let froms = windows.compactMap { ($0["from"] as? String).flatMap(ISO8601DateFormatter().date(from:)) }
+        XCTAssertEqual(froms.count, windows.count)
+        XCTAssertTrue(froms.allSatisfy { $0 >= HealthSyncLimits.hostEarliest })
     }
 
     func testASavedStartBeforeTheHostsFirstDayMovesUp() async throws {
@@ -301,10 +304,13 @@ extension HermesVoiceGatewayTimeoutTests {
         saved.historyStart = date("1999-12-31T16:00:00Z")
         XCTAssertTrue(HealthSyncStateStore(url: folder.appendingPathComponent("state.json")).save(saved))
 
+        let sent = host.batches.count
         let second = makeHealthEngine(source: source, keys: keys, folder: folder)
         _ = await second.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(second.state.historyStart, date("2000-01-02T00:00:00Z"))
-        XCTAssertEqual(second.state.anchors, saved.anchors, "Anchors kept")
+        XCTAssertEqual(second.state.anchors, saved.anchors)
+        let events = host.batches.dropFirst(sent).flatMap { $0["events"] as? [[String: Any]] ?? [] }
+        XCTAssertTrue(events.isEmpty, "Anchors kept: the workout isn't sent again")
         XCTAssertEqual(host.keyRequests, 1)
     }
 
