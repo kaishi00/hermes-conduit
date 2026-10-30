@@ -49,6 +49,7 @@ class MacDevBuildContractTests(unittest.TestCase):
         self.assertIn("-project ConduitDev.xcodeproj", script)
         self.assertIn("-exportOptionsPlist scripts/mac-dev/ExportOptions.plist", script)
         self.assertIn('application id "com.milim.relay.dev"', script)
+        self.assertIn("= com.milim.relay.dev ]", script)
 
 
 if __name__ == "__main__":

@@ -70,7 +70,7 @@ if ! xcodebuild -exportArchive \
   exit 1
 fi
 
-ipa="$(find "$out/export" -name '*.ipa' -maxdepth 1 | head -1)"
+ipa="$(find "$out/export" -maxdepth 1 -name '*.ipa' | head -1)"
 [ -n "$ipa" ] || { echo "No .ipa in $out/export" >&2; exit 1; }
 echo "Built $ipa"
 
@@ -82,9 +82,11 @@ if [ "$install" = 1 ]; then
   # iOS App Installer never replaces an installed copy: it adds
   # "Conduit Dev 2.app" beside it. The installed app is owned by root, so
   # Finder moves the old copies to the Trash (it asks for an admin password).
-  shopt -s nullglob
-  old=(/Applications/Conduit\ Dev.app /Applications/Conduit\ Dev\ [0-9]*.app)
-  shopt -u nullglob
+  old=()
+  for app in /Applications/*.app; do
+    id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app"/Wrapper/*.app/Info.plist 2>/dev/null || true)"
+    if [ "$id" = com.milim.relay.dev ]; then old+=("$app"); fi
+  done
   if [ "${#old[@]}" -gt 0 ]; then
     echo "Moving the installed Conduit Dev to the Trash (Finder may ask for your password)..."
     for app in "${old[@]}"; do
