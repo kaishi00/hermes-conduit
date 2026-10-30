@@ -162,17 +162,20 @@ struct NotifierPluginStatus: Equatable {
     /// is already new enough on disk only needs its restart. Settings >
     /// Conduit plugin offers it; the notice waits for `updateRecommended`.
     var updateAvailable: Bool {
-        isUpdate(below: offeredVersion)
+        isUpdate(below: offeredVersion, countsMissingFeatures: true)
     }
 
     /// Worth asking for an update unprompted: the update notice, the
     /// Settings badge and Finish setting up. On the stable channel a newer
     /// plugin on main alone doesn't count.
     var updateRecommended: Bool {
-        isUpdate(below: noticeVersion)
+        // Only when needed counts a plugin new enough for this build as
+        // enough: a feature it lacks shows in Settings > Conduit plugin,
+        // which still offers the update (`updateAvailable`).
+        isUpdate(below: noticeVersion, countsMissingFeatures: asksForNewVersions)
     }
 
-    private func isUpdate(below target: String) -> Bool {
+    private func isUpdate(below target: String, countsMissingFeatures: Bool) -> Bool {
         switch state {
         case .unknown:
             return false
@@ -180,11 +183,7 @@ struct NotifierPluginStatus: Equatable {
             return !isNotServed
         case .reported(let version, _):
             let older = Self.isOlder(version, than: target)
-            // Only when needed counts a plugin new enough for this build
-            // as enough: a feature it lacks shows in Settings > Conduit
-            // plugin, which still offers the update.
-            let missingFeature = needsUpdate && asksForNewVersions
-            return restartPending ? older : (missingFeature || older)
+            return restartPending ? older : ((countsMissingFeatures && needsUpdate) || older)
         }
     }
 
@@ -212,7 +211,14 @@ struct NotifierPluginStatus: Equatable {
     /// and stable ones (never below this build's floor, never above what an
     /// update brings).
     var noticeVersion: String {
-        guard asksForNewVersions else { return Self.recommendedVersion }
+        guard asksForNewVersions else {
+            // A restart's notice is keyed by the version it waits to run,
+            // so "Not now" on one doesn't hide the next.
+            if restartPending, let version, !Self.isOlder(version, than: Self.recommendedVersion) {
+                return version
+            }
+            return Self.recommendedVersion
+        }
         guard !followsMain else { return offeredVersion }
         var target = floorVersion
         if let stableVersion, !Self.isOlder(stableVersion, than: target) {

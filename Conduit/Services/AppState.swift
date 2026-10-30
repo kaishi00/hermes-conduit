@@ -25895,6 +25895,9 @@ final class AppState: ObservableObject {
     /// Asks the plugin what it serves. Cheap, so it runs on every connect.
     func refreshNotifierPluginStatus() async {
         guard let bridge = dashboardTicketBridge else { return }
+        // The saved choice governs the first offer this read publishes, not
+        // only the one after the install source is verified.
+        applyNotifierPluginNoticeChannel()
         notifierPluginStatusGeneration += 1
         let generation = notifierPluginStatusGeneration
         let state: NotifierPluginStatus.State

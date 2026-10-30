@@ -388390,266 +388390,354 @@
         }
       }
     },
-    "Only when needed" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur bei Bedarf"
+    "Only when needed": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nur bei Bedarf"
           }
         },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Only when needed"
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only when needed"
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Solo cuando haga falta"
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo cuando haga falta"
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seulement si nécessaire"
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seulement si nécessaire"
           }
         },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hanya jika diperlukan"
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hanya jika diperlukan"
           }
         },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Solo quando serve"
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo quando serve"
           }
         },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "必要なときだけ"
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "必要なときだけ"
           }
         },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "필요할 때만"
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "필요할 때만"
           }
         },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tylko gdy potrzebne"
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tylko gdy potrzebne"
           }
         },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Só quando necessário"
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Só quando necessário"
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Только при необходимости"
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Только при необходимости"
           }
         },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yalnızca gerektiğinde"
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yalnızca gerektiğinde"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "仅在需要时"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅在需要时"
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "僅在需要時"
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "僅在需要時"
           }
         }
       }
     },
-    "Conduit asks you to update only when this app needs a newer plugin. New versions, security fixes included, wait here until you update." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit bittet dich nur dann um ein Update, wenn diese App ein neueres Plugin braucht. Neue Versionen, auch mit Sicherheitskorrekturen, warten hier, bis du aktualisierst."
+    "Conduit asks you to update only when this app needs a newer plugin. New versions, security fixes included, wait here until you update.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit bittet dich nur dann um ein Update, wenn diese App ein neueres Plugin braucht. Neue Versionen, auch mit Sicherheitskorrekturen, warten hier, bis du aktualisierst."
           }
         },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit asks you to update only when this app needs a newer plugin. New versions, security fixes included, wait here until you update."
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit asks you to update only when this app needs a newer plugin. New versions, security fixes included, wait here until you update."
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit te pide actualizar solo cuando esta app necesita un plugin más reciente. Las versiones nuevas, incluidas las correcciones de seguridad, esperan aquí hasta que actualices."
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit te pide actualizar solo cuando esta app necesita un plugin más reciente. Las versiones nuevas, incluidas las correcciones de seguridad, esperan aquí hasta que actualices."
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit vous demande de mettre à jour seulement quand cette app a besoin d’un plugin plus récent. Les nouvelles versions, correctifs de sécurité compris, attendent ici jusqu’à votre mise à jour."
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit vous demande de mettre à jour seulement quand cette app a besoin d’un plugin plus récent. Les nouvelles versions, correctifs de sécurité compris, attendent ici jusqu’à votre mise à jour."
           }
         },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit meminta Anda memperbarui hanya jika aplikasi ini memerlukan plugin yang lebih baru. Versi baru, termasuk perbaikan keamanan, menunggu di sini sampai Anda memperbarui."
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit meminta Anda memperbarui hanya jika aplikasi ini memerlukan plugin yang lebih baru. Versi baru, termasuk perbaikan keamanan, menunggu di sini sampai Anda memperbarui."
           }
         },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit ti chiede di aggiornare solo quando questa app ha bisogno di un plugin più recente. Le nuove versioni, correzioni di sicurezza comprese, aspettano qui finché non aggiorni."
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit ti chiede di aggiornare solo quando questa app ha bisogno di un plugin più recente. Le nuove versioni, correzioni di sicurezza comprese, aspettano qui finché non aggiorni."
           }
         },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このアプリがより新しいプラグインを必要とするときだけ、Conduit がアップデートを求めます。セキュリティ修正を含む新しいバージョンは、アップデートするまでここで待機します。"
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このアプリがより新しいプラグインを必要とするときだけ、Conduit がアップデートを求めます。セキュリティ修正を含む新しいバージョンは、アップデートするまでここで待機します。"
           }
         },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 앱에 더 새로운 플러그인이 필요할 때만 Conduit가 업데이트를 요청합니다. 보안 수정을 포함한 새 버전은 업데이트할 때까지 여기에서 기다립니다."
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 앱에 더 새로운 플러그인이 필요할 때만 Conduit가 업데이트를 요청합니다. 보안 수정을 포함한 새 버전은 업데이트할 때까지 여기에서 기다립니다."
           }
         },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit prosi o aktualizację tylko wtedy, gdy ta aplikacja potrzebuje nowszej wtyczki. Nowe wersje, również z poprawkami bezpieczeństwa, czekają tutaj, aż je zaktualizujesz."
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit prosi o aktualizację tylko wtedy, gdy ta aplikacja potrzebuje nowszej wtyczki. Nowe wersje, również z poprawkami bezpieczeństwa, czekają tutaj, aż je zaktualizujesz."
           }
         },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O Conduit pede para atualizar só quando este app precisa de um plugin mais novo. Versões novas, incluindo correções de segurança, ficam aqui até você atualizar."
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Conduit pede para atualizar só quando este app precisa de um plugin mais novo. Versões novas, incluindo correções de segurança, ficam aqui até você atualizar."
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit просит обновиться, только когда этому приложению нужен более новый плагин. Новые версии, включая исправления безопасности, ждут здесь, пока вы не обновите."
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit просит обновиться, только когда этому приложению нужен более новый плагин. Новые версии, включая исправления безопасности, ждут здесь, пока вы не обновите."
           }
         },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit, yalnızca bu uygulama daha yeni bir eklentiye ihtiyaç duyduğunda güncellemenizi ister. Güvenlik düzeltmeleri dahil yeni sürümler, siz güncelleyene kadar burada bekler."
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit, yalnızca bu uygulama daha yeni bir eklentiye ihtiyaç duyduğunda güncellemenizi ister. Güvenlik düzeltmeleri dahil yeni sürümler, siz güncelleyene kadar burada bekler."
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "仅当此 App 需要更新的插件时，Conduit 才会请你更新。新版本（包括安全修复）会在这里等你更新。"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅当此 App 需要更新的插件时，Conduit 才会请你更新。新版本（包括安全修复）会在这里等你更新。"
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "僅當此 App 需要更新的外掛時，Conduit 才會請你更新。新版本（包括安全性修正）會在這裡等你更新。"
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "僅當此 App 需要更新的外掛時，Conduit 才會請你更新。新版本（包括安全性修正）會在這裡等你更新。"
           }
         }
       }
     },
-    "Works with this app. Newer versions wait in Settings." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Funktioniert mit dieser App. Neuere Versionen warten in den Einstellungen."
+    "Works with this app. Newer versions wait in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funktioniert mit dieser App. Neuere Versionen warten in den Einstellungen."
           }
         },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Works with this app. Newer versions wait in Settings."
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Works with this app. Newer versions wait in Settings."
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Funciona con esta app. Las versiones más nuevas esperan en Ajustes."
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funciona con esta app. Las versiones más nuevas esperan en Ajustes."
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fonctionne avec cette app. Les versions plus récentes attendent dans Réglages."
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fonctionne avec cette app. Les versions plus récentes attendent dans Réglages."
           }
         },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Berfungsi dengan aplikasi ini. Versi yang lebih baru menunggu di Pengaturan."
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Berfungsi dengan aplikasi ini. Versi yang lebih baru menunggu di Pengaturan."
           }
         },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Funziona con questa app. Le versioni più recenti aspettano in Impostazioni."
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funziona con questa app. Le versioni più recenti aspettano in Impostazioni."
           }
         },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このアプリで使えます。新しいバージョンは設定で待機しています。"
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このアプリで使えます。新しいバージョンは設定で待機しています。"
           }
         },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 앱과 함께 작동합니다. 새 버전은 설정에서 기다립니다."
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 앱과 함께 작동합니다. 새 버전은 설정에서 기다립니다."
           }
         },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Działa z tą aplikacją. Nowsze wersje czekają w Ustawieniach."
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Działa z tą aplikacją. Nowsze wersje czekają w Ustawieniach."
           }
         },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Funciona com este app. Versões mais novas aguardam em Ajustes."
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funciona com este app. Versões mais novas aguardam em Ajustes."
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Работает с этим приложением. Новые версии ждут в Настройках."
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Работает с этим приложением. Новые версии ждут в Настройках."
           }
         },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu uygulamayla çalışır. Daha yeni sürümler Ayarlar'da bekler."
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu uygulamayla çalışır. Daha yeni sürümler Ayarlar'da bekler."
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可与此 App 配合使用。较新版本在“设置”中等候。"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可与此 App 配合使用。较新版本在“设置”中等候。"
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可與此 App 搭配使用。較新版本在「設定」中等候。"
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可與此 App 搭配使用。較新版本在「設定」中等候。"
+          }
+        }
+      }
+    },
+    "Some features need a newer plugin. See Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einige Funktionen brauchen ein neueres Plugin. Siehe Einstellungen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some features need a newer plugin. See Settings."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algunas funciones necesitan un plugin más reciente. Consulta Ajustes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Certaines fonctions nécessitent un plugin plus récent. Voir Réglages."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beberapa fitur memerlukan plugin yang lebih baru. Lihat Pengaturan."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alcune funzioni richiedono un plugin più recente. Vedi Impostazioni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一部の機能には新しいプラグインが必要です。設定を確認してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "일부 기능에는 더 새로운 플러그인이 필요합니다. 설정을 확인하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Niektóre funkcje wymagają nowszej wtyczki. Zobacz Ustawienia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alguns recursos precisam de um plugin mais novo. Veja Ajustes."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Некоторым функциям нужен более новый плагин. См. Настройки."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bazı özellikler daha yeni bir eklenti gerektirir. Ayarlar'a bakın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "部分功能需要更新的插件。请前往“设置”。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "部分功能需要較新的外掛。請前往「設定」。"
           }
         }
       }

@@ -41,6 +41,20 @@ struct FinishSetupStatus: Equatable {
 
     var isComplete: Bool { plugin == .done && notifications == .done && voiceReady }
 
+    /// What a done plugin row says. Only when needed can leave a newer
+    /// version, or a feature the plugin lacks, waiting in Settings; the
+    /// other choices reach done only when nothing is offered unprompted.
+    enum PluginDone: Equatable {
+        case upToDate
+        case newerVersionsWait
+        case featuresNeedUpdate
+    }
+
+    static func pluginDone(_ status: NotifierPluginStatus) -> PluginDone {
+        if status.asksForNewVersions || !status.updateAvailable { return .upToDate }
+        return status.needsUpdate ? .featuresNeedUpdate : .newerVersionsWait
+    }
+
     static func plugin(_ status: NotifierPluginStatus, updating: Bool) -> Plugin {
         if updating { return .updating }
         switch status.state {

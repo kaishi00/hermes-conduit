@@ -251,26 +251,48 @@ extension GatewayRestartTests {
         XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
         XCTAssertFalse(status.needsAttention)
         XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .done)
+        XCTAssertEqual(FinishSetupStatus.pluginDone(status), .newerVersionsWait)
         // Settings still offers the latest.
         XCTAssertTrue(status.updateAvailable)
         XCTAssertEqual(status.offeredVersion, "9.2.0")
 
-        // A missing feature doesn't ask either; Settings shows it.
-        status.state = .reported(version: "9.0.0", capabilities: [])
+        // A missing feature doesn't ask either; Settings still offers the
+        // update, even with the latest already installed, and Finish
+        // setting up says so.
+        status.state = .reported(version: "9.2.0", capabilities: [])
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.2.0", restartNeeded: false, bootID: nil)
         XCTAssertTrue(status.needsUpdate)
         XCTAssertFalse(status.updateRecommended)
         XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
         XCTAssertTrue(status.updateAvailable)
+        XCTAssertEqual(FinishSetupStatus.pluginDone(status), .featuresNeedUpdate)
 
         // A plugin older than this build's floor asks.
         status.state = .reported(version: "0.1.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
         status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "0.1.0", restartNeeded: false, bootID: nil)
         XCTAssertTrue(status.updateRecommended)
 
-        // An update waiting for its restart is still finished from the notice.
+        // An update waiting for its restart is still finished from the
+        // notice, and its "Not now" belongs to that version only.
         status.state = .reported(version: "9.2.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
         status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.0.0", restartNeeded: true, bootID: nil)
         XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .restart)
+        XCTAssertEqual(status.noticeVersion, "9.2.0")
+        status.state = .reported(version: "9.3.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        XCTAssertEqual(status.noticeVersion, "9.3.0")
+    }
+
+    func testTheOtherChoicesKeepUpToDateOnFinishSettingUp() {
+        var status = NotifierPluginStatus()
+        status.state = .reported(version: "9.1.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.1.0", restartNeeded: false, bootID: nil)
+        status.latestVersion = "9.2.0"
+        status.stableVersion = "9.1.0"
+        // Stable versions only: main is newer, but nothing is pending.
+        status.followsMain = false
+        XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .done)
+        XCTAssertTrue(status.updateAvailable)
+        XCTAssertEqual(FinishSetupStatus.pluginDone(status), .upToDate)
     }
 
     func testAnAppStoreBuildAsksUpToThePluginItWasArchivedWith() {
