@@ -151,11 +151,15 @@ struct OfflineCachedTranscriptEntry: Codable, Equatable {
     let sessionID: String
     let title: String
     let savedAt: Date
+    /// Its file's size, for the scope's budget. Copies saved before it was
+    /// kept have none, and count by their file's size on the disk.
+    var bytes: Int?
 
-    init(_ transcript: OfflineCachedTranscript) {
+    init(_ transcript: OfflineCachedTranscript, bytes: Int? = nil) {
         sessionID = transcript.sessionID
         title = transcript.title
         savedAt = transcript.savedAt
+        self.bytes = bytes
     }
 }
 
@@ -395,11 +399,16 @@ struct OfflineChatPresentation: Equatable {
 /// atomically with complete-until-first-user-authentication protection and
 /// excluded from backups.
 final class OfflineChatCacheStore {
-    static let maxMessagesPerTranscript = 120
+    /// The rows the chat had loaded when it was left, up to this many, so a
+    /// chat read further back stays readable that far (#1525).
+    static let maxMessagesPerTranscript = 500
     /// The last chats opened keep a copy, so most chats picked from the
-    /// saved list open to their own rows.
-    static let maxTranscripts = 20
-    static let maxSessions = 60
+    /// saved list open to their own rows: up to this many, while their files
+    /// fit `maxScopeBytes`. The newest copy always stays.
+    static let maxTranscripts = 100
+    static let maxScopeBytes = 64 * 1024 * 1024
+    /// At least `maxTranscripts`, so every kept copy keeps a row to open it from.
+    static let maxSessions = 120
 
     /// Complete-until-first-user-authentication: unreadable from a device
     /// that has not been unlocked since boot, while still writable at the
@@ -414,9 +423,15 @@ final class OfflineChatCacheStore {
     private var keptTranscriptOrder: [URL] = []
     static let maxKeptTranscripts = 8
 
-    init(directory: URL, fileManager: FileManager = .default) {
+    private let scopeBytes: Int
+    /// Moves with every removal (a deleted chat, a wipe), so a read that was
+    /// in flight across one keeps nothing (#1525).
+    private(set) var removals = 0
+
+    init(directory: URL, fileManager: FileManager = .default, scopeBytes: Int = OfflineChatCacheStore.maxScopeBytes) {
         self.directory = directory
         self.fileManager = fileManager
+        self.scopeBytes = scopeBytes
     }
 
     static func defaultDirectory(fileManager: FileManager = .default) -> URL {
@@ -473,11 +488,14 @@ final class OfflineChatCacheStore {
     private func moveFirstFormat(_ data: Data, dashboardID: UUID, profile: String) -> OfflineChatSnapshot? {
         guard let old = try? JSONDecoder().decode(FirstFormatOfflineChatSnapshot.self, from: data),
               old.version == 1 else { return nil }
-        let moved = old.transcripts.filter { write($0, dashboardID: dashboardID, profile: profile) }
+        let moved = old.transcripts.compactMap { transcript in
+            write(transcript, dashboardID: dashboardID, profile: profile)
+                .map { OfflineCachedTranscriptEntry(transcript, bytes: $0) }
+        }
         let snapshot = OfflineChatSnapshot(
             lastSessionID: old.lastSessionID,
             sessions: old.sessions,
-            transcripts: moved.map(OfflineCachedTranscriptEntry.init)
+            transcripts: moved
         )
         write(snapshot, dashboardID: dashboardID, profile: profile)
         return snapshot
@@ -523,10 +541,10 @@ final class OfflineChatCacheStore {
         }
         let transcript = OfflineCachedTranscript(sessionID: sessionID, title: title, savedAt: now, messages: Array(rows))
         // Its rows land first, so the index never lists a copy that isn't there.
-        guard write(transcript, dashboardID: dashboardID, profile: profile) else { return }
+        guard let bytes = write(transcript, dashboardID: dashboardID, profile: profile) else { return }
         snapshot.transcripts.removeAll { $0.sessionID == sessionID || allIdentities.contains($0.sessionID) }
-        snapshot.transcripts.insert(OfflineCachedTranscriptEntry(transcript), at: 0)
-        snapshot.transcripts = Array(snapshot.transcripts.prefix(Self.maxTranscripts))
+        snapshot.transcripts.insert(OfflineCachedTranscriptEntry(transcript, bytes: bytes), at: 0)
+        snapshot.transcripts = boundedTranscripts(snapshot.transcripts, dashboardID: dashboardID, profile: profile)
         if !catalogRows.isEmpty {
             // Every retained transcript (current conversation first) keeps a
             // row to open it from, whatever its position in the catalog.
@@ -547,6 +565,7 @@ final class OfflineChatCacheStore {
     /// opens to. The index is rewritten before the files go, as `record`
     /// does, so it never lists a copy that isn't there.
     func removeTranscripts(sessionIDs: Set<String>, dashboardID: UUID, profile: String) {
+        removals &+= 1
         let ids = sessionIDs.filter { !$0.isEmpty }
         guard !ids.isEmpty else { return }
         if var snapshot = load(dashboardID: dashboardID, profile: profile) {
@@ -586,7 +605,8 @@ final class OfflineChatCacheStore {
     private func removeTranscriptFiles(_ sessionIDs: Set<String>, dashboardID: UUID, profile: String) {
         let urls = Set(sessionIDs.map { transcriptFileURL($0, dashboardID: dashboardID, profile: profile) })
         forgetKeptTranscripts { urls.contains($0) }
-        for url in urls {
+        let heldRows = sessionIDs.map { heldRowsFileURL($0, dashboardID: dashboardID, profile: profile) }
+        for url in urls.union(heldRows) {
             try? fileManager.removeItem(at: url)
         }
     }
@@ -606,6 +626,29 @@ final class OfflineChatCacheStore {
         for file in files where file.lastPathComponent.hasPrefix(prefix) && !listed.contains(file.lastPathComponent) {
             try? fileManager.removeItem(at: file)
         }
+    }
+
+    /// The newest copies, up to `maxTranscripts` and while their files fit
+    /// the scope's budget (`maxScopeBytes`); the newest always stays. A copy saved before sizes
+    /// were kept is measured on the disk, once.
+    private func boundedTranscripts(
+        _ entries: [OfflineCachedTranscriptEntry],
+        dashboardID: UUID,
+        profile: String
+    ) -> [OfflineCachedTranscriptEntry] {
+        var kept: [OfflineCachedTranscriptEntry] = []
+        var total = 0
+        for var entry in entries.prefix(Self.maxTranscripts) {
+            if entry.bytes == nil {
+                let url = transcriptFileURL(entry.sessionID, dashboardID: dashboardID, profile: profile)
+                entry.bytes = (try? fileManager.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+            }
+            let bytes = entry.bytes ?? 0
+            if !kept.isEmpty && total + bytes > scopeBytes { break }
+            total += bytes
+            kept.append(entry)
+        }
+        return kept
     }
 
     /// At most `maxSessions` rows. Slots are reserved first for the rows of
@@ -637,8 +680,23 @@ final class OfflineChatCacheStore {
     }
 
     func removeDashboard(_ dashboardID: UUID) {
+        removals &+= 1
         let prefix = dashboardID.uuidString.lowercased() + "--"
         forgetKeptTranscripts { $0.lastPathComponent.hasPrefix(prefix) }
+        guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
+            return
+        }
+        for file in files where file.lastPathComponent.hasPrefix(prefix) {
+            try? fileManager.removeItem(at: file)
+        }
+    }
+
+    /// Deletes a profile's held rows on one dashboard, as its profile is
+    /// deleted (a bot): they are its raw chat history. A read still in flight
+    /// for it keeps nothing, as after the other removals.
+    func removeHeldRows(dashboardID: UUID, profile: String) {
+        removals &+= 1
+        let prefix = Self.scopeFileStem(dashboardID: dashboardID, profile: profile) + Self.heldRowsInfix
         guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
             return
         }
@@ -650,6 +708,7 @@ final class OfflineChatCacheStore {
     /// Deletes presentation copies across dashboards, preserving accepted
     /// unsent messages even when their dashboard is not loaded in memory.
     func removeSavedChats() {
+        removals &+= 1
         forgetKeptTranscripts { _ in true }
         guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
             return
@@ -660,6 +719,7 @@ final class OfflineChatCacheStore {
     }
 
     func removeAll() {
+        removals &+= 1
         forgetKeptTranscripts { _ in true }
         try? fileManager.removeItem(at: directory)
     }
@@ -745,12 +805,13 @@ final class OfflineChatCacheStore {
         return write(data, to: fileURL(dashboardID: dashboardID, profile: profile))
     }
 
-    private func write(_ transcript: OfflineCachedTranscript, dashboardID: UUID, profile: String) -> Bool {
-        guard let data = try? JSONEncoder().encode(transcript) else { return false }
+    /// The file's size when it was written, else nil.
+    private func write(_ transcript: OfflineCachedTranscript, dashboardID: UUID, profile: String) -> Int? {
+        guard let data = try? JSONEncoder().encode(transcript) else { return nil }
         let url = transcriptFileURL(transcript.sessionID, dashboardID: dashboardID, profile: profile)
-        guard write(data, to: url) else { return false }
+        guard write(data, to: url) else { return nil }
         keep(transcript, at: url)
-        return true
+        return data.count
     }
 
     @discardableResult
@@ -780,6 +841,69 @@ final class OfflineChatCacheStore {
     func transcriptFileURL(_ sessionID: String, dashboardID: UUID, profile: String) -> URL {
         let name = SHA256.hash(data: Data(sessionID.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
         return directory.appendingPathComponent("\(Self.scopeFileStem(dashboardID: dashboardID, profile: profile)).chat-\(name).json")
+    }
+
+    /// The newest page of a chat's raw rows as Hermes last sent it, with
+    /// their fingerprints (#1525), named by a hash of the id it was read by.
+    func heldRowsFileURL(_ sessionID: String, dashboardID: UUID, profile: String) -> URL {
+        let name = SHA256.hash(data: Data(sessionID.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
+        return directory.appendingPathComponent("\(Self.scopeFileStem(dashboardID: dashboardID, profile: profile))\(Self.heldRowsInfix)\(name).json")
+    }
+
+    static let heldRowsInfix = ".rows-"
+    /// The held rows' own budget per scope, beside the copies' `maxScopeBytes`.
+    static let maxHeldRowsBytes = 32 * 1024 * 1024
+
+    /// A chat's held rows, or nil when none are kept for it. Read off the
+    /// main actor: a page of rows can be large.
+    static func loadHeldRows(at url: URL, sessionID: String) -> HistoryPage.HeldRows? {
+        guard let data = try? Data(contentsOf: url),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["session_id"] as? String == sessionID,
+              let digests = object["digests"] as? [String],
+              let rows = object["rows"] as? [Any],
+              digests.count == rows.count else { return nil }
+        return HistoryPage.HeldRows(sessionID: sessionID, digests: digests, rows: rows)
+    }
+
+    /// Keeps a chat's held rows, then lets go of the scope's oldest beyond
+    /// `maxTranscripts` files or `maxHeldRowsBytes`, as the saved copies are
+    /// bounded (the newest always stays). Best effort, like the copies.
+    static func writeHeldRows(_ held: HistoryPage.HeldRows, to url: URL, fileManager: FileManager = .default) {
+        let object: [String: Any] = ["session_id": held.sessionID, "digests": held.digests, "rows": held.rows]
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object) else { return }
+        let directory = url.deletingLastPathComponent()
+        do {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            var directoryURL = directory
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? directoryURL.setResourceValues(values)
+            try data.write(to: url, options: writeOptions)
+        } catch {
+            return
+        }
+        guard let infix = url.lastPathComponent.range(of: heldRowsInfix) else { return }
+        let prefix = String(url.lastPathComponent[..<infix.upperBound])
+        guard let files = try? fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey]
+        ) else { return }
+        let held = files
+            .filter { $0.lastPathComponent.hasPrefix(prefix) }
+            .map { file in
+                (file, (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+            }
+            .sorted { $0.1 > $1.1 }
+        var total = 0
+        for (index, (file, _)) in held.enumerated() {
+            let bytes = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            total += bytes
+            if index >= maxTranscripts || (index > 0 && total > maxHeldRowsBytes) {
+                try? fileManager.removeItem(at: file)
+            }
+        }
     }
 
     func chatListFileURL(dashboardID: UUID, profile: String) -> URL {

@@ -680,6 +680,36 @@ final class ComposerPasteTextViewTests: XCTestCase {
         )
     }
 
+    /// A field a send rebuilt with focus (a Mac, a hardware keyboard) is
+    /// updated before it's in the window; it takes focus as it arrives, and
+    /// one that no longer wants it doesn't (#1527). The binding's half,
+    /// `updateUIView` passing `isFocused` on, needs a SwiftUI Context no test
+    /// can build, so a device check covers it (the entry's Open gaps).
+    func testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 120))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        // Asked for out of the window: taken on arrival.
+        let wanted = ImagePasteTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        wanted.isEditable = true
+        wanted.setFocusIntent(true)
+        XCTAssertFalse(wanted.isFirstResponder)
+        window.addSubview(wanted)
+        XCTAssertTrue(wanted.isFirstResponder)
+        wanted.setFocusIntent(false)
+        XCTAssertFalse(wanted.isFirstResponder)
+        wanted.removeFromSuperview()
+
+        // Asked for, then given up before arriving: not taken.
+        let dropped = ImagePasteTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        dropped.isEditable = true
+        dropped.setFocusIntent(true)
+        dropped.setFocusIntent(false)
+        window.addSubview(dropped)
+        XCTAssertFalse(dropped.isFirstResponder)
+    }
+
     /// Clears the general pasteboard, runs `body`, then clears it again.
     /// Scoped to the tests that actually write to UIPasteboard.general so
     /// every other test in this suite stays off the global pasteboard service

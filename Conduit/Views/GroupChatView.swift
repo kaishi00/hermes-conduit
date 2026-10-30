@@ -61,6 +61,9 @@ struct GroupChatView: View {
         // Each bot's color, for its name, bubble, tags and "To" chip.
         .environment(\.groupMemberTints, appState.groupMemberTints(members))
         .environment(\.chatTextSize, chatTextSize)
+        // A Desktop card reads its title and summary from the connected
+        // Hermes (#1522); the room's MEDIA: files stay off it.
+        .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
         // Files dragged onto the room are staged in its composer (#1408);
         // a plugin that can't store them gets the composer's notice.
         .attachmentDropTarget(isEnabled: surface.map { !$0.room.isDisbanded } ?? false) { providers in

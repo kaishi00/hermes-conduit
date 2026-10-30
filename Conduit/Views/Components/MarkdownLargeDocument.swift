@@ -623,7 +623,7 @@ extension MarkdownBlock {
         case .code(_, let source): return source.utf8.count + 16
         case .callout(_, let text): return text.utf8.count + 16
         case .columns(let columns): return columns.reduce(0) { $0 + $1.utf8.count + 4 }
-        case .image, .math, .divider, .htmlPreview: return 64
+        case .image, .math, .divider, .htmlPreview, .desktopCard: return 64
         }
     }
 }

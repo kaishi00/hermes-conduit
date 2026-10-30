@@ -23,6 +23,10 @@ settings:
     # signed for its own relay sets an https URL, e.g.
     # xcodebuild CONDUIT_DEFAULT_RELAY_URL=https://push.example.com
     CONDUIT_DEFAULT_RELAY_URL: ""
+    # The app's link scheme (Info.plist CFBundleURLSchemes, ConduitAppLink).
+    # Conduit Dev (scripts/mac-dev) registers its own, so conduit:// links
+    # keep opening the installed Conduit.
+    CONDUIT_URL_SCHEME: conduit
 packages:
   # GPT-Live voice runs over WebRTC; Apple ships no WebRTC stack. Prebuilt
   # Google WebRTC as a binary xcframework, pinned to an exact release.
@@ -88,8 +92,8 @@ targets:
             --info-plist "$SRCROOT/$INFOPLIST_FILE" \
             --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH" \
             --development-language "$DEVELOPMENT_LANGUAGE"
-      # An archive records the plugin version on notifier main: the version
-      # App Store builds ask hosts to update to (NotifierPluginStatus).
+      # An archive records the plugin version on notifier main: the stable
+      # version the build asks hosts to update to (NotifierPluginStatus).
       - name: Stamp plugin version
         basedOnDependencyAnalysis: false
         script: |
@@ -125,6 +129,9 @@ targets:
       # Hermes' file tags, which job results and chats read into a call
       # name as files rather than paths.
       - path: Conduit/Views/Components/GatewayMediaTags.swift
+      # Hermes Desktop's directives, which the same names read as a file
+      # or a card for Hermes Desktop.
+      - path: Conduit/Views/Components/TranscriptDirectives.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.watchkitapp

@@ -1011,10 +1011,8 @@ final class DashboardTicketBridge: NSObject {
         //    and force a login. Reload unconditionally so the cookie store
         //    settles, then re-attempt.
         //  - notReady: the dashboard page has not produced a ready session.
-        //    Only a terminally failed load is reloaded — on a degraded link a
-        //    load can still be in flight when the readiness poll times out,
-        //    and restarting it would abort a navigation that may be about to
-        //    finish, so keep polling the same load instead.
+        //    waitUntilReady reloads a terminally failed load; one still in
+        //    flight keeps being polled.
         for attempt in 0..<3 {
             do {
                 try await waitUntilReady()
@@ -1029,9 +1027,6 @@ final class DashboardTicketBridge: NSObject {
             } catch DashboardTicketBridgeError.notReady where attempt < 2 {
                 // A silently hung load is eventually failed by the system
                 // request timeout and becomes reloadable.
-                if isLoadFailed {
-                    reload()
-                }
                 try await Task.sleep(for: .milliseconds(350))
             }
         }
@@ -1042,6 +1037,19 @@ final class DashboardTicketBridge: NSObject {
     }
 
     private func waitUntilReady() async throws {
+        // A terminally failed load (a request that stalled across a network
+        // change, a dead content process) never becomes ready by itself, and
+        // every request through the page is refused until it reloads. Reload
+        // it here, for every caller: an open socket mints no ticket, so
+        // waiting for the next mint to reload it left history and status
+        // reads failing until the app quit (#1412). A load still in flight
+        // is never restarted: on a degraded link it may be about to finish.
+        // Every request into the page was already rejected when it failed,
+        // so the reload aborts none.
+        // A page parked on sign-in is left to the sign-in recovery.
+        if isLoadFailed, !didLandOnLogin, !isInvalidated {
+            reload()
+        }
         // Stop polling as soon as the navigation terminally fails or the
         // page has settled on the login screen: neither can become ready
         // without a reload or sign-in, so sleeping out the window would
@@ -1079,6 +1087,26 @@ final class DashboardTicketBridge: NSObject {
         timeoutMilliseconds: Int = 12_000,
         maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes
     ) async throws -> [String: Any] {
+        try await requestJSON(
+            path: path,
+            method: method,
+            body: body,
+            timeoutMilliseconds: timeoutMilliseconds,
+            maxResponseBytes: maxResponseBytes,
+            readsOnly: false
+        )
+    }
+
+    func requestJSON(
+        path: String,
+        method: String = "GET",
+        body: [String: Any]? = nil,
+        timeoutMilliseconds: Int = 12_000,
+        maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes,
+        // A POST that only reads (the history page) fails with the page like a
+        // GET, rather than being kept through invalidate() as a write is.
+        readsOnly: Bool
+    ) async throws -> [String: Any] {
         if let nativeOAuthSession {
             guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
             return try await nativeOAuthSession.requestJSON(
@@ -1098,17 +1126,7 @@ final class DashboardTicketBridge: NSObject {
                 maxResponseBytes: maxResponseBytes
             )
         }
-        for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated && !isLoadFailed && !didLandOnLogin {
-            try await Task.sleep(for: readinessPollInterval)
-        }
-        guard !isInvalidated, isReady else {
-            // Mirror waitUntilReady(): a login-parked or terminally failed
-            // bridge is settled, not loading, for non-mint callers too, and
-            // an invalidated bridge always reports plain unreadiness.
-            throw isInvalidated || !didLandOnLogin
-                ? DashboardTicketBridgeError.notReady
-                : DashboardTicketBridgeError.signInRequired
-        }
+        try await waitUntilReady()
 
         requestID += 1
         let id = requestID
@@ -1117,7 +1135,7 @@ final class DashboardTicketBridge: NSObject {
         let bodyLiteral = try body.map(javaScriptLiteral) ?? "null"
         let timeout = max(1_000, timeoutMilliseconds)
         let responseLimit = max(1_024, maxResponseBytes)
-        if method.uppercased() != "GET" { pendingWriteIDs.insert(id) }
+        if method.uppercased() != "GET", !readsOnly { pendingWriteIDs.insert(id) }
         defer { pendingWriteIDs.remove(id) }
 
         let response: [String: Any]
@@ -1531,6 +1549,9 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         // context still carry real signal.
         if let navigation, staleNavigations.remove(navigation) != nil { return }
         if let currentNavigation, let navigation, navigation !== currentNavigation { return }
+        // The tracked load has resolved, as on didFinish: the next reload
+        // has no live navigation to supersede, so none is kept as stale.
+        currentNavigation = nil
         // The load the bridge stopped on its way to sign-in reports that
         // cancellation as a failure: the verdict stays sign-in required.
         if didLandOnLogin { return }
@@ -1543,6 +1564,9 @@ extension DashboardTicketBridge: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         if let navigation, staleNavigations.remove(navigation) != nil { return }
         if let currentNavigation, let navigation, navigation !== currentNavigation { return }
+        // The tracked load has resolved, as on didFinish: the next reload
+        // has no live navigation to supersede, so none is kept as stale.
+        currentNavigation = nil
         // The load the bridge stopped on its way to sign-in reports that
         // cancellation as a failure: the verdict stays sign-in required.
         if didLandOnLogin { return }

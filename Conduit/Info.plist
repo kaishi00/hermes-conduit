@@ -69,7 +69,7 @@
 			<string>$(PRODUCT_BUNDLE_IDENTIFIER).chat-link</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>conduit</string>
+				<string>$(CONDUIT_URL_SCHEME)</string>
 			</array>
 		</dict>
 	</array>

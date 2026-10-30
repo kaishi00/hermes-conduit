@@ -101,6 +101,14 @@ extension ComposerFullEditorTests {
         XCTAssertTrue(ComposerLayout.staysExpanded(width: 400, idiom: .pad, onMac: true))
     }
 
+    func testComposerKeepsFocusAfterSendOnMacAndWithAHardwareKeyboard() {
+        // Typing carries on into the next message, as in a desktop client.
+        XCTAssertTrue(ComposerLayout.keepsFocusAfterSend(onMac: true, hardwareKeyboard: false))
+        XCTAssertTrue(ComposerLayout.keepsFocusAfterSend(onMac: false, hardwareKeyboard: true))
+        // The on-screen keyboard goes, so the reply has the screen.
+        XCTAssertFalse(ComposerLayout.keepsFocusAfterSend(onMac: false, hardwareKeyboard: false))
+    }
+
     func testExpandedComposerBesideTheBigButtonLeavesVoiceAndItsMicToIt() {
         // The big button beside it offers voice, so the slot keeps Send.
         XCTAssertEqual(ComposerBar.trailingControl(action: .unavailable, showsVoiceButton: false), .action)

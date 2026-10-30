@@ -1,12 +1,11 @@
 import Foundation
 
 /// The newest Conduit plugin: the version on its repository's main branch,
-/// which is what a one-tap update installs. TestFlight builds offer the
-/// update whenever the host is below it, so a plugin release reaches testers
-/// without waiting for a Conduit build. App Store builds only nag up to the
-/// stable version: the plugin on main when the build was archived
-/// (`NotifierPluginStatus.archivedVersion`), or `stable:` in `channels.yaml`
-/// on main when the maintainer raises it between builds; see
+/// which is what a one-tap update installs, and Settings > Conduit plugin
+/// offers. The notice asks for it only on Every new version; by default it
+/// asks up to the stable version: the plugin on main when the build was
+/// archived (`NotifierPluginStatus.archivedVersion`), or `stable:` in
+/// `channels.yaml` on main when the maintainer raises it between builds; see
 /// NotifierPluginNoticeChannel.
 /// `NotifierPluginStatus.recommendedVersion` stays the floor this build needs
 /// when GitHub can't be reached.
@@ -27,7 +26,7 @@ enum NotifierPluginLatestVersion {
     struct Answer: Equatable {
         /// The plugin version on main.
         var latest: String?
-        /// The version App Store builds offer.
+        /// The stable version the notice asks for by default.
         var stable: String?
         /// CHANGELOG.md, when it answered and reads.
         var changelog: NotifierPluginChangelog?

@@ -160,7 +160,7 @@ enum MarkdownRichContentPolicy {
         case .htmlPreview:
             return diagramUnits
         case .heading, .paragraph, .quote, .unorderedList, .orderedList,
-             .callout, .columns, .divider:
+             .callout, .columns, .divider, .desktopCard:
             return 0
         }
     }

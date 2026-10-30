@@ -54,8 +54,8 @@ struct NotifierPluginStatus: Equatable {
     static let recommendedVersion = "0.48.0"
 
     /// The plugin version on notifier main when this build was archived
-    /// (scripts/stamp-plugin-version.py): the stable version an App Store
-    /// build asks for, so each build moves it forward. Nil for a Run or CI
+    /// (scripts/stamp-plugin-version.py): the stable version a build asks
+    /// for by default, so each build moves it forward. Nil for a Run or CI
     /// build, or when GitHub couldn't be reached at archive time.
     static let archivedVersion = Bundle.main.object(forInfoDictionaryKey: "ConduitArchivedPluginVersion") as? String
 
@@ -97,6 +97,9 @@ struct NotifierPluginStatus: Equatable {
     /// The notice asks for every version on main; otherwise only up to the
     /// stable one (NotifierPluginNoticeChannel).
     var followsMain = true
+    /// False: nothing asks for an update unprompted, only for the restart
+    /// of one already on the host (NotifierPluginNoticeChannel.never).
+    var asksToUpdate = true
 
     /// The version installed on disk, as the plugin reports it.
     var version: String? {
@@ -163,9 +166,10 @@ struct NotifierPluginStatus: Equatable {
 
     /// Worth asking for an update unprompted: the update notice, the
     /// Settings badge and Finish setting up. On the stable channel a newer
-    /// plugin on main alone doesn't count.
+    /// plugin on main alone doesn't count; on Never nothing does but an
+    /// install, since installing isn't updating.
     var updateRecommended: Bool {
-        isUpdate(below: noticeVersion)
+        (asksToUpdate || offersInstall) && isUpdate(below: noticeVersion)
     }
 
     private func isUpdate(below target: String) -> Bool {
@@ -210,6 +214,14 @@ struct NotifierPluginStatus: Equatable {
             target = stableVersion
         }
         return Self.isOlder(offeredVersion, than: target) ? offeredVersion : target
+    }
+
+    /// The version a "Not now" on the notice belongs to: the asked-for
+    /// version, or for a restart the version waiting on disk, so the next
+    /// update's restart asks again.
+    var noticeDismissalVersion: String {
+        guard restartPending, !updateRecommended, let version else { return noticeVersion }
+        return version
     }
 
     /// Dotted numeric versions compared part by part ("0.9.1" < "0.10.0").
@@ -333,9 +345,11 @@ extension NotifierPluginStatus {
             return .none
         case .predatesCapabilities:
             switch hostCopy {
-            case .old: return .update
+            case .old: return asksToUpdate ? .update : .none
             // Nothing one tap fixes; Settings > Conduit plugin has the steps.
             case .notServed: return .none
+            // Installing isn't updating: Never still points at a missing
+            // plugin, which most of Conduit needs.
             case .missing, nil: return finishSetupOffersInstall ? .none : .install
             }
         case .reported:

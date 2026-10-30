@@ -1917,7 +1917,7 @@ final class ChatScrollEngine: ObservableObject {
             return .latest
         case .anchor(let semanticAnchor):
             let sourceAnchor = targetCache.targets
-                .first { $0.semanticID == semanticAnchor }?.id ?? semanticAnchor
+                .first { $0.semanticID == semanticAnchor }?.restorationAnchorID ?? semanticAnchor
             return .anchor(sourceAnchor)
         }
     }

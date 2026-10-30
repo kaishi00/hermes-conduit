@@ -523,6 +523,8 @@ enum MarkdownBlock: Equatable {
     /// An HTML file on the Hermes host the reply asked to show in place
     /// (`::preview{file="…"}`).
     case htmlPreview(path: String)
+    /// A Hermes Desktop plugin's card (`::richui{id="…"}`, #1522).
+    case desktopCard(DesktopCardDirective)
 }
 
 struct MarkdownQuoteLine: Equatable {
@@ -918,6 +920,9 @@ struct MarkdownBlockView: View {
             HTMLPreviewBlock(path: path, gatewayMediaDataURL: gatewayMediaDataURL, isComplete: !isStreamingTail) {
                 RemoteMarkdownImage(url: "MEDIA: \(path)", alt: MarkdownParser.mediaName(path), gatewayMediaDataURL: gatewayMediaDataURL)
             }
+
+        case .desktopCard(let card):
+            DesktopCardBlock(card: card)
 
         case .math(let source):
             // The #88 oversized-math guard applies to the block itself,
@@ -1695,7 +1700,9 @@ struct MarkdownTable: View {
     /// falls back to cap-and-scroll and re-resolves a frame later, once the
     /// width is known.
     @State private var availableWidth: CGFloat = MarkdownTableWidthProbe.lastWidth
-    /// Turned on from the long-press menu; kept until the row is taken down.
+    /// Turned on from the long-press menu, by a selection elsewhere in the
+    /// message or by a pointer over the table; kept until the row is taken
+    /// down.
     @State private var selectionTurnedOn = false
     @Environment(\.markdownTablePlainCells) private var drawsPlainCells
     @Environment(\.markdownReferences) private var references
@@ -1740,7 +1747,9 @@ struct MarkdownTable: View {
                 copyText: { [headers, rows, references] in
                     MarkdownTableLayout.plainText(headers: headers, rows: rows, references: references)
                 },
-                selectText: { selectionTurnedOn = true }
+                selectText: { [turnedOn = $selectionTurnedOn] in turnedOn.wrappedValue = true },
+                selectionCoordinator: selectionCoordinator,
+                selectionSegmentID: selectionSegment(row: 0, column: 0)?.id
             ))
         }
     }
@@ -1776,7 +1785,7 @@ struct MarkdownTableRowView: View {
     let foregroundStyle: Color
     let usesAccentSurface: Bool
     /// Each cell a selectable text view, or plain text: the chat's tables,
-    /// until the reader turns on selection from the long-press menu.
+    /// until selection turns on (MarkdownTableMenu).
     let selectsText: Bool
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let segmentFor: (Int) -> MarkdownSelectionSegmentDescriptor?
@@ -1861,28 +1870,82 @@ private struct MarkdownPlainCell: View {
 
 /// A long press on a table whose cells are plain text copies the table or
 /// turns on text selection, which draws its cells as selectable text views
-/// until its row is taken down. VoiceOver offers both as actions.
+/// until its row is taken down. VoiceOver offers both as actions, Copy
+/// Table whether or not selection is on. Selection also turns on when a
+/// selection starts elsewhere in the message, so a drag from the text above
+/// or below carries into the cells, and when a pointer (a Mac, or an iPad's
+/// trackpad or mouse) moves over the table, so a click and drag in a cell
+/// selects as it does in the reply's other text (#1531).
 private struct MarkdownTableMenu: ViewModifier {
     let isOn: Bool
     let copyText: @Sendable () -> String
     let selectText: () -> Void
+    let selectionCoordinator: MarkdownSelectionCoordinator?
+    /// The table's first cell segment, the key its deferred mount waits
+    /// under in the message's coordinator.
+    let selectionSegmentID: String?
+
+    /// Owns the deferred mount in the coordinator, which holds it weakly.
+    @State private var deferredMountOwner = DeferredMountOwner()
+
+    final class DeferredMountOwner {
+        var segmentID: String?
+    }
 
     func body(content: Content) -> some View {
-        if isOn {
-            content
-                .contextMenu {
-                    Button(action: copyTable) {
-                        Label("Copy Table", systemImage: "doc.on.doc")
+        Group {
+            if isOn {
+                content
+                    .contextMenu {
+                        Button(action: copyTable) {
+                            Label("Copy Table", systemImage: "doc.on.doc")
+                        }
+                        Button(action: selectText) {
+                            Label("Select Text", systemImage: "character.cursor.ibeam")
+                        }
                     }
-                    Button(action: selectText) {
-                        Label("Select Text", systemImage: "character.cursor.ibeam")
+                    .accessibilityAction(named: Text("Select Text"), selectText)
+                    .onHover { hovering in
+                        if hovering { selectText() }
                     }
-                }
-                .accessibilityAction(named: Text("Copy Table"), copyTable)
-                .accessibilityAction(named: Text("Select Text"), selectText)
-        } else {
-            content
+            } else {
+                content
+            }
         }
+        .accessibilityAction(named: Text("Copy Table"), copyTable)
+        .onAppear(perform: updateDeferredMount)
+        .onChange(of: isOn) { _, _ in updateDeferredMount() }
+        .onChange(of: selectionSegmentID) { _, _ in updateDeferredMount() }
+        .onDisappear(perform: cancelDeferredMount)
+    }
+
+    /// Waits in the coordinator like a drawn text segment: the selection
+    /// that mounts those mounts this table's cells too. The coordinator
+    /// keeps the closure, so `selectText` holds only the table's state.
+    @MainActor
+    private func updateDeferredMount() {
+        if deferredMountOwner.segmentID != selectionSegmentID || !isOn {
+            cancelDeferredMount()
+        }
+        guard isOn, let selectionCoordinator, let selectionSegmentID else { return }
+        // A table that appears under a live selection joins it at once, as
+        // drawn text does.
+        if selectionCoordinator.hasActiveSelection {
+            selectText()
+            return
+        }
+        let selectText = selectText
+        selectionCoordinator.deferRegistration(segmentID: selectionSegmentID, owner: deferredMountOwner) {
+            selectText()
+        }
+        deferredMountOwner.segmentID = selectionSegmentID
+    }
+
+    @MainActor
+    private func cancelDeferredMount() {
+        guard let segmentID = deferredMountOwner.segmentID else { return }
+        selectionCoordinator?.cancelDeferredRegistration(segmentID: segmentID, owner: deferredMountOwner)
+        deferredMountOwner.segmentID = nil
     }
 
     /// Resolving every cell's Markdown is the user's wait on a big table,
@@ -1936,7 +1999,9 @@ struct LargeMarkdownTable: View {
     /// zero means "unknown yet" (first pass), and the cap-and-scroll
     /// fallback re-resolves a frame later.
     @State private var availableWidth: CGFloat = MarkdownTableWidthProbe.lastWidth
-    /// Turned on from the long-press menu; kept until the row is taken down.
+    /// Turned on from the long-press menu, by a selection elsewhere in the
+    /// message or by a pointer over the table; kept until the row is taken
+    /// down.
     @State private var selectionTurnedOn = false
     @Environment(\.markdownTablePlainCells) private var drawsPlainCells
     @Environment(\.markdownReferences) private var references
@@ -2049,7 +2114,9 @@ struct LargeMarkdownTable: View {
                 copyText: { [headers, rows, references] in
                     MarkdownTableLayout.plainText(headers: headers, rows: rows, references: references)
                 },
-                selectText: { selectionTurnedOn = true }
+                selectText: { [turnedOn = $selectionTurnedOn] in turnedOn.wrappedValue = true },
+                selectionCoordinator: selectionCoordinator,
+                selectionSegmentID: segmentDescriptor(row: 0, column: 0)?.id
             ))
             if renderedRowCount < rows.count {
                 Button {
@@ -3205,18 +3272,24 @@ enum MarkdownParser {
 
             // `::preview{file="…"}` asks for a host HTML file drawn in
             // place; any other file gets its card, as a MEDIA: tag would. A
-            // quoted one is an example, as with MEDIA: tags.
-            if recognizesGatewayMedia, !trimmed.hasPrefix(">"), !isTableHeader(lines, at: index), let segments = TranscriptDirectives.segments(in: trimmed) {
+            // Desktop plugin's directive gets its card on every surface
+            // (#1522). A quoted one is an example, as with MEDIA: tags.
+            if !isTableHeader(lines, at: index), let segments = directiveSegments(in: trimmed, recognizesGatewayMedia: recognizesGatewayMedia) {
                 for segment in segments {
                     switch segment {
-                    case .preview(let file):
+                    case .preview(let file) where recognizesGatewayMedia:
                         blocks.append(TranscriptDirectives.isHTML(file)
                             ? .htmlPreview(path: file)
                             : .image(url: "MEDIA: \(file)", alt: mediaName(file)))
+                    case .preview(let file):
+                        // No host to read it from: the directive stays text.
+                        blocks.append(.paragraph("::preview{file=\"\(file)\"}"))
+                    case .desktopCard(let card):
+                        blocks.append(.desktopCard(card))
                     case .text(let text):
-                        // The text holds no previews any more, so this
+                        // The text holds no directives any more, so this
                         // cannot come back to this branch.
-                        blocks.append(contentsOf: parseBlocks([text], recognizesGatewayMedia: true))
+                        blocks.append(contentsOf: parseBlocks([text], recognizesGatewayMedia: recognizesGatewayMedia))
                     }
                 }
                 index += 1
@@ -3263,7 +3336,9 @@ enum MarkdownParser {
 
             if unorderedItem(trimmed) != nil {
                 var items: [String] = []
-                while index < lines.count, let item = unorderedItem(lines[index].trimmingCharacters(in: .whitespaces)) { items.append(item); index += 1 }
+                // An item that is a Desktop card or a preview is the block's (#1522).
+                while index < lines.count, let item = unorderedItem(lines[index].trimmingCharacters(in: .whitespaces)),
+                      items.isEmpty || !holdsDirective(lines[index], recognizesGatewayMedia: recognizesGatewayMedia) { items.append(item); index += 1 }
                 blocks.append(.unorderedList(items))
                 continue
             }
@@ -3271,7 +3346,8 @@ enum MarkdownParser {
             if orderedItem(trimmed) != nil {
                 let start = orderedNumber(trimmed)
                 var items: [String] = []
-                while index < lines.count, let item = orderedItem(lines[index].trimmingCharacters(in: .whitespaces)) {
+                while index < lines.count, let item = orderedItem(lines[index].trimmingCharacters(in: .whitespaces)),
+                      items.isEmpty || !holdsDirective(lines[index], recognizesGatewayMedia: recognizesGatewayMedia) {
                     let itemLine = lines[index]
                     items.append(item); index += 1
                     // Blank lines between items make a loose list, not a
@@ -3282,7 +3358,7 @@ enum MarkdownParser {
                     // wins, as it does above.
                     var next = index
                     while next < lines.count, lines[next].trimmingCharacters(in: .whitespaces).isEmpty { next += 1 }
-                    if next > index, next < lines.count, continuesOrderedList(lines[next], from: itemLine), !isTableHeader(lines, at: next), !(recognizesGatewayMedia && claimsGatewayMedia(lines[next])) { index = next }
+                    if next > index, next < lines.count, continuesOrderedList(lines[next], from: itemLine), !isTableHeader(lines, at: next), !(recognizesGatewayMedia && claimsGatewayMedia(lines[next])), !holdsDirective(lines[next], recognizesGatewayMedia: recognizesGatewayMedia) { index = next }
                 }
                 blocks.append(.orderedList(items, start: start))
                 continue
@@ -3293,7 +3369,7 @@ enum MarkdownParser {
             while index < lines.count {
                 let candidate = lines[index]
                 let next = candidate.trimmingCharacters(in: .whitespaces)
-                if next.isEmpty || MarkdownFence.opening(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && (GatewayMediaTags.segments(in: next) != nil || (!next.hasPrefix(">") && TranscriptDirectives.segments(in: next) != nil))) || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
+                if next.isEmpty || MarkdownFence.opening(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && GatewayMediaTags.segments(in: next) != nil) || directiveSegments(in: next, recognizesGatewayMedia: recognizesGatewayMedia) != nil || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
                 paragraph.append(candidate); index += 1
             }
             blocks.append(.paragraph(paragraph.joined(separator: "\n")))
@@ -3441,6 +3517,20 @@ enum MarkdownParser {
         guard orderedItem(trimmed) != nil else { return false }
         return orderedDelimiter(trimmed) == orderedDelimiter(previous.trimmingCharacters(in: .whitespaces))
     }
+    /// Whether `line` holds a directive drawn as a block (a Desktop card,
+    /// or a preview with a host to read it from), which takes its line
+    /// out of a list (#1522).
+    private static func holdsDirective(_ line: String, recognizesGatewayMedia: Bool) -> Bool {
+        directiveSegments(in: line.trimmingCharacters(in: .whitespaces), recognizesGatewayMedia: recognizesGatewayMedia) != nil
+    }
+    /// A line's transcript directives as `parseBlocks` takes them: previews
+    /// only with a host to read them from, Desktop cards everywhere, and
+    /// never in a quote (an example).
+    private static func directiveSegments(in trimmed: String, recognizesGatewayMedia: Bool) -> [TranscriptDirectives.Segment]? {
+        guard !trimmed.hasPrefix(">"), let segments = TranscriptDirectives.segments(in: trimmed) else { return nil }
+        if recognizesGatewayMedia { return segments }
+        return segments.contains { if case .desktopCard = $0 { return true } else { return false } } ? segments : nil
+    }
     /// Whether the gateway-media branches of `parseBlocks` take `line`.
     private static func claimsGatewayMedia(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -3451,8 +3541,7 @@ enum MarkdownParser {
         value.first { !$0.isNumber }
     }
     static func isTableHeader(_ lines: [String], at index: Int) -> Bool {
-        guard index + 1 < lines.count, lines[index].contains("|") else { return false }
-        return lines[index + 1].trimmingCharacters(in: .whitespaces).range(of: #"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$"#, options: .regularExpression) != nil
+        TranscriptDirectives.isTableHeader(lines, at: index)
     }
     private static func tableCells(_ line: String) -> [String] {
         var cells = line.split(separator: "|", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
