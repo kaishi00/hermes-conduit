@@ -1,0 +1,22 @@
+# Conduit Dev: a development-signed copy of the app for "Designed for iPad"
+# runs on a Mac (scripts/mac-dev-build.sh). Its own bundle id and name keep
+# it apart from the TestFlight Conduit, and it embeds no extensions or Watch
+# app. Its entitlements are empty: no app groups (so it never shares the
+# TestFlight app's notification keys or widget data) and none of the
+# entitlements Apple grants per App ID (CarPlay voice, location push).
+name: ConduitDev
+include:
+  # Relative to the repo root: generate with --project-root . (the script does).
+  - path: project.yml
+targets:
+  Conduit:
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.dev
+        PRODUCT_NAME: Conduit Dev
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+        PROVISIONING_PROFILE_SPECIFIER: ""
+        CODE_SIGN_ENTITLEMENTS: scripts/mac-dev/ConduitDev.entitlements
+    dependencies:REPLACE:
+      - package: WebRTC
