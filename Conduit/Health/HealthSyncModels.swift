@@ -202,6 +202,15 @@ enum HealthSyncLimits {
     static let maxItemsPerBatch = 2_000
     /// Days of history per backfill step.
     static let backfillChunkDays = 30
+    /// The host refuses times before this (health_store.py's EARLIEST).
+    static let hostEarliest = Date(timeIntervalSince1970: 946_684_800)
+
+    /// The first day history may start on: a local midnight late enough
+    /// that its sleep window, which opens at noon the day before, is still
+    /// after `hostEarliest` in any time zone.
+    static func oldestDay(calendar: Calendar) -> Date {
+        calendar.startOfDay(for: hostEarliest.addingTimeInterval(2 * 86_400))
+    }
     /// Raw readings per type per query page.
     static let samplesPerQuery = 1_000
 }
