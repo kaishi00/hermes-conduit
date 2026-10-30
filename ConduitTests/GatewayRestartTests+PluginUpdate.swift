@@ -286,6 +286,10 @@ extension GatewayRestartTests {
         status.hostCopy = .old
         XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
         XCTAssertFalse(status.needsAttention)
+
+        // Installing isn't updating: a missing plugin is still offered.
+        status.hostCopy = .missing
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .install)
     }
 
     func testNotNowKeepsOtherDashboardsDismissals() throws {
@@ -328,6 +332,15 @@ extension GatewayRestartTests {
         XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .done)
         XCTAssertEqual(FinishSetupStatus.pluginDoneNote(status), .upToDate)
         XCTAssertEqual(status.noticeDismissalVersion, status.noticeVersion)
+
+        // A restart's "Not now" belongs to the version on disk here too, so
+        // a later update's restart asks again.
+        status.state = .reported(version: "9.2.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.1.0", restartNeeded: true, bootID: nil)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .restart)
+        XCTAssertEqual(status.noticeDismissalVersion, "9.2.0")
+        status.state = .reported(version: "9.3.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        XCTAssertEqual(status.noticeDismissalVersion, "9.3.0")
     }
 
     func testAnAppStoreBuildAsksUpToThePluginItWasArchivedWith() {

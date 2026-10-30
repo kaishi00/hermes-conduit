@@ -75,11 +75,11 @@ def main(argv=None, environ=None, fetch=fetch_plugin_yaml) -> int:
         version = plugin_version(fetch())
     except FETCH_ERRORS as exc:
         print(f"warning: Couldn't read the plugin version on notifier main ({exc}); "
-              "this archive's App Store plugin notice falls back to recommendedVersion.")
+              "this archive's stable plugin notice falls back to recommendedVersion.")
         return 0
     if version is None:
         print("warning: notifier main's plugin.yaml has no readable version; "
-              "this archive's App Store plugin notice falls back to recommendedVersion.")
+              "this archive's stable plugin notice falls back to recommendedVersion.")
         return 0
     stamp(args.info_plist, version)
     print(f"Stamped {KEY} = {version}")

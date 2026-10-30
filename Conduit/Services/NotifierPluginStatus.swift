@@ -215,11 +215,11 @@ struct NotifierPluginStatus: Equatable {
         return Self.isOlder(offeredVersion, than: target) ? offeredVersion : target
     }
 
-    /// The version a "Not now" on the notice belongs to. Never offers only
-    /// restarts, so one is dismissed for the version waiting on disk: the
-    /// next update's restart asks again.
+    /// The version a "Not now" on the notice belongs to: the asked-for
+    /// version, or for a restart the version waiting on disk, so the next
+    /// update's restart asks again.
     var noticeDismissalVersion: String {
-        guard !asksToUpdate, restartPending, let version else { return noticeVersion }
+        guard restartPending, !updateRecommended, let version else { return noticeVersion }
         return version
     }
 
@@ -347,6 +347,8 @@ extension NotifierPluginStatus {
             case .old: return asksToUpdate ? .update : .none
             // Nothing one tap fixes; Settings > Conduit plugin has the steps.
             case .notServed: return .none
+            // Installing isn't updating: Never still points at a missing
+            // plugin, which most of Conduit needs.
             case .missing, nil: return finishSetupOffersInstall ? .none : .install
             }
         case .reported:

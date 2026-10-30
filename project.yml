@@ -88,8 +88,8 @@ targets:
             --info-plist "$SRCROOT/$INFOPLIST_FILE" \
             --bundle "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH" \
             --development-language "$DEVELOPMENT_LANGUAGE"
-      # An archive records the plugin version on notifier main: the version
-      # App Store builds ask hosts to update to (NotifierPluginStatus).
+      # An archive records the plugin version on notifier main: the stable
+      # version the build asks hosts to update to (NotifierPluginStatus).
       - name: Stamp plugin version
         basedOnDependencyAnalysis: false
         script: |
