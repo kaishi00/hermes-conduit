@@ -1747,7 +1747,7 @@ struct MarkdownTable: View {
                 copyText: { [headers, rows, references] in
                     MarkdownTableLayout.plainText(headers: headers, rows: rows, references: references)
                 },
-                selectText: { selectionTurnedOn = true },
+                selectText: { [turnedOn = $selectionTurnedOn] in turnedOn.wrappedValue = true },
                 selectionCoordinator: selectionCoordinator,
                 selectionSegmentID: selectionSegment(row: 0, column: 0)?.id
             ))
@@ -1920,7 +1920,8 @@ private struct MarkdownTableMenu: ViewModifier {
     }
 
     /// Waits in the coordinator like a drawn text segment: the selection
-    /// that mounts those mounts this table's cells too.
+    /// that mounts those mounts this table's cells too. The coordinator
+    /// keeps the closure, so `selectText` holds only the table's state.
     @MainActor
     private func updateDeferredMount() {
         if deferredMountOwner.segmentID != selectionSegmentID || !isOn {
@@ -2106,7 +2107,7 @@ struct LargeMarkdownTable: View {
                 copyText: { [headers, rows, references] in
                     MarkdownTableLayout.plainText(headers: headers, rows: rows, references: references)
                 },
-                selectText: { selectionTurnedOn = true },
+                selectText: { [turnedOn = $selectionTurnedOn] in turnedOn.wrappedValue = true },
                 selectionCoordinator: selectionCoordinator,
                 selectionSegmentID: segmentDescriptor(row: 0, column: 0)?.id
             ))
