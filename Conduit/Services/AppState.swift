@@ -6062,7 +6062,6 @@ final class AppState: ObservableObject {
 #endif
 
     private func wipeOfflineChatCache(dashboardID: UUID?) {
-        savedChatsWipeGeneration &+= 1
         if let dashboardID {
             offlineChatCache.removeDashboard(dashboardID)
             keptBotChatCopies = keptBotChatCopies.filter { !$0.key.hasPrefix("\(dashboardID.uuidString)|") }
@@ -6115,7 +6114,6 @@ final class AppState: ObservableObject {
         // on other dashboards. Keep their files rather than rewriting only
         // the messages currently loaded in memory.
         offlineChatCache.removeSavedChats()
-        savedChatsWipeGeneration &+= 1
         keptBotChatCopies.removeAll()
         TranscriptImageCache.purge()
         TranscriptPictureMemory.forgetAll()
@@ -30120,9 +30118,6 @@ final class AppState: ObservableObject {
     /// Dashboard and profile scopes whose plugin refused the history page
     /// route this run (`HistoryPage.isRefusedForScope`).
     private var historyPageRefusedScopes: Set<String> = []
-    /// Moves with every wipe of the saved chats, so a read that lands after
-    /// one keeps nothing.
-    private var savedChatsWipeGeneration = 0
 
     /// The page through the plugin's history page route (#1525), with the
     /// rows this phone kept from the last read of the chat's newest page
@@ -30140,7 +30135,7 @@ final class AppState: ObservableObject {
               let dashboardID = activeDashboardID,
               !historyPageRefusedScopes.contains(HistoryPage.scopeKey(dashboardID: dashboardID, profile: profile)) else { return nil }
         let heldURL = offlineChatCache.heldRowsFileURL(sessionId, dashboardID: dashboardID, profile: profile)
-        let wipeGeneration = savedChatsWipeGeneration
+        let removals = offlineChatCache.removals
         let held = await Task.detached(priority: .userInitiated) {
             OfflineChatCacheStore.loadHeldRows(at: heldURL, sessionID: sessionId)
         }.value
@@ -30166,10 +30161,10 @@ final class AppState: ObservableObject {
         }
         let sentRows = (response["messages"] as? [Any])?.filter { ($0 as? [String: Any])?[HistoryPage.knownKey] == nil }.count ?? 0
         noteConnectionStep("History page: \(sentRows) of \(rebuilt.kept.rows.count) rows sent", since: startedAt)
-        // Only while nothing wiped the saved chats during the read (a
-        // sign-out, a removed dashboard, Delete saved chats) and the same
-        // sign-in still holds: these rows went with that wipe too.
-        if isTail, savedChatsWipeGeneration == wipeGeneration, dashboardTicketBridge === bridge,
+        // Only while nothing was removed from the saved chats during the read
+        // (a sign-out, a removed dashboard, Delete saved chats, a deleted
+        // chat) and the same sign-in still holds: these rows went too.
+        if isTail, offlineChatCache.removals == removals, dashboardTicketBridge === bridge,
            activeDashboardID == dashboardID {
             OfflineChatCacheStore.writeHeldRows(rebuilt.kept, to: heldURL)
         }

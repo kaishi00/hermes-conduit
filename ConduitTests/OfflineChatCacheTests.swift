@@ -221,8 +221,10 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(OfflineChatCacheStore.loadHeldRows(at: url, sessionID: "other"))
         XCTAssertNotEqual(url, store.heldRowsFileURL("s1", dashboardID: dashboard, profile: "work"))
 
+        let removals = store.removals
         store.removeTranscripts(sessionIDs: ["s1"], dashboardID: dashboard, profile: "default")
         XCTAssertNil(OfflineChatCacheStore.loadHeldRows(at: url, sessionID: "s1"))
+        XCTAssertNotEqual(store.removals, removals, "A read in flight across the delete keeps nothing")
     }
 
     func testHeldRowsKeepTheNewestChats() throws {

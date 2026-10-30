@@ -59,7 +59,8 @@ final class HistoryPageTests: XCTestCase {
 
     func testOnlyAHostThatCantServeTheRouteIsLeftForTheRun() {
         XCTAssertTrue(HistoryPage.isRefusedForScope(DashboardTicketBridgeError.http(status: 501, detail: "")))
-        XCTAssertTrue(HistoryPage.isRefusedForScope(DashboardTicketBridgeError.http(status: 403, detail: "")))
+        XCTAssertFalse(HistoryPage.isRefusedForScope(DashboardTicketBridgeError.http(status: 403, detail: "")),
+                       "An auth proxy's 403 for a lapsed sign-in isn't the route refusing")
         XCTAssertFalse(HistoryPage.isRefusedForScope(DashboardTicketBridgeError.http(status: 404, detail: "")),
                        "Hermes' own missing chat passes through as a 404")
         XCTAssertFalse(HistoryPage.isRefusedForScope(DashboardTicketBridgeError.http(status: 0, detail: "")))

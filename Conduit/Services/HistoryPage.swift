@@ -83,13 +83,13 @@ enum HistoryPage {
     }
 
     /// Whether the route can't be served for this dashboard and profile at
-    /// all: a Hermes without session routes (501), a profile that turned the
-    /// plugin off or a ticket for another profile (403), a method it doesn't
-    /// take (405). A 404 is left out: Hermes' own "no such chat" passes
-    /// through as one.
+    /// all: a Hermes without session routes (501), a method it doesn't take
+    /// (405). A 404 is left out, as Hermes' own "no such chat" passes through
+    /// as one, and a 403, which an auth proxy also sends for a sign-in that
+    /// ran out.
     static func isRefusedForScope(_ error: Error) -> Bool {
         guard case let DashboardTicketBridgeError.http(status, _) = error else { return false }
-        return [403, 405, 501].contains(status)
+        return [405, 501].contains(status)
     }
 
     /// Whether a failed read should go to Hermes' own route instead: the

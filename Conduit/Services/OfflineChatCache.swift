@@ -424,6 +424,9 @@ final class OfflineChatCacheStore {
     static let maxKeptTranscripts = 8
 
     private let scopeBytes: Int
+    /// Moves with every removal (a deleted chat, a wipe), so a read that was
+    /// in flight across one keeps nothing (#1525).
+    private(set) var removals = 0
 
     init(directory: URL, fileManager: FileManager = .default, scopeBytes: Int = OfflineChatCacheStore.maxScopeBytes) {
         self.directory = directory
@@ -559,6 +562,7 @@ final class OfflineChatCacheStore {
     /// opens to. The index is rewritten before the files go, as `record`
     /// does, so it never lists a copy that isn't there.
     func removeTranscripts(sessionIDs: Set<String>, dashboardID: UUID, profile: String) {
+        removals &+= 1
         let ids = sessionIDs.filter { !$0.isEmpty }
         guard !ids.isEmpty else { return }
         if var snapshot = load(dashboardID: dashboardID, profile: profile) {
@@ -673,6 +677,7 @@ final class OfflineChatCacheStore {
     }
 
     func removeDashboard(_ dashboardID: UUID) {
+        removals &+= 1
         let prefix = dashboardID.uuidString.lowercased() + "--"
         forgetKeptTranscripts { $0.lastPathComponent.hasPrefix(prefix) }
         guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
@@ -686,6 +691,7 @@ final class OfflineChatCacheStore {
     /// Deletes presentation copies across dashboards, preserving accepted
     /// unsent messages even when their dashboard is not loaded in memory.
     func removeSavedChats() {
+        removals &+= 1
         forgetKeptTranscripts { _ in true }
         guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
             return
@@ -696,6 +702,7 @@ final class OfflineChatCacheStore {
     }
 
     func removeAll() {
+        removals &+= 1
         forgetKeptTranscripts { _ in true }
         try? fileManager.removeItem(at: directory)
     }
