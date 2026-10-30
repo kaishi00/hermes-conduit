@@ -216,7 +216,7 @@ the outcome text each model is told
 **Open gaps**
 - After a steer the model is still told Hermes "changes course now": steer and redirect both end as `.interrupted`, and the text has four copies, in `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`, `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift`, `Shared/WatchVoice/WatchJobRelay.swift` and `Shared/WatchVoice/WatchBridgeDelegation.swift` (#1157).
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445 (a job's follow-up words are marked as voice's); 2026-10-27, #1390 (Classic: speech over Hermes' acknowledgement steers); 2026-10-25, at #1252, for a call that took its first request's chat; Qwen in the siblings and the table, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-30, #1527 (the composer's Steer, Queue and Interrupt keep the field's focus on a Mac or with a hardware keyboard, see Composer focus after a send); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445 (a job's follow-up words are marked as voice's); 2026-10-27, #1390 (Classic: speech over Hermes' acknowledgement steers); 2026-10-25, at #1252, for a call that took its first request's chat; Qwen in the siblings and the table, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
 
 ## Job results during calls
 
@@ -1656,7 +1656,7 @@ the composer's Sending… while a send checks Hermes
 - A room's quoted message and its "To" picks aren't kept when the room is left.
 - A room that's disbanded while another dashboard is in use keeps its staged files until that dashboard is opened again or the user signs out.
 
-**Checked:** 2026-10-29, #1515 (a long paste stays words while the chat is on its way); 2026-10-27, #1403 (failed sends' words outlast the composer; Sending… before the message shows); 2026-10-24, at #1185; a failed '/command' put back without its suggestion list over it at #1191 (#891 review).
+**Checked:** 2026-10-30, #1527 (a handoff clears the full editor's kept-focus latch, so a send's focus doesn't follow into the next chat); 2026-10-29, #1515 (a long paste stays words while the chat is on its way); 2026-10-27, #1403 (failed sends' words outlast the composer; Sending… before the message shows); 2026-10-24, at #1185; a failed '/command' put back without its suggestion list over it at #1191 (#891 review).
 
 ## A new chat that something waits on
 
@@ -1765,7 +1765,7 @@ Keyboard caption is unchanged, as it describes the option)
   command sending, Shift-Return and the IME's Return still reaching the
   text, in chats, rooms and the full editor.
 
-**Checked:** 2026-10-29, #1515 (the same fields take a long paste as an attachment, `onLongTextPaste`; Return unchanged); 2026-10-28, #1460 (inline prediction off on a Mac).
+**Checked:** 2026-10-30, #1527 (a Return send keeps the field's focus on a Mac or with a hardware keyboard, see Composer focus after a send; ImagePasteTextView takes focus once in the window); 2026-10-29, #1515 (the same fields take a long paste as an attachment, `onLongTextPaste`; Return unchanged); 2026-10-28, #1460 (inline prediction off on a Mac).
 
 ## Composer at rest and expanded
 
@@ -1796,7 +1796,11 @@ Settings caption describes it
   expanded when the chat's column has the room (600 pt, Artifacts beside it
   taken off) and rests below that. Mac: it stays expanded at any width, with
   its controls always in reach. There is no setting (Eric, 2026-10-29,
-  #1512, issue 1483).
+  #1512, issue 1483). A Mac's composer never rests, so a send that keeps
+  the field focused changes nothing there. With a hardware keyboard on an
+  iPhone or a narrow iPad a send keeps focus too, so a composer that rests
+  stays expanded after it until a tap on the transcript (Eric, 2026-10-30,
+  #1527, see Composer focus after a send).
 - A composer that stays expanded keeps the big voice button beside it, as the
   resting bar does, rather than sliding it aside while typing; the controls
   row then leaves out its own voice button, and its mic when the big button
@@ -1811,7 +1815,66 @@ Settings caption describes it
   resizes, and a Mac window at its narrowest. On an iPad the first frame
   of a chat may still show the resting bar before its width is measured.
 
-**Checked:** 2026-10-29, #1512 (new entry, issue 1483).
+**Checked:** 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
+
+## Composer focus after a send
+
+Whether the composer's field keeps focus once a message goes, so the next
+one can be typed straight away, or gives it up so the keyboard goes down.
+
+**Siblings:** the chat composer (chats, project chats, Bot Chat; done,
+#1527) · Send, Return and the long-press choices (Steer, Queue,
+Interrupt), and a message that waits for its chat ("Sends when connected";
+done, #1527) · Stop in Send's place (done, #1527) · the full editor (done,
+#1527: a send from it gives the field focus back as the sheet goes) · group
+rooms' composer (gap: its send never takes focus from the field, on any
+device, so a Mac and a hardware keyboard already keep it; on a touch-only
+iPhone too, see Open gaps) · a prediction sent from the suggestion row (done, #1527:
+the same send, so it keeps whatever focus the field had) · the plan card, which opens whatever the focus on a Mac or with a hardware
+keyboard (not needed: its check is for the keyboard, not the focus; its
+ruling now says the focus stays, see Plan card) · the resting composer and
+the minimised call bar (done, #1527: with a hardware keyboard on an iPhone
+or a narrow iPad the composer stays expanded after a send while the field
+keeps focus, until a tap on the transcript, see Composer at rest and
+expanded; the call bar, on those and on a Mac, comes back after a send and
+hides again only once words are typed) ·
+iPhone, iPad and Mac · no Settings caption or doc describes it
+
+**Code**
+- Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.keepsFocusAfterSend)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView, ImagePasteTextView.setFocusIntent and didMoveToWindow: a field rebuilt with focus takes it once it's in the window), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
+- Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`, opened by ComposerBar's expand button (which takes focus from the field) and its sheet
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send)
+- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow)
+
+**Rulings**
+- On a Mac, or with a hardware keyboard on an iPad or iPhone, a send or
+  Stop leaves the field focused when the user was typing, as a desktop
+  client does; a click or tap on the transcript still takes focus away.
+  With only the on-screen keyboard it goes down, so the reply has the
+  screen (Eric asked for it on a Mac, and chose the same for an iPad or
+  iPhone with a hardware keyboard, 2026-10-30, #1527).
+  The check is for a connected keyboard, as the plan card's is.
+- Where the field keeps focus, focus alone doesn't hide the minimised call
+  bar: it shows after a send and hides only while words are typed, so a
+  kept focus never hides a call (2026-10-30, #1527).
+- A send or Stop from the full editor gives the field focus once the sheet
+  has gone, not while it is dismissing; if the composer hands off to another
+  chat first, that focus doesn't follow it there (2026-10-30, #1527).
+- Opening a call from the composer still takes focus away on every device:
+  the call has the screen (2026-10-30, #1527).
+
+**Open gaps**
+- Not yet seen on a device: a Mac and an iPad with a keyboard sending from
+  the field and from the full editor, and which controls besides the
+  transcript take focus from the field on a Mac. No test reaches
+  `updateUIView` passing the binding's focus to the field (it needs a SwiftUI
+  Context), so that link is checked on a device only.
+- Group rooms keep the field focused after a send on a touch-only iPhone
+  too, where a chat's keyboard goes down; the maintainer decides whether
+  rooms follow the chat there.
+
+**Checked:** 2026-10-30, #1527 (new entry).
 
 ## A chat's last reply
 
@@ -2747,14 +2810,14 @@ keeps to itself there)
 - Docked at the bottom above the composer, a line that announces a new plan without opening over the chat; the artifact card was dropped (2026-10-23, #1135, Eric).
 - An announced plan is on screen: a new plan, even one that arrives finished after the last one went, clears the hidden state and gets its own 60 s (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
 - The line and the card cap Dynamic Type at accessibility1; the sheet, a scrolling list, takes every size (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
-- The plan keeps to its one line only while an on-screen keyboard can be up: a Mac's composer keeps focus between messages and a hardware keyboard puts it away, so there the line opens whatever the focus, and a tap on the line under the keyboard puts the keyboard away and opens the card (2026-10-29, #1511, issue #1510).
+- The plan keeps to its one line only while an on-screen keyboard can be up: a Mac has none and a hardware keyboard puts it away, and in both the composer keeps focus between messages (see Composer focus after a send), so there the line opens whatever the focus, and a tap on the line under the keyboard puts the keyboard away and opens the card (2026-10-29, #1511, issue #1510; focus kept after a send, #1527).
 
 **Open gaps**
 - The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
 - Two announcements within 450 ms race on the pulse (#1135 review).
 - With a hardware keyboard the line opens even if the on-screen keyboard is summoned; the check is for a connected keyboard, not a visible one (#1511 review).
 
-**Checked:** 2026-10-29, #1511.
+**Checked:** 2026-10-30, #1527 (the ruling's premise: a send keeps focus on a Mac and with a hardware keyboard; the check is unchanged); 2026-10-29, #1511.
 
 ## White text on the accent
 
@@ -3566,7 +3629,7 @@ route, its README section and the CHANGELOG · the Predictive page's captions
 - The fast model is the profile's `auxiliary.conduit_predict` on the host; Conduit can't set it.
 - Which reply is Hermes' own, when other clients' messages are queued around the hidden prompt, is inferred from row timestamps (the phone's clock at sending against the host's) and `user.message` events. Hermes sends no turn ownership, so a message sent within clock skew of the prompt, one read into the chat before its event arrives, another device's message repeating the text this iPhone sent last before that message has its row id (taken for this iPhone's own), a message whose event arrives only after the hidden prompt while its turn is the one the prompt queued behind (counted twice), or a message queued ahead whose row is read in before the turn the prompt queued behind ends and whose event came before the prompt (not counted), can still put the tag on the wrong reply; and this iPhone's own message announced back after a newer one of its own is taken for someone else's, which drops the tag. The event's origin isn't read for this (#1290).
 
-**Checked:** 2026-10-29, #1495, carrying #1489 (a guess's fork sends no push, notifier #464); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1455 (carrying #1431; a chip that sends wraps instead of truncating; Rulings); 2026-10-26, #1290 (a follow-up's tag skips replies to other messages); at #1281 (carrying #1242).
+**Checked:** 2026-10-30, #1527 (a guess sent from the row keeps whatever focus the field had, see Composer focus after a send); 2026-10-29, #1495, carrying #1489 (a guess's fork sends no push, notifier #464); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1455 (carrying #1431; a chip that sends wraps instead of truncating; Rulings); 2026-10-26, #1290 (a follow-up's tag skips replies to other messages); at #1281 (carrying #1242).
 
 ## Linked Rooms
 

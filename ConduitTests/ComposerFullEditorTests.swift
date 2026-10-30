@@ -17,6 +17,14 @@ final class ComposerFullEditorTests: XCTestCase {
         XCTAssertFalse(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: false, isFocused: true), "the classic layout always shows it")
     }
 
+    /// #1527: on a Mac or with a hardware keyboard the field keeps focus
+    /// after a send; the bar comes back until words are typed again.
+    func testFocusKeptAfterASendShowsTheMinimisedCallBarUntilTyping() {
+        XCTAssertFalse(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isFocused: true, hasText: false, keepsFocusAfterSend: true))
+        XCTAssertTrue(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isFocused: true, hasText: true, keepsFocusAfterSend: true))
+        XCTAssertTrue(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isFocused: true, hasText: false, keepsFocusAfterSend: false), "the on-screen keyboard still hides it")
+    }
+
     /// #762: V2 keeps Stop in the resting bar, so the big voice button
     /// beside it stays; steering still needs the controls row.
     func testStopAloneKeepsTheV2ComposerResting() {

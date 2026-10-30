@@ -7,6 +7,7 @@
 //  expanded on an iPad with the room for it and always on a Mac.
 //
 
+import GameController
 import SwiftUI
 import UIKit
 
@@ -24,6 +25,17 @@ enum ComposerLayout {
         if onMac { return true }
         guard idiom != .phone else { return false }
         return width >= expandedMinimumWidth
+    }
+
+    /// Whether the field keeps focus after a send, so the next message can
+    /// be typed straight away as in a desktop client: on a Mac, or with a
+    /// hardware keyboard. With only the on-screen keyboard it goes down, so
+    /// the reply has the screen.
+    static func keepsFocusAfterSend(
+        onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac,
+        hardwareKeyboard: Bool = GCKeyboard.coalesced != nil
+    ) -> Bool {
+        onMac || hardwareKeyboard
     }
 }
 

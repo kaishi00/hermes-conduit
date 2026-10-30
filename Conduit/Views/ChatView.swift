@@ -26,7 +26,8 @@ struct ChatView: View {
     @EnvironmentObject var appState: AppState
     @State private var viewportSnapshotProviderID = UUID()
     /// V2: someone is typing in the composer, which hides the minimised
-    /// call's bar.
+    /// call's bar (on a Mac or with a hardware keyboard, only while the
+    /// field holds words, since it keeps focus after a send).
     @State private var composerTyping = false
     @Environment(\.accessibilityReduceMotion) private var composerReduceMotion
     /// V2: the composer floats over the transcript, which scrolls on under
@@ -594,8 +595,9 @@ struct ChatView: View {
     @ViewBuilder
     private var planDock: some View {
         if appState.showsChatCards {
-            // composerTyping is V2's focused-composer flag; the classic
-            // shell never sets it, so there the plan never keeps to its line.
+            // composerTyping is V2's composer-typing flag
+            // (ComposerBar.hidesMinimisedCallBar); the classic shell never
+            // sets it, so there the plan never keeps to its line.
             ChatPlanDock(
                 cards: appState.chatCards,
                 isCompact: ChatPlanDock.keepsToLine(composerFocused: composerTyping)
