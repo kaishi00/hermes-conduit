@@ -362836,6 +362836,88 @@
         }
       }
     },
+    "Wait while I'm at a screen": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Warten, während ich am Bildschirm bin"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esperar mientras estoy ante una pantalla"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attendre quand je suis devant un écran"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tunggu saat saya di depan layar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aspetta quando sono davanti a uno schermo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画面の前にいるときは待つ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "화면 앞에 있을 때는 기다리기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Czekaj, gdy jestem przy ekranie"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esperar quando estou diante de uma tela"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ждать, пока я у экрана"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekran başındayken bekle"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在屏幕前时等待"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在螢幕前時等待"
+          }
+        }
+      }
+    },
     "Waiting for %lld running chats to finish…": {
       "localizations": {
         "de": {
@@ -369584,6 +369666,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "當你暫停輸入片刻，會提供補完訊息的字詞，以及你可能想說的完整訊息。為此，你尚未傳送的草稿會送到你的代理模型。"
+          }
+        }
+      }
+    },
+    "When you're talking to Hermes in Hermes Desktop, the dashboard or a terminal, or have the chat open in Conduit, it waits 10 minutes before calling about an approval or question, and a failed request sends a notification instead.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn du mit Hermes in Hermes Desktop, im Dashboard oder in einem Terminal sprichst oder den Chat in Conduit geöffnet hast, wartet er 10 Minuten, bevor er wegen einer Freigabe oder Frage anruft, und eine fehlgeschlagene Anfrage sendet stattdessen eine Mitteilung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuando hablas con Hermes en Hermes Desktop, el panel o un terminal, o tienes el chat abierto en Conduit, espera 10 minutos antes de llamar por una aprobación o una pregunta, y una solicitud fallida envía una notificación en su lugar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quand tu parles à Hermes dans Hermes Desktop, le tableau de bord ou un terminal, ou que la discussion est ouverte dans Conduit, il attend 10 minutes avant d’appeler pour une approbation ou une question, et une requête échouée envoie une notification à la place."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saat kamu berbicara dengan Hermes di Hermes Desktop, dasbor, atau terminal, atau membuka obrolan di Conduit, Hermes menunggu 10 menit sebelum menelepon soal persetujuan atau pertanyaan, dan permintaan yang gagal mengirim notifikasi sebagai gantinya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando parli con Hermes in Hermes Desktop, nella dashboard o in un terminale, o hai la chat aperta in Conduit, aspetta 10 minuti prima di chiamare per un’approvazione o una domanda, e una richiesta non riuscita invia invece una notifica."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes Desktop、ダッシュボード、ターミナルで Hermes と話しているとき、または Conduit でチャットを開いているときは、承認や質問で電話をかける前に 10 分待ちます。失敗したリクエストは電話の代わりに通知を送ります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes Desktop, 대시보드 또는 터미널에서 Hermes와 대화 중이거나 Conduit에서 채팅을 열어 둔 경우, 승인이나 질문으로 전화하기 전에 10분 동안 기다리고, 실패한 요청은 대신 알림을 보냅니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gdy rozmawiasz z Hermesem w Hermes Desktop, panelu lub terminalu albo masz otwarty czat w Conduit, czeka 10 minut, zanim zadzwoni w sprawie zatwierdzenia lub pytania, a nieudane żądanie zamiast tego wysyła powiadomienie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando você fala com o Hermes no Hermes Desktop, no painel ou em um terminal, ou está com a conversa aberta no Conduit, ele espera 10 minutos antes de ligar por uma aprovação ou pergunta, e uma solicitação com falha envia uma notificação em vez disso."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Когда вы общаетесь с Hermes в Hermes Desktop, на панели управления или в терминале либо чат открыт в Conduit, он ждёт 10 минут, прежде чем позвонить из-за подтверждения или вопроса, а неудачный запрос вместо звонка отправляет уведомление."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes ile Hermes Desktop’ta, panoda veya bir terminalde konuşuyorsan ya da sohbet Conduit’te açıksa, bir onay veya soru için aramadan önce 10 dakika bekler; başarısız bir istek ise arama yerine bildirim gönderir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当你在 Hermes Desktop、仪表板或终端中与 Hermes 交谈，或在 Conduit 中打开了该聊天时，它会等待 10 分钟再因批准或问题打电话；请求失败时会改为发送通知。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "當你在 Hermes Desktop、儀表板或終端機中與 Hermes 交談，或在 Conduit 中開著該聊天時，它會等待 10 分鐘再因核准或問題打電話；請求失敗時會改為傳送通知。"
           }
         }
       }

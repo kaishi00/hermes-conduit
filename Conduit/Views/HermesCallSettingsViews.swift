@@ -262,6 +262,12 @@ struct HermesCallSettingsSection: View {
                             .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    if draft.alerts == true, draft.quietAtScreen != nil {
+                        Toggle("Wait while I'm at a screen", isOn: optionalBinding(\.quietAtScreen))
+                        Text("When you're talking to Hermes in Hermes Desktop, the dashboard or a terminal, or have the chat open in Conduit, it waits 10 minutes before calling about an approval or question, and a failed request sends a notification instead.")
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     ConduitMenuPicker(
                         value: draft.minGapSeconds,
                         choices: HermesCallSettingsFormat.gapChoices(bounds: status.minGapBounds, current: draft.minGapSeconds)

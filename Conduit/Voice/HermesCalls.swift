@@ -615,6 +615,11 @@ struct HermesCallSettings: Equatable {
     /// Calls about an approval or question Hermes waits on, or a failed
     /// turn (plugin 0.14+); nil when the host doesn't have the setting.
     var alerts: Bool?
+    /// Alert calls wait 10 minutes, and a failed turn pushes, while the user
+    /// follows the turn on a screen: Hermes Desktop, the dashboard, a
+    /// terminal, or the chat open in Conduit (plugin 0.122+, notifier #474);
+    /// nil when the host doesn't have the setting.
+    var quietAtScreen: Bool?
     var minGapSeconds = 120
     var perHour = 6
     var perDay = 20
@@ -642,6 +647,7 @@ struct HermesCallSettings: Equatable {
         self.whenAsked = whenAsked
         self.decides = json["decides"] as? Bool
         self.alerts = json["alerts"] as? Bool
+        self.quietAtScreen = json["quiet_at_screen"] as? Bool
         self.minGapSeconds = minGap
         self.perHour = perHour
         self.perDay = perDay
@@ -655,6 +661,7 @@ struct HermesCallSettings: Equatable {
         var payload: [String: Any] = ["enabled": enabled, "when_asked": whenAsked, "min_gap_s": minGapSeconds, "per_hour": perHour, "per_day": perDay]
         if let decides { payload["decides"] = decides }
         if let alerts { payload["alerts"] = alerts }
+        if let quietAtScreen { payload["quiet_at_screen"] = quietAtScreen }
         if let rules { payload["rules"] = rules }
         if let avoidPlaces { payload["avoid_places"] = Array(avoidPlaces.prefix(Self.maxAvoidPlaces)) }
         if let avoidUnknownPlace { payload["avoid_unknown_place"] = avoidUnknownPlace }
