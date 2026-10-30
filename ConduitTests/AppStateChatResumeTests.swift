@@ -291,6 +291,38 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(drawn(), ["u1", "u2"])
     }
 
+    /// Saved reviews go among Hermes' rows by time (#1549). Hermes times its
+    /// rows in epoch seconds and Conduit saves reviews as ISO dates; reading
+    /// only ISO dates put every saved review after the newest message.
+    func testSavedReviewsGoAmongHermesRowsByTime() {
+        let activity = ReviewActivity(summary: "Skill created", details: nil, fullSessionId: nil)
+        // 2025-10-29 07:47:00Z and 2025-10-30 22:08:00Z.
+        let morning = 1_761_724_020.0
+        let evening = 1_761_862_080.0
+        let history = [
+            ChatMessage(id: "u1", role: .user, content: "organize", timestamp: String(morning - 120)),
+            ChatMessage(id: "t1", role: .tool, content: "", timestamp: ""),
+            ChatMessage(id: "a1", role: .assistant, content: "done", timestamp: String(morning - 60)),
+            ChatMessage(id: "u2", role: .user, content: "next", timestamp: String(evening)),
+            ChatMessage(id: "a2", role: .assistant, content: "working", timestamp: String(evening + 30)),
+        ]
+        let formatter = ISO8601DateFormatter()
+        let review = ChatMessage(
+            id: "review-summary-1", role: .system, content: "Skill created",
+            timestamp: formatter.string(from: Date(timeIntervalSince1970: morning)), review: activity
+        )
+        let late = ChatMessage(
+            id: "review-summary-2", role: .system, content: "Skill created",
+            timestamp: formatter.string(from: Date(timeIntervalSince1970: evening + 60)), review: activity
+        )
+        XCTAssertEqual(
+            AppState.placingReviews([late, review], into: history).map(\.id),
+            ["u1", "t1", "a1", "review-summary-1", "u2", "a2", "review-summary-2"]
+        )
+        // No saved reviews leaves Hermes' rows as they are.
+        XCTAssertEqual(AppState.placingReviews([], into: history).map(\.id), history.map(\.id))
+    }
+
     /// Consecutive reviews read as one line (#1518): the first row draws it,
     /// the rest only while it is open. A review arriving at the end joins the
     /// run, any other row ends it, and a lone review stays its own card.

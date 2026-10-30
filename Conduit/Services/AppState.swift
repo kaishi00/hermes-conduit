@@ -6343,7 +6343,7 @@ final class AppState: ObservableObject {
             $0.profile == activeProfile && reviewRecordBelongs($0, toOwnIDs: ownIDs)
         }
         guard !records.isEmpty else { return history }
-        var merged = history
+        var reviews: [ChatMessage] = []
         // Dedup by record id, not by activity: with Hermes' default
         // `display.memory_notifications: on` every review reads the same
         // generic "Memory updated", and each one is its own event. A review
@@ -6354,12 +6354,12 @@ final class AppState: ObservableObject {
         var transcriptReviews = history.compactMap { message in
             message.id.hasPrefix("review-summary-") ? nil : message.review
         }
-        for record in records where !merged.contains(where: { $0.id == record.id }) {
+        for record in records where !history.contains(where: { $0.id == record.id }) {
             if let match = transcriptReviews.firstIndex(of: record.activity) {
                 transcriptReviews.remove(at: match)
                 continue
             }
-            merged.append(ChatMessage(
+            reviews.append(ChatMessage(
                 id: record.id,
                 role: .system,
                 content: record.activity.summary,
@@ -6367,14 +6367,37 @@ final class AppState: ObservableObject {
                 review: record.activity
             ))
         }
-        // Parse each timestamp once with one formatter. The comparator used
-        // to build two ISO8601DateFormatters per comparison, which made every
-        // resume of a long chat with a cached review slow.
-        let formatter = ISO8601DateFormatter()
-        return merged
-            .map { (message: $0, date: formatter.date(from: $0.timestamp) ?? .distantPast) }
+        return Self.placingReviews(reviews, into: history)
+    }
+
+    /// Saved review rows put among Hermes' rows by time, leaving Hermes'
+    /// order as it is: each review goes before the first row timed after it.
+    /// Hermes times its rows in epoch seconds and Conduit its reviews as ISO
+    /// dates, so both are read the way the chat reads a row's time. Sorting
+    /// the whole transcript by an ISO-only read used to put every saved
+    /// review after the newest message (issue #1549). A row with no time it
+    /// can read never decides a review's place.
+    static func placingReviews(_ reviews: [ChatMessage], into history: [ChatMessage]) -> [ChatMessage] {
+        guard !reviews.isEmpty else { return history }
+        // Parse each timestamp once: a long chat resumes with every row.
+        let historyDates = history.map { MessageTimestampFormatter.date(from: $0.timestamp) }
+        let placed = reviews
+            .map { (message: $0, date: MessageTimestampFormatter.date(from: $0.timestamp) ?? .distantFuture) }
             .sorted { $0.date < $1.date }
-            .map(\.message)
+        var merged: [ChatMessage] = []
+        merged.reserveCapacity(history.count + reviews.count)
+        var next = 0
+        for (index, message) in history.enumerated() {
+            if let date = historyDates[index] {
+                while next < placed.count, placed[next].date < date {
+                    merged.append(placed[next].message)
+                    next += 1
+                }
+            }
+            merged.append(message)
+        }
+        merged.append(contentsOf: placed[next...].map(\.message))
+        return merged
     }
 
     /// The chat's "Voice call" markers for calls started from it.
