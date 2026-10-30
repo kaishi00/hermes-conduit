@@ -23,6 +23,10 @@ settings:
     # signed for its own relay sets an https URL, e.g.
     # xcodebuild CONDUIT_DEFAULT_RELAY_URL=https://push.example.com
     CONDUIT_DEFAULT_RELAY_URL: ""
+    # The app's link scheme (Info.plist CFBundleURLSchemes, ConduitAppLink).
+    # Conduit Dev (scripts/mac-dev) registers its own, so conduit:// links
+    # keep opening the installed Conduit.
+    CONDUIT_URL_SCHEME: conduit
 packages:
   # GPT-Live voice runs over WebRTC; Apple ships no WebRTC stack. Prebuilt
   # Google WebRTC as a binary xcframework, pinned to an exact release.

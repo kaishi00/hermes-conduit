@@ -202,7 +202,7 @@ open Conduit.xcodeproj
 
 Select your team in Signing & Capabilities, then build and run on your device.
 
-**On a Mac.** Gatekeeper refuses a Conduit that Xcode launches directly on a Mac. `scripts/mac-dev-build.sh` builds a development-signed **Conduit Dev** instead and installs it in /Applications through macOS's iOS App Installer. Conduit Dev runs beside the App Store or TestFlight Conduit, with its own bundle id, sign-in and settings. It has no widgets, extensions, Watch app, CarPlay voice or location push. It uses the maintainer's team; another team changes `teamID` in `scripts/mac-dev/ExportOptions.plist` and `DEVELOPMENT_TEAM` in `project.yml`.
+**On a Mac.** Gatekeeper refuses a Conduit that Xcode launches directly on a Mac. `scripts/mac-dev-build.sh` builds a development-signed **Conduit Dev** instead and installs it in /Applications through macOS's iOS App Installer. Conduit Dev runs beside the App Store or TestFlight Conduit, with its own bundle id, sign-in and settings. A rebuild moves the installed Conduit Dev to the Trash first, which asks for an admin password, because iOS App Installer adds a numbered copy instead of replacing it. It has no widgets, extensions, Watch app, push notifications, CarPlay voice or location push, and `conduit://` links keep opening the installed Conduit. It uses the maintainer's team; another team changes `teamID` in `scripts/mac-dev/ExportOptions.plist` and `DEVELOPMENT_TEAM` in the root `project.yml` (which every build uses).
 
 **Requirements:**
 - A current Xcode with the iOS 26 and watchOS 26 SDKs or later (CI builds with the default Xcode on GitHub's `macos-26` runners)

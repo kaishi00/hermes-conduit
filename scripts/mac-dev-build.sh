@@ -9,18 +9,19 @@
 # Installer installs to /Applications and launches normally.
 #
 # Usage: scripts/mac-dev-build.sh [--no-install]
-#   --no-install  build the .ipa only (build/mac-dev/Conduit Dev.ipa)
+#   --no-install  build the .ipa only (build/mac-dev/export/Conduit Dev.ipa)
 #
 # Conduit Dev keeps its own sign-in, settings and keychain: sign in to Hermes
 # once in it. It has no widgets, share extension, notification service,
-# CarPlay voice or location push (scripts/mac-dev/project.yml).
+# push notifications, CarPlay voice or location push, and conduit:// links
+# keep opening the TestFlight Conduit (scripts/mac-dev/project.yml).
 set -euo pipefail
 
 install=1
 for arg in "$@"; do
   case "$arg" in
     --no-install) install=0 ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -37,7 +38,11 @@ mkdir -p "$out"
 
 xcodegen generate --quiet --spec scripts/mac-dev/project.yml --project-root . --project .
 
-echo "Archiving Conduit Dev (log: $out/archive.log)..."
+# iOS App Installer skips an .ipa whose build number is already installed,
+# so each build numbers itself by the minute it was made.
+build_number="$(date +%Y%m%d%H%M)"
+
+echo "Archiving Conduit Dev $build_number (log: $out/archive.log)..."
 if ! xcodebuild archive \
     -project ConduitDev.xcodeproj \
     -scheme Conduit \
@@ -46,8 +51,9 @@ if ! xcodebuild archive \
     -archivePath "$archive" \
     -allowProvisioningUpdates \
     -allowProvisioningDeviceRegistration \
+    CURRENT_PROJECT_VERSION="$build_number" \
     >"$out/archive.log" 2>&1; then
-  grep -E 'error:|BUILD FAILED|ARCHIVE FAILED' "$out/archive.log" | tail -20 >&2
+  grep -E 'error:|BUILD FAILED|ARCHIVE FAILED' "$out/archive.log" | tail -20 >&2 || true
   echo "Archive failed; see $out/archive.log" >&2
   exit 1
 fi
@@ -59,7 +65,7 @@ if ! xcodebuild -exportArchive \
     -exportPath "$out/export" \
     -allowProvisioningUpdates \
     >"$out/export.log" 2>&1; then
-  grep -E 'error:|EXPORT FAILED' "$out/export.log" | tail -20 >&2
+  grep -E 'error:|EXPORT FAILED' "$out/export.log" | tail -20 >&2 || true
   echo "Export failed; see $out/export.log" >&2
   exit 1
 fi
@@ -69,9 +75,20 @@ ipa="$(find "$out/export" -name '*.ipa' -maxdepth 1 | head -1)"
 echo "Built $ipa"
 
 if [ "$install" = 1 ]; then
-  # iOS App Installer replaces an installed Conduit Dev; quit it first so the
-  # new build is what opens next.
-  osascript -e 'tell application id "com.milim.relay.dev" to quit' >/dev/null 2>&1 || true
+  osascript -e 'tell application id "com.milim.relay.dev" to quit' >/dev/null 2>&1 \
+    || echo "warning: couldn't quit a running Conduit Dev; quit it before opening the new build" >&2
+  # iOS App Installer never replaces an installed copy: it adds
+  # "Conduit Dev 2.app" beside it. The installed app is owned by root, so
+  # Finder moves the old copies to the Trash (it asks for an admin password).
+  shopt -s nullglob
+  old=(/Applications/Conduit\ Dev*.app)
+  shopt -u nullglob
+  if [ "${#old[@]}" -gt 0 ]; then
+    echo "Moving the installed Conduit Dev to the Trash (Finder may ask for your password)..."
+    for app in "${old[@]}"; do
+      osascript -e "tell application \"Finder\" to delete (POSIX file \"$app\" as alias)" >/dev/null
+    done
+  fi
   open "$ipa"
   echo "iOS App Installer is installing Conduit Dev to /Applications."
 fi
