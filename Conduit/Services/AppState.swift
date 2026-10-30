@@ -30134,10 +30134,13 @@ final class AppState: ObservableObject {
               capabilities.contains(HistoryPage.capability),
               let dashboardID = activeDashboardID,
               !historyPageRefusedScopes.contains(HistoryPage.scopeKey(dashboardID: dashboardID, profile: profile)) else { return nil }
-        let heldURL = offlineChatCache.heldRowsFileURL(sessionId, dashboardID: dashboardID, profile: profile)
+        // Kept under the chat's durable id: a new chat opens by its runtime
+        // id, and the same chat by its stored one after a relaunch.
+        let heldID = canonicalSessionID(for: sessionId) ?? sessionId
+        let heldURL = offlineChatCache.heldRowsFileURL(heldID, dashboardID: dashboardID, profile: profile)
         let removals = offlineChatCache.removals
         let held = await Task.detached(priority: .userInitiated) {
-            OfflineChatCacheStore.loadHeldRows(at: heldURL, sessionID: sessionId)
+            OfflineChatCacheStore.loadHeldRows(at: heldURL, sessionID: heldID)
         }.value
         guard let body = HistoryPage.body(sessionId: sessionId, query: query, known: held?.digests ?? []) else { return nil }
         let isTail = (body["offset"] as? Int) == 0 && (body["order"] as? String) == "latest"
@@ -30154,7 +30157,7 @@ final class AppState: ObservableObject {
             }
             return HistoryPage.readsHermesRouteInstead(after: error) ? nil : .failed(error)
         }
-        guard let rebuilt = HistoryPage.rebuild(response, held: held?.byDigest ?? [:], sessionID: sessionId) else {
+        guard let rebuilt = HistoryPage.rebuild(response, held: held?.byDigest ?? [:], sessionID: heldID) else {
             // A held row went missing (the file changed under the read):
             // Hermes' own route reads the page whole.
             return nil

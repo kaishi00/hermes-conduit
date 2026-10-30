@@ -488,11 +488,14 @@ final class OfflineChatCacheStore {
     private func moveFirstFormat(_ data: Data, dashboardID: UUID, profile: String) -> OfflineChatSnapshot? {
         guard let old = try? JSONDecoder().decode(FirstFormatOfflineChatSnapshot.self, from: data),
               old.version == 1 else { return nil }
-        let moved = old.transcripts.filter { write($0, dashboardID: dashboardID, profile: profile) != nil }
+        let moved = old.transcripts.compactMap { transcript in
+            write(transcript, dashboardID: dashboardID, profile: profile)
+                .map { OfflineCachedTranscriptEntry(transcript, bytes: $0) }
+        }
         let snapshot = OfflineChatSnapshot(
             lastSessionID: old.lastSessionID,
             sessions: old.sessions,
-            transcripts: moved.map(OfflineCachedTranscriptEntry.init)
+            transcripts: moved
         )
         write(snapshot, dashboardID: dashboardID, profile: profile)
         return snapshot
