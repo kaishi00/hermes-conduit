@@ -1790,9 +1790,9 @@ drawer shell's chat (not needed: its chat composer never rests; its rooms'
 composer follows the same rule, #1512) · iPhone, iPad and Mac · text:
 docs/VOICE_SETTINGS.md "Dictate into the composer" (done, #1512); no
 Settings caption describes it · the placeholder (the chat's: Message,
-Interrupt, Steer, Queue, a chat on its way; the room's; done, #PRNUM) ·
+Interrupt, Steer, Queue, a chat on its way; the room's; done, #1541) ·
 accessibility Text Sizes on a narrow iPhone (both composers, resting and
-expanded; done, #PRNUM)
+expanded; done, #1541)
 
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.staysExpanded, expandedMinimumWidth, composerStaysExpanded, composerLayoutFromWidth)
@@ -1826,14 +1826,14 @@ expanded; done, #PRNUM)
   placeholder keeps to one line: the whole hint when it fits, then the
   hint without the agent's name ("Interrupt…"), then that one shrunk to
   fit and cut off. Below them it wraps as before, so the name stays
-  (#1476). The same in group rooms (Eric's report, 2026-10-30, #PRNUM).
+  (#1476). The same in group rooms (Eric's report, 2026-10-30, #1541).
 
 **Open gaps**
 - Not yet seen on a device: an iPad crossing 600 pt as a split or Artifacts
   resizes, and a Mac window at its narrowest. On an iPad the first frame
   of a chat may still show the resting bar before its width is measured.
 
-**Checked:** 2026-10-30, #PRNUM (the resting bar and its placeholder at accessibility Text Sizes on a narrow iPhone); 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
+**Checked:** 2026-10-30, #1541 (the resting bar and its placeholder at accessibility Text Sizes on a narrow iPhone); 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
 
 ## Composer focus after a send
 
