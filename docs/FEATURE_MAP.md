@@ -1480,7 +1480,7 @@ A tap on a link in a reply opens it, the first time, wherever the reply is
 drawn until a touch mounts its text view.
 
 **Siblings:** chats, project chats and Bot Chat (one chat view) · group rooms ·
-VoiceOver and Switch Control (text view always mounted) · Voice Control and Full
+table cells once selection is on (plain cells open links through openURL; see Tables in messages) · VoiceOver and Switch Control (text view always mounted) · Voice Control and Full
 Keyboard Access (the text view mounts and lays out when they ask for the
 reply's elements) · long-press Open Link · file paths, linked to the Folder
 (Workspace files)
@@ -1498,7 +1498,7 @@ reply's elements) · long-press Open Link · file paths, linked to the Folder
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
+**Checked:** 2026-10-30, #1535 (table cells join the drawn-until-touched path once selection is on); 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
 
 ## Markdown lists in messages
 
@@ -1535,6 +1535,36 @@ Read Aloud and live voice read-back · chat list previews and quotes
 - A long reply's continuation chunks draw list items as paragraphs with the number baked in, so they lose the list's styled marker column.
 
 **Checked:** 2026-10-30, #1524 (a Desktop card ends a list; previews and quotes name it); 2026-10-28, #1449 (speech leaves Hermes' file tags out, see Files Hermes attaches); 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
+
+## Tables in messages
+
+How a reply's Markdown table is drawn, selected and copied, in every view
+that draws Markdown.
+
+**Siblings:** chats, project chats and Bot Chat (one chat view: plain cells)
+· group rooms and other Markdown surfaces (selectable cells from the start) ·
+very long replies and big tables (paged) · the long-press menu (Copy Table,
+Select Text) and VoiceOver's actions for them (Copy Table on every surface) · a pointer on a Mac or an
+iPad · selection across the reply · Copy response · links in cells (plain cells open them through openURL, selectable cells as Links in messages does)
+
+**Code**
+- Tables, cells and the menu: `Conduit/Views/Components/MarkdownText.swift` (MarkdownTable, MarkdownTableRowView, MarkdownPlainCell, MarkdownTableMenu, LargeMarkdownTable; MarkdownTableLayout for column widths and Copy Table's text)
+- Plain cells in the chat: `Conduit/Views/ChatView.swift` (markdownTablePlainCells)
+- Long replies: `Conduit/Views/Components/MarkdownLargeDocumentView.swift`, `Conduit/Views/Components/MarkdownRichContent.swift` (isComplexTable)
+- Selection: `Conduit/Views/Components/MarkdownSelectionCoordinator.swift` (deferRegistration, which mounts a waiting table when a selection begins)
+- Selectable cells, drawn until touched in the chat: `Conduit/Views/Components/SelectableTextView.swift`
+
+**Rulings**
+- The chat draws table cells as plain text, the cheapest to build as rows scroll in (#693). A long press offers Copy Table and Select Text; Select Text draws the cells as selectable text until the row is taken down.
+- Selection on a table turns on as it does for the reply's drawn text: a selection that starts elsewhere in the message mounts the cells, so a drag from the text above or below carries into the table, and a pointer over the table (a Mac, an iPad's trackpad or mouse) turns it on, so a click and drag selects in a cell and Cmd+C and the context menu's Copy work (2026-10-30, issue 1531, #1535; Eric: most selections start in the text around the table).
+- VoiceOver's Copy Table is on every table, whether or not selection is on, group rooms' included: a VoiceOver user selecting cell by cell has no other way to take the whole table (#1535).
+
+**Open gaps**
+- Once selection is on, the long-press or right-click menu is the text's own (Copy for a selection), so the menu's Copy Table is gone for that table until its row is taken down. On a Mac that is almost always, since the pointer passes over the table first. Selecting across the table copies its cells, and Copy response copies the reply.
+- No Copy cell or Copy row (asked for as optional in issue 1531).
+- A big table mounts its rows in batches (`LargeMarkdownTable`), and a selection copies only mounted cells, so a selection across a table past its first batch leaves the rest out until Show more; Copy Table copies every row.
+
+**Checked:** 2026-10-30, #1535 (a selection in the message mounts the cells; VoiceOver's Copy Table kept).
 
 ## Attaching files
 
