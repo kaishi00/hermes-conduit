@@ -433,6 +433,24 @@ enum DashboardTicketBridgeError: LocalizedError {
         }
     }
 
+    /// A FastAPI `detail` that is an object with a `code` (the notifier's
+    /// Pulse routes answer `{"detail": {"code": "pulse_off"}}`), kept as its
+    /// JSON text so the caller can read the code and its data. Nil for any
+    /// other detail.
+    static func structuredDetail(_ value: Any?) -> String? {
+        guard let object = value as? [String: Any], object["code"] is String,
+              JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// Whether a detail is one structuredDetail kept: a JSON object with a "code".
+    static func isStructuredDetail(_ text: String) -> Bool {
+        guard text.hasPrefix("{"), let data = text.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        return object["code"] is String
+    }
+
     /// The dashboard answered but handed back no session ticket.
     static var noSessionTicketDetail: String {
         AppLocalization.string("The dashboard didn't let Conduit start a session. Try again.")
@@ -450,6 +468,11 @@ enum DashboardTicketBridgeError: LocalizedError {
     /// browser fetch errors become what happened and what to do.
     static func describe(status: Int, detail: String) -> String {
         let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A coded refusal (structuredDetail) is for the screen that sent the
+        // request to word; anywhere else it reads as the plain failure.
+        if isStructuredDetail(trimmed) {
+            return AppLocalization.string("Dashboard request failed (\(String(status))).")
+        }
         let isMeaningful = !trimmed.isEmpty
             && !genericDetails.contains(trimmed.lowercased())
             && trimmed != AppLocalization.string("Dashboard request failed (\(String(status))).")
@@ -1585,12 +1608,16 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
         }
 
         let status = payload["status"] as? Int ?? 0
-        let detail = payload["error"] as? String ?? AppLocalization.string("Dashboard request failed (\(String(status))).")
+        let detail = payload["error"] as? String
+            ?? DashboardTicketBridgeError.structuredDetail(payload["error"])
+            ?? AppLocalization.string("Dashboard request failed (\(String(status))).")
         // Hermes' own 403 (its `detail` says why, such as a chat this
         // sign-in may not change or a file it won't serve) is a verdict on
         // the request, not an expired sign-in: signing in again can't change
         // it.
-        let hermesDetail = (payload["body"] as? [String: Any])?["detail"] as? String
+        let hermesBody = payload["body"] as? [String: Any]
+        let hermesDetail = hermesBody?["detail"] as? String
+            ?? DashboardTicketBridgeError.structuredDetail(hermesBody?["detail"])
         if DashboardTicketBridgeError.meansSignIn(status: status, hermesDetail: hermesDetail),
            !SessionMutationIdentity.isRefusalDetail(detail) {
             continuation.resume(throwing: DashboardTicketBridgeError.signInRequired)

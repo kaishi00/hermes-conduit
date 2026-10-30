@@ -729,7 +729,9 @@ struct ChatView: View {
                 // The published request disappeared on the AppState side
                 // (completed/abandoned/cancelled elsewhere).
                 scrollEngine.restorationSystemCancelled()
-                // A pinned reply waiting on the restore goes now.
+                // A pinned reply, artifact or Pulse card waiting on the
+                // restore goes now.
+                revealPendingArtifact()
                 revealPendingPinnedReply()
             }
     }
@@ -2387,7 +2389,7 @@ private struct UserDocumentAttachmentChip: View {
 
     private var chip: some View {
         HStack(spacing: 6) {
-            Label(attachment.name, systemImage: AttachmentTypePolicy.symbolName(for: attachment))
+            Label(AttachmentTypePolicy.displayName(for: attachment), systemImage: AttachmentTypePolicy.symbolName(for: attachment))
                 .lineLimit(1)
             if loading {
                 ProgressView()
@@ -2420,7 +2422,7 @@ private struct UserDocumentAttachmentChip: View {
 
     private func open() {
         if let localFileURL {
-            failed = !MediaPreviewPresenter.shared.present(fileURL: localFileURL, title: attachment.name)
+            failed = !MediaPreviewPresenter.shared.present(fileURL: localFileURL, title: AttachmentTypePolicy.displayName(for: attachment))
             return
         }
         guard !loading, attachment.uri.hasPrefix("/"), let gatewayResolver else { return }
@@ -2804,6 +2806,10 @@ struct AssistantBubble: View {
             }
 
             HStack(spacing: 4) {
+                // Pulse follows up on what Hermes promised here: opens its card.
+                if let rowID = message.rowId, let card = rowState.pulseCards[rowID] {
+                    PulseMessageMark { appState.openPulse(card: card) }
+                }
                 Spacer(minLength: 0)
                 if message.role == .assistant {
                     MessageReactButton(message: message, isPresented: $showsTapback)

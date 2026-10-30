@@ -27,6 +27,9 @@ struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: 
     /// Files dropped on the editor go to the composer's attachments, as
     /// on the chat itself (#1408). Nil takes no drops.
     var onDropFiles: (([NSItemProvider]) -> Void)? = nil
+    /// A long paste becomes an attachment, as in the inline field. Nil
+    /// keeps it in the text.
+    var onLongTextPaste: ((String) -> Bool)? = nil
     /// The staged attachments, so what Send will include stays visible
     /// and removable here.
     @ViewBuilder let attachments: () -> Attachments
@@ -75,7 +78,8 @@ struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: 
                     accessibilityIdentifier: fieldIdentifier,
                     textInsets: UIEdgeInsets(top: 8, left: 5, bottom: 8, right: 5),
                     canSubmitFromReturn: canSubmitFromReturn,
-                    onSubmitFromReturn: onSubmitFromReturn
+                    onSubmitFromReturn: onSubmitFromReturn,
+                    onLongTextPaste: onLongTextPaste
                 )
                 .onChange(of: text) { _, newText in
                     if isFocused { onUserEdit(newText) }

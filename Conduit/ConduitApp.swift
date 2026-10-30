@@ -17,8 +17,9 @@ private let backgroundPushLogger = Logger(subsystem: "com.milim.relay", category
 final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
-        // A "Hermes wants to talk" notification's Talk button (#449).
-        HermesCallNotifications.registerCategory()
+        // A "Hermes wants to talk" notification's Talk button (#449), and a
+        // Pulse push's Quiet for today.
+        NotificationCategories.register()
         // Set up before launch returns: a call the Apple Watch starts can
         // launch Conduit in the background, and its message waits on this.
         MainActor.assumeIsolated {
@@ -130,6 +131,50 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let request = response.notification.request
+        // Quiet for today on a Pulse push: done in the background, on the
+        // dashboard the push came from. One that couldn't be done there (no
+        // connection in time, or the push is from another dashboard) says
+        // so, and that notification's tap tries again with Conduit open.
+        if response.actionIdentifier == PulseNotifications.quietTodayActionIdentifier {
+            let userInfo = request.content.userInfo
+            Task { @MainActor in
+                let target = PushNotificationService.shared.pulseQuietTarget(userInfo)
+                var quiet = false
+                if let target {
+                    // In the background: never switches dashboards, and the
+                    // wait and the request fit the time iOS gives a tap
+                    // with room left to post the retry.
+                    quiet = await AppStateRuntimeRegistry.shared.appState.quietPulseForToday(
+                        target, switching: false, wait: .seconds(8), timeoutMilliseconds: 8_000)
+                }
+                if !quiet {
+                    try? await UNUserNotificationCenter.current().add(PulseNotifications.retryRequest(target: target))
+                }
+                completionHandler()
+            }
+            return
+        }
+        if request.identifier == PulseNotifications.retryIdentifier, !(request.trigger is UNPushNotificationTrigger) {
+            let target = PulseNotifications.retryTarget(request.content.userInfo)
+            Task { @MainActor in
+                let app = AppStateRuntimeRegistry.shared.appState
+                completionHandler()
+                // A push Conduit couldn't place: the Pulse screen, where Quiet
+                // for today is a tap away, rather than a guess at its host.
+                guard let target else {
+                    app.openPulse(card: nil)
+                    return
+                }
+                // Conduit is open: a push from another saved dashboard switches to it, as a tap on it would.
+                let quiet = await app.quietPulseForToday(target, switching: true, wait: .seconds(20))
+                // The Pulse screen shows it quiet, or offers Quiet for today
+                // again; only the Pulse of the dashboard the push came from.
+                if quiet || app.pulseQuietOwnership(target) == .route {
+                    app.openPulse(card: nil)
+                }
+            }
+            return
+        }
         // "Draft ready in Conduit" from the share sheet (#812): coming to the
         // front picks the draft up; one already on screen takes it now.
         if request.identifier.hasPrefix(ShareDraftInbox.notificationIdentifierPrefix), !(request.trigger is UNPushNotificationTrigger) {
@@ -199,6 +244,12 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         }
         if notification.request.content.categoryIdentifier == HermesCallNotifications.categoryIdentifier {
             completionHandler([.banner, .list, .sound])
+            return
+        }
+        // Quiet for today that couldn't be done in the background says so wherever the user is.
+        if notification.request.identifier == PulseNotifications.retryIdentifier,
+           !(notification.request.trigger is UNPushNotificationTrigger) {
+            completionHandler([.banner, .list])
             return
         }
         // A step's timer from a rich card rings wherever the user is.
@@ -271,7 +322,7 @@ struct ConduitApp: App {
                 appState.publishWidgetLanguage()
                 // The Notification Service Extension writes banners in it.
                 NotificationSharedSettings.appLanguage = AppLanguage.current.rawValue
-                HermesCallNotifications.registerCategory()
+                NotificationCategories.register()
             }
             .preferredColorScheme(appState.themePreference.colorScheme)
             .tint(.conduitAccent)
@@ -417,6 +468,24 @@ struct ConduitApp: App {
                     // It said it opens when the call ends; never a call's
                     // own open, which switches during its call.
                     notifications.notificationRouteAwaitsCall(target)
+                }
+            }
+            // Quiet for today's retry waiting for a call (or, after a
+            // relaunch, the one Conduit closing ended), as a notification
+            // waits above: it goes through once there's no call and Conduit
+            // is on screen.
+            .task(id: notifications.pulseQuietAttempt) {
+                guard let target = notifications.pendingPulseQuiet else { return }
+                guard await PushNotificationService.waitForCallToEnd(
+                    interval: Self.callEndRecheckInterval,
+                    isReady: { appState.callWaitCanEnd }
+                ) else { return }
+                appState.clearCallRefusal()
+                // A newer tap took over meanwhile, or the day it was for ended.
+                guard notifications.takePendingPulseQuiet(target) else { return }
+                let quiet = await appState.quietPulseForToday(target, switching: true, wait: .seconds(20))
+                if quiet || appState.pulseQuietOwnership(target) == .route {
+                    appState.openPulse(card: nil)
                 }
             }
             .task(id: voiceIntentRouteKey) {

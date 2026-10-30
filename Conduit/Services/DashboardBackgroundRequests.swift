@@ -153,7 +153,9 @@ extension DashboardTicketBridge {
             if http.statusCode == 403, !oversized,
                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let detail = Self.errorDetail(object),
-               !DashboardTicketBridgeError.meansSignIn(status: 403, hermesDetail: object["detail"] as? String)
+               !DashboardTicketBridgeError.meansSignIn(
+                   status: 403,
+                   hermesDetail: object["detail"] as? String ?? DashboardTicketBridgeError.structuredDetail(object["detail"]))
                 || SessionMutationIdentity.isRefusalDetail(detail) {
                 throw DashboardTicketBridgeError.http(status: 403, detail: detail)
             }
@@ -181,7 +183,8 @@ extension DashboardTicketBridge {
 
     /// The error text a failed response carries, as the page reads it.
     private static func errorDetail(_ object: [String: Any]?) -> String? {
-        (object?["error"] ?? object?["message"] ?? object?["detail"]) as? String
+        let raw = object?["error"] ?? object?["message"] ?? object?["detail"]
+        return raw as? String ?? DashboardTicketBridgeError.structuredDetail(raw)
     }
 
     /// The response, or `URLError(.timedOut)` once `deadline` passes in

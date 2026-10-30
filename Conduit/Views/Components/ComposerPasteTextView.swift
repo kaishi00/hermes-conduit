@@ -74,6 +74,8 @@ struct ComposerPasteTextView: UIViewRepresentable {
     /// Files dropped or pasted on the field that are staged as attachments
     /// (`AttachmentDrop.stagesAsFiles`), on the main thread.
     var onDroppedFiles: (([NSItemProvider]) -> Void)? = nil
+    /// A long paste, offered as an attachment (`ReturnKeyTextView`).
+    var onLongTextPaste: ((String) -> Bool)? = nil
     /// Generation of INTENTIONAL programmatic composer replacements (draft
     /// restore, prefill, session handoff, slash insertion, clear after send).
     /// ComposerBar advances it only through `replaceComposerText(_:)`.
@@ -139,6 +141,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         view.onPastedImage = onPastedImage
         view.onPastedImageError = onPastedImageError
         view.onDroppedFiles = onDroppedFiles
+        view.onLongTextPaste = onLongTextPaste
         view.returnKeySends = returnKeySends
         view.canSubmitFromReturn = canSubmitFromReturn
         view.onSubmitFromReturn = onSubmitFromReturn
@@ -187,6 +190,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         uiView.onPastedImage = onPastedImage
         uiView.onPastedImageError = onPastedImageError
         uiView.onDroppedFiles = onDroppedFiles
+        uiView.onLongTextPaste = onLongTextPaste
         uiView.returnKeySends = returnKeySends
         uiView.canSubmitFromReturn = canSubmitFromReturn
         uiView.onSubmitFromReturn = onSubmitFromReturn
@@ -342,6 +346,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
                 textView.onPastedImage = nil
                 textView.onPastedImageError = nil
                 textView.onDroppedFiles = nil
+                textView.onLongTextPaste = nil
                 textView.returnKeySends = false
                 textView.canSubmitFromReturn = false
                 textView.onSubmitFromReturn = nil
@@ -544,6 +549,8 @@ final class ImagePasteTextView: ReturnKeyTextView {
             return
         }
         guard let provider = itemProviders.first(where: { canLoadImageProvider($0) }) else {
+            // Words dropped or put here by a keyboard action stay words; a
+            // long paste is the Paste command's (`paste(_:)`).
             super.paste(itemProviders: itemProviders)
             return
         }

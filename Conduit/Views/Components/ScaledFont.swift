@@ -114,7 +114,9 @@ struct ScaledFont: Equatable {
         .caption2: [11, 11, 11, 11, 13, 15, 17],
     ]
 
-    /// `style`'s iOS size at `size`; nil at an accessibility size.
+    /// `style`'s iOS size at `size`; nil at an accessibility size. A Mac
+    /// column reads the default size's row (`font(in:)`); the rest pin
+    /// the table to iOS's.
     static func points(_ style: Font.TextStyle, at size: DynamicTypeSize) -> CGFloat? {
         guard let index = ChatTypography.standardDynamicTypeSizes.firstIndex(of: size) else { return nil }
         return standardPoints[style]?[index]

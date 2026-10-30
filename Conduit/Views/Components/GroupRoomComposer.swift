@@ -258,6 +258,7 @@ struct GroupRoomComposer: View {
                 canSubmitFromReturn: canSubmitFromReturn,
                 onSubmitFromReturn: { submitFromReturnKey() },
                 onDropFiles: surface?.room.isDisbanded == false ? { providers in importDroppedFiles(providers) } : nil,
+                onLongTextPaste: { pasted in attachLongPaste(pasted) },
                 attachments: {
                     // A drop on the editor that left files out says so here,
                     // not only behind the sheet.
@@ -353,7 +354,8 @@ struct GroupRoomComposer: View {
             accessibilityIdentifier: "room.composer.field",
             maxLines: 6,
             canSubmitFromReturn: canSubmitFromReturn,
-            onSubmitFromReturn: { submitFromReturnKey() }
+            onSubmitFromReturn: { submitFromReturnKey() },
+            onLongTextPaste: { pasted in attachLongPaste(pasted) }
         )
             .background(alignment: .topLeading) {
                 if draft.isEmpty {
@@ -407,7 +409,11 @@ struct GroupRoomComposer: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(attachments) { attachment in
-                    ComposerAttachmentChip(attachment: attachment, canRemove: !isUploading) {
+                    ComposerAttachmentChip(
+                        attachment: attachment,
+                        canRemove: !isUploading,
+                        pastedText: isUploading ? nil : pastedTextActions(for: attachment.id)
+                    ) {
                         attachments.removeAll { $0.id == attachment.id }
                         ComposerBar.discardStagedFile(attachment)
                     }
@@ -980,6 +986,87 @@ struct GroupRoomComposer: View {
             }.value
             finishImport([outcome], roomID: roomID)
         }
+    }
+
+    /// A long paste goes in as a text attachment, written off the main
+    /// actor and uploaded to the room's files like any other. Where the
+    /// room can't store files it stays in the field as before
+    /// (`PastedText.roomComposerTakesPaste`). False leaves the paste to the
+    /// field.
+    private func attachLongPaste(_ pasted: String) -> Bool {
+        guard PastedText.roomComposerTakesPaste(
+            canStoreFiles: appState.canAttachRoomFiles,
+            disbanded: surface?.room.isDisbanded != false
+        ) else { return false }
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+        let roomID = surface?.room.roomID
+        // Past the attachment limit it can't go as a file: the words go in
+        // the field, as every paste did before.
+        guard PastedText.fits(pasted, limitMegabytes: limit) else { return false }
+        composerError = nil
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) {
+                PastedText.stage(pasted, limitMegabytes: limit)
+            }.value
+            if case .failed = outcome, appState.activeRoomSurface?.room.roomID == roomID {
+                // The file couldn't be written: the words go in the field
+                // after all, so the paste isn't lost.
+                draft = PastedText.joined(draft, with: pasted)
+                return
+            }
+            finishImport([outcome], roomID: roomID)
+        }
+        return true
+    }
+
+    /// The sheet behind a pasted text's chip: edits replace its file, and
+    /// Paste as text moves it into the field, after what was typed. Clearing
+    /// all its text removes it, as × does.
+    private func pastedTextActions(for id: String) -> PastedTextActions {
+        PastedTextActions(
+            save: { edited in
+                guard let old = attachments.first(where: { $0.id == id }) else { return }
+                guard !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    attachments.removeAll { $0.id == id }
+                    ComposerBar.discardStagedFile(old)
+                    return
+                }
+                let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+                guard PastedText.fits(edited, limitMegabytes: limit) else {
+                    composerError = GroupRoomFilesClient.tooLargeMessage(names: [PastedText.displayName], preference: attachmentLimitMegabytes)
+                    Haptics.error()
+                    return
+                }
+                Task {
+                    let outcome = await Task.detached(priority: .userInitiated) {
+                        PastedText.restage(old, with: edited, limitMegabytes: limit)
+                    }.value
+                    switch outcome {
+                    case .staged(let updated):
+                        // Removed or sent meanwhile: the edit has nothing
+                        // left to replace.
+                        guard let index = attachments.firstIndex(where: { $0.id == id && $0.uri == old.uri }) else {
+                            ComposerBar.discardStagedFile(updated)
+                            return
+                        }
+                        attachments[index] = updated
+                        ComposerBar.discardStagedFile(old)
+                    case .tooLarge(let name):
+                        composerError = GroupRoomFilesClient.tooLargeMessage(names: [name], preference: attachmentLimitMegabytes)
+                        Haptics.error()
+                    case .failed(let name):
+                        composerError = AppLocalization.string("Could not prepare \(name) for upload.")
+                        Haptics.error()
+                    }
+                }
+            },
+            insertAsText: { pasted in
+                guard let attachment = attachments.first(where: { $0.id == id }) else { return }
+                attachments.removeAll { $0.id == id }
+                ComposerBar.discardStagedFile(attachment)
+                draft = PastedText.joined(draft, with: pasted)
+            }
+        )
     }
 
     /// One cue per selection: the error and its message when anything was

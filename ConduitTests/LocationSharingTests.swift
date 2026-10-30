@@ -690,6 +690,24 @@ extension NotificationE2ETests {
     }
 
     @MainActor
+    func testForgettingSpotsDropsTheShopEntriesWaitingToBeSent() {
+        var unsent = LocationUnsent()
+        unsent.keep(spotEntry: LocationSpotEntry(id: "s_1", spotID: "0.c1", name: "Florist",
+                                                 at: LocationFixtures.at, radius: 1_000))
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
+                                        keys: LocationKeyStore.memory())
+        let controller = LocationSharingController(engine: engine, config: LocationFixtures.config(background: true),
+                                                   unsent: unsent)
+        XCTAssertEqual(controller.unsentSpotEntryCount, 1)
+        controller.forgetSpots()
+        XCTAssertEqual(controller.unsentSpotEntryCount, 0)
+        controller.forgetSpots()
+        XCTAssertEqual(controller.unsentSpotEntryCount, 0, "Nothing left: a second forget changes nothing")
+    }
+
+    @MainActor
     func testAMessageAtThePlaceTheHostHasSendsNoFixAgain() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: folder) }

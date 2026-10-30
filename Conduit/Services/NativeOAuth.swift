@@ -363,6 +363,7 @@ final class NativeOAuthAPIClient {
     private static func errorDetail(_ data: Data) -> String? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         return json["detail"] as? String ?? json["error"] as? String ?? json["message"] as? String
+            ?? DashboardTicketBridgeError.structuredDetail(json["detail"])
     }
 }
 
