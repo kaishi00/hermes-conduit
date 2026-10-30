@@ -30097,6 +30097,9 @@ final class AppState: ObservableObject {
             return await persistedTranscript(sessionId, profile, query)
         }
         guard let bridge else { return .unavailable }
+        if let page = await historyPagePayload(sessionId: sessionId, profile: profile, query: query, using: bridge) {
+            return page
+        }
         do {
             return .payload(try await bridge.requestJSON(
                 path: Self.sessionMessagesPath(sessionId: sessionId, profile: profile, query: query)
@@ -30110,6 +30113,47 @@ final class AppState: ObservableObject {
             // degrading the resume.
             return .failed(error)
         }
+    }
+
+    /// The page through the plugin's history page route (#1525), with the
+    /// rows this phone kept from the last read of the chat's newest page
+    /// sent as their fingerprints; nil when the plugin doesn't serve it or
+    /// refused it, and Hermes' own route reads the page instead. A tail page
+    /// read through it is kept for the next read.
+    private func historyPagePayload(
+        sessionId: String,
+        profile: String,
+        query: String,
+        using bridge: DashboardTicketBridge
+    ) async -> PersistedTranscriptFetchOutcome? {
+        guard case .reported(_, let capabilities) = notifierPlugin.state,
+              capabilities.contains(HistoryPage.capability),
+              let dashboardID = activeDashboardID else { return nil }
+        let heldURL = offlineChatCache.heldRowsFileURL(sessionId, dashboardID: dashboardID, profile: profile)
+        let held = await Task.detached(priority: .userInitiated) {
+            OfflineChatCacheStore.loadHeldRows(at: heldURL, sessionID: sessionId)
+        }.value
+        guard let body = HistoryPage.body(sessionId: sessionId, query: query, known: held?.digests ?? []) else { return nil }
+        let isTail = (body["offset"] as? Int) == 0 && (body["order"] as? String) == "latest"
+        let path = DashboardPath.withProfile(HistoryPage.path, profile: profile)
+        let startedAt = Date()
+        let response: [String: Any]
+        do {
+            response = try await bridge.requestJSON(path: path, method: "POST", body: body)
+        } catch {
+            return HistoryPage.readsHermesRouteInstead(after: error) ? nil : .failed(error)
+        }
+        guard let rebuilt = HistoryPage.rebuild(response, held: held?.byDigest ?? [:], sessionID: sessionId) else {
+            // A held row went missing (the file changed under the read):
+            // Hermes' own route reads the page whole.
+            return nil
+        }
+        let sentRows = (response["messages"] as? [Any])?.filter { ($0 as? [String: Any])?[HistoryPage.knownKey] == nil }.count ?? 0
+        noteConnectionStep("History page: \(sentRows) of \(rebuilt.kept.rows.count) rows sent", since: startedAt)
+        // Written here, not off the main actor, so a sign-out's wipe can't
+        // land before it and leave the rows behind.
+        if isTail { OfflineChatCacheStore.writeHeldRows(rebuilt.kept, to: heldURL) }
+        return .payload(rebuilt.page)
     }
 
     /// Where a page of persisted rows lives, for fetching a picture stored
