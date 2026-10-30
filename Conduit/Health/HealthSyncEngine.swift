@@ -32,6 +32,9 @@ struct HealthSyncState: Codable, Equatable {
     var history: HealthHistoryDepth?
     /// The oldest day already sent; history before it is still to go.
     var backfillCursor: Date?
+    /// Where the walk stops: the history start, or the day of the oldest
+    /// reading when that's later. Nil before a walk has asked.
+    var backfillFloor: Date?
     /// The categories the history walk covers (its chunks go out with the
     /// categories on now). Nil in a state from before this was kept, or
     /// before the first walk: the next walk starts over to be safe.
@@ -392,6 +395,7 @@ final class HealthSyncEngine: ObservableObject {
         state.recentWindows = nil
         state.recentWholeAt = nil
         state.backfillCursor = nil
+        state.backfillFloor = nil
         state.backfilledCategories = nil
         state.historyStart = nil
         state.history = nil
@@ -608,8 +612,9 @@ private struct Session {
         // the user had any go unscanned. Asked every pass: readings added
         // later with older dates (an import) move it back again.
         try checkTime()
-        guard let reading = try await engine.source.oldestReading(in: categories) else { return }
-        let floor = max(target, calendar.startOfDay(for: reading))
+        let reading = try await engine.source.oldestReading(in: categories)
+        let floor = max(target, reading.map { calendar.startOfDay(for: $0) } ?? cursor)
+        if engine.state.backfillFloor != floor { engine.acknowledged { $0.backfillFloor = floor } }
         while let cursor = engine.state.backfillCursor, cursor > floor {
             try checkTime()
             let start = max(floor, calendar.date(byAdding: .day, value: -HealthSyncLimits.backfillChunkDays, to: cursor) ?? floor)

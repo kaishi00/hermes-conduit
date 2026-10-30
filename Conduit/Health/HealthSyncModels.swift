@@ -205,11 +205,13 @@ enum HealthSyncLimits {
     /// The host refuses times before this (health_store.py's EARLIEST).
     static let hostEarliest = Date(timeIntervalSince1970: 946_684_800)
 
-    /// The first day history may start on: a local midnight late enough
-    /// that its sleep window, which opens at noon the day before, is still
-    /// after `hostEarliest` in any time zone.
+    /// The first day history may start on: the first local midnight whose
+    /// sleep window, which opens 12 hours before it, is not before
+    /// `hostEarliest`.
     static func oldestDay(calendar: Calendar) -> Date {
-        calendar.startOfDay(for: hostEarliest.addingTimeInterval(2 * 86_400))
+        let noonBefore = hostEarliest.addingTimeInterval(12 * 3600)
+        let midnight = calendar.startOfDay(for: noonBefore)
+        return midnight >= noonBefore ? midnight : calendar.date(byAdding: .day, value: 1, to: midnight) ?? noonBefore
     }
     /// Raw readings per type per query page.
     static let samplesPerQuery = 1_000

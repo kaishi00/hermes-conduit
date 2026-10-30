@@ -278,7 +278,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let engine = makeHealthEngine(source: source, calendar: calendar, now: { Self.healthDate("2000-03-01T12:00:00Z") })
         let outcome = await engine.sync(preferences: healthPreferences(history: .all), deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(outcome, .synced)
-        XCTAssertEqual(engine.state.historyStart, date("2000-01-02T16:00:00Z"), "Its first night's window opens after 2000")
+        XCTAssertEqual(engine.state.historyStart, date("2000-01-01T16:00:00Z"), "Its first night's window opens after 2000")
         XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart, "All of it is in")
         let windows = host.batches.flatMap { $0["windows"] as? [[String: Any]] ?? [] }
         XCTAssertFalse(windows.isEmpty)
@@ -303,7 +303,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
         let second = makeHealthEngine(source: source, keys: keys, folder: folder)
         _ = await second.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
-        XCTAssertEqual(second.state.historyStart, date("2000-01-03T00:00:00Z"))
+        XCTAssertEqual(second.state.historyStart, date("2000-01-02T00:00:00Z"))
         XCTAssertEqual(second.state.anchors, saved.anchors, "Anchors kept")
         XCTAssertEqual(host.keyRequests, 1)
     }
@@ -317,6 +317,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let preferences = healthPreferences(history: .all)
         _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(engine.state.backfillCursor, date("2026-08-20T00:00:00Z"), "No empty years walked")
+        XCTAssertEqual(engine.state.backfillFloor, engine.state.backfillCursor, "Settings shows the walk as done")
         let froms = host.batches.flatMap { $0["windows"] as? [[String: Any]] ?? [] }
             .filter { $0["metric"] as? String == "steps" && $0["grain"] as? String == "day" }
             .compactMap { $0["from"] as? String }
@@ -326,6 +327,7 @@ extension HermesVoiceGatewayTimeoutTests {
         source.oldest = date("2026-06-01T08:00:00Z")
         _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(engine.state.backfillCursor, date("2026-06-01T00:00:00Z"))
+        XCTAssertEqual(engine.state.backfillFloor, engine.state.backfillCursor)
         XCTAssertEqual(engine.state.historyStart, date("2010-01-01T00:00:00Z"), "Events still reach back as far as Health")
     }
 
