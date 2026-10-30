@@ -1545,13 +1545,14 @@ that draws Markdown.
 · group rooms and other Markdown surfaces (selectable cells from the start) ·
 very long replies and big tables (paged) · the long-press menu (Copy Table,
 Select Text) and VoiceOver's actions for them (Copy Table on every surface) · a pointer on a Mac or an
-iPad · selection across the reply · Copy response
+iPad · selection across the reply · Copy response · links in cells (plain cells open them through openURL, selectable cells as Links in messages does)
 
 **Code**
 - Tables, cells and the menu: `Conduit/Views/Components/MarkdownText.swift` (MarkdownTable, MarkdownTableRowView, MarkdownPlainCell, MarkdownTableMenu, LargeMarkdownTable; MarkdownTableLayout for column widths and Copy Table's text)
 - Plain cells in the chat: `Conduit/Views/ChatView.swift` (markdownTablePlainCells)
 - Long replies: `Conduit/Views/Components/MarkdownLargeDocumentView.swift`, `Conduit/Views/Components/MarkdownRichContent.swift` (isComplexTable)
-- Selection: `Conduit/Views/Components/MarkdownSelectionCoordinator.swift`
+- Selection: `Conduit/Views/Components/MarkdownSelectionCoordinator.swift` (deferRegistration, which mounts a waiting table when a selection begins)
+- Selectable cells, drawn until touched in the chat: `Conduit/Views/Components/SelectableTextView.swift`
 
 **Rulings**
 - The chat draws table cells as plain text, the cheapest to build as rows scroll in (#693). A long press offers Copy Table and Select Text; Select Text draws the cells as selectable text until the row is taken down.
