@@ -1934,6 +1934,7 @@ private struct MarkdownTableMenu: ViewModifier {
             selectText()
             return
         }
+        let selectText = selectText
         selectionCoordinator.deferRegistration(segmentID: selectionSegmentID, owner: deferredMountOwner) {
             selectText()
         }
