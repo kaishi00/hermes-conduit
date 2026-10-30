@@ -153,7 +153,9 @@ extension DashboardTicketBridge {
             if http.statusCode == 403, !oversized,
                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let detail = Self.errorDetail(object),
-               !DashboardTicketBridgeError.meansSignIn(status: 403, hermesDetail: object["detail"] as? String)
+               !DashboardTicketBridgeError.meansSignIn(
+                   status: 403,
+                   hermesDetail: object["detail"] as? String ?? DashboardTicketBridgeError.structuredDetail(object["detail"]))
                 || SessionMutationIdentity.isRefusalDetail(detail) {
                 throw DashboardTicketBridgeError.http(status: 403, detail: detail)
             }

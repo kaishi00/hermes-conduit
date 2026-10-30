@@ -1615,7 +1615,9 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
         // sign-in may not change or a file it won't serve) is a verdict on
         // the request, not an expired sign-in: signing in again can't change
         // it.
-        let hermesDetail = (payload["body"] as? [String: Any])?["detail"] as? String
+        let hermesBody = payload["body"] as? [String: Any]
+        let hermesDetail = hermesBody?["detail"] as? String
+            ?? DashboardTicketBridgeError.structuredDetail(hermesBody?["detail"])
         if DashboardTicketBridgeError.meansSignIn(status: status, hermesDetail: hermesDetail),
            !SessionMutationIdentity.isRefusalDetail(detail) {
             continuation.resume(throwing: DashboardTicketBridgeError.signInRequired)
