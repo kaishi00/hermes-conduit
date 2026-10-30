@@ -1809,6 +1809,47 @@ Settings caption describes it
 
 **Checked:** 2026-10-29, #1512 (new entry, issue 1483).
 
+## Composer focus after a send
+
+Whether the composer's field keeps focus once a message goes, so the next
+one can be typed straight away, or gives it up so the keyboard goes down.
+
+**Siblings:** the chat composer (chats, project chats, Bot Chat; done,
+#PRNUM) · Send, Return and the long-press choices (Steer, Queue,
+Interrupt), and a message that waits for its chat ("Sends when connected";
+done, #PRNUM) · Stop in Send's place (done, #PRNUM) · the full editor (done,
+#PRNUM: a send from it gives the field focus back as the sheet goes) · group
+rooms' composer (not needed: its send never takes focus from the field, on
+any device) · a prediction sent from the suggestion row (done, #PRNUM:
+the same send, so it keeps whatever focus the field had) · the plan card, whose rule already
+counts on a Mac's composer keeping focus (not needed, see Plan card) ·
+iPhone, iPad and Mac · no Settings caption or doc describes it
+
+**Code**
+- Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.keepsFocusAfterSend)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, queueUntilChatIsReady, performComposerAction), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView: a field rebuilt with focus takes it once it's in the window)
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send)
+- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndWithAHardwareKeyboard)
+
+**Rulings**
+- On a Mac, or with a hardware keyboard on an iPad or iPhone, a send or
+  Stop leaves the field focused when the user was typing, as a desktop
+  client does; a click or tap elsewhere (the transcript, another control)
+  still takes focus away. With only the on-screen keyboard it goes down, so
+  the reply has the screen (Eric asked for it on a Mac, 2026-10-30, #PRNUM).
+  The check is for a connected keyboard, as the plan card's is.
+- Opening a call from the composer still takes focus away on every device:
+  the call has the screen (2026-10-30, #PRNUM).
+
+**Open gaps**
+- Not yet seen on a device: a Mac and an iPad with a keyboard sending from
+  the field and from the full editor.
+- Group rooms keep the field focused after a send on a touch-only iPhone
+  too, where a chat's keyboard goes down; the maintainer decides whether
+  rooms follow the chat there.
+
+**Checked:** 2026-10-30, #PRNUM (new entry).
+
 ## A chat's last reply
 
 Reading the newest reply in a chat without opening it, from the open chat's

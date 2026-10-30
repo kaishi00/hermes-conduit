@@ -194,7 +194,21 @@ struct ComposerPasteTextView: UIViewRepresentable {
         uiView.returnKeySends = returnKeySends
         uiView.canSubmitFromReturn = canSubmitFromReturn
         uiView.onSubmitFromReturn = onSubmitFromReturn
-        if isFocused, !uiView.isFirstResponder { uiView.becomeFirstResponder() }
+        if isFocused, !uiView.isFirstResponder {
+            if uiView.window != nil {
+                uiView.becomeFirstResponder()
+            } else {
+                // A field rebuilt with focus (a send on a Mac keeps it) is
+                // first updated before it's in the window, where it can't
+                // take focus: it takes it once it is.
+                let coordinator = context.coordinator
+                DispatchQueue.main.async { [weak uiView] in
+                    guard let uiView, coordinator.isActive, coordinator.parent.isFocused,
+                          uiView.window != nil, !uiView.isFirstResponder else { return }
+                    uiView.becomeFirstResponder()
+                }
+            }
+        }
         if !isFocused, uiView.isFirstResponder { _ = uiView.resignFirstResponder() }
     }
 

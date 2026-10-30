@@ -1491,7 +1491,7 @@ struct ComposerBar: View, Equatable {
 
     private func performComposerAction() {
         if stopOnly {
-            dismissComposer()
+            endInput(keepingFocus: isFocused)
             isShowingFullEditor = false
             Haptics.warning()
             Task { await appState.cancelCurrent() }
@@ -1677,6 +1677,7 @@ struct ComposerBar: View, Equatable {
             dictation.onFinish = nil
             dictation.cancel()
         }
+        let wasTyping = isFocused || isShowingFullEditor
         isShowingFullEditor = false
         let submittedText = text
         let submittedAttachments = attachments
@@ -1704,7 +1705,7 @@ struct ComposerBar: View, Equatable {
             ? appState.durableComposerDraftKeyOnScreen : submittedDraftKey
         let submissionContext = appState.composerSubmissionContext()
         rotateAttachmentGeneration()
-        collapseSubmittedDraft(clearingReply: submittedReply != nil)
+        collapseSubmittedDraft(clearingReply: submittedReply != nil, keepingFocus: wasTyping)
 
         switch submittedAction {
         case .send: Haptics.medium()
@@ -1760,8 +1761,9 @@ struct ComposerBar: View, Equatable {
             dictation.onFinish = nil
             dictation.cancel()
         }
+        let wasTyping = isFocused || isShowingFullEditor
         isShowingFullEditor = false
-        collapseSubmittedDraft(clearingReply: submittedReply != nil)
+        collapseSubmittedDraft(clearingReply: submittedReply != nil, keepingFocus: wasTyping)
         draftStore.removeDraft(for: submittedDraftKey)
         Haptics.medium()
     }
@@ -2057,8 +2059,10 @@ struct ComposerBar: View, Equatable {
     /// Collapse the draft in the same transaction that dismisses the keyboard.
     /// Waiting for the gateway RPC leaves the side controls aligned to the old
     /// multiline field while the keyboard's safe area is already animating.
-    private func collapseSubmittedDraft(clearingReply: Bool) {
-        dismissComposer()
+    /// `keepingFocus`: the user was typing (in the field or the full
+    /// editor), which on a Mac or with a hardware keyboard carries on.
+    private func collapseSubmittedDraft(clearingReply: Bool, keepingFocus: Bool) {
+        endInput(keepingFocus: keepingFocus)
         let updates = {
             replaceComposerText("")
             attachments = []
@@ -2309,6 +2313,21 @@ struct ComposerBar: View, Equatable {
     private func dismissComposer() {
         isFocused = false
         isShowingSlashSuggestions = false
+    }
+
+    /// A send or Stop: on a Mac or with a hardware keyboard the field keeps
+    /// focus for the next message, as a desktop client's does, when the
+    /// user was typing; otherwise the keyboard goes (`dismissComposer`).
+    private func endInput(keepingFocus wasTyping: Bool) {
+        guard wasTyping, ComposerLayout.keepsFocusAfterSend() else {
+            dismissComposer()
+            return
+        }
+        isShowingSlashSuggestions = false
+        // After this update: the send rebuilds the field (a new editor
+        // identity), and a send from the full editor gives it focus back
+        // as the sheet goes.
+        Task { @MainActor in isFocused = true }
     }
 
     private func composerDraftKey(for sessionID: String?) -> ComposerDraftKey {
