@@ -439,6 +439,126 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(copy("e", dashboard))
     }
 
+    /// The app's store saves on its own queue, so leaving a chat never
+    /// waits on encoding or the disk, and answers from memory meanwhile:
+    /// the Chats list at once, a copy and the index once written.
+    func testTheAppsStoreSavesOffTheCallerAndAnswersFromMemory() throws {
+        let store = makeStore(writesAsynchronously: true)
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        let list = SavedChatList.capture(sessions: [session("a")], cronSessions: [], isPinned: { _ in false }, voiceTags: [:], projects: [], supportsProjects: false, now: Date(timeIntervalSince1970: 1_790_000_000))
+        store.record(dashboardID: dashboard, profile: "default", sessionID: "a", title: "A", messages: row, sessions: [session("a")])
+        store.recordChatList(list, dashboardID: dashboard, profile: "default")
+        XCTAssertEqual(store.loadChatList(dashboardID: dashboard, profile: "default"), list, "The list answers before its file lands")
+
+        store.waitForPendingWrites()
+        let index = store.fileURL(dashboardID: dashboard, profile: "default")
+        let copy = store.transcriptFileURL("a", dashboardID: dashboard, profile: "default")
+        let listFile = store.chatListFileURL(dashboardID: dashboard, profile: "default")
+        for file in [index, copy, listFile] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: file.path), "\(file.lastPathComponent) lands on the queue")
+        }
+        // The next launch reads what landed.
+        let next = OfflineChatCacheStore(directory: index.deletingLastPathComponent())
+        XCTAssertEqual(next.load(dashboardID: dashboard, profile: "default")?.lastSessionID, "a")
+        XCTAssertEqual(next.loadTranscript("a", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["m"])
+        XCTAssertEqual(next.loadChatList(dashboardID: dashboard, profile: "default"), list)
+
+        // Memory is what this run answers from.
+        for file in [index, copy, listFile] { try FileManager.default.removeItem(at: file) }
+        XCTAssertEqual(store.load(dashboardID: dashboard, profile: "default")?.lastSessionID, "a")
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["m"])
+        XCTAssertEqual(store.loadChatList(dashboardID: dashboard, profile: "default"), list)
+    }
+
+    /// A removal waits for the saves queued before it, so a copy or held
+    /// rows queued just before a delete or a sign-out never land after it,
+    /// and what it took is gone when it returns.
+    func testARemovalTakesWhatWasQueuedBeforeIt() {
+        let store = makeStore(writesAsynchronously: true)
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        let copy = store.transcriptFileURL("a", dashboardID: dashboard, profile: "default")
+        let held = store.heldRowsFileURL("a", dashboardID: dashboard, profile: "default")
+        store.record(dashboardID: dashboard, profile: "default", sessionID: "a", title: "A", messages: row, sessions: [session("a")])
+        store.recordHeldRows(HistoryPage.HeldRows(sessionID: "a", digests: ["d"], rows: [["id": 1]]), to: held)
+
+        store.removeTranscripts(sessionIDs: ["a"], dashboardID: dashboard, profile: "default")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: copy.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: held.path))
+        XCTAssertNil(store.loadTranscript("a", dashboardID: dashboard, profile: "default"))
+        XCTAssertNil(store.load(dashboardID: dashboard, profile: "default")?.transcript(for: "a"))
+
+        store.record(dashboardID: dashboard, profile: "default", sessionID: "b", title: "B", messages: row, sessions: [session("b")])
+        store.removeAll()
+        store.waitForPendingWrites()
+        XCTAssertNil(store.load(dashboardID: dashboard, profile: "default"))
+        XCTAssertNil(store.loadTranscript("b", dashboardID: dashboard, profile: "default"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: copy.deletingLastPathComponent().path), "Nothing came back after the wipe")
+    }
+
+    /// Leaving a chat with nothing new doesn't write its copy again, until
+    /// its saved time would say it's older than it is.
+    func testAnUnchangedCopyIsNotWrittenAgain() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        let start = Date()
+        let file = store.transcriptFileURL("a", dashboardID: dashboard, profile: "default")
+        func save(after seconds: TimeInterval, _ messages: [ChatMessage] = row) {
+            store.record(dashboardID: dashboard, profile: "default", sessionID: "a", title: "A",
+                         messages: messages, sessions: [session("a")], now: start.addingTimeInterval(seconds))
+        }
+        func markWritten() throws {
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_000)], ofItemAtPath: file.path)
+        }
+        func wasWrittenAgain() throws -> Bool {
+            let date = try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate] as? Date
+            return date != Date(timeIntervalSince1970: 1_000)
+        }
+
+        save(after: 0)
+        try markWritten()
+        save(after: 60)
+        XCTAssertFalse(try wasWrittenAgain(), "Left again with the same rows: its file stays")
+
+        save(after: 120, row + [ChatMessage(id: "n", role: .assistant, content: "hello", timestamp: "2")])
+        XCTAssertTrue(try wasWrittenAgain(), "A new row is written")
+
+        try markWritten()
+        save(after: 120 + OfflineChatCacheStore.unchangedCopyRewriteInterval + 1, row + [ChatMessage(id: "n", role: .assistant, content: "hello", timestamp: "2")])
+        XCTAssertTrue(try wasWrittenAgain(), "Written again once its saved time is stale")
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["m", "n"])
+    }
+
+    /// Once the live list is in, the store reads ahead the copies of the
+    /// chats opened last, so opening one doesn't read its file on the tap.
+    func testRecentCopiesAreReadAheadIntoMemory() throws {
+        let writer = makeStore()
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        for id in ["a", "b", "c"] {
+            writer.record(dashboardID: dashboard, profile: "default", sessionID: id, title: id, messages: row, sessions: [])
+        }
+        let list = SavedChatList.capture(sessions: [session("c")], cronSessions: [], isPinned: { _ in false }, voiceTags: [:], projects: [], supportsProjects: false, now: Date(timeIntervalSince1970: 1_790_000_000))
+        writer.recordChatList(list, dashboardID: dashboard, profile: "default")
+        let directory = writer.fileURL(dashboardID: dashboard, profile: "default").deletingLastPathComponent()
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+
+        store.prefetch(dashboardID: dashboard, profile: "default", transcripts: 2)
+        store.waitForPendingWrites()
+
+        for id in ["a", "b", "c"] {
+            try FileManager.default.removeItem(at: store.transcriptFileURL(id, dashboardID: dashboard, profile: "default"))
+        }
+        try FileManager.default.removeItem(at: store.chatListFileURL(dashboardID: dashboard, profile: "default"))
+        XCTAssertNotNil(store.loadTranscript("c", dashboardID: dashboard, profile: "default"), "The chat opened last is in memory")
+        XCTAssertNotNil(store.loadTranscript("b", dashboardID: dashboard, profile: "default"))
+        XCTAssertNil(store.loadTranscript("a", dashboardID: dashboard, profile: "default"), "Past the limit: not read ahead")
+        XCTAssertEqual(store.loadChatList(dashboardID: dashboard, profile: "default"), list, "Its saved list too")
+    }
+
     /// The last chat saved being deleted leaves no chat to open to.
     func testRemovingTheOnlySavedChatClearsTheChatALaunchOpensTo() throws {
         let store = makeStore()
@@ -2596,11 +2716,15 @@ final class OfflineChatCacheTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeStore() -> OfflineChatCacheStore {
+    private func makeStore(writesAsynchronously: Bool = false) -> OfflineChatCacheStore {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("OfflineChatCacheTests-\(UUID().uuidString)", isDirectory: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
-        return OfflineChatCacheStore(directory: directory)
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: writesAsynchronously)
+        addTeardownBlock {
+            store.waitForPendingWrites()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        return store
     }
 
     private func makeAppState(sharing store: OfflineChatCacheStore, dashboard: UUID) -> (AppState, OfflineChatCacheStore, UUID) {

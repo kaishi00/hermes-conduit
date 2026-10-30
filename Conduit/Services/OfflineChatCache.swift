@@ -398,6 +398,13 @@ struct OfflineChatPresentation: Equatable {
 /// saved conversation's rows and one for the Chats list, all JSON written
 /// atomically with complete-until-first-user-authentication protection and
 /// excluded from backups.
+///
+/// The app's store writes on a queue of its own (`writesAsynchronously`):
+/// leaving a chat, a reply settling or the Chats list changing never waits
+/// on encoding or the disk. It answers from memory (a Chats list as soon as
+/// it's given, a copy or an index once written) while the files catch up,
+/// and reads ahead what a tap shows next. Removals wait for the writes
+/// queued before them, so nothing a removal took is written back.
 final class OfflineChatCacheStore {
     /// The rows the chat had loaded when it was left, up to this many, so a
     /// chat read further back stays readable that far (#1525).
@@ -409,6 +416,10 @@ final class OfflineChatCacheStore {
     static let maxScopeBytes = 64 * 1024 * 1024
     /// At least `maxTranscripts`, so every kept copy keeps a row to open it from.
     static let maxSessions = 120
+    /// A copy saved again with the same rows within this long keeps its
+    /// file: leaving a chat that hasn't changed writes nothing. Past it the
+    /// copy is written again, so its saved time says how fresh it is.
+    static let unchangedCopyRewriteInterval: TimeInterval = 5 * 60
 
     /// Complete-until-first-user-authentication: unreadable from a device
     /// that has not been unlocked since boot, while still writable at the
@@ -417,21 +428,96 @@ final class OfflineChatCacheStore {
 
     private let directory: URL
     private let fileManager: FileManager
-    /// The copies last read or written, by file, so a chat opened again
-    /// shows its copy without reading and decoding it on the tap (#1352).
-    private var keptTranscripts: [URL: OfflineCachedTranscript] = [:]
+    /// Guards every memory copy below: the main actor reads them while the
+    /// store's queue writes and reads ahead. Never held across disk work.
+    private let memoryLock = NSLock()
+    /// The copies last read, written or read ahead, by file, with their
+    /// files' sizes, so a chat opened again shows its copy without reading
+    /// and decoding it on the tap (#1352). A kept copy is what its file
+    /// holds: one is kept only once its file is written or read.
+    private var keptTranscripts: [URL: (transcript: OfflineCachedTranscript, bytes: Int)] = [:]
+    /// Least recently used first.
     private var keptTranscriptOrder: [URL] = []
-    static let maxKeptTranscripts = 8
+    private var keptTranscriptBytes = 0
+    static let maxKeptTranscripts = 16
+    /// What the kept copies' files add up to, at most (the newest always
+    /// stays).
+    static let maxKeptTranscriptBytes = 32 * 1024 * 1024
+    /// Each scope's index and saved Chats list as last read or written, by
+    /// file, when the store writes asynchronously: memory is then ahead of
+    /// the disk.
+    private var keptIndexes: [URL: OfflineChatSnapshot] = [:]
+    private var keptChatLists: [URL: SavedChatList] = [:]
+    /// Scopes read ahead since the last removal.
+    private var prefetchedScopes: Set<String> = []
+    /// A copy whose file is larger than this isn't read ahead.
+    static let maxPrefetchedTranscriptBytes = 4 * 1024 * 1024
+    /// Where the files are written when the store writes asynchronously;
+    /// nil writes them on the caller, as tests do. Nothing on it waits on
+    /// the main thread, so the main thread may wait on it (removals).
+    private let ioQueue: DispatchQueue?
 
     private let scopeBytes: Int
     /// Moves with every removal (a deleted chat, a wipe), so a read that was
     /// in flight across one keeps nothing (#1525).
-    private(set) var removals = 0
+    var removals: Int { memoryLock.withLock { removalCount } }
+    private var removalCount = 0
 
-    init(directory: URL, fileManager: FileManager = .default, scopeBytes: Int = OfflineChatCacheStore.maxScopeBytes) {
+    init(
+        directory: URL,
+        fileManager: FileManager = .default,
+        scopeBytes: Int = OfflineChatCacheStore.maxScopeBytes,
+        writesAsynchronously: Bool = false
+    ) {
         self.directory = directory
         self.fileManager = fileManager
         self.scopeBytes = scopeBytes
+        self.ioQueue = writesAsynchronously
+            ? DispatchQueue(label: "conduit.offlineChatCache.write", qos: .utility)
+            : nil
+    }
+
+    /// Runs disk work on the store's queue, after the work queued before
+    /// it, or at once on the caller when the store writes synchronously.
+    private func perform(_ work: @escaping () -> Void) {
+        if let ioQueue {
+            ioQueue.async(execute: work)
+        } else {
+            work()
+        }
+    }
+
+    /// Runs disk work after every write queued before it and returns once
+    /// it's done: removals, so a copy queued before one never lands after
+    /// it, and what they took is gone when they return.
+    private func performAndWait(_ work: () -> Void) {
+        if let ioQueue {
+            ioQueue.sync(execute: work)
+        } else {
+            work()
+        }
+    }
+
+    /// Blocks until every queued write and read ahead has landed: twice, as
+    /// a read ahead queues its copies from the queue. Test-only.
+    #if DEBUG
+    func waitForPendingWrites() {
+        ioQueue?.sync {}
+        ioQueue?.sync {}
+    }
+    #endif
+
+    /// Calls `completion` on the main queue once every write queued so far
+    /// has landed, without blocking the caller, so a background task can
+    /// keep the app alive until then.
+    func notifyWhenPendingWritesLand(_ completion: @escaping @MainActor () -> Void) {
+        guard let ioQueue else {
+            DispatchQueue.main.async { completion() }
+            return
+        }
+        ioQueue.async {
+            DispatchQueue.main.async { completion() }
+        }
     }
 
     static func defaultDirectory(fileManager: FileManager = .default) -> URL {
@@ -444,19 +530,28 @@ final class OfflineChatCacheStore {
     /// saved in a format this build doesn't read).
     func load(dashboardID: UUID, profile: String) -> OfflineChatSnapshot? {
         let url = fileURL(dashboardID: dashboardID, profile: profile)
+        if ioQueue != nil, let kept = memoryLock.withLock({ keptIndexes[url] }) { return kept }
         guard let data = try? Data(contentsOf: url) else { return nil }
-        if let snapshot = try? JSONDecoder().decode(OfflineChatSnapshot.self, from: data),
-           snapshot.version == OfflineChatSnapshot.formatVersion {
-            return snapshot
+        let snapshot: OfflineChatSnapshot?
+        if let decoded = try? JSONDecoder().decode(OfflineChatSnapshot.self, from: data),
+           decoded.version == OfflineChatSnapshot.formatVersion {
+            snapshot = decoded
+        } else {
+            snapshot = moveFirstFormat(data, dashboardID: dashboardID, profile: profile)
         }
-        return moveFirstFormat(data, dashboardID: dashboardID, profile: profile)
+        guard let snapshot else { return nil }
+        // One the queue wrote while this was read is the newer one.
+        return keepIfAbsent(snapshot, in: \.keptIndexes, at: url)
     }
 
     /// One saved conversation with its rows, or nil when it has none.
     func loadTranscript(_ sessionID: String, dashboardID: UUID, profile: String) -> OfflineCachedTranscript? {
         let url = transcriptFileURL(sessionID, dashboardID: dashboardID, profile: profile)
-        if let kept = keptTranscripts[url] {
-            keep(kept, at: url)
+        if let kept = memoryLock.withLock({ () -> OfflineCachedTranscript? in
+            guard let kept = keptTranscripts[url] else { return nil }
+            keepLocked(kept.transcript, bytes: kept.bytes, at: url)
+            return kept.transcript
+        }) {
             return kept
         }
         guard let data = try? Data(contentsOf: url),
@@ -464,23 +559,78 @@ final class OfflineChatCacheStore {
               transcript.sessionID == sessionID else {
             return nil
         }
-        keep(transcript, at: url)
-        return transcript
+        return memoryLock.withLock { () -> OfflineCachedTranscript in
+            // A copy saved while the file was read is the newer one.
+            if let newer = keptTranscripts[url] { return newer.transcript }
+            keepLocked(transcript, bytes: data.count, at: url)
+            return transcript
+        }
     }
 
-    private func keep(_ transcript: OfflineCachedTranscript, at url: URL) {
-        keptTranscripts[url] = transcript
+    /// Keeps a copy as the most recently used, then lets the least recently
+    /// used go past `maxKeptTranscripts` or `maxKeptTranscriptBytes` (the
+    /// newest always stays). Under `memoryLock`.
+    private func keepLocked(_ transcript: OfflineCachedTranscript, bytes: Int, at url: URL) {
+        keptTranscriptBytes -= keptTranscripts[url]?.bytes ?? 0
+        keptTranscripts[url] = (transcript, bytes)
+        keptTranscriptBytes += bytes
         keptTranscriptOrder.removeAll { $0 == url }
         keptTranscriptOrder.append(url)
-        while keptTranscriptOrder.count > Self.maxKeptTranscripts {
-            keptTranscripts[keptTranscriptOrder.removeFirst()] = nil
+        while keptTranscriptOrder.count > 1,
+              keptTranscriptOrder.count > Self.maxKeptTranscripts
+                || keptTranscriptBytes > Self.maxKeptTranscriptBytes {
+            let oldest = keptTranscriptOrder.removeFirst()
+            keptTranscriptBytes -= keptTranscripts.removeValue(forKey: oldest)?.bytes ?? 0
         }
+    }
+
+    private func keep(_ transcript: OfflineCachedTranscript, bytes: Int, at url: URL) {
+        memoryLock.withLock { keepLocked(transcript, bytes: bytes, at: url) }
     }
 
     /// Kept copies go with their files.
     private func forgetKeptTranscripts(where isGone: (URL) -> Bool) {
-        keptTranscriptOrder.removeAll(where: isGone)
-        keptTranscripts = keptTranscripts.filter { !isGone($0.key) }
+        memoryLock.withLock {
+            keptTranscriptOrder.removeAll(where: isGone)
+            for url in keptTranscripts.keys.filter(isGone) {
+                keptTranscriptBytes -= keptTranscripts.removeValue(forKey: url)?.bytes ?? 0
+            }
+        }
+    }
+
+    /// Memory's copy of a scope's index or list when it has one, else
+    /// `value`, kept: what the queue wrote meanwhile is newer than a read.
+    private func keepIfAbsent<Value>(
+        _ value: Value,
+        in memory: ReferenceWritableKeyPath<OfflineChatCacheStore, [URL: Value]>,
+        at url: URL
+    ) -> Value {
+        guard ioQueue != nil else { return value }
+        return memoryLock.withLock { () -> Value in
+            if let newer = self[keyPath: memory][url] { return newer }
+            self[keyPath: memory][url] = value
+            return value
+        }
+    }
+
+    /// Sets memory's copy of a scope's index or list (asynchronous mode
+    /// only: in synchronous mode the disk is what's read).
+    private func keepInMemory<Value>(
+        _ value: Value,
+        in memory: ReferenceWritableKeyPath<OfflineChatCacheStore, [URL: Value]>,
+        at url: URL
+    ) {
+        guard ioQueue != nil else { return }
+        memoryLock.withLock { self[keyPath: memory][url] = value }
+    }
+
+    /// Notes a removal before its disk work: reads in flight across it keep
+    /// nothing, and every scope is read ahead again.
+    private func noteRemoval() {
+        memoryLock.withLock {
+            removalCount &+= 1
+            prefetchedScopes.removeAll()
+        }
     }
 
     /// A scope saved in the first format moves to a file per conversation
@@ -511,6 +661,9 @@ final class OfflineChatCacheStore {
     /// neither, nothing is written. Older transcripts stored under the
     /// conversation's other identities are dropped. An empty storable
     /// transcript records nothing.
+    ///
+    /// Only the rows are taken on the caller; resolving, encoding and the
+    /// files happen on the store's queue when it writes asynchronously.
     func record(
         dashboardID: UUID,
         profile: String,
@@ -521,14 +674,38 @@ final class OfflineChatCacheStore {
         sessions: [SessionSummary],
         now: Date = Date()
     ) {
-        let rows = messages.compactMap(OfflineCachedMessage.init)
-            .suffix(Self.maxMessagesPerTranscript)
+        let rows = Array(messages.compactMap(OfflineCachedMessage.init)
+            .suffix(Self.maxMessagesPerTranscript))
         guard !rows.isEmpty else { return }
-        var snapshot = load(dashboardID: dashboardID, profile: profile)
-            ?? OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: [])
         let catalogRows = sessions
             .filter { $0.source != .cron && !$0.isArchived }
             .map(OfflineCachedSession.init)
+        perform { [self] in
+            recordRows(
+                rows,
+                dashboardID: dashboardID,
+                profile: profile,
+                sessionID: sessionID,
+                identities: identities,
+                title: title,
+                catalogRows: catalogRows,
+                now: now
+            )
+        }
+    }
+
+    private func recordRows(
+        _ rows: [OfflineCachedMessage],
+        dashboardID: UUID,
+        profile: String,
+        sessionID: String?,
+        identities: Set<String>,
+        title: String,
+        catalogRows: [OfflineCachedSession],
+        now: Date
+    ) {
+        var snapshot = load(dashboardID: dashboardID, profile: profile)
+            ?? OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: [])
         var allIdentities = identities
         if let sessionID { allIdentities.insert(sessionID) }
         // Resolve against the FULL catalog (or the saved list when the live
@@ -539,11 +716,19 @@ final class OfflineChatCacheStore {
         if let row = snapshot.sessions.first(where: { $0.id == sessionID }) {
             allIdentities.formUnion(row.aliases)
         }
-        let transcript = OfflineCachedTranscript(sessionID: sessionID, title: title, savedAt: now, messages: Array(rows))
-        // Its rows land first, so the index never lists a copy that isn't there.
-        guard let bytes = write(transcript, dashboardID: dashboardID, profile: profile) else { return }
+        let entry: OfflineCachedTranscriptEntry
+        if let unchanged = unchangedEntry(snapshot, sessionID: sessionID, title: title, rows: rows, now: now,
+                                          dashboardID: dashboardID, profile: profile) {
+            entry = unchanged
+        } else {
+            let transcript = OfflineCachedTranscript(sessionID: sessionID, title: title, savedAt: now, messages: rows)
+            // Its rows land first, so the index never lists a copy that isn't there.
+            guard let bytes = write(transcript, dashboardID: dashboardID, profile: profile) else { return }
+            entry = OfflineCachedTranscriptEntry(transcript, bytes: bytes)
+        }
+        let saved = snapshot
         snapshot.transcripts.removeAll { $0.sessionID == sessionID || allIdentities.contains($0.sessionID) }
-        snapshot.transcripts.insert(OfflineCachedTranscriptEntry(transcript, bytes: bytes), at: 0)
+        snapshot.transcripts.insert(entry, at: 0)
         snapshot.transcripts = boundedTranscripts(snapshot.transcripts, dashboardID: dashboardID, profile: profile)
         if !catalogRows.isEmpty {
             // Every retained transcript (current conversation first) keeps a
@@ -555,8 +740,34 @@ final class OfflineChatCacheStore {
             )
         }
         snapshot.lastSessionID = sessionID
+        // The same chat left again with nothing new: nothing to write.
+        guard snapshot != saved else { return }
         guard write(snapshot, dashboardID: dashboardID, profile: profile) else { return }
         removeUnlistedTranscripts(snapshot, dashboardID: dashboardID, profile: profile)
+    }
+
+    /// The index's entry for a copy saved within
+    /// `unchangedCopyRewriteInterval` with the same title and rows, whose
+    /// file is still there, so it isn't encoded and written again; nil when
+    /// the copy has to be written.
+    private func unchangedEntry(
+        _ snapshot: OfflineChatSnapshot,
+        sessionID: String,
+        title: String,
+        rows: [OfflineCachedMessage],
+        now: Date,
+        dashboardID: UUID,
+        profile: String
+    ) -> OfflineCachedTranscriptEntry? {
+        let url = transcriptFileURL(sessionID, dashboardID: dashboardID, profile: profile)
+        guard let entry = snapshot.transcript(for: sessionID),
+              let kept = memoryLock.withLock({ keptTranscripts[url] }),
+              now.timeIntervalSince(kept.transcript.savedAt) < Self.unchangedCopyRewriteInterval,
+              kept.transcript.title == title,
+              kept.transcript.messages == rows,
+              fileManager.fileExists(atPath: url.path) else { return nil }
+        keep(kept.transcript, bytes: kept.bytes, at: url)
+        return entry
     }
 
     /// A deleted conversation leaves the scope: its saved rows under any of
@@ -565,7 +776,13 @@ final class OfflineChatCacheStore {
     /// opens to. The index is rewritten before the files go, as `record`
     /// does, so it never lists a copy that isn't there.
     func removeTranscripts(sessionIDs: Set<String>, dashboardID: UUID, profile: String) {
-        removals &+= 1
+        performAndWait {
+            removeTranscriptsNow(sessionIDs: sessionIDs, dashboardID: dashboardID, profile: profile)
+        }
+    }
+
+    private func removeTranscriptsNow(sessionIDs: Set<String>, dashboardID: UUID, profile: String) {
+        noteRemoval()
         let ids = sessionIDs.filter { !$0.isEmpty }
         guard !ids.isEmpty else { return }
         if var snapshot = load(dashboardID: dashboardID, profile: profile) {
@@ -598,7 +815,9 @@ final class OfflineChatCacheStore {
             list.cronSessions.removeAll(where: isDeleted)
             list.pinnedRowIDs.removeAll { removedRowIDs.contains($0) }
             list.voiceTags = list.voiceTags.filter { !removedNestingIDs.contains($0.key) }
-            recordChatList(list, dashboardID: dashboardID, profile: profile)
+            let url = chatListFileURL(dashboardID: dashboardID, profile: profile)
+            keepInMemory(list, in: \.keptChatLists, at: url)
+            writeChatList(list, to: url)
         }
     }
 
@@ -680,14 +899,16 @@ final class OfflineChatCacheStore {
     }
 
     func removeDashboard(_ dashboardID: UUID) {
-        removals &+= 1
-        let prefix = dashboardID.uuidString.lowercased() + "--"
-        forgetKeptTranscripts { $0.lastPathComponent.hasPrefix(prefix) }
-        guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
-            return
-        }
-        for file in files where file.lastPathComponent.hasPrefix(prefix) {
-            try? fileManager.removeItem(at: file)
+        performAndWait {
+            noteRemoval()
+            let prefix = dashboardID.uuidString.lowercased() + "--"
+            forgetMemory { $0.lastPathComponent.hasPrefix(prefix) }
+            guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
+                return
+            }
+            for file in files where file.lastPathComponent.hasPrefix(prefix) {
+                try? fileManager.removeItem(at: file)
+            }
         }
     }
 
@@ -695,58 +916,146 @@ final class OfflineChatCacheStore {
     /// deleted (a bot): they are its raw chat history. A read still in flight
     /// for it keeps nothing, as after the other removals.
     func removeHeldRows(dashboardID: UUID, profile: String) {
-        removals &+= 1
-        let prefix = Self.scopeFileStem(dashboardID: dashboardID, profile: profile) + Self.heldRowsInfix
-        guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
-            return
-        }
-        for file in files where file.lastPathComponent.hasPrefix(prefix) {
-            try? fileManager.removeItem(at: file)
+        performAndWait {
+            noteRemoval()
+            let prefix = Self.scopeFileStem(dashboardID: dashboardID, profile: profile) + Self.heldRowsInfix
+            guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
+                return
+            }
+            for file in files where file.lastPathComponent.hasPrefix(prefix) {
+                try? fileManager.removeItem(at: file)
+            }
         }
     }
 
     /// Deletes presentation copies across dashboards, preserving accepted
     /// unsent messages even when their dashboard is not loaded in memory.
     func removeSavedChats() {
-        removals &+= 1
-        forgetKeptTranscripts { _ in true }
-        guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
-            return
-        }
-        for file in files where !file.lastPathComponent.hasSuffix(Self.pendingSendSuffix) {
-            try? fileManager.removeItem(at: file)
+        performAndWait {
+            noteRemoval()
+            forgetMemory { _ in true }
+            guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
+                return
+            }
+            for file in files where !file.lastPathComponent.hasSuffix(Self.pendingSendSuffix) {
+                try? fileManager.removeItem(at: file)
+            }
         }
     }
 
     func removeAll() {
-        removals &+= 1
-        forgetKeptTranscripts { _ in true }
-        try? fileManager.removeItem(at: directory)
+        performAndWait {
+            noteRemoval()
+            forgetMemory { _ in true }
+            try? fileManager.removeItem(at: directory)
+        }
+    }
+
+    /// Every memory copy of a file a wipe removes: the kept copies, and the
+    /// indexes and lists kept when the store writes asynchronously.
+    private func forgetMemory(where isGone: (URL) -> Bool) {
+        forgetKeptTranscripts(where: isGone)
+        memoryLock.withLock {
+            keptIndexes = keptIndexes.filter { !isGone($0.key) }
+            keptChatLists = keptChatLists.filter { !isGone($0.key) }
+        }
     }
 
     /// The scope's saved Chats list, or nil when none was saved (or it was
     /// saved in another format).
     func loadChatList(dashboardID: UUID, profile: String) -> SavedChatList? {
-        guard let data = try? Data(contentsOf: chatListFileURL(dashboardID: dashboardID, profile: profile)),
+        let url = chatListFileURL(dashboardID: dashboardID, profile: profile)
+        if ioQueue != nil, let kept = memoryLock.withLock({ keptChatLists[url] }) { return kept }
+        guard let data = try? Data(contentsOf: url),
               let list = try? JSONDecoder().decode(SavedChatList.self, from: data),
               list.version == SavedChatList.formatVersion else {
             return nil
         }
-        return list
+        // One recorded while this was read is the newer one.
+        return keepIfAbsent(list, in: \.keptChatLists, at: url)
     }
 
     /// Replaces the scope's saved Chats list. Its file sits beside the
     /// scope's transcripts, so every wipe that removes those removes it.
+    /// When the store writes asynchronously, the list is what memory answers
+    /// with at once, and the queue writes it.
     func recordChatList(_ list: SavedChatList, dashboardID: UUID, profile: String) {
+        let url = chatListFileURL(dashboardID: dashboardID, profile: profile)
+        keepInMemory(list, in: \.keptChatLists, at: url)
+        perform { [self] in writeChatList(list, to: url) }
+    }
+
+    private func writeChatList(_ list: SavedChatList, to url: URL) {
         guard let data = try? JSONEncoder().encode(list) else { return }
-        write(data, to: chatListFileURL(dashboardID: dashboardID, profile: profile))
+        write(data, to: url)
+    }
+
+    /// Keeps a chat's held rows (`writeHeldRows`) on the store's queue, so
+    /// a removal after this waits for them and takes them too.
+    func recordHeldRows(_ held: HistoryPage.HeldRows, to url: URL) {
+        perform { [fileManager] in
+            Self.writeHeldRows(held, to: url, fileManager: fileManager)
+        }
+    }
+
+    // MARK: Reading ahead
+
+    /// Reads ahead, on the store's queue, what opening something in a scope
+    /// shows first: its saved Chats list, and the copies of the chats opened
+    /// there last, up to `transcripts`, so opening one of them shows its
+    /// copy from memory instead of reading its file on the tap. Once per
+    /// scope until the next removal. A copy already in memory, or one whose
+    /// file is larger than `maxPrefetchedTranscriptBytes`, isn't read, and a
+    /// copy read ahead only takes room memory has free, never a place a chat
+    /// opened since holds. Asynchronous mode only.
+    func prefetch(dashboardID: UUID, profile: String, transcripts limit: Int) {
+        guard let ioQueue else { return }
+        let scope = Self.scopeFileStem(dashboardID: dashboardID, profile: profile)
+        guard memoryLock.withLock({ prefetchedScopes.insert(scope).inserted }) else { return }
+        ioQueue.async { [self] in
+            _ = loadChatList(dashboardID: dashboardID, profile: profile)
+            guard limit > 0, let snapshot = load(dashboardID: dashboardID, profile: profile) else { return }
+            for entry in snapshot.transcripts.prefix(limit)
+            where (entry.bytes ?? 0) <= Self.maxPrefetchedTranscriptBytes {
+                // A copy a turn, so a removal or a write waits for one read
+                // at most.
+                ioQueue.async { [self] in
+                    prefetchTranscript(entry, dashboardID: dashboardID, profile: profile)
+                }
+            }
+        }
+    }
+
+    private func prefetchTranscript(_ entry: OfflineCachedTranscriptEntry, dashboardID: UUID, profile: String) {
+        let url = transcriptFileURL(entry.sessionID, dashboardID: dashboardID, profile: profile)
+        guard memoryLock.withLock({ fitsAheadLocked(url, bytes: entry.bytes ?? 0) }),
+              let data = try? Data(contentsOf: url),
+              // An older entry has no size: its file says.
+              data.count <= Self.maxPrefetchedTranscriptBytes,
+              let transcript = try? JSONDecoder().decode(OfflineCachedTranscript.self, from: data),
+              transcript.sessionID == entry.sessionID else { return }
+        memoryLock.withLock {
+            guard fitsAheadLocked(url, bytes: data.count) else { return }
+            keptTranscripts[url] = (transcript, data.count)
+            keptTranscriptBytes += data.count
+            // Least recently used, so it goes before any copy opened.
+            keptTranscriptOrder.insert(url, at: 0)
+        }
+    }
+
+    /// Whether a copy read ahead fits in memory without pushing a kept one
+    /// out. Under `memoryLock`.
+    private func fitsAheadLocked(_ url: URL, bytes: Int) -> Bool {
+        keptTranscripts[url] == nil
+            && keptTranscriptOrder.count < Self.maxKeptTranscripts
+            && keptTranscriptBytes + bytes <= Self.maxKeptTranscriptBytes
     }
 
     /// Keeps a message waiting for its chat, so a launch after the app was
     /// stopped can put it back in its chat's draft. Its file sits beside its
-    /// scope's, so the same wipes remove it. Intentionally synchronous, like
-    /// the saved-chat cache: recording finishes before the composer clears
-    /// its submitted draft.
+    /// scope's, so the same wipes remove it. Intentionally synchronous, unlike
+    /// the saved copies: recording finishes before the composer clears its
+    /// submitted draft.
     @discardableResult
     func recordPendingSend(_ pending: PendingComposerSend) -> Bool {
         guard let data = try? JSONEncoder().encode(pending) else { return false }
@@ -802,7 +1111,10 @@ final class OfflineChatCacheStore {
     @discardableResult
     private func write(_ snapshot: OfflineChatSnapshot, dashboardID: UUID, profile: String) -> Bool {
         guard let data = try? JSONEncoder().encode(snapshot) else { return false }
-        return write(data, to: fileURL(dashboardID: dashboardID, profile: profile))
+        let url = fileURL(dashboardID: dashboardID, profile: profile)
+        guard write(data, to: url) else { return false }
+        keepInMemory(snapshot, in: \.keptIndexes, at: url)
+        return true
     }
 
     /// The file's size when it was written, else nil.
@@ -810,7 +1122,7 @@ final class OfflineChatCacheStore {
         guard let data = try? JSONEncoder().encode(transcript) else { return nil }
         let url = transcriptFileURL(transcript.sessionID, dashboardID: dashboardID, profile: profile)
         guard write(data, to: url) else { return nil }
-        keep(transcript, at: url)
+        keep(transcript, bytes: data.count, at: url)
         return data.count
     }
 
