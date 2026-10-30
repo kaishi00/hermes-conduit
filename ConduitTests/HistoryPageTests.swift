@@ -56,4 +56,12 @@ final class HistoryPageTests: XCTestCase {
         XCTAssertFalse(HistoryPage.readsHermesRouteInstead(after: DashboardTicketBridgeError.http(status: 504, detail: "")))
         XCTAssertFalse(HistoryPage.readsHermesRouteInstead(after: DashboardTicketBridgeError.notReady))
     }
+
+    func testOnlyAHostThatCantServeTheRouteIsLeftForTheRun() {
+        XCTAssertTrue(HistoryPage.isRefusedForScope(DashboardTicketBridgeError.http(status: 501, detail: "")))
+        XCTAssertTrue(HistoryPage.isRefusedForScope(DashboardTicketBridgeError.http(status: 403, detail: "")))
+        XCTAssertFalse(HistoryPage.isRefusedForScope(DashboardTicketBridgeError.http(status: 404, detail: "")),
+                       "Hermes' own missing chat passes through as a 404")
+        XCTAssertFalse(HistoryPage.isRefusedForScope(DashboardTicketBridgeError.http(status: 0, detail: "")))
+    }
 }

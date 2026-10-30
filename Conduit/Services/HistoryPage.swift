@@ -78,6 +78,20 @@ enum HistoryPage {
         return (page, HeldRows(sessionID: sessionID, digests: digests, rows: rows))
     }
 
+    static func scopeKey(dashboardID: UUID, profile: String) -> String {
+        "\(dashboardID.uuidString)|\(profile)"
+    }
+
+    /// Whether the route can't be served for this dashboard and profile at
+    /// all: a Hermes without session routes (501), a profile that turned the
+    /// plugin off or a ticket for another profile (403), a method it doesn't
+    /// take (405). A 404 is left out: Hermes' own "no such chat" passes
+    /// through as one.
+    static func isRefusedForScope(_ error: Error) -> Bool {
+        guard case let DashboardTicketBridgeError.http(status, _) = error else { return false }
+        return [403, 405, 501].contains(status)
+    }
+
     /// Whether a failed read should go to Hermes' own route instead: the
     /// plugin's route answered with a refusal of its own (an older Hermes, a
     /// profile that turned the plugin off). The link's own trouble (no

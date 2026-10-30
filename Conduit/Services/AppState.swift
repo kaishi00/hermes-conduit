@@ -30120,6 +30120,10 @@ final class AppState: ObservableObject {
     /// sent as their fingerprints; nil when the plugin doesn't serve it or
     /// refused it, and Hermes' own route reads the page instead. A tail page
     /// read through it is kept for the next read.
+    /// Dashboard and profile scopes whose plugin refused the history page
+    /// route this run (`HistoryPage.isRefusedForScope`).
+    private var historyPageRefusedScopes: Set<String> = []
+
     private func historyPagePayload(
         sessionId: String,
         profile: String,
@@ -30128,7 +30132,8 @@ final class AppState: ObservableObject {
     ) async -> PersistedTranscriptFetchOutcome? {
         guard case .reported(_, let capabilities) = notifierPlugin.state,
               capabilities.contains(HistoryPage.capability),
-              let dashboardID = activeDashboardID else { return nil }
+              let dashboardID = activeDashboardID,
+              !historyPageRefusedScopes.contains(HistoryPage.scopeKey(dashboardID: dashboardID, profile: profile)) else { return nil }
         let heldURL = offlineChatCache.heldRowsFileURL(sessionId, dashboardID: dashboardID, profile: profile)
         let held = await Task.detached(priority: .userInitiated) {
             OfflineChatCacheStore.loadHeldRows(at: heldURL, sessionID: sessionId)
@@ -30141,6 +30146,11 @@ final class AppState: ObservableObject {
         do {
             response = try await bridge.requestJSON(path: path, method: "POST", body: body)
         } catch {
+            // A route this host can't serve for the profile is left for the
+            // run, so later opens don't pay its round trip first.
+            if HistoryPage.isRefusedForScope(error) {
+                historyPageRefusedScopes.insert(HistoryPage.scopeKey(dashboardID: dashboardID, profile: profile))
+            }
             return HistoryPage.readsHermesRouteInstead(after: error) ? nil : .failed(error)
         }
         guard let rebuilt = HistoryPage.rebuild(response, held: held?.byDigest ?? [:], sessionID: sessionId) else {
@@ -30150,9 +30160,11 @@ final class AppState: ObservableObject {
         }
         let sentRows = (response["messages"] as? [Any])?.filter { ($0 as? [String: Any])?[HistoryPage.knownKey] == nil }.count ?? 0
         noteConnectionStep("History page: \(sentRows) of \(rebuilt.kept.rows.count) rows sent", since: startedAt)
-        // Written here, not off the main actor, so a sign-out's wipe can't
-        // land before it and leave the rows behind.
-        if isTail { OfflineChatCacheStore.writeHeldRows(rebuilt.kept, to: heldURL) }
+        // Only while the dashboard is still the one signed in: a sign-out or
+        // removal during the read has wiped its files, and these rows go too.
+        if isTail, activeDashboardID == dashboardID, savedDashboardRegistry.dashboard(with: dashboardID) != nil {
+            OfflineChatCacheStore.writeHeldRows(rebuilt.kept, to: heldURL)
+        }
         return .payload(rebuilt.page)
     }
 

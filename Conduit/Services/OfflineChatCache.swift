@@ -827,6 +827,8 @@ final class OfflineChatCacheStore {
     }
 
     static let heldRowsInfix = ".rows-"
+    /// The held rows' own budget per scope, beside the copies' `maxScopeBytes`.
+    static let maxHeldRowsBytes = 32 * 1024 * 1024
 
     /// A chat's held rows, or nil when none are kept for it. Read off the
     /// main actor: a page of rows can be large.
@@ -841,8 +843,8 @@ final class OfflineChatCacheStore {
     }
 
     /// Keeps a chat's held rows, then lets go of the scope's oldest beyond
-    /// `maxTranscripts`, as the saved copies are bounded. Best effort, like
-    /// the copies.
+    /// `maxTranscripts` files or `maxHeldRowsBytes`, as the saved copies are
+    /// bounded (the newest always stays). Best effort, like the copies.
     static func writeHeldRows(_ held: HistoryPage.HeldRows, to url: URL, fileManager: FileManager = .default) {
         let object: [String: Any] = ["session_id": held.sessionID, "digests": held.digests, "rows": held.rows]
         guard JSONSerialization.isValidJSONObject(object),
@@ -862,7 +864,7 @@ final class OfflineChatCacheStore {
         let prefix = String(url.lastPathComponent[..<infix.upperBound])
         guard let files = try? fileManager.contentsOfDirectory(
             at: directory,
-            includingPropertiesForKeys: [.contentModificationDateKey]
+            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey]
         ) else { return }
         let held = files
             .filter { $0.lastPathComponent.hasPrefix(prefix) }
@@ -870,8 +872,13 @@ final class OfflineChatCacheStore {
                 (file, (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
             }
             .sorted { $0.1 > $1.1 }
-        for (file, _) in held.dropFirst(maxTranscripts) {
-            try? fileManager.removeItem(at: file)
+        var total = 0
+        for (index, (file, _)) in held.enumerated() {
+            let bytes = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            total += bytes
+            if index >= maxTranscripts || (index > 0 && total > maxHeldRowsBytes) {
+                try? fileManager.removeItem(at: file)
+            }
         }
     }
 
