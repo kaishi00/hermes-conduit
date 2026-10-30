@@ -691,6 +691,20 @@ final class OfflineChatCacheStore {
         }
     }
 
+    /// Deletes a profile's held rows on one dashboard, as its profile is
+    /// deleted (a bot): they are its raw chat history. A read still in flight
+    /// for it keeps nothing, as after the other removals.
+    func removeHeldRows(dashboardID: UUID, profile: String) {
+        removals &+= 1
+        let prefix = Self.scopeFileStem(dashboardID: dashboardID, profile: profile) + Self.heldRowsInfix
+        guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
+            return
+        }
+        for file in files where file.lastPathComponent.hasPrefix(prefix) {
+            try? fileManager.removeItem(at: file)
+        }
+    }
+
     /// Deletes presentation copies across dashboards, preserving accepted
     /// unsent messages even when their dashboard is not loaded in memory.
     func removeSavedChats() {

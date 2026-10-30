@@ -22807,6 +22807,8 @@ final class AppState: ObservableObject {
             forgetPinnedReplies(profile: bot.name)
             forgetBotChatPinnedReplies(of: bot)
         }
+        // Its chats' raw rows, kept for the history page, go on any dashboard.
+        offlineChatCache.removeHeldRows(dashboardID: dashboardID, profile: bot.name)
         guard dashboardTicketBridge === bridge else { return nil }
         sessionStars.forget(profile: bot.name)
         sessionStars.save(to: defaults)

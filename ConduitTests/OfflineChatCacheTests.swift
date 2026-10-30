@@ -227,6 +227,23 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNotEqual(store.removals, removals, "A read in flight across the delete keeps nothing")
     }
 
+    func testADeletedProfileTakesOnlyItsHeldRows() {
+        let store = makeStore()
+        let dashboard = UUID()
+        let bot = store.heldRowsFileURL("s1", dashboardID: dashboard, profile: "bot")
+        let botLonger = store.heldRowsFileURL("s1", dashboardID: dashboard, profile: "bot2")
+        let other = store.heldRowsFileURL("s1", dashboardID: UUID(), profile: "bot")
+        for url in [bot, botLonger, other] {
+            OfflineChatCacheStore.writeHeldRows(HistoryPage.HeldRows(sessionID: "s1", digests: ["a"], rows: [["id": 1]]), to: url)
+        }
+        let removals = store.removals
+        store.removeHeldRows(dashboardID: dashboard, profile: "bot")
+        XCTAssertNil(OfflineChatCacheStore.loadHeldRows(at: bot, sessionID: "s1"))
+        XCTAssertNotNil(OfflineChatCacheStore.loadHeldRows(at: botLonger, sessionID: "s1"))
+        XCTAssertNotNil(OfflineChatCacheStore.loadHeldRows(at: other, sessionID: "s1"))
+        XCTAssertNotEqual(store.removals, removals, "A read in flight across the delete keeps nothing")
+    }
+
     func testHeldRowsKeepTheNewestChats() throws {
         let store = makeStore()
         let dashboard = UUID()
