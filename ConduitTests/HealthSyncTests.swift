@@ -285,6 +285,29 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(windows.compactMap { $0["from"] as? String }.allSatisfy { $0 >= "2000-01-01T00:00:00Z" })
     }
 
+    func testASavedStartBeforeTheHostsFirstDayMovesUp() async throws {
+        let source = FakeHealthSource()
+        source.earliest = date("2010-01-01T00:00:00Z")
+        source.oldest = nil
+        let host = FakeHealthHost()
+        let keys = HealthKeyBox()
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("health-sync-\(UUID().uuidString)", isDirectory: true)
+        let preferences = healthPreferences(history: .all)
+        let first = makeHealthEngine(source: source, keys: keys, folder: folder)
+        _ = await first.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        // As a build from before the host's limit saved it (issue 1537).
+        var saved = first.state
+        XCTAssertFalse(saved.anchors.isEmpty)
+        saved.historyStart = date("1999-12-31T16:00:00Z")
+        XCTAssertTrue(HealthSyncStateStore(url: folder.appendingPathComponent("state.json")).save(saved))
+
+        let second = makeHealthEngine(source: source, keys: keys, folder: folder)
+        _ = await second.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(second.state.historyStart, date("2000-01-03T00:00:00Z"))
+        XCTAssertEqual(second.state.anchors, saved.anchors, "Anchors kept")
+        XCTAssertEqual(host.keyRequests, 1)
+    }
+
     func testHistoryStopsAtTheOldestReading() async throws {
         let source = FakeHealthSource()
         source.earliest = date("2010-01-01T00:00:00Z")
@@ -413,10 +436,10 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     private func makeHealthEngine(source: FakeHealthSource, keys box: HealthKeyBox = HealthKeyBox(),
-                                  calendar: Calendar? = nil,
+                                  calendar: Calendar? = nil, folder: URL? = nil,
                                   now: @escaping () -> Date = { HermesVoiceGatewayTimeoutTests.healthDate("2026-10-13T12:00:00Z") })
         -> HealthSyncEngine {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("health-sync-\(UUID().uuidString)", isDirectory: true)
+        let folder = folder ?? FileManager.default.temporaryDirectory.appendingPathComponent("health-sync-\(UUID().uuidString)", isDirectory: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         let keys = HealthSyncKeyStore(load: { box.key }, save: { box.key = $0 }, clear: { box.key = nil })
         return HealthSyncEngine(source: source, store: HealthSyncStateStore(url: folder.appendingPathComponent("state.json")),

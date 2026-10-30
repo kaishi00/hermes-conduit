@@ -2908,7 +2908,7 @@ blocks, answered by the asked owner's rules; see Linked Rooms)
 **Code**
 - Phone: `Conduit/Phone/PhoneSyncEngine.swift` (pass; approveFromCard, for Pulse), `Conduit/Phone/PhoneSyncModels.swift` (PhoneSyncPause)
 - Alarms: `Conduit/Phone/PhoneAlarmSource.swift` (PhoneAlarmSources.system: AlarmKit, or unsupported before iOS 26 and where AlarmKit isn't loaded, as on a Vision Pro)
-- Health: `Conduit/Health/HealthSyncEngine.swift`, `Conduit/Health/HealthSyncModels.swift` (HealthSyncPause)
+- Health: `Conduit/Health/HealthSyncEngine.swift` (sendHistory, prepareHistory), `Conduit/Health/HealthSyncModels.swift` (HealthSyncPause, HealthSyncLimits.oldestDay), `Conduit/Health/HealthKitSource.swift` (HealthDataSource: earliestDate, oldestReading, changes)
 - Location: `Conduit/Location/LocationSyncEngine.swift` (send, LocationSyncPause; `spotsReplied`), `Conduit/Location/LocationSharingController.swift` (sendNow: keeps the batch on `.failed`; `spot_entries` and `spots_room` in the batch), `ConduitLocationPush/LocationPushService.swift` (a locate answered from the push extension)
 - Which 409 means what: `Conduit/Services/HostKeyConflict.swift`
 - Voice reads: `Conduit/Services/AppState+VoiceHostTools.swift`, `Conduit/Phone/PhoneVoiceTools.swift`
