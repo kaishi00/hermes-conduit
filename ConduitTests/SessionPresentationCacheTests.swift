@@ -3611,6 +3611,44 @@ extension SessionPresentationCacheTests {
         )
     }
 
+    /// A move cut short while it took the stores out of the defaults left
+    /// the files holding what the defaults still do: the next launch
+    /// finishes it and keeps the stores already taken out, which only the
+    /// files hold.
+    func testAMoveCutShortKeepsTheStoresAlreadyTakenOut() throws {
+        let suiteName = "conduit.tests.presentation-move-cut-short-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SessionPresentationFiles-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let files = SessionPresentationFiles(directory: directory)
+        SessionPresentationCache(storage: files).save(
+            [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "2024-01-01T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        let tombstones = Data("{}".utf8)
+        files.storeData(tombstones, forKey: "conduit.sessionPresentation.tombstones.v1")
+        // The main store was taken out of the defaults; the tombstones
+        // weren't yet.
+        defaults.set(tombstones, forKey: "conduit.sessionPresentation.tombstones.v1")
+
+        let storage = SessionPresentationCache.storage(movingFrom: defaults, to: files)
+
+        XCTAssertTrue(storage === files)
+        XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.tombstones.v1"), "The move is finished")
+        XCTAssertEqual(
+            SessionPresentationCache(storage: storage).merge(
+                [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "")],
+                profile: "default",
+                sessionIDs: ["session-a"]
+            ).first?.timestamp,
+            "2024-01-01T10:00:00Z",
+            "The store only the files held is kept"
+        )
+    }
+
     /// A save reuses a row's record only while the row is as it was saved:
     /// a row whose text changed is fingerprinted again, so what's restored
     /// later belongs to its new text.

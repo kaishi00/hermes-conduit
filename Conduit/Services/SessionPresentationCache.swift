@@ -39,13 +39,18 @@ final class SessionPresentationCache {
     /// hold is empty. When one can't be written, nothing is removed and the
     /// stores stay on `legacy` this launch, so none reads as empty and
     /// nothing newer goes to a file the move would replace; a later launch
-    /// moves them.
+    /// moves them. A move cut short while it took the stores out of
+    /// `legacy` left the files holding what `legacy` still does: the stores
+    /// already taken out are only in the files then, so they stay.
     static func storage(movingFrom legacy: UserDefaults, to files: SessionPresentationFiles) -> SessionPresentationStorage {
         let held = storedKeys.compactMap { key in legacy.data(forKey: key).map { (key: key, data: $0) } }
         guard !held.isEmpty else { return files }
-        guard held.allSatisfy({ files.write($0.data, forKey: $0.key) }) else { return legacy }
-        for key in storedKeys where !held.contains(where: { $0.key == key }) {
-            files.removeObject(forKey: key)
+        let cutShort = held.allSatisfy { files.data(forKey: $0.key) == $0.data }
+        if !cutShort {
+            guard held.allSatisfy({ files.write($0.data, forKey: $0.key) }) else { return legacy }
+            for key in storedKeys where !held.contains(where: { $0.key == key }) {
+                files.removeObject(forKey: key)
+            }
         }
         for store in held {
             legacy.removeObject(forKey: store.key)

@@ -710,9 +710,11 @@ extension DashboardTicketBridgeTests {
         XCTAssertNil(DashboardTicketBridge.dashboardResponsePayload(#"{"type":"other","id":3}"#))
     }
 
-    /// A parsed answer resumes its request back on the main thread; one
-    /// whose request already ended (its deadline, a reload) resumes nothing.
-    func testAParsedAnswerResumesOnlyARequestStillWaiting() async throws {
+    /// An answer the page sends is parsed off the main thread and resumes
+    /// its request back on it; one whose request already ended (its
+    /// deadline, a reload) resumes nothing, nor does a message that isn't
+    /// an answer.
+    func testAReceivedAnswerResumesOnlyARequestStillWaiting() async throws {
         let requests = DashboardTicketBridgePendingRequests()
         let bridge = DashboardTicketBridge(
             baseURL: "http://127.0.0.1:1",
@@ -752,8 +754,10 @@ extension DashboardTicketBridgeTests {
         // Request 1's deadline ended it before its answer was parsed.
         requests.removeValue(for: 1)?.resume(throwing: DashboardTicketBridgeError.notReady)
 
-        bridge.answer(["type": "dashboard-response", "id": 1, "ok": true, "body": ["late": true]], expectedURL: dashboard)
-        bridge.answer(["type": "dashboard-response", "id": 2, "ok": true, "body": ["a": 1]], expectedURL: dashboard)
+        await bridge.receive(#"{"type":"dashboard-response","id":1,"ok":true,"body":{"late":true}}"#, expectedURL: dashboard).value
+        await bridge.receive(#"{"type":"other","id":2,"ok":true,"body":{"a":2}}"#, expectedURL: dashboard).value
+        XCTAssertEqual(requests.count, 1, "Not an answer: request 2 still waits")
+        await bridge.receive(#"{"type":"dashboard-response","id":2,"ok":true,"body":{"a":1}}"#, expectedURL: dashboard).value
 
         let endedHeardTheAnswer = await ended.value
         XCTAssertFalse(endedHeardTheAnswer, "It heard its deadline, not the late answer")

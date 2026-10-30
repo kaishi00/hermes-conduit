@@ -1606,8 +1606,13 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
                 port: message.frameInfo.securityOrigin.port,
                 expected: expectedURL
               ) else { return }
-        // An answer can be megabytes (a long chat's page): it's parsed off
-        // the main thread, which only hands it to its request (#1533).
+        receive(raw, expectedURL: expectedURL)
+    }
+
+    /// An answer can be megabytes (a long chat's page): it's parsed off the
+    /// main thread, which only hands it to its request (#1533).
+    @discardableResult
+    func receive(_ raw: String, expectedURL: URL) -> Task<Void, Never> {
         Task.detached(priority: .userInitiated) { [weak self] in
             let signposter = ResponsivenessSignposts.signposter
             let parsing = signposter.beginInterval("Parse dashboard response", id: signposter.makeSignpostID())
@@ -1628,7 +1633,7 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
 
     /// Resumes the request a parsed answer belongs to, unless it already
     /// ended (its deadline, a reload, a sign-out).
-    func answer(_ payload: [String: Any], expectedURL: URL) {
+    private func answer(_ payload: [String: Any], expectedURL: URL) {
         guard let id = payload["id"] as? Int,
               let continuation = pendingRequests.removeValue(for: id) else { return }
         requestDeadlines.removeValue(forKey: id)?.cancel()
