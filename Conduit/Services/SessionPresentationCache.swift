@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import os
 
 final class SessionPresentationCache {
     /// The app's instance writes to disk off the main thread: every caller
@@ -888,6 +889,9 @@ final class SessionPresentationCache {
     ) {
         let ids = Set(sessionIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
         guard !ids.isEmpty else { return }
+        let signposter = ResponsivenessSignposts.signposter
+        let saving = signposter.beginInterval("Save presentation rows", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("Save presentation rows", saving) }
 
         var store = load()
         // Masked input prompts are live-only: never written to disk.
@@ -1434,6 +1438,9 @@ final class SessionPresentationCache {
     private func writeLatest(_ kind: StoreKind, ticket: Int) {
         func isNewest() -> Bool { newestWriteTicket[kind] == ticket }
         guard memoryLock.withLock({ isNewest() }) else { return }
+        let signposter = ResponsivenessSignposts.signposter
+        let writing = signposter.beginInterval("Write presentation store", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("Write presentation store", writing) }
         let key: String
         // Outer nil: never loaded, nothing to write. Inner nil: empty store.
         let encoded: Data??

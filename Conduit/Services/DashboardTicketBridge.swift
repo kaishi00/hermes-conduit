@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import SwiftUI
 import WebKit
 import Security
@@ -1604,10 +1605,23 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
                 host: message.frameInfo.securityOrigin.host,
                 port: message.frameInfo.securityOrigin.port,
                 expected: expectedURL
-              ),
-              let data = raw.data(using: .utf8),
-              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              payload["type"] as? String == "dashboard-response",
+              ) else { return }
+        // An answer can be megabytes (a long chat's page): it's parsed off
+        // the main thread, which only hands it to its request (#1533).
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let signposter = ResponsivenessSignposts.signposter
+            let parsing = signposter.beginInterval("Parse dashboard response", id: signposter.makeSignpostID())
+            let payload = raw.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            signposter.endInterval("Parse dashboard response", parsing)
+            guard let payload else { return }
+            await self?.answer(payload, expectedURL: expectedURL)
+        }
+    }
+
+    /// Resumes the request a parsed answer belongs to, unless it already
+    /// ended (its deadline, a reload, a sign-out).
+    private func answer(_ payload: [String: Any], expectedURL: URL) {
+        guard payload["type"] as? String == "dashboard-response",
               let id = payload["id"] as? Int,
               let continuation = pendingRequests.removeValue(for: id) else { return }
         requestDeadlines.removeValue(forKey: id)?.cancel()
