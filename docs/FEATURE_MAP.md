@@ -1843,18 +1843,24 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 **Rulings**
 - On a Mac, or with a hardware keyboard on an iPad or iPhone, a send or
   Stop leaves the field focused when the user was typing, as a desktop
-  client does; a click or tap elsewhere (the transcript, another control)
-  still takes focus away. With only the on-screen keyboard it goes down, so
-  the reply has the screen (Eric asked for it on a Mac, 2026-10-30, #1527;
-  a hardware keyboard is the same desktop-style typing and gets the same
-  rule, as the plan card and model search do). The check is for a
-  connected keyboard, as the plan card's is.
+  client does; a click or tap on the transcript still takes focus away.
+  With only the on-screen keyboard it goes down, so the reply has the
+  screen (Eric asked for it on a Mac, 2026-10-30, #1527; the hardware
+  keyboard case follows the plan card and model search, see Open gaps).
+  The check is for a connected keyboard, as the plan card's is.
+- A send or Stop from the full editor gives the field focus once the sheet
+  has gone, not while it is dismissing (2026-10-30, #1527).
 - Opening a call from the composer still takes focus away on every device:
   the call has the screen (2026-10-30, #1527).
 
 **Open gaps**
 - Not yet seen on a device: a Mac and an iPad with a keyboard sending from
-  the field and from the full editor.
+  the field and from the full editor, and which controls besides the
+  transcript take focus from the field on a Mac.
+- The hardware keyboard on an iPad or iPhone gets the Mac's rule without a
+  decision of its own from the maintainer: there a composer that rests stays
+  expanded after a send, and a minimised call bar stays hidden, until a tap
+  on the transcript.
 - Group rooms keep the field focused after a send on a touch-only iPhone
   too, where a chat's keyboard goes down; the maintainer decides whether
   rooms follow the chat there.

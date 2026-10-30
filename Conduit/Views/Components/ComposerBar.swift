@@ -92,6 +92,9 @@ struct ComposerBar: View, Equatable {
     @State private var dictatedDraft: String?
     /// The full-screen editor for long drafts (#335).
     @State private var isShowingFullEditor = false
+    /// A send or Stop from the full editor kept focus: the field takes it
+    /// once the sheet has gone.
+    @State private var focusesAfterFullEditor = false
     /// V2's conversation: rest as a slim bar until the composer is used.
     @Environment(\.v2ComposerRests) private var restsWhenIdle
     /// A Mac, or an iPad with the room: V2's composer keeps its controls
@@ -854,6 +857,10 @@ struct ComposerBar: View, Equatable {
             // Typing a slash command in the sheet arms suggestions the sheet
             // never shows; they'd pop up over the unfocused inline field.
             isShowingSlashSuggestions = false
+            if focusesAfterFullEditor {
+                focusesAfterFullEditor = false
+                isFocused = true
+            }
         }) {
             ComposerFullEditor(
                 text: $text,
@@ -1493,7 +1500,7 @@ struct ComposerBar: View, Equatable {
 
     private func performComposerAction() {
         if stopOnly {
-            endInput(keepingFocus: isFocused || isShowingFullEditor)
+            endInput(keepingFocus: isFocused || isShowingFullEditor, fromFullEditor: isShowingFullEditor)
             isShowingFullEditor = false
             Haptics.warning()
             Task { await appState.cancelCurrent() }
@@ -1679,7 +1686,8 @@ struct ComposerBar: View, Equatable {
             dictation.onFinish = nil
             dictation.cancel()
         }
-        let wasTyping = isFocused || isShowingFullEditor
+        let fromFullEditor = isShowingFullEditor
+        let wasTyping = isFocused || fromFullEditor
         isShowingFullEditor = false
         let submittedText = text
         let submittedAttachments = attachments
@@ -1707,7 +1715,7 @@ struct ComposerBar: View, Equatable {
             ? appState.durableComposerDraftKeyOnScreen : submittedDraftKey
         let submissionContext = appState.composerSubmissionContext()
         rotateAttachmentGeneration()
-        collapseSubmittedDraft(clearingReply: submittedReply != nil, keepingFocus: wasTyping)
+        collapseSubmittedDraft(clearingReply: submittedReply != nil, keepingFocus: wasTyping, fromFullEditor: fromFullEditor)
 
         switch submittedAction {
         case .send: Haptics.medium()
@@ -1763,9 +1771,10 @@ struct ComposerBar: View, Equatable {
             dictation.onFinish = nil
             dictation.cancel()
         }
-        let wasTyping = isFocused || isShowingFullEditor
+        let fromFullEditor = isShowingFullEditor
+        let wasTyping = isFocused || fromFullEditor
         isShowingFullEditor = false
-        collapseSubmittedDraft(clearingReply: submittedReply != nil, keepingFocus: wasTyping)
+        collapseSubmittedDraft(clearingReply: submittedReply != nil, keepingFocus: wasTyping, fromFullEditor: fromFullEditor)
         draftStore.removeDraft(for: submittedDraftKey)
         Haptics.medium()
     }
@@ -2063,8 +2072,8 @@ struct ComposerBar: View, Equatable {
     /// multiline field while the keyboard's safe area is already animating.
     /// `keepingFocus`: the user was typing (in the field or the full
     /// editor), which on a Mac or with a hardware keyboard carries on.
-    private func collapseSubmittedDraft(clearingReply: Bool, keepingFocus: Bool) {
-        endInput(keepingFocus: keepingFocus)
+    private func collapseSubmittedDraft(clearingReply: Bool, keepingFocus: Bool, fromFullEditor: Bool) {
+        endInput(keepingFocus: keepingFocus, fromFullEditor: fromFullEditor)
         let updates = {
             replaceComposerText("")
             attachments = []
@@ -2321,15 +2330,20 @@ struct ComposerBar: View, Equatable {
     /// A send or Stop: on a Mac or with a hardware keyboard the field keeps
     /// focus for the next message, as a desktop client's does, when the
     /// user was typing; otherwise the keyboard goes (`dismissComposer`).
-    private func endInput(keepingFocus wasTyping: Bool) {
+    private func endInput(keepingFocus wasTyping: Bool, fromFullEditor: Bool = false) {
         guard wasTyping, ComposerLayout.keepsFocusAfterSend() else {
             dismissComposer()
             return
         }
         isShowingSlashSuggestions = false
+        // From the full editor, once its sheet has gone: focus asked for
+        // while it's still dismissing leaves the keyboard down.
+        if fromFullEditor {
+            focusesAfterFullEditor = true
+            return
+        }
         // After this update: the send rebuilds the field (a new editor
-        // identity), and a send from the full editor gives it focus back
-        // as the sheet goes.
+        // identity).
         Task { @MainActor in isFocused = true }
     }
 
