@@ -102,7 +102,9 @@ enum DesktopCardContents {
         // Nothing kept: the last read wasn't answered (not connected, or
         // its page still loading).
         guard case .missing(let since) = entries[key] else { return notConnectedRetry }
-        return max(1, retryInterval - now.timeIntervalSince(since))
+        let left = retryInterval - now.timeIntervalSince(since)
+        // Past the interval and still not asked: not connected now.
+        return left > 0 ? max(1, left) : notConnectedRetry
     }
 
     /// The read itself, with what it reads through and the clock passed
@@ -156,9 +158,10 @@ enum DesktopCardContents {
 /// What reading a plugin's route came to.
 enum PluginRead {
     case json([String: Any])
-    /// Not installed, not signed in, no network, or another dashboard now.
+    /// Not installed, not signed in, or no network.
     case failed
-    /// Not connected, or the dashboard's page still loading.
+    /// Not connected, the dashboard's page still loading, or another
+    /// dashboard connected while it was read.
     case notReady
 }
 
@@ -168,7 +171,8 @@ extension GatewayMediaDataURLResolver {
         guard let bridge = connectedDashboardBridge else { return .notReady }
         do {
             let json = try await bridge.requestJSON(path: path, maxResponseBytes: DataURLLimits.maxJSONResponseBytes)
-            return connectedDashboardBridge === bridge ? .json(json) : .failed
+            // Another dashboard now: says nothing about this one's card.
+            return connectedDashboardBridge === bridge ? .json(json) : .notReady
         } catch DashboardTicketBridgeError.notReady {
             return .notReady
         } catch {
@@ -244,6 +248,10 @@ struct DesktopCardBlock: View {
             // screen: soon while Hermes isn't connected or its page is
             // loading, else once the retry interval since the miss is up.
             while loaded?.card != card, !Task.isCancelled {
+                if let known = DesktopCardContents.cached(for: card, resolver: gatewayMediaFiles) {
+                    loaded = (card, known)
+                    return
+                }
                 if let content = await DesktopCardContents.content(for: card, resolver: gatewayMediaFiles) {
                     if !Task.isCancelled { loaded = (card, content) }
                     return

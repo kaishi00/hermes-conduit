@@ -106,6 +106,8 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(reads.count, 2)
         XCTAssertNil(DesktopCardContents.cached(key: key))
         XCTAssertEqual(DesktopCardContents.retryWait(key: key, now: reads.now + 240), 60)
+        // Past the interval with nothing asked (not connected): not every second.
+        XCTAssertEqual(DesktopCardContents.retryWait(key: key, now: reads.now + 400), DesktopCardContents.notConnectedRetry)
         // Asked again once the interval has passed, and kept for the launch.
         reads.answer = .json(["ok": true, "card": ["surface": ["createSurface": ["dataModel": ["meta": ["title": " Rents ", "summary": "Up 4%."]]]]]])
         reads.now += DesktopCardContents.retryInterval
