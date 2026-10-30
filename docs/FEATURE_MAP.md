@@ -1480,7 +1480,7 @@ A tap on a link in a reply opens it, the first time, wherever the reply is
 drawn until a touch mounts its text view.
 
 **Siblings:** chats, project chats and Bot Chat (one chat view) · group rooms ·
-VoiceOver and Switch Control (text view always mounted) · Voice Control and Full
+table cells once selection is on (plain cells open links through openURL; see Tables in messages) · VoiceOver and Switch Control (text view always mounted) · Voice Control and Full
 Keyboard Access (the text view mounts and lays out when they ask for the
 reply's elements) · long-press Open Link · file paths, linked to the Folder
 (Workspace files)
@@ -1498,7 +1498,7 @@ reply's elements) · long-press Open Link · file paths, linked to the Folder
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
+**Checked:** 2026-10-30, #1535 (table cells join the drawn-until-touched path once selection is on); 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
 
 ## Markdown lists in messages
 
@@ -1562,6 +1562,7 @@ iPad · selection across the reply · Copy response · links in cells (plain cel
 **Open gaps**
 - Once selection is on, the long-press or right-click menu is the text's own (Copy for a selection), so the menu's Copy Table is gone for that table until its row is taken down. On a Mac that is almost always, since the pointer passes over the table first. Selecting across the table copies its cells, and Copy response copies the reply.
 - No Copy cell or Copy row (asked for as optional in issue 1531).
+- A big table mounts its rows in batches (`LargeMarkdownTable`), and a selection copies only mounted cells, so a selection across a table past its first batch leaves the rest out until Show more; Copy Table copies every row.
 
 **Checked:** 2026-10-30, #1535 (a selection in the message mounts the cells; VoiceOver's Copy Table kept).
 
