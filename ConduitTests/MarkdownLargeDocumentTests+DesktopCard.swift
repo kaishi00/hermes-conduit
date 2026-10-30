@@ -78,6 +78,9 @@ extension MarkdownLargeDocumentTests {
         let text = "Numbers below.\n\(Self.richUILine)\nDone."
         XCTAssertEqual(TranscriptDirectives.readable(from: text), "Numbers below.\n\(DesktopCardDirective.spokenNote)\nDone.")
         XCTAssertFalse(VoiceReadBack.plainSpeech(text).contains("::richui"))
+        // A file tag inside the directive doesn't break it up before it's read.
+        let tagged = "Here:\n::widget{file=\"MEDIA:/tmp/a.png\"}"
+        XCTAssertTrue(VoiceReadBack.plainSpeech(tagged).contains(DesktopCardDirective.spokenNote))
     }
 
     func testDesktopCard_VoiceModelsHearItNamed() {

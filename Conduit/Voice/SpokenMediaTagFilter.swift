@@ -28,6 +28,8 @@ struct SpokenMediaTagFilter {
     /// The files taken out of what was said, as tags the call's screen
     /// shows as files. `takeFiles()` empties it.
     private(set) var files: [String] = []
+    /// A fenced code block the reply is in: its directives are said as written.
+    private var fence = CodeFence()
 
     mutating func reset() {
         self = SpokenMediaTagFilter()
@@ -76,8 +78,9 @@ struct SpokenMediaTagFilter {
         let earlier = said
         said = ""
         let line = earlier + part
-        // A quoted directive is an example, said as written.
-        let directives = line.trimmingCharacters(in: .whitespaces).hasPrefix(">") ? nil : TranscriptDirectives.segments(in: line)
+        // A quoted directive is an example, said as written, as is one in code.
+        let isCode = fence.isCode(line)
+        let directives = isCode || line.trimmingCharacters(in: .whitespaces).hasPrefix(">") ? nil : TranscriptDirectives.segments(in: line)
         guard directives != nil || GatewayMediaTags.segments(in: line) != nil else { return part + newline }
         var kept: [String] = []
         for piece in directives ?? [.text(line)] {
@@ -109,7 +112,7 @@ struct SpokenMediaTagFilter {
         let spoken = String(line.prefix(while: \.isWhitespace)) + kept.joined(separator: " ")
         if spoken.hasPrefix(earlier) { return String(spoken.dropFirst(earlier.count)) + newline }
         // Said differently already: the rest, without its tags.
-        let rest = TranscriptDirectives.readable(from: GatewayMediaTags.removingTags(from: part))
+        let rest = GatewayMediaTags.removingTags(from: isCode ? part : TranscriptDirectives.readable(from: part))
         return (part.first?.isWhitespace == true && rest.first?.isWhitespace != true ? " " : "") + rest + newline
     }
 

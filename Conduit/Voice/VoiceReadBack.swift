@@ -24,7 +24,7 @@ enum VoiceReadBack {
         var fence: (mark: Character, length: Int)?
         // A file Hermes attached (a `MEDIA:` tag) or a page it previews is
         // in the chat, not words; a Desktop card is a short note (#1522).
-        let markdown = TranscriptDirectives.readable(from: GatewayMediaTags.removingTags(from: markdown))
+        let markdown = GatewayMediaTags.removingTags(from: TranscriptDirectives.readable(from: markdown))
         for rawLine in markdown.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if let open = fence {

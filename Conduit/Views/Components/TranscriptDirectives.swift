@@ -96,22 +96,10 @@ enum TranscriptDirectives {
         guard text.contains("::") else { return text }
         // Line endings normalized as the parser does, so its table check sees the same lines.
         let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
-        var fence: (mark: Character, length: Int)?
+        var fence = CodeFence()
         return lines.indices.compactMap { index -> String? in
             let line = lines[index]
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if let mark = trimmed.first, mark == "`" || mark == "~" {
-                let run = trimmed.prefix { $0 == mark }.count
-                if let open = fence {
-                    if mark == open.mark, run >= open.length, trimmed.dropFirst(run).allSatisfy(\.isWhitespace) { fence = nil }
-                    return line
-                }
-                if run >= 3, !(mark == "`" && trimmed.dropFirst(run).contains("`")) {
-                    fence = (mark, run)
-                    return line
-                }
-            }
-            if fence != nil { return line }
+            if fence.isCode(line) { return line }
             // A quoted directive is an example and a table header cell is
             // table text; the chat shows both as written.
             guard !line.trimmingCharacters(in: .whitespaces).hasPrefix(">"),
@@ -197,5 +185,30 @@ struct DesktopCardDirective: Equatable, Hashable {
         guard name == "richui", let id = attributes["id"],
               id.range(of: #"^ru-[0-9a-f]{12}$"#, options: .regularExpression) != nil else { return nil }
         return id
+    }
+}
+
+/// Fenced code blocks, line by line: a directive inside one is code, shown
+/// and said as written. The closer is the opener's mark, at least as long,
+/// with nothing after it.
+struct CodeFence {
+    private var open: (mark: Character, length: Int)?
+
+    /// Whether `line` is a fence line or inside a fenced block. Call it
+    /// for every line, in order.
+    mutating func isCode(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if let mark = trimmed.first, mark == "`" || mark == "~" {
+            let run = trimmed.prefix { $0 == mark }.count
+            if let fence = open {
+                if mark == fence.mark, run >= fence.length, trimmed.dropFirst(run).allSatisfy(\.isWhitespace) { open = nil }
+                return true
+            }
+            if run >= 3, !(mark == "`" && trimmed.dropFirst(run).contains("`")) {
+                open = (mark, run)
+                return true
+            }
+        }
+        return open != nil
     }
 }

@@ -2754,6 +2754,9 @@ extension HermesVoiceGatewayTimeoutTests {
             ("Rents below:\n::richui{id=\"ru-c91286278685\"}\nDone.", "Rents below:\n\(DesktopCardDirective.spokenNote)\nDone."),
             ("Chart ::preview{file=\"/tmp/a.html\"} here.", "Chart here."),
             ("Use ::selection{color:red} in CSS.", "Use ::selection{color:red} in CSS."),
+            // One in a code block is code, said as written.
+            ("Write:\n```\n::richui{id=\"x\"}\n```\nDone.", "Write:\n```\n::richui{id=\"x\"}\n```\nDone."),
+            ("~~~~\n~~~\n::richui{id=\"x\"}\n~~~~\n::richui{id=\"y\"}", "~~~~\n~~~\n::richui{id=\"x\"}\n~~~~\n\(DesktopCardDirective.spokenNote)"),
         ]
         for (reply, said) in replies {
             XCTAssertEqual(SpokenMediaTagFilter.filter(reply), said, reply)
