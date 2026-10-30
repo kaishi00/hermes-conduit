@@ -1593,7 +1593,7 @@ Watch and CarPlay (not needed: neither shows a transcript)
 | Opening | Shows while it loads | Kept |
 |---|---|---|
 | A chat or project chat | its saved copy (the rows it had loaded when it was left, up to 500) | on the phone, the last 100 chats left per dashboard and profile while their files fit 64 MB (the newest always stays); the last 8 read or saved also in memory |
-| A Bot Chat | the copy kept when it was left (after a `/new`, the compacted chat as it showed) | in memory, per dashboard and bot, one per bot, up to 500 rows |
+| A Bot Chat | the copy kept when it was left (after a `/new`, the compacted chat as it showed) | in memory, per dashboard and bot, one per bot, up to 500 rows (its newest page's raw rows, for the history page, are kept on the phone under the bot's profile like any chat's, until the bot is deleted or they're pruned) |
 | A group room | the events it had | in memory, per dashboard and room, up to 400 events, until the room leaves the list |
 | A chat never opened | nothing, as before | not applicable |
 
@@ -1614,7 +1614,7 @@ Watch and CarPlay (not needed: neither shows a transcript)
 
 **Open gaps**
 - A chat whose live transcript lands somewhere other than its newest row (an unread reply, a restored reading place) moves there at the handover.
-- Bot Chat copies and group room events are memory only, so they don't outlive Conduit being stopped.
+- Bot Chat copies and group room events are memory only, so they don't outlive Conduit being stopped (a Bot Chat's held raw rows do, but only stand in for rows of a later read, never show on their own).
 - An error already on the chat when a room opens is cleared by the open (openGroupRoom) and doesn't come back when the room closes; only a sync error raised while the room is up waits (#1461 review). `errorMessage` holds non-chat errors too, so carrying it needs a rule for which ones are the chat's.
 - Settings' Data handling caption says recent conversations are kept so Conduit opens straight to them while it connects. It doesn't mention reopening, because what's kept on the device hasn't changed.
 - The first open of a chat after launch reads its file on the main thread (repeat opens come from memory), now up to 500 rows; and a history page read writes its held rows there too (up to 120 raw rows, then a listing of the cache folder to prune), so a sign-out's wipe can't run between the check and the write. Kept as is unless it shows in profiling (#1404, #1536).
