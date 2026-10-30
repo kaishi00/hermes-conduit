@@ -25837,7 +25837,8 @@ final class AppState: ObservableObject {
         NotifierPluginStatus(
             latestVersion: latestNotifierPluginVersion,
             stableVersion: stableNotifierPluginVersion,
-            followsMain: notifierPluginFollowsMain
+            followsMain: notifierPluginFollowsMain,
+            asksForNewVersions: notifierPluginNoticeChannel.asksForNewVersions
         )
     }
     /// Apple Health sharing with one Hermes profile.
@@ -26016,8 +26017,11 @@ final class AppState: ObservableObject {
 
     private func applyNotifierPluginNoticeChannel() {
         let followsMain = notifierPluginFollowsMain
-        guard notifierPlugin.followsMain != followsMain else { return }
+        let asksForNewVersions = notifierPluginNoticeChannel.asksForNewVersions
+        guard notifierPlugin.followsMain != followsMain
+                || notifierPlugin.asksForNewVersions != asksForNewVersions else { return }
         notifierPlugin.followsMain = followsMain
+        notifierPlugin.asksForNewVersions = asksForNewVersions
     }
 
     /// Hands each of this dashboard's paired profiles an end-to-end

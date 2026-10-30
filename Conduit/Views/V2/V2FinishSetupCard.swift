@@ -120,7 +120,11 @@ struct V2FinishSetupCard: View {
                 actionButton(AppLocalization.string("Show Steps"), action: openPluginPage)
             }
         case .done:
-            FinishSetupRow(icon: icon, title: title, detail: AppLocalization.string("Up to date on this dashboard's host"), identifier: "finish-setup.plugin") {
+            // Only when needed leaves a newer version waiting in Settings.
+            let detail = appState.notifierPlugin.updateAvailable
+                ? AppLocalization.string("Works with this app. Newer versions wait in Settings.")
+                : AppLocalization.string("Up to date on this dashboard's host")
+            FinishSetupRow(icon: icon, title: title, detail: detail, identifier: "finish-setup.plugin") {
                 doneMark
             }
         }
