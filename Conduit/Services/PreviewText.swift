@@ -34,6 +34,13 @@ enum PreviewText {
         if let inbound = BotTeammateMessages.inbound(text) {
             text = inbound.body.isEmpty ? inbound.sender : "\(inbound.sender): \(inbound.body)"
         }
+        // A preview reads as its file, a Desktop card as what it is (#1522),
+        // never as the directive.
+        text = TranscriptDirectives.rewriting(
+            text,
+            preview: { TranscriptDirectives.fileName($0) },
+            card: { _ in DesktopCardDirective.previewNote }
+        )
         let lines = text
             .split(whereSeparator: \.isNewline)
             .map { dropBlockMark(from: $0.trimmingCharacters(in: .whitespaces)) }
