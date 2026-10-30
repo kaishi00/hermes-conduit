@@ -84,7 +84,13 @@ final class MacWheelSwipeGuardRecognizer: UIHoverGestureRecognizer, UIGestureRec
     /// the same view as its rows load, and the walk is a short superview
     /// chain.
     private func checkUnderPointer() {
-        guard let window = view as? UIWindow, let lastLocation else { return }
+        guard let window = view as? UIWindow else {
+            // Its window closed with the pointer inside, so no hover ended.
+            restingCheck?.invalidate()
+            restingCheck = nil
+            return
+        }
+        guard let lastLocation else { return }
         Self.stopWheelSwipes(under: window.hitTest(lastLocation, with: nil))
     }
 
