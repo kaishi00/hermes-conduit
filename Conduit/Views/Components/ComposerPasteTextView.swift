@@ -194,21 +194,11 @@ struct ComposerPasteTextView: UIViewRepresentable {
         uiView.returnKeySends = returnKeySends
         uiView.canSubmitFromReturn = canSubmitFromReturn
         uiView.onSubmitFromReturn = onSubmitFromReturn
-        if isFocused, !uiView.isFirstResponder {
-            if uiView.window != nil {
-                uiView.becomeFirstResponder()
-            } else {
-                // A field rebuilt with focus (a send on a Mac keeps it) is
-                // first updated before it's in the window, where it can't
-                // take focus: it takes it once it is.
-                let coordinator = context.coordinator
-                DispatchQueue.main.async { [weak uiView] in
-                    guard let uiView, coordinator.isActive, coordinator.parent.isFocused,
-                          uiView.window != nil, !uiView.isFirstResponder else { return }
-                    uiView.becomeFirstResponder()
-                }
-            }
-        }
+        // A field rebuilt with focus (a send on a Mac keeps it) is first
+        // updated before it's in the window, where it can't take focus: it
+        // takes it once it is (didMoveToWindow).
+        uiView.focusesInWindow = isFocused
+        if isFocused, !uiView.isFirstResponder, uiView.window != nil { uiView.becomeFirstResponder() }
         if !isFocused, uiView.isFirstResponder { _ = uiView.resignFirstResponder() }
     }
 
@@ -361,6 +351,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
                 textView.onPastedImageError = nil
                 textView.onDroppedFiles = nil
                 textView.onLongTextPaste = nil
+                textView.focusesInWindow = false
                 textView.returnKeySends = false
                 textView.canSubmitFromReturn = false
                 textView.onSubmitFromReturn = nil
@@ -444,7 +435,14 @@ final class ImagePasteTextView: ReturnKeyTextView {
     var boundsContentSizeCategory: UIContentSizeCategory?
     var boundsColumnText: ColumnText?
     var maximumReportedHeight: CGFloat = 160
+    /// The composer wants focus: taken when the view reaches a window.
+    var focusesInWindow = false
     private var lastReportedHeight: CGFloat = 0
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if focusesInWindow, window != nil, !isFirstResponder { becomeFirstResponder() }
+    }
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
