@@ -45,8 +45,9 @@ final class ChatRowDisclosure {
         states[id] = expanded
     }
 
-    /// A turn's run of steps opens and closes as one card, drawn by all of
-    /// its rows, so this one tells them: `groupToggles` publishes.
+    /// A turn's run of steps, or a run of reviews, opens and closes as one
+    /// card, drawn by all of its rows, so this one tells them:
+    /// `groupToggles` publishes. Keyed by the run's first row.
     let groupToggles = ChatStepGroupToggles()
 
     func isGroupExpanded(_ id: String, default defaultValue: Bool) -> Bool {

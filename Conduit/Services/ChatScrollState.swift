@@ -22,6 +22,10 @@ struct ChatMessageScrollTarget: Identifiable, Equatable {
     /// On a reply: the run of steps right above it, when that run has
     /// thinking (its menu's Show thinking). Nil for every other row.
     var stepsAbove: ChatStepGroup? = nil
+    /// Where this self-improvement review sits in a run of reviews, so two
+    /// or more draw as one line until opened (#1518). Nil for every other
+    /// row.
+    var reviewRun: ChatReviewPlacement? = nil
 
     /// SwiftUI keeps the existing source-row identity for rendering and
     /// controls. Only scroll targeting uses the source-independent ID.
@@ -96,7 +100,7 @@ struct ChatMessageScrollTargetCache: Equatable {
                 )
             }
             targets.replaceSubrange(suffixStart..., with: replacement)
-            placeSteps(from: suffixStart)
+            placeRuns(from: suffixStart)
             renderingRevision &+= 1
             return .renderingChanged
         }
@@ -123,7 +127,7 @@ struct ChatMessageScrollTargetCache: Equatable {
             )
             fingerprints.replaceSubrange(suffixStart..., with: suffixFingerprints)
             targets.replaceSubrange(suffixStart..., with: suffixTargets)
-            placeSteps(from: suffixStart)
+            placeRuns(from: suffixStart)
             renderingRevision &+= 1
             return .semanticsChanged
         }
@@ -140,9 +144,44 @@ struct ChatMessageScrollTargetCache: Equatable {
             for: messages,
             fingerprints: updatedFingerprints
         )
-        placeSteps(from: 0)
+        placeRuns(from: 0)
         renderingRevision &+= 1
         return .semanticsChanged
+    }
+
+    private mutating func placeRuns(from index: Int) {
+        placeSteps(from: index)
+        placeReviews(from: index)
+    }
+
+    /// Re-place the runs of reviews from `index` on, starting at the run
+    /// that reaches it: a review at the end joins the run above it.
+    private mutating func placeReviews(from index: Int) {
+        var start = min(index, targets.count)
+        while start > 0, targets[start - 1].isReview {
+            start -= 1
+        }
+        var i = start
+        while i < targets.count {
+            guard targets[i].isReview else {
+                if targets[i].reviewRun != nil { targets[i].reviewRun = nil }
+                i += 1
+                continue
+            }
+            var end = i
+            while end < targets.count, targets[end].isReview {
+                end += 1
+            }
+            let run = ChatReviewRun(
+                memberIDs: targets[i..<end].map(\.id),
+                lastTimestamp: targets[end - 1].message.timestamp
+            )
+            for k in i..<end {
+                let placement = ChatReviewPlacement(run: run, index: k - i)
+                if targets[k].reviewRun != placement { targets[k].reviewRun = placement }
+            }
+            i = end
+        }
     }
 
     /// Re-place the runs of steps from `index` on, starting at the run

@@ -535,13 +535,46 @@ extension ChatMessageScrollTarget {
     }
 
     /// Whether the transcript draws this row: a self-improvement review
-    /// while "Self-improvement updates" is off doesn't, and a step follows
+    /// while "Self-improvement updates" is off doesn't, nor one inside a
+    /// closed run of reviews (ChatReviewPlacement.drawsRow), and a step follows
     /// ChatStepPlacement.drawsRow. The transcript leaves out a row that
     /// draws nothing, or the stack would space it.
     @MainActor
     func drawsRow(preferences: ProfileDisplayPreferences, isBusy: Bool, disclosure: ChatRowDisclosure) -> Bool {
         if !preferences.showReviews, isReview { return false }
+        if let reviewRun, !reviewRun.drawsRow(disclosure: disclosure) { return false }
         return step?.drawsRow(messageID: id, preferences: preferences, isBusy: isBusy, disclosure: disclosure) ?? true
+    }
+}
+
+// MARK: - Runs of reviews
+
+/// Consecutive self-improvement reviews. Two or more read as one line
+/// ("5 self-improvement reviews") with the last one's time, each card when
+/// opened (#1518): a run of skill updates at the end of a chat filled the
+/// screen. Closed by default, so a chat opens with them folded every time.
+/// Reviews only report what Hermes saved; approvals, questions and errors
+/// are rows of their own and end the run, so nothing that needs the reader
+/// is ever folded into it.
+struct ChatReviewRun: Equatable {
+    let memberIDs: [String]
+    let lastTimestamp: String
+
+    /// The run's first row; it keeps the run's open or closed choice.
+    var id: String { memberIDs.first ?? "" }
+    var count: Int { memberIDs.count }
+}
+
+struct ChatReviewPlacement: Equatable {
+    let run: ChatReviewRun
+    let index: Int
+
+    /// The run's first row draws its line, and its own card under the line
+    /// while open; the others draw only while it is open.
+    @MainActor
+    func drawsRow(disclosure: ChatRowDisclosure) -> Bool {
+        guard run.count >= 2, index > 0 else { return true }
+        return disclosure.isGroupExpanded(run.id, default: false)
     }
 }
 

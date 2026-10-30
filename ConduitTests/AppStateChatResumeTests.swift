@@ -283,9 +283,60 @@ final class AppStateChatResumeTests: XCTestCase {
         func drawn() -> [String] {
             cache.targets.filter { $0.drawsRow(preferences: preferences, isBusy: false, disclosure: disclosure) }.map(\.id)
         }
+        // Two in a row fold into the first one's line until opened (#1518).
+        XCTAssertEqual(drawn(), ["u1", "r1", "u2"])
+        disclosure.willToggleGroup("r1", to: true)
         XCTAssertEqual(drawn(), ["u1", "r1", "r2", "u2"])
         preferences.showReviews = false
         XCTAssertEqual(drawn(), ["u1", "u2"])
+    }
+
+    /// Consecutive reviews read as one line (#1518): the first row draws it,
+    /// the rest only while it is open. A review arriving at the end joins the
+    /// run, any other row ends it, and a lone review stays its own card.
+    func testConsecutiveReviewsFoldIntoOneRun() {
+        func review(_ id: String, _ time: String) -> ChatMessage {
+            ChatMessage(
+                id: id, role: .system, content: "Skill updated", timestamp: time,
+                review: ReviewActivity(summary: "Skill updated", details: nil, fullSessionId: nil)
+            )
+        }
+        var messages = [
+            ChatMessage(id: "u1", role: .user, content: "hi", timestamp: "1"),
+            review("r1", "2"),
+            ChatMessage(id: "a1", role: .assistant, content: "ok", timestamp: "3"),
+            review("r2", "4"),
+            review("r3", "5"),
+        ]
+        var cache = ChatMessageScrollTargetCache()
+        cache.update(for: messages)
+        let disclosure = ChatRowDisclosure()
+        let preferences = ProfileDisplayPreferences()
+        func drawn() -> [String] {
+            cache.targets.filter { $0.drawsRow(preferences: preferences, isBusy: false, disclosure: disclosure) }.map(\.id)
+        }
+        func run(_ id: String) -> ChatReviewPlacement? {
+            cache.targets.first { $0.id == id }?.reviewRun
+        }
+
+        XCTAssertEqual(run("r1")?.run.count, 1)
+        XCTAssertNil(run("a1"))
+        XCTAssertEqual(run("r3")?.run, ChatReviewRun(memberIDs: ["r2", "r3"], lastTimestamp: "5"))
+        XCTAssertEqual(drawn(), ["u1", "r1", "a1", "r2"])
+
+        messages.append(review("r4", "6"))
+        cache.update(for: messages)
+        XCTAssertEqual(run("r2"), ChatReviewPlacement(run: ChatReviewRun(memberIDs: ["r2", "r3", "r4"], lastTimestamp: "6"), index: 0))
+        XCTAssertEqual(drawn(), ["u1", "r1", "a1", "r2"])
+
+        disclosure.willToggleGroup("r2", to: true)
+        XCTAssertEqual(drawn(), ["u1", "r1", "a1", "r2", "r3", "r4"])
+
+        messages.append(ChatMessage(id: "u2", role: .user, content: "next", timestamp: "7"))
+        messages.append(review("r5", "8"))
+        cache.update(for: messages)
+        XCTAssertEqual(run("r5")?.run.count, 1)
+        XCTAssertEqual(run("r4")?.run.count, 3)
     }
 
     /// Self-improvement reviews arrive only as `review.summary` stream events
