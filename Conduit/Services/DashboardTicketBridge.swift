@@ -1085,7 +1085,10 @@ final class DashboardTicketBridge: NSObject {
         method: String = "GET",
         body: [String: Any]? = nil,
         timeoutMilliseconds: Int = 12_000,
-        maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes
+        maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes,
+        // A POST that only reads (the history page) fails with the page like a
+        // GET, rather than being kept through invalidate() as a write is.
+        readsOnly: Bool = false
     ) async throws -> [String: Any] {
         if let nativeOAuthSession {
             guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
@@ -1115,7 +1118,7 @@ final class DashboardTicketBridge: NSObject {
         let bodyLiteral = try body.map(javaScriptLiteral) ?? "null"
         let timeout = max(1_000, timeoutMilliseconds)
         let responseLimit = max(1_024, maxResponseBytes)
-        if method.uppercased() != "GET" { pendingWriteIDs.insert(id) }
+        if method.uppercased() != "GET", !readsOnly { pendingWriteIDs.insert(id) }
         defer { pendingWriteIDs.remove(id) }
 
         let response: [String: Any]

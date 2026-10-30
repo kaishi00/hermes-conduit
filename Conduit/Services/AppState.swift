@@ -30148,7 +30148,7 @@ final class AppState: ObservableObject {
         let startedAt = Date()
         let response: [String: Any]
         do {
-            response = try await bridge.requestJSON(path: path, method: "POST", body: body)
+            response = try await bridge.requestJSON(path: path, method: "POST", body: body, readsOnly: true)
         } catch {
             // A route this host can't serve for the profile is left for the
             // run, so later opens don't pay its round trip first.
