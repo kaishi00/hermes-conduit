@@ -374,7 +374,7 @@ entry)
 - Group rooms have no voice button setting, and the Watch and CarPlay don't follow it (#1134).
 - When a Classic call can't take over its chat, it shows a generic error (#1066).
 
-**Checked:** 2026-10-29, #1512 (the voice button stays beside a composer that stays expanded on a Mac or a wide iPad, issue 1483); 2026-10-29, #1476 (the chat's voice button centres on a resting composer taller than it, as when a long placeholder wraps); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1413 (the Siri and Shortcuts profile picker shows each profile's Conduit name, see Profile names); 2026-10-28, #1424 (a call starts its trace; Qwen Live calls are traced too); 2026-10-27, #1378 (CarPlay starts Local Live, agent mode and Classic's hands-free option, #1376); 2026-10-27, at #1370 (a chat picked in CarPlay shows Thinking, and a live call waits at most 3 s for the phone to open it); 2026-10-26, at #1319 (Home's main button points to its own entry); 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-30, #1541 (at accessibility Text Sizes the resting bar's placeholder keeps to one line, so the voice button centres on a one-line bar; see Composer at rest and expanded); 2026-10-29, #1512 (the voice button stays beside a composer that stays expanded on a Mac or a wide iPad, issue 1483); 2026-10-29, #1476 (the chat's voice button centres on a resting composer taller than it, as when a long placeholder wraps); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1413 (the Siri and Shortcuts profile picker shows each profile's Conduit name, see Profile names); 2026-10-28, #1424 (a call starts its trace; Qwen Live calls are traced too); 2026-10-27, #1378 (CarPlay starts Local Live, agent mode and Classic's hands-free option, #1376); 2026-10-27, at #1370 (a chat picked in CarPlay shows Thinking, and a live call waits at most 3 s for the phone to open it); 2026-10-26, at #1319 (Home's main button points to its own entry); 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
 
 ## Switching voice mode in a call
 
@@ -1821,12 +1821,17 @@ the bar takes the composer's height, see Bars lists scroll under) · the
 drawer shell's chat (not needed: its chat composer never rests; its rooms'
 composer follows the same rule, #1512) · iPhone, iPad and Mac · text:
 docs/VOICE_SETTINGS.md "Dictate into the composer" (done, #1512); no
-Settings caption describes it
+Settings caption describes it · the placeholder (the chat's: Message,
+Interrupt, Steer, Queue, a chat on its way; the room's; the drawer
+shell's chat, the same ComposerBar; done, #1541) · accessibility Text
+Sizes on a narrow iPhone (both composers, resting and expanded, in both
+shells; done, #1541)
 
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.staysExpanded, expandedMinimumWidth, composerStaysExpanded, composerLayoutFromWidth)
 - V2: `Conduit/Views/V2/V2ConversationScreen.swift` (chatColumnWidth, composerStaysExpanded, voiceButtonBottomPadding), `Conduit/Views/Components/ComposerBar.swift` (rests, inUseOrHeld, keepsVoiceButtonBeside, showsEmptyDraftSend, controlsRowShowsDictate, composerInUse), `Conduit/Views/Components/GroupRoomComposer.swift` (rests, inUse)
 - Drawer shell: `Conduit/Views/RootView.swift` (chatNavigationContent)
+- Large Text Sizes: `Conduit/Views/Components/DynamicTypeSupport.swift` (ComposerPlaceholderText, conduitFixedGlyph), `Conduit/Services/AppState.swift` (composerPlaceholder, composerShortPlaceholder), used in `Conduit/Views/Components/ComposerBar.swift` (composerContent's resting row, composerField) and `Conduit/Views/Components/GroupRoomComposer.swift` (the resting row's attachButton, field)
 - Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerRestsOnIPhoneAndStaysExpandedOnMacAndWideIPad, testBigButtonSitsLevelWithTheBottomOfAComposerThatStaysExpanded)
 
 **Rulings**
@@ -1849,12 +1854,21 @@ Settings caption describes it
   rule changing (a chat's first measured width, a window resized) switches
   it at once (2026-10-29, #1512).
 
+- At the accessibility Text Sizes the resting bar's controls (attach, the
+  mic, Stop) are capped at xxLarge like the controls row's, and the
+  placeholder keeps to one line: the whole hint when it fits, then the
+  hint without the agent's name ("Interrupt…"), then that one shrunk to
+  fit and cut off. Below them it wraps as before, so the name stays
+  (#1476). The same in group rooms (Eric's report, 2026-10-30, #1541).
+
 **Open gaps**
 - Not yet seen on a device: an iPad crossing 600 pt as a split or Artifacts
   resizes, and a Mac window at its narrowest. On an iPad the first frame
   of a chat may still show the resting bar before its width is measured.
+- Not yet seen on a device: an iPhone at AX3 to AX5 in a running chat and
+  in a group room (#1541, checked in code and a unit test only).
 
-**Checked:** 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
+**Checked:** 2026-10-30, #1541 (the resting bar and its placeholder at accessibility Text Sizes on a narrow iPhone); 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
 
 ## Composer focus after a send
 
@@ -3918,7 +3932,7 @@ describes them
 - The Mac fallback isn't confirmed on macOS 27; it waits on the reporter's TestFlight check (#1357).
 - The navigation bar over a chat keeps the system's top edge on a Mac too (`V2SoftTopScrollEdge` in `Conduit/Views/ChatView.swift`; before iOS 26 the transcript fades itself under it, `underChatHeader`): #1357 only showed the bottom. If macOS 27 draws it too tall as well, it moves to the same switch.
 
-**Checked:** 2026-10-29, #1512 (a composer that stays expanded on a Mac or a wide iPad is taller, and the bar takes and reports its height as before; see Composer at rest and expanded); 2026-10-29, #1468 (the content fades itself instead of a material behind the bars; Code, Rulings); 2026-10-28, #1455 (carrying #1431; a chat's bar growing keeps a following transcript's end above it; Code); 2026-10-28, #1444; 2026-10-27, #1397.
+**Checked:** 2026-10-30, #1541 (at accessibility Text Sizes the resting composers are shorter, one-line placeholder and capped controls, and the bar takes their height as before; see Composer at rest and expanded); 2026-10-29, #1512 (a composer that stays expanded on a Mac or a wide iPad is taller, and the bar takes and reports its height as before; see Composer at rest and expanded); 2026-10-29, #1468 (the content fades itself instead of a material behind the bars; Code, Rulings); 2026-10-28, #1455 (carrying #1431; a chat's bar growing keeps a following transcript's end above it; Code); 2026-10-28, #1444; 2026-10-27, #1397.
 
 ## Readable width on wide windows
 
