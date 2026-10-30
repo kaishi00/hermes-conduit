@@ -6667,8 +6667,16 @@ final class AppState: ObservableObject {
             presentationCacheDebounceSuspension
             ?? { duration in try await Task.sleep(for: duration) }
         self.defaults = defaults
-        self.notifierPluginNoticeChannel = NotifierPluginNoticeChannel.load(from: defaults)
-        self.appInstallSource = AppInstallSource.lastKnown(in: defaults)
+        let noticeChannel = NotifierPluginNoticeChannel.load(from: defaults)
+        let installSource = AppInstallSource.lastKnown(in: defaults)
+        self.notifierPluginNoticeChannel = noticeChannel
+        self.appInstallSource = installSource
+        // The saved Update notices choice holds from the first status read,
+        // not only once this launch has read where Conduit came from.
+        self._notifierPlugin = Published(wrappedValue: NotifierPluginStatus(
+            followsMain: noticeChannel.followsMain(installedFrom: installSource),
+            asksForNewVersions: noticeChannel.asksForNewVersions
+        ))
         // The registry (and its legacy migration) loads before any connection
         // hydration: scoped auth records are meaningless without it.
         let initialRegistry = preloadedRegistry
@@ -25837,7 +25845,8 @@ final class AppState: ObservableObject {
         NotifierPluginStatus(
             latestVersion: latestNotifierPluginVersion,
             stableVersion: stableNotifierPluginVersion,
-            followsMain: notifierPluginFollowsMain
+            followsMain: notifierPluginFollowsMain,
+            asksForNewVersions: notifierPluginNoticeChannel.asksForNewVersions
         )
     }
     /// Apple Health sharing with one Hermes profile.
@@ -26016,8 +26025,11 @@ final class AppState: ObservableObject {
 
     private func applyNotifierPluginNoticeChannel() {
         let followsMain = notifierPluginFollowsMain
-        guard notifierPlugin.followsMain != followsMain else { return }
+        let asksForNewVersions = notifierPluginNoticeChannel.asksForNewVersions
+        guard notifierPlugin.followsMain != followsMain
+                || notifierPlugin.asksForNewVersions != asksForNewVersions else { return }
         notifierPlugin.followsMain = followsMain
+        notifierPlugin.asksForNewVersions = asksForNewVersions
     }
 
     /// Hands each of this dashboard's paired profiles an end-to-end

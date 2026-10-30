@@ -258,7 +258,7 @@ extension AppState {
 
     /// "Not now" belongs to one dashboard and one asked-for version.
     private var pluginUpdateDismissalToken: String {
-        "\(activeDashboardID?.uuidString ?? "")|\(notifierPlugin.noticeVersion)"
+        "\(activeDashboardID?.uuidString ?? "")|\(notifierPlugin.noticeDismissalVersion)"
     }
 
     func dismissNotifierPluginUpdateNotice() {
@@ -269,7 +269,7 @@ extension AppState {
             dismissNotifierPluginUpdateOutcome()
         }
         // Only this version's dismissals matter from now on.
-        let version = "|\(notifierPlugin.noticeVersion)"
+        let version = "|\(notifierPlugin.noticeDismissalVersion)"
         dismissedPluginUpdates = dismissedPluginUpdates.filter { $0.hasSuffix(version) }
             .union([pluginUpdateDismissalToken])
     }

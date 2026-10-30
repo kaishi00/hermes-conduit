@@ -120,9 +120,17 @@ struct V2FinishSetupCard: View {
                 actionButton(AppLocalization.string("Show Steps"), action: openPluginPage)
             }
         case .done:
-            FinishSetupRow(icon: icon, title: title, detail: AppLocalization.string("Up to date on this dashboard's host"), identifier: "finish-setup.plugin") {
+            FinishSetupRow(icon: icon, title: title, detail: pluginDoneDetail, identifier: "finish-setup.plugin") {
                 doneMark
             }
+        }
+    }
+
+    private var pluginDoneDetail: String {
+        switch FinishSetupStatus.pluginDoneNote(appState.notifierPlugin) {
+        case .upToDate: return AppLocalization.string("Up to date on this dashboard's host")
+        case .newerVersionWaits: return AppLocalization.string("Works with this app. Newer versions wait in Settings.")
+        case .featuresWait: return AppLocalization.string("Works with this app. Some features need the newer version in Settings.")
         }
     }
 

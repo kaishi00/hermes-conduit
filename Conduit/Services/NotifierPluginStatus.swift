@@ -97,6 +97,10 @@ struct NotifierPluginStatus: Equatable {
     /// The notice asks for every version on main; otherwise only up to the
     /// stable one (NotifierPluginNoticeChannel).
     var followsMain = true
+    /// False: the notice asks only when the plugin is older than this
+    /// build's `recommendedVersion`, never for a newer version or a missing
+    /// feature (NotifierPluginNoticeChannel.requiredOnly).
+    var asksForNewVersions = true
 
     /// The version installed on disk, as the plugin reports it.
     var version: String? {
@@ -158,17 +162,20 @@ struct NotifierPluginStatus: Equatable {
     /// is already new enough on disk only needs its restart. Settings >
     /// Conduit plugin offers it; the notice waits for `updateRecommended`.
     var updateAvailable: Bool {
-        isUpdate(below: offeredVersion)
+        isUpdate(below: offeredVersion, countsMissingFeatures: true)
     }
 
     /// Worth asking for an update unprompted: the update notice, the
     /// Settings badge and Finish setting up. On the stable channel a newer
     /// plugin on main alone doesn't count.
     var updateRecommended: Bool {
-        isUpdate(below: noticeVersion)
+        isUpdate(below: noticeVersion, countsMissingFeatures: asksForNewVersions)
     }
 
-    private func isUpdate(below target: String) -> Bool {
+    /// Only when needed counts a plugin new enough for this build as
+    /// enough: a feature it lacks shows in Settings > Conduit plugin, which
+    /// still offers the update.
+    private func isUpdate(below target: String, countsMissingFeatures: Bool) -> Bool {
         switch state {
         case .unknown:
             return false
@@ -176,7 +183,7 @@ struct NotifierPluginStatus: Equatable {
             return !isNotServed
         case .reported(let version, _):
             let older = Self.isOlder(version, than: target)
-            return restartPending ? older : (needsUpdate || older)
+            return restartPending ? older : ((countsMissingFeatures && needsUpdate) || older)
         }
     }
 
@@ -202,14 +209,25 @@ struct NotifierPluginStatus: Equatable {
     /// The version below which the notice asks for an update: every
     /// version on main, or on the stable channel the newer of the archived
     /// and stable ones (never below this build's floor, never above what an
-    /// update brings).
+    /// update brings). Only when needed asks below `recommendedVersion`
+    /// alone, the least this build works with, not the plugin it was
+    /// archived with.
     var noticeVersion: String {
+        guard asksForNewVersions else { return Self.recommendedVersion }
         guard !followsMain else { return offeredVersion }
         var target = floorVersion
         if let stableVersion, !Self.isOlder(stableVersion, than: target) {
             target = stableVersion
         }
         return Self.isOlder(offeredVersion, than: target) ? offeredVersion : target
+    }
+
+    /// The version a "Not now" on the notice belongs to. Only when needed
+    /// asks for one fixed version, so a restart it offers is dismissed for
+    /// the version waiting on disk: the next update's restart asks again.
+    var noticeDismissalVersion: String {
+        guard !asksForNewVersions, restartPending, let version else { return noticeVersion }
+        return version
     }
 
     /// Dotted numeric versions compared part by part ("0.9.1" < "0.10.0").

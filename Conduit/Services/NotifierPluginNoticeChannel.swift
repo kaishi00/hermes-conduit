@@ -13,6 +13,9 @@ enum NotifierPluginNoticeChannel: String, CaseIterable, Identifiable {
     /// Only the stable version: the plugin this build was archived with,
     /// or channels.yaml's `stable:` when that is newer.
     case stableOnly
+    /// No notice for new versions or missing features: only when the
+    /// plugin is older than NotifierPluginStatus.recommendedVersion.
+    case requiredOnly
 
     static let key = "conduit.notifierPlugin.noticeChannel"
 
@@ -27,9 +30,12 @@ enum NotifierPluginNoticeChannel: String, CaseIterable, Identifiable {
         switch self {
         case .automatic: return source != .appStore
         case .everyVersion: return true
-        case .stableOnly: return false
+        case .stableOnly, .requiredOnly: return false
         }
     }
+
+    /// Whether the notice asks for plugin versions this build doesn't need.
+    var asksForNewVersions: Bool { self != .requiredOnly }
 }
 
 /// Where this copy of Conduit came from. TestFlight and the App Store ship

@@ -222,10 +222,14 @@ struct ConduitPluginSettingsDetail: View {
         case .automatic: return AppLocalization.string("Automatic")
         case .everyVersion: return AppLocalization.string("Every new version")
         case .stableOnly: return AppLocalization.string("Stable versions only")
+        case .requiredOnly: return AppLocalization.string("Only when needed")
         }
     }
 
     private var noticeChannelDetail: String {
+        guard appState.notifierPluginNoticeChannel.asksForNewVersions else {
+            return AppLocalization.string("Conduit asks you to update only when this app needs a newer plugin. New versions, security fixes included, wait here until you update.")
+        }
         let followsMain = appState.notifierPluginNoticeChannel.followsMain(installedFrom: appState.appInstallSource)
         let what = followsMain
             ? AppLocalization.string("Conduit asks you to update whenever a new plugin version is out.")
