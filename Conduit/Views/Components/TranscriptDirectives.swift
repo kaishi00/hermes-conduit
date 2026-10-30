@@ -139,19 +139,26 @@ enum TranscriptDirectives {
         return attributes
     }
 
-    /// Ranges of single-backtick code spans.
+    /// Ranges of code spans: a run of backticks closed by the next run of
+    /// the same length, as Markdown reads them (`` `x` `` and ``` `` x `` ```).
     private static func inlineCodeSpans(in line: String) -> [NSRange] {
         guard line.contains("`") else { return [] }
         let nsLine = line as NSString
+        var runs: [NSRange] = []
+        var index = 0
+        while index < nsLine.length {
+            guard nsLine.character(at: index) == 0x60 else { index += 1; continue }
+            let start = index
+            while index < nsLine.length, nsLine.character(at: index) == 0x60 { index += 1 }
+            runs.append(NSRange(location: start, length: index - start))
+        }
         var spans: [NSRange] = []
-        var open: Int?
-        for index in 0..<nsLine.length where nsLine.character(at: index) == 0x60 {
-            if let start = open {
-                spans.append(NSRange(location: start, length: index - start + 1))
-                open = nil
-            } else {
-                open = index
-            }
+        var next = 0
+        while next < runs.count {
+            let open = runs[next]
+            guard let close = runs[(next + 1)...].firstIndex(where: { $0.length == open.length }) else { next += 1; continue }
+            spans.append(NSRange(location: open.location, length: NSMaxRange(runs[close]) - open.location))
+            next = close + 1
         }
         return spans
     }

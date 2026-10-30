@@ -38,6 +38,10 @@ extension MarkdownLargeDocumentTests {
         XCTAssertNil(TranscriptDirectives.segments(in: #"`::richui{id="ru-c91286278685"}`"#))
         XCTAssertNil(TranscriptDirectives.segments(in: "Use Foo::bar to call it."))
         XCTAssertNil(TranscriptDirectives.segments(in: #"Run `echo ::richui{id="ru-c91286278685"}` here"#))
+        XCTAssertNil(TranscriptDirectives.segments(in: #"`` ::richui{id="ru-c91286278685"} ``"#))
+        XCTAssertNil(TranscriptDirectives.segments(in: #"Run ``a ` b ::richui{id="ru-c91286278685"}`` here"#))
+        // An unmatched backtick opens no span.
+        XCTAssertNotNil(TranscriptDirectives.segments(in: #"It's a ` mark ::richui{id="ru-c91286278685"}"#))
     }
 
     func testDesktopCard_MalformedRichUIIDIsNotRead() {
@@ -118,6 +122,20 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(again, found)
         XCTAssertEqual(reads.count, 3)
         XCTAssertEqual(DesktopCardContents.cached(key: key)?.title, "Rents")
+    }
+
+    @MainActor
+    func testDesktopCard_ACancelledReadKeepsNothing() async {
+        let key = UUID().uuidString
+        let task = Task { @MainActor in
+            await DesktopCardContents.content(key: key, path: "/cards/x") { _ in
+                withUnsafeCurrentTask { $0?.cancel() }
+                return .failed
+            }
+        }
+        let read = await task.value
+        XCTAssertNil(read)
+        XCTAssertEqual(DesktopCardContents.retryWait(key: key), DesktopCardContents.notConnectedRetry)
     }
 
     @MainActor
