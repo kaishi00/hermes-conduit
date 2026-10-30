@@ -30158,8 +30158,8 @@ final class AppState: ObservableObject {
             return HistoryPage.readsHermesRouteInstead(after: error) ? nil : .failed(error)
         }
         guard let rebuilt = HistoryPage.rebuild(response, held: held?.byDigest ?? [:], sessionID: heldID) else {
-            // A held row went missing (the file changed under the read):
-            // Hermes' own route reads the page whole.
+            // The answer didn't match the fingerprints sent: Hermes' own
+            // route reads the page whole.
             return nil
         }
         let sentRows = (response["messages"] as? [Any])?.filter { ($0 as? [String: Any])?[HistoryPage.knownKey] == nil }.count ?? 0

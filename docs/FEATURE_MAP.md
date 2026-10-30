@@ -1587,6 +1587,7 @@ a profile switch (the chat the new profile opens on), whether from the strip,
 the picker, CarPlay, or a chat opened in another profile from All chats, a
 notification, a link, a widget or a Shortcut · iPad and Mac windows (the same chat view) · Settings' Data handling caption ·
 the notifier's history page route (`POST /sessions/history-page`, its README section and changelog) ·
+Load earlier (not needed: it reads past the newest page, where the phone holds no rows to stand in) ·
 Watch and CarPlay (not needed: neither shows a transcript)
 
 | Opening | Shows while it loads | Kept |
@@ -1617,6 +1618,7 @@ Watch and CarPlay (not needed: neither shows a transcript)
 - An error already on the chat when a room opens is cleared by the open (openGroupRoom) and doesn't come back when the room closes; only a sync error raised while the room is up waits (#1461 review). `errorMessage` holds non-chat errors too, so carrying it needs a rule for which ones are the chat's.
 - Settings' Data handling caption says recent conversations are kept so Conduit opens straight to them while it connects. It doesn't mention reopening, because what's kept on the device hasn't changed.
 - The first open of a chat after launch reads its file on the main thread (repeat opens come from memory), now up to 500 rows; and a history page read writes its held rows there too (up to 120 raw rows, then a listing of the cache folder to prune), so a sign-out's wipe can't run between the check and the write. Kept as is unless it shows in profiling (#1404, #1536).
+- A 404 from the history page route isn't remembered, since Hermes' own "no such chat" comes through as one: a profile whose plugin is off while the dashboard still lists `history-page` reads Hermes' route after it on each open (#1536 review).
 - While the copy is up, VoiceOver reads its rows with no "opening" announcement; the header and composer say Conduit is connecting, as for a chat picked in the saved list (#1404).
 
 **Checked:** 2026-10-30, #1536 (the newest page read without the rows the phone holds, through notifier #477; copies keep up to 500 rows for 100 chats within 64 MB); 2026-10-28, #1461 (a chat's sync error stays out of a room on screen); 2026-10-28, #1447 (a profile switch shows the new profile's chat, not the outgoing transcript); 2026-10-28, #1432.
