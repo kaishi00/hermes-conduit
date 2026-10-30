@@ -752,9 +752,11 @@ final class OfflineChatCacheStore {
             )
         }
         snapshot.lastSessionID = sessionID
-        // The same chat left again with nothing new: nothing to write.
-        guard snapshot != saved else { return }
-        guard write(snapshot, dashboardID: dashboardID, profile: profile) else { return }
+        // The same chat left again with nothing new: nothing to write, but a
+        // copy an earlier failed index write left behind still goes.
+        if snapshot != saved {
+            guard write(snapshot, dashboardID: dashboardID, profile: profile) else { return }
+        }
         removeUnlistedTranscripts(snapshot, dashboardID: dashboardID, profile: profile)
     }
 
