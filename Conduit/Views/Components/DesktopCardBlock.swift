@@ -173,7 +173,7 @@ extension GatewayMediaDataURLResolver {
             let json = try await bridge.requestJSON(path: path, maxResponseBytes: DataURLLimits.maxJSONResponseBytes)
             // Another dashboard now: says nothing about this one's card.
             return connectedDashboardBridge === bridge ? .json(json) : .notReady
-        } catch DashboardTicketBridgeError.notReady {
+        } catch DashboardTicketBridgeError.notReady, DashboardTicketBridgeError.answeredAfterSwitch {
             return .notReady
         } catch {
             return .failed
