@@ -12,7 +12,8 @@ final class OfflineChatCacheTests: XCTestCase {
     func testRecordKeepsNewestPageOfDisplayRowsOnly() throws {
         let store = makeStore()
         let dashboard = UUID()
-        var rows = (0..<130).map { index in
+        let count = OfflineChatCacheStore.maxMessagesPerTranscript + 10
+        var rows = (0..<count).map { index in
             ChatMessage(id: "m\(index)", role: index.isMultiple(of: 2) ? .user : .assistant, content: "row \(index)", timestamp: "\(index)")
         }
         rows.append(ChatMessage(id: "approval", role: .approval, content: "Approve?", timestamp: "200"))
@@ -33,14 +34,14 @@ final class OfflineChatCacheTests: XCTestCase {
         let transcript = try XCTUnwrap(store.loadTranscript("stored-a", dashboardID: dashboard, profile: "default"))
         XCTAssertEqual(transcript.messages.count, OfflineChatCacheStore.maxMessagesPerTranscript)
         XCTAssertEqual(transcript.messages.first?.id, "m10")
-        XCTAssertEqual(transcript.messages.last?.id, "m129")
+        XCTAssertEqual(transcript.messages.last?.id, "m\(count - 1)")
         XCTAssertFalse(transcript.messages.contains { [.approval, .clarify, .partial].contains($0.role) },
                        "Interactive decision cards and streaming partials are never stored")
         XCTAssertEqual(snapshot.lastSessionID, "stored-a")
         XCTAssertEqual(snapshot.sessions.map(\.id), ["stored-a"], "Cron rows stay out of the saved session list")
     }
 
-    /// A conversation outside the newest 60 catalog rows still gets a saved
+    /// A conversation outside the newest `maxSessions` catalog rows still gets a saved
     /// row: without it the copy would show its transcript with no sidebar row
     /// to highlight or reopen it from.
     func testRecordedConversationKeepsItsRowPastTheSessionCap() throws {
@@ -74,7 +75,10 @@ final class OfflineChatCacheTests: XCTestCase {
         let catalog = (0..<(OfflineChatCacheStore.maxSessions + 10)).map { session("s\($0)") }
         let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
 
-        for id in ["s65", "s62", "s0"] {
+        // Two rows past the cap, recorded newest last.
+        let late = "s\(OfflineChatCacheStore.maxSessions + 5)"
+        let earlier = "s\(OfflineChatCacheStore.maxSessions + 2)"
+        for id in [late, earlier, "s0"] {
             store.record(dashboardID: dashboard, profile: "default", sessionID: id, title: id, messages: row, sessions: catalog)
         }
 
@@ -84,10 +88,10 @@ final class OfflineChatCacheTests: XCTestCase {
             XCTAssertTrue(snapshot.sessions.contains { $0.id == transcript.sessionID },
                           "\(transcript.sessionID) lost its saved row")
         }
-        XCTAssertEqual(snapshot.transcripts.map(\.sessionID), ["s0", "s62", "s65"])
+        XCTAssertEqual(snapshot.transcripts.map(\.sessionID), ["s0", earlier, late])
         // Catalog order is kept: the reserved rows sit after the newest ones.
         XCTAssertEqual(snapshot.sessions.first?.id, "s0")
-        XCTAssertEqual(Array(snapshot.sessions.suffix(2).map(\.id)), ["s62", "s65"])
+        XCTAssertEqual(Array(snapshot.sessions.suffix(2).map(\.id)), [earlier, late])
     }
 
     /// A retained transcript whose conversation the live catalog no longer
@@ -162,6 +166,111 @@ final class OfflineChatCacheTests: XCTestCase {
         // The two oldest went, rows and all.
         XCTAssertNil(store.loadTranscript("s0", dashboardID: dashboard, profile: "default"))
         XCTAssertNil(store.loadTranscript("s1", dashboardID: dashboard, profile: "default"))
+    }
+
+    /// Copies are kept while their files fit the scope's budget (#1525):
+    /// the oldest go first, and the newest stays whatever its size.
+    func testCopiesStayWithinTheScopeBudget() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OfflineChatCacheTests-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let store = OfflineChatCacheStore(directory: directory, scopeBytes: 6_000)
+        let dashboard = UUID()
+        let words = String(repeating: "word ", count: 400)
+        for index in 0..<4 {
+            store.record(
+                dashboardID: dashboard,
+                profile: "default",
+                sessionID: "s\(index)",
+                title: "S\(index)",
+                messages: [ChatMessage(id: "m", role: .user, content: words, timestamp: "1")],
+                sessions: []
+            )
+        }
+        let snapshot = try XCTUnwrap(store.load(dashboardID: dashboard, profile: "default"))
+        let kept = snapshot.transcripts.map(\.sessionID)
+        XCTAssertEqual(kept.first, "s3")
+        XCTAssertLessThan(kept.count, 4, "The oldest copies left to fit the budget")
+        XCTAssertLessThanOrEqual(snapshot.transcripts.compactMap(\.bytes).reduce(0, +), 6_000)
+        XCTAssertNil(store.loadTranscript("s0", dashboardID: dashboard, profile: "default"))
+
+        let huge = OfflineChatCacheStore(directory: directory, scopeBytes: 10)
+        huge.record(
+            dashboardID: dashboard,
+            profile: "work",
+            sessionID: "big",
+            title: "Big",
+            messages: [ChatMessage(id: "m", role: .user, content: words, timestamp: "1")],
+            sessions: []
+        )
+        XCTAssertEqual(huge.load(dashboardID: dashboard, profile: "work")?.transcripts.map(\.sessionID), ["big"])
+    }
+
+    /// The history page's raw rows (#1525) round-trip by the id they were
+    /// read by, go with their chat, and are bounded like the copies.
+    func testHeldRowsRoundTripAndGoWithTheirChat() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let url = store.heldRowsFileURL("s1", dashboardID: dashboard, profile: "default")
+        let rows: [Any] = [
+            ["id": 1, "role": "user", "content": "hi"] as [String: Any],
+            ["id": 2, "role": "assistant", "content": "hello"] as [String: Any],
+        ]
+        OfflineChatCacheStore.writeHeldRows(HistoryPage.HeldRows(sessionID: "s1", digests: ["a", "b"], rows: rows), to: url)
+
+        let held = try XCTUnwrap(OfflineChatCacheStore.loadHeldRows(at: url, sessionID: "s1"))
+        XCTAssertEqual(held.digests, ["a", "b"])
+        XCTAssertEqual((held.byDigest["b"] as? [String: Any])?["content"] as? String, "hello")
+        XCTAssertNil(OfflineChatCacheStore.loadHeldRows(at: url, sessionID: "other"))
+        XCTAssertNotEqual(url, store.heldRowsFileURL("s1", dashboardID: dashboard, profile: "work"))
+
+        let removals = store.removals
+        store.removeTranscripts(sessionIDs: ["s1"], dashboardID: dashboard, profile: "default")
+        XCTAssertNil(OfflineChatCacheStore.loadHeldRows(at: url, sessionID: "s1"))
+        XCTAssertNotEqual(store.removals, removals, "A read in flight across the delete keeps nothing")
+    }
+
+    func testADeletedProfileTakesOnlyItsHeldRows() {
+        let store = makeStore()
+        let dashboard = UUID()
+        let bot = store.heldRowsFileURL("s1", dashboardID: dashboard, profile: "bot")
+        let botLonger = store.heldRowsFileURL("s1", dashboardID: dashboard, profile: "bot2")
+        let other = store.heldRowsFileURL("s1", dashboardID: UUID(), profile: "bot")
+        for url in [bot, botLonger, other] {
+            OfflineChatCacheStore.writeHeldRows(HistoryPage.HeldRows(sessionID: "s1", digests: ["a"], rows: [["id": 1]]), to: url)
+        }
+        let removals = store.removals
+        store.removeHeldRows(dashboardID: dashboard, profile: "bot")
+        XCTAssertNil(OfflineChatCacheStore.loadHeldRows(at: bot, sessionID: "s1"))
+        XCTAssertNotNil(OfflineChatCacheStore.loadHeldRows(at: botLonger, sessionID: "s1"))
+        XCTAssertNotNil(OfflineChatCacheStore.loadHeldRows(at: other, sessionID: "s1"))
+        XCTAssertNotEqual(store.removals, removals, "A read in flight across the delete keeps nothing")
+    }
+
+    func testHeldRowsKeepTheNewestChats() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let count = OfflineChatCacheStore.maxTranscripts + 2
+        for index in 0..<count {
+            let url = store.heldRowsFileURL("s\(index)", dashboardID: dashboard, profile: "default")
+            OfflineChatCacheStore.writeHeldRows(
+                HistoryPage.HeldRows(sessionID: "s\(index)", digests: ["d"], rows: [["id": index]]),
+                to: url
+            )
+            try FileManager.default.setAttributes(
+                [.modificationDate: Date(timeIntervalSince1970: TimeInterval(1_000 + index))],
+                ofItemAtPath: url.path
+            )
+        }
+        // The next write prunes against the dates just set.
+        let last = store.heldRowsFileURL("s\(count - 1)", dashboardID: dashboard, profile: "default")
+        OfflineChatCacheStore.writeHeldRows(HistoryPage.HeldRows(sessionID: "s\(count - 1)", digests: ["d"], rows: [["id": 0]]), to: last)
+        for gone in 0..<2 {
+            let url = store.heldRowsFileURL("s\(gone)", dashboardID: dashboard, profile: "default")
+            XCTAssertNil(OfflineChatCacheStore.loadHeldRows(at: url, sessionID: "s\(gone)"))
+        }
+        let kept = store.heldRowsFileURL("s2", dashboardID: dashboard, profile: "default")
+        XCTAssertNotNil(OfflineChatCacheStore.loadHeldRows(at: kept, sessionID: "s2"))
     }
 
     func testScopesAreIsolatedAndDashboardRemovalOnlyWipesThatDashboard() {
