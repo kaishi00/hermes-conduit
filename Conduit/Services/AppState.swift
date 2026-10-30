@@ -9162,9 +9162,7 @@ final class AppState: ObservableObject {
         }
         for sessionID in ids {
             func read(_ query: String) async -> [String: Any]? {
-                try? await bridge.requestJSON(
-                    path: Self.sessionMessagesPath(sessionId: sessionID, profile: profile, query: query)
-                )
+                await voiceHistoryPage(sessionId: sessionID, profile: profile, query: query, using: bridge)
             }
             // Newest pages first, until one holds an assistant reply: a
             // tool-heavy turn can fill a page with tool rows alone.
@@ -9437,9 +9435,8 @@ final class AppState: ObservableObject {
     private func voiceRowMessages(sessionID: String, profile: String) async -> (rows: [Any], isComplete: Bool)? {
         guard let bridge = dashboardTicketBridge else { return nil }
         func fetch(_ query: String) async -> (rows: [Any], page: PersistedTranscriptPagination.PageInfo?)? {
-            guard let response = try? await bridge.requestJSON(
-                path: Self.sessionMessagesPath(sessionId: sessionID, profile: profile, query: query)
-            ), let rows = Self.persistedMessageRows(in: response) else { return nil }
+            guard let response = await voiceHistoryPage(sessionId: sessionID, profile: profile, query: query, using: bridge),
+                  let rows = Self.persistedMessageRows(in: response) else { return nil }
             return (rows, PersistedTranscriptPagination.parse(response, rawRowCount: rows.count))
         }
         var rows: [Any] = []
@@ -22808,7 +22805,7 @@ final class AppState: ObservableObject {
             forgetBotChatPinnedReplies(of: bot)
         }
         // Its chats' raw rows, kept for the history page, go on any dashboard.
-        offlineChatCache.removeHeldRows(dashboardID: dashboardID, profile: bot.name)
+        if let dashboardID { offlineChatCache.removeHeldRows(dashboardID: dashboardID, profile: bot.name) }
         guard dashboardTicketBridge === bridge else { return nil }
         sessionStars.forget(profile: bot.name)
         sessionStars.save(to: defaults)
@@ -30115,6 +30112,24 @@ final class AppState: ObservableObject {
             // degrading the resume.
             return .failed(error)
         }
+    }
+
+    /// A voice read's page: the newest one through the history page when the
+    /// plugin serves it (the rows a chat open kept stand in), any other page
+    /// or a refused one through Hermes' route as before.
+    private func voiceHistoryPage(
+        sessionId: String,
+        profile: String,
+        query: String,
+        using bridge: DashboardTicketBridge
+    ) async -> [String: Any]? {
+        if query == PersistedTranscriptPagination.tailQuery(offset: 0),
+           case .payload(let page)? = await historyPagePayload(sessionId: sessionId, profile: profile, query: query, using: bridge) {
+            return page
+        }
+        return try? await bridge.requestJSON(
+            path: Self.sessionMessagesPath(sessionId: sessionId, profile: profile, query: query)
+        )
     }
 
     /// Dashboard and profile scopes whose plugin refused the history page

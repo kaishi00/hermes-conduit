@@ -1588,6 +1588,7 @@ the picker, CarPlay, or a chat opened in another profile from All chats, a
 notification, a link, a widget or a Shortcut · iPad and Mac windows (the same chat view) · Settings' Data handling caption ·
 the notifier's history page route (`POST /sessions/history-page`, its README section and changelog) ·
 Load earlier (not needed: it reads past the newest page, where the phone holds no rows to stand in) ·
+voice's reads of a chat (the last reply read back, a voice row's history): their newest page goes through the history page too ·
 Watch and CarPlay (not needed: neither shows a transcript)
 
 | Opening | Shows while it loads | Kept |
@@ -1599,7 +1600,7 @@ Watch and CarPlay (not needed: neither shows a transcript)
 
 **Code**
 - Chats: `Conduit/Services/AppState.swift` (performSessionOpenNotingRefusal, presentSavedCopyWhileOpening, recordOfflineChatCopy; presentRestoredChatAfterProfileChange and its rollback in switchProfile), `Conduit/Services/OfflineChatCache.swift` (loadTranscript, keptTranscripts), `Conduit/Views/OfflineChatTranscriptView.swift`, `Conduit/Views/ChatView.swift` (the copy's overlay)
-- The newest page's rows, read without the ones the phone holds: `Conduit/Services/HistoryPage.swift`, `Conduit/Services/AppState.swift` (historyPagePayload, from fetchPersistedHistoryPayload), `Conduit/Services/DashboardTicketBridge.swift` (requestJSON's readsOnly: the read fails with the page on a sign-out, as a GET does), `Conduit/Services/OfflineChatCache.swift` (heldRowsFileURL, loadHeldRows, writeHeldRows, removeHeldRows from deleteBot; boundedTranscripts for the copies' budget); notifier: `notifier/dashboard/api/history.py`
+- The newest page's rows, read without the ones the phone holds: `Conduit/Services/HistoryPage.swift`, `Conduit/Services/AppState.swift` (historyPagePayload, from fetchPersistedHistoryPayload and voiceHistoryPage, which latestSavedThreadReply and voiceRowMessages read through), `Conduit/Services/DashboardTicketBridge.swift` (requestJSON's readsOnly: the read fails with the page on a sign-out, as a GET does), `Conduit/Services/OfflineChatCache.swift` (heldRowsFileURL, loadHeldRows, writeHeldRows, removeHeldRows from deleteBot; boundedTranscripts for the copies' budget); notifier: `notifier/dashboard/api/history.py`
 - Bot Chat: `Conduit/Services/AppState.swift` (keepBotChatCopy, botChatCopyOwner, noteBotChatOpen, outgoingBotChatCopyOwner and where it's cleared: flushPendingPresentationCache, performSessionOpenNotingRefusal, switchDashboard, createNewSession; presentKeptBotChatCopy, keptBotChatCopies)
 - Group rooms: `Conduit/Services/AppState.swift` (openGroupRoom, parkActiveRoomSend, keptRoomReplays; chatSyncErrorMessage, chatErrorBehindRoom and closeRoomSurfaceBackToChat for the chat's error under a room)
 - Tests: `ConduitTests/OfflineChatCacheTests.swift`, `ConduitTests/HistoryPageTests.swift`, `ConduitTests/GroupChatSessionSafetyTests.swift`, `ConduitTests/CrossProfilePresentationCacheTests.swift` (testTheOutgoingTranscriptLeavesWhenTheProfileChangesOver), `ConduitTests/AppStateChatResumeTests.swift` (testAChatSyncErrorWaitsBehindAnOpenRoom); notifier: `notifier/tests/test_history_page.py`, `notifier/upstream/test_history_page.py`
