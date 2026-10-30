@@ -1011,10 +1011,8 @@ final class DashboardTicketBridge: NSObject {
         //    and force a login. Reload unconditionally so the cookie store
         //    settles, then re-attempt.
         //  - notReady: the dashboard page has not produced a ready session.
-        //    Only a terminally failed load is reloaded — on a degraded link a
-        //    load can still be in flight when the readiness poll times out,
-        //    and restarting it would abort a navigation that may be about to
-        //    finish, so keep polling the same load instead.
+        //    waitUntilReady reloads a terminally failed load; one still in
+        //    flight keeps being polled.
         for attempt in 0..<3 {
             do {
                 try await waitUntilReady()
@@ -1029,9 +1027,6 @@ final class DashboardTicketBridge: NSObject {
             } catch DashboardTicketBridgeError.notReady where attempt < 2 {
                 // A silently hung load is eventually failed by the system
                 // request timeout and becomes reloadable.
-                if isLoadFailed {
-                    reload()
-                }
                 try await Task.sleep(for: .milliseconds(350))
             }
         }
@@ -1042,6 +1037,18 @@ final class DashboardTicketBridge: NSObject {
     }
 
     private func waitUntilReady() async throws {
+        // A terminally failed load (a request that stalled across a network
+        // change, a dead content process) never becomes ready by itself, and
+        // every request through the page is refused until it reloads. Reload
+        // it here, for every caller: an open socket mints no ticket, so
+        // waiting for the next mint to reload it left history and status
+        // reads failing until the app quit (#1412). A load still in flight
+        // is never restarted: on a degraded link it may be about to finish.
+        // Every request into the page was already rejected when it failed,
+        // so the reload aborts none.
+        if isLoadFailed, !isInvalidated {
+            reload()
+        }
         // Stop polling as soon as the navigation terminally fails or the
         // page has settled on the login screen: neither can become ready
         // without a reload or sign-in, so sleeping out the window would
@@ -1098,17 +1105,7 @@ final class DashboardTicketBridge: NSObject {
                 maxResponseBytes: maxResponseBytes
             )
         }
-        for _ in 0..<readinessPollAttempts where !isReady && !isInvalidated && !isLoadFailed && !didLandOnLogin {
-            try await Task.sleep(for: readinessPollInterval)
-        }
-        guard !isInvalidated, isReady else {
-            // Mirror waitUntilReady(): a login-parked or terminally failed
-            // bridge is settled, not loading, for non-mint callers too, and
-            // an invalidated bridge always reports plain unreadiness.
-            throw isInvalidated || !didLandOnLogin
-                ? DashboardTicketBridgeError.notReady
-                : DashboardTicketBridgeError.signInRequired
-        }
+        try await waitUntilReady()
 
         requestID += 1
         let id = requestID

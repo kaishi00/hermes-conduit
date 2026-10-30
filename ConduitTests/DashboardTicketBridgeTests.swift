@@ -68,9 +68,58 @@ final class DashboardTicketBridgeTests: XCTestCase {
             XCTFail("Expected DashboardTicketBridgeError.notReady, got \(error)")
         }
 
-        // Both retries must re-attempt the terminally failed page load; the
+        // Every attempt must re-attempt the terminally failed page load; the
         // original wedge (no reload at all) would leave this at zero.
-        XCTAssertEqual(bridge.reloadCount, 2)
+        XCTAssertEqual(bridge.reloadCount, 3)
+    }
+
+    /// A page whose load failed while the socket stayed open (a request that
+    /// stalled across a Wi-Fi change) must be reloaded by the next dashboard
+    /// request, not only by a ticket mint: an open socket mints none, so
+    /// history and status reads were refused in a fraction of a second until
+    /// the app quit (#1412).
+    func testRequestOnAFailedPageReloadsIt() async {
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:1",
+            readinessPollAttempts: 2,
+            readinessPollInterval: .milliseconds(10)
+        )
+        bridge.webViewCanRun = { true }
+        bridge.webViewWebContentProcessDidTerminate(bridge.webView)
+        XCTAssertTrue(bridge.isLoadFailed)
+
+        do {
+            _ = try await bridge.requestJSON(path: "/api/sessions")
+            XCTFail("Expected requestJSON to throw while the reloaded page loads")
+        } catch DashboardTicketBridgeError.notReady {
+            // expected: nothing listens, so the fresh load can't finish
+        } catch {
+            XCTFail("Expected DashboardTicketBridgeError.notReady, got \(error)")
+        }
+
+        XCTAssertEqual(bridge.reloadCount, 1, "The request must reload the failed page")
+    }
+
+    /// A load still in flight is polled, never restarted by a request: on a
+    /// degraded link it may be about to finish.
+    func testRequestLeavesALoadInFlightAlone() async {
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:1",
+            readinessPollAttempts: 2,
+            readinessPollInterval: .milliseconds(10)
+        )
+        bridge.webViewCanRun = { true }
+        XCTAssertFalse(bridge.isLoadFailed)
+
+        do {
+            _ = try await bridge.requestJSON(path: "/api/sessions")
+            XCTFail("Expected requestJSON to throw before the page is ready")
+        } catch {
+            // notReady, or the initial load's own failure on hosts where it
+            // lands inside the poll window
+        }
+
+        XCTAssertEqual(bridge.reloadCount, 0)
     }
 
     /// A bridge parked on the dashboard's login page must route minting to
