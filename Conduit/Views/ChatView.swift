@@ -26,7 +26,8 @@ struct ChatView: View {
     @EnvironmentObject var appState: AppState
     @State private var viewportSnapshotProviderID = UUID()
     /// V2: someone is typing in the composer, which hides the minimised
-    /// call's bar.
+    /// call's bar (on a Mac or with a hardware keyboard, only while the
+    /// field holds words, since it keeps focus after a send).
     @State private var composerTyping = false
     @Environment(\.accessibilityReduceMotion) private var composerReduceMotion
     /// V2: the composer floats over the transcript, which scrolls on under
