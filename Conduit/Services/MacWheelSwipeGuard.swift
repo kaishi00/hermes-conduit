@@ -10,7 +10,7 @@ import UIKit
 /// of Conduit's code runs. Before a wheel turns over a list the pointer has
 /// hovered there, so each hover stops the swipe recognizers of the lists
 /// under the pointer from taking scroll events; while the pointer rests in
-/// the window, a light check every quarter second catches a list that
+/// the window, a check every quarter second catches a list that
 /// opened under it (a click that pushes a page with a list). A trackpad no longer
 /// swipes a row on a Mac, so every row's swipe actions are on its
 /// right-click menu too (`macSwipeActionsMenu` where only a swipe had them).
@@ -37,9 +37,6 @@ struct MacWheelSwipeGuardProbe: UIViewRepresentable {
 /// Follows the pointer over the window without taking part in anything
 /// else: it hovers alongside every recognizer and never touches a click.
 final class MacWheelSwipeGuardRecognizer: UIHoverGestureRecognizer, UIGestureRecognizerDelegate {
-    /// The view last hovered, so a pointer resting on one row doesn't walk
-    /// its ancestors again on every move.
-    private weak var lastHovered: UIView?
     /// Where the pointer rests, looked at again while it doesn't move.
     private var lastLocation: CGPoint?
     private var restingCheck: Timer?
@@ -70,21 +67,24 @@ final class MacWheelSwipeGuardRecognizer: UIHoverGestureRecognizer, UIGestureRec
         lastLocation = location(in: window)
         checkUnderPointer()
         guard restingCheck == nil else { return }
-        let timer = Timer(timeInterval: Self.restingCheckInterval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.checkUnderPointer() }
+        let timer = Timer(timeInterval: Self.restingCheckInterval, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self else { return timer.invalidate() }
+                self.checkUnderPointer()
+            }
         }
         timer.tolerance = 0.1
         RunLoop.main.add(timer, forMode: .common)
         restingCheck = timer
     }
 
-    /// Guards the lists under the pointer when the view there has changed.
+    /// Guards the lists under the pointer. Walked every time, not only when
+    /// the view there changes: a list can gain its swipe recognizer under
+    /// the same view as its rows load, and the walk is a short superview
+    /// chain.
     private func checkUnderPointer() {
         guard let window = view as? UIWindow, let lastLocation else { return }
-        let hovered = window.hitTest(lastLocation, with: nil)
-        guard hovered !== lastHovered else { return }
-        lastHovered = hovered
-        Self.stopWheelSwipes(under: hovered)
+        Self.stopWheelSwipes(under: window.hitTest(lastLocation, with: nil))
     }
 
     /// Every list from `view` up to its window stops taking scroll events
