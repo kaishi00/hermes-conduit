@@ -1599,6 +1599,16 @@ enum MarkdownTableLayout {
         return halfPointRounded(capped.map { $0 - max($0 - shrinkFloorContentWidth, 0) * factor })
     }
 
+    /// The drawn table's width from its column content widths: what the
+    /// cells' padding, the dividers and the border add to them.
+    static func tableWidth(columnContentWidths widths: [CGFloat]) -> CGFloat {
+        guard !widths.isEmpty else { return 0 }
+        return widths.reduce(0, +)
+            + CGFloat(widths.count) * cellHorizontalPadding * 2
+            + CGFloat(widths.count - 1) * dividerWidth
+            + borderAllowance
+    }
+
     /// The table as tab-separated lines, each cell's Markdown resolved to
     /// its text, so it pastes into a spreadsheet as a grid. A tab or line
     /// break inside a cell becomes a space, so it can't split the grid.
@@ -1749,7 +1759,8 @@ struct MarkdownTable: View {
                 },
                 selectText: { [turnedOn = $selectionTurnedOn] in turnedOn.wrappedValue = true },
                 selectionCoordinator: selectionCoordinator,
-                selectionSegmentID: selectionSegment(row: 0, column: 0)?.id
+                selectionSegmentID: selectionSegment(row: 0, column: 0)?.id,
+                tableWidth: MarkdownTableLayout.tableWidth(columnContentWidths: widths)
             ))
         }
     }
@@ -1885,6 +1896,9 @@ private struct MarkdownTableMenu: ViewModifier {
     /// The table's first cell segment, the key its deferred mount waits
     /// under in the message's coordinator.
     let selectionSegmentID: String?
+    /// The drawn table's width, so the Copy Table button sits at its
+    /// corner, not at the column's edge, when the table is narrower.
+    let tableWidth: CGFloat
 
     /// Owns the deferred mount in the coordinator, which holds it weakly.
     @State private var deferredMountOwner = DeferredMountOwner()
@@ -1892,6 +1906,8 @@ private struct MarkdownTableMenu: ViewModifier {
     /// Copy Table once the cells' own menu has replaced it.
     @State private var isPointerOver = false
     @State private var copied = false
+    /// Counts copies, so only the latest one's timer clears the checkmark.
+    @State private var copyCount = 0
 
     final class DeferredMountOwner {
         var segmentID: String?
@@ -1914,9 +1930,12 @@ private struct MarkdownTableMenu: ViewModifier {
                 content
             }
         }
-        .overlay(alignment: .topTrailing) {
+        .overlay(alignment: .topLeading) {
             if isPointerOver {
-                copyTableButton
+                GeometryReader { proxy in
+                    copyTableButton
+                        .frame(width: min(tableWidth, proxy.size.width), alignment: .topTrailing)
+                }
             }
         }
         .onHover { hovering in
@@ -1984,7 +2003,11 @@ private struct MarkdownTableMenu: ViewModifier {
             await MainActor.run {
                 UIPasteboard.general.string = text
                 copied = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { copied = false }
+                copyCount += 1
+                let copy = copyCount
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                    if copyCount == copy { copied = false }
+                }
             }
         }
     }
@@ -2147,7 +2170,8 @@ struct LargeMarkdownTable: View {
                 },
                 selectText: { [turnedOn = $selectionTurnedOn] in turnedOn.wrappedValue = true },
                 selectionCoordinator: selectionCoordinator,
-                selectionSegmentID: segmentDescriptor(row: 0, column: 0)?.id
+                selectionSegmentID: segmentDescriptor(row: 0, column: 0)?.id,
+                tableWidth: MarkdownTableLayout.tableWidth(columnContentWidths: widths)
             ))
             if renderedRowCount < rows.count {
                 Button {

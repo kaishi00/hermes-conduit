@@ -1563,6 +1563,7 @@ iPad · selection across the reply · Copy response · links in cells (plain cel
 **Open gaps**
 - On a touch screen, once selection is on (Select Text, or a selection elsewhere in the message), the long-press menu is the text's own, so Copy Table is gone for that table until its row is taken down; selecting across the table copies its cells, and Copy response copies the reply.
 - No Copy cell or Copy row (asked for as optional in issue 1531).
+- The pointer's Copy Table button covers the corner of the last header cell while the pointer is over the table.
 - A big table mounts its rows in batches (`LargeMarkdownTable`), and a selection copies only mounted cells, so a selection across a table past its first batch leaves the rest out until Show more; Copy Table copies every row.
 
 **Checked:** 2026-10-30, #1540 (the pointer's Copy Table button); #1535 (a selection in the message mounts the cells; VoiceOver's Copy Table kept).
