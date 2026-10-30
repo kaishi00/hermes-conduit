@@ -3353,12 +3353,12 @@ notifier's live read of the setting for chats already open
 - A changed setting reaches chats already open at their next review, with no restart: the dashboard reads it only when it builds a chat's agent, so the plugin reads it again from the chat's profile before each review. Hermes' messaging platforms need nothing, its gateway reads it every turn (2026-10-25, notifier #373, #1260).
 - Never show hides the rows a chat already has too, live and in the offline copy (from the setting last read for that profile, kept on the phone, until the dashboard answers; Settings then reads Never show), without deleting them: they come back when the setting does. Anything but "off" (or a YAML false) shows them, as Hermes reads it (2026-10-25, #1260; Eric's rule to close gaps in the same change).
 - On the review row, as on the Model updated card beside it, the card's caption and its time share the top row, the time on the right on one line (a long caption wraps beside it), and the summary runs the card's full width below, never in a column beside the time; at the accessibility text sizes the time goes under the caption (2026-10-29, #1507, issue #1440).
-- Two or more reviews in a row fold into one line, "N self-improvement reviews" with the last one's time, closed every time the chat opens; a tap opens it to every card as before, and the choice lasts while the chat stays open, like a run of steps. Any other row ends the run, so an approval, a question or an error is never folded into it; a lone review keeps its own card. Live and in the offline copy, every chat kind. No setting of its own: Never show still hides them all (2026-10-30, #PRNUM, issue #1518).
+- Two or more reviews in a row fold into one line, "N self-improvement reviews" with the last one's time, closed every time the chat opens; a tap opens it to every card as before, and the choice lasts while the chat stays open, like a run of steps. Any other row ends the run, so an approval, a question or an error is never folded into it; a lone review keeps its own card. Live and in the offline copy, every chat kind. No setting of its own: Never show still hides them all (2026-10-30, #1519, issue #1518).
 
 **Open gaps**
 - None.
 
-**Checked:** 2026-10-30, #PRNUM (runs of reviews fold into one line, #1518); 2026-10-29, #1507 (caption and time on the row's top line, summary full width below, #1440); 2026-10-26, #1282 (display settings kept on the phone, so the offline copy follows Never show from launch); 2026-10-25, #1260.
+**Checked:** 2026-10-30, #1519 (runs of reviews fold into one line, #1518); 2026-10-29, #1507 (caption and time on the row's top line, summary full width below, #1440); 2026-10-26, #1282 (display settings kept on the phone, so the offline copy follows Never show from launch); 2026-10-25, #1260.
 
 ## Profile glow color
 
