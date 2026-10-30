@@ -41,7 +41,7 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(snapshot.sessions.map(\.id), ["stored-a"], "Cron rows stay out of the saved session list")
     }
 
-    /// A conversation outside the newest 60 catalog rows still gets a saved
+    /// A conversation outside the newest `maxSessions` catalog rows still gets a saved
     /// row: without it the copy would show its transcript with no sidebar row
     /// to highlight or reopen it from.
     func testRecordedConversationKeepsItsRowPastTheSessionCap() throws {
