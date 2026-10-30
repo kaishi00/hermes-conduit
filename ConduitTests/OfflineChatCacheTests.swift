@@ -532,6 +532,27 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["m", "n"])
     }
 
+    /// A chat left again unchanged writes nothing, but a copy no index
+    /// lists (its index write failed) still goes.
+    func testAnUnchangedLeaveStillClearsACopyLeftBehind() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        let start = Date()
+        func save(after seconds: TimeInterval) {
+            store.record(dashboardID: dashboard, profile: "default", sessionID: "a", title: "A",
+                         messages: row, sessions: [session("a")], now: start.addingTimeInterval(seconds))
+        }
+        save(after: 0)
+        let stray = store.transcriptFileURL("gone", dashboardID: dashboard, profile: "default")
+        try Data("{}".utf8).write(to: stray)
+
+        save(after: 60)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stray.path))
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["m"])
+    }
+
     /// Once the live list is in, the store reads ahead the copies of the
     /// chats opened last, so opening one doesn't read its file on the tap.
     func testRecentCopiesAreReadAheadIntoMemory() throws {

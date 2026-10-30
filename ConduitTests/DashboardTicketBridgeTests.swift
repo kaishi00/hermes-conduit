@@ -696,3 +696,69 @@ private final class DashboardDownloadURLProtocolStub: URLProtocol {
 
     override func stopLoading() {}
 }
+
+extension DashboardTicketBridgeTests {
+    /// The page's answers are parsed off the main thread; only an object the
+    /// page sent as an answer counts as one.
+    func testOnlyThePagesAnswersParseAsAnswers() {
+        let payload = DashboardTicketBridge.dashboardResponsePayload(
+            #"{"type":"dashboard-response","id":3,"ok":true,"body":{"a":1}}"#
+        )
+        XCTAssertEqual(payload?["id"] as? Int, 3)
+        XCTAssertNil(DashboardTicketBridge.dashboardResponsePayload("not json"))
+        XCTAssertNil(DashboardTicketBridge.dashboardResponsePayload("[1, 2]"))
+        XCTAssertNil(DashboardTicketBridge.dashboardResponsePayload(#"{"type":"other","id":3}"#))
+    }
+
+    /// A parsed answer resumes its request back on the main thread; one
+    /// whose request already ended (its deadline, a reload) resumes nothing.
+    func testAParsedAnswerResumesOnlyARequestStillWaiting() async throws {
+        let requests = DashboardTicketBridgePendingRequests()
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:1",
+            pendingRequests: requests,
+            readinessPollAttempts: 0,
+            readinessPollInterval: .milliseconds(1)
+        )
+        bridge.webViewCanRun = { true }
+        // The initial load settles first, as in
+        // testAPageAnswerThatLandsAfterInvalidationIsAnsweredAfterSwitch, so
+        // its failure can't reject the requests this test answers.
+        for _ in 0..<80 where !bridge.isLoadFailed {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        let dashboard = try XCTUnwrap(URL(string: "http://127.0.0.1:1"))
+        let registered = expectation(description: "requests registered")
+        registered.expectedFulfillmentCount = 2
+        let ended = Task { @MainActor () -> Bool in
+            do {
+                _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[String: Any], Error>) in
+                    requests.insert(continuation, for: 1)
+                    registered.fulfill()
+                }
+                return true
+            } catch {
+                return false
+            }
+        }
+        let waiting = Task { @MainActor () -> Int? in
+            let body = try? await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[String: Any], Error>) in
+                requests.insert(continuation, for: 2)
+                registered.fulfill()
+            }
+            return body?["a"] as? Int
+        }
+        await fulfillment(of: [registered], timeout: 10.0)
+        // Request 1's deadline ended it before its answer was parsed.
+        requests.removeValue(for: 1)?.resume(throwing: DashboardTicketBridgeError.notReady)
+
+        bridge.answer(["type": "dashboard-response", "id": 1, "ok": true, "body": ["late": true]], expectedURL: dashboard)
+        bridge.answer(["type": "dashboard-response", "id": 2, "ok": true, "body": ["a": 1]], expectedURL: dashboard)
+
+        let endedHeardTheAnswer = await ended.value
+        XCTAssertFalse(endedHeardTheAnswer, "It heard its deadline, not the late answer")
+        let answered = await waiting.value
+        XCTAssertEqual(answered, 1)
+        XCTAssertEqual(requests.count, 0)
+    }
+}

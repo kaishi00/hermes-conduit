@@ -3553,23 +3553,61 @@ extension SessionPresentationCacheTests {
             profile: "default",
             sessionIDs: ["session-a"]
         )
+        XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.pendingTools.v1"))
         let files = SessionPresentationFiles(directory: directory)
-        // A file from an earlier run of a build with the files: the defaults
-        // were written since, by a build from before.
+        // Files from an earlier run of a build with them: the defaults were
+        // written since, by a build from before.
         files.storeData(Data("{}".utf8), forKey: "conduit.sessionPresentation.v1")
+        files.storeData(Data("{}".utf8), forKey: "conduit.sessionPresentation.pendingTools.v1")
 
-        let cache = SessionPresentationCache(storage: files)
-        cache.moveStores(from: defaults, to: files)
+        let storage = SessionPresentationCache.storage(movingFrom: defaults, to: files)
 
+        XCTAssertTrue(storage === files)
         XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.v1"), "Gone from the defaults")
+        XCTAssertNil(
+            files.data(forKey: "conduit.sessionPresentation.pendingTools.v1"),
+            "A store the newer set doesn't hold is empty"
+        )
         XCTAssertEqual(
-            cache.merge(
+            SessionPresentationCache(storage: storage).merge(
                 [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "")],
                 profile: "default",
                 sessionIDs: ["session-a"]
             ).first?.timestamp,
             "2024-01-01T10:00:00Z",
             "The defaults' store replaced the older file"
+        )
+    }
+
+    /// A store that can't be written to its file leaves every store in the
+    /// defaults and the cache on them for that launch: nothing reads as
+    /// empty, and nothing newer goes to a file the next move would replace.
+    func testStoresThatCantMoveStayInTheDefaultsThatLaunch() throws {
+        let suiteName = "conduit.tests.presentation-move-failed-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        SessionPresentationCache(defaults: defaults).save(
+            [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "2024-01-01T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        // A file where the directory goes: nothing can be written there.
+        let blocked = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SessionPresentationFiles-\(UUID().uuidString)")
+        try Data().write(to: blocked)
+        defer { try? FileManager.default.removeItem(at: blocked) }
+
+        let storage = SessionPresentationCache.storage(movingFrom: defaults, to: SessionPresentationFiles(directory: blocked))
+
+        XCTAssertTrue(storage === defaults)
+        XCTAssertNotNil(defaults.data(forKey: "conduit.sessionPresentation.v1"), "Still in the defaults")
+        XCTAssertEqual(
+            SessionPresentationCache(storage: storage).merge(
+                [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "")],
+                profile: "default",
+                sessionIDs: ["session-a"]
+            ).first?.timestamp,
+            "2024-01-01T10:00:00Z"
         )
     }
 

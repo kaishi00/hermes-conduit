@@ -20,11 +20,37 @@ final class SessionPresentationCache {
     /// their own (`SessionPresentationFiles`), out of UserDefaults.standard.
     static let shared = makeShared()
 
+    /// The first launch after the move reads and rewrites each store once,
+    /// on the thread that first reads `shared`.
     private static func makeShared() -> SessionPresentationCache {
         let files = SessionPresentationFiles(directory: SessionPresentationFiles.defaultDirectory())
-        let cache = SessionPresentationCache(storage: files, writesAsynchronously: true)
-        cache.moveStores(from: .standard, to: files)
-        return cache
+        return SessionPresentationCache(storage: storage(movingFrom: .standard, to: files), writesAsynchronously: true)
+    }
+
+    private static let storeKey = "conduit.sessionPresentation.v1"
+    private static let pendingToolsKey = "conduit.sessionPresentation.pendingTools.v1"
+    private static let tombstonesKey = "conduit.sessionPresentation.tombstones.v1"
+    private static let storedKeys = [storeKey, pendingToolsKey, tombstonesKey]
+
+    /// Where the stores live this launch: `files`, once every store an
+    /// earlier build kept in `legacy` is there and gone from `legacy`. The
+    /// stores `legacy` holds are the newer set (a build from before the
+    /// move ran since), so they replace the files, and a store they don't
+    /// hold is empty. When one can't be written, nothing is removed and the
+    /// stores stay on `legacy` this launch, so none reads as empty and
+    /// nothing newer goes to a file the move would replace; a later launch
+    /// moves them.
+    static func storage(movingFrom legacy: UserDefaults, to files: SessionPresentationFiles) -> SessionPresentationStorage {
+        let held = storedKeys.compactMap { key in legacy.data(forKey: key).map { (key: key, data: $0) } }
+        guard !held.isEmpty else { return files }
+        guard held.allSatisfy({ files.write($0.data, forKey: $0.key) }) else { return legacy }
+        for key in storedKeys where !held.contains(where: { $0.key == key }) {
+            files.removeObject(forKey: key)
+        }
+        for store in held {
+            legacy.removeObject(forKey: store.key)
+        }
+        return files
     }
     static let maxUnconfirmedPendingDecisionAge: TimeInterval = 24 * 60 * 60
 
@@ -149,9 +175,9 @@ final class SessionPresentationCache {
     /// over making an old request answerable forever.
     private let storage: SessionPresentationStorage
     private let now: () -> Date
-    private let storageKey = "conduit.sessionPresentation.v1"
-    private let pendingToolsStorageKey = "conduit.sessionPresentation.pendingTools.v1"
-    private let tombstonesStorageKey = "conduit.sessionPresentation.tombstones.v1"
+    private let storageKey = SessionPresentationCache.storeKey
+    private let pendingToolsStorageKey = SessionPresentationCache.pendingToolsKey
+    private let tombstonesStorageKey = SessionPresentationCache.tombstonesKey
     private let maxSessions = 32
     private let maxMessagesPerSession = 320
 
@@ -217,18 +243,6 @@ final class SessionPresentationCache {
         self.writeQueue = writesAsynchronously
             ? DispatchQueue(label: "conduit.sessionPresentationCache.write", qos: .utility)
             : nil
-    }
-
-    /// Moves the stores an earlier build kept in `legacy` into `files`, and
-    /// removes them there, before the cache first reads them. A store
-    /// `legacy` still holds is the newer one (a build from before the move
-    /// ran since), so it replaces the file. One left in `legacy` because
-    /// its file couldn't be written is moved by a later launch.
-    func moveStores(from legacy: UserDefaults, to files: SessionPresentationFiles) {
-        for key in [storageKey, pendingToolsStorageKey, tombstonesStorageKey] {
-            guard let data = legacy.data(forKey: key), files.write(data, forKey: key) else { continue }
-            legacy.removeObject(forKey: key)
-        }
     }
 
     /// Blocks until every queued disk write has landed. No-op in
@@ -1050,6 +1064,8 @@ final class SessionPresentationCache {
     }
 
     func clear(profile: String? = nil) {
+        // The last save's rows go too, text and all.
+        lastSavedRecords = [:]
         let prefix = profile.map { normalized($0) + "|" } ?? ""
         removingDurably([Tombstone(prefix: prefix, exact: false)]) { clearNow(profile: profile) }
     }
@@ -1085,6 +1101,7 @@ final class SessionPresentationCache {
     /// deleted conversation cannot resurrect its presentation (including any
     /// pending decision cards) from a stale alias.
     func removeSessions(profile: String, sessionIDs: [String]) {
+        lastSavedRecords = [:]
         let removed = Set(sessionIDs.compactMap { sessionID -> String? in
             let trimmed = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : key(profile: profile, sessionID: trimmed)
@@ -1801,6 +1818,9 @@ extension UserDefaults: SessionPresentationStorage {
 /// boot, and excluded from backups, as the saved chats are. Safe from any
 /// thread: it keeps nothing in memory.
 final class SessionPresentationFiles: SessionPresentationStorage {
+    /// Complete-until-first-user-authentication, as the saved chats'.
+    private static let writeOptions: Data.WritingOptions = [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+
     private let directory: URL
     private let fileManager: FileManager
 
@@ -1832,7 +1852,7 @@ final class SessionPresentationFiles: SessionPresentationStorage {
             var values = URLResourceValues()
             values.isExcludedFromBackup = true
             try? directoryURL.setResourceValues(values)
-            try data.write(to: fileURL(key), options: OfflineChatCacheStore.writeOptions)
+            try data.write(to: fileURL(key), options: Self.writeOptions)
             return true
         } catch {
             return false

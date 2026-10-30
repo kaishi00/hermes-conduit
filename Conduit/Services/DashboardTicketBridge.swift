@@ -1611,18 +1611,25 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
         Task.detached(priority: .userInitiated) { [weak self] in
             let signposter = ResponsivenessSignposts.signposter
             let parsing = signposter.beginInterval("Parse dashboard response", id: signposter.makeSignpostID())
-            let payload = raw.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let payload = DashboardTicketBridge.dashboardResponsePayload(raw)
             signposter.endInterval("Parse dashboard response", parsing)
             guard let payload else { return }
             await self?.answer(payload, expectedURL: expectedURL)
         }
     }
 
+    /// The page's answer as an object, when it is one of the page's answers.
+    nonisolated static func dashboardResponsePayload(_ raw: String) -> [String: Any]? {
+        guard let data = raw.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              payload["type"] as? String == "dashboard-response" else { return nil }
+        return payload
+    }
+
     /// Resumes the request a parsed answer belongs to, unless it already
     /// ended (its deadline, a reload, a sign-out).
-    private func answer(_ payload: [String: Any], expectedURL: URL) {
-        guard payload["type"] as? String == "dashboard-response",
-              let id = payload["id"] as? Int,
+    func answer(_ payload: [String: Any], expectedURL: URL) {
+        guard let id = payload["id"] as? Int,
               let continuation = pendingRequests.removeValue(for: id) else { return }
         requestDeadlines.removeValue(forKey: id)?.cancel()
 
