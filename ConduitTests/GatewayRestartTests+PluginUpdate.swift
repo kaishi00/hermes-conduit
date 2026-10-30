@@ -307,6 +307,31 @@ extension GatewayRestartTests {
         XCTAssertEqual(appState.dismissedPluginUpdates, [other, "\(this)|\(version)"])
     }
 
+    func testNeverShowsOnlyARestartUntilNotNow() throws {
+        let suite = "GatewayRestartTests.neverNotice.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        appState.setNotifierPluginNoticeChannel(.never)
+        XCTAssertFalse(appState.notifierPlugin.asksToUpdate)
+        // Running what's on disk: nothing asks.
+        appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a"))
+        XCTAssertFalse(appState.showsNotifierPluginUpdateNotice)
+        // An update on disk waits for its restart: the notice asks, until Not now.
+        appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.64.0", boot: "a"))
+        XCTAssertTrue(appState.showsNotifierPluginUpdateNotice)
+        appState.dismissNotifierPluginUpdateNotice()
+        XCTAssertFalse(appState.showsNotifierPluginUpdateNotice)
+        // The next update's restart asks again.
+        appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.65.0", boot: "a"))
+        XCTAssertTrue(appState.showsNotifierPluginUpdateNotice)
+    }
+
     func testTheSavedNoticeChoiceHoldsFromLaunch() throws {
         let suite = "GatewayRestartTests.noticeChannel.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
