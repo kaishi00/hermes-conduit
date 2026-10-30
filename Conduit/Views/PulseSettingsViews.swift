@@ -146,24 +146,25 @@ struct PulseSettingsPage: View {
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
             }
-            if let chat = state.homeChat, !state.homeProblem.isEmpty {
+            if state.homeChat != nil, !state.homeProblem.isEmpty {
                 // Something wrong with Pulse's hidden chat, in the plugin's own
                 // words (English); kept out of Behind the scenes so it shows.
                 Text(verbatim: state.homeProblem)
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
-                if !chat.pinned {
-                    // The chats list doesn't show it, so it's pinned from here.
-                    Button(AppLocalization.string("Pin it")) {
-                        run { _ in
-                            try await appState.pinPulseHomeChat(chat.id)
-                            return nil
-                        }
+            }
+            if let chat = state.homeChat, !chat.pinned {
+                // The chats list doesn't show it, so it's pinned from here,
+                // whether or not the plugin names it as a problem.
+                Button(AppLocalization.string("Pin it")) {
+                    run { _ in
+                        try await appState.pinPulseHomeChat(id: chat.id)
+                        return nil
                     }
-                    .buttonStyle(.settings)
-                    .disabled(working || appState.client == nil)
-                    .accessibilityIdentifier("settings.pulse.pin-chat")
                 }
+                .buttonStyle(.settings)
+                .disabled(working || appState.client == nil)
+                .accessibilityIdentifier("settings.pulse.pin-chat")
             }
             if let errorMessage {
                 Text(verbatim: errorMessage)
@@ -715,10 +716,16 @@ struct PulseSettingsPage: View {
     }
 
     /// The model picker's first choice, Default, with what it runs on:
-    /// the model Pulse's hidden chat is set to, else Hermes's main model.
-    static func defaultModelTitle(_ state: PulseState) -> String {
+    /// the model Pulse's hidden chat is set to, else Hermes's main model,
+    /// as it is when the chat's provider is no longer one of `providers`
+    /// (Hermes drops it when it reopens the chat; empty: not loaded yet).
+    static func defaultModelTitle(_ state: PulseState, providers: [ProviderInfo] = []) -> String {
         guard state.reportsDefaultModel else { return AppLocalization.string("Default") }
-        guard let model = state.defaultModel else { return AppLocalization.string("Default (Hermes' main model)") }
+        let wanted = state.defaultModel?.provider ?? ""
+        let dropped = !wanted.isEmpty && !providers.isEmpty && !providers.contains { $0.matches(wanted) }
+        guard let model = state.defaultModel, !dropped else {
+            return AppLocalization.string("Default (Hermes' main model)")
+        }
         return AppLocalization.string("Default (\(model.model))")
     }
 
@@ -728,7 +735,7 @@ struct PulseSettingsPage: View {
             ConduitMenuPicker(
                 value: selection,
                 choices: VoiceJobModelSettingsSection.modelChoices(
-                    defaultTitle: Self.defaultModelTitle(state),
+                    defaultTitle: Self.defaultModelTitle(state, providers: providers),
                     defaultTag: "",
                     selection: selection,
                     providers: providers

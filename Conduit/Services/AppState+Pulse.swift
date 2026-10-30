@@ -50,13 +50,6 @@ extension AppState {
         if inUse { await loadSessions(forceRefresh: true) }
     }
 
-    /// Pins Pulse's hidden chat, so Hermes never prunes it: the chats list
-    /// doesn't show it, so Settings > Pulse is where it gets pinned.
-    func pinPulseHomeChat(_ chatID: String) async throws {
-        guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        _ = try await sendSessionMutation(chatID, body: ["pinned": true], profile: Self.pulseHomeProfile, bridge: bridge)
-    }
-
     /// Hermes' model slot for Pulse's memory, report lists, and follow-up
     /// and Do it checks, which the plugin registers; nil leaves it on
     /// "auto", where the plugin runs them on Pulse's hidden chat's model
