@@ -332,11 +332,17 @@ final class AppStateChatResumeTests: XCTestCase {
         disclosure.willToggleGroup("r2", to: true)
         XCTAssertEqual(drawn(), ["u1", "r1", "a1", "r2", "r3", "r4"])
 
+        // An open run stays open as a review joins it live.
+        messages.append(review("r4b", "6b"))
+        cache.update(for: messages)
+        XCTAssertEqual(run("r2")?.run.count, 4)
+        XCTAssertEqual(drawn(), ["u1", "r1", "a1", "r2", "r3", "r4", "r4b"])
+
         messages.append(ChatMessage(id: "u2", role: .user, content: "next", timestamp: "7"))
         messages.append(review("r5", "8"))
         cache.update(for: messages)
         XCTAssertEqual(run("r5")?.run.count, 1)
-        XCTAssertEqual(run("r4")?.run.count, 3)
+        XCTAssertEqual(run("r4")?.run.count, 4)
     }
 
     /// Self-improvement reviews arrive only as `review.summary` stream events
