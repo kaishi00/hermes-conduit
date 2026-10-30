@@ -2470,6 +2470,9 @@ struct ComposerBar: View, Equatable {
         // editor to the chat it was opened in.
         dictation.cancel()
         isShowingFullEditor = false
+        // A send from the sheet kept focus for the chat it was in, not the
+        // one loading now.
+        focusesAfterFullEditor = false
         if let loadedDraftKey = keptKey {
             saveDraft(for: loadedDraftKey)
             if Self.draftKeysAreEquivalent(
