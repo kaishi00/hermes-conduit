@@ -16,7 +16,7 @@ per account, waiting for a runner had become the main cost.
 
 | Workflow | When | What runs | Gates a merge? |
 |---|---|---|---|
-| `.github/workflows/ci.yml` | every PR and every push to `main`, `pulse` or `linked-rooms` (each of those branches runs its own copy) | the Linux validation and CI-tooling self-test, and **one macOS job** (`Smoke`) that builds once and runs the pinned unit smoke tests and the pinned UI smoke tests on that build and simulator | yes, through the single `CI Gate` check |
+| `.github/workflows/ci.yml` | every PR and every push to `main` or `linked-rooms` (each of those branches runs its own copy) | the Linux validation and CI-tooling self-test, and **one macOS job** (`Smoke`) that builds once and runs the pinned unit smoke tests and the pinned UI smoke tests on that build and simulator | yes, through the single `CI Gate` check |
 | `.github/workflows/nightly.yml` | nightly on `main`, and on demand (Actions > Nightly > Run workflow) | **every unit class** except the timing families in `unit_shards` balanced jobs, the timing/performance/dormancy families repeated 3 times, and the **complete UI suite** in `nightly_ui_shards` jobs, no job retrying its own tests (`nightly-rerun.yml` reruns only a scheduled run's jobs that never got a runner) | no; a failed scheduled run emails the owner |
 | `.github/workflows/nightly-rerun.yml` | a scheduled Nightly run that failed (never a dispatched one, so a release candidate's run keeps its result) | reruns the run's failed jobs when every one of them was cancelled without ever getting a runner (macOS capacity), at most twice; a run with a job that ran and failed is left alone | no |
 | `.github/workflows/contributor-label.yml` | a push or PR comment by the author of a PR labeled `waiting on contributor`, and that label being added | swaps the label for `waiting on Eric` (and back); it only edits labels and checks nothing out | no |
@@ -90,7 +90,7 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   Xcode build and runner image (`dd-v1-<kind>-<xcode>-<image>-<sha>`): the
   smoke job of every push to `main` saves the full app, and nightly unit
   shard 1 saves the app-only (slim) build when it runs on `main`. A push to
-  `pulse` or `linked-rooms` saves its full app as well, for that branch's
+  `linked-rooms` saves its full app as well, for that branch's
   later pushes and the PRs into it (GitHub gives a run its own branch's
   entries, a PR's base branch's and main's). The smoke
   job and the nightly unit shards restore the newest matching entry before
@@ -192,7 +192,7 @@ side by side before anything queues. "Require branches to be up to date
 before merging" is a repository setting (Settings > Branches > main) that this
 workflow assumes is off; if it is turned back on, PRs must update again. Grow
 the smoke set or add a macOS job to ci.yml only with that ceiling in mind.
-Pushes to `pulse` and `linked-rooms` run the same way, each in that branch's
+Pushes to `linked-rooms` run the same way, in that branch's
 copy of the workflow.
 
 A nightly run schedules 8 macOS jobs (2 unit shards + 3 timing repeats + 3 UI
@@ -211,7 +211,7 @@ is one of these; those jobs never ran a test, so the rerun hides no flake.
 ## Hosted gate architecture
 
 The CI v5 shape of `.github/workflows/ci.yml` (every PR, and every push to
-`main`, `pulse` or `linked-rooms`):
+`main` or `linked-rooms`):
 
 ```
         source scan (inventory)                     CI tooling self-test (ubuntu)
@@ -245,9 +245,9 @@ nightly-only families) and `ui` (one job per UI shard).
 
 | Job | Runner | Purpose |
 |---|---|---|
-| `plan` | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1` and, on a PR into `pulse` or `linked-rooms` that merges main, main's maps where the PR and its base meet main, so the entries a merge of main brings in keep main's Checked lines (if GitHub can't say whether the PR merges main or give those maps, it warns and checks without them, so those entries fail as the PR's edits until a re-run); its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage during that lookup only warns), cheap CI-tooling tests, the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`), the **nightly partition** check (`plan-tests.py hosted`), and whether the PR needs the smoke job at all (`smoke`, below). |
+| `plan` | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1` and, on a PR into `linked-rooms` that merges main, main's maps where the PR and its base meet main, so the entries a merge of main brings in keep main's Checked lines (if GitHub can't say whether the PR merges main or give those maps, it warns and checks without them, so those entries fail as the PR's edits until a re-run); its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage during that lookup only warns), cheap CI-tooling tests, the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`), the **nightly partition** check (`plan-tests.py hosted`), and whether the PR needs the smoke job at all (`smoke`, below). |
 | `self-test` | ubuntu | CI-tooling regression suites (planner tests, destination lookup, gate/contract tests, the bash wrapper tests the plan job skips) in one job, concurrent with `smoke`. |
-| `smoke` (`Smoke`) | macos-26 | The only macOS job: restores main's build cache (on a PR into `pulse` or `linked-rooms`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no retry) and the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache on pushes to `main`, `pulse` or `linked-rooms`. |
+| `smoke` (`Smoke`) | macos-26 | The only macOS job: restores main's build cache (on a PR into `linked-rooms`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no retry) and the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache on pushes to `main` or `linked-rooms`. |
 | `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating `plan`, `smoke` and `self-test` via `scripts/ci-gate.py`. |
 
 The self-test job's timeout layering holds: each synthetic hang in the suites
@@ -286,7 +286,7 @@ test.
 ### The smoke selection
 
 `scripts/smoke-suite.json` is the checked-in selection the `smoke` job runs on
-every PR and every push to `main`, `pulse` or `linked-rooms` (CI v5), and
+every PR and every push to `main` or `linked-rooms` (CI v5), and
 `plan-tests.py smoke` validates it
 against the discovered inventory on every run:
 
@@ -507,7 +507,7 @@ for any PR that wasn't up to date. The review plan in
 `opencode-review.yml` hashes the same way with an inline copy of the script,
 and `scripts/tests/test_pr_change_id.py` holds the two to the same ids. A
 passing Smoke counts whatever PR it ran for (GitHub can't say which PR a run
-belonged to), so a commit that passed in a PR into `pulse` or `linked-rooms`
+belonged to), so a commit that passed in a PR into `linked-rooms`
 counts for a PR into `main` from the same branch; Markdown under an app or
 test folder always builds, since the id counts Markdown only by its words.
 Pushes always build, and every lookup that fails builds too.

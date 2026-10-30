@@ -93,7 +93,7 @@ struct LocationSpotEntry: Codable, Equatable {
         ]
         if let fixAt { object["fix_at"] = formatter.string(from: fixAt) }
         if let distance { object["distance_m"] = Int(distance.rounded()) }
-        if let accuracy { object["accuracy_m"] = Int(accuracy.rounded()) }
+        if let accuracy, accuracy >= 0 { object["accuracy_m"] = Int(accuracy.rounded()) }
         if let speed, speed >= 0 { object["speed_mps"] = LocationPrecisionRules.rounded(speed, decimals: 1) }
         return object
     }

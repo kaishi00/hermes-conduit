@@ -1021,7 +1021,7 @@ final class PulseFeedTests: XCTestCase {
             XCTAssertNil(try XCTUnwrap(PulseFeedPage(json: json(body))).night)  // no night, or a plugin from before
         }
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
         let midnight = Date(timeIntervalSince1970: 1_799_971_200)  // 2027-01-15 00:00 UTC
         let choices = { (hour: Int, minute: Int, night: PulseNight?) in
             PulseRest.choices(now: midnight.addingTimeInterval(Double(hour * 3600 + minute * 60)), night: night,
@@ -1161,9 +1161,9 @@ final class PulseFeedTests: XCTestCase {
         ])
     }
 
-    func testTheClearedRowSaysWhenAPutOffCardComesBack() {
+    func testTheClearedRowSaysWhenAPutOffCardComesBack() throws {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
         let noon = Date(timeIntervalSince1970: 1_800_014_400)  // 2027-01-15 12:00 UTC
         let back = { (hours: Double) in
             PulseRest.backText(noon.addingTimeInterval(hours * 3600), now: noon, calendar: calendar)
@@ -1354,6 +1354,10 @@ final class PulseFeedTests: XCTestCase {
              "why": "You tapped Do it yesterday but didn't send it.", "back": "\(back)", "back_acted_at": 1800000000}
             """)))
         }
+        // The copy is English here, whatever the test host's language.
+        let previousLanguage = UserDefaults.standard.object(forKey: AppLanguageStore.defaultsKey)
+        UserDefaults.standard.set("en", forKey: AppLanguageStore.defaultsKey)
+        defer { UserDefaults.standard.set(previousLanguage, forKey: AppLanguageStore.defaultsKey) }
         // The next calendar day, whatever a clock change in between.
         let now = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 1, to: Date(timeIntervalSince1970: 1_800_000_000)))
         XCTAssertEqual(try card("unsent").backActedAt, Date(timeIntervalSince1970: 1_800_000_000))

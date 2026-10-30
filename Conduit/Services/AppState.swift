@@ -8026,11 +8026,13 @@ final class AppState: ObservableObject {
             // The host's text, kept to one short line.
             let firstLine = detail.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
             var detail = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            if detail.count > 200 { detail = String(detail.prefix(200)) + "…" }
             // A coded refusal is for the screen that asked; here it's just the error.
-            return detail.isEmpty || DashboardTicketBridgeError.isStructuredDetail(detail)
-                ? AppLocalization.string("Hermes answered with error \(String(status)).")
-                : AppLocalization.string("Hermes answered: \(detail)")
+            // Checked before the cut, which would leave a long one unreadable.
+            if detail.isEmpty || DashboardTicketBridgeError.isStructuredDetail(detail) {
+                return AppLocalization.string("Hermes answered with error \(String(status)).")
+            }
+            if detail.count > 200 { detail = String(detail.prefix(200)) + "…" }
+            return AppLocalization.string("Hermes answered: \(detail)")
         default:
             return error.localizedDescription
         }

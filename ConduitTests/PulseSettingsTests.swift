@@ -65,7 +65,7 @@ final class PulseSettingsTests: XCTestCase {
         }
     }
 
-    func testQuietDaysRunInTheUsersWeekAndAVacationEndsOnADay() {
+    func testQuietDaysRunInTheUsersWeekAndAVacationEndsOnADay() throws {
         var sundayFirst = Calendar(identifier: .gregorian)
         sundayFirst.firstWeekday = 1
         XCTAssertEqual(PulseQuiet.weekOrder(calendar: sundayFirst), [6, 0, 1, 2, 3, 4, 5])
@@ -78,7 +78,7 @@ final class PulseSettingsTests: XCTestCase {
                        Array(0..<7))
 
         var utc = Calendar(identifier: .gregorian)
-        utc.timeZone = TimeZone(identifier: "UTC")!
+        utc.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
         let tuesday = Date(timeIntervalSince1970: 1_793_095_200)  // 2026-10-27 10:00 UTC
         XCTAssertEqual(PulseQuiet.dayText(tuesday, calendar: utc), "2026-10-27")
         // A vacation ends from tomorrow to a year ahead, a week away when switched on.
@@ -104,12 +104,13 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertEqual(PulseQuiet.calendar(zone: "Nowhere/Atall").timeZone, TimeZone.current)
     }
 
-    func testThePulseScreenSaysWhenPulseIsBack() {
+    func testThePulseScreenSaysWhenPulseIsBack() throws {
         // The copy is English here, whatever the test host's language.
+        let previousLanguage = UserDefaults.standard.object(forKey: AppLanguageStore.defaultsKey)
         UserDefaults.standard.set("en", forKey: AppLanguageStore.defaultsKey)
-        defer { UserDefaults.standard.removeObject(forKey: AppLanguageStore.defaultsKey) }
+        defer { UserDefaults.standard.set(previousLanguage, forKey: AppLanguageStore.defaultsKey) }
         var utc = Calendar(identifier: .gregorian)
-        utc.timeZone = TimeZone(identifier: "UTC")!
+        utc.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
         let tuesday = Date(timeIntervalSince1970: 1_793_095_200)  // 2026-10-27 10:00 UTC
         let midnight = utc.startOfDay(for: tuesday)
         let day = { (count: Double) in midnight.addingTimeInterval(count * 86_400) }

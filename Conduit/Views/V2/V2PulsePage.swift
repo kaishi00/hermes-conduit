@@ -1467,9 +1467,11 @@ struct V2PulsePage: View {
                 // Synced and still Adding…: the label says so, and the next load settles it.
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
-                showError(PulseRefusal.message(for: error))
                 // Where it stands now: added from another device, expired, …
+                // Loaded first: a load clears the page's error.
                 await load()
+                guard appState.activeDashboardID == dashboard else { return }
+                showError(PulseRefusal.message(for: error))
             }
         }
     }
@@ -1496,8 +1498,10 @@ struct V2PulsePage: View {
                 errorMessage = nil
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
-                showError(PulseRefusal.message(for: error))
+                // Loaded first: a load clears the page's error.
                 await load()
+                guard appState.activeDashboardID == dashboard else { return }
+                showError(PulseRefusal.message(for: error))
             }
         }
     }
