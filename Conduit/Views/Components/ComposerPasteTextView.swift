@@ -443,7 +443,9 @@ final class ImagePasteTextView: ReturnKeyTextView {
     }
 
     /// Takes or gives up focus as the composer asks; out of a window, the
-    /// wish waits for `didMoveToWindow`.
+    /// wish waits for `didMoveToWindow`. Synchronous inside `updateUIView`,
+    /// as these calls were before #1527: a change UIKit refuses there is
+    /// asked again on the next update, since the binding still says so.
     func setFocusIntent(_ wantsFocus: Bool) {
         focusesInWindow = wantsFocus
         if wantsFocus, !isFirstResponder, window != nil { becomeFirstResponder() }

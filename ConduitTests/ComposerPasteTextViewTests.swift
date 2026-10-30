@@ -682,7 +682,9 @@ final class ComposerPasteTextViewTests: XCTestCase {
 
     /// A field a send rebuilt with focus (a Mac, a hardware keyboard) is
     /// updated before it's in the window; it takes focus as it arrives, and
-    /// one that no longer wants it doesn't (#1527).
+    /// one that no longer wants it doesn't (#1527). The binding's half,
+    /// `updateUIView` passing `isFocused` on, needs a SwiftUI Context no test
+    /// can build, so a device check covers it (the entry's Open gaps).
     func testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow() {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 120))
         window.makeKeyAndVisible()

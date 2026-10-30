@@ -1862,7 +1862,9 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 **Open gaps**
 - Not yet seen on a device: a Mac and an iPad with a keyboard sending from
   the field and from the full editor, and which controls besides the
-  transcript take focus from the field on a Mac.
+  transcript take focus from the field on a Mac. No test reaches
+  `updateUIView` passing the binding's focus to the field (it needs a SwiftUI
+  Context), so that link is checked on a device only.
 - Group rooms keep the field focused after a send on a touch-only iPhone
   too, where a chat's keyboard goes down; the maintainer decides whether
   rooms follow the chat there.
