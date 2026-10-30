@@ -1871,7 +1871,8 @@ private struct MarkdownPlainCell: View {
 /// A long press on a table whose cells are plain text copies the table or
 /// turns on text selection, which draws its cells as selectable text views
 /// until its row is taken down. VoiceOver offers both as actions, Copy
-/// Table whether or not selection is on. Selection also turns on when a
+/// Table whether or not selection is on, and a pointer over the table shows
+/// a Copy Table button, since the cells' own menu replaces this one. Selection also turns on when a
 /// selection starts elsewhere in the message, so a drag from the text above
 /// or below carries into the cells, and when a pointer (a Mac, or an iPad's
 /// trackpad or mouse) moves over the table, so a click and drag in a cell
@@ -1887,6 +1888,10 @@ private struct MarkdownTableMenu: ViewModifier {
 
     /// Owns the deferred mount in the coordinator, which holds it weakly.
     @State private var deferredMountOwner = DeferredMountOwner()
+    /// A pointer is over the table: shows the Copy Table button, the menu's
+    /// Copy Table once the cells' own menu has replaced it.
+    @State private var isPointerOver = false
+    @State private var copied = false
 
     final class DeferredMountOwner {
         var segmentID: String?
@@ -1905,12 +1910,18 @@ private struct MarkdownTableMenu: ViewModifier {
                         }
                     }
                     .accessibilityAction(named: Text("Select Text"), selectText)
-                    .onHover { hovering in
-                        if hovering { selectText() }
-                    }
             } else {
                 content
             }
+        }
+        .overlay(alignment: .topTrailing) {
+            if isPointerOver {
+                copyTableButton
+            }
+        }
+        .onHover { hovering in
+            isPointerOver = hovering
+            if hovering, isOn { selectText() }
         }
         .accessibilityAction(named: Text("Copy Table"), copyTable)
         .onAppear(perform: updateDeferredMount)
@@ -1948,13 +1959,33 @@ private struct MarkdownTableMenu: ViewModifier {
         deferredMountOwner.segmentID = nil
     }
 
+    /// VoiceOver has Copy Table as an action, so the button is for the
+    /// pointer only.
+    private var copyTableButton: some View {
+        Button(action: copyTable) {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .scaledFont(.caption.weight(.semibold))
+                .frame(minWidth: 28, minHeight: 28)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .macTooltip(AppLocalization.string("Copy Table"))
+        .padding(6)
+        .accessibilityHidden(true)
+    }
+
     /// Resolving every cell's Markdown is the user's wait on a big table,
     /// so it runs off the main thread.
     private func copyTable() {
         let copyText = copyText
         Task.detached(priority: .userInitiated) {
             let text = copyText()
-            await MainActor.run { UIPasteboard.general.string = text }
+            await MainActor.run {
+                UIPasteboard.general.string = text
+                copied = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { copied = false }
+            }
         }
     }
 }
