@@ -3959,6 +3959,31 @@ and the widget's pickers (no status), and no Settings caption or doc names it
 
 **Checked:** 2026-10-27, #1369.
 
+## Swiping list rows on a Mac
+
+A list row's swipe actions in the iPad app on a Mac, and what keeps a mouse
+wheel over such a list from crashing.
+
+**Siblings:** every List with swipe actions (the Chats list's and a project
+page's rows in V2, the drawer sidebar's chat, project and project-sheet rows,
+Bots, Tasks' scheduled jobs, pinned replies, the Pulse page's cards and brief
+items, Pulse memory) · each row's right-click menu · not needed: iPhone and
+iPad (swipes unchanged) · text: no Settings caption or doc describes it
+
+**Code**
+- Guard and Mac-only menu: `Conduit/Services/MacWheelSwipeGuard.swift` (MacWheelSwipeGuardProbe, MacWheelSwipeGuardRecognizer, macSwipeActionsMenu), installed by `Conduit/ConduitApp.swift`
+- Swipe-only rows: `Conduit/Views/V2/V2PulsePage.swift` (Not now), `Conduit/Views/PulseSettingsViews.swift` (Forget)
+- Tests: `ConduitTests/MacWheelSwipeGuardTests.swift`
+
+**Rulings**
+- On a Mac, UIKit's row swipe recognizer takes no scroll events: a notched mouse wheel's events carry no raw delta, which that recognizer asks for, and newer macOS asserts on it ("Missing expected nonaccelerated scroll delta", issue #1480). Hovering a list clears the recognizer's allowedScrollTypesMask, which UIKit checks before the delta. A trackpad no longer swipes rows on a Mac, so a row whose actions are only in its swipe gets them on a right-click menu there (Claude's pick under the standing fix workflow, 2026-10-30, #1528; Eric hasn't ruled on it).
+
+**Open gaps**
+- A list that appears under a pointer that hasn't moved since, then takes a wheel turn, isn't guarded until the pointer moves.
+- Not reproduced on a device: the reporter's macOS version isn't known yet, and 26.6.2 refuses the event instead of asserting.
+
+**Checked:** 2026-10-30, #1528.
+
 ## Crash and freeze reports
 
 After Conduit crashes or freezes, iOS hands it a MetricKit diagnostic on the
