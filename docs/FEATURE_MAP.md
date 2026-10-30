@@ -3334,6 +3334,45 @@ today: no Settings caption, briefing or doc says how these cards draw)
 
 **Checked:** 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
 
+## Cards made for Hermes Desktop
+
+A Hermes Desktop plugin with a client half has the agent write a directive
+only Desktop draws, such as hermes-rich-ui's `::richui{id="…"}` from its
+`rich_present` tool. Conduit doesn't rebuild those renderers: it shows a card
+in the directive's place that says what was there and where it opens, and
+nothing that reads a reply says the directive out.
+
+**Siblings:** chats, project chats, Bot Chat, group rooms, the saved-chat
+copy and call job sheets (every Markdown surface, with or without the
+connected Hermes) · Read Aloud, Classic voice's spoken reply and Local Live's
+split · live read-backs and a Hermes call's result · what live models are
+handed, on the phone and the Watch · chat list and bot list previews · the
+notifier's push text · `::preview` (the same grammar, see Cards drawn in web
+pages)
+
+**Code**
+- The grammar: `Conduit/Views/Components/TranscriptDirectives.swift` (segments, rewriting, naming, DesktopCardDirective; also built into the Watch app, `project.yml`)
+- The card, its details sheet and the read of hermes-rich-ui's card: `Conduit/Views/Components/DesktopCardBlock.swift` (DesktopCardBlock, DesktopCardSheet, DesktopCardContents, DesktopCardContent, TranscriptDirectives.readable), through `Conduit/Views/Components/GatewayMediaDataURLResolver.swift` (connectedDashboardBridge)
+- Built from Markdown: `Conduit/Views/Components/MarkdownText.swift` (desktopCard block, directiveSegments)
+- Spoken: `Conduit/Voice/MessageReadAloudController.swift` (toggle), `Conduit/Voice/VoiceReadBack.swift` (plainSpeech), `Conduit/Voice/SpokenMediaTagFilter.swift` (Classic, Read Aloud's Now Playing, Local Live)
+- Live models: `Conduit/Views/Components/GatewayMediaTags.swift` (namingFiles)
+- Previews: `Conduit/Services/PreviewText.swift` (strip)
+- Push text: `notifier/events.py` (media_free)
+- Tests: `ConduitTests/MarkdownLargeDocumentTests+DesktopCard.swift`, `ConduitTests/GeminiLiveVoiceTests.swift` (testSpokenMediaTagFilterGivesTheSameSpeechHoweverTheReplyIsSplit), `notifier/tests/test_events.py` (test_no_push_shows_a_desktop_directive)
+
+**Rulings**
+- Never hidden without a trace: every directive Conduit can't draw becomes a visible card naming its plugin, and a tap shows the directive as written. Maintainer's ruling (2026-10-30, #1522).
+- Conduit doesn't draw a plugin's components (Table, Chart, Metric…) as its own cards: that would be the plugin's Desktop half rebuilt, kept in step with a plugin we don't control. Agents that want cards in both apps use `conduit_show` (2026-10-30, issue #1522).
+- hermes-rich-ui's card shows its own plain-text fallback, `meta.title` and `meta.summary`, from `GET /api/plugins/hermes-rich-ui/cards/<id>` on the connected Hermes, only for a well-formed id (`ru-` and 12 hex). Without it (plugin not installed, card gone, no network, no connected Hermes as in the saved copy) the card says "Card for Hermes Desktop" and to open the chat there. A read is kept for the launch; a failed one is tried again after five minutes.
+- The card holds one title line and two summary lines from its first frame, so it never changes height as its text arrives; the whole summary is in the details sheet.
+- A directive is one at a word's start, `::name{…}` holding only `key="value"` attributes, at least one: prose, code spans and CSS (`::selection{color:red}`) stay text. A quoted directive is an example and a table header cell is table text, as for previews. Desktop cards show on every Markdown surface; previews still need the connected Hermes.
+- Read Aloud and voices say "(There's a card here for Hermes Desktop.)"; live models are told "(a card in the chat made for Hermes Desktop, from <plugin>)"; previews read "Card for Hermes Desktop"; a push reads "🗂 <plugin> card". A preview reads as its file in each of these (notifier 0.120.4).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-30, #PRNUM.
+
 ## Self-improvement updates
 
 The "💾 Self-improvement review" rows Hermes adds to a chat after it saves a

@@ -173,9 +173,10 @@ enum GatewayMediaTags {
 
     /// `text` with each tag written as the file it attaches, for a voice
     /// model that tells the user about a reply: it can say a file came
-    /// without reading its path out. Directives are removed.
+    /// without reading its path out. Directives are removed, and a
+    /// preview or a Desktop card is named the same way (#1522).
     static func namingFiles(in text: String) -> String {
-        rewritingTags(in: text) { path, alt in
+        rewritingTags(in: TranscriptDirectives.naming(in: text)) { path, alt in
             let name = path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
             return (alt.map { $0 + " " } ?? "") + "(a file in the chat: \(name))"
         }

@@ -8,7 +8,9 @@
 //  path read aloud: a Local voice call on the farm said
 //  "MEDIA:/opt/data/cache/audio/tts_….mp3", and its microphone heard
 //  "media." back as the user. The chat keeps the tag and shows the file;
-//  Local Live puts it on the call's screen (`files`).
+//  Local Live puts it on the call's screen (`files`). Hermes Desktop's
+//  directives are left out the same way: a preview says nothing, a Desktop
+//  plugin's card (`::richui{id="…"}`) is a short note (#1522).
 //
 
 import Foundation
@@ -74,16 +76,31 @@ struct SpokenMediaTagFilter {
         let earlier = said
         said = ""
         let line = earlier + part
-        guard let segments = GatewayMediaTags.segments(in: line) else { return part + newline }
+        // A quoted directive is an example, said as written.
+        let directives = line.trimmingCharacters(in: .whitespaces).hasPrefix(">") ? nil : TranscriptDirectives.segments(in: line)
+        guard directives != nil || GatewayMediaTags.segments(in: line) != nil else { return part + newline }
         var kept: [String] = []
-        for segment in segments {
-            switch segment {
+        for piece in directives ?? [.text(line)] {
+            switch piece {
+            case .preview:
+                continue
+            case .desktopCard:
+                kept.append(DesktopCardDirective.spokenNote)
             case .text(let text):
-                kept.append(text)
-            case .media(let path, let alt):
-                // A link's label is words the reply wrote; the path is not.
-                if let alt { kept.append(alt) }
-                files.append(path.contains(where: \.isWhitespace) ? "MEDIA:`\(path)`" : "MEDIA:\(path)")
+                guard let segments = GatewayMediaTags.segments(in: text) else {
+                    kept.append(text.trimmingCharacters(in: .whitespaces))
+                    continue
+                }
+                for segment in segments {
+                    switch segment {
+                    case .text(let text):
+                        kept.append(text)
+                    case .media(let path, let alt):
+                        // A link's label is words the reply wrote; the path is not.
+                        if let alt { kept.append(alt) }
+                        files.append(path.contains(where: \.isWhitespace) ? "MEDIA:`\(path)`" : "MEDIA:\(path)")
+                    }
+                }
             }
         }
         // A line that was only a tag says nothing; one whose words were
@@ -92,7 +109,7 @@ struct SpokenMediaTagFilter {
         let spoken = String(line.prefix(while: \.isWhitespace)) + kept.joined(separator: " ")
         if spoken.hasPrefix(earlier) { return String(spoken.dropFirst(earlier.count)) + newline }
         // Said differently already: the rest, without its tags.
-        let rest = GatewayMediaTags.removingTags(from: part)
+        let rest = TranscriptDirectives.readable(from: GatewayMediaTags.removingTags(from: part))
         return (part.first?.isWhitespace == true && rest.first?.isWhitespace != true ? " " : "") + rest + newline
     }
 
@@ -143,6 +160,20 @@ struct SpokenMediaTagFilter {
                 break
             }
             search = open.upperBound
+        }
+        // A Desktop directive, `::` at a word's start or a `:` that may
+        // become one, goes with its line too.
+        search = text.startIndex
+        while let colons = text.range(of: "::", range: search..<text.endIndex) {
+            if colons.lowerBound == text.startIndex || text[text.index(before: colons.lowerBound)].isWhitespace {
+                held = min(held, colons.lowerBound)
+                break
+            }
+            search = colons.upperBound
+        }
+        if text.last == ":" {
+            let colon = text.index(before: text.endIndex)
+            if colon == text.startIndex || text[text.index(before: colon)].isWhitespace { held = min(held, colon) }
         }
         // Spaces go with a tag that may follow them, and a line's opening
         // markers ("- ", "**") with one too; with none, it's said as it came.

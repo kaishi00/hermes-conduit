@@ -2142,6 +2142,7 @@ extension MarkdownBlock {
         case .math(let source): return source
         case .image(let url, let alt): return "\(alt)\(url)"
         case .htmlPreview(let path): return path
+        case .desktopCard(let card): return card.source
         case .divider: return "---"
         }
     }

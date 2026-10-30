@@ -2749,6 +2749,11 @@ extension HermesVoiceGatewayTimeoutTests {
             ("[[audio_as_voice]]\nMEDIA:/a.ogg\nHi.", "Hi."),
             ("Wiki [[Page]] and MEDIA:'/Users/me/My Files/r.pdf' end", "Wiki [[Page]] and end"),
             ("Done.\r\nMEDIA:/a.mp3\r\nBye.", "Done.\nBye."),
+            // Hermes Desktop's directives (#1522): a preview says nothing, a
+            // plugin's card a short note.
+            ("Rents below:\n::richui{id=\"ru-c91286278685\"}\nDone.", "Rents below:\n\(DesktopCardDirective.spokenNote)\nDone."),
+            ("Chart ::preview{file=\"/tmp/a.html\"} here.", "Chart here."),
+            ("Use ::selection{color:red} in CSS.", "Use ::selection{color:red} in CSS."),
         ]
         for (reply, said) in replies {
             XCTAssertEqual(SpokenMediaTagFilter.filter(reply), said, reply)
