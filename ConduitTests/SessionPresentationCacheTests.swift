@@ -3506,6 +3506,104 @@ extension SessionPresentationCacheTests {
         )
     }
 
+    /// The app's stores are files of their own, out of UserDefaults.standard
+    /// (a write there redraws every `@AppStorage` view): what one run saves,
+    /// the next reads from the files, and a removal goes from them too.
+    func testTheAppsStoresAreFilesOfTheirOwn() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SessionPresentationFiles-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = SessionPresentationCache(storage: SessionPresentationFiles(directory: directory), writesAsynchronously: true)
+        let row = [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "")]
+
+        cache.save(
+            [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "2024-01-01T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        cache.waitForPendingWrites()
+        let files = SessionPresentationFiles(directory: directory)
+        XCTAssertNotNil(files.data(forKey: "conduit.sessionPresentation.v1"))
+        XCTAssertEqual(
+            SessionPresentationCache(storage: files).merge(row, profile: "default", sessionIDs: ["session-a"]).first?.timestamp,
+            "2024-01-01T10:00:00Z",
+            "The next launch reads the file"
+        )
+
+        cache.removeSessions(profile: "default", sessionIDs: ["session-a"])
+        XCTAssertEqual(
+            SessionPresentationCache(storage: files).merge(row, profile: "default", sessionIDs: ["session-a"]).first?.timestamp,
+            "",
+            "A removal holds in the files at once"
+        )
+        cache.waitForPendingWrites()
+    }
+
+    /// The first launch with the files moves the stores an earlier build
+    /// kept in the defaults into them, and removes them from the defaults.
+    func testStoresKeptInTheDefaultsMoveToTheFiles() throws {
+        let suiteName = "conduit.tests.presentation-move-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SessionPresentationFiles-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        SessionPresentationCache(defaults: defaults).save(
+            [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "2024-01-01T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        let files = SessionPresentationFiles(directory: directory)
+        // A file from an earlier run of a build with the files: the defaults
+        // were written since, by a build from before.
+        files.storeData(Data("{}".utf8), forKey: "conduit.sessionPresentation.v1")
+
+        let cache = SessionPresentationCache(storage: files)
+        cache.moveStores(from: defaults, to: files)
+
+        XCTAssertNil(defaults.data(forKey: "conduit.sessionPresentation.v1"), "Gone from the defaults")
+        XCTAssertEqual(
+            cache.merge(
+                [ChatMessage(id: "row-1", role: .assistant, content: "Hello", timestamp: "")],
+                profile: "default",
+                sessionIDs: ["session-a"]
+            ).first?.timestamp,
+            "2024-01-01T10:00:00Z",
+            "The defaults' store replaced the older file"
+        )
+    }
+
+    /// A save reuses a row's record only while the row is as it was saved:
+    /// a row whose text changed is fingerprinted again, so what's restored
+    /// later belongs to its new text.
+    func testASavedRowThatChangesIsSavedAgain() throws {
+        let suiteName = "conduit.tests.presentation-records-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let cache = SessionPresentationCache(defaults: defaults)
+        func save(_ content: String, _ timestamp: String) {
+            cache.save(
+                [ChatMessage(id: "row-1", role: .assistant, content: content, timestamp: timestamp)],
+                profile: "default",
+                sessionIDs: ["session-a"]
+            )
+        }
+        func restoredTimestamp(_ content: String) -> String? {
+            SessionPresentationCache(defaults: defaults).merge(
+                [ChatMessage(id: "row-1", role: .assistant, content: content, timestamp: "")],
+                profile: "default",
+                sessionIDs: ["session-a"]
+            ).first?.timestamp
+        }
+
+        save("Hel", "2024-01-01T10:00:00Z")
+        save("Hel", "2024-01-01T10:00:00Z")
+        XCTAssertEqual(restoredTimestamp("Hel"), "2024-01-01T10:00:00Z")
+
+        save("Hello, all done", "2024-01-01T10:00:05Z")
+        XCTAssertEqual(restoredTimestamp("Hello, all done"), "2024-01-01T10:00:05Z", "The streamed row's new text and time")
+    }
+
     /// The suspend path must not block the main thread on the write queue
     /// (a UserDefaults write there can wait on SwiftUI's lock, which the
     /// main thread holds during a view update: a watchdog-killed deadlock).

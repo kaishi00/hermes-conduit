@@ -10279,7 +10279,11 @@ final class AppState: ObservableObject {
         activeSessionTitle = Self.botConversationTitle(for: reference, mainName: profileDisplayName("default"))
     }
 
+    /// Writes only a change: every chat open calls this, and a write to the
+    /// defaults redraws each `@AppStorage` view.
     private func persistActiveSessionTitles() {
+        let stored = defaults.dictionary(forKey: activeSessionTitlesByProfileKey) as? [String: String] ?? [:]
+        guard stored != activeSessionTitlesByProfile else { return }
         defaults.set(activeSessionTitlesByProfile, forKey: activeSessionTitlesByProfileKey)
     }
 

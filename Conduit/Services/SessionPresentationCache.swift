@@ -15,8 +15,16 @@ final class SessionPresentationCache {
     /// The app's instance writes to disk off the main thread: every caller
     /// is AppState (main actor), and a full-store encode plus UserDefaults
     /// write used to run there on each streaming flush and turn completion,
-    /// a cost that grew with the length of the chat.
-    static let shared = SessionPresentationCache(writesAsynchronously: true)
+    /// a cost that grew with the length of the chat. Its stores are files of
+    /// their own (`SessionPresentationFiles`), out of UserDefaults.standard.
+    static let shared = makeShared()
+
+    private static func makeShared() -> SessionPresentationCache {
+        let files = SessionPresentationFiles(directory: SessionPresentationFiles.defaultDirectory())
+        let cache = SessionPresentationCache(storage: files, writesAsynchronously: true)
+        cache.moveStores(from: .standard, to: files)
+        return cache
+    }
     static let maxUnconfirmedPendingDecisionAge: TimeInterval = 24 * 60 * 60
 
     /// Returns whether a clarification still holds an unresolved decision.
@@ -138,7 +146,7 @@ final class SessionPresentationCache {
     /// ambiguous for pending decisions. Keep an unconfirmed decision across a
     /// cold launch for a bounded grace period, then prefer a stale-card miss
     /// over making an old request answerable forever.
-    private let defaults: UserDefaults
+    private let storage: SessionPresentationStorage
     private let now: () -> Date
     private let storageKey = "conduit.sessionPresentation.v1"
     private let pendingToolsStorageKey = "conduit.sessionPresentation.pendingTools.v1"
@@ -147,16 +155,22 @@ final class SessionPresentationCache {
     private let maxMessagesPerSession = 320
 
     /// Decoded copies of the two stores. Every public operation used to
-    /// decode the whole JSON blob from UserDefaults (often two or three
-    /// times per save); the decoded value is now kept and reused.
+    /// decode the whole JSON blob from storage (often two or three times
+    /// per save); the decoded value is now kept and reused.
     private var memoryStore: [String: CachedSession]?
     private var memoryPendingTools: [String: [CachedMessage]]?
     /// Bytes each memory copy was decoded from or encoded to. In synchronous
-    /// mode the copy is reused only while UserDefaults still holds exactly
-    /// these bytes, so a write made behind this instance's back (another
-    /// instance on the same defaults, a test fixture) is still picked up.
+    /// mode the copy is reused only while storage still holds exactly these
+    /// bytes, so a write made behind this instance's back (another instance
+    /// on the same defaults, a test fixture) is still picked up.
     private var memoryStoreData: Data?
     private var memoryPendingToolsData: Data?
+    /// Each row's record as `save` last made it, with the message it was
+    /// made from, by message id: a save makes records only for the rows
+    /// that changed, so leaving a long chat or a streaming flush doesn't
+    /// fingerprint every row's full text, tool output included, again. Holds
+    /// the last save's rows. Main thread only, as `save` is.
+    private var lastSavedRecords: [String: (message: ChatMessage, record: CachedMessage)] = [:]
     /// Guards the memory copies above. Callers are on the main actor,
     /// except `prewarm()`, which decodes on a background queue outside the
     /// lock and installs its result under it.
@@ -175,24 +189,45 @@ final class SessionPresentationCache {
     /// newer memory copy, so an older snapshot never lands after a newer one.
     private var writeTicket = 0
     private var newestWriteTicket: [StoreKind: Int] = [:]
-    /// When set, encoding and UserDefaults writes run on `writeQueue` and the
-    /// memory copies are authoritative (defaults may briefly lag behind).
+    /// When set, encoding and storage writes run on `writeQueue` and the
+    /// memory copies are authoritative (storage may briefly lag behind).
     /// Each queued write stores the memory copy as it is when the write
     /// runs, not as it was when it was queued. The app keeps itself alive
     /// through suspension until the queue drains (see AppState's background
     /// handling); nothing on the main thread may block on this queue.
     private let writeQueue: DispatchQueue?
 
-    init(
+    /// A cache whose stores are kept in `defaults`, as tests do.
+    convenience init(
         defaults: UserDefaults = .standard,
         now: @escaping () -> Date = { Date() },
         writesAsynchronously: Bool = false
     ) {
-        self.defaults = defaults
+        self.init(storage: defaults, now: now, writesAsynchronously: writesAsynchronously)
+    }
+
+    init(
+        storage: SessionPresentationStorage,
+        now: @escaping () -> Date = { Date() },
+        writesAsynchronously: Bool = false
+    ) {
+        self.storage = storage
         self.now = now
         self.writeQueue = writesAsynchronously
             ? DispatchQueue(label: "conduit.sessionPresentationCache.write", qos: .utility)
             : nil
+    }
+
+    /// Moves the stores an earlier build kept in `legacy` into `files`, and
+    /// removes them there, before the cache first reads them. A store
+    /// `legacy` still holds is the newer one (a build from before the move
+    /// ran since), so it replaces the file. One left in `legacy` because
+    /// its file couldn't be written is moved by a later launch.
+    func moveStores(from legacy: UserDefaults, to files: SessionPresentationFiles) {
+        for key in [storageKey, pendingToolsStorageKey, tombstonesStorageKey] {
+            guard let data = legacy.data(forKey: key), files.write(data, forKey: key) else { continue }
+            legacy.removeObject(forKey: key)
+        }
     }
 
     /// Blocks until every queued disk write has landed. No-op in
@@ -856,10 +891,22 @@ final class SessionPresentationCache {
 
         var store = load()
         // Masked input prompts are live-only: never written to disk.
+        var savedRecords: [String: (message: ChatMessage, record: CachedMessage)] = [:]
         let freshRecords = messages
             .filter { $0.role != .inputPrompt }
             .suffix(maxMessagesPerSession)
-            .map { CachedMessage($0) }
+            .map { message -> CachedMessage in
+                // A row as it was last saved keeps its record.
+                let record: CachedMessage
+                if let saved = lastSavedRecords[message.id], saved.message == message {
+                    record = saved.record
+                } else {
+                    record = CachedMessage(message)
+                }
+                savedRecords[message.id] = (message, record)
+                return record
+            }
+        lastSavedRecords = savedRecords
         guard !freshRecords.isEmpty else {
             guard !preservePendingDecisionCards || !unconfirmedPendingDecisionKeys.isEmpty else { return }
             var changed = false
@@ -1013,8 +1060,8 @@ final class SessionPresentationCache {
             }
             // In asynchronous mode `removingDurably` queues the writes.
             if writeQueue == nil {
-                defaults.removeObject(forKey: storageKey)
-                defaults.removeObject(forKey: pendingToolsStorageKey)
+                storage.removeObject(forKey: storageKey)
+                storage.removeObject(forKey: pendingToolsStorageKey)
             }
             return
         }
@@ -1264,9 +1311,9 @@ final class SessionPresentationCache {
     func prewarm() {
         guard writeQueue != nil else { return }
         DispatchQueue.global(qos: .userInitiated).async { [self] in
-            let data = defaults.data(forKey: storageKey)
+            let data = storage.data(forKey: storageKey)
             let sessions = data.flatMap { try? JSONDecoder().decode([String: CachedSession].self, from: $0) } ?? [:]
-            let toolsData = defaults.data(forKey: pendingToolsStorageKey)
+            let toolsData = storage.data(forKey: pendingToolsStorageKey)
             let tools = toolsData.flatMap { try? JSONDecoder().decode([String: [CachedMessage]].self, from: $0) } ?? [:]
             memoryLock.withLock {
                 if memoryStore == nil {
@@ -1285,7 +1332,7 @@ final class SessionPresentationCache {
         memoryLock.lock()
         defer { memoryLock.unlock() }
         if writeQueue != nil, let memoryStore { return memoryStore }
-        let data = defaults.data(forKey: storageKey)
+        let data = storage.data(forKey: storageKey)
         if let memoryStore, data == memoryStoreData { return memoryStore }
         let decoded = withoutTombstonedKeys(
             data.flatMap { try? JSONDecoder().decode([String: CachedSession].self, from: $0) } ?? [:]
@@ -1308,7 +1355,7 @@ final class SessionPresentationCache {
             memoryStore = nil
             return
         }
-        defaults.set(data, forKey: storageKey)
+        storage.storeData(data, forKey: storageKey)
         memoryStoreData = data
     }
 
@@ -1316,7 +1363,7 @@ final class SessionPresentationCache {
         memoryLock.lock()
         defer { memoryLock.unlock() }
         if writeQueue != nil, let memoryPendingTools { return memoryPendingTools }
-        let data = defaults.data(forKey: pendingToolsStorageKey)
+        let data = storage.data(forKey: pendingToolsStorageKey)
         if let memoryPendingTools, data == memoryPendingToolsData { return memoryPendingTools }
         let decoded = withoutTombstonedKeys(
             data.flatMap { try? JSONDecoder().decode([String: [CachedMessage]].self, from: $0) } ?? [:]
@@ -1337,7 +1384,7 @@ final class SessionPresentationCache {
         memoryPendingTools = store
         let key = pendingToolsStorageKey
         guard !store.isEmpty else {
-            defaults.removeObject(forKey: key)
+            storage.removeObject(forKey: key)
             memoryPendingToolsData = nil
             return
         }
@@ -1345,7 +1392,7 @@ final class SessionPresentationCache {
             memoryPendingTools = nil
             return
         }
-        defaults.set(data, forKey: key)
+        storage.storeData(data, forKey: key)
         memoryPendingToolsData = data
     }
 
@@ -1382,8 +1429,8 @@ final class SessionPresentationCache {
     /// write was scheduled since `ticket` (that one will store newer
     /// state). A store that was never loaded is left alone: nil means "not
     /// read yet", not "empty". The copy is taken under `memoryLock`;
-    /// encoding and the UserDefaults write happen outside it, so a UserDefaults change
-    /// notification can never re-enter the lock.
+    /// encoding and the storage write happen outside it, so a UserDefaults
+    /// store's change notification can never re-enter the lock.
     private func writeLatest(_ kind: StoreKind, ticket: Int) {
         func isNewest() -> Bool { newestWriteTicket[kind] == ticket }
         guard memoryLock.withLock({ isNewest() }) else { return }
@@ -1404,9 +1451,9 @@ final class SessionPresentationCache {
         }
         guard let encoded, memoryLock.withLock({ isNewest() }) else { return }
         if let data = encoded {
-            defaults.set(data, forKey: key)
+            storage.storeData(data, forKey: key)
         } else {
-            defaults.removeObject(forKey: key)
+            storage.removeObject(forKey: key)
         }
         let canRetireTombstones = memoryLock.withLock { () -> Bool in
             landedWriteTicket[kind] = max(landedWriteTicket[kind] ?? 0, ticket)
@@ -1421,7 +1468,7 @@ final class SessionPresentationCache {
     /// Runs a clear or delete so it holds across a kill, without waiting on
     /// the write queue. In asynchronous mode the stores on disk can lag
     /// memory, and a save queued before the removal can still land after
-    /// it, so the removed keys are recorded under their own UserDefaults key
+    /// it, so the removed keys are recorded under their own storage key
     /// before this returns and filtered out whenever a store is read from
     /// disk. That key is only ever written on the main thread (here and in
     /// `retireLandedTombstones`), so no queued write can overwrite it. Once
@@ -1461,9 +1508,9 @@ final class SessionPresentationCache {
 
     private func storeTombstones(_ stored: [Tombstone]) {
         if stored.isEmpty {
-            defaults.removeObject(forKey: tombstonesStorageKey)
+            storage.removeObject(forKey: tombstonesStorageKey)
         } else if let data = try? JSONEncoder().encode(stored) {
-            defaults.set(data, forKey: tombstonesStorageKey)
+            storage.storeData(data, forKey: tombstonesStorageKey)
         }
     }
 
@@ -1479,7 +1526,7 @@ final class SessionPresentationCache {
     /// (another instance may have written them). Caller holds `memoryLock`.
     private func loadedTombstonesLocked() -> [(tombstone: Tombstone, tickets: [StoreKind: Int])] {
         if writeQueue != nil, let tombstones { return tombstones }
-        let stored = defaults.data(forKey: tombstonesStorageKey)
+        let stored = storage.data(forKey: tombstonesStorageKey)
             .flatMap { try? JSONDecoder().decode([Tombstone].self, from: $0) } ?? []
         let loaded = stored.map { (tombstone: $0, tickets: [StoreKind.sessions: 0, .pendingTools: 0]) }
         if writeQueue != nil { tombstones = loaded }
@@ -1721,5 +1768,75 @@ final class SessionPresentationCache {
             return UUID().uuidString
         }
         return fingerprint(String(decoding: data, as: UTF8.self))
+    }
+}
+
+/// Where a presentation cache keeps its stores: files of their own in the
+/// app (`SessionPresentationFiles`), a UserDefaults suite in tests.
+protocol SessionPresentationStorage: AnyObject {
+    func data(forKey key: String) -> Data?
+    func storeData(_ data: Data, forKey key: String)
+    func removeObject(forKey key: String)
+}
+
+extension UserDefaults: SessionPresentationStorage {
+    func storeData(_ data: Data, forKey key: String) {
+        set(data, forKey: key)
+    }
+}
+
+/// The app's presentation stores, a file per store, instead of keys in
+/// UserDefaults.standard, where earlier builds kept them: every write there
+/// redrew each view reading a preference (#756), on every chat switch and
+/// every few seconds while a reply streamed, and the stores (megabytes on
+/// long agent chats) were part of the preferences file each launch reads.
+/// Written atomically, readable once the device has been unlocked since
+/// boot, and excluded from backups, as the saved chats are. Safe from any
+/// thread: it keeps nothing in memory.
+final class SessionPresentationFiles: SessionPresentationStorage {
+    private let directory: URL
+    private let fileManager: FileManager
+
+    init(directory: URL, fileManager: FileManager = .default) {
+        self.directory = directory
+        self.fileManager = fileManager
+    }
+
+    static func defaultDirectory(fileManager: FileManager = .default) -> URL {
+        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fileManager.temporaryDirectory
+        return base.appendingPathComponent("SessionPresentation", isDirectory: true)
+    }
+
+    func data(forKey key: String) -> Data? {
+        try? Data(contentsOf: fileURL(key))
+    }
+
+    func storeData(_ data: Data, forKey key: String) {
+        write(data, forKey: key)
+    }
+
+    /// Whether the file was written.
+    @discardableResult
+    func write(_ data: Data, forKey key: String) -> Bool {
+        do {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            var directoryURL = directory
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? directoryURL.setResourceValues(values)
+            try data.write(to: fileURL(key), options: OfflineChatCacheStore.writeOptions)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func removeObject(forKey key: String) {
+        try? fileManager.removeItem(at: fileURL(key))
+    }
+
+    func fileURL(_ key: String) -> URL {
+        directory.appendingPathComponent("\(key).json")
     }
 }
