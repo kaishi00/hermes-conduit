@@ -47,7 +47,7 @@ final class SessionPresentationCache {
         guard !held.isEmpty else { return files }
         let cutShort = held.allSatisfy { files.data(forKey: $0.key) == $0.data }
         if !cutShort {
-            guard held.allSatisfy({ files.write($0.data, forKey: $0.key) }) else { return legacy }
+            guard held.allSatisfy({ files.storeData($0.data, forKey: $0.key) }) else { return legacy }
             for key in storedKeys where !held.contains(where: { $0.key == key }) {
                 files.removeObject(forKey: key)
             }
@@ -1480,7 +1480,9 @@ final class SessionPresentationCache {
         }
         guard let encoded, memoryLock.withLock({ isNewest() }) else { return }
         if let data = encoded {
-            storage.storeData(data, forKey: key)
+            // One that didn't land (a full disk) leaves the store on disk as
+            // it was, so its tombstones stay until a later write lands.
+            guard storage.storeData(data, forKey: key) else { return }
         } else {
             storage.removeObject(forKey: key)
         }
@@ -1502,7 +1504,9 @@ final class SessionPresentationCache {
     /// disk. That key is only ever written on the main thread (here and in
     /// `retireLandedTombstones`), so no queued write can overwrite it. Once
     /// a write of each store queued after the removal has landed, disk
-    /// matches and the tombstones are dropped. Main thread only.
+    /// matches and the tombstones are dropped. Main thread only: recording
+    /// them is a small file write a delete waits for, the price of holding
+    /// across a kill.
     private func removingDurably(_ removed: [Tombstone], _ body: () -> Void) {
         body()
         guard writeQueue != nil, !removed.isEmpty else { return }
@@ -1804,13 +1808,17 @@ final class SessionPresentationCache {
 /// app (`SessionPresentationFiles`), a UserDefaults suite in tests.
 protocol SessionPresentationStorage: AnyObject {
     func data(forKey key: String) -> Data?
-    func storeData(_ data: Data, forKey key: String)
+    /// Whether the store was written: a file can fail to be (a full disk).
+    @discardableResult
+    func storeData(_ data: Data, forKey key: String) -> Bool
     func removeObject(forKey key: String)
 }
 
 extension UserDefaults: SessionPresentationStorage {
-    func storeData(_ data: Data, forKey key: String) {
+    @discardableResult
+    func storeData(_ data: Data, forKey key: String) -> Bool {
         set(data, forKey: key)
+        return true
     }
 }
 
@@ -1844,13 +1852,11 @@ final class SessionPresentationFiles: SessionPresentationStorage {
         try? Data(contentsOf: fileURL(key))
     }
 
-    func storeData(_ data: Data, forKey key: String) {
-        write(data, forKey: key)
-    }
-
-    /// Whether the file was written.
+    /// Whether the file was written. The first write makes the directory,
+    /// kept out of backups; the others write straight to it.
     @discardableResult
-    func write(_ data: Data, forKey key: String) -> Bool {
+    func storeData(_ data: Data, forKey key: String) -> Bool {
+        if (try? data.write(to: fileURL(key), options: Self.writeOptions)) != nil { return true }
         do {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
             var directoryURL = directory
