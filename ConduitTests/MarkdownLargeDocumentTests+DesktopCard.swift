@@ -107,6 +107,14 @@ extension MarkdownLargeDocumentTests {
         guard case .desktopCard = blocks.first else { return XCTFail("\(blocks)") }
     }
 
+    func testDesktopCard_ALaterListItemIsACardToo() {
+        for marker in ["-", "2."] {
+            let blocks = MarkdownParser.parse("\(marker == "-" ? "-" : "1.") Here are the results:\n\(marker) \(Self.richUILine)\n\(marker == "-" ? "-" : "3.") Done")
+            XCTAssertEqual(blocks.count, 3, "\(blocks)")
+            guard case .desktopCard = blocks[1] else { return XCTFail("\(blocks)") }
+        }
+    }
+
     // MARK: - The card's text
 
     func testDesktopCard_ReadsTitleAndSummaryFromTheRecord() {
