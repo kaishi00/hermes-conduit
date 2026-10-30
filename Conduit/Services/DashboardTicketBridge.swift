@@ -1085,10 +1085,27 @@ final class DashboardTicketBridge: NSObject {
         method: String = "GET",
         body: [String: Any]? = nil,
         timeoutMilliseconds: Int = 12_000,
+        maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes
+    ) async throws -> [String: Any] {
+        try await requestJSON(
+            path: path,
+            method: method,
+            body: body,
+            timeoutMilliseconds: timeoutMilliseconds,
+            maxResponseBytes: maxResponseBytes,
+            readsOnly: false
+        )
+    }
+
+    func requestJSON(
+        path: String,
+        method: String = "GET",
+        body: [String: Any]? = nil,
+        timeoutMilliseconds: Int = 12_000,
         maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes,
         // A POST that only reads (the history page) fails with the page like a
         // GET, rather than being kept through invalidate() as a write is.
-        readsOnly: Bool = false
+        readsOnly: Bool
     ) async throws -> [String: Any] {
         if let nativeOAuthSession {
             guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
