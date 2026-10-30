@@ -219,7 +219,6 @@ struct ConduitPluginSettingsDetail: View {
 
     private static func title(of channel: NotifierPluginNoticeChannel) -> String {
         switch channel {
-        case .automatic: return AppLocalization.string("Automatic")
         case .everyVersion: return AppLocalization.string("Every new version")
         case .stableOnly: return AppLocalization.string("Stable versions only")
         case .requiredOnly: return AppLocalization.string("Only when needed")
@@ -230,17 +229,9 @@ struct ConduitPluginSettingsDetail: View {
         guard appState.notifierPluginNoticeChannel.asksForNewVersions else {
             return AppLocalization.string("Conduit asks you to update only when this app needs a newer plugin. New versions, security fixes included, wait here until you update.")
         }
-        let followsMain = appState.notifierPluginNoticeChannel.followsMain(installedFrom: appState.appInstallSource)
-        let what = followsMain
+        return appState.notifierPluginNoticeChannel.followsMain
             ? AppLocalization.string("Conduit asks you to update whenever a new plugin version is out.")
             : AppLocalization.string("Conduit asks you to update only when a plugin version is marked stable, or this app needs a newer one. You can still update here any time.")
-        guard appState.notifierPluginNoticeChannel == .automatic else { return what }
-        let source = switch appState.appInstallSource {
-        case .appStore: AppLocalization.string("This copy of Conduit is from the App Store.")
-        case .testFlight: AppLocalization.string("This copy of Conduit is from TestFlight.")
-        case .xcode: AppLocalization.string("This copy of Conduit was built with Xcode.")
-        }
-        return "\(source) \(what)"
     }
 
     private func isInstall(_ status: NotifierPluginStatus) -> Bool {

@@ -6668,13 +6668,10 @@ final class AppState: ObservableObject {
             ?? { duration in try await Task.sleep(for: duration) }
         self.defaults = defaults
         let noticeChannel = NotifierPluginNoticeChannel.load(from: defaults)
-        let installSource = AppInstallSource.lastKnown(in: defaults)
         self.notifierPluginNoticeChannel = noticeChannel
-        self.appInstallSource = installSource
-        // The saved Update notices choice holds from the first status read,
-        // not only once this launch has read where Conduit came from.
+        // The saved Update notices choice holds from the first status read.
         self._notifierPlugin = Published(wrappedValue: NotifierPluginStatus(
-            followsMain: noticeChannel.followsMain(installedFrom: installSource),
+            followsMain: noticeChannel.followsMain,
             asksForNewVersions: noticeChannel.asksForNewVersions
         ))
         // The registry (and its legacy migration) loads before any connection
@@ -25834,18 +25831,11 @@ final class AppState: ObservableObject {
     /// Which plugin versions the update notice asks for (Settings >
     /// Conduit plugin > Update notices).
     @Published private(set) var notifierPluginNoticeChannel: NotifierPluginNoticeChannel
-    /// Where this copy of Conduit came from, read again each launch until
-    /// the App Store's signature verifies it.
-    @Published private(set) var appInstallSource: AppInstallSource
-    private var appInstallSourceRead = false
-    private var notifierPluginFollowsMain: Bool {
-        notifierPluginNoticeChannel.followsMain(installedFrom: appInstallSource)
-    }
     private var freshNotifierPluginStatus: NotifierPluginStatus {
         NotifierPluginStatus(
             latestVersion: latestNotifierPluginVersion,
             stableVersion: stableNotifierPluginVersion,
-            followsMain: notifierPluginFollowsMain,
+            followsMain: notifierPluginNoticeChannel.followsMain,
             asksForNewVersions: notifierPluginNoticeChannel.asksForNewVersions
         )
     }
@@ -25974,20 +25964,9 @@ final class AppState: ObservableObject {
 
     /// Reads the latest and stable plugin versions (saved, then from GitHub
     /// at most hourly), so a plugin release is offered without a new
-    /// Conduit build, and where this copy of Conduit came from, which picks
-    /// between them.
+    /// Conduit build.
     private func refreshLatestNotifierPluginVersion() async {
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
-        if !appInstallSourceRead {
-            if let verified = await AppInstallSource.detect(defaults: defaults) {
-                appInstallSourceRead = true
-                appInstallSource = verified
-            } else {
-                // Asked again on the next refresh.
-                appInstallSource = AppInstallSource.unverified()
-            }
-            applyNotifierPluginNoticeChannel()
-        }
         if latestNotifierPluginVersion == nil, let saved = NotifierPluginLatestVersion.cached(in: defaults) {
             applyLatestNotifierPluginVersion(saved)
         }
@@ -26024,7 +26003,7 @@ final class AppState: ObservableObject {
     }
 
     private func applyNotifierPluginNoticeChannel() {
-        let followsMain = notifierPluginFollowsMain
+        let followsMain = notifierPluginNoticeChannel.followsMain
         let asksForNewVersions = notifierPluginNoticeChannel.asksForNewVersions
         guard notifierPlugin.followsMain != followsMain
                 || notifierPlugin.asksForNewVersions != asksForNewVersions else { return }

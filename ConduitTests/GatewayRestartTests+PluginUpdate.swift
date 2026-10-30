@@ -243,7 +243,7 @@ extension GatewayRestartTests {
         status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.0.0", restartNeeded: false, bootID: nil)
         status.latestVersion = "9.2.0"
         status.stableVersion = "9.1.0"
-        status.followsMain = NotifierPluginNoticeChannel.requiredOnly.followsMain(installedFrom: .testFlight)
+        status.followsMain = NotifierPluginNoticeChannel.requiredOnly.followsMain
         status.asksForNewVersions = NotifierPluginNoticeChannel.requiredOnly.asksForNewVersions
         // Newer and stable versions alone ask nothing anywhere.
         XCTAssertEqual(status.noticeVersion, floor)
@@ -358,18 +358,18 @@ extension GatewayRestartTests {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         XCTAssertEqual(NotifierPluginNoticeChannel.load(from: defaults), .stableOnly)
-        // A choice made before keeps holding, Automatic included.
-        defaults.set(NotifierPluginNoticeChannel.automatic.rawValue, forKey: NotifierPluginNoticeChannel.key)
-        XCTAssertEqual(NotifierPluginNoticeChannel.load(from: defaults), .automatic)
+        // Automatic, which asked TestFlight builds for every version, is gone:
+        // whoever had it saved hears about stable versions now.
+        defaults.set("automatic", forKey: NotifierPluginNoticeChannel.key)
+        XCTAssertEqual(NotifierPluginNoticeChannel.load(from: defaults), .stableOnly)
+        defaults.set(NotifierPluginNoticeChannel.everyVersion.rawValue, forKey: NotifierPluginNoticeChannel.key)
+        XCTAssertEqual(NotifierPluginNoticeChannel.load(from: defaults), .everyVersion)
     }
 
-    func testTheNoticeChannelFollowsWhereConduitCameFrom() {
-        XCTAssertFalse(NotifierPluginNoticeChannel.automatic.followsMain(installedFrom: .appStore))
-        XCTAssertTrue(NotifierPluginNoticeChannel.automatic.followsMain(installedFrom: .testFlight))
-        XCTAssertTrue(NotifierPluginNoticeChannel.automatic.followsMain(installedFrom: .xcode))
-        XCTAssertTrue(NotifierPluginNoticeChannel.everyVersion.followsMain(installedFrom: .appStore))
-        XCTAssertFalse(NotifierPluginNoticeChannel.stableOnly.followsMain(installedFrom: .testFlight))
-        XCTAssertFalse(NotifierPluginNoticeChannel.requiredOnly.followsMain(installedFrom: .xcode))
+    func testOnlyEveryNewVersionFollowsMain() {
+        XCTAssertTrue(NotifierPluginNoticeChannel.everyVersion.followsMain)
+        XCTAssertFalse(NotifierPluginNoticeChannel.stableOnly.followsMain)
+        XCTAssertFalse(NotifierPluginNoticeChannel.requiredOnly.followsMain)
         XCTAssertFalse(NotifierPluginNoticeChannel.requiredOnly.asksForNewVersions)
         XCTAssertTrue(NotifierPluginNoticeChannel.stableOnly.asksForNewVersions)
     }
