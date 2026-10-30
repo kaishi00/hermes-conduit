@@ -52,11 +52,12 @@ extension AppState {
 
     /// Hermes' model slot for Pulse's memory, report lists, and follow-up
     /// and Do it checks, which the plugin registers; nil leaves it on
-    /// "auto", where the plugin runs them on the Pulse chat's model (Hermes'
-    /// main model when the chat has none of its own, or its provider is gone).
+    /// "auto", where the plugin runs them on Pulse's hidden chat's model
+    /// (Hermes' main model when the chat has none of its own, or its provider
+    /// is gone): Settings > Pulse's Default.
     static let pulseMemoryTask = "pulse_memory"
 
-    /// Puts Pulse's memory on `model` (nil: the Pulse chat's model), in the
+    /// Puts Pulse's memory on `model` (nil: Default, its chat's model), in the
     /// dashboard's default profile where Pulse runs. The user picked it for
     /// Pulse, so Hermes' price check doesn't ask again. It goes to the
     /// dashboard in use: the caller checks that's still the one it means.

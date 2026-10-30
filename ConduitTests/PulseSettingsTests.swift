@@ -27,6 +27,32 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(PulseState(json: json(#"{"enabled": true}"#))).note, "")
     }
 
+    func testStateSaysWhatDefaultRunsOn() throws {
+        // Pulse's chat is hidden, so the model picker's Default names its model (0.120.3).
+        // The copy is English here, whatever the test host's language.
+        let previousLanguage = UserDefaults.standard.object(forKey: AppLanguageStore.defaultsKey)
+        UserDefaults.standard.set("en", forKey: AppLanguageStore.defaultsKey)
+        defer { UserDefaults.standard.set(previousLanguage, forKey: AppLanguageStore.defaultsKey) }
+        let pinned = try XCTUnwrap(PulseState(json: json("""
+        {"enabled": true, "default_model": {"provider": "volcengine", "model": "deepseek-v4-1-flash"}}
+        """)))
+        XCTAssertEqual(pinned.defaultModel, PulseModel(provider: "volcengine", model: "deepseek-v4-1-flash"))
+        XCTAssertEqual(PulseSettingsPage.defaultModelTitle(pinned), "Default (deepseek-v4-1-flash)")
+        // Hermes drops a provider no longer set up when it reopens the chat: Default is then its main model.
+        let volcengine = ProviderInfo(name: "volcengine", models: [])
+        let openrouter = ProviderInfo(name: "openrouter", models: [])
+        XCTAssertEqual(PulseSettingsPage.defaultModelTitle(pinned, providers: [openrouter, volcengine]),
+                       "Default (deepseek-v4-1-flash)")
+        XCTAssertEqual(PulseSettingsPage.defaultModelTitle(pinned, providers: [openrouter]), "Default (Hermes' main model)")
+        let main = try XCTUnwrap(PulseState(json: json(#"{"enabled": true, "default_model": null}"#)))
+        XCTAssertNil(main.defaultModel)
+        XCTAssertEqual(PulseSettingsPage.defaultModelTitle(main), "Default (Hermes' main model)")
+        // An older plugin doesn't say: just Default.
+        let older = try XCTUnwrap(PulseState(json: json(#"{"enabled": true}"#)))
+        XCTAssertFalse(older.reportsDefaultModel)
+        XCTAssertEqual(PulseSettingsPage.defaultModelTitle(older), "Default")
+    }
+
     func testStateReadsQuietTimes() throws {
         let state = try XCTUnwrap(PulseState(json: json("""
         {"enabled": true, "quiet_days": [6, 5, 5, 9, "sat", true], "quiet_until": 1800000000,

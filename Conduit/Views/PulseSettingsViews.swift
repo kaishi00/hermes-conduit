@@ -146,16 +146,25 @@ struct PulseSettingsPage: View {
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
             }
-            if let chat = state.homeChat {
-                // Shown whether Pulse is on or off: where its cards come from.
-                SettingsMetricRow(label: AppLocalization.string("Pulse chat"), value: chat.title, lineLimit: 1)
-            }
             if state.homeChat != nil, !state.homeProblem.isEmpty {
-                // Something wrong with the Pulse chat, in the plugin's own
+                // Something wrong with Pulse's hidden chat, in the plugin's own
                 // words (English); kept out of Behind the scenes so it shows.
                 Text(verbatim: state.homeProblem)
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
+            }
+            if let chat = state.homeChat, !chat.pinned {
+                // The chats list doesn't show it, so it's pinned from here,
+                // whether or not the plugin names it as a problem.
+                Button(AppLocalization.string("Pin it")) {
+                    run { _ in
+                        try await appState.pinPulseHomeChat(id: chat.id)
+                        return nil
+                    }
+                }
+                .buttonStyle(.settings)
+                .disabled(working || appState.client == nil)
+                .accessibilityIdentifier("settings.pulse.pin-chat")
             }
             if let errorMessage {
                 Text(verbatim: errorMessage)
@@ -166,11 +175,11 @@ struct PulseSettingsPage: View {
     }
 
     private func homeChatSection(_ state: PulseState) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Pulse chat"), symbol: "pin", tint: .conduitAccent) {
-            Text(AppLocalization.string("Pulse sends its reports to a pinned chat titled “\(state.homeTitle)” in the dashboard's default profile."))
+        ConduitSettingsSection(title: AppLocalization.string("Set up Pulse"), symbol: "pin", tint: .conduitAccent) {
+            Text(AppLocalization.string("Pulse keeps its reports in a chat of its own in the dashboard's default profile. It stays out of your chats."))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
-            Button(AppLocalization.string("Create Pulse chat")) {
+            Button(AppLocalization.string("Set up Pulse")) {
                 let title = state.homeTitle
                 run { _ in
                     try await appState.createPulseHomeChat(title: title)
@@ -706,13 +715,27 @@ struct PulseSettingsPage: View {
         .accessibilityIdentifier("settings.pulse.add-time")
     }
 
+    /// The model picker's first choice, Default, with what it runs on:
+    /// the model Pulse's hidden chat is set to, else Hermes's main model,
+    /// as it is when the chat's provider is no longer one of `providers`
+    /// (Hermes drops it when it reopens the chat; empty: not loaded yet).
+    static func defaultModelTitle(_ state: PulseState, providers: [ProviderInfo] = []) -> String {
+        guard state.reportsDefaultModel else { return AppLocalization.string("Default") }
+        let wanted = state.defaultModel?.provider ?? ""
+        let dropped = !wanted.isEmpty && !providers.isEmpty && !providers.contains { $0.matches(wanted) }
+        guard let model = state.defaultModel, !dropped else {
+            return AppLocalization.string("Default (Hermes' main model)")
+        }
+        return AppLocalization.string("Default (\(model.model))")
+    }
+
     private func modelSection(_ state: PulseState) -> some View {
         let selection = state.model.map { VoiceJobModelSettingsSection.tag(provider: $0.provider, model: $0.model) } ?? ""
         return ConduitSettingsSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent) {
             ConduitMenuPicker(
                 value: selection,
                 choices: VoiceJobModelSettingsSection.modelChoices(
-                    defaultTitle: AppLocalization.string("Same as the Pulse chat"),
+                    defaultTitle: Self.defaultModelTitle(state, providers: providers),
                     defaultTag: "",
                     selection: selection,
                     providers: providers

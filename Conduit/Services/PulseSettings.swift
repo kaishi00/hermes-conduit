@@ -159,8 +159,13 @@ struct PulseState: Equatable {
     var backfill = PulseBackfill()
     var backfillDays = 30
     var ratings: [String: PulseRating] = [:]
-    /// The model Pulse's turns run on (0.57.0); nil, the Pulse chat's own.
+    /// The model Pulse's turns run on (0.57.0); nil, Default: its chat's own.
     var model: PulseModel?
+    /// What Default runs on (0.120.3): the model Pulse's hidden chat is set
+    /// to; nil, Hermes's main model, or a plugin that doesn't say.
+    var defaultModel: PulseModel?
+    /// Whether the plugin says what Default runs on (0.120.3).
+    var reportsDefaultModel = false
     /// How much Pulse nudges (0.63.0): one of PulseNudge.levels.
     var nudge = PulseNudge.defaultLevel
     /// The note to Pulse: what the user wants from it, in their own words
@@ -251,6 +256,10 @@ struct PulseState: Equatable {
         followupDailyTokensSet = PulseJSON.bool(json["followup_daily_tokens_set"]) ?? false
         if let raw = json["model"] as? [String: Any], let name = raw["model"] as? String, !name.isEmpty {
             model = PulseModel(provider: raw["provider"] as? String ?? "", model: name)
+        }
+        reportsDefaultModel = json.keys.contains("default_model")
+        if let raw = json["default_model"] as? [String: Any], let name = raw["model"] as? String, !name.isEmpty {
+            defaultModel = PulseModel(provider: raw["provider"] as? String ?? "", model: name)
         }
         for (kind, raw) in json["ratings"] as? [String: Any] ?? [:] {
             guard let counts = raw as? [String: Any] else { continue }
