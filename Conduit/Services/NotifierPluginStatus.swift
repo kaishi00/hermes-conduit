@@ -54,8 +54,8 @@ struct NotifierPluginStatus: Equatable {
     static let recommendedVersion = "0.48.0"
 
     /// The plugin version on notifier main when this build was archived
-    /// (scripts/stamp-plugin-version.py): the stable version an App Store
-    /// build asks for, so each build moves it forward. Nil for a Run or CI
+    /// (scripts/stamp-plugin-version.py): the stable version a build asks
+    /// for by default, so each build moves it forward. Nil for a Run or CI
     /// build, or when GitHub couldn't be reached at archive time.
     static let archivedVersion = Bundle.main.object(forInfoDictionaryKey: "ConduitArchivedPluginVersion") as? String
 

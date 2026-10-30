@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Record the plugin version on notifier main in an archived Conduit.app.
 
-App Store builds ask the host to update the Conduit plugin only up to a
-stable version, not every version on main (NotifierPluginNoticeChannel). The
-archive is that stable version: whatever was on main when the build was cut
-is what it was tested against on TestFlight. This writes it to the built
-Info.plist as ConduitArchivedPluginVersion, so each App Store build moves the
+Conduit asks the host to update the Conduit plugin only up to a stable
+version by default, not every version on main (NotifierPluginNoticeChannel).
+The archive is that stable version: whatever was on main when the build was
+cut is what it was tested against on TestFlight. This writes it to the built
+Info.plist as ConduitArchivedPluginVersion, so each build moves the
 floor forward with nobody bumping it. `stable:` in the notifier's
 channels.yaml can still raise it between builds (for an urgent plugin fix).
 
