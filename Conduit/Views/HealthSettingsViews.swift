@@ -134,7 +134,8 @@ struct HealthSettingsPage: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
-        if let cursor = engine.state.backfillCursor, let start = engine.state.historyStart, cursor > start {
+        if let cursor = engine.state.backfillCursor, let start = engine.state.historyStart,
+           cursor > max(start, engine.state.backfillFloor ?? start) {
             Text(AppLocalization.string("Bringing in history: back to \(cursor.formatted(date: .abbreviated, time: .omitted)) so far."))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
