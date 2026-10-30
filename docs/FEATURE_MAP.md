@@ -3225,7 +3225,7 @@ notifier's copies of both
 - CI's smoke skip counts a passing Smoke from whatever PR it ran for, as reviews do: a commit that passed in a PR into `pulse` or `linked-rooms` counts for a PR into `main` from the same branch (2026-10-29, #1469).
 - Re-running a review from the Actions page still reviews: the run being rerun isn't finished, so it doesn't count as reviewed (2026-10-29, #1466).
 
-**Checked:** 2026-10-30, #PRNUM (GLM-5.3-Flash again; notifier #480); 2026-10-29, #1502 (Eric ruled that Markdown under an app or test folder gets both reviewers); 2026-10-29, #1469 (Markdown under an app or test folder counts as code for reviews and always builds in CI; notifier #456); #1467 (the change id hashes any bytes and a failing one counts as no match; the notifier's data files count as code, notifier #455; CI's copy of the change id is in Code, held to the review's by a test); #1466.
+**Checked:** 2026-10-30, #1548 (GLM-5.3-Flash again; notifier #480); 2026-10-29, #1502 (Eric ruled that Markdown under an app or test folder gets both reviewers); 2026-10-29, #1469 (Markdown under an app or test folder counts as code for reviews and always builds in CI; notifier #456); #1467 (the change id hashes any bytes and a failing one counts as no match; the notifier's data files count as code, notifier #455; CI's copy of the change id is in Code, held to the review's by a test); #1466.
 
 ## Nightly reruns
 
