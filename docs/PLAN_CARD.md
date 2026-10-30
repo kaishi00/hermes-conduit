@@ -105,9 +105,10 @@ conduit_push plugin doesn't change.
   by its height.
 - **Keyboard up** (someone typing): the plan keeps to its one line; an
   open card comes back when the keyboard goes. A tap on the line puts the
-  keyboard away and opens the card. A Mac has no on-screen keyboard and
-  its composer keeps focus between messages, and a hardware keyboard puts
-  it away, so there the line opens whatever the focus (issue 1510). The
+  keyboard away and opens the card. A Mac has no on-screen keyboard, and
+  a hardware keyboard puts it away; in both the composer keeps focus
+  between messages, so there the line opens whatever the focus (issue
+  1510, #1527). The
   classic shell doesn't report the composer's focus, so there the line
   never keeps to itself.
 - The line pops up from the composer and the card opens upward with a

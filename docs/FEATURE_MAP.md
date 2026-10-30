@@ -1792,7 +1792,9 @@ Settings caption describes it
   expanded when the chat's column has the room (600 pt, Artifacts beside it
   taken off) and rests below that. Mac: it stays expanded at any width, with
   its controls always in reach. There is no setting (Eric, 2026-10-29,
-  #1512, issue 1483).
+  #1512, issue 1483). On a Mac or with a hardware keyboard a send keeps the
+  field focused, so a composer that rests stays expanded after it until a
+  tap elsewhere (2026-10-30, #1527, see Composer focus after a send).
 - A composer that stays expanded keeps the big voice button beside it, as the
   resting bar does, rather than sliding it aside while typing; the controls
   row then leaves out its own voice button, and its mic when the big button
@@ -1807,7 +1809,7 @@ Settings caption describes it
   resizes, and a Mac window at its narrowest. On an iPad the first frame
   of a chat may still show the resting bar before its width is measured.
 
-**Checked:** 2026-10-29, #1512 (new entry, issue 1483).
+**Checked:** 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
 
 ## Composer focus after a send
 
@@ -1819,15 +1821,22 @@ one can be typed straight away, or gives it up so the keyboard goes down.
 Interrupt), and a message that waits for its chat ("Sends when connected";
 done, #1527) · Stop in Send's place (done, #1527) · the full editor (done,
 #1527: a send from it gives the field focus back as the sheet goes) · group
-rooms' composer (not needed: its send never takes focus from the field, on
-any device) · a prediction sent from the suggestion row (done, #1527:
-the same send, so it keeps whatever focus the field had) · the plan card, whose rule already
-counts on a Mac's composer keeping focus (not needed, see Plan card) ·
+rooms' composer (gap: its send never takes focus from the field, on any
+device, so a Mac and a hardware keyboard already keep it; on a touch-only
+iPhone too, see Open gaps) · a prediction sent from the suggestion row (done, #1527:
+the same send, so it keeps whatever focus the field had) · the plan card, which opens whatever the focus on a Mac or with a hardware
+keyboard (not needed: its check is for the keyboard, not the focus; its
+ruling now says the focus stays, see Plan card) · the resting composer and
+the minimised call bar, which follow focus (done, #1527: with a hardware
+keyboard on an iPhone or a narrow iPad the composer stays expanded and the
+call bar stays hidden after a send while the field keeps focus, as while
+typing; a tap elsewhere rests it, see Composer at rest and expanded) ·
 iPhone, iPad and Mac · no Settings caption or doc describes it
 
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.keepsFocusAfterSend)
-- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, queueUntilChatIsReady, performComposerAction), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView: a field rebuilt with focus takes it once it's in the window)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; composerInUse and hidesMinimisedCallBar, which follow focus), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView: a field rebuilt with focus takes it once it's in the window)
+- Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`, opened by ComposerBar's expand button (which takes focus from the field) and its sheet
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send)
 - Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndWithAHardwareKeyboard)
 
@@ -2781,14 +2790,14 @@ keeps to itself there)
 - Docked at the bottom above the composer, a line that announces a new plan without opening over the chat; the artifact card was dropped (2026-10-23, #1135, Eric).
 - An announced plan is on screen: a new plan, even one that arrives finished after the last one went, clears the hidden state and gets its own 60 s (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
 - The line and the card cap Dynamic Type at accessibility1; the sheet, a scrolling list, takes every size (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
-- The plan keeps to its one line only while an on-screen keyboard can be up: a Mac's composer keeps focus between messages and a hardware keyboard puts it away, so there the line opens whatever the focus, and a tap on the line under the keyboard puts the keyboard away and opens the card (2026-10-29, #1511, issue #1510).
+- The plan keeps to its one line only while an on-screen keyboard can be up: a Mac has none and a hardware keyboard puts it away, and in both the composer keeps focus between messages (see Composer focus after a send), so there the line opens whatever the focus, and a tap on the line under the keyboard puts the keyboard away and opens the card (2026-10-29, #1511, issue #1510; focus kept after a send, #1527).
 
 **Open gaps**
 - The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
 - Two announcements within 450 ms race on the pulse (#1135 review).
 - With a hardware keyboard the line opens even if the on-screen keyboard is summoned; the check is for a connected keyboard, not a visible one (#1511 review).
 
-**Checked:** 2026-10-29, #1511.
+**Checked:** 2026-10-30, #1527 (the ruling's premise: a send keeps focus on a Mac and with a hardware keyboard; the check is unchanged); 2026-10-29, #1511.
 
 ## White text on the accent
 

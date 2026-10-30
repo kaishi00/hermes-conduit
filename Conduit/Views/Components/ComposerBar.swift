@@ -1491,7 +1491,7 @@ struct ComposerBar: View, Equatable {
 
     private func performComposerAction() {
         if stopOnly {
-            endInput(keepingFocus: isFocused)
+            endInput(keepingFocus: isFocused || isShowingFullEditor)
             isShowingFullEditor = false
             Haptics.warning()
             Task { await appState.cancelCurrent() }
