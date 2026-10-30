@@ -5,7 +5,7 @@
      touches or adds, every one its Siblings line lists, Settings captions,
      model-facing text and docs included. Done, not needed (and why), or a
      gap left open. The entry's Checked line names this PR (a merge of main
-     into `pulse` or `linked-rooms` keeps main's lines on the entries it
+     into `linked-rooms` keeps main's lines on the entries it
      brings in). Update the entry in this PR too, adding any sibling an
      earlier change missed.
      "No mapped feature" is fine when the change has no siblings; one that has

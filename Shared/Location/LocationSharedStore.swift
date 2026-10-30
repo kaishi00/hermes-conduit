@@ -10,6 +10,8 @@
 //  - unsent.json: the latest fix that couldn't be sent and the last 50
 //    arrive/leave events, with no outbox beyond that (losing a visit is
 //    better than hoarding a timeline);
+//  - spots.json: the shops Pulse asked the app to watch (PulseSpotWatcher),
+//    with their coordinates, only here;
 //  - the Keychain (App Group access group): the agreed key and the host
 //    pass the extension signs in with.
 //
@@ -81,6 +83,25 @@ enum LocationSharedStore {
         write(unsent, to: url)
     }
 
+    // MARK: Pulse spots
+
+    /// The shops being watched, or none. A file that can't be read starts
+    /// over: the next batch's reply lists the watches again.
+    static func readSpots(at url: URL? = folder?.appendingPathComponent("spots.json")) -> PulseSpotState {
+        switch read(PulseSpotState.self, at: url) {
+        case .value(let state): return state
+        case .missing: return PulseSpotState()
+        case .unreadable:
+            log.error("Location spots.json is unreadable (locked or damaged); starting empty")
+            return PulseSpotState()
+        }
+    }
+
+    @discardableResult
+    static func saveSpots(_ state: PulseSpotState, at url: URL? = folder?.appendingPathComponent("spots.json")) -> Bool {
+        write(state, to: url)
+    }
+
     // MARK: Files
 
     private static func read<Value: Decodable>(_ type: Value.Type, at url: URL?) -> Read<Value> {
@@ -139,8 +160,26 @@ struct LocationUnsent: Codable, Equatable {
     /// Whether the phone was last inside each saved place, so a monitor's
     /// first answer after launch isn't taken for an arrival.
     var inside: [String: Bool] = [:]
+    /// Watched shops come near (LocationSpots), the newest few.
+    var spotEntries: [LocationSpotEntry] = []
 
-    var isEmpty: Bool { fix == nil && events.isEmpty }
+    var isEmpty: Bool { fix == nil && events.isEmpty && spotEntries.isEmpty }
+
+    init() {}
+
+    // A file from before a field existed still opens.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fix = try container.decodeIfPresent(Fix.self, forKey: .fix)
+        events = try container.decodeIfPresent([LocationPlaceEvent].self, forKey: .events) ?? []
+        inside = try container.decodeIfPresent([String: Bool].self, forKey: .inside) ?? [:]
+        spotEntries = try container.decodeIfPresent([LocationSpotEntry].self, forKey: .spotEntries) ?? []
+    }
+
+    mutating func keep(spotEntry entry: LocationSpotEntry) {
+        guard !spotEntries.contains(where: { $0.id == entry.id }) else { return }
+        spotEntries = Array((spotEntries + [entry]).sorted { $0.at < $1.at }.suffix(LocationSpotEntry.maxUnsent))
+    }
 
     /// Keeps the newer fix and the newest events.
     mutating func keep(fix newFix: LocationFixRecord?, events newEvents: [LocationPlaceEvent]) {
@@ -152,9 +191,10 @@ struct LocationUnsent: Codable, Equatable {
     }
 
     /// Drops what was sent.
-    mutating func remove(fixID: String?, eventIDs: Set<String>) {
+    mutating func remove(fixID: String?, eventIDs: Set<String>, spotEntryIDs: Set<String> = []) {
         if let fixID, fix?.id == fixID { fix = nil }
         events.removeAll { eventIDs.contains($0.id) }
+        spotEntries.removeAll { spotEntryIDs.contains($0.id) }
     }
 }
 
