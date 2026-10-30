@@ -1531,6 +1531,9 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         // The load the bridge stopped on its way to sign-in reports that
         // cancellation as a failure: the verdict stays sign-in required.
         if didLandOnLogin { return }
+        // The tracked load has resolved, as on didFinish: the next reload
+        // has no live navigation to supersede, so none is kept as stale.
+        currentNavigation = nil
         isReady = false
         isLoadFailed = true
         rejectPending(with: error)
@@ -1543,6 +1546,9 @@ extension DashboardTicketBridge: WKNavigationDelegate {
         // The load the bridge stopped on its way to sign-in reports that
         // cancellation as a failure: the verdict stays sign-in required.
         if didLandOnLogin { return }
+        // The tracked load has resolved, as on didFinish: the next reload
+        // has no live navigation to supersede, so none is kept as stale.
+        currentNavigation = nil
         isReady = false
         isLoadFailed = true
         rejectPending(with: error)

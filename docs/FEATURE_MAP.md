@@ -1971,7 +1971,7 @@ signed-in check
 - The background session's redirect rule and the login screen's signed-in check compare origins strictly, without the http to https allowance: such a redirect comes back as the response (and is judged by isSignIn there), and the login screen with a dashboard saved on http behind a TLS edge hasn't been checked.
 - The hidden page doesn't follow that upgrade either: its navigation policy cancels an http to https move to an ordinary page as a failed load (no longer as sign-in), so a dashboard behind a TLS-forcing edge must be saved on https. Following it would take the page's landing and script-message checks and the socket off the saved origin, so it was left as is (#1191 review).
 
-**Checked:** 2026-10-26, #1247 (the hidden page's deinit removes its script handler on the main actor); 2026-10-24, at #1191.
+**Checked:** 2026-10-30, #1526 (any request, not only a ticket, reloads a page whose load failed, so a reload that lands on sign-in now reaches a history or status read as sign-in required, where it got "still connecting" before); 2026-10-26, #1247 (the hidden page's deinit removes its script handler on the main actor); 2026-10-24, at #1191.
 
 ## Skill and tool switches
 

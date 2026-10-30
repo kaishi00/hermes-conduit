@@ -100,6 +100,27 @@ final class DashboardTicketBridgeTests: XCTestCase {
         XCTAssertEqual(bridge.reloadCount, 1, "The request must reload the failed page")
     }
 
+    /// Requests that meet the same failed page together reload it once: the
+    /// first reload clears the failure before any of them waits.
+    func testConcurrentRequestsOnAFailedPageReloadItOnce() async {
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:1",
+            readinessPollAttempts: 2,
+            readinessPollInterval: .milliseconds(10)
+        )
+        bridge.webViewCanRun = { true }
+        bridge.webViewWebContentProcessDidTerminate(bridge.webView)
+
+        let first = Task { @MainActor in _ = try? await bridge.requestJSON(path: "/api/sessions") }
+        let second = Task { @MainActor in _ = try? await bridge.requestJSON(path: "/api/status") }
+        await first.value
+        await second.value
+
+        // A fresh load that fails inside the poll window can be reloaded by
+        // a later request, never by these two together.
+        XCTAssertEqual(bridge.reloadCount, 1)
+    }
+
     /// A load still in flight is polled, never restarted by a request: on a
     /// degraded link it may be about to finish.
     func testRequestLeavesALoadInFlightAlone() async {
