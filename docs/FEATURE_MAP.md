@@ -1519,6 +1519,7 @@ Read Aloud and live voice read-back · chat list previews and quotes
 **Rulings**
 - Ordered lists number as CommonMark and Hermes Desktop do: blank lines between items keep one list (2026-10-23, #1168), and a list starts at its first item's number, so steps split by a code block carry on; a marker is one to nine ASCII digits, anything else is text (2026-10-23, #1175, Eric).
 - Every view that draws a list reads the parsed block, so a numbering change is a parser change plus each renderer's marker; long replies bake ordinals into continuation chunks (#1168).
+- An item that is a Hermes Desktop card (`holdsDesktopCard`) ends the list: the card draws on its own, and the items after it start a new list from the number written on the first of them (2026-10-30, #1524, see Cards made for Hermes Desktop).
 
 **Open gaps**
 - Nested lists are flattened: an indented sub-list draws as its own list at the left edge.
@@ -1530,7 +1531,7 @@ Read Aloud and live voice read-back · chat list previews and quotes
 - A single list item too big for one long-reply chunk is split into paragraphs that each repeat its number.
 - A long reply's continuation chunks draw list items as paragraphs with the number baked in, so they lose the list's styled marker column.
 
-**Checked:** 2026-10-28, #1449 (speech leaves Hermes' file tags out, see Files Hermes attaches); 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
+**Checked:** 2026-10-30, #1524 (a Desktop card ends a list; previews and quotes name it); 2026-10-28, #1449 (speech leaves Hermes' file tags out, see Files Hermes attaches); 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
 
 ## Attaching files
 
@@ -3354,7 +3355,7 @@ notifier's push text and the README line that describes it · `::preview`
 **Code**
 - The grammar: `Conduit/Views/Components/TranscriptDirectives.swift` (segments, rewriting, naming, DesktopCardDirective; also built into the Watch app, `project.yml`)
 - The card, its details sheet and the read of hermes-rich-ui's card: `Conduit/Views/Components/DesktopCardBlock.swift` (DesktopCardBlock, DesktopCardSheet, DesktopCardContents, DesktopCardContent, TranscriptDirectives.readable), through `Conduit/Views/Components/GatewayMediaDataURLResolver.swift` (connectedDashboardBridge)
-- Built from Markdown: `Conduit/Views/Components/MarkdownText.swift` (desktopCard block, directiveSegments)
+- Built from Markdown: `Conduit/Views/Components/MarkdownText.swift` (desktopCard block, directiveSegments, holdsDesktopCard), in group rooms with the connected Hermes' resolver, `Conduit/Views/GroupChatView.swift`
 - Spoken: `Conduit/Voice/MessageReadAloudController.swift` (toggle), `Conduit/Voice/VoiceReadBack.swift` (plainSpeech), `Conduit/Voice/SpokenMediaTagFilter.swift` (Classic, Read Aloud's Now Playing, Local Live)
 - Live models: `Conduit/Views/Components/GatewayMediaTags.swift` (namingFiles)
 - Previews and quote chips: `Conduit/Services/PreviewText.swift` (strip), `Conduit/Views/Components/ChatQuote.swift` (excerpt)
@@ -3362,6 +3363,7 @@ notifier's push text and the README line that describes it · `::preview`
 - Tests: `ConduitTests/MarkdownLargeDocumentTests+DesktopCard.swift`, `ConduitTests/GeminiLiveVoiceTests.swift` (testSpokenMediaTagFilterGivesTheSameSpeechHoweverTheReplyIsSplit), `notifier/tests/test_events.py` (test_no_push_shows_a_desktop_directive)
 
 **Rulings**
+- A card's line leaves a list (the list carries on after it), and a list or heading marker before it on its line goes with the directive; a directive in a table cell is table text, as a preview's is. A directive still being written while the reply streams shows as text until its closing brace, as a preview does.
 - Never hidden without a trace: every directive Conduit can't draw becomes a visible card naming its plugin, and a tap shows the directive as written. Maintainer's ruling (2026-10-30, #1522).
 - Conduit doesn't draw a plugin's components (Table, Chart, Metric…) as its own cards: that would be the plugin's Desktop half rebuilt, kept in step with a plugin we don't control. Agents that want cards in both apps use `conduit_show` (2026-10-30, issue #1522).
 - hermes-rich-ui's card shows its own plain-text fallback, `meta.title` and `meta.summary`, from `GET /api/plugins/hermes-rich-ui/cards/<id>` on the connected Hermes, only for a well-formed id (`ru-` and 12 hex). Without it (plugin not installed, card gone, no network, no connected Hermes as in the saved copy) the card says "Card for Hermes Desktop" and to open the chat there. A read is kept for the launch; a failed one is tried again after five minutes.
@@ -3370,7 +3372,8 @@ notifier's push text and the README line that describes it · `::preview`
 - Read Aloud and voices say "(There's a card here for Hermes Desktop.)" and leave a preview out, as Read Aloud already did; live models are told "(a card in the chat made for Hermes Desktop, from <plugin>)" and a preview as its file; previews and quote chips read "Card for Hermes Desktop" and a preview as its file; a push reads "🗂 <plugin> card" and a preview as its file, named as a MEDIA tag's (notifier 0.120.4). Lines in a fenced code block and directives in a code span stay as written everywhere.
 
 **Open gaps**
-- None known.
+- The read cache (found for the launch, missing retried after five minutes) has no unit test: it reads the bridge and the clock directly.
+- Two rows showing the same card while it is first read each ask for it.
 
 **Checked:** 2026-10-30, #1524.
 
