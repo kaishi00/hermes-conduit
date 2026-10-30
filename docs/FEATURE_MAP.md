@@ -1209,6 +1209,7 @@ no chat or from a Kanban task's worker · the Kanban task such a card links, ope
 - A phone reminder comes up once, however often it's moved: the report's list keys each open reminder, and a card about one isn't made again within a week, or at all while it's open once its card was put away for good or rated not useful. A reminder due within a day still comes up the first time (2026-10-27, Eric: three cards for one cipher-lock reminder he kept moving back, "there just wasn't a reason to show it 3 times"; notifier #429, 0.106.1).
 
 **Open gaps**
+- Create Pulse chat: if titling the new chat (or the profile check) fails after the host made it, the chat stays in the default profile untitled and unpinned, not yet recorded as Pulse's, so it can show in Chats (`AppState.createPulseHomeChat`; from #1092, found in review on #1517).
 - Create Pulse chat in Settings > Pulse hasn't been tried on a real host: it must make a chat Pulse finds before anything is sent in it.
 - What a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked, Quiet for today's button included.
 - The note to Pulse in Settings > Pulse hasn't been tried on a phone against notifier 0.78.2 (#1277).
@@ -1268,12 +1269,13 @@ pulse where`, `pulse spots` and `pulse status` commands (`pulse status` shows Wh
 - With Where you are on, Pulse's look-ups may read `conduit_location` and ask Maps from "me" or a saved place, within the look-ups' caps, each read listed in Settings > Location's When Hermes read your location under the Pulse chat (2026-10-27, notifier #420).
 
 **Open gaps**
+- A walking-past pass whose Maps searches all fail (no network) still counts as the search: the phone watches no new shops until the next 1 km move after 30 minutes. Retrying sooner would change the 30-minute ruling, which is the maintainer's call (found in review on #1517).
 - None of it has been tried on a phone against notifier 0.104.0, nor the Walking past switch and its caption against notifier 0.111.0, nor arrivals from a real day's location sharing (#1379, #1426, notifier #420, #422, #423, #424).
 - A held pick also matches another saved place with the same name: the model names the place by its name, and the name keeps a pick working after its place is saved again (notifier #424).
 - Walking past hasn't been tried on a phone: how late iOS fires for 100 m circles, and whether a 3 km driving circle helps or nags, are what the kept timings are for (notifier #435, #1414). Arriving at or leaving a place that is neither saved nor a watched shop still wakes nothing.
 - An item said for a place that has no saved place keeps waiting for one until it expires; meanwhile, with walking past on, its words are watched as a kind of shop and coming near one makes it due as getting there would. What Pulse remembers says it waits, but nothing asks the user to save the place.
 
-**Checked:** 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; walking past keeps its shops and searches again at the next reply or move when every Maps search fails, instead of waiting 30 minutes); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, at #1427, carrying #1426 from the `pulse` branch (the Walking past switch and its caption in Settings > Pulse, closing that gap, with the plugin version that shows it and the Location settings its lines follow; the shops' deletion cites the walking-past decision); at #1423, carrying the `pulse` branch's entry: #1414 (walking past, from notifier #435 and the app's spot watcher; the rest as at #1379).
+**Checked:** 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, at #1427, carrying #1426 from the `pulse` branch (the Walking past switch and its caption in Settings > Pulse, closing that gap, with the plugin version that shows it and the Location settings its lines follow; the shops' deletion cites the walking-past decision); at #1423, carrying the `pulse` branch's entry: #1414 (walking past, from notifier #435 and the app's spot watcher; the rest as at #1379).
 
 ## Artifacts
 

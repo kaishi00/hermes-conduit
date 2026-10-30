@@ -155,14 +155,12 @@ final class PulseSpotWatcher {
         }
         let privates = privatePlaces()
         var nearest: [[PulseSpotState.Spot]] = []
-        var answered = false
         for watch in state.watches {
             let radius = watch.radius(driving: state.driving)
             let span = max(Self.minimumSpan, radius * 2)
             let items: [MKMapItem]
             do {
                 items = try await search(watch.query, location.coordinate, span)
-                answered = true
             } catch {
                 LocationSyncEngine.log.info("Pulse spot search failed: \(LogRedaction.message(error), privacy: .public)")
                 items = []
@@ -182,10 +180,7 @@ final class PulseSpotWatcher {
         }
         // A watch dropped while Maps answered (Walking past turned off, or
         // a reply listing fewer) keeps none of its shops.
-        // Every search failing (no network, Maps refusing) keeps the shops
-        // watched and leaves the search unstamped, so the next reply or
-        // move searches again instead of waiting out the interval.
-        guard watching, answered || state.watches.isEmpty else {
+        guard watching else {
             await syncMonitor()
             return
         }
