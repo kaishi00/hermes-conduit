@@ -82,7 +82,8 @@ enum DesktopCardContents {
     static let retryInterval: TimeInterval = 300
 
     static func content(for card: DesktopCardDirective, resolver: GatewayMediaDataURLResolver?) async -> DesktopCardContent? {
-        guard let id = card.richUICardID, let resolver else { return nil }
+        // Not connected yet says nothing about the card: nothing is kept.
+        guard let id = card.richUICardID, let resolver, resolver.connectedDashboardBridge != nil else { return nil }
         let key = "\(resolver.dashboardID?.uuidString ?? "")|\(id)"
         switch entries[key] {
         case .found(let content): return content
@@ -131,11 +132,11 @@ struct DesktopCardBlock: View {
     @Environment(\.gatewayMediaFiles) private var gatewayMediaFiles
     /// What was read, with the card it was read for: a view reused for
     /// another card never shows the last one's text.
-    @State private var loaded: (card: DesktopCardDirective, content: DesktopCardContent?)?
+    @State private var loaded: (card: DesktopCardDirective, content: DesktopCardContent)?
     @State private var showsDetails = false
 
     var body: some View {
-        let content = loaded?.card == card ? loaded?.content : DesktopCardContents.cached(for: card, resolver: gatewayMediaFiles)
+        let content = (loaded?.card == card ? loaded?.content : nil) ?? DesktopCardContents.cached(for: card, resolver: gatewayMediaFiles)
         Button {
             showsDetails = true
         } label: {
@@ -185,10 +186,18 @@ struct DesktopCardBlock: View {
         }
         .buttonStyle(.plain)
         .task(id: card) {
-            guard loaded?.card != card else { return }
-            let content = await DesktopCardContents.content(for: card, resolver: gatewayMediaFiles)
-            guard !Task.isCancelled else { return }
-            loaded = (card, content)
+            // One that can't be read yet is asked again while it's on
+            // screen: soon while Hermes isn't connected, else after the
+            // launch cache's retry interval.
+            while loaded?.card != card, !Task.isCancelled {
+                if let content = await DesktopCardContents.content(for: card, resolver: gatewayMediaFiles) {
+                    if !Task.isCancelled { loaded = (card, content) }
+                    return
+                }
+                guard card.richUICardID != nil, gatewayMediaFiles != nil else { return }
+                let connected = gatewayMediaFiles?.connectedDashboardBridge != nil
+                try? await Task.sleep(for: .seconds(connected ? DesktopCardContents.retryInterval : 10))
+            }
         }
         .sheet(isPresented: $showsDetails) {
             DesktopCardSheet(card: card, content: content)
