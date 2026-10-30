@@ -16,6 +16,7 @@
 
 import CryptoKit
 import Foundation
+import os
 
 /// One persisted transcript row. Only the fields the read-only transcript
 /// renders; interactive rows (approval/clarify cards, streaming partials)
@@ -689,6 +690,9 @@ final class OfflineChatCacheStore {
             .filter { $0.source != .cron && !$0.isArchived }
             .map(OfflineCachedSession.init)
         perform { [self] in
+            let signposter = ResponsivenessSignposts.signposter
+            let saving = signposter.beginInterval("Save chat copy", id: signposter.makeSignpostID())
+            defer { signposter.endInterval("Save chat copy", saving) }
             recordRows(
                 rows,
                 dashboardID: dashboardID,
@@ -748,9 +752,11 @@ final class OfflineChatCacheStore {
             )
         }
         snapshot.lastSessionID = sessionID
-        // The same chat left again with nothing new: nothing to write.
-        guard snapshot != saved else { return }
-        guard write(snapshot, dashboardID: dashboardID, profile: profile) else { return }
+        // The same chat left again with nothing new: nothing to write, but a
+        // copy an earlier failed index write left behind still goes.
+        if snapshot != saved {
+            guard write(snapshot, dashboardID: dashboardID, profile: profile) else { return }
+        }
         removeUnlistedTranscripts(snapshot, dashboardID: dashboardID, profile: profile)
     }
 

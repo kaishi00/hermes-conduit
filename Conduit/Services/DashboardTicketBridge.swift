@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import SwiftUI
 import WebKit
 import Security
@@ -1604,11 +1605,51 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
                 host: message.frameInfo.securityOrigin.host,
                 port: message.frameInfo.securityOrigin.port,
                 expected: expectedURL
-              ),
-              let data = raw.data(using: .utf8),
+              ) else { return }
+        receive(raw, expectedURL: expectedURL)
+    }
+
+    /// Answers up to this many UTF-16 units are parsed where they arrive.
+    static let inlineAnswerLimit = 64 * 1024
+
+    /// An answer can be megabytes (a long chat's page): one bigger than
+    /// `inlineLimit` is parsed off the main thread, which only hands it to
+    /// its request (#1533), and its task is returned. A smaller one, a
+    /// write's among them, is parsed here, so it lands before a reload or a
+    /// sign-out after it can reject its request.
+    @discardableResult
+    func receive(
+        _ raw: String,
+        expectedURL: URL,
+        inlineLimit: Int = DashboardTicketBridge.inlineAnswerLimit
+    ) -> Task<Void, Never>? {
+        guard raw.utf16.count > inlineLimit else {
+            if let payload = DashboardTicketBridge.dashboardResponsePayload(raw) {
+                answer(payload, expectedURL: expectedURL)
+            }
+            return nil
+        }
+        return Task.detached(priority: .userInitiated) { [weak self] in
+            guard let payload = DashboardTicketBridge.dashboardResponsePayload(raw) else { return }
+            await self?.answer(payload, expectedURL: expectedURL)
+        }
+    }
+
+    /// The page's answer as an object, when it is one of the page's answers.
+    nonisolated static func dashboardResponsePayload(_ raw: String) -> [String: Any]? {
+        let signposter = ResponsivenessSignposts.signposter
+        let parsing = signposter.beginInterval("Parse dashboard response", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("Parse dashboard response", parsing) }
+        guard let data = raw.data(using: .utf8),
               let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              payload["type"] as? String == "dashboard-response",
-              let id = payload["id"] as? Int,
+              payload["type"] as? String == "dashboard-response" else { return nil }
+        return payload
+    }
+
+    /// Resumes the request a parsed answer belongs to, unless it already
+    /// ended (its deadline, a reload, a sign-out).
+    private func answer(_ payload: [String: Any], expectedURL: URL) {
+        guard let id = payload["id"] as? Int,
               let continuation = pendingRequests.removeValue(for: id) else { return }
         requestDeadlines.removeValue(forKey: id)?.cancel()
 

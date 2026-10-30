@@ -696,3 +696,89 @@ private final class DashboardDownloadURLProtocolStub: URLProtocol {
 
     override func stopLoading() {}
 }
+
+extension DashboardTicketBridgeTests {
+    /// The page's answers are parsed off the main thread; only an object the
+    /// page sent as an answer counts as one.
+    func testOnlyThePagesAnswersParseAsAnswers() {
+        let payload = DashboardTicketBridge.dashboardResponsePayload(
+            #"{"type":"dashboard-response","id":3,"ok":true,"body":{"a":1}}"#
+        )
+        XCTAssertEqual(payload?["id"] as? Int, 3)
+        XCTAssertNil(DashboardTicketBridge.dashboardResponsePayload("not json"))
+        XCTAssertNil(DashboardTicketBridge.dashboardResponsePayload("[1, 2]"))
+        XCTAssertNil(DashboardTicketBridge.dashboardResponsePayload(#"{"type":"other","id":3}"#))
+    }
+
+    /// A big answer the page sends is parsed off the main thread and resumes
+    /// its request back on it; a small one, a write's, resumes it where it
+    /// arrives, before anything after it on the main thread can reject it.
+    /// One whose request already ended (its deadline, a reload) resumes
+    /// nothing, nor does a message that isn't an answer.
+    func testAReceivedAnswerResumesOnlyARequestStillWaiting() async throws {
+        let requests = DashboardTicketBridgePendingRequests()
+        let bridge = DashboardTicketBridge(
+            baseURL: "http://127.0.0.1:1",
+            pendingRequests: requests,
+            readinessPollAttempts: 0,
+            readinessPollInterval: .milliseconds(1)
+        )
+        bridge.webViewCanRun = { true }
+        // The initial load settles first, as in
+        // testAPageAnswerThatLandsAfterInvalidationIsAnsweredAfterSwitch, so
+        // its failure can't reject the requests this test answers.
+        for _ in 0..<80 where !bridge.isLoadFailed {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        let dashboard = try XCTUnwrap(URL(string: "http://127.0.0.1:1"))
+        let registered = expectation(description: "requests registered")
+        registered.expectedFulfillmentCount = 3
+        let ended = Task { @MainActor () -> Bool in
+            do {
+                _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[String: Any], Error>) in
+                    requests.insert(continuation, for: 1)
+                    registered.fulfill()
+                }
+                return true
+            } catch {
+                return false
+            }
+        }
+        let waiting = Task { @MainActor () -> Int? in
+            let body = try? await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[String: Any], Error>) in
+                requests.insert(continuation, for: 2)
+                registered.fulfill()
+            }
+            return body?["a"] as? Int
+        }
+        let written = Task { @MainActor () -> Bool? in
+            let body = try? await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[String: Any], Error>) in
+                requests.insert(continuation, for: 3)
+                registered.fulfill()
+            }
+            return body?["saved"] as? Bool
+        }
+        await fulfillment(of: [registered], timeout: 10.0)
+        // Request 1's deadline ended it before its answer was parsed.
+        requests.removeValue(for: 1)?.resume(throwing: DashboardTicketBridgeError.notReady)
+
+        // A limit of 0 sends these off the main thread, as a long chat's
+        // page goes.
+        await bridge.receive(#"{"type":"dashboard-response","id":1,"ok":true,"body":{"late":true}}"#, expectedURL: dashboard, inlineLimit: 0)?.value
+        await bridge.receive(#"{"type":"other","id":2,"ok":true,"body":{"a":2}}"#, expectedURL: dashboard, inlineLimit: 0)?.value
+        XCTAssertEqual(requests.count, 2, "Not an answer: requests 2 and 3 still wait")
+        await bridge.receive(#"{"type":"dashboard-response","id":2,"ok":true,"body":{"a":1}}"#, expectedURL: dashboard, inlineLimit: 0)?.value
+        XCTAssertNil(
+            bridge.receive(#"{"type":"dashboard-response","id":3,"ok":true,"body":{"saved":true}}"#, expectedURL: dashboard),
+            "A small answer is parsed where it arrives"
+        )
+        XCTAssertEqual(requests.count, 0, "Resumed before this line, so a reload here can't reject it")
+
+        let endedHeardTheAnswer = await ended.value
+        XCTAssertFalse(endedHeardTheAnswer, "It heard its deadline, not the late answer")
+        let answered = await waiting.value
+        XCTAssertEqual(answered, 1)
+        let saved = await written.value
+        XCTAssertEqual(saved, true)
+    }
+}

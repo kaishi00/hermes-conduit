@@ -5786,6 +5786,7 @@ final class AppState: ObservableObject {
     /// newest page alone keeps the saved pinned rows it lacks until the rest
     /// loads, so an older pinned chat doesn't blink out meanwhile.
     private func savedChatListReplacedByLiveList(newestPageOnly: Bool, dashboardID: UUID?) {
+        ResponsivenessSignposts.signposter.emitEvent("Live Chats list")
         savableChatListScope = dashboardID.map { WidgetWorkspaceID(dashboardID: $0, profile: activeProfile) }
         if let dashboardID { prefetchSavedChats(dashboardID: dashboardID) }
         guard savedChatList != nil else { return }
@@ -5912,6 +5913,7 @@ final class AppState: ObservableObject {
             displayedTranscript: saved,
             picked: OfflineChatPresentation.PickedChat(title: session.title, sessionIDs: ids, durableSessionID: durableID)
         )
+        ResponsivenessSignposts.signposter.emitEvent("Saved rows shown")
     }
 
     /// The chat a profile switched to opens on: the outgoing profile's
@@ -10279,7 +10281,11 @@ final class AppState: ObservableObject {
         activeSessionTitle = Self.botConversationTitle(for: reference, mainName: profileDisplayName("default"))
     }
 
+    /// Writes only a change: every chat open calls this, and a write to the
+    /// defaults redraws each `@AppStorage` view.
     private func persistActiveSessionTitles() {
+        let stored = defaults.dictionary(forKey: activeSessionTitlesByProfileKey) as? [String: String] ?? [:]
+        guard stored != activeSessionTitlesByProfile else { return }
         defaults.set(activeSessionTitlesByProfile, forKey: activeSessionTitlesByProfileKey)
     }
 
@@ -23770,6 +23776,10 @@ final class AppState: ObservableObject {
         widgetLease: WidgetLaunchLease? = nil
     ) async -> (outcome: SessionOpenOutcome, refused: Bool) {
         guard let client else { return (.failed, false) }
+        // From the tap to Hermes' rows, for a device trace (#1533).
+        let signposter = ResponsivenessSignposts.signposter
+        let opening = signposter.beginInterval("Chat open", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("Chat open", opening) }
         // A session open takes the viewport back from any open room. A room
         // surface is presentation-only (never session state), so closing it
         // here cannot disturb the conversation being opened; the room stays
@@ -30925,6 +30935,9 @@ final class AppState: ObservableObject {
         refusingCallsWith callRefusal: String? = nil,
         widgetLease: WidgetLaunchLease? = nil
     ) async -> Bool {
+        let signposter = ResponsivenessSignposts.signposter
+        let switching = signposter.beginInterval("Profile switch", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("Profile switch", switching) }
         let target = profile.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !target.isEmpty, target != activeProfile, let savedConnection = connection else {
             return false

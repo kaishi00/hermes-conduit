@@ -124,10 +124,12 @@ final class ChatResumeStore {
         lastSession(for: profile)?.sessionID
     }
 
+    /// Writes only a change: every chat open sets it, and a write to the
+    /// defaults redraws each `@AppStorage` view.
     func setLastSession(_ reference: SessionReference?, for profile: String) {
         guard let normalizedProfile = Self.normalizedProfile(profile) else { return }
         guard let reference else {
-            payload.lastSessionByProfile.removeValue(forKey: normalizedProfile)
+            guard payload.lastSessionByProfile.removeValue(forKey: normalizedProfile) != nil else { return }
             persist()
             return
         }
@@ -135,7 +137,8 @@ final class ChatResumeStore {
             profile: normalizedProfile,
             sessionID: reference.sessionID
         )
-        guard key.isValid, let normalized = Self.normalized(reference) else { return }
+        guard key.isValid, let normalized = Self.normalized(reference),
+              payload.lastSessionByProfile[key.profile] != normalized else { return }
         payload.lastSessionByProfile[key.profile] = normalized
         persist()
     }
