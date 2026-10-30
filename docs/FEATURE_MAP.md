@@ -1555,13 +1555,13 @@ iPad · selection across the reply · Copy response
 
 **Rulings**
 - The chat draws table cells as plain text, the cheapest to build as rows scroll in (#693). A long press offers Copy Table and Select Text; Select Text draws the cells as selectable text until the row is taken down.
-- A pointer over a table (a Mac, an iPad's trackpad or mouse) turns selection on, so a click and drag selects in a cell and Cmd+C and the context menu's Copy work, as in the reply's other text (2026-10-30, issue 1531, #PRNUM).
+- A pointer over a table (a Mac, an iPad's trackpad or mouse) turns selection on, so a click and drag selects in a cell and Cmd+C and the context menu's Copy work, as in the reply's other text (2026-10-30, issue 1531, #1535).
 
 **Open gaps**
 - Once selection is on, the long-press or right-click menu is the text's own (Copy for a selection), so Copy Table is gone for that table until its row is taken down; Copy response still copies the reply.
 - No Copy cell or Copy row (asked for as optional in issue 1531).
 
-**Checked:** 2026-10-30, #PRNUM.
+**Checked:** 2026-10-30, #1535.
 
 ## Attaching files
 
