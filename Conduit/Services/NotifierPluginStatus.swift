@@ -223,10 +223,11 @@ struct NotifierPluginStatus: Equatable {
     }
 
     /// The version a "Not now" on the notice belongs to. Only when needed
-    /// asks for one fixed version, so a restart it offers is dismissed for
-    /// the version waiting on disk: the next update's restart asks again.
+    /// asks for one fixed version, so a restart it offers (not an update,
+    /// which keeps the fixed version) is dismissed for the version waiting
+    /// on disk: the next update's restart asks again.
     var noticeDismissalVersion: String {
-        guard !asksForNewVersions, restartPending, let version else { return noticeVersion }
+        guard !asksForNewVersions, restartPending, !updateRecommended, let version else { return noticeVersion }
         return version
     }
 

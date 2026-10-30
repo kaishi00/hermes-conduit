@@ -286,6 +286,25 @@ extension GatewayRestartTests {
         XCTAssertEqual(status.noticeDismissalVersion, "9.2.0")
         status.state = .reported(version: "9.3.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
         XCTAssertEqual(status.noticeDismissalVersion, "9.3.0")
+
+        // An update still below the floor keeps the floor's key while its
+        // files wait for a restart, so "Not now" holds across that restart.
+        status.state = .reported(version: "0.2.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "0.1.0", restartNeeded: true, bootID: nil)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .update)
+        XCTAssertEqual(status.noticeDismissalVersion, floor)
+    }
+
+    func testTheSavedNoticeChoiceHoldsFromLaunch() throws {
+        let suite = "GatewayRestartTests.noticeChannel.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(NotifierPluginNoticeChannel.requiredOnly.rawValue, forKey: NotifierPluginNoticeChannel.key)
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        // Before any refresh has read where Conduit came from.
+        XCTAssertEqual(appState.notifierPluginNoticeChannel, .requiredOnly)
+        XCTAssertFalse(appState.notifierPlugin.asksForNewVersions)
+        XCTAssertFalse(appState.notifierPlugin.followsMain)
     }
 
     func testOtherNoticeChoicesKeepTheirFinishSetupText() {
