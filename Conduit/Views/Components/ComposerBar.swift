@@ -943,8 +943,9 @@ struct ComposerBar: View, Equatable {
         }
     }
 
-    /// The minimised call bar above a V2 composer hides only while someone
-    /// types. A running turn, a notice or a draft left unfocused keeps it,
+    /// The minimised call bar above a V2 composer hides only while the field
+    /// has focus, focus kept after a send on a Mac or with a hardware
+    /// keyboard included (`ComposerLayout.keepsFocusAfterSend`). A running turn, a notice or a draft left unfocused keeps it,
     /// so a call minimised in a chat can always be brought back (#695).
     static func hidesMinimisedCallBar(restsWhenIdle: Bool, isFocused: Bool) -> Bool {
         restsWhenIdle && isFocused
