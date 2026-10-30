@@ -75,7 +75,10 @@ final class OfflineChatCacheTests: XCTestCase {
         let catalog = (0..<(OfflineChatCacheStore.maxSessions + 10)).map { session("s\($0)") }
         let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
 
-        for id in ["s65", "s62", "s0"] {
+        // Two rows past the cap, recorded newest last.
+        let late = "s\(OfflineChatCacheStore.maxSessions + 5)"
+        let earlier = "s\(OfflineChatCacheStore.maxSessions + 2)"
+        for id in [late, earlier, "s0"] {
             store.record(dashboardID: dashboard, profile: "default", sessionID: id, title: id, messages: row, sessions: catalog)
         }
 
@@ -85,10 +88,10 @@ final class OfflineChatCacheTests: XCTestCase {
             XCTAssertTrue(snapshot.sessions.contains { $0.id == transcript.sessionID },
                           "\(transcript.sessionID) lost its saved row")
         }
-        XCTAssertEqual(snapshot.transcripts.map(\.sessionID), ["s0", "s62", "s65"])
+        XCTAssertEqual(snapshot.transcripts.map(\.sessionID), ["s0", earlier, late])
         // Catalog order is kept: the reserved rows sit after the newest ones.
         XCTAssertEqual(snapshot.sessions.first?.id, "s0")
-        XCTAssertEqual(Array(snapshot.sessions.suffix(2).map(\.id)), ["s62", "s65"])
+        XCTAssertEqual(Array(snapshot.sessions.suffix(2).map(\.id)), [earlier, late])
     }
 
     /// A retained transcript whose conversation the live catalog no longer
