@@ -21,6 +21,7 @@ struct ComposerInputs: Equatable {
     /// `composerAction(hasText:hasAttachments:)` for each draft shape.
     let actions: [ComposerAction]
     let placeholder: String
+    let shortPlaceholder: String
     let notice: String?
     let errorMessage: String?
     let isConnected: Bool
@@ -76,6 +77,7 @@ struct ComposerInputs: Equatable {
             appState.composerAction(hasText: $0.0, hasAttachments: $0.1)
         }
         placeholder = appState.composerPlaceholder
+        shortPlaceholder = appState.composerShortPlaceholder
         notice = appState.composerNotice
         errorMessage = appState.errorMessage
         isConnected = appState.isConnected
