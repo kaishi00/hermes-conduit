@@ -258,7 +258,20 @@ struct HermesCallSettingsSection: View {
                     }
                     if draft.alerts != nil {
                         Toggle("Call about approvals and questions", isOn: optionalBinding(\.alerts))
-                        Text("Hermes calls when it has waited a minute for your OK or an answer, or when a request fails. In a live call you can answer out loud.")
+                        Group {
+                            // The wait is the next row's to tell while it's on.
+                            if draft.alerts == true, draft.quietAtScreen == true {
+                                Text("Hermes calls when it has waited for your OK or an answer, or when a request fails. In a live call you can answer out loud.")
+                            } else {
+                                Text("Hermes calls when it has waited a minute for your OK or an answer, or when a request fails. In a live call you can answer out loud.")
+                            }
+                        }
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    if draft.alerts == true, draft.quietAtScreen != nil {
+                        Toggle("Wait while I'm at a screen", isOn: optionalBinding(\.quietAtScreen))
+                        Text("When this is on, Hermes waits longer before calling, up to 10 minutes, while you're talking to it in Hermes Desktop, the dashboard or a terminal, or have the chat open in Conduit, and a failed request there only sends a notification.")
                             .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
