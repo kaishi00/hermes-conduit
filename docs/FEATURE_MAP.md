@@ -216,7 +216,7 @@ the outcome text each model is told
 **Open gaps**
 - After a steer the model is still told Hermes "changes course now": steer and redirect both end as `.interrupted`, and the text has four copies, in `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`, `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift`, `Shared/WatchVoice/WatchJobRelay.swift` and `Shared/WatchVoice/WatchBridgeDelegation.swift` (#1157).
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445 (a job's follow-up words are marked as voice's); 2026-10-27, #1390 (Classic: speech over Hermes' acknowledgement steers); 2026-10-25, at #1252, for a call that took its first request's chat; Qwen in the siblings and the table, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-30, #1527 (the composer's Steer, Queue and Interrupt keep the field's focus on a Mac or with a hardware keyboard, see Composer focus after a send); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445 (a job's follow-up words are marked as voice's); 2026-10-27, #1390 (Classic: speech over Hermes' acknowledgement steers); 2026-10-25, at #1252, for a call that took its first request's chat; Qwen in the siblings and the table, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
 
 ## Job results during calls
 
@@ -1845,8 +1845,10 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   Stop leaves the field focused when the user was typing, as a desktop
   client does; a click or tap elsewhere (the transcript, another control)
   still takes focus away. With only the on-screen keyboard it goes down, so
-  the reply has the screen (Eric asked for it on a Mac, 2026-10-30, #1527).
-  The check is for a connected keyboard, as the plan card's is.
+  the reply has the screen (Eric asked for it on a Mac, 2026-10-30, #1527;
+  a hardware keyboard is the same desktop-style typing and gets the same
+  rule, as the plan card and model search do). The check is for a
+  connected keyboard, as the plan card's is.
 - Opening a call from the composer still takes focus away on every device:
   the call has the screen (2026-10-30, #1527).
 

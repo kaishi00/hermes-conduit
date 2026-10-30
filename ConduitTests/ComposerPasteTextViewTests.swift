@@ -680,13 +680,6 @@ final class ComposerPasteTextViewTests: XCTestCase {
         )
     }
 
-    /// Clears the general pasteboard, runs `body`, then clears it again.
-    /// Scoped to the tests that actually write to UIPasteboard.general so
-    /// every other test in this suite stays off the global pasteboard service
-    /// entirely. Deliberately performs NO read of `items`: materializing
-    /// existing clipboard content is what wedges CI simulators, while clears
-    /// and writes stay safe. The trailing clear also keeps image payloads from
-    /// leaking into later suites.
     /// A field a send rebuilt with focus (a Mac, a hardware keyboard) is
     /// updated before it's in the window; it takes focus as it arrives, and
     /// one that no longer wants it doesn't (#1527).
@@ -710,6 +703,13 @@ final class ComposerPasteTextViewTests: XCTestCase {
         XCTAssertFalse(unwanted.isFirstResponder)
     }
 
+    /// Clears the general pasteboard, runs `body`, then clears it again.
+    /// Scoped to the tests that actually write to UIPasteboard.general so
+    /// every other test in this suite stays off the global pasteboard service
+    /// entirely. Deliberately performs NO read of `items`: materializing
+    /// existing clipboard content is what wedges CI simulators, while clears
+    /// and writes stay safe. The trailing clear also keeps image payloads from
+    /// leaking into later suites.
     private func withClearedGeneralPasteboard(_ body: () throws -> Void) rethrows {
         let pasteboard = UIPasteboard.general
         pasteboard.items = []

@@ -945,8 +945,9 @@ struct ComposerBar: View, Equatable {
 
     /// The minimised call bar above a V2 composer hides only while the field
     /// has focus, focus kept after a send on a Mac or with a hardware
-    /// keyboard included (`ComposerLayout.keepsFocusAfterSend`). A running turn, a notice or a draft left unfocused keeps it,
-    /// so a call minimised in a chat can always be brought back (#695).
+    /// keyboard included (`ComposerLayout.keepsFocusAfterSend`). A running
+    /// turn, a notice or a draft left unfocused keeps it, so a call
+    /// minimised in a chat can always be brought back (#695).
     static func hidesMinimisedCallBar(restsWhenIdle: Bool, isFocused: Bool) -> Bool {
         restsWhenIdle && isFocused
     }
@@ -2308,9 +2309,10 @@ struct ComposerBar: View, Equatable {
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
-    /// Sending, steering, and stopping all move attention back to the live
-    /// conversation. The UIKit text view observes this binding and resigns
-    /// first responder, which dismisses the software keyboard.
+    /// Opening a call, and a send or Stop where the field gives up focus
+    /// (`endInput`), move attention back to the live conversation. The
+    /// UIKit text view observes this binding and resigns first responder,
+    /// which dismisses the software keyboard.
     private func dismissComposer() {
         isFocused = false
         isShowingSlashSuggestions = false
