@@ -157,11 +157,12 @@ enum TranscriptDirectives {
     }
 
     /// Text between directives, dropped when it is only list markers,
-    /// emphasis or punctuation a directive left behind ("- ", "**"), as
-    /// around a MEDIA: tag.
+    /// emphasis or punctuation a directive left behind ("- ", "**", a
+    /// numbered item's "2."), as around a MEDIA: tag.
     private static func appendText(_ text: String, to segments: inout [Segment]) {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard trimmed.contains(where: { !$0.isWhitespace && !GatewayMediaTags.leftoverMarkers.contains($0) }) else { return }
+        if segments.isEmpty, trimmed.range(of: #"^\d{1,9}[.)]$"#, options: .regularExpression) != nil { return }
         segments.append(.text(trimmed))
     }
 }

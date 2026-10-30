@@ -156,6 +156,11 @@ extension MarkdownLargeDocumentTests {
         let blocks = MarkdownParser.parse("- \(Self.richUILine)")
         XCTAssertEqual(blocks.count, 1, "\(blocks)")
         guard case .desktopCard = blocks.first else { return XCTFail("\(blocks)") }
+        // A numbered item's marker goes with it too; a number in prose stays.
+        XCTAssertEqual(TranscriptDirectives.segments(in: "2. \(Self.richUILine)")?.count, 1)
+        guard case .text("Version 2.")? = TranscriptDirectives.segments(in: "Version 2. \(Self.richUILine)")?.first else {
+            return XCTFail("\(String(describing: TranscriptDirectives.segments(in: "Version 2. \(Self.richUILine)")))")
+        }
     }
 
     func testDesktopCard_ALaterListItemIsACardToo() {

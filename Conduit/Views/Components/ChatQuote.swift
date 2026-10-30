@@ -56,7 +56,7 @@ enum ChatQuote {
             card: { _ in DesktopCardDirective.previewNote }
         )
         for rawLine in markdown.components(separatedBy: .newlines) {
-            // Enough for the preview; a long reply's tail is never scanned.
+            // Enough for the preview; the rest of a long reply isn't excerpted.
             if length > limit { break }
             var line = rawLine.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("```") || line.hasPrefix("~~~") { continue }
