@@ -1928,6 +1928,12 @@ private struct MarkdownTableMenu: ViewModifier {
             cancelDeferredMount()
         }
         guard isOn, let selectionCoordinator, let selectionSegmentID else { return }
+        // A table that appears under a live selection joins it at once, as
+        // drawn text does.
+        if selectionCoordinator.hasActiveSelection {
+            selectText()
+            return
+        }
         selectionCoordinator.deferRegistration(segmentID: selectionSegmentID, owner: deferredMountOwner) {
             selectText()
         }
