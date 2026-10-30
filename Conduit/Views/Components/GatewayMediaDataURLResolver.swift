@@ -43,6 +43,12 @@ final class GatewayMediaDataURLResolver {
         return appState
     }
 
+    /// The connected Hermes' dashboard, while it is still the one this
+    /// resolver was built for (a Desktop card's plugin route, #1522).
+    var connectedDashboardBridge: DashboardTicketBridge? {
+        currentAppState?.dashboardTicketBridge
+    }
+
     func dataURL(for path: String) async -> String? {
         guard let appState = currentAppState else { return nil }
         let result = await appState.gatewayMediaDataURL(for: path, profile: profile)

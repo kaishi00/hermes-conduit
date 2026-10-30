@@ -125,6 +125,9 @@ targets:
       # Hermes' file tags, which job results and chats read into a call
       # name as files rather than paths.
       - path: Conduit/Views/Components/GatewayMediaTags.swift
+      # Hermes Desktop's directives, which the same names read as a file
+      # or a card for Hermes Desktop.
+      - path: Conduit/Views/Components/TranscriptDirectives.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.watchkitapp

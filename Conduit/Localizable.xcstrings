@@ -388132,6 +388132,88 @@
         }
       }
     },
+    "Card for Hermes Desktop": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Karte für Hermes Desktop"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tarjeta para Hermes Desktop"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carte pour Hermes Desktop"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kartu untuk Hermes Desktop"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scheda per Hermes Desktop"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes Desktop 用のカード"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes Desktop용 카드"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Karta dla Hermes Desktop"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cartão para o Hermes Desktop"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Карточка для Hermes Desktop"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes Desktop için kart"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes Desktop 卡片"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes Desktop 卡片"
+          }
+        }
+      }
+    },
     "Conduit doesn't ask you to update. New versions, security fixes included, wait here until you update. An update you start still asks for its restart." : {
       "localizations" : {
         "de" : {
@@ -388216,6 +388298,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduit 不會請你更新。新版本（包括安全性修正）會在這裡等你更新。你開始的更新仍會請你重新啟動。"
+          }
+        }
+      }
+    },
+    "Open this chat in Hermes Desktop to see it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öffne diesen Chat in Hermes Desktop, um sie zu sehen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre este chat en Hermes Desktop para verla."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrez ce chat dans Hermes Desktop pour la voir."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buka chat ini di Hermes Desktop untuk melihatnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri questa chat in Hermes Desktop per vederla."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "表示するには、このチャットを Hermes Desktop で開いてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보려면 이 채팅을 Hermes Desktop에서 여세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otwórz ten czat w Hermes Desktop, aby ją zobaczyć."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abra este chat no Hermes Desktop para vê-lo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Откройте этот чат в Hermes Desktop, чтобы её увидеть."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Görmek için bu sohbeti Hermes Desktop'ta açın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Hermes Desktop 中打开此聊天即可查看。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Hermes Desktop 中打開此聊天即可查看。"
           }
         }
       }
@@ -388308,6 +388472,88 @@
         }
       }
     },
+    "Full card in Hermes Desktop": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ganze Karte in Hermes Desktop"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tarjeta completa en Hermes Desktop"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carte complète dans Hermes Desktop"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kartu lengkap di Hermes Desktop"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scheda completa in Hermes Desktop"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "カード全体は Hermes Desktop で"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전체 카드는 Hermes Desktop에서"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pełna karta w Hermes Desktop"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cartão completo no Hermes Desktop"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Полная карточка в Hermes Desktop"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kartın tamamı Hermes Desktop'ta"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完整卡片在 Hermes Desktop 中"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完整卡片在 Hermes Desktop 中"
+          }
+        }
+      }
+    },
     "Works with this app. Some features need the newer version in Settings." : {
       "localizations" : {
         "de" : {
@@ -388392,6 +388638,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "可與此 App 搭配使用。部分功能需要「設定」中的較新版本。"
+          }
+        }
+      }
+    },
+    "(There's a card here for Hermes Desktop.)": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(Hier ist eine Karte für Hermes Desktop.)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(Aquí hay una tarjeta para Hermes Desktop.)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(Il y a ici une carte pour Hermes Desktop.)"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(Ada kartu untuk Hermes Desktop di sini.)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(Qui c'è una scheda per Hermes Desktop.)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "（ここに Hermes Desktop 用のカードがあります。）"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(여기에 Hermes Desktop용 카드가 있습니다.)"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(Tu jest karta dla Hermes Desktop.)"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(Aqui há um cartão para o Hermes Desktop.)"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(Здесь карточка для Hermes Desktop.)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(Burada Hermes Desktop için bir kart var.)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "（这里有一张 Hermes Desktop 卡片。）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "（這裡有一張 Hermes Desktop 卡片。）"
+          }
+        }
+      }
+    },
+    "Shows the card's full summary and the line Hermes wrote.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zeigt die ganze Zusammenfassung der Karte und die Zeile, die Hermes geschrieben hat."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muestra el resumen completo de la tarjeta y la línea que escribió Hermes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affiche le résumé complet de la carte et la ligne écrite par Hermes."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menampilkan ringkasan lengkap kartu dan baris yang ditulis Hermes."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra il riepilogo completo della scheda e la riga scritta da Hermes."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "カードの要約全体と Hermes が書いた行を表示します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "카드의 전체 요약과 Hermes가 쓴 줄을 보여 줍니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pokazuje pełne podsumowanie karty i wiersz napisany przez Hermesa."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra o resumo completo do cartão e a linha que o Hermes escreveu."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывает полное описание карточки и строку, которую написал Hermes."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kartın tam özetini ve Hermes'in yazdığı satırı gösterir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示卡片的完整摘要和 Hermes 写下的那一行。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "顯示卡片的完整摘要和 Hermes 寫下的那一行。"
           }
         }
       }

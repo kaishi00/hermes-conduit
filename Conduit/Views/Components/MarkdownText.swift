@@ -523,6 +523,8 @@ enum MarkdownBlock: Equatable {
     /// An HTML file on the Hermes host the reply asked to show in place
     /// (`::preview{file="…"}`).
     case htmlPreview(path: String)
+    /// A Hermes Desktop plugin's card (`::richui{id="…"}`, #1522).
+    case desktopCard(DesktopCardDirective)
 }
 
 struct MarkdownQuoteLine: Equatable {
@@ -918,6 +920,9 @@ struct MarkdownBlockView: View {
             HTMLPreviewBlock(path: path, gatewayMediaDataURL: gatewayMediaDataURL, isComplete: !isStreamingTail) {
                 RemoteMarkdownImage(url: "MEDIA: \(path)", alt: MarkdownParser.mediaName(path), gatewayMediaDataURL: gatewayMediaDataURL)
             }
+
+        case .desktopCard(let card):
+            DesktopCardBlock(card: card)
 
         case .math(let source):
             // The #88 oversized-math guard applies to the block itself,
@@ -3205,18 +3210,24 @@ enum MarkdownParser {
 
             // `::preview{file="…"}` asks for a host HTML file drawn in
             // place; any other file gets its card, as a MEDIA: tag would. A
-            // quoted one is an example, as with MEDIA: tags.
-            if recognizesGatewayMedia, !trimmed.hasPrefix(">"), !isTableHeader(lines, at: index), let segments = TranscriptDirectives.segments(in: trimmed) {
+            // Desktop plugin's directive gets its card on every surface
+            // (#1522). A quoted one is an example, as with MEDIA: tags.
+            if !isTableHeader(lines, at: index), let segments = directiveSegments(in: trimmed, recognizesGatewayMedia: recognizesGatewayMedia) {
                 for segment in segments {
                     switch segment {
-                    case .preview(let file):
+                    case .preview(let file) where recognizesGatewayMedia:
                         blocks.append(TranscriptDirectives.isHTML(file)
                             ? .htmlPreview(path: file)
                             : .image(url: "MEDIA: \(file)", alt: mediaName(file)))
+                    case .preview(let file):
+                        // No host to read it from: the directive stays text.
+                        blocks.append(.paragraph("::preview{file=\"\(file)\"}"))
+                    case .desktopCard(let card):
+                        blocks.append(.desktopCard(card))
                     case .text(let text):
-                        // The text holds no previews any more, so this
+                        // The text holds no directives any more, so this
                         // cannot come back to this branch.
-                        blocks.append(contentsOf: parseBlocks([text], recognizesGatewayMedia: true))
+                        blocks.append(contentsOf: parseBlocks([text], recognizesGatewayMedia: recognizesGatewayMedia))
                     }
                 }
                 index += 1
@@ -3263,7 +3274,9 @@ enum MarkdownParser {
 
             if unorderedItem(trimmed) != nil {
                 var items: [String] = []
-                while index < lines.count, let item = unorderedItem(lines[index].trimmingCharacters(in: .whitespaces)) { items.append(item); index += 1 }
+                // An item that is a Desktop card or a preview is the block's (#1522).
+                while index < lines.count, let item = unorderedItem(lines[index].trimmingCharacters(in: .whitespaces)),
+                      items.isEmpty || !holdsDirective(lines[index], recognizesGatewayMedia: recognizesGatewayMedia) { items.append(item); index += 1 }
                 blocks.append(.unorderedList(items))
                 continue
             }
@@ -3271,7 +3284,8 @@ enum MarkdownParser {
             if orderedItem(trimmed) != nil {
                 let start = orderedNumber(trimmed)
                 var items: [String] = []
-                while index < lines.count, let item = orderedItem(lines[index].trimmingCharacters(in: .whitespaces)) {
+                while index < lines.count, let item = orderedItem(lines[index].trimmingCharacters(in: .whitespaces)),
+                      items.isEmpty || !holdsDirective(lines[index], recognizesGatewayMedia: recognizesGatewayMedia) {
                     let itemLine = lines[index]
                     items.append(item); index += 1
                     // Blank lines between items make a loose list, not a
@@ -3282,7 +3296,7 @@ enum MarkdownParser {
                     // wins, as it does above.
                     var next = index
                     while next < lines.count, lines[next].trimmingCharacters(in: .whitespaces).isEmpty { next += 1 }
-                    if next > index, next < lines.count, continuesOrderedList(lines[next], from: itemLine), !isTableHeader(lines, at: next), !(recognizesGatewayMedia && claimsGatewayMedia(lines[next])) { index = next }
+                    if next > index, next < lines.count, continuesOrderedList(lines[next], from: itemLine), !isTableHeader(lines, at: next), !(recognizesGatewayMedia && claimsGatewayMedia(lines[next])), !holdsDirective(lines[next], recognizesGatewayMedia: recognizesGatewayMedia) { index = next }
                 }
                 blocks.append(.orderedList(items, start: start))
                 continue
@@ -3293,7 +3307,7 @@ enum MarkdownParser {
             while index < lines.count {
                 let candidate = lines[index]
                 let next = candidate.trimmingCharacters(in: .whitespaces)
-                if next.isEmpty || MarkdownFence.opening(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && (GatewayMediaTags.segments(in: next) != nil || (!next.hasPrefix(">") && TranscriptDirectives.segments(in: next) != nil))) || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
+                if next.isEmpty || MarkdownFence.opening(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && GatewayMediaTags.segments(in: next) != nil) || directiveSegments(in: next, recognizesGatewayMedia: recognizesGatewayMedia) != nil || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
                 paragraph.append(candidate); index += 1
             }
             blocks.append(.paragraph(paragraph.joined(separator: "\n")))
@@ -3441,6 +3455,20 @@ enum MarkdownParser {
         guard orderedItem(trimmed) != nil else { return false }
         return orderedDelimiter(trimmed) == orderedDelimiter(previous.trimmingCharacters(in: .whitespaces))
     }
+    /// Whether `line` holds a directive drawn as a block (a Desktop card,
+    /// or a preview with a host to read it from), which takes its line
+    /// out of a list (#1522).
+    private static func holdsDirective(_ line: String, recognizesGatewayMedia: Bool) -> Bool {
+        directiveSegments(in: line.trimmingCharacters(in: .whitespaces), recognizesGatewayMedia: recognizesGatewayMedia) != nil
+    }
+    /// A line's transcript directives as `parseBlocks` takes them: previews
+    /// only with a host to read them from, Desktop cards everywhere, and
+    /// never in a quote (an example).
+    private static func directiveSegments(in trimmed: String, recognizesGatewayMedia: Bool) -> [TranscriptDirectives.Segment]? {
+        guard !trimmed.hasPrefix(">"), let segments = TranscriptDirectives.segments(in: trimmed) else { return nil }
+        if recognizesGatewayMedia { return segments }
+        return segments.contains { if case .desktopCard = $0 { return true } else { return false } } ? segments : nil
+    }
     /// Whether the gateway-media branches of `parseBlocks` take `line`.
     private static func claimsGatewayMedia(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -3451,8 +3479,7 @@ enum MarkdownParser {
         value.first { !$0.isNumber }
     }
     static func isTableHeader(_ lines: [String], at index: Int) -> Bool {
-        guard index + 1 < lines.count, lines[index].contains("|") else { return false }
-        return lines[index + 1].trimmingCharacters(in: .whitespaces).range(of: #"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$"#, options: .regularExpression) != nil
+        TranscriptDirectives.isTableHeader(lines, at: index)
     }
     private static func tableCells(_ line: String) -> [String] {
         var cells = line.split(separator: "|", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }

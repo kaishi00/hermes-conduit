@@ -131,7 +131,7 @@ several details only the user can give (notifier 0.82).
 - Group rooms: the card's failure line shows the error text raw, while the chat card reveals hidden characters in its error and expiry text (#951 follow-up).
 - Your agents' approvals in rooms other people host have no card in the app yet, and their notification opens a hidden chat the app doesn't show, whose card couldn't answer them. C3 (on `linked-rooms`) adds the card, matched to the notification by its `session_key`; until then `hermes conduit-push rooms approvals`, `approve` and `deny` answer them, as does a call from Hermes about one.
 
-**Checked:** 2026-10-29, #1507 (the chat card's time top right, its description or question full width below, #1440); 2026-10-29, #1497 (a linked person's ask to its owner in the siblings, notifier #465); 2026-10-29, #1485 (a room's ask to its owner in the siblings; the call-screen confirmation's panel and overlay listed in Code); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files); 2026-10-27, #1351 (your agents' approvals in rooms other people host, notifier #416); 2026-10-26, #1301 (the jump button goes to input cards too); 2026-10-26, #1294 (clarify forms: a field for each question and one Send, blanks skipped on every transport, "skip" by voice; notifier #391); 2026-10-26, #1247 (the Watch broker's grant answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, the table and the Watch row, at #1182, carried in #1235; 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
+**Checked:** 2026-10-30, #1524 (group rooms' Markdown gets the connected Hermes' resolver for Desktop cards; approval cards unchanged); 2026-10-29, #1507 (the chat card's time top right, its description or question full width below, #1440); 2026-10-29, #1497 (a linked person's ask to its owner in the siblings, notifier #465); 2026-10-29, #1485 (a room's ask to its owner in the siblings; the call-screen confirmation's panel and overlay listed in Code); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files); 2026-10-27, #1351 (your agents' approvals in rooms other people host, notifier #416); 2026-10-26, #1301 (the jump button goes to input cards too); 2026-10-26, #1294 (clarify forms: a field for each question and one Send, blanks skipped on every transport, "skip" by voice; notifier #391); 2026-10-26, #1247 (the Watch broker's grant answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, the table and the Watch row, at #1182, carried in #1235; 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
 
 ## Passwords, logins and codes Hermes asks for
 
@@ -791,7 +791,7 @@ kept on the iPhone's headset (the Watch's Mute and End)
 - Silence isn't on CarPlay or the minimised bar (#488).
 - Classic still ends with "Audio was interrupted." when an alarm or phone call takes the audio, where live calls pause; only CarPlay and calls from Hermes restart it (#380, #1155).
 
-**Checked:** 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
+**Checked:** 2026-10-30, #1524 (Read Aloud reads a Desktop card as a short note; route, Speaker and mute unchanged); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
 
 ## Talking over Hermes
 
@@ -869,7 +869,7 @@ heard · chat bubbles (the file card)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1434, carried in #1449.
+**Checked:** 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1434, carried in #1449.
 
 ## Qwen direct voice
 
@@ -1007,7 +1007,7 @@ chat's saved copy, shown while offline
 **Open gaps**
 - Group rooms still show Copy, Quote and Read aloud as three icons, with no React and no ⋯ (#1156). Edit and resend and Retry are not needed there: a room is shared and has no rewind.
 
-**Checked:** 2026-10-28, #1446 (your own message's ⋯ with Quote and Edit and resend, Retry in the newest reply's ⋯, the "Replying to" card's jump in chats and group rooms, ComposerDraft.restoring keeps a second chip as a quote for failed sends too, the saved copy's cards don't jump, /undo and /retry words kept when the chat changes; selection and long-press menus unchanged); 2026-10-27, #1402 (Branch opens the new chat by its stored id; the row, menus and pins needed no change); 2026-10-26, #1311 (a drawn reply's text view is laid out as it mounts; selection and long-press menus unchanged); #1282 (carrying the ⋯'s Show thinking from #1243); the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
+**Checked:** 2026-10-30, #1524 (Read Aloud says a Desktop card's note, and a quote chip names one); 2026-10-28, #1446 (your own message's ⋯ with Quote and Edit and resend, Retry in the newest reply's ⋯, the "Replying to" card's jump in chats and group rooms, ComposerDraft.restoring keeps a second chip as a quote for failed sends too, the saved copy's cards don't jump, /undo and /retry words kept when the chat changes; selection and long-press menus unchanged); 2026-10-27, #1402 (Branch opens the new chat by its stored id; the row, menus and pins needed no change); 2026-10-26, #1311 (a drawn reply's text view is laid out as it mounts; selection and long-press menus unchanged); #1282 (carrying the ⋯'s Show thinking from #1243); the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
 
 ## Conduit plugin update
 
@@ -1472,7 +1472,7 @@ the bot's SOUL messaging section · README.md's bots line
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1448 (an unnamed teammate is named by its id capitalized in its notes, replies and steps, through displayLabel); 2026-10-25, at #1259.
+**Checked:** 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1448 (an unnamed teammate is named by its id capitalized in its notes, replies and steps, through displayLabel); 2026-10-25, at #1259.
 
 ## Links in messages
 
@@ -1522,6 +1522,7 @@ Read Aloud and live voice read-back · chat list previews and quotes
 **Rulings**
 - Ordered lists number as CommonMark and Hermes Desktop do: blank lines between items keep one list (2026-10-23, #1168), and a list starts at its first item's number, so steps split by a code block carry on; a marker is one to nine ASCII digits, anything else is text (2026-10-23, #1175, Eric).
 - Every view that draws a list reads the parsed block, so a numbering change is a parser change plus each renderer's marker; long replies bake ordinals into continuation chunks (#1168).
+- An item that is a Hermes Desktop card, or a preview where previews draw (`holdsDirective`), ends the list: the block draws on its own, and the items after it start a new list from the number written on the first of them (2026-10-30, #1524, see Cards made for Hermes Desktop).
 
 **Open gaps**
 - Nested lists are flattened: an indented sub-list draws as its own list at the left edge.
@@ -1533,7 +1534,7 @@ Read Aloud and live voice read-back · chat list previews and quotes
 - A single list item too big for one long-reply chunk is split into paragraphs that each repeat its number.
 - A long reply's continuation chunks draw list items as paragraphs with the number baked in, so they lose the list's styled marker column.
 
-**Checked:** 2026-10-28, #1449 (speech leaves Hermes' file tags out, see Files Hermes attaches); 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
+**Checked:** 2026-10-30, #1524 (a Desktop card ends a list; previews and quotes name it); 2026-10-28, #1449 (speech leaves Hermes' file tags out, see Files Hermes attaches); 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
 
 ## Attaching files
 
@@ -1891,13 +1892,15 @@ once instead of waiting out its backoff.
 **Siblings:** a socket that closed (handleDisconnect) · the network path
 changing · someone waiting by voice (a call's request, CarPlay back on
 screen) · CarPlay, locked, Watch and CallKit calls with the app in the
-background · a failed sync's retry · the backoff itself
+background · a failed sync's retry · the backoff itself · the hidden
+dashboard page's failed load
 
 **Code**
 - Reconnects: `Conduit/Services/AppState.swift` (handleDisconnect, scheduleReconnect, scheduleReconnectAfterFailedSync, networkPathChanged, reconnectNowForWaitingVoice, recoverTransportForCarPlayIfNeeded, handleCarPlaySceneWillEnterForeground, checkQuietTransportOffScreen, clientForVoiceRequest)
 - A call's requests: `Conduit/Services/AppState.swift` (voiceBackgroundJobSupervisor's backend), `Conduit/Services/AppState+SpokenApprovals.swift` (respondToApprovalByVoice, respondToClarifyByVoice)
 - Network path: `Conduit/Services/PowerPolicy.swift` (pathSatisfied), `Conduit/Services/HermesClient.swift` (networkPathChanged, the ping of an open socket, checkLiveness)
-- Tests: `ConduitTests/ReconnectBackoffTests.swift`, `ConduitTests/CarPlayTransportRecoveryTests.swift`, `ConduitTests/HermesClientTests.swift` (the liveness check)
+- The hidden dashboard page: `Conduit/Services/DashboardTicketBridge.swift` (waitUntilReady, mintCookieTicket, requestJSON)
+- Tests: `ConduitTests/ReconnectBackoffTests.swift`, `ConduitTests/CarPlayTransportRecoveryTests.swift`, `ConduitTests/HermesClientTests.swift` (the liveness check), `ConduitTests/DashboardTicketBridgeTests.swift` (testRequestOnAFailedPageReloadsIt, testConcurrentRequestsOnAFailedPageReloadItOnce, testRequestLeavesALoadInFlightAlone)
 
 **Rulings**
 - A reconnect that skips the backoff needs a usable network path: without one no attempt can work, and the path coming back reconnects at once anyway. A drop mid-reply and someone waiting by voice both check it (#1060; #846 follow-up, #1191).
@@ -1905,11 +1908,12 @@ background · a failed sync's retry · the backoff itself
 - Someone waiting by voice skips the backoff but keeps its count, so one request after another against a gateway that is down doesn't reset it (#1060).
 - The path change's ping of an open socket waits while a large frame (a picture) is still being written: its pings can't be answered in time and would close a working socket. A path that really died fails the write (2026-10-25, #1268).
 - A call's request to Hermes made while Conduit is off screen (CarPlay, a locked phone, a Watch call, a call from Hermes; every voice mode, spoken approvals and answers included) first pings a socket that has been quiet 30 s, as the phone coming on screen does: iOS may have held Conduit suspended until the car or the call woke it, and a socket that died then still looks open. Starting, titling and cancelling a call's jobs count, and so does asking whether a chat is busy before its turn. One that doesn't answer in a keepalive ping's 10 s (a relayed path can be slow off screen without being dead) is closed and the request waits for the reconnect, as after any drop. Before, GPT-Live started from CarPlay ran (it starts over HTTP) while every request it handed Hermes waited on the dead socket until it timed out (2026-10-27, #1382, from #1362).
+- The hidden dashboard page comes back with the next dashboard request, not only with the next ticket: any request (chat history, status, a ticket) reloads a page whose load failed, and one still loading is waited for, never restarted. A request that stalled across a Wi-Fi change marks the page failed while the socket stays open, and an open socket mints no ticket, so before, every history and status read was refused with "still connecting to your dashboard" until the app quit (2026-10-30, #1526, issue 1412).
 
 **Open gaps**
 - `recoverTransportForCarPlayIfNeeded(immediately:)` still reconnects at once without a path check (CarPlay connecting only).
 
-**Checked:** 2026-10-28, #1452 (a drop on a socket handed on at a profile switch reaches the client holding it); 2026-10-27, #1382 (a call's request off screen checks a quiet socket first); 2026-10-25, at #1268; 2026-10-24, at #1191.
+**Checked:** 2026-10-30, #1526 (the hidden page reloads a failed load on any request); 2026-10-28, #1452 (a drop on a socket handed on at a profile switch reaches the client holding it); 2026-10-27, #1382 (a call's request off screen checks a quiet socket first); 2026-10-25, at #1268; 2026-10-24, at #1191.
 
 ## Native sign-in browser
 
@@ -1971,7 +1975,7 @@ signed-in check
 - The background session's redirect rule and the login screen's signed-in check compare origins strictly, without the http to https allowance: such a redirect comes back as the response (and is judged by isSignIn there), and the login screen with a dashboard saved on http behind a TLS edge hasn't been checked.
 - The hidden page doesn't follow that upgrade either: its navigation policy cancels an http to https move to an ordinary page as a failed load (no longer as sign-in), so a dashboard behind a TLS-forcing edge must be saved on https. Following it would take the page's landing and script-message checks and the socket off the saved origin, so it was left as is (#1191 review).
 
-**Checked:** 2026-10-26, #1247 (the hidden page's deinit removes its script handler on the main actor); 2026-10-24, at #1191.
+**Checked:** 2026-10-30, #1526 (any request, not only a ticket, reloads a page whose load failed, so a reload that lands on sign-in now reaches a history or status read as sign-in required, where it got "still connecting" before); 2026-10-26, #1247 (the hidden page's deinit removes its script handler on the main actor); 2026-10-24, at #1191.
 
 ## Skill and tool switches
 
@@ -2083,7 +2087,7 @@ block, drawn in slices · Copy
 **Open gaps**
 - `MarkdownCodeSlicer.slice` still splits on a Character `"\n"`, where `"\r\n"` is one Character, so a block with Windows line endings is sliced by its byte budget only.
 
-**Checked:** 2026-10-24, at #1191.
+**Checked:** 2026-10-30, #1524 (a Desktop card is its own block, counted like a preview; slicing unchanged); 2026-10-24, at #1191.
 
 ## Model lists that fail to load
 
@@ -2348,7 +2352,7 @@ transcript (never filtered)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1449 (Hermes' file tags are left out too, with their own entry, Files Hermes attaches); #1429, carried in #1430.
+**Checked:** 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1449 (Hermes' file tags are left out too, with their own entry, Files Hermes attaches); #1429, carried in #1430.
 
 ## Speech stream failures
 
@@ -2954,6 +2958,7 @@ split · Read Aloud and live read-back · chat list previews and quotes
 - Bot Chat routing: `Conduit/Services/BotMentions.swift` (proseStrippingCode)
 - Spoken text: `Conduit/Voice/LocalLive/SpokenVisualSplitter.swift`, `Conduit/Voice/VoiceReadBack.swift`
 - Previews and quotes: `Conduit/Services/PreviewText.swift`, `Conduit/Views/Components/ChatQuote.swift`
+- Hermes Desktop directives: `Conduit/Views/Components/TranscriptDirectives.swift` (CodeFence, used by rewriting and by `Conduit/Voice/SpokenMediaTagFilter.swift`)
 - Tests: `ConduitTests/VoiceBackgroundJobTests.swift`, `ConduitTests/VoiceHistoryTests.swift`, `ConduitTests/GroupChatModelsTests.swift`
 
 **Rulings**
@@ -2965,7 +2970,7 @@ split · Read Aloud and live read-back · chat list previews and quotes
 - Previews and quotes only drop fence lines and track no block, so they need no closing rule (not a gap, noted so nobody adds one).
 - A ```` block holding a ``` line in a Bot Chat can route a mention after that line, as Hermes does; changing it starts in Hermes.
 
-**Checked:** 2026-10-28, #1449 (Local Live's split leaves file tags unsaid and shows their files); 2026-10-28, #1430 (read-back's action filter runs only on lines outside a code block); 2026-10-24, at #1220.
+**Checked:** 2026-10-30, #1524 (a Desktop card or preview directive in a code block stays as written: read-back, previews, quotes and the streaming speech filter); 2026-10-28, #1449 (Local Live's split leaves file tags unsaid and shows their files); 2026-10-28, #1430 (read-back's action filter runs only on lines outside a code block); 2026-10-24, at #1220.
 
 ## Files prepared for preview and Save to Files
 
@@ -2990,7 +2995,7 @@ and Share or Save
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-29, #1491 (the picture viewer's copies); 2026-10-27, #1399; #1220.
+**Checked:** 2026-10-30, #1524 (the resolver gains the connected dashboard's bridge and a plugin route read for Desktop cards; previews unchanged); 2026-10-29, #1491 (the picture viewer's copies); 2026-10-27, #1399; #1220.
 
 ## Review labels
 
@@ -3257,10 +3262,10 @@ pictures load)
 **Open gaps**
 - A picture never loaded on this phone, or kept by a build before #1239 and not shown since, or whose row was laid out before a cold launch's kept sizes loaded, still grows its row once, at rest: above the reader the offset moves with it, on screen it grows below what they look at, unanimated. Its height follows the row's width, so the memo can't reserve it before it loads, and only a read on the main thread before the first frame, which the ruling above keeps off it, would have the kept sizes in time.
 - Group rooms have no scroll engine: their transcript follows with its own scroll code and keeps its place by row id (see Following the latest message). So a web picture never loaded on this phone grows its row where it is, and above a reader scrolled back it moves what they read, as chats did before #1270. Bringing the gate there means moving group rooms onto the chat's engine, a change of its own. The saved copy and job sheets have no engine either and grow their rows the same way.
-- Group rooms show no `MEDIA:` pictures: their Markdown has no gateway resolver.
+- Group rooms show no `MEDIA:` pictures: their Markdown is given no gateway data URL (the resolver they have since #1524 reads Desktop cards only).
 - Past 4,000 remembered sizes the memo starts again (no LRU), so pictures grow once more until each loads again.
 
-**Checked:** 2026-10-29, #1491 (a tapped picture opens in the picture viewer among the chat's pictures); 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
+**Checked:** 2026-10-30, #1524 (group rooms get the connected Hermes' resolver for Desktop cards only, their `MEDIA:` pictures still don't load; the resolver gains connectedDashboardBridge); 2026-10-29, #1491 (a tapped picture opens in the picture viewer among the chat's pictures); 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
 
 ## The picture viewer
 
@@ -3313,7 +3318,7 @@ and the same gate, see Pictures in messages) · text that describes it (none
 today: no Settings caption, briefing or doc says how these cards draw)
 
 **Code**
-- HTML previews: `Conduit/Views/Components/HTMLPreviewBlock.swift` (HTMLPreviewBlock, heightKey, HTMLPreviewPage.placeholderHeight)
+- HTML previews: `Conduit/Views/Components/HTMLPreviewBlock.swift` (HTMLPreviewBlock, heightKey, HTMLPreviewPage.placeholderHeight); the `::preview` grammar, shared with Desktop cards: `Conduit/Views/Components/TranscriptDirectives.swift` (segments, isHTML)
 - Diagrams and formulas: `Conduit/Views/Components/MarkupBlock.swift` (MarkupBlock, heightKey(for:), placeholderHeight(for:))
 - The room a card holds, and when it takes its height: `Conduit/Views/Components/ChatCardHeight.swift` (ChatCardHeight, cardStackFrame; ChatRowArrival for pictures, and for the file card or "Couldn't draw" taking a failing card's place), `Conduit/Services/ChatScrollEngine.swift` (cardMeasured, cardFrameChanged, takeCardShifts, cardShiftSettled, scrollRestDelay, cardGrowthDeadline), reached through `Conduit/Views/ChatRowDisclosure.swift` (engine)
 - Heights kept across launches: `Conduit/Services/TranscriptPictureMemory.swift` (height, rememberHeight, with the picture sizes), forgotten in `Conduit/Services/AppState.swift` (wipeOfflineChatCache, deleteSavedChats)
@@ -3333,9 +3338,51 @@ today: no Settings caption, briefing or doc says how these cards draw)
 - On a cold launch, a card laid out before the kept heights have loaded (read off the main thread as the app opens) holds its placeholder and grows once, at rest, like one never measured. Taking the kept height later would still be a growth, so only a read on the main thread before the first frame would save it.
 - A kept height is for the width and text size it was measured at: an iPad whose chat column changed width, or a formula after a text size change, takes the kept height and then its new one, announced like any growth.
 - Past 2,000 remembered heights the memo starts again (no LRU), so cards grow once more until each is measured again; the picture sizes have the same limit at 4,000 (see Pictures in messages).
-- The saved-chat copy, job sheets and group rooms have no scroll engine, so their cards grow where they are, and above a reader scrolled back move what they read; group rooms draw diagrams and formulas this way, and show no HTML previews (no gateway resolver). Group rooms follow with their own scroll code, so bringing the gate there means moving them onto the chat's engine, a change of its own (see Pictures in messages).
+- The saved-chat copy, job sheets and group rooms have no scroll engine, so their cards grow where they are, and above a reader scrolled back move what they read; group rooms draw diagrams and formulas this way, and show no HTML previews (no gateway data URL; the resolver they have since #1524 reads Desktop cards only). Group rooms follow with their own scroll code, so bringing the gate there means moving them onto the chat's engine, a change of its own (see Pictures in messages).
 
-**Checked:** 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
+**Checked:** 2026-10-30, #1524 (the `::preview` grammar moved to TranscriptDirectives.swift, shared with Desktop cards; group rooms still show no previews); 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
+
+## Cards made for Hermes Desktop
+
+A Hermes Desktop plugin with a client half has the agent write a directive
+only Desktop draws, such as hermes-rich-ui's `::richui{id="…"}` from its
+`rich_present` tool. Conduit doesn't rebuild those renderers: it shows a card
+in the directive's place that says what was there and where it opens, and
+nothing that reads a reply says the directive out.
+
+**Siblings:** chats, project chats, Bot Chat, group rooms, the saved-chat
+copy and call job sheets (every Markdown surface, with or without the
+connected Hermes) · Read Aloud, Classic voice's spoken reply and Local Live's
+split · live read-backs and a Hermes call's result · what live models are
+handed, on the phone and the Watch · chat list and bot list previews and
+quote chips · the
+notifier's push text and the README line that describes it · `::preview`
+(the same grammar, see Cards drawn in web pages)
+
+**Code**
+- The grammar: `Conduit/Views/Components/TranscriptDirectives.swift` (segments, rewriting, naming, DesktopCardDirective; also built into the Watch app, `project.yml`)
+- The card, its details sheet and the read of hermes-rich-ui's card: `Conduit/Views/Components/DesktopCardBlock.swift` (DesktopCardBlock, DesktopCardSheet, DesktopCardContents, DesktopCardContent, PluginRead, TranscriptDirectives.readable), through `Conduit/Views/Components/GatewayMediaDataURLResolver.swift` (connectedDashboardBridge, pluginRead)
+- Built from Markdown: `Conduit/Views/Components/MarkdownText.swift` (desktopCard block, directiveSegments, holdsDirective), in group rooms with the connected Hermes' resolver, `Conduit/Views/GroupChatView.swift`
+- Spoken: `Conduit/Voice/MessageReadAloudController.swift` (toggle), `Conduit/Voice/VoiceReadBack.swift` (plainSpeech), `Conduit/Voice/SpokenMediaTagFilter.swift` (Classic, Read Aloud's Now Playing, Local Live)
+- Live models: `Conduit/Views/Components/GatewayMediaTags.swift` (namingFiles)
+- Previews and quote chips: `Conduit/Services/PreviewText.swift` (strip), `Conduit/Views/Components/ChatQuote.swift` (excerpt)
+- Push text: `notifier/events.py` (media_free, _desktop_free), described in `notifier/README.md` (what notifications show)
+- Tests: `ConduitTests/MarkdownLargeDocumentTests+DesktopCard.swift` (the grammar, the read cache with its clock and fetch passed in), `ConduitTests/GeminiLiveVoiceTests.swift` (testSpokenMediaTagFilterGivesTheSameSpeechHoweverTheReplyIsSplit), `notifier/tests/test_events.py` (test_no_push_shows_a_desktop_directive)
+
+**Rulings**
+- A card's line, and a preview's where previews draw, leaves a list (the list carries on after it), and a list or heading marker before it on its line goes with the directive; a directive in a table cell is table text, as a preview's is. A directive still being written while the reply streams shows as text until its closing brace, as a preview does.
+- Never hidden without a trace: every directive Conduit can't draw becomes a visible card naming its plugin, and a tap shows the directive as written. Maintainer's ruling (2026-10-30, #1522).
+- Conduit doesn't draw a plugin's components (Table, Chart, Metric…) as its own cards: that would be the plugin's Desktop half rebuilt, kept in step with a plugin we don't control. Agents that want cards in both apps use `conduit_show` (2026-10-30, issue #1522).
+- hermes-rich-ui's card shows its own plain-text fallback, `meta.title` and `meta.summary`, from `GET /api/plugins/hermes-rich-ui/cards/<id>` on the connected Hermes, only for a well-formed id (`ru-` and 12 hex). Without it (plugin not installed, card gone, no network, no connected Hermes as in the saved copy) the card says "Card for Hermes Desktop" and to open the chat there. A read is kept for the launch; a failed one is tried again after five minutes, by a card on screen too, waiting only for what's left of them, and one shown before Hermes connected or while its page loads asks again within seconds (nothing is kept for it).
+- The card holds one title line and two summary lines from its first frame, so it never changes height as its text arrives; the whole summary is in the details sheet. VoiceOver hears that a tap shows the full summary and the line Hermes wrote.
+- A directive is one at a word's start, `::name{…}` holding only `key="value"` attributes, at least one: prose, code spans and CSS (`::selection{color:red}`) stay text. A quoted directive is an example and a table header cell is table text, as for previews. Desktop cards show on every Markdown surface; previews still need the connected Hermes.
+- Read Aloud and voices say "(There's a card here for Hermes Desktop.)" and leave a preview out, as Read Aloud already did; live models are told "(a card in the chat made for Hermes Desktop, from <plugin>)" and a preview as its file; previews and quote chips read "Card for Hermes Desktop" and a preview as its file; a push reads "🗂 <plugin> card" and a preview as its file, named as a MEDIA tag's (notifier 0.120.4). Lines in a fenced code block and directives in a code span stay as written everywhere.
+
+**Open gaps**
+- The on-screen retry loop has no unit test: it lives in the view's task (the read cache and the wait it sleeps for are tested).
+- Two rows showing the same card while it is first read each ask for it.
+
+**Checked:** 2026-10-30, #1524.
 
 ## Self-improvement updates
 
