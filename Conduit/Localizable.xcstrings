@@ -388044,178 +388044,178 @@
         }
       }
     },
-    "Only when needed" : {
+    "Never" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nur bei Bedarf"
+            "value" : "Nie"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Only when needed"
+            "value" : "Never"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Solo cuando haga falta"
+            "value" : "Nunca"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seulement si nécessaire"
+            "value" : "Jamais"
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hanya jika diperlukan"
+            "value" : "Tidak pernah"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Solo quando serve"
+            "value" : "Mai"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "必要なときだけ"
+            "value" : "しない"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "필요할 때만"
+            "value" : "안 함"
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tylko gdy potrzebne"
+            "value" : "Nigdy"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Só quando necessário"
+            "value" : "Nunca"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Только при необходимости"
+            "value" : "Никогда"
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Yalnızca gerektiğinde"
+            "value" : "Hiçbir zaman"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "仅在需要时"
+            "value" : "永不"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "僅在需要時"
+            "value" : "永不"
           }
         }
       }
     },
-    "Conduit asks you to update only when this app needs a newer plugin. New versions, security fixes included, wait here until you update." : {
+    "Conduit doesn't ask you to update. New versions, security fixes included, wait here until you update. An update you start still asks for its restart." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit bittet dich nur dann um ein Update, wenn diese App ein neueres Plugin braucht. Neue Versionen, auch mit Sicherheitskorrekturen, warten hier, bis du aktualisierst."
+            "value" : "Conduit bittet dich nicht um Updates. Neue Versionen, auch mit Sicherheitskorrekturen, warten hier, bis du aktualisierst. Ein Update, das du startest, fragt trotzdem nach seinem Neustart."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit asks you to update only when this app needs a newer plugin. New versions, security fixes included, wait here until you update."
+            "value" : "Conduit doesn't ask you to update. New versions, security fixes included, wait here until you update. An update you start still asks for its restart."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit te pide actualizar solo cuando esta app necesita un plugin más reciente. Las versiones nuevas, incluidas las correcciones de seguridad, esperan aquí hasta que actualices."
+            "value" : "Conduit no te pide actualizar. Las versiones nuevas, incluidas las correcciones de seguridad, esperan aquí hasta que actualices. Una actualización que inicies sigue pidiendo su reinicio."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit vous demande de mettre à jour seulement quand cette app a besoin d’un plugin plus récent. Les nouvelles versions, correctifs de sécurité compris, attendent ici jusqu’à votre mise à jour."
+            "value" : "Conduit ne vous demande pas de mettre à jour. Les nouvelles versions, correctifs de sécurité compris, attendent ici jusqu’à votre mise à jour. Une mise à jour que vous lancez demande toujours son redémarrage."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit meminta Anda memperbarui hanya jika aplikasi ini memerlukan plugin yang lebih baru. Versi baru, termasuk perbaikan keamanan, menunggu di sini sampai Anda memperbarui."
+            "value" : "Conduit tidak meminta Anda memperbarui. Versi baru, termasuk perbaikan keamanan, menunggu di sini sampai Anda memperbarui. Pembaruan yang Anda mulai tetap meminta untuk dimulai ulang."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit ti chiede di aggiornare solo quando questa app ha bisogno di un plugin più recente. Le nuove versioni, correzioni di sicurezza comprese, aspettano qui finché non aggiorni."
+            "value" : "Conduit non ti chiede di aggiornare. Le nuove versioni, correzioni di sicurezza comprese, aspettano qui finché non aggiorni. Un aggiornamento che avvii chiede comunque il suo riavvio."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このアプリがより新しいプラグインを必要とするときだけ、Conduit がアップデートを求めます。セキュリティ修正を含む新しいバージョンは、アップデートするまでここで待機します。"
+            "value" : "Conduit はアップデートを求めません。セキュリティ修正を含む新しいバージョンは、アップデートするまでここで待機します。開始したアップデートは、引き続き再起動を求めます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 앱에 더 새로운 플러그인이 필요할 때만 Conduit가 업데이트를 요청합니다. 보안 수정을 포함한 새 버전은 업데이트할 때까지 여기에서 기다립니다."
+            "value" : "Conduit가 업데이트를 요청하지 않습니다. 보안 수정을 포함한 새 버전은 업데이트할 때까지 여기에서 기다립니다. 직접 시작한 업데이트는 여전히 재시작을 요청합니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit prosi o aktualizację tylko wtedy, gdy ta aplikacja potrzebuje nowszej wtyczki. Nowe wersje, również z poprawkami bezpieczeństwa, czekają tutaj, aż je zaktualizujesz."
+            "value" : "Conduit nie prosi o aktualizację. Nowe wersje, również z poprawkami bezpieczeństwa, czekają tutaj, aż je zaktualizujesz. Aktualizacja, którą rozpoczniesz, nadal poprosi o ponowne uruchomienie."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O Conduit pede para atualizar só quando este app precisa de um plugin mais novo. Versões novas, incluindo correções de segurança, ficam aqui até você atualizar."
+            "value" : "O Conduit não pede para atualizar. Versões novas, incluindo correções de segurança, ficam aqui até você atualizar. Uma atualização que você iniciar ainda pede a reinicialização."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit просит обновиться, только когда этому приложению нужен более новый плагин. Новые версии, включая исправления безопасности, ждут здесь, пока вы не обновите."
+            "value" : "Conduit не просит обновиться. Новые версии, включая исправления безопасности, ждут здесь, пока вы не обновите. Обновление, которое вы запустили, всё равно попросит перезапуск."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit, yalnızca bu uygulama daha yeni bir eklentiye ihtiyaç duyduğunda güncellemenizi ister. Güvenlik düzeltmeleri dahil yeni sürümler, siz güncelleyene kadar burada bekler."
+            "value" : "Conduit güncellemenizi istemez. Güvenlik düzeltmeleri dahil yeni sürümler, siz güncelleyene kadar burada bekler. Başlattığınız bir güncelleme yine de yeniden başlatma ister."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "仅当此 App 需要更新的插件时，Conduit 才会请你更新。新版本（包括安全修复）会在这里等你更新。"
+            "value" : "Conduit 不会请你更新。新版本（包括安全修复）会在这里等你更新。你开始的更新仍会请你重启。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "僅當此 App 需要更新的外掛時，Conduit 才會請你更新。新版本（包括安全性修正）會在這裡等你更新。"
+            "value" : "Conduit 不會請你更新。新版本（包括安全性修正）會在這裡等你更新。你開始的更新仍會請你重新啟動。"
           }
         }
       }

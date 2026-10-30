@@ -6672,7 +6672,7 @@ final class AppState: ObservableObject {
         // The saved Update notices choice holds from the first status read.
         self._notifierPlugin = Published(wrappedValue: NotifierPluginStatus(
             followsMain: noticeChannel.followsMain,
-            asksForNewVersions: noticeChannel.asksForNewVersions
+            asksToUpdate: noticeChannel.asksToUpdate
         ))
         // The registry (and its legacy migration) loads before any connection
         // hydration: scoped auth records are meaningless without it.
@@ -25836,7 +25836,7 @@ final class AppState: ObservableObject {
             latestVersion: latestNotifierPluginVersion,
             stableVersion: stableNotifierPluginVersion,
             followsMain: notifierPluginNoticeChannel.followsMain,
-            asksForNewVersions: notifierPluginNoticeChannel.asksForNewVersions
+            asksToUpdate: notifierPluginNoticeChannel.asksToUpdate
         )
     }
     /// Apple Health sharing with one Hermes profile.
@@ -26004,11 +26004,11 @@ final class AppState: ObservableObject {
 
     private func applyNotifierPluginNoticeChannel() {
         let followsMain = notifierPluginNoticeChannel.followsMain
-        let asksForNewVersions = notifierPluginNoticeChannel.asksForNewVersions
+        let asksToUpdate = notifierPluginNoticeChannel.asksToUpdate
         guard notifierPlugin.followsMain != followsMain
-                || notifierPlugin.asksForNewVersions != asksForNewVersions else { return }
+                || notifierPlugin.asksToUpdate != asksToUpdate else { return }
         notifierPlugin.followsMain = followsMain
-        notifierPlugin.asksForNewVersions = asksForNewVersions
+        notifierPlugin.asksToUpdate = asksToUpdate
     }
 
     /// Hands each of this dashboard's paired profiles an end-to-end

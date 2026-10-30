@@ -58,15 +58,15 @@ struct FinishSetupStatus: Equatable {
     /// What the plugin row says once it's done.
     enum PluginDoneNote: Equatable {
         case upToDate
-        /// Only when needed: a newer version waits in Settings, unasked.
+        /// Never: a newer version waits in Settings, unasked.
         case newerVersionWaits
-        /// Only when needed: the plugin lacks a feature Conduit uses, and
+        /// Never: the plugin lacks a feature Conduit uses, and
         /// Settings has the update that brings it.
         case featuresWait
     }
 
     static func pluginDoneNote(_ status: NotifierPluginStatus) -> PluginDoneNote {
-        guard !status.asksForNewVersions, status.updateAvailable else { return .upToDate }
+        guard !status.asksToUpdate, status.updateAvailable else { return .upToDate }
         return status.needsUpdate ? .featuresWait : .newerVersionWaits
     }
 

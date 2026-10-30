@@ -221,13 +221,13 @@ struct ConduitPluginSettingsDetail: View {
         switch channel {
         case .everyVersion: return AppLocalization.string("Every new version")
         case .stableOnly: return AppLocalization.string("Stable versions only")
-        case .requiredOnly: return AppLocalization.string("Only when needed")
+        case .never: return AppLocalization.string("Never")
         }
     }
 
     private var noticeChannelDetail: String {
-        guard appState.notifierPluginNoticeChannel.asksForNewVersions else {
-            return AppLocalization.string("Conduit asks you to update only when this app needs a newer plugin. New versions, security fixes included, wait here until you update.")
+        guard appState.notifierPluginNoticeChannel.asksToUpdate else {
+            return AppLocalization.string("Conduit doesn't ask you to update. New versions, security fixes included, wait here until you update. An update you start still asks for its restart.")
         }
         return appState.notifierPluginNoticeChannel.followsMain
             ? AppLocalization.string("Conduit asks you to update whenever a new plugin version is out.")

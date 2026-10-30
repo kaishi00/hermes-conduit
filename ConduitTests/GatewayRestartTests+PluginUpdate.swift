@@ -236,17 +236,15 @@ extension GatewayRestartTests {
         XCTAssertTrue(status.updateRecommended)
     }
 
-    func testOnlyWhenNeededAsksOnlyForWhatThisBuildNeeds() {
-        let floor = NotifierPluginStatus.recommendedVersion
+    func testNeverAsksOnlyToFinishARestart() {
         var status = NotifierPluginStatus()
         status.state = .reported(version: "9.0.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
         status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.0.0", restartNeeded: false, bootID: nil)
         status.latestVersion = "9.2.0"
         status.stableVersion = "9.1.0"
-        status.followsMain = NotifierPluginNoticeChannel.requiredOnly.followsMain
-        status.asksForNewVersions = NotifierPluginNoticeChannel.requiredOnly.asksForNewVersions
-        // Newer and stable versions alone ask nothing anywhere.
-        XCTAssertEqual(status.noticeVersion, floor)
+        status.followsMain = NotifierPluginNoticeChannel.never.followsMain
+        status.asksToUpdate = NotifierPluginNoticeChannel.never.asksToUpdate
+        // Newer and stable versions ask nothing anywhere.
         XCTAssertFalse(status.updateRecommended)
         XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
         XCTAssertFalse(status.needsAttention)
@@ -256,26 +254,20 @@ extension GatewayRestartTests {
         XCTAssertTrue(status.updateAvailable)
         XCTAssertEqual(status.offeredVersion, "9.2.0")
 
-        // A missing feature doesn't ask either; Settings shows it.
+        // Neither does a missing feature; Settings shows it.
         status.state = .reported(version: "9.0.0", capabilities: [])
         XCTAssertTrue(status.needsUpdate)
         XCTAssertFalse(status.updateRecommended)
         XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
         XCTAssertTrue(status.updateAvailable)
         XCTAssertEqual(FinishSetupStatus.pluginDoneNote(status), .featuresWait)
-        // Settings offers it even when the plugin is as new as the latest
-        // Conduit knows of: the choice only quiets the asking.
-        status.state = .reported(version: "9.2.0", capabilities: [])
-        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.2.0", restartNeeded: false, bootID: nil)
-        XCTAssertTrue(status.updateAvailable)
-        XCTAssertFalse(status.updateRecommended)
 
-        // A plugin older than this build's floor asks.
+        // Nor a plugin below this build's floor.
         status.state = .reported(version: "0.1.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
         status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "0.1.0", restartNeeded: false, bootID: nil)
-        XCTAssertTrue(status.updateRecommended)
-
-        XCTAssertEqual(status.noticeDismissalVersion, floor)
+        XCTAssertFalse(status.updateRecommended)
+        XCTAssertTrue(status.updateAvailable)
+        XCTAssertEqual(status.noticeDismissalVersion, status.noticeVersion)
 
         // An update waiting for its restart is still finished from the
         // notice, and "Not now" on it belongs to the version on disk, so
@@ -283,27 +275,42 @@ extension GatewayRestartTests {
         status.state = .reported(version: "9.2.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
         status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.0.0", restartNeeded: true, bootID: nil)
         XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .restart)
+        XCTAssertTrue(status.needsAttention)
         XCTAssertEqual(status.noticeDismissalVersion, "9.2.0")
         status.state = .reported(version: "9.3.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
         XCTAssertEqual(status.noticeDismissalVersion, "9.3.0")
 
-        // An update still below the floor keeps the floor's key while its
-        // files wait for a restart, so "Not now" holds across that restart.
-        status.state = .reported(version: "0.2.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
-        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "0.1.0", restartNeeded: true, bootID: nil)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .update)
-        XCTAssertEqual(status.noticeDismissalVersion, floor)
+        // A plugin too old to report anything isn't asked about either.
+        status.state = .predatesCapabilities
+        status.runtime = nil
+        status.hostCopy = .old
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertFalse(status.needsAttention)
+    }
+
+    func testNotNowKeepsOtherDashboardsDismissals() throws {
+        let suite = "GatewayRestartTests.dismissals.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let other = "\(UUID().uuidString)|0.48.0"
+        let this = appState.activeDashboardID?.uuidString ?? ""
+        appState.dismissedPluginUpdates = [other, "\(this)|0.1.0"]
+        appState.dismissNotifierPluginUpdateNotice()
+        // This dashboard's older one goes; the other dashboard's stays.
+        let version = appState.notifierPlugin.noticeDismissalVersion
+        XCTAssertEqual(appState.dismissedPluginUpdates, [other, "\(this)|\(version)"])
     }
 
     func testTheSavedNoticeChoiceHoldsFromLaunch() throws {
         let suite = "GatewayRestartTests.noticeChannel.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
-        defaults.set(NotifierPluginNoticeChannel.requiredOnly.rawValue, forKey: NotifierPluginNoticeChannel.key)
+        defaults.set(NotifierPluginNoticeChannel.never.rawValue, forKey: NotifierPluginNoticeChannel.key)
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         // Before any refresh has read where Conduit came from.
-        XCTAssertEqual(appState.notifierPluginNoticeChannel, .requiredOnly)
-        XCTAssertFalse(appState.notifierPlugin.asksForNewVersions)
+        XCTAssertEqual(appState.notifierPluginNoticeChannel, .never)
+        XCTAssertFalse(appState.notifierPlugin.asksToUpdate)
         XCTAssertFalse(appState.notifierPlugin.followsMain)
     }
 
@@ -316,7 +323,7 @@ extension GatewayRestartTests {
         status.archivedVersion = nil
         status.followsMain = false
         // Stable versions only: a newer plugin on main waits unasked, and
-        // the row still reads as up to date, as before Only when needed.
+        // the row still reads as up to date, as before Never.
         XCTAssertTrue(status.updateAvailable)
         XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .done)
         XCTAssertEqual(FinishSetupStatus.pluginDoneNote(status), .upToDate)
@@ -369,9 +376,9 @@ extension GatewayRestartTests {
     func testOnlyEveryNewVersionFollowsMain() {
         XCTAssertTrue(NotifierPluginNoticeChannel.everyVersion.followsMain)
         XCTAssertFalse(NotifierPluginNoticeChannel.stableOnly.followsMain)
-        XCTAssertFalse(NotifierPluginNoticeChannel.requiredOnly.followsMain)
-        XCTAssertFalse(NotifierPluginNoticeChannel.requiredOnly.asksForNewVersions)
-        XCTAssertTrue(NotifierPluginNoticeChannel.stableOnly.asksForNewVersions)
+        XCTAssertFalse(NotifierPluginNoticeChannel.never.followsMain)
+        XCTAssertFalse(NotifierPluginNoticeChannel.never.asksToUpdate)
+        XCTAssertTrue(NotifierPluginNoticeChannel.stableOnly.asksToUpdate)
     }
 
     func testTheStableVersionIsReadFromChannelsYAML() {

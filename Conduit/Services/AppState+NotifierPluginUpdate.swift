@@ -268,9 +268,10 @@ extension AppState {
         if activeNotifierPluginUpdate != .idle {
             dismissNotifierPluginUpdateOutcome()
         }
-        // Only this version's dismissals matter from now on.
-        let version = "|\(notifierPlugin.noticeDismissalVersion)"
-        dismissedPluginUpdates = dismissedPluginUpdates.filter { $0.hasSuffix(version) }
+        // This dashboard's older dismissals no longer matter. Others keep
+        // theirs: under Never a restart's version differs per dashboard.
+        let dashboard = "\(activeDashboardID?.uuidString ?? "")|"
+        dismissedPluginUpdates = dismissedPluginUpdates.filter { !$0.hasPrefix(dashboard) }
             .union([pluginUpdateDismissalToken])
     }
 

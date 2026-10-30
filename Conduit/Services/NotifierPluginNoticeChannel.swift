@@ -10,9 +10,10 @@ enum NotifierPluginNoticeChannel: String, CaseIterable, Identifiable {
     /// Only the stable version: the plugin this build was archived with,
     /// or channels.yaml's `stable:` when that is newer.
     case stableOnly
-    /// No notice for new versions or missing features: only when the
-    /// plugin is older than NotifierPluginStatus.recommendedVersion.
-    case requiredOnly
+    /// No notice for any version or missing feature: updates wait in
+    /// Settings > Conduit plugin. An update already on the host still asks
+    /// for its restart.
+    case never
 
     static let key = "conduit.notifierPlugin.noticeChannel"
 
@@ -28,6 +29,7 @@ enum NotifierPluginNoticeChannel: String, CaseIterable, Identifiable {
     /// Whether the notice asks for every version on main.
     var followsMain: Bool { self == .everyVersion }
 
-    /// Whether the notice asks for plugin versions this build doesn't need.
-    var asksForNewVersions: Bool { self != .requiredOnly }
+    /// Whether the notice, the Settings card and Finish setting up ask for
+    /// an update at all.
+    var asksToUpdate: Bool { self != .never }
 }
