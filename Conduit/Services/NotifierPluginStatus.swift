@@ -166,9 +166,10 @@ struct NotifierPluginStatus: Equatable {
 
     /// Worth asking for an update unprompted: the update notice, the
     /// Settings badge and Finish setting up. On the stable channel a newer
-    /// plugin on main alone doesn't count; on Never nothing does.
+    /// plugin on main alone doesn't count; on Never nothing does but an
+    /// install, since installing isn't updating.
     var updateRecommended: Bool {
-        asksToUpdate && isUpdate(below: noticeVersion)
+        (asksToUpdate || offersInstall) && isUpdate(below: noticeVersion)
     }
 
     private func isUpdate(below target: String) -> Bool {

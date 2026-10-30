@@ -290,6 +290,7 @@ extension GatewayRestartTests {
         // Installing isn't updating: a missing plugin is still offered.
         status.hostCopy = .missing
         XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .install)
+        XCTAssertTrue(status.needsAttention)
     }
 
     func testNotNowKeepsOtherDashboardsDismissals() throws {
