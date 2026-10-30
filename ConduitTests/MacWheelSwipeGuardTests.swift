@@ -6,9 +6,9 @@ import XCTest
 /// which the guard knows by name.
 private final class FakeSwipeActionPanRecognizer: UIPanGestureRecognizer {}
 
-/// The guard's walk in #1480: tests ride on an existing class so the
-/// planner gains no new class.
-extension ComposerReturnKeyTests {
+/// The Mac wheel guard's walk (#1480).
+@MainActor
+final class MacWheelSwipeGuardTests: XCTestCase {
     func testWheelGuardStopsScrollEventsOnlyForRowSwipesOfListsAboveThePointer() {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 400, height: 400))
         let list = UIScrollView(frame: window.bounds)
@@ -19,6 +19,7 @@ extension ComposerReturnKeyTests {
         let swipe = FakeSwipeActionPanRecognizer(target: nil, action: nil)
         swipe.allowedScrollTypesMask = .all
         list.addGestureRecognizer(swipe)
+        list.panGestureRecognizer.allowedScrollTypesMask = .continuous
         let otherPan = UIPanGestureRecognizer(target: nil, action: nil)
         otherPan.allowedScrollTypesMask = .all
         list.addGestureRecognizer(otherPan)
@@ -32,9 +33,9 @@ extension ComposerReturnKeyTests {
         MacWheelSwipeGuardRecognizer.stopWheelSwipes(under: row)
 
         XCTAssertEqual(swipe.allowedScrollTypesMask, [])
-        XCTAssertEqual(otherPan.allowedScrollTypesMask, .all, "the list's own scrolling pan is left alone")
+        XCTAssertEqual(otherPan.allowedScrollTypesMask, .all, "another pan on the list is left alone")
         XCTAssertEqual(elsewhereSwipe.allowedScrollTypesMask, .all, "only lists under the pointer change")
-        XCTAssertEqual(list.panGestureRecognizer.allowedScrollTypesMask, UIPanGestureRecognizer().allowedScrollTypesMask)
+        XCTAssertEqual(list.panGestureRecognizer.allowedScrollTypesMask, .continuous, "the list's scrolling keeps its own")
     }
 
     func testWheelGuardKnowsRowSwipesByUIKitsClassName() {

@@ -9,7 +9,9 @@ import UIKit
 /// delta") while it gathers the recognizers under the pointer, before any
 /// of Conduit's code runs. Before a wheel turns over a list the pointer has
 /// hovered there, so each hover stops the swipe recognizers of the lists
-/// under the pointer from taking scroll events. A trackpad no longer
+/// under the pointer from taking scroll events; while the pointer rests in
+/// the window, a light check every quarter second catches a list that
+/// opened under it (a click that pushes a page with a list). A trackpad no longer
 /// swipes a row on a Mac, so every row's swipe actions are on its
 /// right-click menu too (`macSwipeActionsMenu` where only a swipe had them).
 struct MacWheelSwipeGuardProbe: UIViewRepresentable {
@@ -38,6 +40,10 @@ final class MacWheelSwipeGuardRecognizer: UIHoverGestureRecognizer, UIGestureRec
     /// The view last hovered, so a pointer resting on one row doesn't walk
     /// its ancestors again on every move.
     private weak var lastHovered: UIView?
+    /// Where the pointer rests, looked at again while it doesn't move.
+    private var lastLocation: CGPoint?
+    private var restingCheck: Timer?
+    static let restingCheckInterval: TimeInterval = 0.25
 
     init() {
         super.init(target: nil, action: nil)
@@ -54,8 +60,28 @@ final class MacWheelSwipeGuardRecognizer: UIHoverGestureRecognizer, UIGestureRec
     }
 
     @objc private func hovered() {
-        guard state == .began || state == .changed, let window = view as? UIWindow else { return }
-        let hovered = window.hitTest(location(in: window), with: nil)
+        guard state == .began || state == .changed, let window = view as? UIWindow else {
+            // The pointer left the window: nothing to look at until it's back.
+            restingCheck?.invalidate()
+            restingCheck = nil
+            lastLocation = nil
+            return
+        }
+        lastLocation = location(in: window)
+        checkUnderPointer()
+        guard restingCheck == nil else { return }
+        let timer = Timer(timeInterval: Self.restingCheckInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkUnderPointer() }
+        }
+        timer.tolerance = 0.1
+        RunLoop.main.add(timer, forMode: .common)
+        restingCheck = timer
+    }
+
+    /// Guards the lists under the pointer when the view there has changed.
+    private func checkUnderPointer() {
+        guard let window = view as? UIWindow, let lastLocation else { return }
+        let hovered = window.hitTest(lastLocation, with: nil)
         guard hovered !== lastHovered else { return }
         lastHovered = hovered
         Self.stopWheelSwipes(under: hovered)
@@ -80,7 +106,10 @@ final class MacWheelSwipeGuardRecognizer: UIHoverGestureRecognizer, UIGestureRec
 
     /// UIKit's row swipe recognizer (`_UISwipeActionPanGestureRecognizer`,
     /// made for UITableView and list collection views), known only by its
-    /// private class's name. A UIScrollView's own pan is left alone.
+    /// private class's name. Matched on "SwipeAction" rather than the whole
+    /// name, so a renamed or subclassed one is still caught; any pan named
+    /// so is a row swipe, which a wheel never needs. A UIScrollView's own
+    /// pan is left alone.
     static func isSwipeActionPan(_ recognizer: UIPanGestureRecognizer) -> Bool {
         NSStringFromClass(type(of: recognizer)).contains("SwipeAction")
     }

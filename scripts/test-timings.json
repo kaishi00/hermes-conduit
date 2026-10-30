@@ -66,6 +66,7 @@
     "MarkdownReferenceLinkTests": 0.297,
     "MarkdownRichContentHostedTests": 810.0,
     "MarkdownRichContentPolicyTests": 0.078,
+    "MacWheelSwipeGuardTests": 0.05,
     "MarkdownSelectionCoordinatorTests": 0.372,
     "MarkdownTableLayoutTests": 0.843,
     "MessageNormalizerTests": 0.453,
