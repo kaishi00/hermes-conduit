@@ -3685,6 +3685,41 @@ extension SessionPresentationCacheTests {
         )
     }
 
+    /// Tombstones whose write didn't land (a full disk) are written again
+    /// once a store write lands: from then a kill no longer loses the
+    /// delete, even while the other store still holds the deleted chat.
+    func testTombstonesThatDidntLandAreWrittenAgain() throws {
+        let storage = FailingPresentationStorage()
+        let cache = SessionPresentationCache(storage: storage, writesAsynchronously: true)
+        cache.save(
+            [ChatMessage(id: "row-3", role: .assistant, content: "Doomed", timestamp: "2024-01-03T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-c"]
+        )
+        cache.waitForPendingWrites()
+        storage.failsStoreWrites = true
+        storage.failsTombstoneWrites = true
+
+        cache.removeSessions(profile: "default", sessionIDs: ["session-c"])
+        let failed = expectation(description: "the full disk's writes settled")
+        cache.notifyWhenPendingWritesLand { failed.fulfill() }
+        wait(for: [failed], timeout: 5)
+        XCTAssertNil(storage.data(forKey: FailingPresentationStorage.tombstonesKey), "Nothing landed")
+
+        storage.failsStoreWrites = false
+        storage.failsTombstoneWrites = false
+        cache.save(
+            [ChatMessage(id: "row-1", role: .assistant, content: "Later", timestamp: "2024-01-04T10:00:00Z")],
+            profile: "default",
+            sessionIDs: ["session-a"]
+        )
+        let landed = expectation(description: "a store write landed")
+        cache.notifyWhenPendingWritesLand { landed.fulfill() }
+        wait(for: [landed], timeout: 5)
+
+        XCTAssertNotNil(storage.data(forKey: FailingPresentationStorage.tombstonesKey), "Written again")
+    }
+
     /// A save reuses a row's record only while the row is as it was saved:
     /// a row whose text changed is fingerprinted again, so what's restored
     /// later belongs to its new text.
@@ -3788,16 +3823,23 @@ final class DeterministicClock: @unchecked Sendable {
     }
 }
 
-/// A presentation store whose writes of the stores can be made to fail, as
-/// a full disk fails a file's; tombstones still write.
+/// A presentation store whose writes can be made to fail, as a full disk
+/// fails a file's: the stores', and on their own the tombstones'.
 private final class FailingPresentationStorage: SessionPresentationStorage {
+    static let tombstonesKey = "conduit.sessionPresentation.tombstones.v1"
     private let lock = NSLock()
     private var stored: [String: Data] = [:]
     private var failing = false
+    private var failingTombstones = false
 
     var failsStoreWrites: Bool {
         get { lock.withLock { failing } }
         set { lock.withLock { failing = newValue } }
+    }
+
+    var failsTombstoneWrites: Bool {
+        get { lock.withLock { failingTombstones } }
+        set { lock.withLock { failingTombstones = newValue } }
     }
 
     func data(forKey key: String) -> Data? {
@@ -3806,7 +3848,7 @@ private final class FailingPresentationStorage: SessionPresentationStorage {
 
     func storeData(_ data: Data, forKey key: String) -> Bool {
         lock.withLock {
-            guard !failing || key == "conduit.sessionPresentation.tombstones.v1" else { return false }
+            guard key == Self.tombstonesKey ? !failingTombstones : !failing else { return false }
             stored[key] = data
             return true
         }

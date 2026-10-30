@@ -663,18 +663,12 @@ final class AppState: ObservableObject {
     private var cachedGatewayMediaResolver: (profile: String, resolver: GatewayMediaDataURLResolver)?
 
     /// The open chat's pictures, which a tapped one pages through in the
-    /// viewer. One instance, so the rows reading it never redraw for it;
-    /// the list is read only when a picture is tapped.
+    /// viewer: the saved copy's while it stands in for the chat. One
+    /// instance, so the rows reading it never redraw for it; the list is
+    /// read only when a picture is tapped.
     lazy var chatImageGallery = ImageGallerySource { [weak self] in
         guard let self else { return [] }
-        return ChatImageGallery.items(in: self.messages, resolver: self.gatewayMediaResolver)
-    }
-
-    /// The saved copy's pictures (#99), the same way.
-    lazy var savedChatImageGallery = ImageGallerySource { [weak self] in
-        guard let self else { return [] }
-        return ChatImageGallery.items(in: self.offlineChatPresentation?.displayedMessages ?? [],
-                                      resolver: self.gatewayMediaResolver)
+        return ChatImageGallery.items(in: self.chatRowsOnScreen, resolver: self.gatewayMediaResolver)
     }
 
     /// A stable resolver for another profile's media (a Live Voice job that
@@ -1121,16 +1115,20 @@ final class AppState: ObservableObject {
                 pendingDecisionKind = kind
             }
             advanceChatViewportExpectedTranscriptRevisionIfNeeded()
-            // A real transcript replaces the read-only offline copy wholesale;
-            // the two are never mixed on screen.
+            // Hermes' rows take over from the saved copy's in the same
+            // update: the chat view draws one or the other, never a mix, and
+            // rows with the same id stay where they are (#1533).
             if !messages.isEmpty, offlineChatPresentation != nil {
                 offlineChatPresentation = nil
             }
         }
     }
     /// Read-only copy of a recently opened conversation, shown while the
-    /// server has not answered yet (#99). Presentation only: it never feeds
-    /// `messages`, `sessions`, or any resume/selection/routing decision.
+    /// server has not answered yet (#99): the chat view draws its rows as
+    /// the chat's, provisionally. It never feeds `messages`, `sessions`, or
+    /// any resume/selection/routing decision, and while it's up nothing
+    /// that needs Hermes' word acts on its rows (approvals, Load earlier,
+    /// Retry, Edit, reactions, pins).
     @Published private(set) var offlineChatPresentation: OfflineChatPresentation? {
         // A message waiting for the chat on screen follows what's shown.
         didSet {
@@ -1447,8 +1445,9 @@ final class AppState: ObservableObject {
     /// inserted the outgoing bubble, even if the user previously browsed up.
     @Published private(set) var chatScrollRequest = 0
     @Published private(set) var chatScrollToTopRequest = 0
-    /// Bumped once an unread chat's open has its transcript in: ChatView
-    /// lands it at the start of its latest reply (#365), taking it once
+    /// Bumped once an unread chat's open has its transcript in, or as it
+    /// opens when its saved rows end mid-turn (#1533): ChatView lands it at
+    /// the start of its latest reply (#365), taking it once
     /// (takeChatReplyStartLanding), also when it mounts after the bump.
     @Published private(set) var chatReplyStartLandingRequest = 0
     private var chatReplyStartLandingTaken = 0
@@ -5632,6 +5631,33 @@ final class AppState: ObservableObject {
     var showsOfflineChatCopy: Bool {
         guard let offline = offlineChatPresentation else { return false }
         return messages.isEmpty || offline.isPickedChat
+    }
+
+    /// The rows the chat view draws: the saved copy's while it is the chat
+    /// on screen, else the live transcript. Hermes' rows take over from the
+    /// copy's in place, by id (#1533).
+    var chatRowsOnScreen: [ChatMessage] {
+        guard showsOfflineChatCopy, let copy = offlineChatPresentation else { return messages }
+        return copy.displayedMessages
+    }
+
+    /// A turn runs in the chat drawn: not in a chat picked in the saved
+    /// list, which isn't the live chat until it opens.
+    var chatOnScreenIsBusy: Bool {
+        isBusy && savedCopyScrollSessionKey == nil
+    }
+
+    /// The conversation the chat view draws while the saved copy on screen
+    /// isn't the live chat's: a chat picked in the saved list before it
+    /// opens, or a launch's copy before its chat resumes. Nil while no copy
+    /// shows, or while it's the live chat's own: that one draws under the
+    /// live chat's key, so Hermes' rows taking over isn't a switch.
+    var savedCopyScrollSessionKey: ChatScrollSessionKey? {
+        guard showsOfflineChatCopy, let copy = offlineChatPresentation else { return nil }
+        if let active = activeSessionId, copy.chatSessionIDs.contains(active) { return nil }
+        guard let sessionID = copy.composerSessionID else { return nil }
+        let key = ChatScrollSessionKey(profile: copy.profile, sessionID: sessionID)
+        return key.isValid ? key : nil
     }
 
     /// The live chat on screen is on its way back: synchronizing or
@@ -23858,6 +23884,14 @@ final class AppState: ObservableObject {
         if offlineChatPresentation?.picked?.sessionIDs.contains(sessionId) != true {
             dismissOfflineChatPresentation()
         }
+        // An unread chat left while its latest turn ran lands at that turn's
+        // reply start now, from the saved rows: Hermes' rows have the same
+        // start and replace them in place, so the chat doesn't move when
+        // they land (#1533). A copy whose turn has a reply waits for Hermes'
+        // rows, which can start a newer turn below it.
+        let landsFromSavedRows = opensUnreadReply && showsOfflineChatCopy
+            && Self.savedRowsEndMidTurn(offlineChatPresentation?.displayedMessages ?? [])
+        if landsFromSavedRows { chatReplyStartLandingRequest &+= 1 }
         persistedTranscriptWindow = nil
         // Freshness evidence belongs to the conversation it was captured
         // for; the reconcile below re-establishes it authoritatively.
@@ -23920,8 +23954,16 @@ final class AppState: ObservableObject {
             // Read before any await: the flags describe the reconcile above.
             return (.failed, reconciliationWasIdentityRejected || reconciliationSessionWasNotFound)
         }
-        if opensUnreadReply { chatReplyStartLandingRequest &+= 1 }
+        if opensUnreadReply, !landsFromSavedRows { chatReplyStartLandingRequest &+= 1 }
         return (.opened, false)
+    }
+
+    /// Whether saved rows end in a turn with no reply yet: the user's latest
+    /// message has only steps after it, or nothing. Its reply starts where
+    /// it will when Hermes' rows are in.
+    nonisolated static func savedRowsEndMidTurn(_ rows: [ChatMessage]) -> Bool {
+        guard let user = rows.lastIndex(where: { $0.role == .user }) else { return false }
+        return !rows[(user + 1)...].contains { $0.role == .assistant }
     }
 
     /// How a notification open ended, for the route that retries it (#789):

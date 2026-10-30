@@ -175,8 +175,11 @@ extension AppState {
             returnPendingComposerSendToDraft(other)
         }
         pendingComposerSend = pending
-        // The live transcript shows it below its rows.
-        if case .live = composerChatOnScreen { requestChatScrollToLatest() }
+        // The chat shows it below its rows, the saved copy's included.
+        switch composerChatOnScreen {
+        case .live, .savedCopy: requestChatScrollToLatest()
+        case .newChat, .none: break
+        }
         schedulePendingComposerSendCheck()
         return true
     }

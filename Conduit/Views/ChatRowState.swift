@@ -66,23 +66,26 @@ struct ChatRowState: Equatable {
         activeProfile = profile
         agentIdentity = appState.conversationAgentIdentity
         agentGlowTint = appState.profileGlowTint(appState.conversationIdentityProfile)
-        isBusy = appState.isBusy
+        isBusy = appState.chatOnScreenIsBusy
         isBranchingChat = appState.isBranchingChat
         isOffline = appState.offlineChatPresentation != nil
         canQuoteIntoComposer = appState.canQuoteIntoComposer()
         reactionsAvailable = appState.reactionsAvailable
-        latestAssistantMessageID = appState.messages.last(where: { $0.role == .assistant })?.id
-        retryableReplyID = AppState.retryableReplyID(in: appState.messages)
+        // From the rows drawn, the saved copy's while it stands in, so they
+        // fold and hide as Hermes' will and nothing moves when those land.
+        let rows = appState.chatRowsOnScreen
+        latestAssistantMessageID = rows.last(where: { $0.role == .assistant })?.id
+        retryableReplyID = AppState.retryableReplyID(in: rows)
         readAloudUnavailable = appState.readAloudUnavailableReason != nil
         displayPreferences = appState.displayPreferences
         voiceCallLinksRevision = appState.voiceCallChatLinksRevision
-        latestLiveRows = RichCard.latestLiveRows(appState.messages)
+        latestLiveRows = RichCard.latestLiveRows(rows)
         pulseCards = appState.pulseCards(forChat: appState.activeSessionId)
         canPinReplies = appState.canPinReplies
         pinnedMessageIDs = appState.openChatPinnedMessageIDs
         teammateReplies = BotTeammateMessages.teammateReplies(
-            in: appState.messages,
-            streamingMessageID: appState.isBusy ? BotTeammateMessages.runningReplyID(in: appState.messages) : nil
+            in: rows,
+            streamingMessageID: isBusy ? BotTeammateMessages.runningReplyID(in: rows) : nil
         )
         botLabels = appState.botRoster.map { "\($0.name)=\($0.displayLabel)" }
         toolCatalog = appState.toolCatalog

@@ -697,14 +697,17 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(store.load(dashboardID: dashboard, profile: "default"), snapshot)
     }
 
-    /// The copy draws as the live transcript does: a turn's steps as one
-    /// card with their times, pictures, reactions.
+    /// The copy draws as the live transcript does, in the chat's own scroll
+    /// view: a turn's steps as one card with their times, pictures,
+    /// reactions, and Hermes' row ids, so Hermes' rows sent again unchanged
+    /// equal the copy's and aren't drawn again (#1533).
     func testSavedRowsKeepWhatTheLiveTranscriptDraws() throws {
         let (appState, store, dashboard) = makeAppState()
         let picture = Attachment(id: "u1-gateway-image-0", name: "photo.jpg", uri: "/files/photo.jpg", mimeType: "image/jpeg", kind: .image)
         let reaction = MessageReaction(emoji: "👍", author: MessageReaction.agentAuthor, at: 1_790_000_000)
         var thinking = ChatMessage(id: "r1", role: .reasoning, content: "Looking it up", timestamp: "2")
         thinking.stepDuration = 4
+        let reply = ChatMessage(id: "a1", role: .assistant, content: "Here it is", timestamp: "4", rowId: 42)
         store.record(
             dashboardID: dashboard,
             profile: "default",
@@ -714,14 +717,19 @@ final class OfflineChatCacheTests: XCTestCase {
                 ChatMessage(id: "u1", role: .user, content: "Find it", timestamp: "1", attachments: [picture], reactions: [reaction]),
                 thinking,
                 ChatMessage(id: "t1", role: .tool, content: "", timestamp: "3", tool: ToolActivity(name: "web_search", status: .complete, duration: 3)),
-                ChatMessage(id: "a1", role: .assistant, content: "Here it is", timestamp: "4"),
+                reply,
             ],
             sessions: [session("stored-a")]
         )
 
         appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
 
-        let rows = try XCTUnwrap(appState.offlineChatPresentation?.displayedRows)
+        let drawn = appState.chatRowsOnScreen
+        XCTAssertEqual(drawn, try XCTUnwrap(appState.offlineChatPresentation?.displayedMessages))
+        XCTAssertEqual(drawn.last, reply, "Hermes' row, row id and all")
+        var placed = ChatMessageScrollTargetCache()
+        placed.update(for: drawn)
+        let rows = placed.targets
         XCTAssertEqual(rows.map(\.id), ["u1", "r1", "t1", "a1"])
         XCTAssertEqual(rows[0].message.attachments, [picture])
         XCTAssertEqual(rows[0].message.reactions, [reaction])
@@ -756,10 +764,13 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(appState.persistedTranscriptWindow)
         XCTAssertFalse(appState.canLoadEarlierMessagesForActiveConversation)
         // Viewport (#147/#193): no transcript revision, transition, or scroll
-        // identity change — the live chat view sees a plain empty cold launch.
+        // identity change. The chat view draws the copy's rows under the
+        // copy's own key until its chat resumes (#1533).
         XCTAssertEqual(appState.chatTranscriptRevision, revision)
         XCTAssertEqual(appState.chatViewportTransitionGeneration, transition)
         XCTAssertEqual(appState.activeChatScrollSessionIdentity, identity)
+        XCTAssertEqual(appState.chatRowsOnScreen.map(\.id), ["u1", "a1"])
+        XCTAssertEqual(appState.savedCopyScrollSessionKey, ChatScrollSessionKey(profile: "default", sessionID: "stored-a"))
         // Read-only.
         XCTAssertFalse(appState.composerIsEnabled)
         XCTAssertEqual(appState.composerAction(hasText: true, hasAttachments: false), .unavailable)
@@ -815,6 +826,11 @@ final class OfflineChatCacheTests: XCTestCase {
         presentation = try XCTUnwrap(appState.offlineChatPresentation)
         XCTAssertEqual(presentation.displayedMessages.map(\.id), ["u1", "a1"])
         XCTAssertEqual(appState.chatPickedFromSavedListIDForTesting, "stored-a", "The latest tap is the one that opens")
+        XCTAssertEqual(appState.chatRowsOnScreen.map(\.id), ["u1", "a1"])
+        XCTAssertEqual(
+            appState.savedCopyScrollSessionKey, ChatScrollSessionKey(profile: "default", sessionID: "stored-a"),
+            "Drawn as the picked chat, not as the chat under it"
+        )
         // Nothing live moved.
         XCTAssertNil(appState.activeSessionId)
         XCTAssertTrue(appState.messages.isEmpty)
@@ -1738,8 +1754,9 @@ final class OfflineChatCacheTests: XCTestCase {
     }
 
     /// Going back to a chat shows its saved copy at once while Hermes sends
-    /// its transcript, instead of a blank chat, and the live transcript
-    /// replaces it wholesale (#1352).
+    /// its transcript, instead of a blank chat (#1352), drawn as the chat's
+    /// own rows, and Hermes' rows take over from them in the same update
+    /// (#1533).
     func testAChatOpenedAgainShowsItsSavedCopyUntilItsTranscriptLands() async throws {
         useInMemoryKeychain()
         let gate = ControlledSuspension()
@@ -1776,12 +1793,92 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(appState.showsOfflineChatCopy)
         XCTAssertEqual(appState.displayedChatTitle, "stored-a")
         XCTAssertTrue(appState.messages.isEmpty, "The copy never feeds the live transcript")
+        XCTAssertEqual(appState.chatRowsOnScreen.map(\.id), ["u1", "a1"], "The chat's own scroll view draws them")
+        XCTAssertNil(
+            appState.savedCopyScrollSessionKey,
+            "Drawn under the opening chat's own key, so Hermes' rows taking over isn't a switch"
+        )
+        XCTAssertEqual(
+            ChatRowState(appState).latestAssistantMessageID, "a1",
+            "Its rows fold and hide as Hermes' will"
+        )
+        XCTAssertTrue(ChatRowState(appState).isOffline, "Nothing needing Hermes' word acts on them")
 
         gate.resume()
         let landed = await opening.value
         XCTAssertTrue(landed)
         XCTAssertNil(appState.offlineChatPresentation)
         XCTAssertEqual(appState.messages.map(\.id), ["live-stored-a"])
+        XCTAssertEqual(appState.chatRowsOnScreen.map(\.id), ["live-stored-a"])
+    }
+
+    /// An unread chat left while its turn ran lands at that turn's reply
+    /// start from its saved rows as it opens: Hermes' rows start there too,
+    /// so nothing moves when they land, and they don't land it again
+    /// (#1533).
+    func testAnUnreadChatLeftMidTurnLandsFromItsSavedRows() async throws {
+        useInMemoryKeychain()
+        let gate = ControlledSuspension()
+        var gated = false
+        var unread = session("stored-a")
+        unread.isUnread = true
+        let live = [unread, session("stored-b")]
+        let opened = OpenedChats()
+        let (appState, store, dashboard) = makeAppState(
+            configureDefaults: { defaults in
+                ChatResumeStore(defaults: defaults).setLastSessionID("stored-b", for: "default")
+            },
+            lifecycleOperations: connectedLifecycle(
+                catalog: { _ in live },
+                opened: opened,
+                beforeOpen: { sessionID in
+                    guard sessionID == "stored-a", !gated else { return }
+                    gated = true
+                    await gate.suspend()
+                }
+            )
+        )
+        addTeardownBlock { appState.client?.disconnect() }
+        await appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"))
+        await waitUntil { appState.activeSessionId == "stored-b" && appState.messages.map(\.id) == ["live-stored-b"] }
+        store.record(
+            dashboardID: dashboard,
+            profile: "default",
+            sessionID: "stored-a",
+            title: "A",
+            messages: [
+                ChatMessage(id: "u1", role: .user, content: "Question", timestamp: "1"),
+                ChatMessage(id: "t1", role: .tool, content: "Searching", timestamp: "2"),
+            ],
+            sessions: live
+        )
+        XCTAssertTrue(appState.isSessionUnread(unread))
+        let landingsBefore = appState.chatReplyStartLandingRequest
+
+        let opening = Task { @MainActor in await appState.openSession("stored-a") }
+        await gate.waitUntilSuspended()
+
+        XCTAssertEqual(appState.chatRowsOnScreen.map(\.id), ["u1", "t1"])
+        XCTAssertEqual(appState.chatReplyStartLandingRequest, landingsBefore + 1, "It lands from the saved rows")
+
+        gate.resume()
+        let landed = await opening.value
+        XCTAssertTrue(landed)
+        XCTAssertEqual(appState.chatRowsOnScreen.map(\.id), ["live-stored-a"])
+        XCTAssertEqual(appState.chatReplyStartLandingRequest, landingsBefore + 1, "Hermes' rows don't land it again")
+    }
+
+    /// Saved rows end mid-turn while the user's latest message has no reply
+    /// after it, only steps or nothing.
+    func testSavedRowsEndMidTurnUntilTheReply() {
+        let question = ChatMessage(id: "u", role: .user, content: "Question", timestamp: "1")
+        let step = ChatMessage(id: "t", role: .tool, content: "Searching", timestamp: "2")
+        let reply = ChatMessage(id: "a", role: .assistant, content: "Answer", timestamp: "3")
+        XCTAssertTrue(AppState.savedRowsEndMidTurn([reply, question]))
+        XCTAssertTrue(AppState.savedRowsEndMidTurn([reply, question, step]))
+        XCTAssertFalse(AppState.savedRowsEndMidTurn([question, step, reply]))
+        XCTAssertFalse(AppState.savedRowsEndMidTurn([reply]), "No question: no turn to land in")
+        XCTAssertFalse(AppState.savedRowsEndMidTurn([]))
     }
 
     /// A Bot Chat keeps no copy on the phone; the one left this run shows

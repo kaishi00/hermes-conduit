@@ -365,9 +365,17 @@ final class ChatScrollEngine: ObservableObject {
     /// An unread chat just opened: once its transcript is in, it lands at
     /// the start of its latest reply instead of the end.
     private var replyStartLandingPending = false
+    /// The viewport transition of the open that asked for the landing, so
+    /// the switch that open makes doesn't drop it.
+    private var replyStartLandingGeneration: UInt64?
     /// Landed there, and the reader hasn't moved since: the end of a
     /// notification's handoff doesn't take them to the end.
     private var landedAtReplyStart = false
+    /// The rows drawn are saved ones standing in for the chat's (#1533).
+    /// Hermes' first rows after them are the chat's first sync: a user
+    /// message among them (a turn started elsewhere since) doesn't arm the
+    /// hold, as when the chat opened on no rows.
+    private var transcriptIsProvisional = false
     private let now: () -> TimeInterval
     private let prefersReducedMotion: @MainActor () -> Bool
     private let schedule: (TimeInterval, @escaping @MainActor () -> Void) -> Void
@@ -956,9 +964,9 @@ final class ChatScrollEngine: ObservableObject {
 
         let previous = renderedSessionKey
         renderedSessionKey = key
-        // Adopting the first key is not a switch, and an equivalent spelling
-        // of the same conversation is not one either.
-        if !viaNotification, previous == nil || identity.areEquivalent(previous, key) {
+        // Adopting the first key is not a switch, and the same key or an
+        // equivalent spelling of the same conversation is not one either.
+        if !viaNotification, previous == nil || previous == key || identity.areEquivalent(previous, key) {
             return
         }
         prependAnchor = nil
@@ -974,10 +982,14 @@ final class ChatScrollEngine: ObservableObject {
         dropCardShifts()
         // The new conversation's first transcript names its latest user
         // message without arming; an open with an unread reply asks for its
-        // landing after this.
+        // landing after this, or in the same update when it lands from its
+        // saved rows: that landing, asked for by this switch's transition,
+        // stays.
         replyHoldArmed = false
         latestUserRowID = nil
-        replyStartLandingPending = false
+        if replyStartLandingGeneration == nil || replyStartLandingGeneration != viewportTransitionGeneration {
+            replyStartLandingPending = false
+        }
         landedAtReplyStart = false
         refreshTrackedMessageVisibility()
         guard !isDragging else {
@@ -1031,6 +1043,7 @@ final class ChatScrollEngine: ObservableObject {
         transcriptRevision: UInt64,
         viewportTransitionGeneration: UInt64,
         isInitialSync: Bool = false,
+        isProvisional: Bool = false,
         activeSessionKey: ChatScrollSessionKey? = nil
     ) {
         TranscriptPerf.note(.transcriptChanged)
@@ -1041,9 +1054,11 @@ final class ChatScrollEngine: ObservableObject {
         let update = targetCache.update(for: messages)
         renderedTranscriptRevision = transcriptRevision
         mirroredViewportTransitionGeneration = viewportTransitionGeneration
+        let followsProvisionalRows = transcriptIsProvisional
+        transcriptIsProvisional = isProvisional
         defer { renderInputsMayHaveChanged() }
         guard update != .unchanged else { return }
-        noteLatestUserRow(arming: !isInitialSync)
+        noteLatestUserRow(arming: !isInitialSync && !followsProvisionalRows)
         if replyStartLandingPending {
             schedule(0) { [weak self] in
                 self?.landAtReplyStartIfPending()
@@ -1217,10 +1232,13 @@ final class ChatScrollEngine: ObservableObject {
     /// start of its latest reply instead of the end, as the reply would
     /// have stopped there had the chat been open (#365). Runs on the next
     /// turn, so the transcript, and the end of a notification's handoff,
-    /// reach the engine first.
-    func replyStartLandingRequested() {
+    /// reach the engine first. `viewportTransitionGeneration`: the open's
+    /// transition, when it asks before its switch reaches the engine (it
+    /// lands from the saved rows).
+    func replyStartLandingRequested(viewportTransitionGeneration: UInt64? = nil) {
         guard holdsRepliesAtStart() else { return }
         replyStartLandingPending = true
+        replyStartLandingGeneration = viewportTransitionGeneration
         schedule(0) { [weak self] in
             self?.landAtReplyStartIfPending()
         }

@@ -70,17 +70,42 @@ struct ChatView: View {
 
     private var viewportInputs: ChatScrollRenderInputs { scrollEngine.renderInputs }
 
-    /// The saved copy is on screen: over an empty transcript, or over any
-    /// transcript for a chat picked in the saved list.
+    /// The saved copy is the chat on screen, drawn as its rows: in place of
+    /// an empty transcript, or of any transcript for a chat picked in the
+    /// saved list.
     private var showsOfflineCopy: Bool {
         appState.showsOfflineChatCopy
     }
 
-    /// A message sent while this live chat was on its way, waiting below
-    /// its rows. The saved copy and a New Chat show their own.
+    /// Only a real offline state says the chat on screen is a saved copy.
+    /// While Hermes is on its way, between retries too, the copy reads as
+    /// the chat itself, and the header and the composer say Conduit is
+    /// connecting.
+    private var showsOfflineBanner: Bool {
+        showsOfflineCopy && !appState.isConnected && !appState.isRecoveringConnection
+    }
+
+    /// A message sent while this chat was on its way, waiting below its
+    /// rows, the saved copy's too. A New Chat shows its own.
     private var livePendingComposerSend: PendingComposerSend? {
-        guard !showsOfflineCopy, !appState.showsPendingNewChat else { return nil }
+        guard !appState.showsPendingNewChat else { return nil }
         return appState.pendingComposerSendOnScreen
+    }
+
+    /// The conversation the scroll view draws: a saved copy's that isn't
+    /// the live chat's (a chat picked in the saved list before it opens),
+    /// else the live chat's.
+    private var drawnScrollSessionKey: ChatScrollSessionKey? {
+        appState.savedCopyScrollSessionKey ?? activeScrollSessionKey
+    }
+
+    /// A "Replying to" card's tap scrolls to the reply it quoted, once the
+    /// rows are Hermes': not on the saved copy's.
+    private var quotedReplyJump: QuotedReplyJumpAction? {
+        guard !showsOfflineCopy else { return nil }
+        return QuotedReplyJumpAction(owner: appState) { [weak appState = appState] quote, messageID in
+            appState?.showQuotedReply(quote, quotedIn: messageID) ?? false
+        }
     }
 
     private var renderedScrollSessionKey: ChatScrollSessionKey? { viewportInputs.renderedSessionKey }
@@ -89,8 +114,8 @@ struct ChatView: View {
         Self.activeScrollSessionKey(in: appState)
     }
 
-    private var activeOrFallbackScrollSessionKey: ChatScrollSessionKey {
-        Self.activeOrFallbackScrollSessionKey(in: appState)
+    private var drawnOrFallbackScrollSessionKey: ChatScrollSessionKey {
+        Self.drawnOrFallbackScrollSessionKey(in: appState)
     }
 
     @MainActor
@@ -106,9 +131,11 @@ struct ChatView: View {
         return fallback.isValid ? fallback : nil
     }
 
+    /// The conversation the anchors belong to: the one drawn (a chat picked
+    /// in the saved list, while its copy stands in), else a New Chat.
     @MainActor
-    static func activeOrFallbackScrollSessionKey(in appState: AppState) -> ChatScrollSessionKey {
-        activeScrollSessionKey(in: appState) ?? ChatScrollSessionKey(
+    static func drawnOrFallbackScrollSessionKey(in appState: AppState) -> ChatScrollSessionKey {
+        appState.savedCopyScrollSessionKey ?? activeScrollSessionKey(in: appState) ?? ChatScrollSessionKey(
             profile: appState.activeProfile,
             sessionID: "new"
         )
@@ -119,7 +146,7 @@ struct ChatView: View {
     }
 
     private var topAnchor: String {
-        ChatTitleScrollAnchor.id(for: activeOrFallbackScrollSessionKey)
+        ChatTitleScrollAnchor.id(for: drawnOrFallbackScrollSessionKey)
     }
 
     /// Read from the engine; `viewportInputs.targetsRevision` is the cache's
@@ -138,7 +165,7 @@ struct ChatView: View {
         let targets = chatMessageScrollTargets
         _ = stepToggleRevision
         let preferences = appState.displayPreferences
-        let isBusy = appState.isBusy
+        let isBusy = appState.chatOnScreenIsBusy
         let draws: (ChatMessageScrollTarget) -> Bool = { target in
             target.drawsRow(preferences: preferences, isBusy: isBusy, disclosure: rowDisclosure)
         }
@@ -147,7 +174,7 @@ struct ChatView: View {
     }
 
     private var bottomAnchor: String {
-        Self.bottomAnchorID(for: activeOrFallbackScrollSessionKey)
+        Self.bottomAnchorID(for: drawnOrFallbackScrollSessionKey)
     }
 
     /// The tool running in this turn, for the working line. Looks back only
@@ -204,8 +231,10 @@ struct ChatView: View {
     /// active-conversation ownership — the exact predicate
     /// `loadEarlierMessages` enforces, so the control can never render for
     /// a window the action would silently reject.
+    /// Not while saved rows stand in: Load earlier pages Hermes' transcript,
+    /// another chat's under a chat picked in the saved list.
     private var transcriptBackfillAvailable: Bool {
-        appState.canLoadEarlierMessagesForActiveConversation
+        !showsOfflineCopy && appState.canLoadEarlierMessagesForActiveConversation
     }
 
     private var transcriptBackfillIsLoading: Bool {
@@ -348,27 +377,17 @@ struct ChatView: View {
                     )
                 )
             }
-            // VoiceOver reads only the saved copy while it is up.
-            .accessibilityHidden(showsOfflineCopy || appState.showsPendingNewChat)
-            // A chat picked in the saved list covers a transcript still up
-            // from before (a profile switch): that one is hidden, not drawn
-            // under it. It stays laid out, so its scroll position holds.
-            .opacity(showsOfflineCopy || appState.showsPendingNewChat ? 0 : 1)
-            // The read-only saved copy (#99) sits OVER the live scroll view
-            // instead of feeding it: the live view stays mounted with the
-            // same empty transcript a cold launch always had, so its viewport
-            // ownership, restoration, and follow logic are untouched. The
-            // first real transcript clears the copy in the same update.
-            // A New Chat on its way covers both, as the empty chat it will be.
+            // VoiceOver reads only a New Chat on its way while it is up.
+            .accessibilityHidden(appState.showsPendingNewChat)
+            // A New Chat on its way covers the transcript, as the empty chat
+            // it will be. The saved copy (#99) covers nothing: this scroll
+            // view draws its rows as the chat's (`chatRowsOnScreen`), and
+            // Hermes' rows replace them by id in the same update, so the
+            // chat isn't laid out again when they land (#1533).
+            .opacity(appState.showsPendingNewChat ? 0 : 1)
             .overlay {
                 if appState.showsPendingNewChat {
                     PendingNewChatView()
-                } else if showsOfflineCopy, let offline = appState.offlineChatPresentation {
-                    OfflineChatTranscriptView(presentation: offline)
-                        // Its own scroll view: the chat's jump can't reach it.
-                        .environment(\.quotedReplyJump, nil)
-                        // Its pictures page among its own.
-                        .environment(\.imageGallery, appState.savedChatImageGallery)
                 }
             }
 
@@ -436,13 +455,7 @@ struct ChatView: View {
                 handler: appState.quoteIntoComposer
             )
         )
-        // A "Replying to" card's tap scrolls to the reply it quoted.
-        .environment(
-            \.quotedReplyJump,
-            QuotedReplyJumpAction(owner: appState) { [weak appState = appState] quote, messageID in
-                appState?.showQuotedReply(quote, quotedIn: messageID) ?? false
-            }
-        )
+        .environment(\.quotedReplyJump, quotedReplyJump)
         // The rows show AppState through this, not by observing it.
         .chatRows()
         .sheet(isPresented: $showsPinnedReplies) {
@@ -467,7 +480,9 @@ struct ChatView: View {
                     transcriptTopBackfillControl
                 }
 
-                if appState.messages.isEmpty && appState.offlineChatPresentation == nil
+                if showsOfflineCopy {
+                    savedCopyWithoutRows
+                } else if appState.messages.isEmpty && appState.offlineChatPresentation == nil
                     && livePendingComposerSend == nil {
                     EmptyChatState().padding(.top, 60)
                 }
@@ -513,17 +528,21 @@ struct ChatView: View {
 
                 // The running turn's live tail observes only the live
                 // projection, so a streaming tick re-renders these rows and
-                // never this body, the composer, or an open sheet.
-                ChatLiveTurnRows(
-                    projection: appState.liveTurn,
-                    isBusy: appState.isBusy,
-                    author: appState.activeProfile,
-                    currentToolName: runningToolName,
-                    currentToolInput: runningToolInput,
-                    currentToolTitle: runningToolTitle,
-                    turnStartedAt: turnStartedAt,
-                    repliesElsewhere: appState.activeChatRepliesElsewhere
-                )
+                // never this body, the composer, or an open sheet. Not under
+                // a saved copy of another chat (one picked in the saved
+                // list): the turn is the live chat's.
+                if appState.savedCopyScrollSessionKey == nil {
+                    ChatLiveTurnRows(
+                        projection: appState.liveTurn,
+                        isBusy: appState.isBusy,
+                        author: appState.activeProfile,
+                        currentToolName: runningToolName,
+                        currentToolInput: runningToolInput,
+                        currentToolTitle: runningToolTitle,
+                        turnStartedAt: turnStartedAt,
+                        repliesElsewhere: appState.activeChatRepliesElsewhere
+                    )
+                }
 
                 if let pending = livePendingComposerSend {
                     PendingComposerSendBubble(pending: pending)
@@ -535,8 +554,7 @@ struct ChatView: View {
                 // view already insets for (V2's safe-area bar, or the
                 // stack below it), so the latest row ends one row spacing
                 // (plus this row's 1 pt) above it; extra padding here was
-                // empty space over the composer. OfflineChatTranscriptView
-                // ends with the same row.
+                // empty space over the composer.
                 Color.clear
                     .frame(height: 1)
                     .id(bottomAnchor)
@@ -565,8 +583,13 @@ struct ChatView: View {
         // Inside the pinned replies' inset: before iOS 26 the transcript's
         // fade is a mask, which would fade their card too.
         .modifier(V2SoftTopScrollEdge(isOn: composerFloats, underChatHeader: true))
-        // The open chat's pinned replies (#918), over the transcript's top.
-        .safeAreaInset(edge: .top, spacing: 0) { pinnedReplyBar }
+        // The open chat's pinned replies (#918), over the transcript's top,
+        // or the offline banner while the saved copy is up. Only the bar
+        // animates: rows changing in the same update don't.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            transcriptTopBar
+                .animation(.easeInOut(duration: 0.2), value: showsOfflineBanner)
+        }
         .onTapGesture {
             UIApplication.shared.sendAction(
                 #selector(UIResponder.resignFirstResponder),
@@ -614,16 +637,17 @@ struct ChatView: View {
                 installScrollEngineCallbacks(proxy: proxy)
                 scrollEngine.setPaused(scenePhase == .background)
                 scrollEngine.renderedSessionChanged(
-                    to: activeScrollSessionKey,
+                    to: drawnScrollSessionKey,
                     identity: appState.activeChatScrollSessionIdentity,
                     viaNotification: false,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration
                 )
                 scrollEngine.transcriptChanged(
-                    messages: appState.messages,
+                    messages: appState.chatRowsOnScreen,
                     transcriptRevision: appState.chatTranscriptRevision,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
-                    isInitialSync: true
+                    isInitialSync: true,
+                    isProvisional: showsOfflineCopy
                 )
                 scrollEngine.trackMessageVisibility(of: appState.pendingClarifyMessageID)
                 // An unread open that finished before this view was up.
@@ -697,12 +721,13 @@ struct ChatView: View {
 
     private func transcriptObservers(proxy: ScrollViewProxy, content: some View) -> some View {
         content
-            .onChange(of: appState.messages) { _, _ in
+            .onChange(of: appState.chatRowsOnScreen) { _, _ in
                 scrollEngine.transcriptChanged(
-                    messages: appState.messages,
+                    messages: appState.chatRowsOnScreen,
                     transcriptRevision: appState.chatTranscriptRevision,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
-                    activeSessionKey: activeScrollSessionKey
+                    isProvisional: showsOfflineCopy,
+                    activeSessionKey: drawnScrollSessionKey
                 )
             }
             .onChange(of: appState.pendingClarifyMessageID) { _, id in
@@ -797,6 +822,45 @@ struct ChatView: View {
         }
     }
 
+    /// The bar over the transcript's top: the offline banner while Hermes
+    /// can't be reached and the saved copy is the chat on screen, else the
+    /// open chat's pinned replies.
+    @ViewBuilder
+    private var transcriptTopBar: some View {
+        if showsOfflineBanner, let offline = appState.offlineChatPresentation {
+            OfflineChatBanner(
+                savedAt: offline.displayedTranscript?.savedAt,
+                showsCopy: !offline.displayedMessages.isEmpty
+            )
+            .padding(.horizontal, 18)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+            .transition(.opacity)
+        } else {
+            pinnedReplyBar
+        }
+    }
+
+    /// The saved copy on screen with no rows of its own: a chat picked in
+    /// the saved list says it's on its way while Conduit connects; offline,
+    /// or with nothing saved for it, it says there's no copy.
+    @ViewBuilder
+    private var savedCopyWithoutRows: some View {
+        if let offline = appState.offlineChatPresentation, offline.displayedMessages.isEmpty {
+            if offline.isPickedChat && !showsOfflineBanner {
+                ProgressView("Opening conversation…")
+                    .scaledFont(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 60)
+            } else if livePendingComposerSend == nil {
+                Text("No saved copy of this conversation")
+                    .scaledFont(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 60)
+            }
+        }
+    }
+
     /// The bar over the transcript while the open chat has pinned replies.
     @ViewBuilder
     private var pinnedReplyBar: some View {
@@ -853,9 +917,21 @@ struct ChatView: View {
                     "event sessionChanged viaNotification=\(appState.isOpeningNotificationSession)"
                 )
                 scrollEngine.renderedSessionChanged(
-                    to: activeScrollSessionKey,
+                    to: drawnScrollSessionKey,
                     identity: appState.activeChatScrollSessionIdentity,
                     viaNotification: appState.isOpeningNotificationSession,
+                    viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+                )
+            }
+            // A chat picked in the saved list draws as a conversation of its
+            // own until it opens; once the copy is the live chat's, or gone,
+            // the live chat's key takes over, which isn't a switch for the
+            // same chat.
+            .onChange(of: appState.savedCopyScrollSessionKey) { _, _ in
+                scrollEngine.renderedSessionChanged(
+                    to: drawnScrollSessionKey,
+                    identity: appState.activeChatScrollSessionIdentity,
+                    viaNotification: false,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration
                 )
             }
@@ -864,14 +940,15 @@ struct ChatView: View {
                     "event profileChanged viaNotification=\(appState.isOpeningNotificationSession)"
                 )
                 scrollEngine.transcriptChanged(
-                    messages: appState.messages,
+                    messages: appState.chatRowsOnScreen,
                     transcriptRevision: appState.chatTranscriptRevision,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
                     isInitialSync: true,
-                    activeSessionKey: activeScrollSessionKey
+                    isProvisional: showsOfflineCopy,
+                    activeSessionKey: drawnScrollSessionKey
                 )
                 scrollEngine.renderedSessionChanged(
-                    to: activeScrollSessionKey,
+                    to: drawnScrollSessionKey,
                     identity: appState.activeChatScrollSessionIdentity,
                     viaNotification: appState.isOpeningNotificationSession,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration
@@ -880,7 +957,7 @@ struct ChatView: View {
             .onChange(of: appState.activeChatScrollSessionIdentity) { _, _ in
                 scrollEngine.activeIdentityRefreshed(
                     identity: appState.activeChatScrollSessionIdentity,
-                    key: activeScrollSessionKey
+                    key: drawnScrollSessionKey
                 )
             }
             .onChange(of: appState.isOpeningNotificationSession) { _, isOpening in
@@ -896,7 +973,9 @@ struct ChatView: View {
     private func takeReplyStartLanding() {
         guard appState.takeChatReplyStartLanding() else { return }
         ChatViewportTrace.shared.log("event replyStartLanding (unread chat opened)")
-        scrollEngine.replyStartLandingRequested()
+        scrollEngine.replyStartLandingRequested(
+            viewportTransitionGeneration: appState.chatViewportTransitionGeneration
+        )
     }
 
     /// Send and the jump-to-latest button. An animated jump gets one final
@@ -946,10 +1025,11 @@ struct ChatView: View {
         scrollEngine.liveTailShowing = { [weak appState = appState] in
             guard let appState else { return false }
             let live = appState.liveTurn
-            return appState.isBusy || appState.activeChatRepliesElsewhere
-                || !live.streamingText.isEmpty || live.reasoningSegment != nil
-                || (appState.pendingComposerSendOnScreen != nil
-                    && !appState.showsOfflineChatCopy && !appState.showsPendingNewChat)
+            let liveTurnShows = appState.savedCopyScrollSessionKey == nil
+                && (appState.isBusy || appState.activeChatRepliesElsewhere
+                    || !live.streamingText.isEmpty || live.reasoningSegment != nil)
+            return liveTurnShows
+                || (appState.pendingComposerSendOnScreen != nil && !appState.showsPendingNewChat)
         }
         scrollEngine.onEvent = { [weak engine = scrollEngine, weak router] event in
             // Requests made while handling a UIKit callback can land in the
@@ -992,12 +1072,12 @@ private final class ChatScrollEventRouter {
             scrollWithoutAnimation { $0.scrollTo(id, anchor: .top) }
         case .revealLatest:
             let anchor = ChatView.bottomAnchorID(
-                for: ChatView.activeOrFallbackScrollSessionKey(in: appState)
+                for: ChatView.drawnOrFallbackScrollSessionKey(in: appState)
             )
             scrollWithoutAnimation { $0.scrollTo(anchor, anchor: .bottom) }
         case .revealTop:
             let anchor = ChatTitleScrollAnchor.id(
-                for: ChatView.activeOrFallbackScrollSessionKey(in: appState)
+                for: ChatView.drawnOrFallbackScrollSessionKey(in: appState)
             )
             scrollWithoutAnimation { $0.scrollTo(anchor, anchor: .top) }
         case .rebuildTranscript:
