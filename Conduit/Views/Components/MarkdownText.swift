@@ -1700,7 +1700,8 @@ struct MarkdownTable: View {
     /// falls back to cap-and-scroll and re-resolves a frame later, once the
     /// width is known.
     @State private var availableWidth: CGFloat = MarkdownTableWidthProbe.lastWidth
-    /// Turned on from the long-press menu; kept until the row is taken down.
+    /// Turned on from the long-press menu or by a pointer over the table;
+    /// kept until the row is taken down.
     @State private var selectionTurnedOn = false
     @Environment(\.markdownTablePlainCells) private var drawsPlainCells
     @Environment(\.markdownReferences) private var references
@@ -1781,7 +1782,8 @@ struct MarkdownTableRowView: View {
     let foregroundStyle: Color
     let usesAccentSurface: Bool
     /// Each cell a selectable text view, or plain text: the chat's tables,
-    /// until the reader turns on selection from the long-press menu.
+    /// until the reader turns on selection from the long-press menu or a
+    /// pointer moves over the table.
     let selectsText: Bool
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let segmentFor: (Int) -> MarkdownSelectionSegmentDescriptor?
@@ -1866,7 +1868,10 @@ private struct MarkdownPlainCell: View {
 
 /// A long press on a table whose cells are plain text copies the table or
 /// turns on text selection, which draws its cells as selectable text views
-/// until its row is taken down. VoiceOver offers both as actions.
+/// until its row is taken down. VoiceOver offers both as actions. A pointer
+/// (a Mac, or an iPad's trackpad or mouse) turns selection on as it moves
+/// over the table, so a click and drag selects in a cell as it does in the
+/// reply's other text (#1531).
 private struct MarkdownTableMenu: ViewModifier {
     let isOn: Bool
     let copyText: @Sendable () -> String
@@ -1885,6 +1890,9 @@ private struct MarkdownTableMenu: ViewModifier {
                 }
                 .accessibilityAction(named: Text("Copy Table"), copyTable)
                 .accessibilityAction(named: Text("Select Text"), selectText)
+                .onHover { hovering in
+                    if hovering { selectText() }
+                }
         } else {
             content
         }
@@ -1941,7 +1949,8 @@ struct LargeMarkdownTable: View {
     /// zero means "unknown yet" (first pass), and the cap-and-scroll
     /// fallback re-resolves a frame later.
     @State private var availableWidth: CGFloat = MarkdownTableWidthProbe.lastWidth
-    /// Turned on from the long-press menu; kept until the row is taken down.
+    /// Turned on from the long-press menu or by a pointer over the table;
+    /// kept until the row is taken down.
     @State private var selectionTurnedOn = false
     @Environment(\.markdownTablePlainCells) private var drawsPlainCells
     @Environment(\.markdownReferences) private var references

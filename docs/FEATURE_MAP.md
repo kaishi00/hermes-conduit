@@ -1536,6 +1536,33 @@ Read Aloud and live voice read-back · chat list previews and quotes
 
 **Checked:** 2026-10-30, #1524 (a Desktop card ends a list; previews and quotes name it); 2026-10-28, #1449 (speech leaves Hermes' file tags out, see Files Hermes attaches); 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
 
+## Tables in messages
+
+How a reply's Markdown table is drawn, selected and copied, in every view
+that draws Markdown.
+
+**Siblings:** chats, project chats and Bot Chat (one chat view: plain cells)
+· group rooms and other Markdown surfaces (selectable cells from the start) ·
+very long replies and big tables (paged) · the long-press menu (Copy Table,
+Select Text) and VoiceOver's actions for them · a pointer on a Mac or an
+iPad · selection across the reply · Copy response
+
+**Code**
+- Tables, cells and the menu: `Conduit/Views/Components/MarkdownText.swift` (MarkdownTable, MarkdownTableRowView, MarkdownPlainCell, MarkdownTableMenu, LargeMarkdownTable; MarkdownTableLayout for column widths and Copy Table's text)
+- Plain cells in the chat: `Conduit/Views/ChatView.swift` (markdownTablePlainCells)
+- Long replies: `Conduit/Views/Components/MarkdownLargeDocumentView.swift`, `Conduit/Views/Components/MarkdownRichContent.swift` (isComplexTable)
+- Selection: `Conduit/Views/Components/MarkdownSelectionCoordinator.swift`
+
+**Rulings**
+- The chat draws table cells as plain text, the cheapest to build as rows scroll in (#693). A long press offers Copy Table and Select Text; Select Text draws the cells as selectable text until the row is taken down.
+- A pointer over a table (a Mac, an iPad's trackpad or mouse) turns selection on, so a click and drag selects in a cell and Cmd+C and the context menu's Copy work, as in the reply's other text (2026-10-30, issue 1531, #PRNUM).
+
+**Open gaps**
+- Once selection is on, the long-press or right-click menu is the text's own (Copy for a selection), so Copy Table is gone for that table until its row is taken down; Copy response still copies the reply.
+- No Copy cell or Copy row (asked for as optional in issue 1531).
+
+**Checked:** 2026-10-30, #PRNUM.
+
 ## Attaching files
 
 Photos, camera shots and any other file go into the composer as
