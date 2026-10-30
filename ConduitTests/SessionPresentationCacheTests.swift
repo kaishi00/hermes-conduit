@@ -3696,6 +3696,18 @@ extension SessionPresentationCacheTests {
             profile: "default",
             sessionIDs: ["session-c"]
         )
+        // Another chat's running tool keeps the pending tools store from
+        // emptying, so the removal's write to it needs the disk too (an
+        // empty store is removed, which always lands) and stays unlanded
+        // after the save below lands the sessions store.
+        cache.recordPendingToolStart(
+            ChatMessage(
+                id: "pending", role: .tool, content: "", timestamp: "now",
+                tool: ToolActivity(id: "call-1", name: "terminal", input: "pwd", output: nil, status: .running)
+            ),
+            profile: "default",
+            sessionIDs: ["session-b"]
+        )
         cache.waitForPendingWrites()
         storage.failsStoreWrites = true
         storage.failsTombstoneWrites = true
