@@ -271,7 +271,7 @@ struct HermesCallSettingsSection: View {
                     }
                     if draft.alerts == true, draft.quietAtScreen != nil {
                         Toggle("Wait while I'm at a screen", isOn: optionalBinding(\.quietAtScreen))
-                        Text("When this is on, Hermes waits 10 minutes instead of one while you're talking to it in Hermes Desktop, the dashboard or a terminal, or have the chat open in Conduit, and a failed request there only sends a notification.")
+                        Text("When this is on, Hermes waits longer before calling, up to 10 minutes, while you're talking to it in Hermes Desktop, the dashboard or a terminal, or have the chat open in Conduit, and a failed request there only sends a notification.")
                             .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
