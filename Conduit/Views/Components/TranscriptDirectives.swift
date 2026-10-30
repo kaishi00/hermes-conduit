@@ -47,7 +47,10 @@ enum TranscriptDirectives {
         let nsLine = line as NSString
         var segments: [Segment] = []
         var cursor = 0
+        let codeSpans = inlineCodeSpans(in: line)
         for match in directiveExpression.matches(in: line, range: NSRange(location: 0, length: nsLine.length)) {
+            // One in a code span is an example.
+            guard !codeSpans.contains(where: { $0.location < match.range.location && match.range.location < NSMaxRange($0) }) else { continue }
             let name = nsLine.substring(with: match.range(at: 1))
             let body = nsLine.substring(with: match.range(at: 2))
             let segment: Segment
@@ -132,6 +135,23 @@ enum TranscriptDirectives {
             attributes[name] = valueRange.location != NSNotFound ? nsBody.substring(with: valueRange) : ""
         }
         return attributes
+    }
+
+    /// Ranges of single-backtick code spans.
+    private static func inlineCodeSpans(in line: String) -> [NSRange] {
+        guard line.contains("`") else { return [] }
+        let nsLine = line as NSString
+        var spans: [NSRange] = []
+        var open: Int?
+        for index in 0..<nsLine.length where nsLine.character(at: index) == 0x60 {
+            if let start = open {
+                spans.append(NSRange(location: start, length: index - start + 1))
+                open = nil
+            } else {
+                open = index
+            }
+        }
+        return spans
     }
 
     private static func appendText(_ text: String, to segments: inout [Segment]) {

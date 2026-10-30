@@ -3347,8 +3347,8 @@ copy and call job sheets (every Markdown surface, with or without the
 connected Hermes) · Read Aloud, Classic voice's spoken reply and Local Live's
 split · live read-backs and a Hermes call's result · what live models are
 handed, on the phone and the Watch · chat list and bot list previews · the
-notifier's push text · `::preview` (the same grammar, see Cards drawn in web
-pages)
+notifier's push text and the README line that describes it · `::preview`
+(the same grammar, see Cards drawn in web pages)
 
 **Code**
 - The grammar: `Conduit/Views/Components/TranscriptDirectives.swift` (segments, rewriting, naming, DesktopCardDirective; also built into the Watch app, `project.yml`)
@@ -3357,7 +3357,7 @@ pages)
 - Spoken: `Conduit/Voice/MessageReadAloudController.swift` (toggle), `Conduit/Voice/VoiceReadBack.swift` (plainSpeech), `Conduit/Voice/SpokenMediaTagFilter.swift` (Classic, Read Aloud's Now Playing, Local Live)
 - Live models: `Conduit/Views/Components/GatewayMediaTags.swift` (namingFiles)
 - Previews: `Conduit/Services/PreviewText.swift` (strip)
-- Push text: `notifier/events.py` (media_free)
+- Push text: `notifier/events.py` (media_free, _desktop_free), described in `notifier/README.md` (what notifications show)
 - Tests: `ConduitTests/MarkdownLargeDocumentTests+DesktopCard.swift`, `ConduitTests/GeminiLiveVoiceTests.swift` (testSpokenMediaTagFilterGivesTheSameSpeechHoweverTheReplyIsSplit), `notifier/tests/test_events.py` (test_no_push_shows_a_desktop_directive)
 
 **Rulings**

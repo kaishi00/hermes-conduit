@@ -37,6 +37,7 @@ extension MarkdownLargeDocumentTests {
         XCTAssertNil(TranscriptDirectives.segments(in: #"std::richui{id="ru-c91286278685"}"#))
         XCTAssertNil(TranscriptDirectives.segments(in: #"`::richui{id="ru-c91286278685"}`"#))
         XCTAssertNil(TranscriptDirectives.segments(in: "Use Foo::bar to call it."))
+        XCTAssertNil(TranscriptDirectives.segments(in: #"Run `echo ::richui{id="ru-c91286278685"}` here"#))
     }
 
     func testDesktopCard_MalformedRichUIIDIsNotRead() {
