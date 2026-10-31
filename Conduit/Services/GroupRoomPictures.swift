@@ -183,9 +183,11 @@ extension AppState {
 
     /// Takes the kept rooms' pictures as the ones on hand as the first list
     /// lands, so the rows keep them and the refresh fetches only the ones
-    /// whose revision moved; never over one fetched or changed here.
+    /// whose revision moved; never over one fetched or changed here. Taken
+    /// before the plugin says it keeps pictures, too: its status can land
+    /// after the list, which would otherwise keep the rooms without them.
     func adoptKeptGroupRoomPictures() {
-        guard canSetGroupRoomPictures, let kept = keptGroupRooms() else { return }
+        guard let kept = keptGroupRooms() else { return }
         var data = groupRoomPictureData
         var revisions = groupRoomPictureRevisions
         for picture in kept.pictures
@@ -292,6 +294,8 @@ extension AppState {
                 groupRoomPictureData.removeValue(forKey: roomID)
                 groupRoomPictureRevisions.removeValue(forKey: roomID)
             }
+            // What the Bots list opens on next (#1533).
+            keepGroupRoomPictures()
         } catch is CancellationError {
             return
         } catch {

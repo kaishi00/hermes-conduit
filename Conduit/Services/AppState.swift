@@ -7357,7 +7357,7 @@ final class AppState: ObservableObject {
         } else if let profile = profiles.first(where: { profilesMatch(profileDisplayName($0), name) }) {
             // The name Conduit shows, a device-kept one included.
             match = profile
-        } else if let bot = botRoster.first(where: { bot in
+        } else if let bot = shownBotRoster.first(where: { bot in
             profilesMatch(bot.displayLabel, name) || profilesMatch(bot.name, name)
                 || bot.previousNames.contains { profilesMatch($0, name) }
         }) {
@@ -7385,7 +7385,7 @@ final class AppState: ObservableObject {
         let entries = profiles.map { entry($0, [$0]) }
             + [entry("default", [defaultProfileName])]
             + profiles.map { entry($0, [profileDisplayName($0)]) }
-            + botRoster.map { entry($0.name, [$0.displayLabel, $0.name] + $0.previousNames) }
+            + shownBotRoster.map { entry($0.name, [$0.displayLabel, $0.name] + $0.previousNames) }
         var result: [WatchVoiceWire.JobProfileName] = []
         var bytes = 0
         for entry in entries where !entry.names.isEmpty {
@@ -11498,16 +11498,17 @@ final class AppState: ObservableObject {
         // `middlewareAnnotation`. The whole text is sent.
         BotMentions.middlewareAnnotation(
             text: text,
-            roster: botRoster,
+            roster: shownBotRoster,
             activeProfileName: activeConversationProfileScope
         ) ?? text
     }
 
-    /// What the composer's @ picker offers: the Bot Mode roster minus the
-    /// bot this conversation already talks to, tagged exactly as the
-    /// middleware above resolves them. Empty without Bot Mode.
+    /// What the composer's @ picker offers: the Bot Mode roster (the kept
+    /// one until Hermes answers) minus the bot this conversation already
+    /// talks to, tagged exactly as the middleware above resolves them.
+    /// Empty without Bot Mode.
     var composerMentionCandidates: [MentionAutocomplete.Candidate] {
-        MentionAutocomplete.botCandidates(botRoster, activeProfileName: activeConversationProfileScope)
+        MentionAutocomplete.botCandidates(shownBotRoster, activeProfileName: activeConversationProfileScope)
     }
 
     /// Presentation state for one open hosted room. A room is NOT a session:
@@ -12053,6 +12054,16 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Keeps the listed rooms and their pictures as they are now, as a
+    /// write: a picture set or removed here is what the Bots list opens on
+    /// next.
+    func keepGroupRoomPictures() {
+        guard groupRoomsListed, let owner = currentDashboardRuntimeOwner(),
+              let data = try? JSONEncoder().encode(keptGroupRoomsNow()),
+              let answer = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+        keepWrittenAnswer(answer, for: KeptRoute.groupRooms, profile: KeptRoute.everyProfile, owner: owner, removals: offlineChatCache.removals)
+    }
+
     /// The Bots list's hosted rooms: `groups.list`'s, else the kept ones
     /// until it answers, none once Hermes says it has no hosted rooms.
     var shownGroupRooms: [GroupRoom] {
@@ -12080,14 +12091,25 @@ final class AppState: ObservableObject {
             return
         }
         guard let dashboardID = activeDashboardID else { return }
-        // A kept room tapped before Hermes said it hosts rooms asks first,
-        // then opens as Hermes listed it.
+        // A kept room asks Hermes first, and opens as Hermes lists it.
         var room = room
-        if groupCapabilities == nil {
-            await refreshGroupChatSupport()
+        if !groupRoomsListed {
+            if groupCapabilities == nil {
+                await refreshGroupChatSupport()
+            } else {
+                await refreshGroupRooms()
+            }
             guard self.client === client, isConnected, activeDashboardID == dashboardID else { return }
             let roomID = room.roomID
-            room = groupRooms.first { $0.roomID == roomID } ?? room
+            guard groupRoomsListed else {
+                errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+                return
+            }
+            guard let listed = groupRooms.first(where: { $0.roomID == roomID }) else {
+                errorMessage = AppLocalization.string("That chat is no longer available.")
+                return
+            }
+            room = listed
         }
         guard groupCapabilities?.foundationSupported == true else { return }
         guard room.isDisbanded == false else { return }
@@ -23066,7 +23088,7 @@ final class AppState: ObservableObject {
     /// Whether Conduit lets this bot be deleted: never the gateway's primary
     /// profile, and never the profile this dashboard is working in.
     func canDeleteBot(_ bot: BotProfile) -> Bool {
-        bot.isDeletable && bot.name.caseInsensitiveCompare(activeProfile) != .orderedSame
+        !bot.isKeptCopy && bot.isDeletable && bot.name.caseInsensitiveCompare(activeProfile) != .orderedSame
     }
 
     /// Permanently deletes the bot's Hermes profile through the dashboard
@@ -23115,9 +23137,21 @@ final class AppState: ObservableObject {
             clearActiveConversation(replacement: .delete)
         }
         forgetHermesPicture(for: bot.name)
+        forgetKeptBot(bot.name)
         await refreshBotRosterAfterWrite()
         await loadProfiles()
         return nil
+    }
+
+    /// Drops a deleted bot from the roster kept on this dashboard, as a
+    /// write, so the Bots list doesn't open on it if the read after the
+    /// delete fails.
+    private func forgetKeptBot(_ name: String) {
+        guard let owner = currentDashboardRuntimeOwner(),
+              var kept = keptAnswer(KeptRoute.botRoster, profile: KeptRoute.everyProfile, on: owner),
+              let bots = kept["bots"] as? [Any] else { return }
+        kept["bots"] = bots.filter { ($0 as? [String: Any])?["name"] as? String != name }
+        keepWrittenAnswer(kept, for: KeptRoute.botRoster, profile: KeptRoute.everyProfile, owner: owner, removals: offlineChatCache.removals)
     }
 
     /// A Bot Chat's pins are kept under the profile in use, not the bot's,
@@ -23850,7 +23884,9 @@ final class AppState: ObservableObject {
         // linkedBot, not a bare name match: a bot renamed on the desktop
         // carries its old name in previousNames and must keep its picture
         // and color in an already-open chat.
-        let bot = Self.linkedBot(named: botProfile, in: botRoster)
+        // The kept bots until Hermes answers, so a kept row's chat opens
+        // with its face (#1533).
+        let bot = Self.linkedBot(named: botProfile, in: shownBotRoster)
         return ConversationAgentIdentity(
             name: botChatDisplayLabel(profile: botProfile, rosterBot: bot),
             photoURL: nil,

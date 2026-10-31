@@ -2242,6 +2242,19 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(next.botAvatarImage(for: atlas))
         try next.saveProfileAvatarOnDevice(photoData(), for: "atlas")
         XCTAssertNotNil(next.botAvatarImage(for: atlas), "The picture the phone keeps for its profile")
+        XCTAssertFalse(next.canDeleteBot(atlas), "Nothing writes a kept bot")
+
+        // Its Bot Chat, its tag and its spoken name work before Hermes
+        // answers.
+        next.noteBotChatSessionForTesting("stored-atlas", profile: "atlas")
+        next.activeSessionId = "stored-atlas"
+        XCTAssertEqual(next.conversationAgentIdentity.botFace?.name, "atlas", "Its Bot Chat opens with its face")
+        XCTAssertNotNil(next.conversationAgentIdentity.botFace?.image)
+        XCTAssertNotNil(next.profileGlowTint("atlas"), "and its color")
+        next.activeSessionId = nil
+        XCTAssertEqual(next.composerMentionCandidates.map(\.title), ["Atlas"], "The @ list and Mention a Bot")
+        XCTAssertEqual(next.voiceJobProfileTarget(named: "Atlas"), .other("atlas"), "A spoken job reaches it")
+        XCTAssertTrue(next.watchJobProfileNames().contains { $0.profile == "atlas" }, "and a Watch call's")
 
         connectRoster(next, to: mac)
         let refused = await next.setBotPinned(atlas, pinned: true)
@@ -2267,7 +2280,8 @@ extension AppStateMultiDashboardTests {
     /// Hosted rooms and their pictures open as Hermes and the host listed
     /// them last time on this dashboard, until `groups.list` answers; the
     /// kept pictures then carry over, so only one whose revision moved is
-    /// fetched again, and the list takes the kept one's place.
+    /// fetched again, and the list takes the kept one's place. A kept room
+    /// tapped first asks Hermes, and one it no longer lists doesn't open.
     func testTheBotsListOpensOnTheHostedRoomsListedLastTime() async throws {
         let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
         let registry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac])
@@ -2305,10 +2319,13 @@ extension AppStateMultiDashboardTests {
 
         listed = [hostedRoom("room-1", "Planning")]
         let nextHeld = connectRoster(next, to: mac)
-        let again = Task { await next.refreshGroupChatSupport() }
+        let launch = try XCTUnwrap(next.shownGroupRooms.first { $0.roomID == "room-2" })
+        let tap = Task { await next.openGroupRoom(launch) }
         try await nextHeld.waitForRequests(1)
         try await nextHeld.answer(["ok": true, "revisions": ["room-1": "r1"]])
-        await again.value
+        await tap.value
+        XCTAssertEqual(next.errorMessage, AppLocalization.string("That chat is no longer available."), "Hermes no longer lists it")
+        XCTAssertNil(next.activeRoomSurface)
         XCTAssertEqual(nextHeld.sent.map(\.path), [GroupRoomPictures.listPath], "An unchanged picture isn't fetched again")
         XCTAssertEqual(next.groupRoomPictureData["room-1"], picture)
         XCTAssertEqual(next.shownGroupRooms.map(\.roomID), ["room-1"], "The list takes the kept one's place")
