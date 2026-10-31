@@ -235,12 +235,13 @@ struct GPTLiveSettingsSection: View {
         .onChange(of: model.personality) { _, newValue in personality = newValue }
         .onChange(of: model.saveCalls) { _, newValue in saveCalls = newValue }
         .onChange(of: model.billing) { _, newValue in
-            guard newValue != billing else { return }
-            // Changed in another window: the line is the new billing's as
-            // last checked, while it's checked again.
-            billing = newValue
+            // The line is the new billing's as last checked, while it's
+            // checked again: applyBilling asked already for a switch made
+            // here.
             status = model.keptStatus?.text
             isAvailable = model.keptStatus?.isAvailable
+            guard newValue != billing else { return }
+            billing = newValue
             Task { await check() }
         }
         .onChange(of: model.apiVoice) { _, newValue in apiVoice = newValue ?? "" }

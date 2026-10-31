@@ -231,16 +231,25 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// The page as Hermes last answered it, from the answers kept on the
     /// phone; nil unless the config and both speech toolsets are kept, so a
     /// voice never reads not ready for want of a kept answer. Which keys
-    /// are set isn't kept, so none reads as missing unless `environment`,
-    /// Hermes' answer this time, says.
-    private static func keptSnapshot(
-        profile: String, answers: VoiceKeptAnswers?, environment: [String: Any]? = nil
+    /// are set isn't kept, so none reads as missing.
+    private static func keptSnapshot(profile: String, answers: VoiceKeptAnswers?) -> VoiceConfigurationSnapshot? {
+        guard let answers, answers.kept(KeptRead.sttToolset) != nil, answers.kept(KeptRead.ttsToolset) != nil else { return nil }
+        return redrawn(profile: profile, answers: answers, environment: nil)
+    }
+
+    /// The page from the config kept on the phone, the one a reload drew
+    /// or kept, with which keys are set as `environment` says; toolsets
+    /// this Hermes doesn't offer stay out, as when it answered. Nil
+    /// without a kept config.
+    private static func redrawn(
+        profile: String, answers: VoiceKeptAnswers?, environment: [String: Any]?
     ) -> VoiceConfigurationSnapshot? {
-        guard let answers, let config = answers.kept(KeptRead.config),
-              let stt = answers.kept(KeptRead.sttToolset), let tts = answers.kept(KeptRead.ttsToolset) else { return nil }
+        guard let answers, let config = answers.kept(KeptRead.config) else { return nil }
+        let ttsReadiness = answers.kept(KeptRead.ttsToolset)
         return VoiceConfigurationParser.parse(
             profile: profile, schema: answers.kept(KeptRead.schema), config: config,
-            sttReadiness: stt, ttsReadiness: tts, environment: environment, ttsToolsetConfigAvailable: true
+            sttReadiness: answers.kept(KeptRead.sttToolset), ttsReadiness: ttsReadiness,
+            environment: environment, ttsToolsetConfigAvailable: ttsReadiness != nil
         )
     }
 
@@ -271,7 +280,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
             // keys are set if Hermes said this time.
             guard !snapshot.capability.isGatewayConnected else {
                 if !snapshot.environmentLoaded, lastEnvironment != nil,
-                   let kept = Self.keptSnapshot(profile: profile, answers: answers, environment: lastEnvironment) {
+                   let kept = Self.redrawn(profile: profile, answers: answers, environment: lastEnvironment) {
                     snapshot = kept
                 }
                 return

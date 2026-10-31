@@ -149,6 +149,25 @@ extension HermesVoiceConfigurationServiceTests {
         await opened.reload()
         XCTAssertEqual(opened.answered, false)
         XCTAssertFalse(opened.awaitsKeys, "Hermes said which keys are set")
+
+        // So does a page Hermes answered without the keys, on a Hermes
+        // without the speech toolsets' routes, which keeps none.
+        let toolsets: Set<String> = ["/api/tools/toolsets/stt/config", "/api/tools/toolsets/tts/config"]
+        let older = MockVoiceConfigurationRequester()
+        older.routes = Self.keptVoiceAnswers.filter { !toolsets.contains($0.key) }
+        older.missingRoutes = toolsets
+        let answeredBefore = HermesVoiceConfigurationService(
+            requester: older, profile: "default", answers: KeptVoiceAnswers([:]).answers
+        )
+        await answeredBefore.reload()
+        XCTAssertEqual(answeredBefore.answered, true)
+        XCTAssertTrue(answeredBefore.awaitsKeys, "Its read failed")
+        older.routes["/api/env"] = ["GEMINI_API_KEY": ["is_set": false]]
+        older.failingGETPaths = ["/api/config"]
+        await answeredBefore.reload()
+        XCTAssertEqual(answeredBefore.answered, false)
+        XCTAssertTrue(answeredBefore.snapshot.capability.isGatewayConnected)
+        XCTAssertFalse(answeredBefore.awaitsKeys, "Hermes said which keys are set")
     }
 
     /// The Voice replies model shows Hermes' answer unless a pick's write
