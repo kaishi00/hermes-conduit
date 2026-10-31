@@ -39,7 +39,7 @@ extension AppState {
     func clearShownChatNotifications() {
         // A sheet over the chat (Settings, a voice sheet, the chat's own
         // Artifacts or Rename) hides it: what arrives meanwhile hasn't been
-        // read. Closing it clears (V2Shell, V2ConversationScreen).
+        // read. Closing it clears (V2Shell, V2ConversationScreen, RootView).
         guard !isModalSheetPresented, !chatCoveredBySheet,
               let sessionID = chatShownOnScreen else { return }
         // A launch in the background counts the scene active until its

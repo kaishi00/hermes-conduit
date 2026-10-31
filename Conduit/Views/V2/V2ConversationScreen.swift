@@ -177,7 +177,8 @@ struct V2ConversationScreen: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
-        .onChange(of: artifactSessionIDs != nil || chatTitlePendingRename != nil) { _, covered in
+        .onChange(of: artifactSessionIDs != nil || chatTitlePendingRename != nil
+                  || chatTitlePendingDeletion != nil) { _, covered in
             appState.chatCoveredBySheet = covered
             // What came in under the sheet is read once it closes (#1579).
             if !covered { appState.clearShownChatNotifications() }

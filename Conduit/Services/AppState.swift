@@ -11617,9 +11617,9 @@ final class AppState: ObservableObject {
     /// How many set or remove requests are still on their way for each
     /// room; a room drops out once all of them have settled.
     var groupRoomPicturesChanging: [String: Int] = [:]
-    /// Whether the open chat's own sheet (Artifacts, Rename) covers it, so
-    /// reading it doesn't clear its notifications yet (#1579). Set by
-    /// V2ConversationScreen; nothing redraws on it.
+    /// Whether the open chat's own sheet or prompt (Artifacts, Rename,
+    /// Delete) covers it, so reading it doesn't clear its notifications yet
+    /// (#1579). Set by V2ConversationScreen and RootView; nothing redraws on it.
     var chatCoveredBySheet = false
 
     @Published private(set) var activeRoomSurface: GroupRoomSurface? {

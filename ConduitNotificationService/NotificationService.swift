@@ -23,7 +23,8 @@ final class NotificationService: UNNotificationServiceExtension {
         lock.withLock { self.contentHandler = contentHandler }
         AppLocalization.adopt(appLanguage: NotificationSharedSettings.appLanguage)
         guard let content = request.content.mutableCopy() as? UNMutableNotificationContent else {
-            deliver(request.content)
+            // Never seen: with no copy to strip, only generic text goes out.
+            deliver(Self.generic(UNMutableNotificationContent(), type: nil))
             return
         }
         // Only this extension writes the chat note, on a push it verified:
