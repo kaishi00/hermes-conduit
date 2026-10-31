@@ -103,6 +103,30 @@ extension SidebarLayoutTests {
         XCTAssertEqual(groups.map { $0.items.map(\.id) }, [["d-one"], ["a-one", "a-two"]])
     }
 
+    func testAllProfilesGroupListsPinnedChatsAndItsNewestFiveUntilShowMore() {
+        // Pinned first, then nine more, newest first.
+        let ids = ["p1", "p2"] + (1...9).map { "r\($0)" }
+        let pinned: Set<String> = ["p1", "p2"]
+        let preview = AllProfilesChats.preview(
+            ids,
+            showsAll: false,
+            isPinned: { pinned.contains($0) },
+            isOpen: { $0 == "r8" }
+        )
+        // Every pinned chat, the five newest, and the open chat past them.
+        XCTAssertEqual(preview.shown, ["p1", "p2", "r1", "r2", "r3", "r4", "r5", "r8"])
+        XCTAssertEqual(preview.hidden, 3)
+
+        let all = AllProfilesChats.preview(ids, showsAll: true, isPinned: { pinned.contains($0) }, isOpen: { _ in false })
+        XCTAssertEqual(all.shown, ids)
+        XCTAssertEqual(all.hidden, 0)
+
+        // Five or fewer leave nothing for Show more.
+        let few = AllProfilesChats.preview(["a", "b", "c"], showsAll: false, isPinned: { _ in false }, isOpen: { _ in false })
+        XCTAssertEqual(few.shown, ["a", "b", "c"])
+        XCTAssertEqual(few.hidden, 0)
+    }
+
     func testAllProfilesSettingsAreKeptPerDashboard() throws {
         let suite = "AllProfilesChatsTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

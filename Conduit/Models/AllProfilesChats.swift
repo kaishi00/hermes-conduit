@@ -4,7 +4,8 @@
 //
 //  The Chats list's All view: one list of the chats of several profiles on
 //  the dashboard in use, newest first, each row badged with its profile, or
-//  grouped into a section per profile. Hermes reads every profile's chats
+//  grouped into a section per profile, each listing its pinned chats and
+//  its five newest until "Show more". Hermes reads every profile's chats
 //  in one request (`/api/profiles/sessions?profile=all`, rows tagged with
 //  their profile); the profile in use keeps its own, fuller list.
 //
@@ -154,6 +155,40 @@ enum AllProfilesChats {
             guard let items = byProfile[profile], !items.isEmpty else { return nil }
             return (profile, items)
         }
+    }
+
+    /// How many of a profile's chats its section lists, past its pinned
+    /// ones, until "Show more": one busy profile doesn't push the others
+    /// off the screen.
+    static let groupPreviewCount = 5
+
+    /// The items a profile's section lists: every pinned one, the first
+    /// `groupPreviewCount` of the rest (newest first, as given) and the
+    /// open chat wherever it falls; all of them when `showsAll`. `hidden`
+    /// counts what "Show more" brings.
+    static func preview<Item>(
+        _ items: [Item],
+        showsAll: Bool,
+        isPinned: (Item) -> Bool,
+        isOpen: (Item) -> Bool
+    ) -> (shown: [Item], hidden: Int) {
+        guard !showsAll else { return (items, 0) }
+        var shown: [Item] = []
+        var unpinned = 0
+        var hidden = 0
+        for item in items {
+            if isPinned(item) {
+                shown.append(item)
+            } else if unpinned < groupPreviewCount {
+                unpinned += 1
+                shown.append(item)
+            } else if isOpen(item) {
+                shown.append(item)
+            } else {
+                hidden += 1
+            }
+        }
+        return (shown, hidden)
     }
 
     private static func identity(_ session: SessionSummary, fallback: String) -> String {

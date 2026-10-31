@@ -2818,6 +2818,43 @@ Recent menu) · the Archived sheet · README.md
 
 **Checked:** 2026-10-26, #1328.
 
+## All profiles in Chats
+
+The All chip in the Chats list's profile row: every included profile's chats
+in one list, newest first with each row's profile picture, or with Group by
+profile a section per profile listing its pinned chats and its five newest
+until Show more (issue 1560 asked for the list; Eric asked for the cap).
+
+**Siblings:** the chip and its Show in All sheet (which profiles, Group by
+profile) · Filter's Group by profile switch · the date sections and the
+mixed Pinned section · each profile's section (closing it, Show more,
+reordering its pins) · search and "In messages" across profiles · the
+status, Starred and source filters · opening, renaming, archiving and
+deleting another profile's chat · New chat (asks which profile) · the open
+chat's row on the iPad and Mac (same view) · unread dots (another profile's
+replies) · VoiceOver · README.md
+
+**Code**
+- Settings, merge and groups: `Conduit/Models/AllProfilesChats.swift` (AllProfilesChatsSettings, rows, groups, preview, groupPreviewCount)
+- State and other profiles' rows: `Conduit/Services/AppState.swift` (rowProfile, isOtherProfileRow, isAllProfilesChatsOn, allProfilesIncluded, allProfilesGroupsByProfile, refreshAllProfilesCatalog, listAllProfilesCatalog, startNewChat(inProfile:))
+- Chip and sheet: `Conduit/Views/V2/V2TopBar.swift` (withAllProfilesChip), `Conduit/Views/V2/V2AllProfilesSheet.swift`
+- List: `Conduit/Views/V2/V2ChatsView.swift` (profileGroups, profileSection, profileShowMoreRow, profilesShowingAll, holdsOpenChat, collapsedProfiles, revealActiveSection, badgesRows, rowScope)
+- Row badge: `Conduit/Views/V2/V2SessionRow.swift` (V2ProfileBadge)
+- Search: `Conduit/Services/SessionContentSearch.swift` (otherProfiles)
+- Docs: `README.md` (Features)
+- Tests: `ConduitTests/SidebarLayoutTests+AllProfiles.swift`
+
+**Rulings**
+- All is offered with two or more profiles on the dashboard; the profiles left out are kept by name, so a profile added later is in, and leaving every one out lists them all (2026-10-22, #1128, Eric picked the chip and grouping).
+- Grouped by profile, a section lists its pinned chats, then its five newest until "Show 12 more"; "Show fewer" puts it back. The open chat stays listed past the five, so a wide window never highlights a hidden row. A search or a status filter lists every match, and Show more is remembered per profile until the app closes, while a closed section stays closed across launches (2026-10-31, #PRNUM, Eric: one busy profile filled the list and few found the section's close).
+- The ungrouped list stays one list, newest first, with no cap: it's ordered by last activity across profiles, as issue 1560 asked.
+- Projects belong to one profile, so All shows chats only (see Project chats in Chats).
+
+**Open gaps**
+- Live status (the live registry's Running and waits) and scheduled runs follow the profile in use only, as built in #1128.
+
+**Checked:** 2026-10-31, #PRNUM.
+
 ## Unread dot on projects
 
 The gold dot on a project in the Projects list while any chat in it has a
