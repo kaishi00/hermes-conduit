@@ -1897,7 +1897,7 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - Once on, a chat whose title can't be read is held to the policy for that call, since it might be the coordinator (2026-10-31, notifier #484's review).
 - Under `plugins.isolation: host` the tools answer with the reason rather than starting anything, since the session API is only in the dashboard's process (2026-10-31, notifier #484).
 - "Bot Chat" is the coordinator's title only: work_start refuses it for a workstream, since the title names the session and the policy reads it (2026-10-31, notifier #485).
-- A registry that exists but can't be read at a turn's hooks keeps that turn quiet (no push, alert call or Live Activity), since it may be a hidden workstream; the Bot Chat's own turn still pushes (2026-10-31, notifier #485).
+- A registry that exists but can't be read at a turn's hooks keeps that turn quiet (no push, alert call or Live Activity), since it may be a hidden workstream; the Bot Chat's own turn still pushes when its title can be read (2026-10-31, notifier #485).
 
 **Open gaps**
 - No screen in the app: workstreams show only as the Bot Chat's answers and their links until M2's Work panel. M2 builds on the cache-first screens and the transcript rewrite (see Screens that open on their last answer), checked with that work first.
