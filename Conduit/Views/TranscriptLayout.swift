@@ -41,6 +41,9 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// The rows the next snapshot brings, taken up by the pass that has
     /// their count: until then the attributes and frames are the old rows'.
     private var pendingRows: [TranscriptRow]?
+    /// Those of them that draw something else than before, or came in:
+    /// guessed again once they're taken up.
+    private var pendingChanges: Set<String> = []
     private var indexByID: [String: Int] = [:]
     /// Each item's top and height (the gap above its row included).
     private var itemTop: [CGFloat] = []
@@ -59,6 +62,11 @@ final class TranscriptLayout: UICollectionViewLayout {
     private var preferredAdjustment: CGFloat = 0
     /// Heights measured for the conversation, width and text size drawn.
     private var heights = TranscriptHeightTable()
+    /// The rows not measured yet, as tall as their text guesses, worked out
+    /// once per width and scope, and again for a row that draws something
+    /// else: a pass from a row that measured lays out every row under it,
+    /// and a long chat's would be guessed again in each.
+    private var estimates: [String: CGFloat] = [:]
     /// What decides a height besides the width: the conversation (row ids
     /// repeat across them) and the text's size and face.
     private(set) var scope = ""
@@ -78,9 +86,11 @@ final class TranscriptLayout: UICollectionViewLayout {
 
     // MARK: - Inputs
 
-    /// The rows the snapshot about to be applied draws.
-    func setRows(_ newRows: [TranscriptRow]) {
+    /// The rows the snapshot about to be applied draws, and the ids of
+    /// those that draw something else than the rows set last, or came in.
+    func setRows(_ newRows: [TranscriptRow], changed: [String]) {
         pendingRows = newRows
+        pendingChanges.formUnion(changed)
     }
 
     /// The conversation and text size the heights belong to; a new one
@@ -142,7 +152,7 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// count of rows, a pass invalidating everything) takes none.
     private func noteHeight(_ height: CGFloat, at index: Int) -> CGFloat {
         let row = rows[index]
-        let before = heights[row.id] ?? Self.estimatedHeight(of: row, width: itemWidth)
+        let before = self.height(of: row)
         heights[row.id] = height
         let contentBefore = max(pendingRowsBottom, requestedReserve)
         pendingRowsBottom += height - before
@@ -219,14 +229,15 @@ final class TranscriptLayout: UICollectionViewLayout {
         let count = collectionView.numberOfSections > 0 ? collectionView.numberOfItems(inSection: 0) : 0
         if let pending = pendingRows, pending.count == count {
             pendingRows = nil
-            adopt(pending)
+            adopt(pending, changed: pendingChanges)
+            pendingChanges = []
         } else if rows.count != count {
             // Never expected: the rows come in with the snapshot. Draw as
             // many as the collection view has rather than answer for items
             // it doesn't.
             adopt(Array(rows.prefix(count)) + (rows.count..<max(count, rows.count)).map {
                 TranscriptRow(id: "transcript-unknown-\($0)", kind: .empty)
-            })
+            }, changed: [])
         }
         let width = collectionView.bounds.width
         if abs(width - preparedWidth) > 0.5 {
@@ -238,7 +249,7 @@ final class TranscriptLayout: UICollectionViewLayout {
             dirtyFrom = nil
             var top = start == 0 ? Self.topPadding : itemTop[start - 1] + itemHeight[start - 1]
             for index in start..<rows.count {
-                let height = heights[rows[index].id] ?? Self.estimatedHeight(of: rows[index], width: itemWidth)
+                let height = self.height(of: rows[index])
                 if abs(itemTop[index] - top) > 0.01 || abs(itemHeight[index] - height) > 0.01 { moved = true }
                 itemTop[index] = top
                 itemHeight[index] = height
@@ -343,7 +354,7 @@ final class TranscriptLayout: UICollectionViewLayout {
 
     // MARK: - Private
 
-    private func adopt(_ newRows: [TranscriptRow]) {
+    private func adopt(_ newRows: [TranscriptRow], changed: Set<String>) {
         // Rows kept from before keep their frames until the pass sets
         // them, so the first one that changed is where the pass starts.
         var start = 0
@@ -352,21 +363,38 @@ final class TranscriptLayout: UICollectionViewLayout {
         }
         let sameIDs = start == rows.count && start == newRows.count
         rows = newRows
-        if sameIDs { return }
-        indexByID = Dictionary(newRows.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
-        itemTop = Array(itemTop.prefix(start)) + Array(repeating: 0, count: newRows.count - start)
-        itemHeight = Array(itemHeight.prefix(start)) + Array(repeating: 0, count: newRows.count - start)
-        markDirty(from: start)
+        if !sameIDs {
+            indexByID = Dictionary(newRows.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+            itemTop = Array(itemTop.prefix(start)) + Array(repeating: 0, count: newRows.count - start)
+            itemHeight = Array(itemHeight.prefix(start)) + Array(repeating: 0, count: newRows.count - start)
+            markDirty(from: start)
+        }
+        // A row not measured yet that draws something else (an edit off
+        // screen, the next message sent through the pending row) is
+        // guessed from what it draws now, in this pass.
+        for id in changed {
+            estimates[id] = nil
+            if let index = indexByID[id] { markDirty(from: index) }
+        }
     }
 
     private func markDirty(from index: Int) {
         dirtyFrom = min(dirtyFrom ?? index, index)
     }
 
+    /// The row's measured height, else its estimate.
+    private func height(of row: TranscriptRow) -> CGFloat {
+        if let height = heights[row.id] ?? estimates[row.id] { return height }
+        let estimate = Self.estimatedHeight(of: row, width: itemWidth)
+        estimates[row.id] = estimate
+        return estimate
+    }
+
     /// The heights for the scope and width now; the pass that follows
     /// lays every row out from them.
     private func loadHeightTable() {
         heights = TranscriptHeights.table(for: "\(scope)|\(Int(itemWidth.rounded()))")
+        estimates = [:]
         markDirty(from: 0)
     }
 
@@ -381,6 +409,7 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// start: it measures once it comes near the screen, and the scroller
     /// keeps the reader's row in place when it does.
     static func estimatedHeight(of row: TranscriptRow, width: CGFloat) -> CGFloat {
+        TranscriptPerf.note(.rowHeightEstimate)
         switch row.kind {
         case .loadEarlier, .savedCopyStatus, .thinking, .working, .streaming:
             return rowGap + 44
@@ -397,12 +426,22 @@ final class TranscriptLayout: UICollectionViewLayout {
         }
     }
 
+    /// Its lines at a scalar per character, counted from the bytes that
+    /// start one: enough for a guess, in one pass with no paragraphs to
+    /// split off, and no taller for a script of several bytes a character.
     private static func textHeight(_ text: String, width: CGFloat) -> CGFloat {
         let charactersPerLine = max(20, width / 8)
         var lines: CGFloat = 0
-        for paragraph in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            lines += max(1, (CGFloat(paragraph.count) / charactersPerLine).rounded(.up))
+        var paragraphCharacters = 0
+        for byte in text.utf8 {
+            if byte == UInt8(ascii: "\n") {
+                lines += max(1, (CGFloat(paragraphCharacters) / charactersPerLine).rounded(.up))
+                paragraphCharacters = 0
+            } else if (byte & 0xC0) != 0x80 {
+                paragraphCharacters += 1
+            }
         }
+        lines += max(1, (CGFloat(paragraphCharacters) / charactersPerLine).rounded(.up))
         return min(6_000, max(44, lines * 22 + 24))
     }
 }

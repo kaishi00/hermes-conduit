@@ -503,7 +503,7 @@ struct ChatView: View {
         .onReceive(appState.liveTurn.$shape) { liveShape = $0 }
         // Inside the pinned replies' inset: before iOS 26 the transcript's
         // fade is a mask, which would fade their card too.
-        .modifier(V2SoftTopScrollEdge(isOn: composerFloats, underChatHeader: true))
+        .modifier(V2SoftTopScrollEdge(isOn: composerFloats, underChatHeader: true, setsOwnEdge: true))
         // The open chat's pinned replies (#918), over the transcript's top,
         // or the offline banner while the saved copy is up. Only the bar
         // animates: rows changing in the same update don't.
@@ -4993,17 +4993,19 @@ private struct ConduitBreathingTimeline<Content: View>: View {
 /// A chat's transcript (`underChatHeader`) fades out under the chat's header
 /// before iOS 26 too: its text turns transparent across the navigation bar,
 /// as under a bar's fade (`V2LegacyEdgeBar`), rather than a material
-/// drawn behind the header. A chat's transcript is a collection view,
-/// which takes its iOS 26 soft edge from TranscriptViewController's
-/// applyEdgeEffect: on it, only the fade before iOS 26 is this modifier's.
+/// drawn behind the header.
 struct V2SoftTopScrollEdge: ViewModifier {
     let isOn: Bool
     var underChatHeader = false
+    /// A chat's transcript, a collection view that sets its iOS 26 soft
+    /// edge itself (TranscriptViewController's applyEdgeEffect): on it, only
+    /// the fade before iOS 26 is this modifier's.
+    var setsOwnEdge = false
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            if isOn {
+            if isOn && !setsOwnEdge {
                 content.scrollEdgeEffectStyle(.soft, for: .top)
             } else {
                 content

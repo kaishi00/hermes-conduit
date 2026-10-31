@@ -219,7 +219,7 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         appliedRows = rows
         hasAppliedRows = true
         rowsByID = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        layout.setRows(rows)
+        layout.setRows(rows, changed: redrawn + changes.inserted)
         var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
         snapshot.appendSections([0])
         snapshot.appendItems(rows.map(\.id), toSection: 0)
