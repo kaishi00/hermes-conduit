@@ -208,13 +208,24 @@ final class GroupRoomScrollLocatorView: UIView {
         disconnect()
         scrollView = found
         observations = [
-            found.observe(\.contentOffset, options: [.old, .new]) { [weak self] _, change in
-                guard change.oldValue != change.newValue else { return }
-                Self.onMain { self?.scrolled() }
+            found.observe(\.contentOffset, options: [.old, .new]) { [weak self] scrollView, change in
+                guard let old = change.oldValue, let new = change.newValue, old != new else { return }
+                Self.onMain {
+                    ChatViewportWatch.shared.offsetMoved(
+                        from: old.y, to: new.y, viewportHeight: scrollView.bounds.height,
+                        byUser: scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating
+                    )
+                    self?.scrolled()
+                }
             },
             found.observe(\.contentSize, options: [.old, .new]) { [weak self] _, change in
                 guard change.oldValue != change.newValue else { return }
                 Self.onMain {
+                    ChatViewportTrace.shared.log(String(
+                        format: "room contentSize h %.1f -> %.1f",
+                        change.oldValue?.height ?? -1, change.newValue?.height ?? -1
+                    ))
+                    ChatViewportWatch.shared.layoutPass()
                     self?.scrolled()
                     self?.scheduleBlankCheck()
                 }
@@ -228,11 +239,15 @@ final class GroupRoomScrollLocatorView: UIView {
             found.observe(\.bounds, options: [.old, .new]) { [weak self] _, change in
                 guard change.oldValue?.size != change.newValue?.size else { return }
                 Self.onMain {
+                    ChatViewportWatch.shared.surfaceChanged()
                     self?.scrolled()
                     self?.scheduleBlankCheck()
                 }
             },
         ]
+        // The chat recorder covers rooms too (#1533), its lines marked room.
+        ChatViewportTrace.shared.log("room surface attached")
+        ChatViewportWatch.shared.surfaceChanged()
         scheduleBlankCheck()
     }
 
@@ -273,6 +288,11 @@ final class GroupRoomScrollLocatorView: UIView {
             lastRowID: flag.lastRowID?()
         ) else { return }
         flag.lastRebuildAt = CACurrentMediaTime()
+        ChatViewportTrace.shared.log(String(
+            format: "room blank viewport: offset %.1f content %.1f, %ld rows laid out; rebuilding",
+            scrollView.contentOffset.y, scrollView.contentSize.height, flag.rowFrames.count
+        ))
+        ChatViewportWatch.shared.blankViewportRebuilt()
         // The old layout's frames would answer the next check.
         flag.rowFrames = [:]
         flag.rebuild?()
@@ -304,6 +324,7 @@ final class GroupRoomScrollLocatorView: UIView {
             landing: flag.isLanding
         )
         guard next != flag.isFollowing else { return }
+        ChatViewportTrace.shared.log("room \(next ? "following" : "browsing")")
         flag.isFollowing = next
         onChange?(next)
     }

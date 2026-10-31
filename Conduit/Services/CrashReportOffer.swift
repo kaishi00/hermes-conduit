@@ -13,7 +13,9 @@
 //  A report is the diagnostic's crashes and hangs (call stacks, exception
 //  and termination codes) with the version, build, iOS version and device
 //  model, built from the keys named below only. An Objective-C exception's
-//  message and its arguments are left out: they can quote anything.
+//  message and its arguments are left out: they can quote anything. It
+//  carries the newest stall trace saved in the diagnostic's span
+//  (ChatTraceStore): what the chat did before the freeze, never its text.
 //
 
 import Foundation
@@ -86,12 +88,67 @@ enum CrashReportUpload {
         ]
     }
 
+    /// A chat trace on its own (kind chat, relay 0.25+): the version and
+    /// build that saved it, with this device's iOS version and model.
+    static func body(
+        chatTrace trace: ChatTraceStore.Trace,
+        lines: [String],
+        os: String = ProcessInfo.processInfo.operatingSystemVersionString,
+        device: String = CrashReportUpload.deviceModel
+    ) -> [String: Any] {
+        [
+            "app_version": field(trace.appVersion, fallback: "unknown"),
+            "build": field(trace.build, fallback: "unknown"),
+            "os": field(os, fallback: "unknown"),
+            "device": field(device, fallback: "unknown"),
+            "kind": "chat",
+            "trace": ChatTraceUpload.object(trace, lines: lines),
+        ]
+    }
+
     /// When a stored diagnostic's span ended, from its file name
     /// (MetricKitReportStore: kind-begin-end-hash.json).
     static func end(ofFileName name: String) -> Date? {
         let parts = (name as NSString).deletingPathExtension.split(separator: "-")
         guard parts.count == 4, let seconds = TimeInterval(parts[2]) else { return nil }
         return Date(timeIntervalSince1970: seconds)
+    }
+
+    /// When it began.
+    static func begin(ofFileName name: String) -> Date? {
+        let parts = (name as NSString).deletingPathExtension.split(separator: "-")
+        guard parts.count == 4, let seconds = TimeInterval(parts[1]) else { return nil }
+        return Date(timeIntervalSince1970: seconds)
+    }
+
+    struct PostResponse {
+        /// The HTTP status, or 0 when the post didn't get there.
+        let status: Int
+        /// The relay kept the post's chat trace (0.25+ says so; an older one
+        /// takes a report and drops what it doesn't know).
+        let keptTrace: Bool
+    }
+
+    /// Posts a report or trace to the relay's route.
+    static func post(_ body: [String: Any], to relayURL: URL, session: URLSession) async -> PostResponse {
+        guard let data = try? JSONSerialization.data(withJSONObject: body) else { return PostResponse(status: 0, keptTrace: false) }
+        var request = URLRequest(url: relayURL.appendingPathComponent(path))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = data
+        do {
+            let (answer, response) = try await session.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if !(200..<300).contains(status) {
+                crashReportLog.error("The relay refused a crash report: HTTP \(status, privacy: .public)")
+            }
+            let object = (try? JSONSerialization.jsonObject(with: answer)) as? [String: Any]
+            return PostResponse(status: status, keptTrace: object?["trace"] as? Bool == true)
+        } catch {
+            crashReportLog.error("Couldn't send a crash report: \(MetricKitReportStore.logged(error), privacy: .public)")
+            return PostResponse(status: 0, keptTrace: false)
+        }
     }
 
     /// "iPhone17,2".
@@ -263,6 +320,7 @@ final class CrashReportOffer: ObservableObject {
 
     private let queue: CrashReportQueue
     private let directory: URL
+    private let traces: ChatTraceStore
     private let relayURL: URL
     private let session: URLSession
     /// How long the thanks shows before the card goes.
@@ -271,12 +329,14 @@ final class CrashReportOffer: ObservableObject {
     init(
         queue: CrashReportQueue = CrashReportQueue(),
         directory: URL = MetricKitReportStore.defaultDirectory,
+        traces: ChatTraceStore = ChatTraceStore(),
         relayURL: URL = PushNotificationService.upstreamRelayURL,
         session: URLSession = .shared,
         thanksFor: Duration = .seconds(3)
     ) {
         self.queue = queue
         self.directory = directory
+        self.traces = traces
         self.relayURL = relayURL
         self.session = session
         self.thanksFor = thanksFor
@@ -313,7 +373,20 @@ final class CrashReportOffer: ObservableObject {
         var sent: [String] = []
         var failed = false
         for report in reports {
-            switch await post(report.body) {
+            var result = await post(report.body)
+            if case .failed(let status) = result, report.trace != nil, status == 413 || status == 400 {
+                // A relay before 0.25 takes no post this big, and one that
+                // won't take a trace's line refuses the post: the report
+                // goes without it, and the trace stays in Diagnostics & logs.
+                var plain = report.body
+                plain["trace"] = nil
+                result = await post(plain)
+            } else if case .sent(keptTrace: true) = result, let trace = report.trace {
+                // At the relay now. One that dropped it keeps it here.
+                let traces = traces
+                await Task.detached(priority: .utility) { traces.remove(trace) }.value
+            }
+            switch result {
             case .sent:
                 sent.append(report.fileName)
             case .unsupported:
@@ -341,16 +414,20 @@ final class CrashReportOffer: ObservableObject {
         let fileName: String
         let kind: CrashReportUpload.Kind
         let body: [String: Any]
+        /// The stall trace riding with it, by file name.
+        let trace: String?
     }
 
     /// Pending reports (only those named, when given) whose files are kept
     /// and from the last week, read off the main thread (a diagnostic can
-    /// run to megabytes). One gone, too old, or not a report that can be
-    /// sent leaves the queue; one that can't be read just now stays.
+    /// run to megabytes), each with the newest stall trace saved in its
+    /// span. One gone, too old, or not a report that can be sent leaves the
+    /// queue; one that can't be read just now stays.
     private func pendingReports(named only: [String]? = nil) async -> [Report] {
         guard !queue.isUnsupported else { return [] }
         let names = queue.pending.filter { only?.contains($0) ?? true }
         let directory = directory
+        let traces = traces
         let (reports, gone) = await Task.detached(priority: .utility) { () -> ([Report], [String]) in
             var gone: [String] = []
             let reports: [Report] = names.compactMap { name in
@@ -363,11 +440,18 @@ final class CrashReportOffer: ObservableObject {
                 }
                 guard let data = try? Data(contentsOf: url) else { return nil }
                 guard let kind = CrashReportUpload.kind(ofPayloadJSON: data),
-                      let body = CrashReportUpload.body(fromPayloadJSON: data) else {
+                      var body = CrashReportUpload.body(fromPayloadJSON: data) else {
                     gone.append(name)
                     return nil
                 }
-                return Report(fileName: name, kind: kind, body: body)
+                var traceName: String?
+                if let begin = CrashReportUpload.begin(ofFileName: name),
+                   let trace = traces.stall(between: begin, and: end),
+                   let lines = traces.lines(of: trace) {
+                    body["trace"] = ChatTraceUpload.object(trace, lines: lines)
+                    traceName = trace.fileName
+                }
+                return Report(fileName: name, kind: kind, body: body, trace: traceName)
             }
             return (reports, gone)
         }.value
@@ -375,28 +459,14 @@ final class CrashReportOffer: ObservableObject {
         return reports
     }
 
-    private enum PostResult { case sent, unsupported, failed }
+    private enum PostResult { case sent(keptTrace: Bool), unsupported, failed(status: Int) }
 
     private func post(_ body: [String: Any]) async -> PostResult {
-        guard let data = try? JSONSerialization.data(withJSONObject: body) else { return .failed }
-        var request = URLRequest(url: relayURL.appendingPathComponent(CrashReportUpload.path))
-        request.httpMethod = "POST"
-        request.timeoutInterval = 30
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = data
-        do {
-            let (_, response) = try await session.data(for: request)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            switch status {
-            case 200..<300: return .sent
-            case 404: return .unsupported
-            default:
-                crashReportLog.error("The relay refused a crash report: HTTP \(status, privacy: .public)")
-                return .failed
-            }
-        } catch {
-            crashReportLog.error("Couldn't send a crash report: \(MetricKitReportStore.logged(error), privacy: .public)")
-            return .failed
+        let response = await CrashReportUpload.post(body, to: relayURL, session: session)
+        switch response.status {
+        case 200..<300: return .sent(keptTrace: response.keptTrace)
+        case 404: return .unsupported
+        default: return .failed(status: response.status)
         }
     }
 }

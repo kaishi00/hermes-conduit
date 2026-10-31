@@ -267,7 +267,7 @@ struct ChatView: View {
                     // guard in AppState would then discard nothing and the
                     // discharge below would kill the first request's anchor).
                     guard !transcriptBackfillIsLoading else { return }
-                    ChatViewportTrace.shared.log("event loadEarlier")
+                    ChatViewportWatch.shared.command("loadEarlier")
                     let armedKey = renderedScrollSessionKey ?? activeScrollSessionKey
                     scrollEngine.olderPageBackfillRequested(sessionKey: armedKey)
                     backfillViewportTask?.cancel()
@@ -899,11 +899,11 @@ struct ChatView: View {
     /// as the chat can go.
     private func jumpToPinnedReply(_ pin: PinnedReply) {
         if let id = PinnedReplies.messageID(for: pin, in: appState.messages, among: appState.openChatPinnedReplies) {
-            ChatViewportTrace.shared.log("event explicitPinnedReply (bar)")
+            ChatViewportWatch.shared.command("explicitPinnedReply (bar)")
             scrollEngine.explicitMessageRequested(id: id)
             if let passage = pin.passage { PinnedPassageFlasher.flash(passage, inMessage: id) }
         } else {
-            ChatViewportTrace.shared.log("event explicitTop (pinned reply not loaded)")
+            ChatViewportWatch.shared.command("explicitTop (pinned reply not loaded)")
             scrollEngine.explicitTopRequested()
             UIAccessibility.post(
                 notification: .announcement,
@@ -915,19 +915,19 @@ struct ChatView: View {
     private func sessionObservers(proxy: ScrollViewProxy, content: some View) -> some View {
         content
             .onChange(of: appState.chatScrollRequest) { _, _ in
-                ChatViewportTrace.shared.log("event explicitLatest (send pulse)")
+                ChatViewportWatch.shared.command("explicitLatest (send pulse)")
                 requestLatest(animated: false, armsReplyHold: true)
             }
             .onChange(of: appState.chatReplyStartLandingRequest) { _, _ in
                 takeReplyStartLanding()
             }
             .onChange(of: appState.chatScrollToTopRequest) { _, request in
-                ChatViewportTrace.shared.log("event explicitTop request=\(request)")
+                ChatViewportWatch.shared.command("explicitTop request=\(request)")
                 scrollEngine.explicitTopRequested()
             }
             .onChange(of: appState.activeSessionId) { _, _ in
-                ChatViewportTrace.shared.log(
-                    "event sessionChanged viaNotification=\(appState.isOpeningNotificationSession)"
+                ChatViewportWatch.shared.command(
+                    "sessionChanged viaNotification=\(appState.isOpeningNotificationSession)"
                 )
                 scrollEngine.renderedSessionChanged(
                     to: drawnScrollSessionKey,
@@ -949,8 +949,8 @@ struct ChatView: View {
                 )
             }
             .onChange(of: appState.activeProfile) { _, _ in
-                ChatViewportTrace.shared.log(
-                    "event profileChanged viaNotification=\(appState.isOpeningNotificationSession)"
+                ChatViewportWatch.shared.command(
+                    "profileChanged viaNotification=\(appState.isOpeningNotificationSession)"
                 )
                 scrollEngine.transcriptChanged(
                     messages: appState.chatRowsOnScreen,
@@ -975,7 +975,7 @@ struct ChatView: View {
             }
             .onChange(of: appState.isOpeningNotificationSession) { _, isOpening in
                 if isOpening {
-                    ChatViewportTrace.shared.log("event notificationHandoffBegan")
+                    ChatViewportWatch.shared.command("notificationHandoffBegan")
                     scrollEngine.notificationHandoffBegan()
                 } else {
                     scrollEngine.notificationHandoffFinished()
@@ -985,7 +985,7 @@ struct ChatView: View {
 
     private func takeReplyStartLanding() {
         guard appState.takeChatReplyStartLanding() else { return }
-        ChatViewportTrace.shared.log("event replyStartLanding (unread chat opened)")
+        ChatViewportWatch.shared.command("replyStartLanding (unread chat opened)")
         scrollEngine.replyStartLandingRequested(
             viewportTransitionGeneration: appState.chatViewportTransitionGeneration
         )
@@ -1081,14 +1081,19 @@ private final class ChatScrollEventRouter {
             appState.completeChatResumeRestoration(generation: generation)
         case .abandonRestoration(let generation):
             appState.abandonChatResumeRestoration(generation: generation)
+        // A reveal moves the offset outside the engine's write, so the
+        // watch is told it was asked for.
         case .revealRow(let id):
+            ChatViewportWatch.shared.command("reveal row")
             scrollWithoutAnimation { $0.scrollTo(id, anchor: .top) }
         case .revealLatest:
+            ChatViewportWatch.shared.command("reveal latest")
             let anchor = ChatView.bottomAnchorID(
                 for: ChatView.drawnOrFallbackScrollSessionKey(in: appState)
             )
             scrollWithoutAnimation { $0.scrollTo(anchor, anchor: .bottom) }
         case .revealTop:
+            ChatViewportWatch.shared.command("reveal top")
             let anchor = ChatTitleScrollAnchor.id(
                 for: ChatView.drawnOrFallbackScrollSessionKey(in: appState)
             )
@@ -1170,10 +1175,10 @@ private struct ChatJumpControls: View {
             // question takes priority, and latest reappears when it is visible.
             if inputs.showsJumpToLatest || hasPendingClarify {
                 Button {
-                    ChatViewportTrace.shared.log(
+                    ChatViewportWatch.shared.command(
                         hasPendingClarify
-                            ? "event explicitPendingClarify (button)"
-                            : "event explicitLatest (button)"
+                            ? "explicitPendingClarify (button)"
+                            : "explicitLatest (button)"
                     )
                     if hasPendingClarify, let pendingClarifyMessageID {
                         jumpToQuestion(pendingClarifyMessageID)

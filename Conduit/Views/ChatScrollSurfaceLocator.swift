@@ -109,24 +109,52 @@ final class UIScrollViewChatSurface: NSObject, ChatScrollSurface {
         observations = [
             scrollView.observe(\.contentSize, options: [.old, .new]) { [weak self] _, change in
                 guard change.oldValue != change.newValue else { return }
-                Self.onMain { self?.engine?.surfaceLayoutChanged() }
+                Self.onMain {
+                    ChatViewportTrace.shared.log(String(
+                        format: "surface contentSize h %.1f -> %.1f",
+                        change.oldValue?.height ?? -1, change.newValue?.height ?? -1
+                    ))
+                    ChatViewportWatch.shared.layoutPass()
+                    self?.engine?.surfaceLayoutChanged()
+                }
             },
             scrollView.observe(\.bounds, options: [.old, .new]) { [weak self] _, change in
                 // Bounds origin is the content offset; only a size change is
                 // a layout change (keyboard, rotation, split view).
                 guard change.oldValue?.size != change.newValue?.size else { return }
-                Self.onMain { self?.engine?.surfaceLayoutChanged() }
+                Self.onMain {
+                    ChatViewportTrace.shared.log(String(
+                        format: "surface bounds %.1fx%.1f -> %.1fx%.1f",
+                        change.oldValue?.width ?? -1, change.oldValue?.height ?? -1,
+                        change.newValue?.width ?? -1, change.newValue?.height ?? -1
+                    ))
+                    ChatViewportWatch.shared.surfaceChanged()
+                    self?.engine?.surfaceLayoutChanged()
+                }
             },
             scrollView.observe(\.contentInset, options: [.old, .new]) { [weak self] _, change in
                 guard change.oldValue != change.newValue else { return }
-                Self.onMain { self?.engine?.surfaceLayoutChanged() }
+                Self.onMain {
+                    ChatViewportTrace.shared.log(String(
+                        format: "surface inset top %.1f bottom %.1f",
+                        change.newValue?.top ?? -1, change.newValue?.bottom ?? -1
+                    ))
+                    self?.engine?.surfaceLayoutChanged()
+                }
             },
-            scrollView.observe(\.contentOffset, options: [.old, .new]) { [weak self] _, change in
-                guard change.oldValue != change.newValue else { return }
-                Self.onMain { self?.engine?.surfaceScrolled() }
+            scrollView.observe(\.contentOffset, options: [.old, .new]) { [weak self] scrollView, change in
+                guard let old = change.oldValue, let new = change.newValue, old != new else { return }
+                Self.onMain {
+                    ChatViewportWatch.shared.offsetMoved(
+                        from: old.y, to: new.y, viewportHeight: scrollView.bounds.height,
+                        byUser: scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating
+                    )
+                    self?.engine?.surfaceScrolled()
+                }
             },
         ]
         scrollView.panGestureRecognizer.addTarget(self, action: #selector(handlePan(_:)))
+        ChatViewportWatch.shared.surfaceChanged()
     }
 
     /// UIKit changes these on the main thread; should one ever arrive
@@ -180,6 +208,7 @@ final class UIScrollViewChatSurface: NSObject, ChatScrollSurface {
 
     func setContentOffsetY(_ y: CGFloat, animated: Bool) {
         guard let scrollView else { return }
+        // ChatScrollEngine's write traces it, with the rule that asked.
         var offset = scrollView.contentOffset
         offset.y = y
         scrollView.setContentOffset(offset, animated: animated)
