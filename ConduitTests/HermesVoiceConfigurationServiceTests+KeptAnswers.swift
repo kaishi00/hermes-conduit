@@ -121,6 +121,108 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(service.credential("ELEVENLABS_API_KEY")?.isSet, true)
     }
 
+    /// Until Hermes says which keys are set, the key rows offer no field,
+    /// the config read answered or not: a key Hermes holds would be
+    /// written over unseen. Once it says, they know, the config's read
+    /// failing or not.
+    func testTheKeyRowsWaitUntilHermesSaysWhichKeysAreSet() async {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = Self.keptVoiceAnswers
+        let service = HermesVoiceConfigurationService(
+            requester: requester, profile: "default", answers: KeptVoiceAnswers(Self.keptVoiceAnswers).answers
+        )
+        XCTAssertTrue(service.awaitsKeys, "/api/env is never kept")
+
+        await service.reload()
+        XCTAssertEqual(service.answered, true)
+        XCTAssertTrue(service.awaitsKeys, "Its read failed")
+
+        requester.routes["/api/env"] = ["GEMINI_API_KEY": ["is_set": false]]
+        await service.reload()
+        XCTAssertFalse(service.awaitsKeys)
+
+        // Only the config's read failing: the kept page learns the keys.
+        let opened = HermesVoiceConfigurationService(
+            requester: requester, profile: "default", answers: KeptVoiceAnswers(Self.keptVoiceAnswers).answers
+        )
+        requester.failingGETPaths = ["/api/config"]
+        await opened.reload()
+        XCTAssertEqual(opened.answered, false)
+        XCTAssertFalse(opened.awaitsKeys, "Hermes said which keys are set")
+
+        // So does a page Hermes answered without the keys, on a Hermes
+        // without the speech toolsets' routes, which keeps none.
+        let toolsets: Set<String> = ["/api/tools/toolsets/stt/config", "/api/tools/toolsets/tts/config"]
+        let older = MockVoiceConfigurationRequester()
+        older.routes = Self.keptVoiceAnswers.filter { !toolsets.contains($0.key) }
+        older.missingRoutes = toolsets
+        let answeredBefore = HermesVoiceConfigurationService(
+            requester: older, profile: "default", answers: KeptVoiceAnswers([:]).answers
+        )
+        await answeredBefore.reload()
+        XCTAssertEqual(answeredBefore.answered, true)
+        XCTAssertTrue(answeredBefore.awaitsKeys, "Its read failed")
+        older.routes["/api/env"] = ["GEMINI_API_KEY": ["is_set": false]]
+        older.failingGETPaths = ["/api/config"]
+        await answeredBefore.reload()
+        XCTAssertEqual(answeredBefore.answered, false)
+        XCTAssertTrue(answeredBefore.snapshot.capability.isGatewayConnected)
+        XCTAssertFalse(answeredBefore.awaitsKeys, "Hermes said which keys are set")
+    }
+
+    /// The Voice replies model shows Hermes' answer unless a pick's write
+    /// was out when it was asked or went out since, or a read asked after
+    /// it answered first (its models left too), writes one pick at a time,
+    /// and a write Hermes refuses puts back what it holds and says why.
+    func testTheVoiceRepliesModelKeepsAPickOverAnOlderAnswer() throws {
+        let chats = VoiceReplyModelSetting(provider: "auto", model: "", reasoningEffort: "none")
+        let fast = VoiceReplyModelSetting(provider: "openrouter", model: "fast", reasoningEffort: "none")
+        let fastTag = VoiceJobModelSettingsSection.tag(provider: "openrouter", model: "fast")
+        var picks = VoiceReplyModelPicks()
+        picks.showKept(chats)
+        picks.selection = fastTag
+        XCTAssertNil(picks.writeAsked(), "The pickers wait for Hermes")
+
+        let first = picks.readAsked()
+        picks.hermesAnswered(chats, to: first)
+        XCTAssertEqual(picks.selection, VoiceReplyModelPicks.sameAsChats)
+        picks.selection = fastTag
+        let askedBefore = picks.readAsked()
+        let write = picks.writeAsked()
+        XCTAssertEqual(write, fast)
+        XCTAssertTrue(picks.writing)
+        picks.reasoning = "high"
+        XCTAssertNil(picks.writeAsked(), "One write at a time")
+        picks.reasoning = "none"
+        let askedDuring = picks.readAsked()
+        picks.hermesAnswered(chats, to: askedBefore)
+        XCTAssertEqual(picks.selection, fastTag, "Asked before the write")
+        picks.writeEnded(fast, refusal: nil)
+        picks.hermesAnswered(chats, to: askedDuring)
+        XCTAssertEqual(picks.saved, fast, "Asked while it was out")
+        XCTAssertEqual(picks.selection, fastTag)
+
+        picks.reasoning = "high"
+        let refused = try XCTUnwrap(picks.writeAsked())
+        picks.writeEnded(refused, refusal: "Hermes requires confirmation before using this model.")
+        XCTAssertEqual(picks.reasoning, "none", "What Hermes holds")
+        XCTAssertEqual(picks.saved, fast)
+        XCTAssertEqual(picks.refusal, "Hermes requires confirmation before using this model.")
+        XCTAssertNil(picks.writeAsked(), "Putting it back writes nothing")
+
+        let after = picks.readAsked()
+        picks.hermesAnswered(chats, to: after)
+        XCTAssertEqual(picks.saved, chats, "Asked after the writes")
+        XCTAssertEqual(picks.selection, VoiceReplyModelPicks.sameAsChats)
+
+        let older = picks.readAsked()
+        let newer = picks.readAsked()
+        XCTAssertTrue(picks.hermesAnswered(fast, to: newer))
+        XCTAssertFalse(picks.hermesAnswered(chats, to: older), "Its models are older too")
+        XCTAssertEqual(picks.saved, fast, "Asked before a read that answered first")
+        XCTAssertEqual(picks.selection, fastTag)
+    }
+
     /// What a save wrote is what the page opens on next, as the other
     /// settings pages' saves are.
     func testAConfigSaveIsWhatThePageOpensOnNext() async {
@@ -275,7 +377,7 @@ private final class KeptVoiceAnswers {
     var answers: VoiceKeptAnswers {
         VoiceKeptAnswers(
             kept: { route in self.saved[route] },
-            keep: { route, read in
+            keep: { route, _, read in
                 let answer = try await read()
                 self.saved[route] = answer
                 return answer

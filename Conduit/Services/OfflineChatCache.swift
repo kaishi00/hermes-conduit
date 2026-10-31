@@ -1172,9 +1172,15 @@ final class OfflineChatCacheStore {
 
     /// The URL without its user and password (`https://user:key@host`) and
     /// a credential in its query (`?api_key=…`), or the text as it was.
+    /// Text with a space or a line break in it is prose, or a URL typed
+    /// with one, never for the parser: since iOS 17 it takes such text by
+    /// escaping the space, and an address in the prose after a URL becomes
+    /// the host, everything before it the user and password.
     private static func withoutURLCredentials(_ text: String) -> String {
-        guard text.contains("://"), text.contains("@") || text.contains("?"),
-              var components = URLComponents(string: text) else { return text }
+        guard text.contains("://"), text.contains("@") || text.contains("?") else { return text }
+        guard !text.contains(where: \.isWhitespace), var components = URLComponents(string: text) else {
+            return withoutUnparsedURLCredentials(text)
+        }
         let query = components.queryItems ?? []
         let keptQuery = query.filter { !isCredentialKey($0.name) }
         guard components.user != nil || components.password != nil || keptQuery.count < query.count else { return text }
@@ -1182,6 +1188,40 @@ final class OfflineChatCacheStore {
         components.password = nil
         if keptQuery.count < query.count { components.queryItems = keptQuery.isEmpty ? nil : keptQuery }
         return components.string ?? ""
+    }
+
+    /// A user and password after a `://`, up to the `@` before the host. A
+    /// password may hold a space, as a URL typed with one does, and an `@`
+    /// with no space after it before the next `@`: a host never holds a
+    /// space, so prose after a URL (an address in it included) stays. A
+    /// password never runs past the line's end, nor starts with a space
+    /// (`example.com: mail me@…`) or a port, a number the host's colon
+    /// leads to that ends before a word does (`localhost:8080 and mail
+    /// me@…`). So a password with a space in it that starts with a number
+    /// reads as a port and prose and stays: the two can't be told apart,
+    /// and a port is the likelier.
+    private static let unparsedUserInfo = try! NSRegularExpression(
+        pattern: #"(?<=://)(?:[^/?#\s@:]*:(?!\d+(?:[^\w@]|$))(?:[^/?#@\s][^/?#@\r\n]*)?|[^/?#\s@]*)(?:@[^/?#@\s]*)*@"#
+    )
+    /// A query's name, with its `=`.
+    private static let unparsedQueryName = try! NSRegularExpression(pattern: #"(?<=[?&])([^=&#\s]+)="#)
+
+    /// Text with a space in it, or that the URL parser rejects, loses the
+    /// same by pattern: any user and password, and a credential's value in
+    /// a query, its name left. That value runs to the next `&` or `#`, or
+    /// the end of the line, a space in it included.
+    private static func withoutUnparsedURLCredentials(_ text: String) -> String {
+        var kept = unparsedUserInfo.stringByReplacingMatches(
+            in: text, range: NSRange(text.startIndex..., in: text), withTemplate: ""
+        )
+        let names = unparsedQueryName.matches(in: kept, range: NSRange(kept.startIndex..., in: kept))
+        for match in names.reversed() {
+            guard let name = Range(match.range(at: 1), in: kept), isCredentialKey(String(kept[name])),
+                  let item = Range(match.range, in: kept) else { continue }
+            let end = kept[item.upperBound...].firstIndex { $0 == "&" || $0 == "#" || $0.isNewline } ?? kept.endIndex
+            kept.removeSubrange(item.upperBound..<end)
+        }
+        return kept
     }
 
     /// Deletes a profile's kept answers on one dashboard, as its profile is

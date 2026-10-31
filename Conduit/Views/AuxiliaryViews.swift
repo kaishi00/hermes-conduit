@@ -783,7 +783,9 @@ struct SettingsView: View {
                         saveCalls: appState.voiceCallSavingEnabled,
                         setSaveCalls: { appState.setVoiceCallSavingEnabled($0) },
                         speakerBargeIn: appState.liveVoiceSpeakerBargeInEnabled,
-                        setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) }
+                        setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) },
+                        keptStatus: appState.keptLiveVoiceStatus(.geminiLive),
+                        keepStatus: appState.liveVoiceStatusKeeper(.geminiLive)
                     ),
                     qwenLive: GeminiLiveSettingsModel(
                         enabled: appState.isQwenLiveEnabled,
@@ -809,16 +811,15 @@ struct SettingsView: View {
                         setSaveCalls: { appState.setVoiceCallSavingEnabled($0) },
                         speakerBargeIn: appState.liveVoiceSpeakerBargeInEnabled,
                         setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) },
-                        provider: .qwenLive
+                        provider: .qwenLive,
+                        keptStatus: appState.keptLiveVoiceStatus(.qwenLive),
+                        keepStatus: appState.liveVoiceStatusKeeper(.qwenLive)
                     ),
                     gptLive: GPTLiveSettingsModel(
                         enabled: appState.isGPTLiveEnabled,
                         setEnabled: { appState.setGPTLiveEnabled($0) },
-                        checkAvailability: {
+                        checkAvailability: { billing in
                             do {
-                                // The path the picker shows, even while a call Hermes placed
-                                // would start on the subscription.
-                                let billing = await MainActor.run { appState.gptLiveBilling }
                                 let status = try await appState.gptLiveClient.availability(billing: billing)
                                 // The Watch's GPT-Live is always the subscription's: an API-key
                                 // check says nothing about it.
@@ -847,7 +848,9 @@ struct SettingsView: View {
                         apiMaxMinutes: appState.gptLiveAPIMaxMinutes,
                         setAPIMaxMinutes: { appState.setGPTLiveAPIMaxMinutes($0) },
                         apiHermesCalls: appState.gptLiveAPIHermesCalls,
-                        setAPIHermesCalls: { appState.setGPTLiveAPIHermesCalls($0) }
+                        setAPIHermesCalls: { appState.setGPTLiveAPIHermesCalls($0) },
+                        keptStatus: appState.keptLiveVoiceStatus(.gptLive),
+                        keepStatus: appState.gptLiveStatusKeeper()
                     ),
                     grokLive: GrokLiveSettingsModel(
                         enabled: appState.isGrokLiveEnabled,
@@ -868,7 +871,9 @@ struct SettingsView: View {
                         saveCalls: appState.voiceCallSavingEnabled,
                         setSaveCalls: { appState.setVoiceCallSavingEnabled($0) },
                         speakerBargeIn: appState.liveVoiceSpeakerBargeInEnabled,
-                        setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) }
+                        setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) },
+                        keptStatus: appState.keptLiveVoiceStatus(.grokLive),
+                        keepStatus: appState.liveVoiceStatusKeeper(.grokLive)
                     ),
                     localLive: LocalLiveSettingsModel(
                         enabled: appState.isLocalLiveEnabled,

@@ -2714,9 +2714,56 @@ final class AppState: ObservableObject {
         keptAnswer(KeptRoute.modelAuxiliary).flatMap(VoiceReplyModelSetting.init(auxiliaryResponse:))
     }
 
-    func setVoiceReplyModel(_ setting: VoiceReplyModelSetting) async -> Bool {
+    /// A live voice mode's status line on Voice settings as its last check
+    /// said (GPT-Live's, the billing's on screen), kept on the phone so the
+    /// line opens on it (#1533).
+    func keptLiveVoiceStatus(_ mode: LiveVoiceModeName) -> LiveVoiceStatusLine? {
+        keptAnswer(Self.liveVoiceStatusRoute(mode, billing: gptLiveBilling)).flatMap(LiveVoiceStatusLine.init(answer:))
+    }
+
+    /// Keeps what a check of `mode` said, for the dashboard and profile
+    /// Voice settings showed when this was made; nothing once another
+    /// dashboard took over, or after a wipe. GPT-Live's checks keep through
+    /// gptLiveStatusKeeper.
+    func liveVoiceStatusKeeper(_ mode: LiveVoiceModeName) -> (LiveVoiceStatusLine) -> Void {
+        let keep = statusLineKeeper()
+        let route = Self.liveVoiceStatusRoute(mode, billing: gptLiveBilling)
+        return { keep($0, route) }
+    }
+
+    /// GPT-Live's, under the billing its check asked about: the billing can
+    /// change while a check is out.
+    func gptLiveStatusKeeper() -> (LiveVoiceStatusLine, GPTLiveBilling) -> Void {
+        let keep = statusLineKeeper()
+        return { keep($0, Self.liveVoiceStatusRoute(.gptLive, billing: $1)) }
+    }
+
+    private func statusLineKeeper() -> (LiveVoiceStatusLine, String) -> Void {
         let profile = activeProfile
-        guard let owner = currentDashboardRuntimeOwner() else { return false }
+        guard let owner = currentDashboardRuntimeOwner() else { return { _, _ in } }
+        let removals = offlineChatCache.removals
+        return { [weak self] line, route in
+            guard let self else { return }
+            // A check's line is kept as a read's answer is, the last to land.
+            self.keepAnswer(
+                line.answer, for: route, profile: profile, owner: owner, removals: removals,
+                turn: self.nextKeptAnswerTurn(), writes: false
+            )
+        }
+    }
+
+    /// GPT-Live's per billing, as each checks another sign-in.
+    private static func liveVoiceStatusRoute(_ mode: LiveVoiceModeName, billing: GPTLiveBilling) -> String {
+        KeptRoute.liveVoiceStatus + (mode == .gptLive ? "\(mode.storageID)/\(billing.rawValue)" : mode.storageID)
+    }
+
+    /// Nil when Hermes took the setting; otherwise why not, for the
+    /// section to show beside the pickers (#1533).
+    func setVoiceReplyModel(_ setting: VoiceReplyModelSetting) async -> String? {
+        let profile = activeProfile
+        guard let owner = currentDashboardRuntimeOwner() else {
+            return AppLocalization.string("Connect to Hermes to configure voice for this profile.")
+        }
         let dashboardTicketBridge = owner.bridge
         do {
             // Hermes writes the profile config for it: in turn with every
@@ -2728,21 +2775,20 @@ final class AppState: ObservableObject {
                     body: setting.assignmentBody(profile: profile)
                 )
             }
-            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             if result["confirm_required"] as? Bool == true {
-                errorMessage = result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
-                return false
+                return result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
             }
-            // The kept slots follow the save, so the section opens on it
-            // next time (#1533).
+            // The answer to a read asked before the save isn't kept after
+            // it, and the kept slots follow the save, so the section opens
+            // on it next time (#1533).
+            noteKeptAnswerWrite(for: KeptRoute.modelAuxiliary, profile: profile, owner: owner)
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
             Task { [weak self] in
                 _ = try? await self?.readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner)
             }
-            return true
+            return nil
         } catch {
-            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
-            errorMessage = AppLocalization.string("Could not save the voice reply model: \(UserFacingError.message(for: error))")
-            return false
+            return AppLocalization.string("Could not save the voice reply model: \(UserFacingError.message(for: error))")
         }
     }
 
@@ -33070,7 +33116,7 @@ final class AppState: ObservableObject {
                 body: ["config": config, "profile": profile]
             )
             // What the settings pages open on next is what was just saved.
-            self.keepAnswer(config, for: KeptRoute.config, profile: profile, owner: owner, removals: removals)
+            self.keepWrittenAnswer(config, for: KeptRoute.config, profile: profile, owner: owner, removals: removals)
         }
     }
 
@@ -33167,13 +33213,15 @@ final class AppState: ObservableObject {
                 try await ProfileConfigWriteQueue.runThrowing {
                     _ = try await dashboardTicketBridge.requestJSON(path: "/api/dashboard/plugin-providers", method: "PUT", body: body)
                 }
-                guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
-                // The page opens on it next time, as on a config it saved.
-                if var config = keptAnswer(KeptRoute.config) {
+                // The page opens on it next time, as on a config it saved,
+                // a switch to another profile or dashboard meanwhile included.
+                if var config = keptAnswer(KeptRoute.config, profile: profile, on: owner) {
                     setProfileSettingValue(value, in: &config, key: key)
-                    keepAnswer(config, for: KeptRoute.config, profile: profile, owner: owner, removals: removals)
+                    keepWrittenAnswer(config, for: KeptRoute.config, profile: profile, owner: owner, removals: removals)
+                } else {
+                    noteKeptAnswerWrite(for: KeptRoute.config, profile: profile, owner: owner)
                 }
-                return true
+                return ownsDashboardRuntime(owner) && profile == activeProfile
             }
             let reasoning = key == ReasoningDisplayMode.settingKey ? value.textValue.flatMap(ReasoningDisplayMode.init(rawValue:)) : nil
             if key == ReasoningDisplayMode.settingKey, reasoning == nil { return false }
@@ -33342,6 +33390,9 @@ final class AppState: ObservableObject {
         /// Settings > Usage's quota: the gateway's `model.options`, whose
         /// models the Voice and Pulse model pickers list too.
         static let providerQuotas = "rpc:model.options"
+        /// A live voice mode's status line on Voice settings, by the mode's
+        /// name: not a read's answer but what its check said.
+        static let liveVoiceStatus = "conduit:live-voice-status/"
         /// The scope of an answer about all of a Hermes' profiles at once
         /// (delegation's pause), kept once per dashboard: no profile is
         /// named with nothing.
@@ -33361,29 +33412,84 @@ final class AppState: ObservableObject {
     /// the route `keptAs` names for it (nil: not kept): for an answer read
     /// another way (a gateway call), or a step that answers with a screen's
     /// state (Pulse's), which is then what the screen opens on next.
+    /// `writes` for a step that changes what it answers with (a save, a
+    /// forget): it's as new as when it lands, so the answer to a read asked
+    /// while it was out never goes back over it, and it's kept for the
+    /// dashboard it was made on, another one open by then or not.
     func keepingAnswer(
         profile: String,
         owner: DashboardRuntimeOwner,
         keptAs route: ([String: Any]) -> String?,
+        writes: Bool = false,
         _ read: () async throws -> [String: Any]
     ) async throws -> [String: Any] {
         let removals = offlineChatCache.removals
+        let asked = nextKeptAnswerTurn()
         let answer = try await read()
-        if let route = route(answer) { keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals) }
+        let turn = writes ? nextKeptAnswerTurn() : asked
+        if let route = route(answer) {
+            keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals, turn: turn, writes: writes)
+        }
         return answer
     }
 
-    /// Kept only while the read still belongs to the dashboard it asked,
-    /// with nothing wiped since it was asked (a sign-out, Delete Saved
-    /// Chats, a deleted bot).
-    private func keepAnswer(
+    /// Keeps what the phone just wrote, over the answer to any read asked
+    /// before it, for the dashboard it wrote to.
+    private func keepWrittenAnswer(
         _ answer: [String: Any],
         for route: String,
         profile: String,
         owner: DashboardRuntimeOwner,
         removals: Int
     ) {
-        guard let dashboardID = owner.dashboardID, ownsDashboardRuntime(owner), offlineChatCache.removals == removals else { return }
+        keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals, turn: nextKeptAnswerTurn(), writes: true)
+    }
+
+    /// Numbers the reads whose answers are kept as they're asked, and the
+    /// writes as they land: an answer is kept only over an older one, so a
+    /// read asked before a save, a forget or another read never puts its
+    /// answer back over theirs (#1533).
+    private var keptAnswerTurns = 0
+    /// The number of the answer kept, per dashboard, profile and route.
+    private var keptAnswerTurnsKept: [String: Int] = [:]
+
+    private func nextKeptAnswerTurn() -> Int {
+        keptAnswerTurns += 1
+        return keptAnswerTurns
+    }
+
+    /// A write that leaves nothing to keep counts all the same: the answer
+    /// to a read asked before it isn't kept after it.
+    func noteKeptAnswerWrite(for route: String, profile: String, owner: DashboardRuntimeOwner) {
+        guard let dashboardID = owner.dashboardID else { return }
+        keptAnswerTurnsKept[Self.keptAnswerScope(dashboardID, profile, route)] = nextKeptAnswerTurn()
+    }
+
+    private static func keptAnswerScope(_ dashboardID: UUID, _ profile: String, _ route: String) -> String {
+        [dashboardID.uuidString, profile, route].joined(separator: "\u{1F}")
+    }
+
+    /// Kept with nothing newer kept since, and nothing wiped since it was
+    /// asked (a sign-out, Delete Saved Chats, a deleted bot): a read's
+    /// answer only while its dashboard is still the one open, and a
+    /// write's for the dashboard it was made on, as that's what its Hermes
+    /// holds now. A write counts from when it landed, kept or not.
+    private func keepAnswer(
+        _ answer: [String: Any],
+        for route: String,
+        profile: String,
+        owner: DashboardRuntimeOwner,
+        removals: Int,
+        turn: Int,
+        writes: Bool
+    ) {
+        guard let dashboardID = owner.dashboardID else { return }
+        let scope = Self.keptAnswerScope(dashboardID, profile, route)
+        guard turn > keptAnswerTurnsKept[scope, default: 0] else { return }
+        let keeps = offlineChatCache.removals == removals && (writes || ownsDashboardRuntime(owner))
+        guard keeps || writes else { return }
+        keptAnswerTurnsKept[scope] = turn
+        guard keeps else { return }
         // A schema's fields are keyed by config path, not by what they hold.
         let names: Set<String> = route == KeptRoute.configSchema ? ["fields"] : []
         offlineChatCache.recordAnswer(answer, route: route, dashboardID: dashboardID, profile: profile, namesUnder: names)
@@ -33397,9 +33503,15 @@ final class AppState: ObservableObject {
         return offlineChatCache.keptAnswer(route, dashboardID: dashboardID, profile: profile ?? activeProfile)
     }
 
+    /// The answer kept for the route on the owner's dashboard, the one open
+    /// or not: what a write that lands there changes.
+    func keptAnswer(_ route: String, profile: String, on owner: DashboardRuntimeOwner) -> [String: Any]? {
+        owner.dashboardID.flatMap { offlineChatCache.keptAnswer(route, dashboardID: $0, profile: profile) }
+    }
+
     /// Where Voice settings keep their answers for the profile, beside the
-    /// other settings pages': on this dashboard, while it's the one open.
-    /// Nil without a bridge.
+    /// other settings pages': on this dashboard, which they read only while
+    /// it's the one open. Nil without a bridge.
     func voiceSettingsAnswers(profile: String) -> VoiceKeptAnswers? {
         guard let owner = currentDashboardRuntimeOwner() else { return nil }
         return VoiceKeptAnswers(
@@ -33407,9 +33519,9 @@ final class AppState: ObservableObject {
                 guard let self, self.ownsDashboardRuntime(owner) else { return nil }
                 return self.keptAnswer(route, profile: profile)
             },
-            keep: { [weak self] route, read in
+            keep: { [weak self] route, writes, read in
                 guard let self else { return try await read() }
-                return try await self.keepingAnswer(profile: profile, owner: owner, keptAs: { _ in route }, read)
+                return try await self.keepingAnswer(profile: profile, owner: owner, keptAs: { _ in route }, writes: writes, read)
             }
         )
     }
@@ -34544,14 +34656,14 @@ final class AppState: ObservableObject {
     /// Hermes can't say (#820).
     func loadDelegationPaused() async -> Bool? {
         guard let client else { return nil }
-        let owner = currentDashboardRuntimeOwner()
-        let removals = offlineChatCache.removals
-        guard let paused = try? await client.delegationPaused() else { return nil }
-        if let owner {
-            // The pause holds every profile, so every profile's page opens on it.
-            keepAnswer(["paused": paused], for: KeptRoute.delegationStatus, profile: KeptRoute.everyProfile, owner: owner, removals: removals)
+        guard let owner = currentDashboardRuntimeOwner() else { return try? await client.delegationPaused() }
+        // The pause holds every profile, so every profile's page opens on it.
+        let answer = try? await keepingAnswer(
+            profile: KeptRoute.everyProfile, owner: owner, keptAs: { _ in KeptRoute.delegationStatus }
+        ) {
+            ["paused": try await client.delegationPaused()]
         }
-        return paused
+        return answer?["paused"] as? Bool
     }
 
     /// Whether delegation was paused when a page last read it on this
@@ -34565,13 +34677,13 @@ final class AppState: ObservableObject {
     /// reports, or nil when it failed.
     func setDelegationPaused(_ paused: Bool) async -> Bool? {
         guard let client else { return nil }
-        let owner = currentDashboardRuntimeOwner()
-        let removals = offlineChatCache.removals
-        guard let state = try? await client.setDelegationPaused(paused) else { return nil }
-        if let owner {
-            keepAnswer(["paused": state], for: KeptRoute.delegationStatus, profile: KeptRoute.everyProfile, owner: owner, removals: removals)
+        guard let owner = currentDashboardRuntimeOwner() else { return try? await client.setDelegationPaused(paused) }
+        let answer = try? await keepingAnswer(
+            profile: KeptRoute.everyProfile, owner: owner, keptAs: { _ in KeptRoute.delegationStatus }, writes: true
+        ) {
+            ["paused": try await client.setDelegationPaused(paused)]
         }
-        return state
+        return answer?["paused"] as? Bool
     }
 
     /// Keeps only the delegate cards of the conversation now open (its

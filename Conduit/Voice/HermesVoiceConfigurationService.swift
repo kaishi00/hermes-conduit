@@ -128,9 +128,10 @@ struct VoiceConfigurationSnapshot: Equatable {
 struct VoiceKeptAnswers {
     /// The answer kept for a route, or nil.
     let kept: @MainActor (_ route: String) -> [String: Any]?
-    /// Runs a read, or a save answering with the config it wrote, and keeps
-    /// its answer for the route.
-    let keep: @MainActor (_ route: String, _ read: () async throws -> [String: Any]) async throws -> [String: Any]
+    /// Runs a read, or a save answering with the config it wrote
+    /// (`writes`), and keeps its answer for the route, unless an answer
+    /// newer than it is kept by then.
+    let keep: @MainActor (_ route: String, _ writes: Bool, _ read: () async throws -> [String: Any]) async throws -> [String: Any]
 }
 
 /// A small adapter protocol makes the schema/config parser deterministic in
@@ -171,6 +172,13 @@ final class HermesVoiceConfigurationService: ObservableObject {
 
     /// A read is out, or none has ended: Hermes is still to say.
     var isChecking: Bool { isLoading || answered == nil }
+
+    /// Hermes is still to say which keys are set: `/api/env` is never
+    /// kept, so a page opened on its kept answers doesn't know, and a read
+    /// of it that fails leaves it unknown. A key row offers no field until
+    /// it says, since a key Hermes holds would be written over unseen
+    /// (#1533).
+    var awaitsKeys: Bool { !snapshot.environmentLoaded }
 
     private let requester: VoiceConfigurationRequesting
     private let answers: VoiceKeptAnswers?
@@ -225,11 +233,23 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// voice never reads not ready for want of a kept answer. Which keys
     /// are set isn't kept, so none reads as missing.
     private static func keptSnapshot(profile: String, answers: VoiceKeptAnswers?) -> VoiceConfigurationSnapshot? {
-        guard let answers, let config = answers.kept(KeptRead.config),
-              let stt = answers.kept(KeptRead.sttToolset), let tts = answers.kept(KeptRead.ttsToolset) else { return nil }
+        guard let answers, answers.kept(KeptRead.sttToolset) != nil, answers.kept(KeptRead.ttsToolset) != nil else { return nil }
+        return redrawn(profile: profile, answers: answers, environment: nil)
+    }
+
+    /// The page from the config kept on the phone, the one a reload drew
+    /// or kept, with which keys are set as `environment` says; toolsets
+    /// this Hermes doesn't offer stay out, as when it answered. Nil
+    /// without a kept config.
+    private static func redrawn(
+        profile: String, answers: VoiceKeptAnswers?, environment: [String: Any]?
+    ) -> VoiceConfigurationSnapshot? {
+        guard let answers, let config = answers.kept(KeptRead.config) else { return nil }
+        let ttsReadiness = answers.kept(KeptRead.ttsToolset)
         return VoiceConfigurationParser.parse(
             profile: profile, schema: answers.kept(KeptRead.schema), config: config,
-            sttReadiness: stt, ttsReadiness: tts, environment: nil, ttsToolsetConfigAvailable: true
+            sttReadiness: answers.kept(KeptRead.sttToolset), ttsReadiness: ttsReadiness,
+            environment: environment, ttsToolsetConfigAvailable: ttsReadiness != nil
         )
     }
 
@@ -256,8 +276,15 @@ final class HermesVoiceConfigurationService: ObservableObject {
             errorMessage = Self.message(from: config)
             answered = false
             // A read that fails keeps the settings shown, Hermes' answer
-            // from before or the one kept on the phone (#1533).
-            guard !snapshot.capability.isGatewayConnected else { return }
+            // from before or the one kept on the phone (#1533), with which
+            // keys are set if Hermes said this time.
+            guard !snapshot.capability.isGatewayConnected else {
+                if !snapshot.environmentLoaded, lastEnvironment != nil,
+                   let kept = Self.redrawn(profile: profile, answers: answers, environment: lastEnvironment) {
+                    snapshot = kept
+                }
+                return
+            }
             // With nothing shown: a Hermes that answers without the voice
             // routes needs updating; one that doesn't answer, connecting.
             let reason = Self.isRouteMissing(config)
@@ -602,17 +629,20 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// Saves the whole config. What it wrote is what the page opens on
     /// next, kept on the phone, as the other settings pages' saves are.
     private func putConfig(_ config: [String: Any]) async throws {
-        _ = try await keeping(KeptRead.config) {
+        _ = try await keeping(KeptRead.config, writes: true) {
             _ = try await requester.requestJSON(path: profilePath("/api/config"), method: "PUT", body: ["config": config])
             return config
         }
     }
 
     /// Runs `read` and keeps its answer for the route, so the page opens on
-    /// it next time (#1533).
-    private func keeping(_ route: String, _ read: () async throws -> [String: Any]) async throws -> [String: Any] {
+    /// it next time (#1533); `writes` for a save answering with what it
+    /// wrote.
+    private func keeping(
+        _ route: String, writes: Bool = false, _ read: () async throws -> [String: Any]
+    ) async throws -> [String: Any] {
         guard let answers else { return try await read() }
-        return try await answers.keep(route, read)
+        return try await answers.keep(route, writes, read)
     }
 
     private func profilePath(_ path: String) -> String {

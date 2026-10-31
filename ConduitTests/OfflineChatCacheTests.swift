@@ -3240,7 +3240,8 @@ extension OfflineChatCacheTests {
     /// endpoint's API key, an MCP server's token and Authorization header,
     /// a fallback's key, a provider's secret key, key list, credentials,
     /// passphrase, bare auth or key, and a URL's user and password or a
-    /// credential in its query), and keep settings that only mention them.
+    /// credential in its query, in text the URL parser rejects too), and
+    /// keep settings that only mention them, and the prose around a URL.
     func testAKeptAnswersFileLeavesOutCredentials() throws {
         let store = makeStore()
         let dashboard = UUID()
@@ -3281,11 +3282,21 @@ extension OfflineChatCacheTests {
             "limits": [["name": "max_tokens", "value": 4096], ["key": "max_tokens", "value": 4096], ["name": "API_TOKEN", "value": "t-28"]],
             // Hermes' row for a variable says only whether it's set, by its name.
             "env_vars": [["key": "ELEVENLABS_API_KEY", "is_set": true, "prompt": "ElevenLabs", "value": "sk-24"]],
+            // Text with a space in it loses them too, a space in them
+            // included, and keeps the prose after a URL.
+            "notes": "see https://ann:pw-29@docs.example/a b?api_key=sk-30&page=2 for more",
+            "mirror": "https://bo:my pw-31@mirror.example/x",
+            "relay_address": "https://relay.example/in?password=my pw-32&page=2",
+            "nearby": "https://me:pw-33@host.example and mail bob@corp.example",
+            "reminder": "Check https://example.com and ask alice@corp.example",
+            "dashboard": "Open http://localhost:9119 and mail me@corp.example\nor see http://wiki:home\nadmin@corp.example",
+            "access": "Docs at https://docs.example: ask bob@corp.example for access",
         ]
         let secrets = [
             "sk-live-1", "ghp-2", "Bearer three", "key-4", "sk-fallback-5", "sk-6", "k-7", "k-8",
             "p-9", "pp-10", "a-11", "k-12", "cs-13", "pw-14", "sk-15", "ssh-16", "Basic 17", "c-18", "h-19",
-            "t-20", "t-21", "Bearer 22", "sk-23", "sk-24", "sk-25", "t-26", "t-27", "t-28",
+            "t-20", "t-21", "Bearer 22", "sk-23", "sk-24", "sk-25", "t-26", "t-27", "t-28", "pw-29", "sk-30", "pw-31",
+            "pw-32", "pw-33",
         ]
 
         store.recordAnswer(config, route: AppState.KeptRoute.config, dashboardID: dashboard, profile: "default")
@@ -3315,6 +3326,21 @@ extension OfflineChatCacheTests {
                 "hook_url": "https://hooks.example/in", "password_required": false, "max_tokens": 4096, "author": "ann",
             ] as NSDictionary,
             "URLs without their user or a key in their query, true or false and numbers that only mention them, and a name that only starts like auth"
+        )
+        XCTAssertEqual(kept["notes"] as? String, "see https://docs.example/a b?api_key=&page=2 for more", "Text with a space keeps the rest")
+        XCTAssertEqual(kept["mirror"] as? String, "https://mirror.example/x", "A space in the password")
+        XCTAssertEqual(kept["relay_address"] as? String, "https://relay.example/in?password=&page=2", "and one in a query's credential")
+        XCTAssertEqual(kept["nearby"] as? String, "https://host.example and mail bob@corp.example", "An address after the host stays")
+        XCTAssertEqual(kept["reminder"] as? String, "Check https://example.com and ask alice@corp.example", "and so does one after a URL without a user")
+        XCTAssertEqual(
+            kept["dashboard"] as? String,
+            "Open http://localhost:9119 and mail me@corp.example\nor see http://wiki:home\nadmin@corp.example",
+            "A port isn't a password, and none runs past the line's end"
+        )
+        XCTAssertEqual(
+            kept["access"] as? String,
+            "Docs at https://docs.example: ask bob@corp.example for access",
+            "nor starts with a space"
         )
         XCTAssertEqual(kept["extra_headers"] as? [[String: String]], [["name": "Authorization"], ["name": "Accept", "value": "json"]])
         XCTAssertEqual(
