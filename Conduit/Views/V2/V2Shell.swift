@@ -493,18 +493,35 @@ struct V2Shell: View {
     /// elsewhere meanwhile).
     @MainActor private func reopenRoomIfWaiting() async {
         guard let launch = roomToReopen, launch.roomID != nil, appState.isConnected else { return }
-        roomToReopen = nil
-        // Opened or given up: the record follows what shows from here.
-        defer { conversationOnLeave = conversationToReopen?.encoded ?? "" }
-        let listedRoom = {
-            launch.room(in: appState.shownGroupRooms, tab: selectedTab, path: path(of: launch.tab), roomOpen: appState.activeRoomSurface != nil)
+        func step() -> V2ReopenedConversation.RoomStep {
+            launch.roomStep(
+                in: appState.shownGroupRooms,
+                listed: appState.groupRoomsListed || appState.groupChatPhase == .gatewayUnsupported,
+                tab: selectedTab,
+                path: path(of: launch.tab),
+                roomOpen: appState.activeRoomSurface != nil
+            )
         }
-        guard launch.isUntouched(tab: selectedTab, path: path(of: launch.tab), roomOpen: appState.activeRoomSurface != nil) else { return }
-        if listedRoom() == nil {
+        var next = step()
+        if next == .askHermes {
             await appState.refreshGroupChatSupport()
+            // Cut short (the connection dropped): kept for the next one.
+            guard !Task.isCancelled, appState.isConnected else { return }
+            next = step()
         }
-        guard let room = listedRoom() else { return }
-        await appState.openGroupRoom(room)
+        switch next {
+        case .askHermes:
+            // Hermes hasn't listed its rooms yet: kept for the next connection.
+            return
+        case .giveUp:
+            roomToReopen = nil
+            conversationOnLeave = conversationToReopen?.encoded ?? ""
+        case .open(let room):
+            await appState.openGroupRoom(room)
+            // Opened: its screen keeps the record from here. A failed or cut
+            // short open stays kept, and tries again on the next connection.
+            if appState.activeRoomSurface?.room.roomID == room.roomID { roomToReopen = nil }
+        }
     }
 
     /// Whether either tab holds the conversation, shown or not.
@@ -1569,12 +1586,23 @@ struct V2ReopenedConversation: Codable, Equatable {
             shown == tab && shownPath == path && !roomOpen
         }
 
-        /// The room to open again: only while the tab is untouched, and
-        /// only one Hermes still lists (a disbanded room never reopens).
-        func room(in rooms: [GroupRoom], tab shown: V2Tab, path shownPath: [V2Route], roomOpen: Bool) -> GroupRoom? {
-            guard let roomID, isUntouched(tab: shown, path: shownPath, roomOpen: roomOpen) else { return nil }
-            return rooms.first { $0.roomID == roomID && !$0.isDisbanded }
+        /// What a launch's room does next: open it while the tab is
+        /// untouched and Hermes lists it; give up once the reader went
+        /// elsewhere, or Hermes' list has no such room (or it's disbanded);
+        /// otherwise ask Hermes for its rooms first.
+        func roomStep(in rooms: [GroupRoom], listed: Bool, tab shown: V2Tab, path shownPath: [V2Route], roomOpen: Bool) -> RoomStep {
+            guard let roomID, isUntouched(tab: shown, path: shownPath, roomOpen: roomOpen) else { return .giveUp }
+            if let room = rooms.first(where: { $0.roomID == roomID }) {
+                return room.isDisbanded ? .giveUp : .open(room)
+            }
+            return listed ? .giveUp : .askHermes
         }
+    }
+
+    enum RoomStep: Equatable {
+        case open(GroupRoom)
+        case askHermes
+        case giveUp
     }
 
     /// What the window keeps: where the showing chat or room is, or

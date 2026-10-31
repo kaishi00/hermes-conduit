@@ -1711,21 +1711,21 @@ When returning to Conduit caption · Watch and CarPlay (not needed: no chat
 list to land on)
 
 **Code**
-- `Conduit/Views/V2/V2Shell.swift` (V2ReopenedConversation: record, launch; init(conversationOnLeave:reopening:) seeds the tab's path, conversationToReopen keeps the window's record, reopenRoomIfWaiting, Launch.room), `Conduit/Views/RootView.swift` (MainView's SceneStorage conversationOnLeave, conversationToReopen)
+- `Conduit/Views/V2/V2Shell.swift` (V2ReopenedConversation: record, launch; init(conversationOnLeave:reopening:) seeds the tab's path, conversationToReopen keeps the window's record, reopenRoomIfWaiting, Launch.roomStep), `Conduit/Views/RootView.swift` (MainView's SceneStorage conversationOnLeave, conversationToReopen)
 - "Open to": `Conduit/Services/AppState.swift` (chatReturnSurfaceApplies, requestPreferredReturnSurface, claimPreferredReturnSurfacePresentation), `Conduit/Views/AuxiliaryViews.swift` (ChatReturnBehaviorSettings: the picker and the caption for each shell)
 - Tests: `ConduitTests/V2ReopenedConversationTests.swift`, `ConduitTests/ChatReturnSurfaceTests.swift` (testV2IgnoresASessionsPickedUnderTheDrawerShell)
 
 **Rulings**
 - V2 opens on the Chats list, not the last chat (Eric, 2026-10-15), except after iOS ended Conduit in the background: then it opens where the chat was showing, in Chats or Bots, with the pages under it (Eric, 2026-10-31, #1597, from issue #1559). The window keeps that as SceneStorage, which iOS restores after it ended the app and drops when the user swipes it away, so iOS itself tells the two launches apart. The chat is the one Conduit resumes, under the saved copy while it connects; with no chat to resume it opens on Chats. A page under it that's gone (a project this profile no longer lists, Pulse no longer showing) is left out.
-- A sign-out (the app giving way to sign-in) and turning V2 off drop the record: the next sign-in, or V2 turned back on, is a launch the user chose and opens on Chats.
+- Only a chat on screen is kept: Tasks or Settings opened over a chat, the Chats or Bots list, or any time Conduit gives way to its sign-in screen (a sign-out, or a sign-in that has to be done again) drops the record, and so does turning V2 off. The next launch then opens on Chats, since the reader had left the chat or must sign in first.
 - The reopened chat and its pages are in the tab's path when the shell is made, never pushed during the launch's first layout (that left the app never idle).
-- A group room that was showing opens again once Hermes is connected, as a tap on its row would, its screen pushed as it opens; the tab shows meanwhile. A tap that takes the reader elsewhere first, or a room Hermes no longer lists (or disbanded), leaves it closed. Until it opens or is given up the window keeps the room's record, so a launch cut short tries again.
+- A group room that was showing opens again once Hermes is connected, as a tap on its row would, its screen pushed as it opens; the tab shows meanwhile. A tap that takes the reader elsewhere first, or a room Hermes' list no longer has (or disbanded), gives it up. An open cut short (the connection dropped, a failed load) keeps it and tries again on the next connection, and the window keeps the room's record meanwhile, so a launch cut short tries again too.
 - "Open to" belongs to the drawer shell, and V2 hides it: a Sessions picked there is ignored under V2, on launch and on return. Before, it closed the chat on every return to Conduit with no setting left to change it (#1597).
 
 **Open gaps**
 - The list's scroll position and search under the reopened chat aren't kept: Back shows the list at its top.
 
-**Checked:** 2026-10-31, #1597 (added; the record dropped at sign-out and with V2 off, a waiting room's record kept, the caption names the resumed chat, from review).
+**Checked:** 2026-10-31, #1597 (added; the record dropped at sign-out and with V2 off, a waiting room's record and a cut-short open kept, the caption names the resumed chat, from review).
 
 ## Screens that open on their last answer
 

@@ -62,20 +62,23 @@ extension SidebarLayoutTests {
         XCTAssertEqual(reopenLaunch(stored, lastChat: nil), .init(tab: .bots, path: [], roomID: "room-1"))
     }
 
-    func testV2ReopensARoomOnlyWhileTheTabIsUntouchedAndHermesListsIt() {
+    func testV2RoomStepOpensWaitsOrGivesUp() {
         func room(_ id: String, disbanded: Bool = false) -> GroupRoom {
             GroupRoom(roomID: id, name: id, members: [], authorityGatewayID: "gw", authorityEpoch: 1, revision: 1,
                       createdAt: 0, updatedAt: 0, disbandedAt: disbanded ? 1 : nil, latestSeq: 0)
         }
         let launch = V2ReopenedConversation.Launch(tab: .bots, path: [], roomID: "room-1")
         let rooms = [room("room-0"), room("room-1")]
-        XCTAssertEqual(launch.room(in: rooms, tab: .bots, path: [], roomOpen: false)?.roomID, "room-1")
+        XCTAssertEqual(launch.roomStep(in: rooms, listed: true, tab: .bots, path: [], roomOpen: false), .open(room("room-1")))
+        // Kept rooms open before Hermes lists them; openGroupRoom asks it.
+        XCTAssertEqual(launch.roomStep(in: rooms, listed: false, tab: .bots, path: [], roomOpen: false), .open(room("room-1")))
         // A tap took the reader elsewhere first: another tab, a chat pushed, a room opened.
-        XCTAssertNil(launch.room(in: rooms, tab: .chats, path: [], roomOpen: false))
-        XCTAssertNil(launch.room(in: rooms, tab: .bots, path: [.conversation], roomOpen: false))
-        XCTAssertNil(launch.room(in: rooms, tab: .bots, path: [], roomOpen: true))
-        // Hermes no longer lists it, or it was disbanded.
-        XCTAssertNil(launch.room(in: [room("room-0")], tab: .bots, path: [], roomOpen: false))
-        XCTAssertNil(launch.room(in: [room("room-1", disbanded: true)], tab: .bots, path: [], roomOpen: false))
+        XCTAssertEqual(launch.roomStep(in: rooms, listed: true, tab: .chats, path: [], roomOpen: false), .giveUp)
+        XCTAssertEqual(launch.roomStep(in: rooms, listed: true, tab: .bots, path: [.conversation], roomOpen: false), .giveUp)
+        XCTAssertEqual(launch.roomStep(in: rooms, listed: true, tab: .bots, path: [], roomOpen: true), .giveUp)
+        // Not kept: Hermes is asked first, and its list decides.
+        XCTAssertEqual(launch.roomStep(in: [room("room-0")], listed: false, tab: .bots, path: [], roomOpen: false), .askHermes)
+        XCTAssertEqual(launch.roomStep(in: [room("room-0")], listed: true, tab: .bots, path: [], roomOpen: false), .giveUp)
+        XCTAssertEqual(launch.roomStep(in: [room("room-1", disbanded: true)], listed: true, tab: .bots, path: [], roomOpen: false), .giveUp)
     }
 }
