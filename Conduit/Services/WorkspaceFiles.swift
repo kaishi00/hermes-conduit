@@ -27,7 +27,9 @@ final class WorkspaceFilesClient {
     /// folder opens on it next time (#1533).
     @MainActor
     func list(root: String, path: String, keptIn answers: KeptAnswers? = nil) async throws -> WorkspaceListing {
-        try Self.listing(await get("list", ["root": root, "path": path], keptIn: answers), path: path)
+        try Self.listing(await get("list", ["root": root, "path": path], keptIn: answers) {
+            _ = try WorkspaceFilesClient.listing($0, path: path)
+        }, path: path)
     }
 
     /// The listing kept for the folder, or nil.
@@ -61,7 +63,9 @@ final class WorkspaceFilesClient {
     /// With `answers`, kept as `list` keeps a listing.
     @MainActor
     func recent(root: String, keptIn answers: KeptAnswers? = nil) async throws -> [WorkspaceEntry] {
-        try Self.recentEntries(await get("recent", ["root": root], keptIn: answers))
+        try Self.recentEntries(await get("recent", ["root": root], keptIn: answers) {
+            _ = try WorkspaceFilesClient.recentEntries($0)
+        })
     }
 
     /// The recent files kept for the folder, or nil.
@@ -128,12 +132,18 @@ final class WorkspaceFilesClient {
         DashboardPath.withProfile("\(Self.path)/\(action)", profile: profile)
     }
 
+    /// Only an answer `readable` takes is kept, so one the folder can't
+    /// read never takes the last one's place.
     @MainActor
-    private func get(_ action: String, _ query: [String: String], keptIn answers: KeptAnswers? = nil) async throws -> [String: Any] {
+    private func get(
+        _ action: String, _ query: [String: String], keptIn answers: KeptAnswers? = nil,
+        readable: (([String: Any]) throws -> Void)? = nil
+    ) async throws -> [String: Any] {
         let path = DashboardPath.withProfile(Self.requestPath(action, query), profile: profile)
         let read = { () async throws -> [String: Any] in
             let response = try await self.request(path, "GET", nil)
             guard response["ok"] as? Bool == true else { throw Failure.malformed }
+            try readable?(response)
             return response
         }
         guard let answers else { return try await read() }

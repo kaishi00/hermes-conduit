@@ -296,16 +296,25 @@ private struct ArtifactsList: View {
 
     @ViewBuilder
     private var content: some View {
-        // Kept rows show until the plugin says what it serves (offline,
-        // just connected), never once it says it doesn't serve artifacts.
-        if !appState.supportsArtifacts,
-           feed == nil || !appState.notifierPlugin.mayServe(ArtifactsClient.capability) {
+        // Only once the plugin says it doesn't serve artifacts (or is too
+        // old to say), never while Conduit hasn't heard from it: kept rows
+        // show meanwhile, and with none kept, the loader, or offline, why
+        // nothing can load yet.
+        if !appState.notifierPlugin.mayServe(ArtifactsClient.capability) {
             unavailable(
                 title: Text("Update the Conduit plugin"),
                 detail: Text("Update the Conduit plugin on your Hermes host to see artifacts here. Settings › Conduit plugin can update it."),
                 symbol: "arrow.down.circle"
             )
-        } else if items.isEmpty, isLoading || loadedKey != currentKey {
+        } else if items.isEmpty, !appState.supportsArtifacts, !appState.isConnected, !appState.isRecoveringConnection {
+            unavailable(
+                title: Text("Artifacts couldn't load"),
+                detail: Text("Conduit isn't connected to Hermes right now. It reconnects on its own, so try again in a moment."),
+                symbol: "wifi.slash"
+            )
+        } else if items.isEmpty, loadedKey != currentKey || (isLoading && failure != nil) {
+            // A list kept or loaded empty says so at once, through a
+            // refresh too; Try Again after a failure shows the loader.
             ProgressView()
                 .frame(maxWidth: .infinity, minHeight: 200)
         } else if items.isEmpty, let failure {

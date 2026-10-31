@@ -52,7 +52,8 @@ extension HermesVoiceGatewayTimeoutTests {
 
     /// A folder's listing and recent files are kept as the plugin gave
     /// them, so the folder opens on them next time (#1533), as one
-    /// folder's of many; an answer without ok isn't kept over them.
+    /// folder's of many; an answer without ok, or one the folder can't
+    /// read, isn't kept over them.
     func testWorkspaceListingAndRecentFilesAreKeptForNextTime() async throws {
         var saved: [String: [String: Any]] = [:]
         let answers = KeptAnswers(
@@ -64,8 +65,10 @@ extension HermesVoiceGatewayTimeoutTests {
             }
         )
         var ok = true
+        var readable = true
         let client = workspaceClient(answer: { path, _, _ in
-            path.contains("/recent")
+            guard readable else { return ["ok": true] }
+            return path.contains("/recent")
                 ? ["ok": ok, "entries": [["name": "notes.md", "path": "/w/app/notes.md", "mtime": 1_700_000_200]]]
                 : ["ok": ok, "truncated": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]]
         })
@@ -84,6 +87,12 @@ extension HermesVoiceGatewayTimeoutTests {
         ok = false
         _ = try? await client.list(root: "/w/app", path: "/w/app", keptIn: answers)
         XCTAssertEqual(client.keptListing(root: "/w/app", path: "/w/app", in: answers), listing)
+        ok = true
+        readable = false
+        _ = try? await client.list(root: "/w/app", path: "/w/app", keptIn: answers)
+        _ = try? await client.recent(root: "/w/app", keptIn: answers)
+        XCTAssertEqual(client.keptListing(root: "/w/app", path: "/w/app", in: answers), listing)
+        XCTAssertEqual(client.keptRecent(root: "/w/app", in: answers), recent)
 
         // What's kept from the plugin's routes shows until it says what it
         // serves, and only while that includes them.
@@ -92,6 +101,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(NotifierPluginStatus(state: .reported(version: "0.122.0", capabilities: [capability])).mayServe(capability))
         XCTAssertFalse(NotifierPluginStatus(state: .reported(version: "0.108.0", capabilities: ["artifacts"])).mayServe(capability))
         XCTAssertFalse(NotifierPluginStatus(state: .predatesCapabilities).mayServe(capability), "no plugin, or one older than 0.4")
+        // The Artifacts list's update notice waits the same way, kept rows
+        // or none.
+        XCTAssertTrue(NotifierPluginStatus(state: .unknown).mayServe(ArtifactsClient.capability))
+        XCTAssertFalse(NotifierPluginStatus(state: .predatesCapabilities).mayServe(ArtifactsClient.capability))
     }
 
     func testWorkspaceSearchReadsNamesAndMatchedLines() async throws {

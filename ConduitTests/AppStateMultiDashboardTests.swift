@@ -1495,6 +1495,19 @@ extension AppStateMultiDashboardTests {
 
         XCTAssertEqual(next.rows().map { $0.entry.name }, ["src"], "A read that fails keeps them")
         XCTAssertEqual(next.recent.map(\.name), ["notes.md"])
+
+        // Until the plugin says what it serves, the kept listing waits for
+        // it, rather than Hermes' own listing, without sizes or dates,
+        // taking its place.
+        appState.setNotifierPluginStateForTesting(.unknown)
+        let waiting = WorkspaceExplorer()
+        waiting.attach(appState)
+        let opening = Task { await waiting.open(root: "/w/app", profile: appState.activeProfile) }
+        for _ in 0..<500 where held.sent.count == 4 { await Task.yield() }
+        held.releaseAll()
+        await opening.value
+        XCTAssertEqual(held.sent.count, 4, "Nothing is asked until the plugin answers")
+        XCTAssertEqual(waiting.rows().map { $0.entry.name }, ["src"])
     }
 
     func testADisplayPreferenceSaveFailingAfterASwitchSaysNothingOnTheNewDashboard() async throws {

@@ -3166,7 +3166,7 @@ extension OfflineChatCacheTests {
         let dashboard = UUID()
         let file = { (route: String) in store.keptAnswerFileURL(route, dashboardID: dashboard, profile: "default") }
         store.recordAnswer(["model": "m"], route: "/api/config", dashboardID: dashboard, profile: "default")
-        let routes = (0...OfflineChatCacheStore.maxTranscripts).map {
+        let routes = (0...OfflineChatCacheStore.maxLastOpenedAnswers).map {
             OfflineChatCacheStore.lastOpenedRoutePrefix + "/api/plugins/conduit_push/workspace/list?root=%2Fw\($0)"
         }
         for (index, route) in routes.enumerated() {
@@ -3194,6 +3194,32 @@ extension OfflineChatCacheTests {
         }
         XCTAssertEqual(next.keptAnswer("/api/config", dashboardID: dashboard, profile: "default")?["model"] as? String, "m")
         XCTAssertNil(next.keptAnswer(routes[1], dashboardID: dashboard, profile: "default"), "Not read ahead")
+    }
+
+    /// A deleted chat takes its own Artifacts list with it, by any id it's
+    /// known by, and leaves the other chats' and the folders' answers.
+    func testADeletedChatTakesItsKeptArtifactsList() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let route = { (query: String) in
+            OfflineChatCacheStore.lastOpenedRoutePrefix + "/api/plugins/conduit_push/artifacts?limit=60&" + query
+        }
+        let deleted = route("session_id=old-id&session_id=s%201")
+        let other = route("session_id=s2")
+        let folder = OfflineChatCacheStore.lastOpenedRoutePrefix + "/api/plugins/conduit_push/workspace/list?root=%2Fw"
+        for kept in [deleted, other, folder] {
+            store.recordAnswer(["items": [String]()], route: kept, dashboardID: dashboard, profile: "default")
+        }
+        XCTAssertEqual(OfflineChatCacheStore.sessionIDs(namedIn: deleted), ["old-id", "s 1"])
+
+        store.removeTranscripts(sessionIDs: ["s 1"], dashboardID: dashboard, profile: "default")
+
+        XCTAssertNil(store.keptAnswer(deleted, dashboardID: dashboard, profile: "default"))
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: store.keptAnswerFileURL(deleted, dashboardID: dashboard, profile: "default").path
+        ))
+        XCTAssertNotNil(store.keptAnswer(other, dashboardID: dashboard, profile: "default"))
+        XCTAssertNotNil(store.keptAnswer(folder, dashboardID: dashboard, profile: "default"))
     }
 
     /// The open profile's kept answers are read ahead with its chats, so

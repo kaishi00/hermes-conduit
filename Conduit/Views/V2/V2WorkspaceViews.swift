@@ -109,11 +109,21 @@ struct WorkspaceFolderView: View {
     /// What reads the open folders again: Hermes finishing a tool that may
     /// have changed files, and the plugin saying whether it serves the
     /// workspace routes, so a folder read before it said so (through
-    /// Hermes' own listing, without sizes, dates or recent files, over the
-    /// listing kept from the plugin) reads through them once it does.
+    /// Hermes' own listing, without sizes, dates or recent files) reads
+    /// through them once it does, and a kept listing, which waits for its
+    /// word, gives way to Hermes' own once it says it doesn't.
     private struct Changes: Equatable {
         let tools: Int
         let routes: Bool
+        let mayServe: Bool
+    }
+
+    private var changes: Changes {
+        Changes(
+            tools: appState.workspaceChanges,
+            routes: appState.supportsWorkspaceFiles,
+            mayServe: appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability)
+        )
     }
 
     private var key: Key {
@@ -165,10 +175,10 @@ struct WorkspaceFolderView: View {
             await explorer.runSearch(query)
         }
         // Tied to the view: a refresh ends with it.
-        .task(id: Changes(tools: appState.workspaceChanges, routes: appState.supportsWorkspaceFiles)) {
+        .task(id: changes) {
             // Marked seen only once its refresh ran: a refresh cut short by
             // the next change leaves that change to the next task.
-            let target = Changes(tools: appState.workspaceChanges, routes: appState.supportsWorkspaceFiles)
+            let target = changes
             guard let seen = seenChanges else {
                 seenChanges = target
                 return

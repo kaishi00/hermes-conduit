@@ -850,8 +850,10 @@ final class OfflineChatCacheStore {
             // Its rows go even if the index couldn't be rewritten: a listed
             // copy with no file just doesn't show.
             removeTranscriptFiles(allIdentities, dashboardID: dashboardID, profile: profile)
+            removeLastOpenedAnswers(about: allIdentities, dashboardID: dashboardID, profile: profile)
         } else {
             removeTranscriptFiles(ids, dashboardID: dashboardID, profile: profile)
+            removeLastOpenedAnswers(about: ids, dashboardID: dashboardID, profile: profile)
         }
         if var list = loadChatList(dashboardID: dashboardID, profile: profile) {
             let isDeleted: (SessionSummary) -> Bool = { !ids.isDisjoint(with: $0.nestingIDs) }
@@ -867,6 +869,37 @@ final class OfflineChatCacheStore {
             keepInMemory(list, in: \.keptChatLists, at: url)
             writeChatList(list, to: url)
         }
+    }
+
+    /// The scope's answers about the chats deleted (a chat's own Artifacts
+    /// list), so their titles and file names don't stay on the phone until
+    /// newer answers push them out. On the store's queue after the removal,
+    /// as each file is read for its route; a read asked before the removal
+    /// keeps nothing after it (`removals`).
+    private func removeLastOpenedAnswers(about sessionIDs: Set<String>, dashboardID: UUID, profile: String) {
+        let prefix = Self.scopeFileStem(dashboardID: dashboardID, profile: profile) + Self.lastOpenedAnswerInfix
+        perform { [self] in
+            guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
+                return
+            }
+            let gone = Set(files.filter { file in
+                guard file.lastPathComponent.hasPrefix(prefix), let read = Self.readKeptAnswer(at: file) else { return false }
+                return !Self.sessionIDs(namedIn: read.route).isDisjoint(with: sessionIDs)
+            })
+            guard !gone.isEmpty else { return }
+            forgetMemory { gone.contains($0) }
+            for file in gone { try? fileManager.removeItem(at: file) }
+        }
+    }
+
+    /// The chats a kept route is about: its query's `session_id=` values.
+    static func sessionIDs(namedIn route: String) -> Set<String> {
+        guard let query = route.split(separator: "?", maxSplits: 1).dropFirst().first else { return [] }
+        return Set(query.split(separator: "&").compactMap { pair -> String? in
+            let parts = pair.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2, parts[0] == "session_id" else { return nil }
+            return String(parts[1]).removingPercentEncoding
+        })
     }
 
     private func removeTranscriptFiles(_ sessionIDs: Set<String>, dashboardID: UUID, profile: String) {
@@ -1063,12 +1096,14 @@ final class OfflineChatCacheStore {
     static let keptAnswerInfix = ".answer-"
     /// A route under this prefix is about one chat or folder of many (a
     /// chat's own Artifacts list, a folder's listing): the scope keeps the
-    /// `maxTranscripts` such answers written last, within
+    /// `maxLastOpenedAnswers` such answers written last, within
     /// `maxLastOpenedAnswerBytes`, as it keeps the saved copies, and never
     /// reads them ahead, so they don't take the room a settings page's
-    /// answer would.
+    /// answer would. One about a chat names it by `session_id=` in its
+    /// query, so deleting the chat takes it.
     static let lastOpenedRoutePrefix = "last-opened:"
     static let lastOpenedAnswerInfix = ".opened-answer-"
+    static let maxLastOpenedAnswers = 100
     static let maxLastOpenedAnswerBytes = 16 * 1024 * 1024
 
     /// The answer last kept for the route in the scope, or nil: memory's
@@ -1284,7 +1319,7 @@ final class OfflineChatCacheStore {
         if let infix = url.lastPathComponent.range(of: Self.lastOpenedAnswerInfix) {
             Self.removeOldestFiles(
                 prefix: String(url.lastPathComponent[..<infix.upperBound]), in: directory,
-                beyond: Self.maxTranscripts, bytes: Self.maxLastOpenedAnswerBytes, fileManager: fileManager
+                beyond: Self.maxLastOpenedAnswers, bytes: Self.maxLastOpenedAnswerBytes, fileManager: fileManager
             )
         }
         return data.count

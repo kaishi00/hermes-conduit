@@ -40,6 +40,9 @@ final class WorkspaceExplorer: ObservableObject {
     /// Where the open folder's listing and recent files are kept: on the
     /// dashboard it opened on, for its profile.
     private var answers: KeptAnswers?
+    /// The open folder shows the listing kept last time, which no answer
+    /// has replaced yet.
+    private var showsKeptRoot = false
     /// Bumped by every change of scope: an answer asked before it is stale.
     private var generation = 0
     private var previewRequest: UUID?
@@ -76,10 +79,12 @@ final class WorkspaceExplorer: ObservableObject {
         self.answers = answers
         // Before Hermes answers, so nothing comes or goes when it does.
         let client = appState.workspaceFilesClient(profile: profile)
-        if let kept = client.keptListing(root: root, path: root, in: answers) {
+        let kept = client.keptListing(root: root, path: root, in: answers)
+        if let kept {
             entries[root] = kept.entries
             if kept.truncated { truncated.insert(root) }
         }
+        showsKeptRoot = kept != nil
         recent = client.keptRecent(root: root, in: answers) ?? []
         await load(root)
         await loadRecent()
@@ -91,6 +96,7 @@ final class WorkspaceExplorer: ObservableObject {
         generation &+= 1
         scope = nil
         answers = nil
+        showsKeptRoot = false
         entries = [:]
         expanded = []
         loading = []
@@ -187,6 +193,13 @@ final class WorkspaceExplorer: ObservableObject {
                     .list(root: scope.root, path: folder, keptIn: answers)
                 listed = listing.entries
                 cut = listing.truncated
+            } else if folder == scope.root, showsKeptRoot,
+                      appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
+                // The kept listing waits for the plugin's word, as kept
+                // Artifacts rows do: Hermes' own listing has no sizes or
+                // dates, and the folder reads again once the plugin says
+                // whether it serves the routes.
+                return false
             } else {
                 listed = try await appState.workspaceDirectoryEntries(at: folder, profile: scope.profile)
             }
@@ -196,6 +209,7 @@ final class WorkspaceExplorer: ObservableObject {
             guard isCurrent(ticket, owner, scope.profile) else { return false }
             entries[folder] = listed
             if cut { truncated.insert(folder) } else { truncated.remove(folder) }
+            if folder == scope.root { showsKeptRoot = false }
             return true
         } catch is CancellationError {
             // A refresh replaced by the next one: that one reports.
