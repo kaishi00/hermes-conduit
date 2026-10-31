@@ -149,7 +149,7 @@ enum ReadChatNotifications {
         activeDashboardGatewayIDs: Set<String>
     ) -> [String] {
         delivered.compactMap { identifier, target in
-            guard let target, !waitingTypes.contains(target.type ?? ""),
+            guard let target, !waitingTypes.contains(target.type ?? ""), target.decision == nil, target.call == nil,
                   sessionIDs.contains(target.sessionId)
                     || target.durableSessionID.map({ sessionIDs.contains($0) }) == true,
                   NotificationDashboardOwnership.resolve(

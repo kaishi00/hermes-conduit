@@ -40,7 +40,17 @@ extension AppState {
         // A launch in the background counts the scene active until its
         // first phase change: nobody has read anything then.
         #if canImport(UIKit) && !os(watchOS)
-        guard UIApplication.shared.applicationState == .active else { return }
+        guard UIApplication.shared.applicationState == .active else {
+            // The scene can report active before UIKit does: try once more
+            // when it does.
+            Task { @MainActor [weak self] in
+                for await _ in NotificationCenter.default.notifications(named: UIApplication.didBecomeActiveNotification) {
+                    self?.clearShownChatNotifications()
+                    break
+                }
+            }
+            return
+        }
         #endif
         guard let sessionID = chatShownOnScreen else { return }
         let sessionIDs = chatOwnSessionIDs(for: sessionID)
