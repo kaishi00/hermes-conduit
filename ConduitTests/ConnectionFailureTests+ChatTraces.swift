@@ -275,6 +275,35 @@ extension ConnectionFailureTests {
     }
 
     @MainActor
+    func testAStallSavesATraceOnceAMinuteAndASuspensionIsNoStall() {
+        var clock = StallClock()
+        clock.start(at: 100)
+        // The main thread beats, then stops: away 2 s at the check after.
+        XCTAssertNil(clock.beat(at: 100.5))
+        XCTAssertNil(clock.check(at: 101))
+        XCTAssertNil(clock.check(at: 102))
+        XCTAssertEqual(clock.check(at: 102.5), 2)
+        XCTAssertTrue(clock.savesTrace(at: 102.5))
+        XCTAssertNil(clock.check(at: 103), "one stall is reported once")
+        XCTAssertEqual(clock.beat(at: 104), 3.5, "it lasted from the last beat before it")
+
+        // Another within the minute is reported, without a trace.
+        XCTAssertNil(clock.check(at: 104.5))
+        XCTAssertNil(clock.check(at: 105.5))
+        XCTAssertEqual(clock.check(at: 106), 2)
+        XCTAssertFalse(clock.savesTrace(at: 106))
+        XCTAssertEqual(clock.beat(at: 107), 3)
+
+        // Suspended a minute: the check's queue was late too, so the clock
+        // starts over.
+        XCTAssertNil(clock.check(at: 163), "a late check isn't a stall")
+        XCTAssertNil(clock.check(at: 164))
+        // A minute after the last trace, a stall saves one again.
+        XCTAssertEqual(clock.check(at: 165), 2, "counted from the start over")
+        XCTAssertTrue(clock.savesTrace(at: 165))
+        XCTAssertEqual(clock.beat(at: 165.5), 2.5)
+    }
+
     func testChatTracesSendPostsWhatTheRecorderHoldsAndEverySavedTrace() async throws {
         ChatTraceStubProtocol.reset()
         let store = traceStore()
@@ -297,12 +326,23 @@ extension ConnectionFailureTests {
         XCTAssertEqual(ChatTraceStubProtocol.paths, Array(repeating: "/v1/crash-reports", count: 3))
         XCTAssertTrue(store.traces().isEmpty, "each one the relay kept leaves the phone")
 
-        // A relay before 0.25 refuses kind chat: kept for Try again.
+        // A relay before 0.25 refuses kind chat: kept for Try again, and
+        // Send again replaces it rather than push out a watcher's.
         ChatTraceStubProtocol.reset()
         ChatTraceStubProtocol.answers = [(400, "{\"error\":\"invalid_kind\"}")]
+        store.save(.jump, lines: ["1.000 jump"], now: Date().addingTimeInterval(-60), appVersion: "2.2.1", build: "245")
         let refused = await ChatTraceUpload.sendAll(store: store, relayURL: relay, session: traceSession())
         XCTAssertEqual(refused, .failed)
-        XCTAssertEqual(store.traces().map(\.reason), [.manual])
+        let again = await ChatTraceUpload.sendAll(store: store, relayURL: relay, session: traceSession())
+        XCTAssertEqual(again, .failed)
+        XCTAssertEqual(store.traces().map(\.reason), [.manual, .jump])
+
+        // Taken, but the relay didn't say it kept the trace: it stays.
+        ChatTraceStubProtocol.reset()
+        ChatTraceStubProtocol.answers = [(201, "{\"id\":\"2\"}")]
+        let unconfirmed = await ChatTraceUpload.sendAll(store: store, relayURL: relay, session: traceSession())
+        XCTAssertEqual(unconfirmed, .sent)
+        XCTAssertEqual(store.traces().map(\.reason), [.manual, .jump])
 
         ChatTraceStubProtocol.reset()
         ChatTraceStubProtocol.answers = [(404, "{}")]

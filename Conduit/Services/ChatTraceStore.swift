@@ -62,8 +62,10 @@ struct ChatTraceStore {
     var directory: URL = Self.defaultDirectory
     var exportDirectory = FileManager.default.temporaryDirectory
 
-    /// Writes a trace of `lines` and keeps the newest five. Returns its file
-    /// name, or nil when there was nothing to save or it couldn't be written.
+    /// Writes a trace of `lines` and keeps the newest five. A manual trace
+    /// replaces the one saved before it, so Send tapped again (a relay that
+    /// refuses traces) doesn't push out a watcher's. Returns its file name,
+    /// or nil when there was nothing to save or it couldn't be written.
     @discardableResult
     func save(
         _ reason: ChatTraceReason,
@@ -93,6 +95,11 @@ struct ChatTraceStore {
         } catch {
             chatTraceLog.error("Couldn't save a chat trace: \(MetricKitReportStore.logged(error), privacy: .public)")
             return nil
+        }
+        if reason == .manual {
+            for trace in traces() where trace.reason == .manual && trace.fileName != name {
+                remove(trace.fileName)
+            }
         }
         for trace in traces().dropFirst(Self.maxKept) {
             remove(trace.fileName)
@@ -213,7 +220,8 @@ enum ChatTraceUpload {
 
     /// Diagnostics & logs' Send: saves what the recorder holds now, then
     /// posts it and every trace saved before, newest first. Each one the
-    /// relay takes leaves the device; one it refuses stays for Try again.
+    /// relay says it kept leaves the device; one it refuses stays for Try
+    /// again.
     static func sendAll(
         store: ChatTraceStore = ChatTraceStore(),
         relayURL: URL = PushNotificationService.upstreamRelayURL,
@@ -227,13 +235,15 @@ enum ChatTraceUpload {
             guard let name = store.save(.manual, lines: current),
                   let trace = ChatTraceStore.trace(named: name),
                   let lines = store.lines(of: trace) else { return saved }
-            return [(trace, lines)] + saved
+            // It replaced the manual one Send saved before.
+            return [(trace, lines)] + saved.filter { $0.0.reason != .manual }
         }.value
         guard !traces.isEmpty else { return .nothing }
         for (trace, lines) in traces {
             let response = await CrashReportUpload.post(CrashReportUpload.body(chatTrace: trace, lines: lines), to: relayURL, session: session)
             switch response.status {
             case 200..<300:
+                guard response.keptTrace else { continue }
                 await Task.detached(priority: .utility) { store.remove(trace.fileName) }.value
             case 404:
                 return .unsupported

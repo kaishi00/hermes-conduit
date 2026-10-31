@@ -1081,14 +1081,19 @@ private final class ChatScrollEventRouter {
             appState.completeChatResumeRestoration(generation: generation)
         case .abandonRestoration(let generation):
             appState.abandonChatResumeRestoration(generation: generation)
+        // A reveal moves the offset outside the engine's write, so the
+        // watch is told it was asked for.
         case .revealRow(let id):
+            ChatViewportWatch.shared.command("reveal row")
             scrollWithoutAnimation { $0.scrollTo(id, anchor: .top) }
         case .revealLatest:
+            ChatViewportWatch.shared.command("reveal latest")
             let anchor = ChatView.bottomAnchorID(
                 for: ChatView.drawnOrFallbackScrollSessionKey(in: appState)
             )
             scrollWithoutAnimation { $0.scrollTo(anchor, anchor: .bottom) }
         case .revealTop:
+            ChatViewportWatch.shared.command("reveal top")
             let anchor = ChatTitleScrollAnchor.id(
                 for: ChatView.drawnOrFallbackScrollSessionKey(in: appState)
             )

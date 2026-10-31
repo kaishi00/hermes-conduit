@@ -571,6 +571,7 @@ private struct ChatTracesSection: View {
                     .foregroundStyle(.secondary)
                 if sending {
                     ProgressView().controlSize(.small)
+                        .accessibilityLabel(Text(AppLocalization.string("Sending…")))
                 } else if let result, result != .nothing {
                     Text(verbatim: result == .sent ? AppLocalization.string("Report sent. Thank you!") : AppLocalization.string("Couldn't send the report"))
                         .scaledFont(.footnote)

@@ -184,7 +184,7 @@ struct MetricKitReportStore {
             }
         }
         let document: [String: Any] = [
-            "about": "MetricKit reports iOS delivered to Conduit on this device: daily usage numbers, and crash, hang, launch and resource diagnostics with their call stacks and exception messages, kept on the device. Only the crashes and hangs the user chose to send went to Conduit's developer, without exception messages.",
+            "about": "MetricKit reports iOS delivered to Conduit on this device: daily usage numbers, and crash, hang, launch and resource diagnostics with their call stacks and exception messages, kept on the device. Only the crashes and hangs the user chose to send went to Conduit's developer, without exception messages, a freeze's with the chat trace saved before it, and the chat traces the user sent from Diagnostics & logs.",
             "generated": ISO8601DateFormatter().string(from: now),
             "appVersion": appVersion,
             "summary": summary(timeZone: timeZone).text,
