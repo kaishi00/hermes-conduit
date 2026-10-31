@@ -134,6 +134,9 @@ final class HermesWatchCalls: NSObject {
     private func sendToken() {
         if handoffKey == nil { handoffKey = HermesRingHandoffKey.loadOrCreate() }
         let engine = WatchVoiceCall.shared.engine
+        // No token on watchOS 10, where calls get no network (#1346): the
+        // iPhone rings alone.
+        let token = WatchVoiceCall.callsWork ? self.token : nil
         guard tokenKnown, !hasSentToken || sentToken != token || sentKey != handoffKey || sentEngine != engine else { return }
         // Not linked yet: sent once the link is up.
         guard WatchLink.shared.queue(.callsToken(token: token, key: handoffKey.map(WatchToolSeal.base64URL), engine: engine.callVoice.rawValue, phoneHeadset: true)) else { return }
@@ -162,10 +165,10 @@ final class HermesWatchCalls: NSObject {
         // The iPhone's stop came first.
         let settled = ring.map { settledRings[$0.id] != nil } ?? false
         let id = UUID()
-        let rings = ring != nil && !late && !busy && !settled
+        let rings = ring != nil && !late && !busy && !settled && WatchVoiceCall.callsWork
         let callerName = Self.callerName(userInfo)
         if rings, let ring { calls[id] = Call(ring: ring, callerName: callerName) }
-        WatchCallLog.shared.note("hermesCallPush", ["ring": ring != nil, "late": late, "busy": busy, "settled": settled, "engine": "\(WatchVoiceCall.shared.engine)"])
+        WatchCallLog.shared.note("hermesCallPush", ["ring": ring != nil, "late": late, "busy": busy, "settled": settled, "callsWork": WatchVoiceCall.callsWork, "engine": "\(WatchVoiceCall.shared.engine)"])
         // Every VoIP push is reported before this returns, even one that
         // can't ring here (the iPhone rings it).
         provider.reportNewIncomingCall(with: id, update: Self.update(callerName: callerName)) { error in

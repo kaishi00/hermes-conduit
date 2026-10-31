@@ -453,7 +453,7 @@ struct WatchCallSummary: View {
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.capsule)
                 .tint(accent)
-                if !WatchCallEnd.isNormal(reason) {
+                if WatchCallEnd.canRetry(reason) {
                     Button {
                         call.dismissEnded()
                         call.start()

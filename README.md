@@ -90,7 +90,7 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 
 ## Requirements
 
-- iPhone or iPad on iOS 17 or later; Apple Watch app on watchOS 10 or later (some features need newer versions)
+- iPhone or iPad on iOS 17 or later; Apple Watch app on watchOS 10 or later (calls from the Watch need watchOS 11 or later, and some other features need newer versions)
 - A running Hermes Agent instance with the native dashboard enabled (default port 9119)
 
 ## Connecting

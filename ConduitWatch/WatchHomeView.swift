@@ -50,7 +50,13 @@ struct WatchHomeView: View {
                 .accessibilityValue(notSetUp ? Text("Not set up on your Hermes host") : Text(call.engine.detail))
                 // Calls from Hermes ring the Watch only while its voice can
                 // start (WatchCallVoices).
-                if notSetUp, HermesWatchCalls.ringingBuilt, link.phoneContext?.callsRing == true {
+                if !WatchVoiceCall.callsWork {
+                    // #1346: say so before a call, not after it fails.
+                    Text("Calls from the Watch don't work on watchOS 10. Talk to Hermes in Conduit on your iPhone, which rings for calls from Hermes too.")
+                        .font(.caption2)
+                        .foregroundStyle(Color.watchAttention)
+                        .multilineTextAlignment(.center)
+                } else if notSetUp, HermesWatchCalls.ringingBuilt, link.phoneContext?.callsRing == true {
                     Text("Calls from Hermes ring only your iPhone until \(call.engine.title) is set up. Voice settings in Conduit on your iPhone show what it needs.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
