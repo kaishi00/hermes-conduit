@@ -651,6 +651,12 @@ final class KanbanV2Tests: XCTestCase {
         let decoded = try JSONDecoder().decode(KanbanModelOptionsResponse.self, from: Data(json.utf8))
         XCTAssertEqual(decoded.providers.count, 2, "hostile rows normalize instead of crashing")
         XCTAssertEqual(decoded.providers[0].models, ["gpt-a", "gpt-b"])
+        // A row that isn't a provider drops alone, not the whole roster.
+        let mixed = try JSONDecoder().decode(
+            KanbanModelOptionsResponse.self,
+            from: Data(#"{"providers":[{"slug":"openai","models":["gpt-a"]},"junk",null]}"#.utf8)
+        )
+        XCTAssertEqual(mixed.providers.map(\.slug), ["openai"])
 
         // The service boundary drops unusable rows so the picker only ever
         // sees an offerable catalog.

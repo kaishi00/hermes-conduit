@@ -15,6 +15,9 @@ struct BotCapabilitiesView: View {
     /// The bot whose profile catalog servers go into: Edit Bot's. Nil on
     /// New Bot, whose profile doesn't exist yet.
     var mcpProfile: String? = nil
+    /// False while the lists are the ones Hermes gave last time, until it
+    /// answers again (#1533): nothing can change then.
+    var editable = true
 
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var appLanguage = AppLanguageStore.shared
@@ -23,6 +26,9 @@ struct BotCapabilitiesView: View {
     /// doesn't offer them.
     @State private var mcpSetup: BotMcpSetupSnapshot?
     @State private var mcpSetupRead = false
+    /// The catalog and sign-ins shown are Hermes' last answer, until it
+    /// answers again: Add and Sign In wait for it.
+    @State private var mcpSetupKept = false
     /// The server being added or signed in.
     @State private var mcpBusy: String?
     @State private var mcpNotice: MCPNotice?
@@ -68,14 +74,18 @@ struct BotCapabilitiesView: View {
                     Text(AppLocalization.string("No tools to choose from."))
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(capabilities.toolsets.indices, id: \.self) { index in
-                        toggle($capabilities.toolsets[index])
-                            // Hermes reads no tools as its default tools, so
-                            // the last one on stays on.
-                            .disabled(!capabilities.canTurnOffToolset(at: index))
-                            .accessibilityHint(capabilities.canTurnOffToolset(at: index)
-                                ? Text(verbatim: "")
-                                : Text(AppLocalization.string("At least one tool stays on.")))
+                    // Keyed by name, as the skills are: Hermes' answer can
+                    // replace the kept lists under the rows.
+                    ForEach(capabilities.toolsets.map(\.name), id: \.self) { name in
+                        if let index = capabilities.toolsets.firstIndex(where: { $0.name == name }) {
+                            toggle($capabilities.toolsets[index])
+                                // Hermes reads no tools as its default tools, so
+                                // the last one on stays on.
+                                .disabled(!capabilities.canTurnOffToolset(at: index))
+                                .accessibilityHint(capabilities.canTurnOffToolset(at: index)
+                                    ? Text(verbatim: "")
+                                    : Text(AppLocalization.string("At least one tool stays on.")))
+                        }
                     }
                 }
             } header: {
@@ -95,10 +105,12 @@ struct BotCapabilitiesView: View {
                     Text(AppLocalization.string("No MCP servers set up."))
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(capabilities.mcpServers.indices, id: \.self) { index in
-                        toggle($capabilities.mcpServers[index])
-                        if mcpSetup?.servers[capabilities.mcpServers[index].name]?.needsSignIn == true {
-                            signInRow(capabilities.mcpServers[index].name)
+                    ForEach(capabilities.mcpServers.map(\.name), id: \.self) { name in
+                        if let index = capabilities.mcpServers.firstIndex(where: { $0.name == name }) {
+                            toggle($capabilities.mcpServers[index])
+                            if mcpSetup?.servers[name]?.needsSignIn == true {
+                                signInRow(name)
+                            }
                         }
                     }
                 }
@@ -130,9 +142,21 @@ struct BotCapabilitiesView: View {
             // doesn't: the cover is up then.
             if browser == nil { signInTask?.cancel() }
         }
+        .onAppear {
+            guard let mcpProfile, mcpSetup == nil, !mcpSetupRead else { return }
+            mcpSetup = appState.keptBotMcpSetup(profile: mcpProfile)
+            mcpSetupKept = mcpSetup != nil
+        }
         .task {
             guard let mcpProfile, !mcpSetupRead else { return }
-            mcpSetup = await appState.loadBotMcpSetup(profile: mcpProfile)
+            let read = await appState.loadBotMcpSetup(profile: mcpProfile)
+            // Cut off by leaving the page: it reads again when it shows.
+            guard !Task.isCancelled else { return }
+            // A read that fails keeps the kept setup up.
+            if read != nil || !mcpSetupKept {
+                mcpSetup = read
+                mcpSetupKept = false
+            }
             mcpSetupRead = true
         }
         .sheet(item: $keysEntry) { entry in
@@ -152,6 +176,10 @@ struct BotCapabilitiesView: View {
     }
 
     // MARK: MCP setup
+
+    /// Add and Sign In write to Hermes at once: only over Hermes' own
+    /// lists and catalog.
+    private var canSetUpServers: Bool { editable && !mcpSetupKept }
 
     private func offeredServers(_ setup: BotMcpSetupSnapshot) -> [BotMcpCatalogEntry] {
         BotMcpSetup.offered(setup.catalog, configured: capabilities.mcpServers.map(\.name))
@@ -185,7 +213,7 @@ struct BotCapabilitiesView: View {
                     }
                 }
                 .buttonStyle(.borderless)
-                .disabled(mcpBusy != nil)
+                .disabled(mcpBusy != nil || !canSetUpServers)
                 .accessibilityLabel(Text(AppLocalization.string("Add \(entry.name)")))
             }
         }
@@ -202,7 +230,7 @@ struct BotCapabilitiesView: View {
             } else {
                 Button(AppLocalization.string("Sign In")) { signIn(name) }
                     .buttonStyle(.borderless)
-                    .disabled(mcpBusy != nil)
+                    .disabled(mcpBusy != nil || !canSetUpServers)
                     .accessibilityLabel(Text(AppLocalization.string("Sign in to \(name)")))
             }
         }
@@ -283,6 +311,7 @@ struct BotCapabilitiesView: View {
                 }
             }
         }
+        .disabled(!editable)
     }
 }
 

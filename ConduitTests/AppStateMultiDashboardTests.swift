@@ -2395,6 +2395,110 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(kept.bots.map(\.name), ["atlas"])
     }
 
+    /// Edit Bot opens on the bot's details as Hermes gave them last time,
+    /// New Bot on its Start From profile's lists and the MCP page on its
+    /// catalog and sign-ins, each kept in that profile's answers. A read
+    /// that fails keeps them, and a write Hermes took is what they open on
+    /// next, never the answer of a read asked before it.
+    func testTheBotEditorOpensOnWhatHermesGaveLastTime() async throws {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let registry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac])
+        let atlas = rosterBot("atlas", title: "Atlas")
+        let details = BotProfileDetails(
+            description: "Research", soul: "You are Atlas.", provider: "openrouter", model: "kimi-k2",
+            capabilities: BotCapabilities(
+                skills: [BotCapability(name: "1password", description: "Vault", enabled: true)],
+                toolsets: [BotCapability(name: "web", label: "Web", toolCount: 3, enabled: true)],
+                mcpServers: [BotCapability(name: "github_token", enabled: false)]
+            )
+        )
+        let setup = BotMcpSetupSnapshot(
+            catalog: [BotMcpCatalogEntry(name: "linear", description: "Issues", requires: ["LINEAR_API_KEY"], installed: false)],
+            servers: ["github_token": BotMcpServerSummary(name: "github_token", auth: "oauth", oauthTokensPresent: false)]
+        )
+        let hermes = BotEditorHermes(details: details, setup: setup)
+        var operations = ChatResumeLifecycleOperations()
+        operations.describeBotProfile = { _, profile in try await hermes.describe(profile) }
+        operations.botMcpSetup = { _, _ in try hermes.mcpSetup() }
+        func editorAppState(cache: OfflineChatCacheStore? = nil) -> AppState {
+            AppState(
+                defaults: defaults,
+                loadSavedConnection: false,
+                dashboardRegistry: registry,
+                clearSessionPresentationCache: {},
+                chatResumeLifecycleOperations: operations,
+                groupChatOperations: .live,
+                sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+                offlineChatCache: cache,
+                profileAppearanceStore: makeAppearanceStore()
+            )
+        }
+
+        let first = editorAppState()
+        connectRoster(first, to: mac)
+        XCTAssertNil(first.keptBotDetails(atlas), "Nothing kept yet")
+        let loaded = await first.loadBotDetails(atlas)
+        XCTAssertEqual(loaded, details)
+        _ = await first.loadBotCapabilities(startingFrom: BotCreateRequest.mainProfile)
+        _ = await first.loadBotMcpSetup(profile: "atlas")
+        XCTAssertEqual(hermes.asked, ["atlas", "default"])
+        let keptSetup = try XCTUnwrap(first.offlineChatCacheForTesting.keptAnswer(
+            AppState.KeptRoute.botMcpSetup, dashboardID: mac.id, profile: "atlas"
+        ))
+        let keptServers = try XCTUnwrap(keptSetup["servers"] as? [[String: Any]], "A list, not keyed by a name shaped like a credential's")
+        XCTAssertEqual(keptServers.first?["sign_in"] as? String, "oauth", "How it signs in, which `auth` would have lost")
+
+        // The next launch opens on them before Hermes is asked.
+        let next = editorAppState(cache: first.offlineChatCacheForTesting)
+        XCTAssertEqual(next.keptBotDetails(atlas), details, "A skill's and a server's names that look like credentials' stay")
+        XCTAssertEqual(next.keptBotCapabilities(startingFrom: BotCreateRequest.mainProfile), details.capabilities)
+        XCTAssertNil(next.keptBotCapabilities(startingFrom: "nova"), "Each profile keeps its own")
+        XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas"), setup)
+        XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas")?.servers["github_token"]?.needsSignIn, true)
+        XCTAssertEqual(hermes.asked.count, 2)
+
+        // A read that fails keeps them.
+        connectRoster(next, to: mac)
+        hermes.fails = true
+        let failedDetails = await next.loadBotDetails(atlas)
+        let failedSetup = await next.loadBotMcpSetup(profile: "atlas")
+        XCTAssertNil(failedDetails)
+        XCTAssertNil(failedSetup)
+        XCTAssertEqual(next.keptBotDetails(atlas), details)
+        XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas"), setup)
+
+        // A write Hermes took is kept over a read asked before it: here a
+        // SOUL and the MCP section of a save whose other sections failed.
+        hermes.fails = false
+        hermes.holds = true
+        let older = Task { await next.loadBotDetails(atlas) }
+        let deadline = Date().addingTimeInterval(10)
+        while !hermes.isHolding, Date() < deadline { await Task.yield() }
+        XCTAssertTrue(hermes.isHolding, "The read is out")
+        let owner = try XCTUnwrap(next.currentDashboardRuntimeOwner())
+        let edited = BotCapabilities(
+            toolsets: [BotCapability(name: "web", label: "Web", toolCount: 3, enabled: false)],
+            mcpServers: [BotCapability(name: "github_token", enabled: true)]
+        )
+        next.keepWrittenChange(BotProfileDetails.self, AppState.KeptRoute.botDetails, profile: "atlas", on: owner) {
+            $0.soul = "You are Atlas Prime."
+            $0.capabilities = $0.capabilities.taking(["mcp_servers"], from: edited)
+        }
+        hermes.release()
+        _ = await older.value
+        let written = try XCTUnwrap(next.keptBotDetails(atlas))
+        XCTAssertEqual(written.soul, "You are Atlas Prime.", "Not the answer of the read asked before it")
+        XCTAssertEqual(written.capabilities.mcpServers, edited.mcpServers)
+        XCTAssertEqual(written.capabilities.toolsets, details.capabilities.toolsets, "A section Hermes didn't take stays")
+        XCTAssertEqual(written.capabilities.skills, details.capabilities.skills)
+
+        // With nothing kept, a write makes nothing up.
+        next.keepWrittenChange(BotMcpSetupSnapshot.self, AppState.KeptRoute.botMcpSetup, profile: "nova", on: owner) {
+            $0.catalog = []
+        }
+        XCTAssertNil(next.keptBotMcpSetup(profile: "nova"))
+    }
+
     /// Hosted rooms and their pictures open as Hermes and the host listed
     /// them last time on this dashboard, until `groups.list` answers; the
     /// kept pictures then carry over, so only one whose revision moved is
@@ -2587,5 +2691,46 @@ extension AppStateMultiDashboardTests {
         for request in held.sent[earlier..<earlier + 2] {
             try await held.answer(request.path == AppState.KeptRoute.skills ? skills : toolsets)
         }
+    }
+}
+
+/// Hermes' answers to the bot editor's reads; with `holds` set, a describe
+/// waits until `release`.
+@MainActor
+private final class BotEditorHermes {
+    let details: BotProfileDetails
+    let setup: BotMcpSetupSnapshot
+    var fails = false
+    var holds = false
+    private(set) var asked: [String] = []
+    private var held: CheckedContinuation<Void, Never>?
+
+    init(details: BotProfileDetails, setup: BotMcpSetupSnapshot) {
+        self.details = details
+        self.setup = setup
+    }
+
+    var isHolding: Bool { held != nil }
+
+    func describe(_ profile: String) async throws -> BotProfileDetails {
+        asked.append(profile)
+        if holds {
+            await withCheckedContinuation { continuation in
+                held = continuation
+            }
+        }
+        if fails { throw URLError(.notConnectedToInternet) }
+        return details
+    }
+
+    func mcpSetup() throws -> BotMcpSetupSnapshot {
+        if fails { throw URLError(.notConnectedToInternet) }
+        return setup
+    }
+
+    func release() {
+        holds = false
+        held?.resume()
+        held = nil
     }
 }
