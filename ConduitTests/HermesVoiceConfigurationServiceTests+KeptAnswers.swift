@@ -221,6 +221,15 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertFalse(picks.hermesAnswered(chats, to: older), "Its models are older too")
         XCTAssertEqual(picks.saved, fast, "Asked before a read that answered first")
         XCTAssertEqual(picks.selection, fastTag)
+
+        let stale = picks.readAsked()
+        let fresh = picks.readAsked()
+        picks.hermesAnswered(fast, to: fresh)
+        picks.readDidFail(stale)
+        XCTAssertFalse(picks.readFailed, "A failure older than what's shown says nothing")
+        let failing = picks.readAsked()
+        picks.readDidFail(failing)
+        XCTAssertTrue(picks.readFailed)
     }
 
     /// What a save wrote is what the page opens on next, as the other

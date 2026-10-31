@@ -191,6 +191,46 @@ enum ModelCatalogState: Equatable {
     }
 }
 
+/// A model picker's catalog (the model sheet's, the bot editor's): the
+/// models kept from Hermes' last answer until it answers again (#1533),
+/// and whether a read failed.
+struct KeptModelCatalog: Equatable {
+    private(set) var providers: [ProviderInfo] = []
+    /// There are rows to show, kept or Hermes'.
+    private(set) var loaded = false
+    /// Hermes answered since the picker opened. Only then can a row be
+    /// picked: a list that didn't load is never picked from.
+    private(set) var answered = false
+    private(set) var failed = false
+
+    var state: ModelCatalogState { .of(providers: loaded ? providers : nil, failed: failed) }
+    /// A read failed under the kept rows: they stay up, saying so.
+    var keptRowsFailed: Bool { failed && !answered && state == .ready }
+
+    /// The models Hermes gave last, before the first frame. Nothing kept,
+    /// or none, leaves the picker loading.
+    mutating func showKept(_ kept: [ProviderInfo]) {
+        guard !loaded, !kept.isEmpty else { return }
+        providers = kept
+        loaded = true
+    }
+
+    mutating func readStarted() {
+        failed = false
+    }
+
+    mutating func hermesAnswered(_ providers: [ProviderInfo]) {
+        self.providers = providers
+        loaded = true
+        answered = true
+    }
+
+    /// A read that fails keeps the rows shown.
+    mutating func readFailed() {
+        failed = true
+    }
+}
+
 struct ModelPickerSelection: Equatable {
     var model: String
     var provider: String
@@ -219,11 +259,9 @@ struct ModelPickerView: View {
     @State private var writingSpeed: ModelSpeed?
     @State private var writingYolo: Bool?
     @State private var runSettingsError: String?
-    @State private var providers: [ProviderInfo] = []
-    /// Whether the catalog fetch has answered, and whether it failed: an
-    /// empty `providers` alone can't tell loading, failed and none apart.
-    @State private var catalogLoaded = false
-    @State private var catalogFailed = false
+    /// The models, kept from Hermes' last answer until it answers: an
+    /// empty list alone can't tell loading, failed and none apart.
+    @State private var catalog = KeptModelCatalog()
     @State private var expandedProvider: String?
     @State private var editingVisibility = false
     @State private var visibilityQuery = ""
@@ -327,6 +365,14 @@ struct ModelPickerView: View {
             // leave it empty for Done to save, and a late one would replace
             // edits already made.
             visibility = appState.modelVisibility
+            // The models Hermes gave last, kept on the phone, with the
+            // chat's model checked, before the first frame; Hermes' answer
+            // follows (#1533).
+            catalog.showKept(appState.keptModelProviders())
+            if switchingRow == nil {
+                selectedModel = appState.runtime.model
+                selectedProvider = appState.runtime.provider
+            }
         }
         .task { await loadModels() }
         .task {
@@ -387,7 +433,7 @@ struct ModelPickerView: View {
     /// the list's loading or failed state shows as usual.
     private var searching: Bool {
         !ModelSearchQuery(searchQuery).isEmpty
-            && ModelCatalogState.of(providers: catalogLoaded ? providers : nil, failed: catalogFailed) == .ready
+            && catalog.state == .ready
     }
 
     private var searchMatches: [ModelSearchMatch] {
@@ -475,28 +521,22 @@ struct ModelPickerView: View {
                         .padding(.leading, 16)
                 }
             }
+            if catalog.keptRowsFailed {
+                catalogFailedRow
+            }
             modelStatusRows
         }
     }
 
     private var modelSection: some View {
         ModelPickerSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent, flush: true) {
-            switch ModelCatalogState.of(providers: catalogLoaded ? providers : nil, failed: catalogFailed) {
+            switch catalog.state {
             case .loading:
                 ProgressView("Loading models…")
                     .frame(maxWidth: .infinity)
                     .padding(16)
             case .failed:
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(AppLocalization.string("Could not load models."))
-                        .scaledFont(.footnote)
-                        .foregroundStyle(.secondary)
-                    Button(AppLocalization.string("Try Again")) { Task { await loadModels() } }
-                        .scaledFont(.subheadline.weight(.semibold))
-                        .tint(.conduitAccent)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
+                catalogFailedRow
             case .empty:
                 Text("No models are available from this gateway.")
                     .scaledFont(.footnote)
@@ -516,10 +556,27 @@ struct ModelPickerView: View {
                         .foregroundStyle(.secondary)
                         .padding(16)
                 }
+                if catalog.keptRowsFailed {
+                    // The kept models stay up; Hermes didn't answer.
+                    catalogFailedRow
+                }
             }
 
             modelStatusRows
         }
+    }
+
+    private var catalogFailedRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(AppLocalization.string("Could not load models."))
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+            Button(AppLocalization.string("Try Again")) { Task { await loadModels() } }
+                .scaledFont(.subheadline.weight(.semibold))
+                .tint(.conduitAccent)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
     }
 
     /// The composer's error banner sits behind this sheet, so a failed
@@ -657,9 +714,10 @@ struct ModelPickerView: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    /// One switch at a time, and not under another write.
+    /// Rows switch once Hermes answered, one at a time, and not under
+    /// another write.
     private var modelRowsLocked: Bool {
-        switchingRow != nil || isApplyingReasoning || writingSpeed != nil || writingYolo != nil
+        !catalog.answered || switchingRow != nil || isApplyingReasoning || writingSpeed != nil || writingYolo != nil
     }
 
     /// A tapped row, or the search match Return picked.
@@ -825,7 +883,7 @@ struct ModelPickerView: View {
     }
 
     private var visibleProviders: [ProviderInfo] {
-        providers.map { provider in
+        catalog.providers.map { provider in
             ProviderInfo(
                 name: provider.name,
                 models: provider.models.filter { !visibility.hiddenModels.contains(modelVisibilityKey(provider: provider.name, model: $0.id)) },
@@ -862,8 +920,8 @@ struct ModelPickerView: View {
 
     private var visibilityProviders: [ProviderInfo] {
         let query = visibilityQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return providers }
-        return providers.filter { provider in
+        guard !query.isEmpty else { return catalog.providers }
+        return catalog.providers.filter { provider in
             provider.name.lowercased().contains(query) || provider.models.contains { $0.id.lowercased().contains(query) }
         }
     }
@@ -981,7 +1039,7 @@ struct ModelPickerView: View {
     /// Whether the selected model offers Ultrafast, from the catalog row's
     /// capabilities. Nil until the catalog says.
     private var ultrafastOffered: Bool? {
-        providers.first { $0.matches(selectedProvider) }?.offersUltrafast(selectedModel)
+        catalog.providers.first { $0.matches(selectedProvider) }?.offersUltrafast(selectedModel)
     }
 
     private var rowFoundation: Color {
@@ -992,24 +1050,21 @@ struct ModelPickerView: View {
         Color.primary.opacity(0.07)
     }
 
+    /// Hermes' models for this chat, kept for the sheet to open on next.
+    /// A read that fails keeps the models shown, saying so: model options
+    /// are supplementary to the session's state, but the list says it
+    /// didn't load rather than that there are none.
     private func loadModels() async {
-        catalogFailed = false
-        guard let client = appState.client else {
-            catalogFailed = true
+        catalog.readStarted()
+        guard let loaded = await appState.loadModelProviders(sessionId: appState.activeSessionId) else {
+            catalog.readFailed()
             return
         }
-        do {
-            let (_, _, provs) = try await client.modelOptions(sessionId: appState.activeSessionId)
-            providers = provs ?? []
-            catalogLoaded = true
-            selectedModel = appState.runtime.model
-            selectedProvider = appState.runtime.provider
-        } catch {
-            // Model options are supplementary to the current session state,
-            // but the list says it didn't load rather than that there are
-            // no models.
-            catalogFailed = true
-        }
+        catalog.hermesAnswered(loaded)
+        // A row being switched to keeps its checkmark.
+        guard switchingRow == nil else { return }
+        selectedModel = appState.runtime.model
+        selectedProvider = appState.runtime.provider
     }
 
     /// An error row appears silently; tell VoiceOver what failed.
