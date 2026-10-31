@@ -1083,6 +1083,88 @@
         }
       }
     },
+    "%@ changed on your host while you were editing. Close this and edit it again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ wurde auf deinem Host geändert, während du bearbeitet hast. Schließe dies und bearbeite es erneut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ cambió en tu host mientras lo editabas. Cierra esto y vuelve a editarlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ a changé sur votre hôte pendant la modification. Fermez ceci et modifiez-le à nouveau."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ berubah di host Anda saat Anda mengedit. Tutup ini lalu edit lagi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ è cambiato sul tuo host mentre lo modificavi. Chiudi e modificalo di nuovo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編集中にホスト上の%@が変更されました。閉じてもう一度編集してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "편집하는 동안 호스트에서 %@이(가) 변경되었습니다. 닫고 다시 편집하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ zmienił się na twoim hoście podczas edycji. Zamknij to i edytuj ponownie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ mudou no seu host enquanto você editava. Feche isto e edite de novo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ изменился на вашем хосте, пока вы редактировали. Закройте и отредактируйте снова."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@, siz düzenlerken ana makinenizde değişti. Bunu kapatıp yeniden düzenleyin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你编辑时，%@ 在主机上发生了更改。请关闭后重新编辑。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你編輯時，%@ 在主機上已變更。請關閉後重新編輯。"
+          }
+        }
+      }
+    },
     "%@ couldn't be read.": {
       "localizations": {
         "de": {

@@ -893,6 +893,7 @@ struct ConnectorEditSheet: View {
             do {
                 try await store.saveServer(
                     original: edit.originalName,
+                    loaded: edit.loaded,
                     name: saved.name,
                     entry: saved.entry,
                     openedOn: openedOn

@@ -94,6 +94,9 @@ final class CapabilitiesStore {
     /// switch just flipped.
     @ObservationIgnored private var skillsEpoch = 0
     @ObservationIgnored private var connectorsEpoch = 0
+    /// Bumped when a server's entry is saved: a test that started before
+    /// tested the old entry.
+    @ObservationIgnored private var probeEpochs: [String: Int] = [:]
     @ObservationIgnored private var pluginsEpoch = 0
 
     /// A connector's probe stays fresh this long, as on Desktop.
@@ -341,6 +344,8 @@ final class CapabilitiesStore {
         } catch {
             _ = await catalogResponse
             guard token == generation, epoch == connectorsEpoch else { return }
+            // A read cut off under it isn't the list failing: read again next time.
+            guard !(error is CancellationError) else { return }
             connectorsError = UserFacingError.message(for: error)
         }
         connectorsLoaded = true
@@ -377,6 +382,7 @@ final class CapabilitiesStore {
         // Each test starts the server on the host: one at a time.
         guard !probing.contains(name) else { return }
         let token = generation
+        let entryEpoch = probeEpochs[name, default: 0]
         probing.insert(name)
         // The test runs to its answer even when the page that asked goes
         // away (opening a server from the list cancels the list's tests):
@@ -408,6 +414,11 @@ final class CapabilitiesStore {
         }
         guard token == generation else { return }
         probing.remove(name)
+        guard entryEpoch == probeEpochs[name, default: 0] else {
+            // Saved while this ran: test what's there now.
+            if servers.first(where: { $0.name == name })?.enabled == true { await self.probe(name) }
+            return
+        }
         if let probe { probes[name] = probe }
     }
 
@@ -469,7 +480,13 @@ final class CapabilitiesStore {
     /// can't land between them and be undone, and both go to the dashboard
     /// and profile the editor opened on: after a switch nothing is written.
     /// Hermes checks the entry and says what it refused.
-    func saveServer(original: String, name: String, entry: [String: Any], openedOn: Int) async throws {
+    func saveServer(
+        original: String,
+        loaded: [String: Any],
+        name: String,
+        entry: [String: Any],
+        openedOn: Int
+    ) async throws {
         let token = generation
         // The editor read its entry before this: a switch since then would
         // write that profile's entry into this one.
@@ -481,6 +498,7 @@ final class CapabilitiesStore {
             let servers = try ConnectorServerEdit.replacing(
                 in: try await Self.configuredServers(requester, profile: profile),
                 original: original,
+                loaded: loaded,
                 name: name,
                 entry: entry
             )
@@ -501,6 +519,9 @@ final class CapabilitiesStore {
         guard token == generation else { return }
         probes[original] = nil
         probes[name] = nil
+        // A test of the old entry still running is discarded and run again.
+        probeEpochs[original, default: 0] &+= 1
+        probeEpochs[name, default: 0] &+= 1
         await loadConnectors()
         // Tested again in the background: the editor closes on the save.
         if servers.first(where: { $0.name == name })?.enabled == true {

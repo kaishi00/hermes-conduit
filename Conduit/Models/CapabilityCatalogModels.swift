@@ -708,6 +708,7 @@ struct ConnectorServerEdit {
         case notAnObject
         case invalidJSON
         case gone(String)
+        case changedOnHost(String)
 
         var message: String {
             switch self {
@@ -717,6 +718,7 @@ struct ConnectorServerEdit {
             case .notAnObject: return AppLocalization.string("Write the server as one JSON object, such as {\"url\": \"https://…\"}.")
             case .invalidJSON: return AppLocalization.string("That isn't valid JSON.")
             case .gone(let name): return AppLocalization.string("\(name) isn't in this profile's config anymore.")
+            case .changedOnHost(let name): return AppLocalization.string("\(name) changed on your host while you were editing. Close this and edit it again.")
             }
         }
 
@@ -724,6 +726,8 @@ struct ConnectorServerEdit {
     }
 
     let originalName: String
+    /// The entry as it was read, to tell whether the host changed it since.
+    let loaded: [String: Any]
     var name: String
     var url: String
     var command: String
@@ -739,6 +743,7 @@ struct ConnectorServerEdit {
 
     init(name: String, entry: [String: Any]) {
         originalName = name
+        loaded = entry
         self.name = name
         self.entry = entry
         isRemote = Self.reachedByAddress(entry)
@@ -840,10 +845,14 @@ struct ConnectorServerEdit {
     static func replacing(
         in servers: [String: Any],
         original: String,
+        loaded: [String: Any],
         name: String,
         entry: [String: Any]
     ) throws -> [String: Any] {
-        guard servers[original] != nil else { throw Problem.gone(original) }
+        guard let current = servers[original] as? [String: Any] else { throw Problem.gone(original) }
+        // Written back whole, so a change the host made meanwhile would be
+        // undone: refused instead.
+        guard pretty(current) == pretty(loaded) else { throw Problem.changedOnHost(original) }
         if name != original, servers[name] != nil { throw Problem.nameTaken(name) }
         var next = servers
         next.removeValue(forKey: original)
