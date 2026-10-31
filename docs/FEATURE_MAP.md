@@ -704,8 +704,7 @@ socket) · Grok and Local Live (the host bridge) · a call from Hermes answered
 on the Watch, which runs the same calls · the end message · the call log's
 lines · phone, CarPlay and CallKit calls, which reconnect on the iPhone's own
 network (Reconnecting to Hermes) · watchOS 10: the home screen's note, Settings' Call on open (hidden there), a call
-started any way (the button, Try again, Call on open, Siri and the Action
-button), and calls from Hermes ringing the Watch ("Calls from Hermes" records it) · README.md's requirements · docs/OWN_VOICE_SERVER.md (Local Live on the Watch)
+started any other way (the button, Siri and the Action button), and calls from Hermes ringing the Watch ("Calls from Hermes" records it) · README.md's requirements · docs/OWN_VOICE_SERVER.md (Local Live on the Watch)
 
 **Code**
 - Shared rule: `Shared/WatchVoice/WatchNoNetwork.swift`, tests in `ConduitTests/WatchAudioBridgeTests.swift`
@@ -716,12 +715,12 @@ button), and calls from Hermes ringing the Watch ("Calls from Hermes" records it
 
 **Rulings**
 - A call none of whose sockets has opened ends on the second socket refused for no network (-1009, or data not allowed or roaming off), saying the Watch couldn't get a network connection and to keep the iPhone nearby with Bluetooth on or join Wi-Fi on the Watch. The first refusal is retried, since the route can come up just after the audio session activates. Once any socket has opened, a drop is the call's to rejoin as before (2026-10-27, #1349, for #1346).
-- On watchOS 10 Watch calls don't start: watchOS refuses their sockets whatever the audio route, Bluetooth headphones included (reporter's test, #1346). The home screen says so under the button, Settings hides Call on open and it doesn't start one, a call started any other way ends at once with the same message and no Try again, and the Watch sends the iPhone no call token, so calls from Hermes ring the iPhone alone. Eric chose saying so before the call over trying CallKit, which no one could test (2026-10-31, #1591). Whether watchOS 11 to 26 get the network isn't verified; watchOS 27 does.
+- On watchOS 10 Watch calls don't start: watchOS refuses their sockets whatever the audio route, Bluetooth headphones included (reporter's test, #1346). The home screen says so under the button (naming the iPhone's ring only where calls from Hermes ring), Settings hides Call on open and it doesn't start one, a call started any other way ends at once with the same message and no Try again, and the Watch sends the iPhone no call token, without waiting for PushKit's, so calls from Hermes ring the iPhone alone. Eric chose saying so before the call over trying CallKit, which no one could test (2026-10-31, #1591). Whether watchOS 11 to 26 get the network isn't verified; watchOS 27 does.
 
 **Open gaps**
 - There's no iPhone-carried audio route to fall back on: the first Watch design carried audio through the iPhone and stopped whenever it locked or Conduit was suspended (designs/apple-watch-voice-direct.md).
 
-**Checked:** 2026-10-31, #1591.
+**Checked:** 2026-10-31, #PRNUM; 2026-10-31, #1591.
 
 ## Calls from Hermes
 

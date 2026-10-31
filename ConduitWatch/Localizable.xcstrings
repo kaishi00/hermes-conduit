@@ -13102,6 +13102,88 @@
           }
         }
       }
+    },
+    "Calls from the Watch don't work on watchOS 10. Talk to Hermes in Conduit on your iPhone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anrufe von der Watch funktionieren unter watchOS 10 nicht. Sprich in Conduit auf deinem iPhone mit Hermes."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las llamadas desde el Watch no funcionan en watchOS 10. Habla con Hermes en Conduit en tu iPhone."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les appels depuis la Watch ne fonctionnent pas sous watchOS 10. Parle à Hermes dans Conduit sur ton iPhone."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan dari Watch tidak berfungsi di watchOS 10. Bicaralah dengan Hermes di Conduit pada iPhone kamu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chiamate dal Watch non funzionano su watchOS 10. Parla con Hermes in Conduit sul tuo iPhone."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "watchOS 10 では Watch からの通話は使えません。iPhone の Conduit で Hermes と話してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "watchOS 10에서는 Watch 통화가 작동하지 않습니다. iPhone의 Conduit에서 Hermes와 대화하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenia z zegarka Watch nie działają w watchOS 10. Rozmawiaj z Hermesem w Conduit na iPhonie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chamadas pelo Watch não funcionam no watchOS 10. Fale com o Hermes no Conduit do seu iPhone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонки с Watch не работают в watchOS 10. Говорите с Hermes в Conduit на iPhone."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch aramaları watchOS 10'da çalışmaz. iPhone'undaki Conduit'te Hermes ile konuş."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 通话在 watchOS 10 上无法使用。请在 iPhone 上的 Conduit 与 Hermes 交谈。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch 通話在 watchOS 10 上無法使用。請在 iPhone 上的 Conduit 與 Hermes 交談。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
