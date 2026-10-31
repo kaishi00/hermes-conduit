@@ -357,6 +357,7 @@ struct ConnectorServer: Equatable, Identifiable {
         if let number = value as? NSNumber {
             return CFGetTypeID(number) == CFBooleanGetTypeID() ? (number.boolValue ? "true" : "false") : number.stringValue
         }
+        if value is NSNull { return "" }
         return "\(value)"
     }
 
