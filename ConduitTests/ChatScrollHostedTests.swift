@@ -855,4 +855,169 @@ final class ChatScrollHostedTests: XCTestCase {
         )
         XCTAssertTrue(parked.allSatisfy { $0.view.superview == nil })
     }
+
+    // MARK: - Group rooms
+
+    /// A room event: the user's message, or Research Buddy's.
+    private static func roomEvent(seq: Int, eventID: String, fromMember: Bool, text: String) -> GroupEvent {
+        GroupEvent(
+            roomID: "room-1",
+            seq: seq,
+            eventID: eventID,
+            kind: fromMember ? "message.member" : "message.user",
+            actor: fromMember
+                ? GroupActor(kind: "member", id: "researcher", profile: "researcher",
+                             displayName: "Research Buddy", connectionID: nil)
+                : GroupActor(kind: "user", id: "human", profile: nil, displayName: nil, connectionID: nil),
+            authorityEpoch: nil,
+            payload: ["text": .string(text), "thread_id": .string("main")],
+            createdAt: Double(seq)
+        )
+    }
+
+    /// A group room draws on the same transcript (#1533): GroupChatView's
+    /// rows on the collection view, the room opened at its end, and a sent
+    /// message drawn under the id its event will have, so the event takes
+    /// its row in place when the send lands, still at the end.
+    func testARoomDrawsOnTheTranscriptAndASendLandsInPlace() throws {
+        let suiteName = "chat-scroll-hosted-room"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let member = GroupMember(
+            memberID: "researcher", profile: "researcher", handle: "research-buddy",
+            displayName: "Research Buddy", target: nil, extra: [:]
+        )
+        let room = GroupRoom(
+            roomID: "room-1", name: "Planning", members: [member], authorityGatewayID: "gw-a",
+            authorityEpoch: 1, revision: 1, createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 12
+        )
+        /// The gateway's log, the id the send went out under, and the send
+        /// held until the test lets it land.
+        final class Gateway {
+            var events: [GroupEvent] = []
+            var sentEventID: String?
+            var release: CheckedContinuation<Void, Never>?
+        }
+        let gateway = Gateway()
+        gateway.events = (1...12).map { seq in
+            Self.roomEvent(
+                seq: seq, eventID: "room-e\(seq)", fromMember: seq % 2 == 0,
+                text: String(repeating: "Message \(seq) in the room has a few lines of ordinary prose. ", count: 4)
+            )
+        }
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in
+                GroupCapabilities(
+                    protocolVersion: 2, driverReady: true, authorityGatewayID: "gw-a", features: [],
+                    methods: GroupWire.requiredMethods, maxLogLimit: 500
+                )
+            },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                let latest = gateway.events.last?.seq ?? 0
+                return GroupLogPage(
+                    events: gateway.events.filter { $0.seq > sinceSeq }, cursor: latest, latestSeq: latest,
+                    hasMore: false, authorityGatewayID: "gw-a", authorityEpoch: 1
+                )
+            },
+            send: { _, _, eventID, text, _ in
+                gateway.sentEventID = eventID
+                await withCheckedContinuation { gateway.release = $0 }
+                let event = Self.roomEvent(
+                    seq: (gateway.events.last?.seq ?? 0) + 1,
+                    eventID: GroupRoomOutbox.serverEventID(forClientEventID: eventID),
+                    fromMember: false, text: text
+                )
+                gateway.events.append(event)
+                return GroupSendResult(event: event, accepted: true, driverStarted: false)
+            }
+        )
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: .live,
+            groupChatOperations: operations,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://groups.example", ticket: "groups-test"),
+            profile: "default"
+        )
+        appState.isConnected = true
+        _ = appState.adoptDashboard(forNormalizedURL: "https://groups.example")
+        defer {
+            // A send still held lands in a room already left.
+            gateway.release?.resume()
+            gateway.release = nil
+            appState.closeGroupRoom()
+        }
+        Task {
+            await appState.refreshGroupChatSupport()
+            await appState.openGroupRoom(room)
+        }
+        XCTAssertTrue(
+            PerformanceFixtureWait.eventually { appState.activeRoomReplay.events.count == 12 },
+            "the room opens with its log"
+        )
+
+        let host = UIHostingController(rootView: DormancyHarnessEnvironment.applying(
+            GroupChatView().environmentObject(appState)
+        ))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        self.window = window
+        self.host = host
+        self.appState = appState
+        var collectionView: TranscriptCollectionView?
+        XCTAssertTrue(
+            PerformanceFixtureWait.eventually(pumpingLayoutOf: host.view) {
+                collectionView = Self.find(TranscriptCollectionView.self, in: host.view)
+                return collectionView?.window != nil && (collectionView?.bounds.height ?? 0) > 0
+            },
+            "the room must draw its transcript's collection view"
+        )
+        let found = try XCTUnwrap(collectionView)
+        let controller = try XCTUnwrap(found.delegate as? TranscriptViewController)
+        settle(host.view)
+        let mounted = Mounted(
+            appState: appState, host: host, scrollView: found, layout: controller.layout,
+            scroller: controller.scroller, setTextSize: { _ in }
+        )
+        XCTAssertNotNil(mounted.layout.rowFrame("room-e1"), "the room's events are the transcript's rows")
+        XCTAssertNotNil(mounted.layout.rowFrame("room-e12"))
+        XCTAssertGreaterThan(found.contentSize.height, found.bounds.height * 1.5)
+        assertAtLatest(mounted, "a room opens at its end")
+        XCTAssertTrue(mounted.scroller.isFollowingLatest)
+
+        Task { await appState.sendGroupRoomMessage("Plan the trip for the weekend.") }
+        XCTAssertTrue(
+            PerformanceFixtureWait.eventually(pumpingLayoutOf: host.view) {
+                gateway.release != nil && appState.pendingRoomMessage != nil
+            },
+            "the message goes out"
+        )
+        settle(host.view)
+        let clientID = try XCTUnwrap(gateway.sentEventID)
+        let landedID = GroupRoomOutbox.serverEventID(forClientEventID: clientID)
+        XCTAssertNotNil(mounted.layout.rowFrame(landedID), "the message on its way is drawn under its event's id")
+        XCTAssertNil(mounted.layout.rowFrame(clientID))
+        assertAtLatest(mounted, "a send goes to the end")
+
+        gateway.release?.resume()
+        gateway.release = nil
+        XCTAssertTrue(
+            PerformanceFixtureWait.eventually(pumpingLayoutOf: host.view) {
+                appState.activeRoomReplay.events.count == 13 && appState.pendingRoomMessage == nil
+                    && !appState.activeRoomSendInFlight
+            },
+            "the send lands"
+        )
+        settle(host.view)
+        XCTAssertNotNil(mounted.layout.rowFrame(landedID), "the event took the row in place")
+        assertAtLatest(mounted, "the room stays at its end")
+        XCTAssertTrue(mounted.scroller.isFollowingLatest)
+    }
 }

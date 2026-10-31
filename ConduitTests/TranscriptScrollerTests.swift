@@ -2201,19 +2201,40 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertEqual(scroller.mode, .browsing)
     }
 
-    /// A reader scrolled up stays where they are; back at the end, they
-    /// follow it.
+    /// A reader scrolled up stays where they are: the stop is armed, as a
+    /// chat's hold is, but a browsing reader isn't pinned. Back at the end,
+    /// below the message's start, they follow it.
     func testABrowsingReaderIsNotMovedByANewMemberMessage() {
         let (scroller, surface) = makeRoomScroller()
         surface.userScroll(to: 1000)
         XCTAssertEqual(scroller.mode, .browsing)
         scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<11), replyStart: "e10")
-        XCTAssertFalse(scroller.replyHoldArmed)
+        XCTAssertTrue(scroller.replyHoldArmed)
         surface.append("e10", height: 1600)
         surface.layOut()
         XCTAssertEqual(surface.contentOffsetY, 1000)
         surface.userScroll(to: 4800)
         XCTAssertTrue(scroller.isFollowingLatest)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 4800)
+        XCTAssertFalse(scroller.replyHoldArmed, "below the message's start, the stop is gone")
+    }
+
+    /// A member message that arrives while a fling still moves a following
+    /// room stops it at the message's start all the same, once the fling
+    /// rests, as a chat's hold does.
+    func testAMemberMessageDuringAFlingStopsAtItsStartOnceItRests() {
+        let (scroller, surface) = makeRoomScroller()
+        surface.fling(to: 3200)
+        XCTAssertTrue(scroller.isFollowingLatest)
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<11), replyStart: "e10")
+        XCTAssertTrue(scroller.replyHoldArmed, "armed while the fling moves")
+        surface.append("e10", height: 1600)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 3200, "the pin waits for the fling")
+        surface.flingRests()
+        XCTAssertEqual(surface.contentOffsetY, 3963)
+        XCTAssertEqual(scroller.mode, .browsing)
     }
 
     /// The jump button and a send go past the stop to the end, and the

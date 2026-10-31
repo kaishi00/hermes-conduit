@@ -905,12 +905,14 @@ final class TranscriptScroller: ObservableObject {
     /// the top, and the reader is left browsing there once what came runs
     /// past the screen, as a long chat reply stops at its start (#365).
     /// Anything else new (a caption, a member starting its turn) is
-    /// followed to the end. A room makes no room under the message:
-    /// members' messages arrive whole.
+    /// followed to the end. As a chat's hold is, the stop is armed whatever
+    /// the reader is doing, and the pin's rules decide what moves: a reader
+    /// scrolled away isn't pinned, a fling's pin waits for it to rest, and
+    /// a reader already below the message's start goes on to the end. A
+    /// room makes no room under the message: members' messages arrive
+    /// whole.
     func roomTranscriptChanged(eventIDs: Set<String>, replyStart: String?) {
         roomEventsChanged(eventIDs)
-        // A reader scrolled away stays where they are.
-        guard mode == .following, !isUserScrolling else { return }
         if let replyStart, holdsRepliesAtStart() {
             roomReplyStartID = replyStart
             replyRoomArmed = false
