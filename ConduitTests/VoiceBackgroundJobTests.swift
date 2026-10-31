@@ -75,6 +75,8 @@ final class FakeVoiceJobBackend {
     private(set) var created = 0
     /// The profile each createSession was asked for (nil: the active one).
     private(set) var createdProfiles: [String?] = []
+    /// Whether each createSession asked for the call profile's voice-job model.
+    private(set) var createdCallsModel: [Bool] = []
     /// The profile each liveSessions read was scoped to.
     private(set) var polledProfiles: [String?] = []
     /// Spoken names the fake resolves; anything else is unknown.
@@ -124,8 +126,9 @@ final class FakeVoiceJobBackend {
     /// back, so there is no cycle.
     var backend: VoiceBackgroundJobBackend {
         VoiceBackgroundJobBackend(
-            createSession: { [self] profile in
+            createSession: { [self] profile, callsModel in
                 self.createdProfiles.append(profile)
+                self.createdCallsModel.append(callsModel)
                 if let error = self.createError { throw error }
                 if self.parksCreate {
                     self.parksCreate = false

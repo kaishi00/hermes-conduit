@@ -53565,6 +53565,170 @@
         }
       }
     },
+    "Calls from your Apple Watch, and from Siri or the Action button when the shortcut names no profile, use the profile open on your iPhone.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anrufe von deiner Apple Watch sowie von Siri oder der Aktionstaste, wenn der Kurzbefehl kein Profil nennt, nutzen das auf deinem iPhone geöffnete Profil."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las llamadas desde tu Apple Watch, y desde Siri o el botón de acción cuando el atajo no indica un perfil, usan el perfil abierto en tu iPhone."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les appels depuis votre Apple Watch, et depuis Siri ou le bouton Action quand le raccourci ne nomme aucun profil, utilisent le profil ouvert sur votre iPhone."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panggilan dari Apple Watch, dan dari Siri atau tombol Tindakan saat pintasan tidak menyebut profil, memakai profil yang terbuka di iPhone kamu."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le chiamate dal tuo Apple Watch, e da Siri o dal tasto Azione quando l’abbreviazione non indica un profilo, usano il profilo aperto sul tuo iPhone."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Watchからの通話と、ショートカットがプロファイルを指定していないときのSiriやアクションボタンからの通話は、iPhoneで開いているプロファイルを使います。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Watch에서 건 통화와, 단축어에 프로필이 지정되지 않았을 때 Siri나 동작 버튼으로 건 통화는 iPhone에서 열린 프로필을 사용해요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Połączenia z Apple Watch oraz z Siri lub przycisku czynności, gdy skrót nie wskazuje profilu, używają profilu otwartego na iPhonie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As chamadas do seu Apple Watch, e da Siri ou do botão de Ação quando o atalho não indica um perfil, usam o perfil aberto no seu iPhone."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Звонки с Apple Watch, а также из Siri или кнопки действия, если быстрая команда не указывает профиль, используют профиль, открытый на iPhone."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Watch’tan yapılan aramalar ile kestirme bir profil belirtmediğinde Siri’den veya Eylem düğmesinden yapılan aramalar, iPhone’unda açık olan profili kullanır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自 Apple Watch 的通话，以及快捷指令未指定档案时来自 Siri 或操作按钮的通话，使用 iPhone 上打开的档案。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "來自 Apple Watch 的通話，以及捷徑未指定設定檔時來自 Siri 或動作按鈕的通話，會使用 iPhone 上開啟的設定檔。"
+          }
+        }
+      }
+    },
+    "Calls from your Apple Watch, and from Siri or the Action button when the shortcut names no profile, use %@. A Watch call doesn't switch your iPhone's profile; a Siri call does. Answering a call from Hermes keeps that call's profile.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anrufe von deiner Apple Watch sowie von Siri oder der Aktionstaste, wenn der Kurzbefehl kein Profil nennt, nutzen %@. Ein Watch-Anruf wechselt das Profil deines iPhone nicht; ein Siri-Anruf schon. Wenn du einen Anruf von Hermes annimmst, behält er sein eigenes Profil."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las llamadas desde tu Apple Watch, y desde Siri o el botón de acción cuando el atajo no indica un perfil, usan %@. Una llamada del Watch no cambia el perfil de tu iPhone; una llamada de Siri sí. Al contestar una llamada de Hermes, se mantiene el perfil de esa llamada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les appels depuis votre Apple Watch, et depuis Siri ou le bouton Action quand le raccourci ne nomme aucun profil, utilisent %@. Un appel depuis l’Apple Watch ne change pas le profil de votre iPhone ; un appel Siri, si. Répondre à un appel de Hermes garde le profil de cet appel."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panggilan dari Apple Watch, dan dari Siri atau tombol Tindakan saat pintasan tidak menyebut profil, memakai %@. Panggilan Watch tidak mengganti profil iPhone kamu; panggilan Siri menggantinya. Menjawab panggilan dari Hermes tetap memakai profil panggilan itu."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le chiamate dal tuo Apple Watch, e da Siri o dal tasto Azione quando l’abbreviazione non indica un profilo, usano %@. Una chiamata dal Watch non cambia il profilo dell’iPhone; una chiamata Siri sì. Rispondendo a una chiamata di Hermes resta il profilo di quella chiamata."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Watchからの通話と、ショートカットがプロファイルを指定していないときのSiriやアクションボタンからの通話は、%@を使います。Watchからの通話ではiPhoneのプロファイルはそのままで、Siriからの通話では切り替わります。Hermesからの通話に応答すると、その通話のプロファイルのままになります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Watch에서 건 통화와, 단축어에 프로필이 지정되지 않았을 때 Siri나 동작 버튼으로 건 통화는 %@ 프로필을 사용해요. Watch 통화는 iPhone의 프로필을 그대로 두고, Siri 통화는 프로필을 전환해요. Hermes에서 온 전화를 받으면 그 통화의 프로필을 유지해요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Połączenia z Apple Watch oraz z Siri lub przycisku czynności, gdy skrót nie wskazuje profilu, używają profilu %@. Połączenie z Watcha nie przełącza profilu iPhone’a; połączenie z Siri go przełącza. Odebrane połączenie od Hermesa zachowuje swój profil."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As chamadas do seu Apple Watch, e da Siri ou do botão de Ação quando o atalho não indica um perfil, usam %@. Uma chamada do Watch não troca o perfil do iPhone; uma chamada da Siri troca. Ao atender uma chamada do Hermes, o perfil dessa chamada é mantido."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Звонки с Apple Watch, а также из Siri или кнопки действия, если быстрая команда не указывает профиль, используют профиль %@. Звонок с Watch не переключает профиль iPhone; звонок через Siri переключает. Принятый звонок от Hermes сохраняет профиль этого звонка."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Watch’tan yapılan aramalar ile kestirme bir profil belirtmediğinde Siri’den veya Eylem düğmesinden yapılan aramalar %@ profilini kullanır. Watch araması iPhone’unun profilini değiştirmez; Siri araması değiştirir. Hermes’ten gelen bir aramayı yanıtladığında o aramanın profili korunur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自 Apple Watch 的通话，以及快捷指令未指定档案时来自 Siri 或操作按钮的通话，使用 %@。Watch 通话不会切换 iPhone 的档案；Siri 通话会切换。接听 Hermes 打来的电话时，保留该通话的档案。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "來自 Apple Watch 的通話，以及捷徑未指定設定檔時來自 Siri 或動作按鈕的通話，會使用 %@。Watch 通話不會切換 iPhone 的設定檔；Siri 通話會切換。接聽 Hermes 打來的電話時，會保留該通話的設定檔。"
+          }
+        }
+      }
+    },
     "Calls per day: %@": {
       "localizations": {
         "de": {
@@ -236505,6 +236669,88 @@
         }
       }
     },
+    "Profile open on iPhone": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf dem iPhone geöffnetes Profil"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perfil abierto en el iPhone"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profil ouvert sur l’iPhone"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profil yang terbuka di iPhone"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profilo aperto su iPhone"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhoneで開いているプロファイル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone에서 열린 프로필"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profil otwarty na iPhonie"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perfil aberto no iPhone"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Профиль, открытый на iPhone"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone’da açık profil"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone 上打开的档案"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone 上開啟的設定檔"
+          }
+        }
+      }
+    },
     "Profile-specific preferences": {
       "localizations": {
         "de": {
@@ -365484,6 +365730,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "警告"
+          }
+        }
+      }
+    },
+    "Watch and Siri calls": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch- und Siri-Anrufe"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llamadas del Watch y Siri"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appels depuis la Watch et Siri"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panggilan Watch dan Siri"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiamate da Watch e Siri"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WatchとSiriからの通話"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch 및 Siri 통화"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Połączenia z Watcha i Siri"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chamadas do Watch e da Siri"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Звонки с Watch и Siri"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch ve Siri aramaları"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch 和 Siri 通话"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch 與 Siri 通話"
           }
         }
       }

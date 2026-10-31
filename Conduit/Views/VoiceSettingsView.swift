@@ -376,6 +376,7 @@ struct VoiceSettingsView: View {
                             AgentSettingsModeSection(onChange: agentSettingsChanged)
                         }
                         wakeSection
+                        HandsFreeProfileSettingsSection()
                         CarPlaySettingsSection()
                         WatchSettingsSection()
                         readAloudSection

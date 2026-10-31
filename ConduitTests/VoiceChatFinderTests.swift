@@ -24,16 +24,16 @@ extension VoiceConversationControllerTests {
     ) -> (VoiceBackgroundJobSupervisor, ChatFinderLog) {
         let log = ChatFinderLog()
         let backend = VoiceBackgroundJobBackend(
-            createSession: { _ in ("rt-1", "st-1") },
+            createSession: { _, _ in ("rt-1", "st-1") },
             setTitle: { _, _ in },
             submit: { _, _ in },
             cancel: { _ in },
             liveSessions: { _ in [] },
-            searchChats: { query in
+            searchChats: { query, _ in
                 log.queries.append(query)
                 return results[query] ?? []
             },
-            readChat: { sessionID in
+            readChat: { sessionID, _ in
                 log.read.append(sessionID)
                 guard let context = contents[sessionID] else { throw VoiceAudioError.unavailable("Conduit couldn't read that chat.") }
                 return context
@@ -287,12 +287,12 @@ extension VoiceConversationControllerTests {
         let gate = AwaitableCounter()
         let parked = ParkedChatSearch()
         let backend = VoiceBackgroundJobBackend(
-            createSession: { _ in ("rt-1", "st-1") },
+            createSession: { _, _ in ("rt-1", "st-1") },
             setTitle: { _, _ in },
             submit: { _, _ in },
             cancel: { _ in },
             liveSessions: { _ in [] },
-            searchChats: { _ in
+            searchChats: { _, _ in
                 await withCheckedContinuation { continuation in
                     parked.continuation = continuation
                     gate.increment()
