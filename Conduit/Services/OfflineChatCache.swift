@@ -1184,8 +1184,9 @@ final class OfflineChatCacheStore {
         return components.string ?? ""
     }
 
-    /// A user and password after a `://`, up to the host's last `@`.
-    private static let unparsedUserInfo = try! NSRegularExpression(pattern: #"(?<=://)[^/?#\s]*@"#)
+    /// A user and password after a `://`, up to the host's last `@`: a
+    /// space in them included, as that's text the parser rejects.
+    private static let unparsedUserInfo = try! NSRegularExpression(pattern: #"(?<=://)[^/?#]*@"#)
     /// A query's name and value.
     private static let unparsedQueryItem = try! NSRegularExpression(pattern: #"(?<=[?&])([^=&#\s]+)=([^&#\s]*)"#)
 

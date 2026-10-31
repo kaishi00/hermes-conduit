@@ -1832,6 +1832,21 @@ extension AppStateMultiDashboardTests {
         try await held.answer(["memory": ["provider": "builtin"]])
         _ = await load.value
         XCTAssertNil(appState.keptProfileSettings(keys: ["memory.provider"]), "Asked before the save")
+
+        // A save that lands after a switch to another profile counts for
+        // the profile it was made on all the same.
+        let olderLoad = Task { await appState.loadProfileSettings(keys: ["memory.provider"]) }
+        try await held.waitForRequests(4)
+        let switchedSave = Task { await appState.setProfileSetting("memory.provider", value: .text("holographic")) }
+        try await held.waitForRequests(5)
+        appState.setActiveProfileForTesting("work")
+        try await held.answer(at: 1)
+        let switchedSaved = await switchedSave.value
+        XCTAssertFalse(switchedSaved, "The page it was made on is gone")
+        try await held.answer(["memory": ["provider": "builtin"]])
+        _ = await olderLoad.value
+        appState.setActiveProfileForTesting("default")
+        XCTAssertNil(appState.keptProfileSettings(keys: ["memory.provider"]), "Asked before a save that landed after a switch")
     }
 
     /// A Voice replies model save outranks a read of the slots asked

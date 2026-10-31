@@ -33208,15 +33208,16 @@ final class AppState: ObservableObject {
                 try await ProfileConfigWriteQueue.runThrowing {
                     _ = try await dashboardTicketBridge.requestJSON(path: "/api/dashboard/plugin-providers", method: "PUT", body: body)
                 }
-                guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
-                // The page opens on it next time, as on a config it saved.
-                if var config = keptAnswer(KeptRoute.config) {
+                guard ownsDashboardRuntime(owner) else { return false }
+                // The page opens on it next time, as on a config it saved,
+                // a switch to another profile meanwhile included.
+                if var config = keptAnswer(KeptRoute.config, profile: profile) {
                     setProfileSettingValue(value, in: &config, key: key)
                     keepWrittenAnswer(config, for: KeptRoute.config, profile: profile, owner: owner, removals: removals)
                 } else {
                     noteKeptAnswerWrite(for: KeptRoute.config, profile: profile, owner: owner)
                 }
-                return true
+                return profile == activeProfile
             }
             let reasoning = key == ReasoningDisplayMode.settingKey ? value.textValue.flatMap(ReasoningDisplayMode.init(rawValue:)) : nil
             if key == ReasoningDisplayMode.settingKey, reasoning == nil { return false }
