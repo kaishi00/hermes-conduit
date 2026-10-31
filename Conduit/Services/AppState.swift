@@ -21898,7 +21898,7 @@ final class AppState: ObservableObject {
             // screen has since moved to another dashboard or profile, or a
             // later visit there would open to it (#1040).
             if let dashboardID {
-                offlineChatCache.removeTranscripts(sessionIDs: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
+                removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
             // Its pinned replies go too, under the profile it was deleted in.
             dropPinnedReplies(forDeleted: session, profile: profile)
@@ -21923,7 +21923,7 @@ final class AppState: ObservableObject {
             // Hermes deleted it after the screen moved to another dashboard:
             // only the old dashboard's saved copy follows (#1040).
             if let dashboardID {
-                offlineChatCache.removeTranscripts(sessionIDs: Set(session.nestingIDs), dashboardID: dashboardID, profile: profile)
+                removeSavedCopies(ofDeleted: Set(session.nestingIDs), dashboardID: dashboardID, profile: profile)
             }
             return false
         } catch {
@@ -39295,7 +39295,7 @@ extension AppState {
             // Hermes deleted it: its saved copy and pinned replies go too,
             // whatever the screen shows now (#1040).
             if let dashboardID {
-                offlineChatCache.removeTranscripts(sessionIDs: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
+                removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
             dropPinnedReplies(forDeleted: session, profile: profile)
             guard ownsDashboardRuntime(owner) else { return false }
@@ -39308,13 +39308,27 @@ extension AppState {
             return true
         } catch DashboardTicketBridgeError.answeredAfterSwitch {
             if let dashboardID {
-                offlineChatCache.removeTranscripts(sessionIDs: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
+                removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
             return false
         } catch {
             guard ownsDashboardRuntime(owner) else { return false }
             showSessionMutationNotice(AppLocalization.string("Could not delete this conversation: \(UserFacingError.message(for: error))"))
             return false
+        }
+    }
+
+    /// Hermes deleted the chats `sessionIDs` name: their saved copies leave
+    /// the phone (#1040), and their rows the profile's kept Artifacts page,
+    /// as their own kept lists do (#1533).
+    private func removeSavedCopies(ofDeleted sessionIDs: Set<String>, dashboardID: UUID, profile: String) {
+        offlineChatCache.removeTranscripts(sessionIDs: sessionIDs, dashboardID: dashboardID, profile: profile)
+        for showMissing in [true, false] {
+            guard let route = ArtifactsClient.keptRoute(ArtifactSource(profile: profile, sessionIDs: []), filter: .all,
+                                                        query: "", showMissing: showMissing),
+                  let kept = offlineChatCache.keptAnswer(route, dashboardID: dashboardID, profile: profile),
+                  let left = ArtifactsClient.answer(kept, withoutRowsOf: sessionIDs) else { continue }
+            offlineChatCache.recordAnswer(left, route: route, dashboardID: dashboardID, profile: profile)
         }
     }
 

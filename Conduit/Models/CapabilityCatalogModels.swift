@@ -267,6 +267,92 @@ struct ToolsetConfig: Equatable {
         }
     }
 
+    /// A config answer as Hermes holds it once `provider` is the toolset's
+    /// backend (for the web toolset, the backend of `capability`): what a
+    /// kept page shows until Hermes answers again.
+    static func choosing(_ provider: String, capability: String?, in answer: [String: Any]) -> [String: Any] {
+        guard let rows = answer["providers"] as? [Any] else { return answer }
+        var answer = answer
+        if let capability {
+            let row = rows.lazy.compactMap { $0 as? [String: Any] }.first { $0["name"] as? String == provider }
+            guard let row, let backend = row["web_backend"] as? String else { return answer }
+            // As `serves` tells managed Nous from an own key.
+            let viaNous = row["managed_nous_feature"] is String
+            switch capability {
+            case "search":
+                answer["active_search_backend"] = backend
+                answer["search_via_nous"] = viaNous
+            case "extract":
+                answer["active_extract_backend"] = backend
+                answer["extract_via_nous"] = viaNous
+            default:
+                break
+            }
+        } else {
+            answer["active_provider"] = provider
+            answer["providers"] = rows.map { value -> Any in
+                guard var row = value as? [String: Any] else { return value }
+                row["is_active"] = row["name"] as? String == provider
+                return row
+            }
+        }
+        return answer
+    }
+
+    /// A config answer as Hermes holds it once `key` is saved: set wherever
+    /// a backend asks for it.
+    static func settingKey(_ key: String, in answer: [String: Any]) -> [String: Any] {
+        guard let rows = answer["providers"] as? [Any] else { return answer }
+        var answer = answer
+        answer["providers"] = rows.map { value -> Any in
+            guard var row = value as? [String: Any], let envVars = row["env_vars"] as? [Any] else { return value }
+            row["env_vars"] = envVars.map { value -> Any in
+                guard var env = value as? [String: Any], env["key"] as? String == key else { return value }
+                env["is_set"] = true
+                return env
+            }
+            return row
+        }
+        return answer
+    }
+
+    /// The config as `choosing(_:capability:in:)` makes its answer: what
+    /// the page shows once Hermes took the change, kept or not.
+    func choosing(_ provider: String, capability: String?) -> ToolsetConfig {
+        var config = self
+        if let capability {
+            guard let row = providers.first(where: { $0.name == provider }), let backend = row.webBackend else { return self }
+            let viaNous = row.managedNousFeature != nil
+            switch capability {
+            case "search":
+                config.activeSearchBackend = backend
+                config.searchViaNous = viaNous
+            case "extract":
+                config.activeExtractBackend = backend
+                config.extractViaNous = viaNous
+            default:
+                break
+            }
+        } else {
+            config.activeProvider = provider
+            for index in config.providers.indices {
+                config.providers[index].isActive = config.providers[index].name == provider
+            }
+        }
+        return config
+    }
+
+    /// The config as `settingKey(_:in:)` makes its answer.
+    func settingKey(_ key: String) -> ToolsetConfig {
+        var config = self
+        for provider in config.providers.indices {
+            for env in config.providers[provider].envVars.indices where config.providers[provider].envVars[env].key == key {
+                config.providers[provider].envVars[env].isSet = true
+            }
+        }
+        return config
+    }
+
     /// Whether `provider` is the one a web search (or extract) call uses
     /// now. Managed Nous and own-key Firecrawl share a backend name, so the
     /// Nous flag tells them apart.
@@ -293,6 +379,28 @@ struct TerminalBackendOption: Equatable, Identifiable {
     /// ready, needs_setup or unavailable.
     var status: String
     var detail: String?
+
+    /// A backends answer as Hermes holds it once the terminal runs on
+    /// `backend`: what a kept page shows until Hermes answers again.
+    static func choosing(_ backend: String, in answer: [String: Any]) -> [String: Any] {
+        guard let rows = answer["backends"] as? [Any] else { return answer }
+        var answer = answer
+        answer["backends"] = rows.map { value -> Any in
+            guard var row = value as? [String: Any] else { return value }
+            row["active"] = row["name"] as? String == backend
+            return row
+        }
+        return answer
+    }
+
+    /// The backends as `choosing(_:in:)` makes their answer.
+    static func choosing(_ backend: String, in options: [TerminalBackendOption]) -> [TerminalBackendOption] {
+        options.map { option in
+            var option = option
+            option.active = option.name == backend
+            return option
+        }
+    }
 
     static func list(from response: [String: Any]) -> [TerminalBackendOption] {
         (response["backends"] as? [Any] ?? []).compactMap { value in

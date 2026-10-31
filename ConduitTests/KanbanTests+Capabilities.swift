@@ -1204,6 +1204,163 @@ extension KanbanTests {
         XCTAssertTrue(store.plugins.isEmpty)
         XCTAssertEqual(store.pluginCatalog.first?.installed, false)
     }
+
+    /// A skill's page, a catalog skill's and a toolset's open on what they
+    /// showed last time on the dashboard and profile, each page's of many,
+    /// and a read that fails leaves it kept (#1533).
+    func testEachCapabilityPageOpensOnWhatItShowedLastTime() async throws {
+        let hermes = CapabilityMockRequester(responses: [
+            "/api/skills/content": ["content": "---\nname: pdf\n---\nRead PDFs."],
+            "/api/skills/hub/preview": ["skill_md": "---\nname: maps\n---\nDraw maps."],
+            "/api/tools/toolsets/web/config": ["has_category": true, "providers": [[
+                "name": "Firecrawl", "is_active": true, "status": "needs_keys",
+                "env_vars": [["key": "FIRECRAWL_API_KEY", "prompt": "Firecrawl key", "is_set": false]],
+            ]]],
+            "/api/tools/terminal/backends": ["backends": [["name": "docker", "label": "Docker", "active": true, "status": "ready"]]],
+        ])
+        let kept = KeptCapabilityAnswers()
+        let store = CapabilitiesStore()
+        store.configure(requester: hermes, profile: "default", answers: kept.answers)
+        _ = try await store.skillContent(name: "pdf")
+        _ = try await store.skillPreview(identifier: "official/maps")
+        _ = try await store.toolsetConfig(name: "web")
+        _ = try await store.terminalBackends()
+
+        XCTAssertEqual(Set(kept.saved.keys), [
+            CapabilitiesStore.KeptRoute.page("/api/skills/content?name=pdf"),
+            CapabilitiesStore.KeptRoute.page("/api/skills/hub/preview?identifier=official%2Fmaps"),
+            CapabilitiesStore.KeptRoute.page("/api/tools/toolsets/web/config"),
+            CapabilitiesStore.KeptRoute.terminalBackends,
+        ])
+
+        // The next visit opens on them before Hermes answers.
+        let offline = CapabilityMockRequester(responses: [:])
+        offline.failures = [
+            "/api/skills/content": URLError(.notConnectedToInternet),
+            "/api/tools/toolsets/web/config": URLError(.notConnectedToInternet),
+        ]
+        let next = CapabilitiesStore()
+        next.configure(requester: offline, profile: "default", answers: kept.answers)
+        XCTAssertEqual(next.keptSkillContent(name: "pdf").map(SkillFrontmatter.parse)?.body, "Read PDFs.")
+        XCTAssertNil(next.keptSkillContent(name: "docx"), "Another skill's page")
+        XCTAssertEqual(next.keptSkillPreview(identifier: "official/maps").map(SkillFrontmatter.parse)?.body, "Draw maps.")
+        let config = try XCTUnwrap(next.keptToolsetConfig(name: "web"))
+        XCTAssertEqual(config.providers.map(\.name), ["Firecrawl"])
+        XCTAssertEqual(config.providers.first?.envVars.map(\.key), ["FIRECRAWL_API_KEY"])
+        XCTAssertEqual(next.keptTerminalBackends()?.map(\.name), ["docker"])
+        XCTAssertTrue(offline.calls.isEmpty)
+
+        _ = try? await next.skillContent(name: "pdf")
+        _ = try? await next.toolsetConfig(name: "web")
+        XCTAssertNotNil(next.keptSkillContent(name: "pdf"), "A read that fails leaves it kept")
+        XCTAssertNotNil(next.keptToolsetConfig(name: "web"))
+    }
+
+    /// A backend, terminal or key change Hermes took changes the page's
+    /// kept answer as Hermes now holds it, so the page shows the change
+    /// next time and should the read after it fail. A change that fails,
+    /// or one on a page with nothing kept, makes nothing up (#1533).
+    func testAPageChangeHermesTookIsKeptAsHermesHoldsIt() async throws {
+        let hermes = CapabilityMockRequester(responses: [
+            "/api/tools/toolsets/web/config": [
+                "has_category": true,
+                "active_search_backend": "firecrawl",
+                "active_extract_backend": "firecrawl",
+                "search_via_nous": true,
+                "extract_via_nous": true,
+                "providers": [
+                    ["name": "Nous Subscription", "managed_nous_feature": "web", "web_backend": "firecrawl", "status": "ready"],
+                    [
+                        "name": "Firecrawl", "web_backend": "firecrawl", "status": "needs_keys",
+                        "env_vars": [["key": "FIRECRAWL_API_KEY", "prompt": "", "is_set": false]],
+                    ],
+                    [
+                        "name": "Tavily", "web_backend": "tavily", "status": "needs_keys",
+                        "env_vars": [["key": "TAVILY_API_KEY", "prompt": "", "is_set": false]],
+                    ],
+                ],
+            ],
+            "/api/tools/toolsets/image_gen/config": ["has_category": true, "active_provider": "FAL", "providers": [
+                ["name": "FAL", "is_active": true, "status": "ready"],
+                ["name": "OpenAI", "is_active": false, "status": "ready"],
+            ]],
+            "/api/tools/terminal/backends": ["backends": [
+                ["name": "local", "label": "Local", "active": true, "status": "ready"],
+                ["name": "docker", "label": "Docker", "active": false, "status": "ready"],
+            ]],
+            "/api/tools/toolsets/web/provider": ["needs_nous_auth": false],
+            "/api/tools/toolsets/image_gen/provider": [:],
+            "/api/tools/toolsets/tts/provider": [:],
+            "/api/tools/terminal/backend": [:],
+            "/api/env": [:],
+        ])
+        let kept = KeptCapabilityAnswers()
+        let store = CapabilitiesStore()
+        store.configure(requester: hermes, profile: "default", answers: kept.answers)
+        let shownWeb = try await store.toolsetConfig(name: "web")
+        let shownImage = try await store.toolsetConfig(name: "image_gen")
+        let shownBackends = try await store.terminalBackends()
+
+        _ = try await store.selectProvider(toolset: "image_gen", provider: "OpenAI")
+        _ = try await store.selectProvider(toolset: "web", provider: "Tavily", capability: "search")
+        _ = try await store.selectProvider(toolset: "web", provider: "Firecrawl", capability: "extract")
+        try await store.selectTerminalBackend("docker")
+        try await store.saveKey("FIRECRAWL_API_KEY", value: "typed-key", toolset: "web")
+
+        let image = try XCTUnwrap(store.keptToolsetConfig(name: "image_gen"))
+        XCTAssertEqual(image.activeProvider, "OpenAI")
+        XCTAssertEqual(image.providers.filter(\.isActive).map(\.name), ["OpenAI"])
+        let web = try XCTUnwrap(store.keptToolsetConfig(name: "web"))
+        let nous = try XCTUnwrap(web.providers.first { $0.name == "Nous Subscription" })
+        let firecrawl = try XCTUnwrap(web.providers.first { $0.name == "Firecrawl" })
+        let tavily = try XCTUnwrap(web.providers.first { $0.name == "Tavily" })
+        XCTAssertTrue(web.serves("search", provider: tavily))
+        XCTAssertFalse(web.serves("search", provider: nous))
+        XCTAssertTrue(web.serves("extract", provider: firecrawl), "Its own key, not managed Nous on the same backend")
+        XCTAssertFalse(web.serves("extract", provider: nous))
+        XCTAssertEqual(firecrawl.envVars.map(\.isSet), [true])
+        XCTAssertEqual(tavily.envVars.map(\.isSet), [false])
+        XCTAssertEqual(store.keptTerminalBackends()?.filter(\.active).map(\.name), ["docker"])
+        XCTAssertEqual(Set(kept.written), [
+            CapabilitiesStore.KeptRoute.page("/api/tools/toolsets/image_gen/config"),
+            CapabilitiesStore.KeptRoute.page("/api/tools/toolsets/web/config"),
+            CapabilitiesStore.KeptRoute.terminalBackends,
+        ])
+        XCTAssertFalse(String(describing: kept.saved).contains("typed-key"), "Never the key itself")
+        // The page shows each change itself, as the kept answer holds it,
+        // so it shows on a page with nothing kept too.
+        XCTAssertEqual(shownImage.choosing("OpenAI", capability: nil), image)
+        XCTAssertEqual(
+            shownWeb.choosing("Tavily", capability: "search").choosing("Firecrawl", capability: "extract")
+                .settingKey("FIRECRAWL_API_KEY"),
+            web
+        )
+        XCTAssertEqual(TerminalBackendOption.choosing("docker", in: shownBackends), store.keptTerminalBackends())
+
+        // A change that fails keeps nothing.
+        hermes.failures["PUT /api/tools/terminal/backend"] = URLError(.notConnectedToInternet)
+        try? await store.selectTerminalBackend("local")
+        XCTAssertEqual(store.keptTerminalBackends()?.filter(\.active).map(\.name), ["docker"])
+
+        // A page with nothing kept isn't made up, only noted for its next read.
+        _ = try await store.selectProvider(toolset: "tts", provider: "Edge")
+        XCTAssertNil(store.keptToolsetConfig(name: "tts"))
+        XCTAssertEqual(kept.noted, [CapabilitiesStore.KeptRoute.page("/api/tools/toolsets/tts/config")])
+    }
+
+    /// A plugins read cut off by leaving the tab says nothing failed, and
+    /// the tab asks again when it next shows.
+    func testACancelledPluginsReadIsNoFailure() async {
+        let hermes = CapabilityMockRequester(responses: ["/api/dashboard/plugins/catalog": ["entries": [[String: Any]]()]])
+        hermes.failures["/api/dashboard/plugins/hub"] = CancellationError()
+        let store = CapabilitiesStore()
+        store.configure(requester: hermes, profile: "default")
+
+        await store.loadPlugins()
+
+        XCTAssertNil(store.pluginsError)
+        XCTAssertFalse(store.pluginsLoaded)
+    }
 }
 
 @MainActor

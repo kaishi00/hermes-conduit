@@ -39,6 +39,9 @@ final class KanbanStore {
     /// always target this value so a displayed card can never be written to a
     /// different board than the one it was read from.
     private(set) var loadedBoardSlug: String?
+    /// Hermes listed the boards since the store was pointed at this
+    /// dashboard: its answers, not the kept ones, are on screen.
+    private var boardsAnswered = false
     private(set) var isLoading = false
     private(set) var isMutating = false
     private(set) var errorMessage: String?
@@ -144,9 +147,11 @@ final class KanbanStore {
         let identity = requester.map { ObjectIdentifier($0) }
         if requesterID == identity && self.serverIdentity == normalizedServer {
             // The same board, whose answers may name its dashboard only now
-            // (one just registered).
+            // (one just registered): what they kept shows until Hermes
+            // answers.
             service?.answers = answers
             self.answers = answers
+            if !boardsAnswered { showKept() }
             return
         }
 
@@ -159,6 +164,7 @@ final class KanbanStore {
         isLoading = false
         endActiveMutationOwnership()
         loadedBoardSlug = nil
+        boardsAnswered = false
 
         service = requester.map { makeService($0) }
         service?.answers = answers
@@ -188,17 +194,18 @@ final class KanbanStore {
     }
 
     /// The board's kept answers, shown until Hermes answers. No load set
-    /// `loadedBoardSlug` for them, so nothing on them is actionable.
+    /// `loadedBoardSlug` for them, so nothing on them is actionable. Shown
+    /// again, they redraw nothing.
     private func showKept() {
         guard let answers else { return }
         if let kept = KanbanService.kept(KanbanBoardsResponse.self, from: answers.kept(KanbanService.KeptRoute.boards)) {
-            boards = kept.boards
-            currentServerBoardSlug = kept.current
+            setIfChanged(\.boards, kept.boards)
+            setIfChanged(\.currentServerBoardSlug, kept.current)
         }
-        board = keptBoard(resolvedSelectedBoardSlug)
-        profiles = KanbanService.kept(KanbanProfilesResponse.self, from: answers.kept(KanbanService.KeptRoute.profiles))?.profiles ?? []
-        projects = KanbanService.kept(KanbanProjectsResponse.self, from: answers.kept(KanbanService.KeptRoute.projects))?.projects ?? []
-        orchestration = KanbanService.kept(KanbanOrchestrationSettings.self, from: answers.kept(KanbanService.KeptRoute.orchestration))
+        setIfChanged(\.board, keptBoard(resolvedSelectedBoardSlug))
+        setIfChanged(\.profiles, KanbanService.kept(KanbanProfilesResponse.self, from: answers.kept(KanbanService.KeptRoute.profiles))?.profiles ?? [])
+        setIfChanged(\.projects, KanbanService.kept(KanbanProjectsResponse.self, from: answers.kept(KanbanService.KeptRoute.projects))?.projects ?? [])
+        setIfChanged(\.orchestration, KanbanService.kept(KanbanOrchestrationSettings.self, from: answers.kept(KanbanService.KeptRoute.orchestration)))
     }
 
     private func keptBoard(_ slug: String) -> KanbanBoard? {
@@ -235,6 +242,7 @@ final class KanbanStore {
 
             setIfChanged(\.boards, boardResponse.boards)
             setIfChanged(\.currentServerBoardSlug, boardResponse.current)
+            boardsAnswered = true
 
             if !selectedBoardSlug.isEmpty && !boards.contains(where: { $0.slug == selectedBoardSlug }) {
                 selectedBoardSlug = ""
@@ -355,6 +363,13 @@ final class KanbanStore {
     func fetchModelOptions() async throws -> [KanbanModelProviderOption] {
         guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")) }
         return try await service.fetchModelOptions()
+    }
+
+    /// The roster the override picker listed last time on this dashboard,
+    /// or nil (#1533).
+    func keptModelOptions() -> [KanbanModelProviderOption]? {
+        answers.flatMap { KanbanService.kept(KanbanModelOptionsResponse.self, from: $0.kept(KanbanService.KeptRoute.modelOptions)) }
+            .map(KanbanService.offerable)
     }
 
     @discardableResult

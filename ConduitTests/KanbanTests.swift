@@ -976,6 +976,105 @@ final class KanbanTests: XCTestCase {
         XCTAssertTrue(store.isSelectedSnapshotLoaded)
     }
 
+    /// An answer Conduit can't read isn't kept over the last one it could,
+    /// and answers that name the dashboard only after the store was pointed
+    /// at it show what's kept until Hermes answers (#1533).
+    func testOnlyAReadableAnswerIsKeptAndLateAnswersShowTheKeptBoard() async throws {
+        let kept = KeptBoardAnswers()
+        var responses = standardKanbanResponses(boardSlug: "alpha")
+        responses["/api/plugins/kanban/board"] = keptBoardResponse(task: "Write the plan")
+        responses["/api/plugins/kanban/profiles"] = [
+            "profiles": [["name": "coder", "is_default": true, "description": "Writes code", "description_auto": false]]
+        ]
+        let requester = MockKanbanRequester(responsesByPath: responses)
+        let store = KanbanStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        store.configure(requester: requester, serverIdentity: "https://example.test", answers: kept.answers)
+        await store.reload()
+        let shown = try XCTUnwrap(store.board)
+
+        requester.responsesByPath["/api/plugins/kanban/profiles"] = ["profiles": "unreadable"]
+        await store.reload()
+        let keptProfiles = KanbanService.kept(KanbanProfilesResponse.self, from: kept.saved[KanbanService.KeptRoute.profiles])
+        XCTAssertEqual(keptProfiles?.profiles.map(\.name), ["coder"])
+
+        // Answers given again once Hermes has answered leave its board up.
+        store.configure(requester: requester, serverIdentity: "https://example.test", answers: KeptBoardAnswers().answers)
+        XCTAssertEqual(store.board, shown)
+
+        // Pointed at the dashboard before its answers named it.
+        let offline = MockKanbanRequester(errorsByPath: ["/api/plugins/kanban/boards": MockRequestError.failed("dashboard unreachable")])
+        let next = KanbanStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        next.configure(requester: offline, serverIdentity: "https://example.test")
+        XCTAssertNil(next.board)
+        next.configure(requester: offline, serverIdentity: "https://example.test", answers: kept.answers)
+        XCTAssertEqual(next.board, shown)
+        XCTAssertEqual(next.profiles.map(\.name), ["coder"])
+        XCTAssertNil(next.loadedBoardSlug)
+        XCTAssertTrue(offline.calls.isEmpty)
+    }
+
+    /// The model override's roster is kept once per dashboard, so its
+    /// picker opens on it next time, and a read that fails leaves it kept
+    /// (#1533).
+    func testTheModelOverrideOpensOnTheRosterItListedLastTime() async throws {
+        let kept = KeptBoardAnswers()
+        var responses = standardKanbanResponses()
+        responses["/api/plugins/kanban/model-options"] = [
+            "providers": [
+                ["slug": "openai", "label": "OpenAI", "models": ["gpt-a"]],
+                ["slug": "empty", "label": "Empty", "models": [String]()],
+            ],
+        ]
+        let store = KanbanStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        store.configure(requester: MockKanbanRequester(responsesByPath: responses), serverIdentity: "https://example.test", answers: kept.answers)
+        XCTAssertNil(store.keptModelOptions())
+        let listed = try await store.fetchModelOptions()
+        XCTAssertNotNil(kept.saved[KanbanService.KeptRoute.modelOptions])
+
+        let offline = MockKanbanRequester(errorsByPath: [
+            "/api/plugins/kanban/model-options": MockRequestError.failed("dashboard unreachable"),
+        ])
+        let next = KanbanStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        next.configure(requester: offline, serverIdentity: "https://example.test", answers: kept.answers)
+        XCTAssertEqual(next.keptModelOptions(), listed)
+        XCTAssertEqual(next.keptModelOptions()?.map(\.slug), ["openai"], "Only what can be offered")
+        XCTAssertTrue(offline.calls.isEmpty)
+        _ = try? await next.fetchModelOptions()
+        XCTAssertEqual(next.keptModelOptions(), listed, "A read that fails leaves it kept")
+
+        // A roster with nothing to offer, as Hermes answers while its
+        // inventory is down, is answered but not kept over it.
+        offline.errorsByPath = [:]
+        let degraded = try await next.fetchModelOptions()
+        XCTAssertTrue(degraded.isEmpty)
+        XCTAssertEqual(next.keptModelOptions(), listed)
+    }
+
+    /// Once Hermes has listed the boards, answers given again don't put a
+    /// kept list back over its own, even while the board's read fails.
+    func testAnswersGivenAgainAfterHermesListedTheBoardsLeaveItsList() async throws {
+        let kept = KeptBoardAnswers()
+        var responses = standardKanbanResponses(boardSlug: "alpha")
+        responses["/api/plugins/kanban/board"] = keptBoardResponse(task: "Write the plan")
+        let earlier = KanbanStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        earlier.configure(requester: MockKanbanRequester(responsesByPath: responses), serverIdentity: "https://example.test", answers: kept.answers)
+        await earlier.reload()
+
+        let hermes = MockKanbanRequester(
+            responsesByPath: ["/api/plugins/kanban/boards": ["boards": [["slug": "gamma", "name": "Gamma", "is_current": true]], "current": "gamma"]],
+            errorsByPath: ["/api/plugins/kanban/board": MockRequestError.failed("board unreadable")]
+        )
+        let store = KanbanStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        store.configure(requester: hermes, serverIdentity: "https://example.test")
+        await store.reload()
+        XCTAssertEqual(store.boards.map(\.slug), ["gamma"])
+        XCTAssertNil(store.loadedBoardSlug)
+
+        store.configure(requester: hermes, serverIdentity: "https://example.test", answers: kept.answers)
+        XCTAssertEqual(store.boards.map(\.slug), ["gamma"])
+        XCTAssertEqual(store.currentServerBoardSlug, "gamma")
+    }
+
     /// A board answer with one task in To Do, as Hermes sends it.
     private func keptBoardResponse(task title: String) -> [String: Any] {
         [

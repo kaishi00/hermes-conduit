@@ -86,6 +86,7 @@ final class WorkspaceExplorer: ObservableObject {
         }
         showsKeptRoot = kept != nil
         recent = client.keptRecent(root: root, in: answers) ?? []
+        askPluginIfUnanswered()
         await load(root)
         await loadRecent()
     }
@@ -112,6 +113,7 @@ final class WorkspaceExplorer: ObservableObject {
     /// pull to refresh, or a change made here.
     func refresh() async {
         guard let scope else { return }
+        askPluginIfUnanswered()
         let folders = [scope.root] + expanded.sorted()
         for folder in folders {
             // Another folder opened meanwhile: the rest belongs to the old one.
@@ -123,6 +125,16 @@ final class WorkspaceExplorer: ObservableObject {
         if let query = search?.query, !query.isEmpty {
             await runSearch(query)
         }
+    }
+
+    /// Connected, and the plugin never said what it serves (its read failed
+    /// as Conduit connected): asked again, as the Artifacts list asks, so a
+    /// kept listing, which waits for its word, isn't left up until the next
+    /// connect. The Folder reads again once it answers (its `Changes`).
+    private func askPluginIfUnanswered() {
+        guard let appState, !appState.supportsWorkspaceFiles, appState.isConnected,
+              appState.notifierPlugin.state == .unknown else { return }
+        Task { await appState.refreshNotifierPluginStatus() }
     }
 
     /// Opens or closes `folder`. Returns why it couldn't open, for the

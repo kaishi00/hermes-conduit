@@ -263,12 +263,13 @@ struct CapabilityToolsetDetailPage: View {
                 .padding(.horizontal, 16)
         }
         .navigationTitle(Text(verbatim: toolset.map(CapabilityToolsetOrdering.label) ?? name))
+        // Before the first frame, so the page doesn't open without them.
+        .onAppear { if config == nil, backends == nil { showKept() } }
         // Read again for another dashboard or profile: what the last one
         // answered never stays on screen to be acted on.
         .task(id: detailScope) {
-            config = nil
+            showKept()
             configError = nil
-            backends = nil
             backendsError = nil
             notice = nil
             // A key prompt or backend confirmation still open belongs to
@@ -401,7 +402,8 @@ struct CapabilityToolsetDetailPage: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(working != nil || backend.status == "unavailable")
+                    // Off with no dashboard to write through, as the switches are.
+                    .disabled(working != nil || backend.status == "unavailable" || !appState.canChangeCapabilities)
                     .accessibilityAddTraits(backend.active ? .isSelected : [])
                 }
             }
@@ -475,6 +477,7 @@ struct CapabilityToolsetDetailPage: View {
                     .scaledFont(.caption.weight(.semibold))
                     .buttonStyle(.borderless)
                     .tint(.conduitAccent)
+                    .disabled(!appState.canChangeCapabilities)
                     .accessibilityLabel(Text(verbatim: env.isSet ? AppLocalization.string("Replace \(env.key)") : AppLocalization.string("Add \(env.key)")))
                 }
             }
@@ -502,7 +505,7 @@ struct CapabilityToolsetDetailPage: View {
                         ) {
                             choose(provider, capability: capability)
                         }
-                        .disabled(working != nil)
+                        .disabled(working != nil || !appState.canChangeCapabilities)
                     }
                 }
             }
@@ -514,8 +517,17 @@ struct CapabilityToolsetDetailPage: View {
             CapabilityRowButton(title: AppLocalization.string("Use This Backend")) {
                 choose(provider, capability: nil)
             }
-            .disabled(working != nil)
+            .disabled(working != nil || !appState.canChangeCapabilities)
         }
+    }
+
+    /// The backends, and where the terminal runs, as the page showed them
+    /// last time on this dashboard and profile, while Hermes is asked again
+    /// (#1533); a read that fails keeps them.
+    private func showKept() {
+        let serves = store.serves(appState.currentCapabilitiesOwner)
+        config = serves ? store.keptToolsetConfig(name: name) : nil
+        backends = serves && name == "terminal" ? store.keptTerminalBackends() : nil
     }
 
     private func load() async {
@@ -555,7 +567,9 @@ struct CapabilityToolsetDetailPage: View {
                 if needsNous {
                     notice = AppLocalization.string("Sign in to Nous Portal on your host to use this backend.")
                 }
-                // A failed read keeps what's on screen.
+                // Shown as Hermes now holds it, as the kept answer is, so a
+                // failed read after it keeps the change on screen.
+                config = config?.choosing(provider.name, capability: capability)
                 let fresh = try? await store.toolsetConfig(name: name)
                 guard serves(owner) else { return }
                 if let fresh { config = fresh }
@@ -577,6 +591,8 @@ struct CapabilityToolsetDetailPage: View {
             do {
                 guard serves(owner) else { return }
                 try await store.selectTerminalBackend(backend.name)
+                guard serves(owner) else { return }
+                backends = backends.map { TerminalBackendOption.choosing(backend.name, in: $0) }
                 let fresh = try? await store.terminalBackends()
                 guard serves(owner) else { return }
                 if let fresh { backends = fresh }
@@ -596,9 +612,10 @@ struct CapabilityToolsetDetailPage: View {
         Task {
             do {
                 guard serves(owner) else { return }
-                try await store.saveKey(env.key, value: trimmed)
+                try await store.saveKey(env.key, value: trimmed, toolset: name)
                 Haptics.success()
-                // A failed read keeps what's on screen.
+                guard serves(owner) else { return }
+                config = config?.settingKey(env.key)
                 let fresh = try? await store.toolsetConfig(name: name)
                 guard serves(owner) else { return }
                 if let fresh { config = fresh }
