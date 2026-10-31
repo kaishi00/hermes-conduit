@@ -2277,6 +2277,19 @@ extension AppStateMultiDashboardTests {
         XCTAssertTrue(elsewhere.shownBotRoster.isEmpty, "Another dashboard's list")
     }
 
+    /// Desktop's group pictures ride in the kept roster up to the rooms'
+    /// picture budget, so large ones never cost the bots their kept copy.
+    func testTheKeptRosterCapsDesktopGroupPictures() {
+        let picture = Data(count: GroupRoomPictures.keptBytes - 10)
+        let groups = ["a", "b"].map {
+            DesktopGroupChat(key: "id:\($0)", name: $0, members: [], messages: [], omitted: 0, roomID: $0, imageData: picture)
+        }
+        let kept = KeptBotRoster(bots: [rosterBot("atlas")], desktopGroups: groups).cappingPictures()
+        XCTAssertEqual(kept.desktopGroups.map(\.name), ["a", "b"], "Every group stays")
+        XCTAssertEqual(kept.desktopGroups.map { $0.imageData != nil }, [true, false], "The picture over the budget doesn't")
+        XCTAssertEqual(kept.bots.map(\.name), ["atlas"])
+    }
+
     /// Hosted rooms and their pictures open as Hermes and the host listed
     /// them last time on this dashboard, until `groups.list` answers; the
     /// kept pictures then carry over, so only one whose revision moved is

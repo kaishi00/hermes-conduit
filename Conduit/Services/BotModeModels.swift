@@ -156,6 +156,25 @@ struct BotRosterSnapshot: Equatable {
 struct KeptBotRoster: Codable {
     var bots: [BotProfile]
     var desktopGroups: [DesktopGroupChat]
+
+    /// Desktop's group pictures up to the rooms' budget, the rest left
+    /// out: an answer over 2 MB isn't kept at all, so pictures never cost
+    /// the bots their kept copy.
+    func cappingPictures(to budget: Int = GroupRoomPictures.keptBytes) -> KeptBotRoster {
+        var bytes = 0
+        var capped = self
+        capped.desktopGroups = desktopGroups.map { group in
+            guard let data = group.imageData else { return group }
+            var group = group
+            if bytes + data.count <= budget {
+                bytes += data.count
+            } else {
+                group.imageData = nil
+            }
+            return group
+        }
+        return capped
+    }
 }
 
 enum BotRosterDecoder {

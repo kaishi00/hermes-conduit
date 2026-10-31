@@ -22228,7 +22228,7 @@ final class AppState: ObservableObject {
                     read = try await client.botRoster()
                 }
                 snapshot = read
-                return KeptBotRoster(bots: BotProfile.displayOrder(read.bots), desktopGroups: read.desktopGroups)
+                return KeptBotRoster(bots: BotProfile.displayOrder(read.bots), desktopGroups: read.desktopGroups).cappingPictures()
             }
             guard let snapshot, botModeStateIsCurrent(epoch: epoch, dashboardID: dashboardID) else { return }
             // The FULL roster is kept: sessions-list hygiene must know every
@@ -23105,6 +23105,7 @@ final class AppState: ObservableObject {
         allowed.insert(charactersIn: "-_.~")
         let encodedName = bot.name.addingPercentEncoding(withAllowedCharacters: allowed) ?? bot.name
         let dashboardID = activeDashboardID
+        let rosterOwner = currentDashboardRuntimeOwner()
         do {
             // The gateway waits up to 10 s for a running profile gateway to
             // stop before removing the directory.
@@ -23128,6 +23129,8 @@ final class AppState: ObservableObject {
             offlineChatCache.removeHeldRows(dashboardID: dashboardID, profile: bot.name)
             offlineChatCache.removeKeptAnswers(dashboardID: dashboardID, profile: bot.name)
         }
+        // And it leaves the roster kept there, its bridge rebuilt or not.
+        forgetKeptBot(bot.name, on: rosterOwner)
         guard dashboardTicketBridge === bridge else { return nil }
         sessionStars.forget(profile: bot.name)
         sessionStars.save(to: defaults)
@@ -23137,19 +23140,21 @@ final class AppState: ObservableObject {
             clearActiveConversation(replacement: .delete)
         }
         forgetHermesPicture(for: bot.name)
-        forgetKeptBot(bot.name)
         await refreshBotRosterAfterWrite()
         await loadProfiles()
         return nil
     }
 
-    /// Drops a deleted bot from the roster kept on this dashboard, as a
-    /// write, so the Bots list doesn't open on it if the read after the
-    /// delete fails.
-    private func forgetKeptBot(_ name: String) {
-        guard let owner = currentDashboardRuntimeOwner(),
-              var kept = keptAnswer(KeptRoute.botRoster, profile: KeptRoute.everyProfile, on: owner),
-              let bots = kept["bots"] as? [Any] else { return }
+    /// Drops a deleted bot from the roster kept on the dashboard it was
+    /// deleted from, as a write, so the Bots list doesn't open on it if the
+    /// read after the delete fails, nor keeps a read asked before it.
+    private func forgetKeptBot(_ name: String, on owner: DashboardRuntimeOwner?) {
+        guard let owner else { return }
+        guard var kept = keptAnswer(KeptRoute.botRoster, profile: KeptRoute.everyProfile, on: owner),
+              let bots = kept["bots"] as? [Any] else {
+            noteKeptAnswerWrite(for: KeptRoute.botRoster, profile: KeptRoute.everyProfile, owner: owner)
+            return
+        }
         kept["bots"] = bots.filter { ($0 as? [String: Any])?["name"] as? String != name }
         keepWrittenAnswer(kept, for: KeptRoute.botRoster, profile: KeptRoute.everyProfile, owner: owner, removals: offlineChatCache.removals)
     }
