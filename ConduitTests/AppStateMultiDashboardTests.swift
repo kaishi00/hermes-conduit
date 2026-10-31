@@ -1767,6 +1767,49 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(kept["agent.max_turns"], .number(90))
     }
 
+    /// A read asked before the phone wrote what it answers with, a forget
+    /// or a save, never puts its older answer back over the write; one
+    /// asked after it does replace it.
+    func testAReadAskedBeforeAWriteNeverPutsItsAnswerBack() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let client = appState.pulseClient
+        let items: [String: Any] = ["items": [
+            ["id": 1, "text": "Call Ann", "kind": "commitment"], ["id": 2, "text": "Book the flights", "kind": "commitment"],
+        ]]
+        let first = Task { try await client.memory() }
+        try await held.waitForRequests(1)
+        try await held.answer(items)
+        _ = try await first.value
+
+        let older = Task { try await client.memory() }
+        try await held.waitForRequests(2)
+        await appState.forgetKeptPulseMemoryItem(id: 1)
+        try await held.answer(items)
+        _ = try await older.value
+        XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Book the flights"], "Asked before the forget")
+
+        // A settings page's read, asked before a save, answers after it.
+        let load = Task { await appState.loadProfileSettings(keys: ["display.skin"]) }
+        try await held.waitForRequests(3)
+        let save = Task { await appState.setProfileSetting("display.skin", value: .text("slate")) }
+        try await held.waitForRequests(4)       // the save's config read
+        try await held.answer(["display": ["skin": "ares"]], at: 1)
+        try await held.waitForRequests(5)       // ... and its write
+        try await held.answer(at: 1)
+        let saved = await save.value
+        XCTAssertTrue(saved)
+        try await held.answer(["display": ["skin": "ares"]])
+        let shown = await load.value
+        XCTAssertEqual(shown["display.skin"], .text("ares"), "The page shows its read's answer")
+        XCTAssertEqual(appState.keptProfileSettings(keys: ["display.skin"])?["display.skin"], .text("slate"), "but the save stays kept")
+
+        let after = Task { await appState.loadProfileSettings(keys: ["display.skin"]) }
+        try await held.waitForRequests(6)
+        try await held.answer(["display": ["skin": "mono"]])
+        _ = await after.value
+        XCTAssertEqual(appState.keptProfileSettings(keys: ["display.skin"])?["display.skin"], .text("mono"), "Asked after the save")
+    }
+
     /// Pulse is one per host: its state is kept once per dashboard, from a
     /// read or a change that answers with it (a notification's Quiet for
     /// today too), and What Pulse remembers' list beside it, without what
@@ -1904,6 +1947,32 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(appState.keptModelProviders().first?.models.map(\.id), ["fast/model"])
         appState.setActiveProfileForTesting("work")
         XCTAssertTrue(appState.keptModelProviders().isEmpty, "Another profile's models")
+    }
+
+    /// A live voice mode's status line on Voice settings opens on what its
+    /// last check said, GPT-Live's per billing, for the dashboard and
+    /// profile that checked; a check from a dashboard left keeps nothing.
+    func testTheLiveVoiceStatusLinesOpenOnTheirLastCheck() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let grok = LiveVoiceStatusLine(text: "Available (grok-4, via SuperGrok)", isAvailable: true)
+        XCTAssertNil(appState.keptLiveVoiceStatus(.grokLive), "Nothing kept yet")
+        appState.liveVoiceStatusKeeper(.grokLive)(grok)
+        XCTAssertEqual(appState.keptLiveVoiceStatus(.grokLive), grok)
+        XCTAssertNil(appState.keptLiveVoiceStatus(.geminiLive), "Another mode's")
+
+        appState.liveVoiceStatusKeeper(.gptLive)(LiveVoiceStatusLine(text: "Available (gpt-realtime)", isAvailable: true))
+        XCTAssertEqual(appState.keptLiveVoiceStatus(.gptLive)?.text, "Available (gpt-realtime)")
+        appState.setGPTLiveBilling(.api)
+        XCTAssertNil(appState.keptLiveVoiceStatus(.gptLive), "The other billing's")
+        appState.setGPTLiveBilling(.subscription)
+
+        appState.setActiveProfileForTesting("work")
+        XCTAssertNil(appState.keptLiveVoiceStatus(.grokLive), "Another profile's")
+        appState.setActiveProfileForTesting("default")
+        let left = appState.liveVoiceStatusKeeper(.grokLive)
+        await appState.switchDashboard(to: vps.id)
+        left(LiveVoiceStatusLine(text: "Grok Live isn't set up", isAvailable: false))
+        XCTAssertNil(appState.keptLiveVoiceStatus(.grokLive), "Another dashboard's page")
     }
 
     /// A models read that fails keeps no split beside the period's new

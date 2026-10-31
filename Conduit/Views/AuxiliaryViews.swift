@@ -783,7 +783,9 @@ struct SettingsView: View {
                         saveCalls: appState.voiceCallSavingEnabled,
                         setSaveCalls: { appState.setVoiceCallSavingEnabled($0) },
                         speakerBargeIn: appState.liveVoiceSpeakerBargeInEnabled,
-                        setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) }
+                        setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) },
+                        keptStatus: appState.keptLiveVoiceStatus(.geminiLive),
+                        keepStatus: appState.liveVoiceStatusKeeper(.geminiLive)
                     ),
                     qwenLive: GeminiLiveSettingsModel(
                         enabled: appState.isQwenLiveEnabled,
@@ -809,7 +811,9 @@ struct SettingsView: View {
                         setSaveCalls: { appState.setVoiceCallSavingEnabled($0) },
                         speakerBargeIn: appState.liveVoiceSpeakerBargeInEnabled,
                         setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) },
-                        provider: .qwenLive
+                        provider: .qwenLive,
+                        keptStatus: appState.keptLiveVoiceStatus(.qwenLive),
+                        keepStatus: appState.liveVoiceStatusKeeper(.qwenLive)
                     ),
                     gptLive: GPTLiveSettingsModel(
                         enabled: appState.isGPTLiveEnabled,
@@ -847,7 +851,9 @@ struct SettingsView: View {
                         apiMaxMinutes: appState.gptLiveAPIMaxMinutes,
                         setAPIMaxMinutes: { appState.setGPTLiveAPIMaxMinutes($0) },
                         apiHermesCalls: appState.gptLiveAPIHermesCalls,
-                        setAPIHermesCalls: { appState.setGPTLiveAPIHermesCalls($0) }
+                        setAPIHermesCalls: { appState.setGPTLiveAPIHermesCalls($0) },
+                        keptStatus: appState.keptLiveVoiceStatus(.gptLive),
+                        keepStatus: appState.liveVoiceStatusKeeper(.gptLive)
                     ),
                     grokLive: GrokLiveSettingsModel(
                         enabled: appState.isGrokLiveEnabled,
@@ -868,7 +874,9 @@ struct SettingsView: View {
                         saveCalls: appState.voiceCallSavingEnabled,
                         setSaveCalls: { appState.setVoiceCallSavingEnabled($0) },
                         speakerBargeIn: appState.liveVoiceSpeakerBargeInEnabled,
-                        setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) }
+                        setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) },
+                        keptStatus: appState.keptLiveVoiceStatus(.grokLive),
+                        keepStatus: appState.liveVoiceStatusKeeper(.grokLive)
                     ),
                     localLive: LocalLiveSettingsModel(
                         enabled: appState.isLocalLiveEnabled,

@@ -1173,8 +1173,8 @@ final class OfflineChatCacheStore {
     /// The URL without its user and password (`https://user:key@host`) and
     /// a credential in its query (`?api_key=…`), or the text as it was.
     private static func withoutURLCredentials(_ text: String) -> String {
-        guard text.contains("://"), text.contains("@") || text.contains("?"),
-              var components = URLComponents(string: text) else { return text }
+        guard text.contains("://"), text.contains("@") || text.contains("?") else { return text }
+        guard var components = URLComponents(string: text) else { return withoutUnparsedURLCredentials(text) }
         let query = components.queryItems ?? []
         let keptQuery = query.filter { !isCredentialKey($0.name) }
         guard components.user != nil || components.password != nil || keptQuery.count < query.count else { return text }
@@ -1182,6 +1182,27 @@ final class OfflineChatCacheStore {
         components.password = nil
         if keptQuery.count < query.count { components.queryItems = keptQuery.isEmpty ? nil : keptQuery }
         return components.string ?? ""
+    }
+
+    /// A user and password after a `://`, up to the host's last `@`.
+    private static let unparsedUserInfo = try! NSRegularExpression(pattern: #"(?<=://)[^/?#\s]*@"#)
+    /// A query's name and value.
+    private static let unparsedQueryItem = try! NSRegularExpression(pattern: #"(?<=[?&])([^=&#\s]+)=([^&#\s]*)"#)
+
+    /// Text the URL parser rejects (a space in it, say) loses the same by
+    /// pattern: any user and password, and a credential's value in a
+    /// query, its name left.
+    private static func withoutUnparsedURLCredentials(_ text: String) -> String {
+        var kept = unparsedUserInfo.stringByReplacingMatches(
+            in: text, range: NSRange(text.startIndex..., in: text), withTemplate: ""
+        )
+        let items = unparsedQueryItem.matches(in: kept, range: NSRange(kept.startIndex..., in: kept))
+        for item in items.reversed() {
+            guard let name = Range(item.range(at: 1), in: kept), isCredentialKey(String(kept[name])),
+                  let value = Range(item.range(at: 2), in: kept) else { continue }
+            kept.removeSubrange(value)
+        }
+        return kept
     }
 
     /// Deletes a profile's kept answers on one dashboard, as its profile is

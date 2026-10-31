@@ -30,9 +30,10 @@ extension AppState {
         return PulseClient(dashboardID: dashboard) { [weak self] path, method, body in
             guard let self, self.activeDashboardID == dashboard,
                   let owner = self.currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }
+            // A step answers with the state it made.
             return try await self.keepingAnswer(
                 profile: KeptRoute.everyProfile, owner: owner,
-                keptAs: { PulseClient.keptRoute(path: path, method: method, answer: $0) }
+                keptAs: { PulseClient.keptRoute(path: path, method: method, answer: $0) }, writes: method != "GET"
             ) {
                 try await owner.bridge.requestJSON(path: path, method: method, body: body)
             }
@@ -52,12 +53,15 @@ extension AppState {
     }
 
     /// Takes an item Pulse forgot out of the kept list too, so the list
-    /// never opens on it, even when reading it again fails.
+    /// never opens on it, even when reading it again fails, or when a read
+    /// asked before the forget answers after it.
     func forgetKeptPulseMemoryItem(id: Int) async {
         guard var kept = keptAnswer(PulseClient.memoryPath, profile: KeptRoute.everyProfile),
               let owner = currentDashboardRuntimeOwner() else { return }
         kept["items"] = (kept["items"] as? [Any] ?? []).filter { PulseMemoryItem(json: $0)?.id != id }
-        _ = try? await keepingAnswer(profile: KeptRoute.everyProfile, owner: owner, keptAs: { _ in PulseClient.memoryPath }) {
+        _ = try? await keepingAnswer(
+            profile: KeptRoute.everyProfile, owner: owner, keptAs: { _ in PulseClient.memoryPath }, writes: true
+        ) {
             kept
         }
     }
@@ -188,7 +192,7 @@ extension AppState {
             // Kept as Pulse's own steps are, so Settings > Pulse opens on the quiet it set.
             let response = try await keepingAnswer(
                 profile: KeptRoute.everyProfile, owner: owner,
-                keptAs: { PulseClient.keptRoute(path: PulseClient.path, method: "PUT", answer: $0) }
+                keptAs: { PulseClient.keptRoute(path: PulseClient.path, method: "PUT", answer: $0) }, writes: true
             ) {
                 try await owner.bridge.requestJSON(path: PulseClient.path, method: "PUT",
                                                    body: ["quiet_until": "today"], timeoutMilliseconds: timeoutMilliseconds)

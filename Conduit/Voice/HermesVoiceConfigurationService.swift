@@ -128,9 +128,10 @@ struct VoiceConfigurationSnapshot: Equatable {
 struct VoiceKeptAnswers {
     /// The answer kept for a route, or nil.
     let kept: @MainActor (_ route: String) -> [String: Any]?
-    /// Runs a read, or a save answering with the config it wrote, and keeps
-    /// its answer for the route.
-    let keep: @MainActor (_ route: String, _ read: () async throws -> [String: Any]) async throws -> [String: Any]
+    /// Runs a read, or a save answering with the config it wrote
+    /// (`writes`), and keeps its answer for the route, unless an answer
+    /// newer than it is kept by then.
+    let keep: @MainActor (_ route: String, _ writes: Bool, _ read: () async throws -> [String: Any]) async throws -> [String: Any]
 }
 
 /// A small adapter protocol makes the schema/config parser deterministic in
@@ -171,6 +172,13 @@ final class HermesVoiceConfigurationService: ObservableObject {
 
     /// A read is out, or none has ended: Hermes is still to say.
     var isChecking: Bool { isLoading || answered == nil }
+
+    /// Hermes is still to say which keys are set: `/api/env` is never
+    /// kept, so a page opened on its kept answers doesn't know, and a read
+    /// of it that fails leaves it unknown. A key row offers no field until
+    /// it says, since a key Hermes holds would be written over unseen
+    /// (#1533).
+    var awaitsKeys: Bool { !snapshot.environmentLoaded }
 
     private let requester: VoiceConfigurationRequesting
     private let answers: VoiceKeptAnswers?
@@ -602,17 +610,20 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// Saves the whole config. What it wrote is what the page opens on
     /// next, kept on the phone, as the other settings pages' saves are.
     private func putConfig(_ config: [String: Any]) async throws {
-        _ = try await keeping(KeptRead.config) {
+        _ = try await keeping(KeptRead.config, writes: true) {
             _ = try await requester.requestJSON(path: profilePath("/api/config"), method: "PUT", body: ["config": config])
             return config
         }
     }
 
     /// Runs `read` and keeps its answer for the route, so the page opens on
-    /// it next time (#1533).
-    private func keeping(_ route: String, _ read: () async throws -> [String: Any]) async throws -> [String: Any] {
+    /// it next time (#1533); `writes` for a save answering with what it
+    /// wrote.
+    private func keeping(
+        _ route: String, writes: Bool = false, _ read: () async throws -> [String: Any]
+    ) async throws -> [String: Any] {
         guard let answers else { return try await read() }
-        return try await answers.keep(route, read)
+        return try await answers.keep(route, writes, read)
     }
 
     private func profilePath(_ path: String) -> String {

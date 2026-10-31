@@ -3240,7 +3240,8 @@ extension OfflineChatCacheTests {
     /// endpoint's API key, an MCP server's token and Authorization header,
     /// a fallback's key, a provider's secret key, key list, credentials,
     /// passphrase, bare auth or key, and a URL's user and password or a
-    /// credential in its query), and keep settings that only mention them.
+    /// credential in its query, in text the URL parser rejects too), and
+    /// keep settings that only mention them.
     func testAKeptAnswersFileLeavesOutCredentials() throws {
         let store = makeStore()
         let dashboard = UUID()
@@ -3281,11 +3282,13 @@ extension OfflineChatCacheTests {
             "limits": [["name": "max_tokens", "value": 4096], ["key": "max_tokens", "value": 4096], ["name": "API_TOKEN", "value": "t-28"]],
             // Hermes' row for a variable says only whether it's set, by its name.
             "env_vars": [["key": "ELEVENLABS_API_KEY", "is_set": true, "prompt": "ElevenLabs", "value": "sk-24"]],
+            // Text the URL parser rejects loses them too.
+            "notes": "see https://ann:pw-29@docs.example/a b?api_key=sk-30&page=2 for more",
         ]
         let secrets = [
             "sk-live-1", "ghp-2", "Bearer three", "key-4", "sk-fallback-5", "sk-6", "k-7", "k-8",
             "p-9", "pp-10", "a-11", "k-12", "cs-13", "pw-14", "sk-15", "ssh-16", "Basic 17", "c-18", "h-19",
-            "t-20", "t-21", "Bearer 22", "sk-23", "sk-24", "sk-25", "t-26", "t-27", "t-28",
+            "t-20", "t-21", "Bearer 22", "sk-23", "sk-24", "sk-25", "t-26", "t-27", "t-28", "pw-29", "sk-30",
         ]
 
         store.recordAnswer(config, route: AppState.KeptRoute.config, dashboardID: dashboard, profile: "default")
@@ -3316,6 +3319,7 @@ extension OfflineChatCacheTests {
             ] as NSDictionary,
             "URLs without their user or a key in their query, true or false and numbers that only mention them, and a name that only starts like auth"
         )
+        XCTAssertEqual((kept["notes"] as? String)?.contains("docs.example"), true, "Text the parser rejects keeps the rest")
         XCTAssertEqual(kept["extra_headers"] as? [[String: String]], [["name": "Authorization"], ["name": "Accept", "value": "json"]])
         XCTAssertEqual(
             (kept["limits"] as? [[String: Any]])?.map { NSDictionary(dictionary: $0) },

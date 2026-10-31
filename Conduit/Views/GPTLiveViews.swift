@@ -35,6 +35,10 @@ struct GPTLiveSettingsModel {
     /// Whether calls Hermes places may run on the API key.
     var apiHermesCalls: Bool = false
     var setAPIHermesCalls: (Bool) -> Void = { _ in }
+    /// The status line as its last check of this billing said, kept on the
+    /// phone (#1533).
+    var keptStatus: LiveVoiceStatusLine? = nil
+    var keepStatus: (LiveVoiceStatusLine) -> Void = { _ in }
 }
 
 struct GPTLiveSettingsSection: View {
@@ -72,6 +76,8 @@ struct GPTLiveSettingsSection: View {
         _apiVoice = State(initialValue: model.apiVoice ?? "")
         _apiMaxMinutes = State(initialValue: model.apiMaxMinutes)
         _apiHermesCalls = State(initialValue: model.apiHermesCalls)
+        _status = State(initialValue: model.keptStatus?.text)
+        _isAvailable = State(initialValue: model.keptStatus?.isAvailable)
     }
 
     private var billingChoices: [(id: GPTLiveBilling, title: String)] {
@@ -296,16 +302,19 @@ struct GPTLiveSettingsSection: View {
         defer { isChecking = false }
         switch await model.checkAvailability() {
         case .success(let availability):
-            isAvailable = availability.isAvailable
+            let line: String
             switch availability {
             // The host reports its own voice; a voice chosen here overrides it.
             case .available(let modelName, let hostVoice?) where (billing == .api ? apiVoice : voice).isEmpty:
-                status = AppLocalization.string("Available (\(modelName), voice \(hostVoice))")
+                line = AppLocalization.string("Available (\(modelName), voice \(hostVoice))")
             case .available(let modelName, _):
-                status = AppLocalization.string("Available (\(modelName))")
+                line = AppLocalization.string("Available (\(modelName))")
             default:
-                status = availability.userFacingReason
+                line = availability.userFacingReason
             }
+            status = line
+            isAvailable = availability.isAvailable
+            model.keepStatus(LiveVoiceStatusLine(text: line, isAvailable: availability.isAvailable))
         case .failure(let error):
             isAvailable = false
             status = UserFacingError.message(for: error)
