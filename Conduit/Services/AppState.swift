@@ -166,11 +166,15 @@ struct ChatResumeLifecycleOperations {
     /// cwd in, the created ids out. Not an init parameter: tests set it on
     /// the value.
     var createSession: (@MainActor (HermesClient, String?) async throws -> BranchResult)?
-    /// Test seams for the bot editor's reads, client and profile in: its
-    /// `profiles.describe`, and its MCP page's `mcp.catalog` with
-    /// `mcp.servers.list`. Not init parameters either.
+    /// Test seams for the bot editor, client and profile in: its
+    /// `profiles.describe`, its MCP page's `mcp.catalog` and
+    /// `mcp.servers.list`, and a save's skills, tools and MCP sections
+    /// (`profiles.configure`, the sections in, Hermes' answer out). Not init
+    /// parameters either.
     var describeBotProfile: (@MainActor (HermesClient, String) async throws -> BotProfileDetails)?
-    var botMcpSetup: (@MainActor (HermesClient, String) async throws -> BotMcpSetupSnapshot)?
+    var botMcpCatalog: (@MainActor (HermesClient, String) async throws -> [BotMcpCatalogEntry])?
+    var botMcpServers: (@MainActor (HermesClient, String) async throws -> [BotMcpServerSummary])?
+    var configureBotSections: (@MainActor (HermesClient, String, [String: Any]) async throws -> AnyCodable)?
 
     init(
         connectClient: (@MainActor (HermesClient) async throws -> Void)? = nil,
@@ -22480,15 +22484,43 @@ final class AppState: ObservableObject {
     /// list.
     func loadBotMcpSetup(profile: String) async -> BotMcpSetupSnapshot? {
         guard let client, isConnected else { return nil }
-        return try? await keepingRead(as: KeptRoute.botMcpSetup, profile: profile, owner: currentDashboardRuntimeOwner()) {
-            if let read = self.chatResumeLifecycleOperations.botMcpSetup { return try await read(client, profile) }
-            let catalog = try await client.botMcpCatalog(profile: profile)
-            let servers = (try? await client.botMcpServers(profile: profile)) ?? []
+        let operations = chatResumeLifecycleOperations
+        // A servers list that failed isn't the bot's servers: the read then
+        // keeps nothing, and the page shows Hermes' catalog with the
+        // sign-ins kept last time, as a read that failed whole keeps them.
+        var serversRead = true
+        let answer = try? await keepingRead(
+            as: KeptRoute.botMcpSetup,
+            profile: profile,
+            owner: currentDashboardRuntimeOwner(),
+            keeps: { _ in serversRead }
+        ) {
+            let catalog: [BotMcpCatalogEntry]
+            if let read = operations.botMcpCatalog {
+                catalog = try await read(client, profile)
+            } else {
+                catalog = try await client.botMcpCatalog(profile: profile)
+            }
+            var servers: [BotMcpServerSummary] = []
+            do {
+                if let read = operations.botMcpServers {
+                    servers = try await read(client, profile)
+                } else {
+                    servers = try await client.botMcpServers(profile: profile)
+                }
+            } catch {
+                serversRead = false
+            }
             return BotMcpSetupSnapshot(
                 catalog: catalog,
                 servers: Dictionary(servers.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
             )
         }
+        guard var setup = answer else { return nil }
+        if !serversRead {
+            setup.servers = keptBotMcpSetup(profile: profile)?.servers ?? [:]
+        }
+        return setup
     }
 
     /// What `loadBotMcpSetup` kept for the bot on this dashboard.
@@ -23093,7 +23125,12 @@ final class AppState: ObservableObject {
         // only once the editor loaded them from the bot itself.
         if !capabilitySections.isEmpty {
             do {
-                let result = try await client.configureBotProfile(name: bot.name, sections: capabilitySections)
+                let result: AnyCodable
+                if let configure = chatResumeLifecycleOperations.configureBotSections {
+                    result = try await configure(client, bot.name, capabilitySections)
+                } else {
+                    result = try await client.configureBotProfile(name: bot.name, sections: capabilitySections)
+                }
                 let sections = BotCapabilities.appliedSections(for: capabilitySections)
                 let failed = BotConfigureSections.failed(in: result, among: sections)
                 if !failed.isEmpty {
@@ -33822,6 +33859,7 @@ final class AppState: ObservableObject {
         as route: String,
         profile: String,
         owner: DashboardRuntimeOwner?,
+        keeps: (Kept) -> Bool = { _ in true },
         _ read: () async throws -> Kept
     ) async throws -> Kept {
         guard let owner else { return try await read() }
@@ -33829,7 +33867,8 @@ final class AppState: ObservableObject {
         _ = try await keepingAnswer(profile: profile, owner: owner, keptAs: { $0.isEmpty ? nil : route }) {
             let value = try await read()
             kept = value
-            return Self.keptJSON(value) ?? [:]
+            // A read only partly Hermes' answer (`keeps` says) keeps nothing.
+            return keeps(value) ? Self.keptJSON(value) ?? [:] : [:]
         }
         guard let kept else { throw CancellationError() }
         return kept

@@ -2419,7 +2419,9 @@ extension AppStateMultiDashboardTests {
         let hermes = BotEditorHermes(details: details, setup: setup)
         var operations = ChatResumeLifecycleOperations()
         operations.describeBotProfile = { _, profile in try await hermes.describe(profile) }
-        operations.botMcpSetup = { _, _ in try hermes.mcpSetup() }
+        operations.botMcpCatalog = { _, _ in try hermes.mcpCatalog() }
+        operations.botMcpServers = { _, _ in try hermes.mcpServers() }
+        operations.configureBotSections = { _, _, sections in hermes.configure(sections) }
         func editorAppState(cache: OfflineChatCacheStore? = nil) -> AppState {
             AppState(
                 defaults: defaults,
@@ -2467,6 +2469,18 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(next.keptBotDetails(atlas), details)
         XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas"), setup)
 
+        // So does a servers list that fails alone: the page gets Hermes'
+        // catalog with the sign-ins kept last time, and nothing is kept.
+        hermes.fails = false
+        hermes.serversFail = true
+        hermes.catalog = [BotMcpCatalogEntry(name: "notion", description: "Docs", requires: [], installed: false)]
+        let partly = await next.loadBotMcpSetup(profile: "atlas")
+        XCTAssertEqual(partly?.catalog, hermes.catalog)
+        XCTAssertEqual(partly?.servers, setup.servers, "The sign-ins kept last time, not none")
+        XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas"), setup, "Nothing kept from a read whose servers failed")
+        hermes.serversFail = false
+        hermes.catalog = setup.catalog
+
         // A write Hermes took is kept over a read asked before it: here a
         // SOUL and the MCP section of a save whose other sections failed.
         hermes.fails = false
@@ -2497,6 +2511,22 @@ extension AppStateMultiDashboardTests {
             $0.catalog = []
         }
         XCTAssertNil(next.keptBotMcpSetup(profile: "nova"))
+
+        // A save whose tools section Hermes turned down keeps the MCP
+        // section it took, and the tools as they were.
+        hermes.applied = ["toolsets": false, "mcp_servers": true]
+        var draft = BotEditorDraft(name: "Atlas", description: written.description, soul: written.soul, color: atlas.appearanceColor)
+        draft.capabilities = BotCapabilities(
+            skills: written.capabilities.skills,
+            toolsets: [BotCapability(name: "web", label: "Web", toolCount: 3, enabled: false)],
+            mcpServers: [BotCapability(name: "github_token", enabled: false)]
+        )
+        _ = await next.updateBot(atlas, draft: draft, loadedDetails: written)
+        XCTAssertEqual(hermes.configured, [["enabled_mcp_servers", "enabled_toolsets"]], "One write, both sections in it")
+        let saved = try XCTUnwrap(next.keptBotDetails(atlas))
+        XCTAssertEqual(saved.capabilities.mcpServers, draft.capabilities?.mcpServers)
+        XCTAssertEqual(saved.capabilities.toolsets, written.capabilities.toolsets, "The section Hermes turned down stays")
+        XCTAssertEqual(saved.soul, written.soul)
     }
 
     /// Hosted rooms and their pictures open as Hermes and the host listed
@@ -2699,15 +2729,23 @@ extension AppStateMultiDashboardTests {
 @MainActor
 private final class BotEditorHermes {
     let details: BotProfileDetails
-    let setup: BotMcpSetupSnapshot
+    var catalog: [BotMcpCatalogEntry]
+    let servers: [BotMcpServerSummary]
     var fails = false
+    /// `mcp.servers.list` fails while `mcp.catalog` answers.
+    var serversFail = false
     var holds = false
+    /// What `profiles.configure` says it applied, by section.
+    var applied: [String: Bool] = [:]
     private(set) var asked: [String] = []
+    /// The section keys of each `profiles.configure`, sorted.
+    private(set) var configured: [[String]] = []
     private var held: CheckedContinuation<Void, Never>?
 
     init(details: BotProfileDetails, setup: BotMcpSetupSnapshot) {
         self.details = details
-        self.setup = setup
+        catalog = setup.catalog
+        servers = setup.servers.values.sorted { $0.name < $1.name }
     }
 
     var isHolding: Bool { held != nil }
@@ -2723,9 +2761,19 @@ private final class BotEditorHermes {
         return details
     }
 
-    func mcpSetup() throws -> BotMcpSetupSnapshot {
+    func mcpCatalog() throws -> [BotMcpCatalogEntry] {
         if fails { throw URLError(.notConnectedToInternet) }
-        return setup
+        return catalog
+    }
+
+    func mcpServers() throws -> [BotMcpServerSummary] {
+        if fails || serversFail { throw URLError(.notConnectedToInternet) }
+        return servers
+    }
+
+    func configure(_ sections: [String: Any]) -> AnyCodable {
+        configured.append(sections.keys.sorted())
+        return .object(["applied": .object(applied.mapValues { .bool($0) })])
     }
 
     func release() {

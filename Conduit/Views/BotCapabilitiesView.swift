@@ -29,6 +29,7 @@ struct BotCapabilitiesView: View {
     /// The catalog and sign-ins shown are Hermes' last answer, until it
     /// answers again: Add and Sign In wait for it.
     @State private var mcpSetupKept = false
+    @State private var mcpSetupReading = false
     /// The server being added or signed in.
     @State private var mcpBusy: String?
     @State private var mcpNotice: MCPNotice?
@@ -121,6 +122,16 @@ struct BotCapabilitiesView: View {
                     Text(AppLocalization.string("Add servers from Hermes' catalog in Edit Bot, once the bot is made."))
                 } else if mcpSetup == nil && mcpSetupRead {
                     Text(AppLocalization.string("Add new MCP servers from Hermes on your computer."))
+                } else if mcpSetupKept && mcpSetupRead {
+                    // Hermes didn't answer: Add and Sign In wait over the
+                    // kept catalog until it does.
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(AppLocalization.string("Add new MCP servers from Hermes on your computer."))
+                        Button(AppLocalization.string("Try Again")) {
+                            Task { await readMcpSetup() }
+                        }
+                        .disabled(mcpSetupReading)
+                    }
                 }
             }
             if let mcpSetup, !offeredServers(mcpSetup).isEmpty {
@@ -148,16 +159,8 @@ struct BotCapabilitiesView: View {
             mcpSetupKept = mcpSetup != nil
         }
         .task {
-            guard let mcpProfile, !mcpSetupRead else { return }
-            let read = await appState.loadBotMcpSetup(profile: mcpProfile)
-            // Cut off by leaving the page: it reads again when it shows.
-            guard !Task.isCancelled else { return }
-            // A read that fails keeps the kept setup up.
-            if read != nil || !mcpSetupKept {
-                mcpSetup = read
-                mcpSetupKept = false
-            }
-            mcpSetupRead = true
+            guard !mcpSetupRead else { return }
+            await readMcpSetup()
         }
         .sheet(item: $keysEntry) { entry in
             BotMcpKeysSheet(entry: entry) { keys in add(entry, keys: keys) }
@@ -180,6 +183,21 @@ struct BotCapabilitiesView: View {
     /// Add and Sign In write to Hermes at once: only over Hermes' own
     /// lists and catalog.
     private var canSetUpServers: Bool { editable && !mcpSetupKept }
+
+    private func readMcpSetup() async {
+        guard let mcpProfile, !mcpSetupReading else { return }
+        mcpSetupReading = true
+        let read = await appState.loadBotMcpSetup(profile: mcpProfile)
+        mcpSetupReading = false
+        // Cut off by leaving the page: it reads again when it shows.
+        guard !Task.isCancelled else { return }
+        // A read that fails keeps the kept setup up.
+        if read != nil || !mcpSetupKept {
+            mcpSetup = read
+            mcpSetupKept = false
+        }
+        mcpSetupRead = true
+    }
 
     private func offeredServers(_ setup: BotMcpSetupSnapshot) -> [BotMcpCatalogEntry] {
         BotMcpSetup.offered(setup.catalog, configured: capabilities.mcpServers.map(\.name))
