@@ -2224,7 +2224,7 @@ README.md's Capabilities line
 - Whether a list read can overwrite a flip in the bot editor's lists hasn't been checked.
 - The Kanban skill picker says "No skills match." when it withholds another dashboard's skills, the same as a search miss.
 
-**Checked:** 2026-10-31, #1574 (connector tests outlive the page that started them; Edit Server); 2026-10-24, at #1219 and #1222.
+**Checked:** 2026-10-31, #1578 (edited number arguments stay numbers; a renamed server shows after a failed reload); 2026-10-31, #1574 (connector tests outlive the page that started them; Edit Server); 2026-10-24, at #1219 and #1222.
 
 ## Reply progress signals
 
