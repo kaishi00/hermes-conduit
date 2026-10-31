@@ -737,6 +737,10 @@ struct ConnectorEditSheet: View {
                         Text(verbatim: loadError)
                             .scaledFont(.footnote)
                             .foregroundStyle(.red)
+                        Button("Try Again") {
+                            self.loadError = nil
+                            Task { await load() }
+                        }
                     }
                 } else if let edit = Binding($edit) {
                     content(edit)
