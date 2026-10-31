@@ -652,6 +652,9 @@ enum ReadChatHint {
         return note
     }
 
+    /// Trusted as the extension's own: it drops any note a push arrives
+    /// with and writes one only on a push it verified. A push that skipped
+    /// the extension could carry one, which only clears; taps verify.
     static func read(_ userInfo: [AnyHashable: Any]) -> [String: Any]? {
         guard let note = userInfo[userInfoKey] as? [String: Any], note["session_id"] is String else { return nil }
         return note
