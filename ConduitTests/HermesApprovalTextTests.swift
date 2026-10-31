@@ -51,6 +51,9 @@ extension NotificationCopyTests {
                        "arbitrary program execution via find -exec rm")
         XCTAssertEqual(HermesApprovalText.command("rm -rf build"), "rm -rf build")
         XCTAssertEqual(HermesApprovalText.command("<write to >"), "<write to >")
+        XCTAssertEqual(HermesApprovalText.command("<write to a> && rm -rf ~ #>"), "<write to a> && rm -rf ~ #>")
+        XCTAssertEqual(HermesApprovalText.description("Codex requests exec in production, not staging"),
+                       "Codex requests exec in production, not staging")
     }
 
     func testApprovalNotificationBodyFollowsTheAppLanguage() {

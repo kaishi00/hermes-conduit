@@ -49,7 +49,7 @@ enum HermesApprovalText {
         if let action = between(trimmed, "Allow computer_use to perform `", "`?"), isName(action) {
             return AppLocalization.string("Allow computer_use to perform `\(action)`?")
         }
-        if let directory = between(trimmed, "Codex requests exec in ", ""), !directory.contains(where: \.isNewline) {
+        if let directory = between(trimmed, "Codex requests exec in ", ""), isPath(directory) || isName(directory) {
             return AppLocalization.string("Codex requests exec in \(directory)")
         }
         if trimmed == "Hermes needs your approval. Open Conduit for details." {
@@ -70,7 +70,13 @@ enum HermesApprovalText {
     /// stands for the write in the App Language; a real command is data and
     /// comes back as sent.
     static func command(_ text: String) -> String {
-        guard let targets = between(text, "<write to ", ">") else { return text }
+        // Only the gate's own shape, names joined by ", ": anything else in
+        // it is a real command and shows as sent.
+        guard let targets = between(text, "<write to ", ">"),
+              targets.components(separatedBy: ", ").allSatisfy({ target in
+                  isName(target) && !target.contains(where: { "<>|;&'\"$,".contains($0) })
+              })
+        else { return text }
         return AppLocalization.string("<write to \(targets)>")
     }
 
@@ -86,6 +92,15 @@ enum HermesApprovalText {
     /// requires approval for deleting the cache") isn't one of its texts.
     private static func isName(_ text: String) -> Bool {
         !text.isEmpty && !text.unicodeScalars.contains { CharacterSet.whitespacesAndNewlines.contains($0) || $0 == "`" }
+    }
+
+    /// A directory Codex names: absolute, home-relative or a Windows drive,
+    /// on one line (it may hold spaces).
+    private static func isPath(_ text: String) -> Bool {
+        guard !text.contains(where: \.isNewline) else { return false }
+        if text.hasPrefix("/") || text.hasPrefix("~") { return true }
+        let scalars = Array(text.unicodeScalars.prefix(3))
+        return scalars.count == 3 && CharacterSet.letters.contains(scalars[0]) && scalars[1] == ":" && (scalars[2] == "\\" || scalars[2] == "/")
     }
 
     /// The two names in a text of the shape prefix, first, middle, second,
