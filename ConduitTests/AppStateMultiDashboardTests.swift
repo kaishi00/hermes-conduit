@@ -2493,6 +2493,15 @@ extension AppStateMultiDashboardTests {
         XCTAssertFalse(next.capabilitiesAreKept, "Hermes' answer")
         XCTAssertEqual(next.toolsets.first?.enabled, false)
 
+        // No toolsets is a Hermes still loading its plugins: shown as Hermes
+        // gave it, but not kept over the toolsets kept before.
+        let loading = Task { await next.loadCapabilities() }
+        try await answerCapabilityLists(nextHeld, after: 5, skills: sqlOn, toolsets: [])
+        _ = await loading.value
+        XCTAssertTrue(next.toolsets.isEmpty)
+        let keptToolsets = cache.keptAnswer(AppState.KeptRoute.toolsets, dashboardID: mac.id, profile: "default")?["_array"] as? [[String: Any]]
+        XCTAssertEqual(keptToolsets?.compactMap { $0["name"] as? String }, ["web"])
+
         let elsewhere = rosterAppState(SavedDashboardRegistry(activeDashboardID: vps.id, dashboards: [mac, vps]), cache: cache)
         elsewhere.showKeptCapabilities()
         XCTAssertTrue(elsewhere.skills.isEmpty, "Another dashboard's lists")

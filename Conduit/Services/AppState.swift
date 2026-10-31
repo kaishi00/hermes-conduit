@@ -32569,7 +32569,7 @@ final class AppState: ObservableObject {
         guard let runtime = currentDashboardRuntimeOwner() else { return .unavailable(profile: profile) }
         // Kept for Capabilities to open on next time (#1533).
         async let skillsResult = readKeepingAnswer(KeptRoute.skills, profile: profile, owner: runtime)
-        async let toolsetsResult = readKeepingAnswer(KeptRoute.toolsets, profile: profile, owner: runtime)
+        async let toolsetsResult = readKeepingToolsets(profile: profile, owner: runtime)
         // Commit gate: this exact request must still be the newest one AND
         // target the still-active dashboard and profile (A -> B -> A stale
         // commits rejected).
@@ -32796,7 +32796,7 @@ final class AppState: ObservableObject {
         toolCatalogLoading.insert(key)
         defer { toolCatalogLoading.remove(key) }
         // The answer Capabilities' Tools tab opens on, kept for it too.
-        guard let response = try? await readKeepingAnswer(KeptRoute.toolsets, profile: activeProfile, owner: owner) else { return }
+        guard let response = try? await readKeepingToolsets(profile: activeProfile, owner: owner) else { return }
         let toolsets = (response["_array"] as? [Any] ?? []).compactMap(decodeCapabilityToolset)
         adoptToolCatalog(ToolCatalog(toolsets: toolsets), key: key)
     }
@@ -33670,6 +33670,20 @@ final class AppState: ObservableObject {
     func readKeepingAnswer(_ route: String, profile: String, owner: DashboardRuntimeOwner) async throws -> [String: Any] {
         try await keepingAnswer(profile: profile, owner: owner, keptAs: { _ in route }) {
             try await owner.bridge.requestJSON(path: dashboardPath(route, profile: profile))
+        }
+    }
+
+    /// The toolsets, read and kept as `readKeepingAnswer` does unless
+    /// Hermes lists none: a Hermes still loading its plugins answers an
+    /// empty list, which the chat's tool catalog refuses too
+    /// (adoptToolCatalog), and the Tools tab would open on nothing.
+    private func readKeepingToolsets(profile: String, owner: DashboardRuntimeOwner) async throws -> [String: Any] {
+        try await keepingAnswer(
+            profile: profile,
+            owner: owner,
+            keptAs: { ($0["_array"] as? [Any])?.isEmpty == false ? KeptRoute.toolsets : nil }
+        ) {
+            try await owner.bridge.requestJSON(path: dashboardPath(KeptRoute.toolsets, profile: profile))
         }
     }
 

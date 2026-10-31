@@ -972,15 +972,20 @@ extension KanbanTests {
         try await third.removePlugin(third.plugins[0])
         XCTAssertEqual((kept.saved[CapabilitiesStore.KeptRoute.plugins]?["plugins"] as? [Any])?.count, 0)
 
-        // A connector install counts as a write to the servers and the
-        // catalog, so a read asked before it isn't kept after it, even when
-        // the read after it fails.
+        // A connector install counts as a write to the servers, so a read
+        // asked before it isn't kept after it, and marks the kept catalog's
+        // entry installed, so when the read after it fails, the catalog
+        // doesn't offer it again next time.
         let notion = try XCTUnwrap(third.connectorCatalog.first { $0.name == "notion" })
         hermes.responses["/api/mcp/catalog/install"] = ["ok": true]
         hermes.responses["/api/mcp/servers"] = nil
         let installed = await third.installConnector(notion, env: [:])
         XCTAssertTrue(installed)
-        XCTAssertEqual(Array(kept.noted.suffix(2)), [CapabilitiesStore.KeptRoute.servers, CapabilitiesStore.KeptRoute.connectorCatalog])
+        XCTAssertEqual(kept.noted.last, CapabilitiesStore.KeptRoute.servers)
+        XCTAssertEqual(kept.written.last, CapabilitiesStore.KeptRoute.connectorCatalog)
+        let reopened = CapabilitiesStore()
+        reopened.configure(requester: nil, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertEqual(reopened.connectorCatalog.first { $0.name == "notion" }?.installed, true)
     }
 
     /// A kept list reads again after a switch Hermes refused, and its

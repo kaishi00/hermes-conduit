@@ -730,9 +730,13 @@ final class CapabilitiesStore {
                 }
             }
             // Its row comes with Hermes' answer: a read asked before the
-            // install isn't kept after it.
+            // install isn't kept after it. The kept catalog marks it
+            // installed, as a removal unmarks it, so a read after it that
+            // fails doesn't offer it again next time.
             answers?.noteWrite(KeptRoute.servers)
-            answers?.noteWrite(KeptRoute.connectorCatalog)
+            await keepChange(KeptRoute.connectorCatalog, list: "entries", field: "installed", to: true, in: answers) {
+                $0["name"] as? String == entry.name
+            }
             guard token == generation else { return false }
             connectorInstalls[entry.name] = nil
             let wasKept = showsKept.contains(.connectors)
