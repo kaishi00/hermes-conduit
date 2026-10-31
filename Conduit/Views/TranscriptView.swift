@@ -454,6 +454,7 @@ final class TranscriptCollectionView: UICollectionView, TranscriptScrollSurface 
     var insetTop: CGFloat { adjustedContentInset.top }
     var insetBottom: CGFloat { adjustedContentInset.bottom }
     var reservedContentHeight: CGFloat { transcriptLayout?.appliedReserve ?? 0 }
+    var rowsHeight: CGFloat { transcriptLayout?.rowsHeight ?? contentSize.height }
 
     func setContentOffsetY(_ y: CGFloat, animated: Bool) {
         let target = CGPoint(x: contentOffset.x, y: y)

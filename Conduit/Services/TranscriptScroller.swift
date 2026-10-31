@@ -19,6 +19,8 @@ protocol TranscriptScrollSurface: AnyObject {
     /// The least content height the layout's last pass gave the transcript:
     /// what `reserveContentHeight` asked for, once a pass has taken it.
     var reservedContentHeight: CGFloat { get }
+    /// The rows' own height, without the room: where the last row ends.
+    var rowsHeight: CGFloat { get }
     /// Reports back through `TranscriptScroller.surfaceScrolled` before it
     /// returns, as UIKit does. A write under a finger or during a fling
     /// leaves it moving from the new offset, as setting UIKit's
@@ -473,6 +475,7 @@ final class TranscriptScroller: ObservableObject {
         // it left them on.
         if mode == .browsing, writeDepth == 0 {
             captureAnchor(on: surface)
+            dropReplyRoomOutOfSight(on: surface)
         }
         if mode != .following {
             refreshTopVisibleRow(persist: mode == .browsing)
@@ -1286,6 +1289,20 @@ final class TranscriptScroller: ObservableObject {
         ChatViewportTrace.shared.log(String(format: "replyRoom minContentHeight %.1f", height))
         replyRoomHeight = height
         surface?.reserveContentHeight(height)
+    }
+
+    /// The reader scrolled away from a stop with room under it, far enough
+    /// that none of the room shows: it goes, so coming back down ends at
+    /// the reply's last row above the composer, not at the stop over empty
+    /// space left from before (issue 1546). Nothing on screen moves: the
+    /// content shrinks only below what the reader sees. The hold stays
+    /// armed, so a reply still streaming stops at its start once it
+    /// outgrows the screen.
+    private func dropReplyRoomOutOfSight(on surface: TranscriptScrollSurface) {
+        guard replyRoomArmed, surface.reservedContentHeight > surface.rowsHeight + 0.5,
+              surface.visibleBand.upperBound <= surface.rowsHeight + 0.5 else { return }
+        ChatViewportTrace.shared.log("replyRoom out of sight")
+        replyRoomArmed = false
     }
 
     private func disarmReplyHold() {
