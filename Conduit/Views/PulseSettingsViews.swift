@@ -43,6 +43,9 @@ struct PulseSettingsPage: View {
     /// The models Hermes offers, for the Model picker.
     @State private var providers: [ProviderInfo] = []
     @State private var modelsFailed = false
+    /// Hermes answered the models read: only then is a model picked, as a
+    /// list that didn't load is never picked from.
+    @State private var modelsAnswered = false
     /// The note to Pulse as it's being edited; nil shows the plugin's.
     @State private var noteDraft: String?
     @FocusState private var noteFocused: Bool
@@ -127,6 +130,7 @@ struct PulseSettingsPage: View {
             noteDraft = nil
             providers = []
             modelsFailed = false
+            modelsAnswered = false
             showsRecent = false
             // Turning deadlines off was asked of the old host; answered now, it would act on the new one.
             confirmsInboxOff = false
@@ -780,7 +784,7 @@ struct PulseSettingsPage: View {
             ) {
                 Text("Model").foregroundStyle(.secondary)
             }
-            .disabled(waiting)
+            .disabled(waiting || !modelsAnswered)
             .accessibilityIdentifier("settings.pulse.model")
             if modelsFailed {
                 // The models listed stay up; Hermes didn't answer.
@@ -799,7 +803,10 @@ struct PulseSettingsPage: View {
         let dashboard = appState.activeDashboardID
         let loaded = await appState.loadModelProviders()
         guard appState.activeDashboardID == dashboard else { return }
-        if let loaded { providers = loaded }
+        if let loaded {
+            providers = loaded
+            modelsAnswered = true
+        }
         modelsFailed = loaded == nil
     }
 

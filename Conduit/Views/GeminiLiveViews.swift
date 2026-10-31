@@ -462,6 +462,9 @@ struct VoiceJobModelSettingsSection: View {
     @State private var reasoning: String
     @State private var providers: [ProviderInfo] = []
     @State private var providersFailed = false
+    /// Hermes answered the models read: only then is a model picked, as a
+    /// list that didn't load is never picked from.
+    @State private var modelsAnswered = false
 
     private static let profileDefault = ""
 
@@ -485,6 +488,7 @@ struct VoiceJobModelSettingsSection: View {
             ) {
                 Text("Model").foregroundStyle(.secondary)
             }
+            .disabled(!modelsAnswered)
             if providersFailed {
                 // The models listed stay up; Hermes didn't answer.
                 ModelCatalogPlaceholder(state: .failed) { Task { await loadProviders() } }
@@ -508,7 +512,10 @@ struct VoiceJobModelSettingsSection: View {
 
     private func loadProviders() async {
         let loaded = await settings.loadProviders()
-        if let loaded { providers = loaded }
+        if let loaded {
+            providers = loaded
+            modelsAnswered = true
+        }
         providersFailed = loaded == nil
     }
 
@@ -690,8 +697,10 @@ struct VoiceReplyModelPicks {
         return true
     }
 
-    /// A read that fails keeps what's shown.
-    mutating func readDidFail() {
+    /// A read that fails keeps what's shown. One asked before the newest
+    /// answer is older than what's shown, and says nothing.
+    mutating func readDidFail(_ read: Read) {
+        guard read.number > newestAnsweredRead else { return }
         readFailed = true
     }
 
@@ -750,6 +759,8 @@ struct VoiceReplyModelSettingsSection: View {
     @State private var picks = VoiceReplyModelPicks()
     @State private var providers: [ProviderInfo] = []
     @State private var providersFailed = false
+    /// Hermes answered the models read: only then is a model picked.
+    @State private var modelsAnswered = false
 
     var body: some View {
         Group {
@@ -767,7 +778,7 @@ struct VoiceReplyModelSettingsSection: View {
                     ) {
                         Text("Model").foregroundStyle(.secondary)
                     }
-                    .disabled(pickersWait)
+                    .disabled(pickersWait || !modelsAnswered)
                     if providersFailed || picks.readFailed {
                         // What's listed stays up; Hermes didn't answer.
                         ModelCatalogPlaceholder(state: .failed) { Task { await tryAgain() } }
@@ -815,13 +826,16 @@ struct VoiceReplyModelSettingsSection: View {
         do {
             setting = try await settings.load()
         } catch {
-            picks.readDidFail()
+            picks.readDidFail(asked)
             return
         }
         var loaded: [ProviderInfo]?
         if setting != nil { loaded = await settings.loadProviders() }
         guard picks.hermesAnswered(setting, to: asked) else { return }
-        if let loaded { providers = loaded }
+        if let loaded {
+            providers = loaded
+            modelsAnswered = true
+        }
         providersFailed = setting != nil && loaded == nil
     }
 
@@ -838,6 +852,7 @@ struct VoiceReplyModelSettingsSection: View {
     private func reloadProviders() async {
         guard let loaded = await settings.loadProviders() else { return }
         providers = loaded
+        modelsAnswered = true
         providersFailed = false
     }
 
