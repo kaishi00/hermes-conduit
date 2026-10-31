@@ -12102,7 +12102,10 @@ final class AppState: ObservableObject {
             guard self.client === client, isConnected, activeDashboardID == dashboardID else { return }
             let roomID = room.roomID
             guard groupRoomsListed else {
-                errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+                // A Hermes that hosts no rooms any more won't open it on a retry.
+                errorMessage = groupChatPhase == .gatewayUnsupported
+                    ? AppLocalization.string("That chat is no longer available.")
+                    : AppLocalization.string("Couldn't open that chat. Try again.")
                 return
             }
             guard let listed = groupRooms.first(where: { $0.roomID == roomID }) else {
@@ -22309,6 +22312,16 @@ final class AppState: ObservableObject {
     var shownDesktopGroupChats: [DesktopGroupChat] {
         guard botRoster.isEmpty, !botRosterAnswered else { return desktopGroupChats }
         return keptBotRoster()?.desktopGroups ?? []
+    }
+
+    /// Fires when the bots `shownBotRoster` names may have changed: Hermes'
+    /// roster, or its answer ending the kept copy's stand-in. @Published
+    /// fires before the change lands, so it's read on the next turn; on
+    /// subscribing too, with the bots shown then.
+    var shownBotRosterChanged: AnyPublisher<Void, Never> {
+        Publishers.Merge($botRoster.map { _ in () }, $botModePhase.map { _ in () })
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
     }
 
     private var keptBotRosterMemo: (key: String, roster: KeptBotRoster?)?

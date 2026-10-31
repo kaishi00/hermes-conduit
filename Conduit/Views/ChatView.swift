@@ -1610,9 +1610,10 @@ struct UserBubble: View {
 /// centered and quiet, with what it said one tap away.
 struct TeammateMessageNote: View {
     let inbound: BotTeammateMessages.Inbound
-    /// Resolved from the roster, and again when it changes: the row's
-    /// equality leaves the roster out, so a roster that lands after the row
-    /// would otherwise leave the signed name.
+    /// Resolved from the bots shown (the kept ones until Hermes answers),
+    /// and again when they change: the row's equality leaves the roster
+    /// out, so a roster that lands after the row would otherwise leave the
+    /// signed name.
     @State private var bot: BotProfile?
     @State private var name: String
     /// Loads the face; held, not observed, like the rows' AppState.
@@ -1702,8 +1703,8 @@ struct TeammateMessageNote: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .onReceive(appState.$botRoster) { roster in
-            let resolved = Self.resolve(inbound, in: roster)
+        .onReceive(appState.shownBotRosterChanged) { _ in
+            let resolved = Self.resolve(inbound, in: appState.shownBotRoster)
             guard resolved != bot else { return }
             bot = resolved
             name = resolved?.displayLabel ?? inbound.sender

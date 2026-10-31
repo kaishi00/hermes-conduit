@@ -2232,6 +2232,21 @@ extension AppStateMultiDashboardTests {
 
         // The next launch opens on them.
         let next = rosterAppState(registry, roster: { try answer() }, cache: first.offlineChatCacheForTesting)
+        // A chat's teammate note names its bot from what this sends: the
+        // kept bots on subscribing, before Hermes answers, and Hermes' own
+        // once its answer has landed.
+        var named: [[String]] = []
+        let keptNamed = expectation(description: "the kept bots")
+        let hermesNamed = expectation(description: "Hermes' bots")
+        hermesNamed.assertForOverFulfill = false
+        let rosterChanges = next.shownBotRosterChanged.sink { _ in
+            named.append(next.shownBotRoster.map(\.displayLabel))
+            if named.count == 1 { keptNamed.fulfill() }
+            if named.last == ["Atlas Prime"] { hermesNamed.fulfill() }
+        }
+        defer { rosterChanges.cancel() }
+        await fulfillment(of: [keptNamed], timeout: 5)
+        XCTAssertEqual(named.first?.first, "Atlas", "Not the empty roster Hermes hasn't answered yet")
         XCTAssertEqual(next.shownBotRoster.map(\.name), ["atlas", "default"])
         XCTAssertTrue(next.shownBotRoster.allSatisfy(\.isKeptCopy))
         XCTAssertTrue(next.botRoster.isEmpty, "Hermes hasn't answered")
@@ -2269,6 +2284,7 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(next.shownBotRoster.map(\.displayLabel), ["Atlas Prime"], "Hermes' answer takes their place")
         XCTAssertFalse(next.shownBotRoster.contains(where: \.isKeptCopy))
         XCTAssertTrue(next.shownDesktopGroupChats.isEmpty)
+        await fulfillment(of: [hermesNamed], timeout: 5)
 
         let elsewhere = rosterAppState(
             SavedDashboardRegistry(activeDashboardID: vps.id, dashboards: [mac, vps]),
@@ -2342,5 +2358,23 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(nextHeld.sent.map(\.path), [GroupRoomPictures.listPath], "An unchanged picture isn't fetched again")
         XCTAssertEqual(next.groupRoomPictureData["room-1"], picture)
         XCTAssertEqual(next.shownGroupRooms.map(\.roomID), ["room-1"], "The list takes the kept one's place")
+
+        // A Hermes that no longer hosts rooms: trying again wouldn't open it.
+        let roomless = GroupChatLifecycleOperations(
+            capabilities: { _ in
+                GroupCapabilities(
+                    protocolVersion: 2, driverReady: true, authorityGatewayID: "gw-a", features: [],
+                    methods: [], maxLogLimit: 500
+                )
+            },
+            list: { _ in (listed, nil) }
+        )
+        let later = rosterAppState(registry, groups: roomless, cache: next.offlineChatCacheForTesting)
+        later.setNotifierPluginStateForTesting(plugin)
+        connectRoster(later, to: mac)
+        let planning = try XCTUnwrap(later.shownGroupRooms.first { $0.roomID == "room-1" })
+        await later.openGroupRoom(planning)
+        XCTAssertEqual(later.errorMessage, AppLocalization.string("That chat is no longer available."), "Not \"Try again\"")
+        XCTAssertNil(later.activeRoomSurface)
     }
 }
