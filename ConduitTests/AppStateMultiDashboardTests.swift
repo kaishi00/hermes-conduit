@@ -9,6 +9,7 @@
 //  focus is AppState behavior.
 //
 
+import Combine
 import UIKit
 import UserNotifications
 import XCTest

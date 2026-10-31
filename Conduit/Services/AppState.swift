@@ -22334,12 +22334,14 @@ final class AppState: ObservableObject {
         let key = "\(activeDashboardID?.uuidString ?? "-")|\(offlineChatCache.removals)|\(turn)|\(mainName)"
         if let memo = keptBotRosterMemo, memo.key == key { return memo.roster }
         var roster = keptRead(KeptBotRoster.self, KeptRoute.botRoster, profile: KeptRoute.everyProfile)
-        roster?.bots = roster?.bots.map { bot in
-            var bot = bot
-            bot.isKeptCopy = true
-            if BotManagement.isDefaultProfile(bot.name) { bot.conduitName = mainName }
-            return bot
-        } ?? []
+        if let bots = roster?.bots {
+            roster?.bots = bots.map { bot in
+                var bot = bot
+                bot.isKeptCopy = true
+                if BotManagement.isDefaultProfile(bot.name) { bot.conduitName = mainName }
+                return bot
+            }
+        }
         keptBotRosterMemo = (key, roster)
         return roster
     }
