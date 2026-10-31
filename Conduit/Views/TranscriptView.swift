@@ -74,7 +74,11 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     private(set) lazy var collectionView = TranscriptCollectionView(frame: .zero, collectionViewLayout: layout)
     private var dataSource: UICollectionViewDiffableDataSource<Int, String>?
     let scroller: TranscriptScroller
-    private let cellContext: TranscriptCellContext
+    private let appState: AppState
+    /// What the rows read of the chat's environment. A change reaches the
+    /// rows drawn in place, their content as it is (TranscriptCell's
+    /// updateEnvironment), never by publishing during SwiftUI's update.
+    private var rowEnvironment = TranscriptCellEnvironment(EnvironmentValues(), disclosure: nil)
     var rowContent: @MainActor (TranscriptRow) -> AnyView = { _ in AnyView(EmptyView()) }
     var layoutSettled: @MainActor (ChatRenderedScrollScope) -> Void = { _ in }
 
@@ -99,7 +103,7 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
 
     init(appState: AppState, scroller: TranscriptScroller) {
         self.scroller = scroller
-        cellContext = TranscriptCellContext(appState: appState)
+        self.appState = appState
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -169,8 +173,14 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         renderedScope: ChatRenderedScrollScope?
     ) {
         // Before the rows: a cell configured for them draws with these.
-        if environment != cellContext.environment {
-            cellContext.environment = environment
+        if environment != rowEnvironment {
+            rowEnvironment = environment
+            for case let cell as TranscriptCell in collectionView.visibleCells {
+                cell.updateEnvironment(environment)
+            }
+            for hosting in parked {
+                hosting.rootView.rowEnvironment = environment
+            }
         }
         layout.setScope("\(conversation)|\(environment.textScope)")
         applyInsets(insets, animation: insetsAnimation)
@@ -255,10 +265,17 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         let root = TranscriptCellRoot(
             rowID: id,
             content: rowContent(row),
-            context: cellContext,
+            rowEnvironment: rowEnvironment,
+            appState: appState,
             resized: { [weak layout] size in layout?.rowResized(id, to: size) }
         )
         cell.host(root, rowID: id, in: self)
+    }
+
+    /// A cell made ready off screen before the chat's environment changed
+    /// takes the change as it comes on screen.
+    func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
+        (cell as? TranscriptCell)?.updateEnvironment(rowEnvironment)
     }
 
     // MARK: - Layout
@@ -476,6 +493,13 @@ final class TranscriptCell: UICollectionViewCell {
         self.hosting = hosting
     }
 
+    /// The chat's environment changed: the row takes it in place, its
+    /// content as it is.
+    func updateEnvironment(_ environment: TranscriptCellEnvironment) {
+        guard let hosting, hosting.rootView.rowEnvironment != environment else { return }
+        hosting.rootView.rowEnvironment = environment
+    }
+
     /// The hosting controller, out of the cell, for one that must keep
     /// showing its row; the cell makes a new one when next shown.
     func releaseHosting() -> UIHostingController<TranscriptCellRoot>? {
@@ -507,7 +531,10 @@ final class TranscriptCell: UICollectionViewCell {
 struct TranscriptCellRoot: View {
     let rowID: String
     let content: AnyView
-    @ObservedObject var context: TranscriptCellContext
+    /// What the row reads of the chat's environment; a change is set here
+    /// in place (TranscriptCell.updateEnvironment).
+    var rowEnvironment: TranscriptCellEnvironment
+    let appState: AppState
     let resized: @MainActor (CGSize) -> Void
 
     var body: some View {
@@ -527,8 +554,8 @@ struct TranscriptCellRoot: View {
         .onTapGesture {
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         }
-        .transcriptCellEnvironment(context.environment)
-        .environmentObject(context.appState)
+        .transcriptCellEnvironment(rowEnvironment)
+        .environmentObject(appState)
         .id(rowID)
     }
 }

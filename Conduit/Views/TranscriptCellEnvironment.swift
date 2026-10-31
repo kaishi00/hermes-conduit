@@ -133,19 +133,6 @@ struct TranscriptCellEnvironment: Equatable {
     }
 }
 
-/// The environment every row's root applies, published so a change reaches
-/// the rows on screen without building them again.
-@MainActor
-final class TranscriptCellContext: ObservableObject {
-    @Published var environment: TranscriptCellEnvironment
-    let appState: AppState
-
-    init(appState: AppState) {
-        self.appState = appState
-        environment = TranscriptCellEnvironment(EnvironmentValues(), disclosure: nil)
-    }
-}
-
 extension View {
     /// Applies what the chat's environment had for the rows.
     func transcriptCellEnvironment(_ values: TranscriptCellEnvironment) -> some View {
