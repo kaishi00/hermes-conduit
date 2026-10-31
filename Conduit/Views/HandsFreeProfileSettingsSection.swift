@@ -46,6 +46,6 @@ struct HandsFreeProfileSettingsSection: View {
             return AppLocalization.string("Calls from your Apple Watch, and from Siri or the Action button when the shortcut names no profile, use the profile open on your iPhone.")
         }
         let name = appState.profileDisplayName(chosen)
-        return AppLocalization.string("Calls from your Apple Watch, and from Siri or the Action button when the shortcut names no profile, use \(name). A Watch call leaves your iPhone on its profile; a Siri call switches it. Answering a call from Hermes keeps that call's profile.")
+        return AppLocalization.string("Calls from your Apple Watch, and from Siri or the Action button when the shortcut names no profile, use \(name). A Watch call doesn't switch your iPhone's profile; a Siri call does. Answering a call from Hermes keeps that call's profile.")
     }
 }

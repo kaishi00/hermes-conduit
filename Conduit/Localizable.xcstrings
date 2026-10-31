@@ -53647,36 +53647,36 @@
         }
       }
     },
-    "Calls from your Apple Watch, and from Siri or the Action button when the shortcut names no profile, use %@. A Watch call leaves your iPhone on its profile; a Siri call switches it. Answering a call from Hermes keeps that call's profile.": {
+    "Calls from your Apple Watch, and from Siri or the Action button when the shortcut names no profile, use %@. A Watch call doesn't switch your iPhone's profile; a Siri call does. Answering a call from Hermes keeps that call's profile.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Anrufe von deiner Apple Watch sowie von Siri oder der Aktionstaste, wenn der Kurzbefehl kein Profil nennt, nutzen %@. Ein Watch-Anruf lässt dein iPhone auf seinem Profil; ein Siri-Anruf wechselt es. Wenn du einen Anruf von Hermes annimmst, behält er sein eigenes Profil."
+            "value": "Anrufe von deiner Apple Watch sowie von Siri oder der Aktionstaste, wenn der Kurzbefehl kein Profil nennt, nutzen %@. Ein Watch-Anruf wechselt das Profil deines iPhone nicht; ein Siri-Anruf schon. Wenn du einen Anruf von Hermes annimmst, behält er sein eigenes Profil."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Las llamadas desde tu Apple Watch, y desde Siri o el botón de acción cuando el atajo no indica un perfil, usan %@. Una llamada del Watch deja tu iPhone en su perfil; una llamada de Siri lo cambia. Al contestar una llamada de Hermes, se mantiene el perfil de esa llamada."
+            "value": "Las llamadas desde tu Apple Watch, y desde Siri o el botón de acción cuando el atajo no indica un perfil, usan %@. Una llamada del Watch no cambia el perfil de tu iPhone; una llamada de Siri sí. Al contestar una llamada de Hermes, se mantiene el perfil de esa llamada."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Les appels depuis votre Apple Watch, et depuis Siri ou le bouton Action quand le raccourci ne nomme aucun profil, utilisent %@. Un appel depuis l’Apple Watch laisse votre iPhone sur son profil ; un appel Siri le change. Répondre à un appel de Hermes garde le profil de cet appel."
+            "value": "Les appels depuis votre Apple Watch, et depuis Siri ou le bouton Action quand le raccourci ne nomme aucun profil, utilisent %@. Un appel depuis l’Apple Watch ne change pas le profil de votre iPhone ; un appel Siri, si. Répondre à un appel de Hermes garde le profil de cet appel."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Panggilan dari Apple Watch, dan dari Siri atau tombol Tindakan saat pintasan tidak menyebut profil, memakai %@. Panggilan Watch membiarkan iPhone kamu tetap di profilnya; panggilan Siri menggantinya. Menjawab panggilan dari Hermes tetap memakai profil panggilan itu."
+            "value": "Panggilan dari Apple Watch, dan dari Siri atau tombol Tindakan saat pintasan tidak menyebut profil, memakai %@. Panggilan Watch tidak mengganti profil iPhone kamu; panggilan Siri menggantinya. Menjawab panggilan dari Hermes tetap memakai profil panggilan itu."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Le chiamate dal tuo Apple Watch, e da Siri o dal tasto Azione quando l’abbreviazione non indica un profilo, usano %@. Una chiamata dal Watch lascia l’iPhone sul suo profilo; una chiamata Siri lo cambia. Rispondendo a una chiamata di Hermes resta il profilo di quella chiamata."
+            "value": "Le chiamate dal tuo Apple Watch, e da Siri o dal tasto Azione quando l’abbreviazione non indica un profilo, usano %@. Una chiamata dal Watch non cambia il profilo dell’iPhone; una chiamata Siri sì. Rispondendo a una chiamata di Hermes resta il profilo di quella chiamata."
           }
         },
         "ja": {
@@ -53694,25 +53694,25 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Połączenia z Apple Watch oraz z Siri lub przycisku czynności, gdy skrót nie wskazuje profilu, używają profilu %@. Połączenie z Watcha zostawia iPhone’a na jego profilu; połączenie z Siri go przełącza. Odebrane połączenie od Hermesa zachowuje swój profil."
+            "value": "Połączenia z Apple Watch oraz z Siri lub przycisku czynności, gdy skrót nie wskazuje profilu, używają profilu %@. Połączenie z Watcha nie przełącza profilu iPhone’a; połączenie z Siri go przełącza. Odebrane połączenie od Hermesa zachowuje swój profil."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "As chamadas do seu Apple Watch, e da Siri ou do botão de Ação quando o atalho não indica um perfil, usam %@. Uma chamada do Watch deixa o iPhone no perfil dele; uma chamada da Siri o troca. Ao atender uma chamada do Hermes, o perfil dessa chamada é mantido."
+            "value": "As chamadas do seu Apple Watch, e da Siri ou do botão de Ação quando o atalho não indica um perfil, usam %@. Uma chamada do Watch não troca o perfil do iPhone; uma chamada da Siri troca. Ao atender uma chamada do Hermes, o perfil dessa chamada é mantido."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Звонки с Apple Watch, а также из Siri или кнопки действия, если быстрая команда не указывает профиль, используют профиль %@. Звонок с Watch оставляет iPhone на его профиле; звонок через Siri переключает его. Принятый звонок от Hermes сохраняет профиль этого звонка."
+            "value": "Звонки с Apple Watch, а также из Siri или кнопки действия, если быстрая команда не указывает профиль, используют профиль %@. Звонок с Watch не переключает профиль iPhone; звонок через Siri переключает. Принятый звонок от Hermes сохраняет профиль этого звонка."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apple Watch’tan yapılan aramalar ile kestirme bir profil belirtmediğinde Siri’den veya Eylem düğmesinden yapılan aramalar %@ profilini kullanır. Watch araması iPhone’unu kendi profilinde bırakır; Siri araması profili değiştirir. Hermes’ten gelen bir aramayı yanıtladığında o aramanın profili korunur."
+            "value": "Apple Watch’tan yapılan aramalar ile kestirme bir profil belirtmediğinde Siri’den veya Eylem düğmesinden yapılan aramalar %@ profilini kullanır. Watch araması iPhone’unun profilini değiştirmez; Siri araması değiştirir. Hermes’ten gelen bir aramayı yanıtladığında o aramanın profili korunur."
           }
         },
         "zh-Hans": {
