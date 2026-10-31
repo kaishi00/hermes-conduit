@@ -126,6 +126,7 @@ struct PulseSettingsPage: View {
             draftTimes = nil
             noteDraft = nil
             providers = []
+            modelsFailed = false
             showsRecent = false
             // Turning deadlines off was asked of the old host; answered now, it would act on the new one.
             confirmsInboxOff = false

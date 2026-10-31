@@ -767,6 +767,7 @@ struct VoiceReplyModelSettingsSection: View {
                     ) {
                         Text("Model").foregroundStyle(.secondary)
                     }
+                    .disabled(pickersWait)
                     if providersFailed || picks.readFailed {
                         // What's listed stays up; Hermes didn't answer.
                         ModelCatalogPlaceholder(state: .failed) { Task { await tryAgain() } }
@@ -778,6 +779,7 @@ struct VoiceReplyModelSettingsSection: View {
                     ) {
                         Text("Reasoning").foregroundStyle(.secondary)
                     }
+                    .disabled(pickersWait)
                     if let refusal = picks.refusal {
                         Text(verbatim: refusal)
                             .scaledFont(.caption)
@@ -788,7 +790,6 @@ struct VoiceReplyModelSettingsSection: View {
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .disabled(!picks.answered || picks.writing)
             }
         }
         .onAppear(perform: showKept)
@@ -802,6 +803,10 @@ struct VoiceReplyModelSettingsSection: View {
         .onChange(of: picks.selection) { _, _ in save() }
         .onChange(of: picks.reasoning) { _, _ in save() }
     }
+
+    /// The pickers wait for Hermes' answer and for a save; Try Again
+    /// doesn't, as it's how a failed read asks again.
+    private var pickersWait: Bool { !picks.answered || picks.writing }
 
     /// A read that fails keeps what's shown, and the pickers wait.
     private func read() async {
