@@ -931,7 +931,7 @@ struct KanbanProjectsResponse: Codable, Equatable { var projects: [KanbanProject
 /// `model_options`). Curated server-side so the picker can never offer a
 /// provider:model pair a Hermes worker would refuse. Decoded tolerantly:
 /// an unavailable inventory degrades to an empty list and the UI falls back
-/// to free-text entry.
+/// to free-text entry, and a provider row that isn't one drops alone.
 struct KanbanModelOptionsResponse: Codable, Equatable {
     var providers: [KanbanModelProviderOption]
 
@@ -939,7 +939,7 @@ struct KanbanModelOptionsResponse: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        providers = (try? container.decodeIfPresent([KanbanModelProviderOption].self, forKey: .providers)) ?? []
+        providers = container.decodeLossyArray(KanbanModelProviderOption.self, forKey: .providers)
     }
 
     enum CodingKeys: String, CodingKey { case providers }
