@@ -1899,6 +1899,27 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.keptProfileSettings(keys: ["memory.provider"]), "Asked before a save that landed after a dashboard switch")
     }
 
+    /// Capabilities' kept answers are those of the dashboard they were
+    /// made for: a change that lands after a switch to another one changes
+    /// that dashboard's copy, which its tabs open on when it's back, and the
+    /// dashboard open by then keeps nothing of it (#1533).
+    func testACapabilitiesChangeLandingAfterASwitchChangesItsDashboardsCopy() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let route = CapabilitiesStore.KeptRoute.servers
+        let answers = appState.capabilityAnswers(profile: "default")
+        _ = try await answers.keep(route, false) { ["servers": [["name": "github", "enabled": true]]] }
+
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.capabilityAnswers(profile: "default").kept(route), "The VPS keeps none")
+        let rows = answers.kept(route)?["servers"] as? [[String: Any]]
+        XCTAssertEqual(rows?.first?["enabled"] as? Bool, true, "The Mac's copy, for a change landing now to change")
+        _ = try await answers.keep(route, true) { ["servers": [["name": "github", "enabled": false]]] }
+        let kept = appState.offlineChatCacheForTesting.keptAnswer(route, dashboardID: mac, profile: "default")
+        XCTAssertEqual((kept?["servers"] as? [[String: Any]])?.first?["enabled"] as? Bool, false)
+        XCTAssertNil(appState.capabilityAnswers(profile: "default").kept(route))
+    }
+
     /// A Voice replies model save outranks a read of the slots asked
     /// before it, which keeps nothing when it answers after the save; the
     /// read the save asks for keeps the slot saved.
@@ -2396,5 +2417,108 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(unlisted.errorMessage, AppLocalization.string("Couldn't open that chat. Try again."))
         XCTAssertNil(unlisted.activeRoomSurface)
         XCTAssertEqual(unlisted.shownGroupRooms.map(\.roomID), ["room-1"], "The kept rooms stay up")
+    }
+}
+
+// MARK: - Capabilities opens on its last answer (#1533)
+
+extension AppStateMultiDashboardTests {
+    /// Capabilities' installed skills and toolsets open as Hermes gave them
+    /// last time on this dashboard and profile, until it answers. A read
+    /// asked before a switch was flipped neither shows nor stays kept over
+    /// it; a switch flipped on Hermes' rows is kept in them with no read
+    /// again, and one flipped on kept rows reads them again, since the read
+    /// on its way no longer commits. Another dashboard opens on nothing.
+    func testCapabilitiesOpenOnTheSkillsAndToolsetsHermesGaveLastTime() async throws {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let vps = dashboard("VPS", "https://vps-\(UUID().uuidString.lowercased()).invalid")
+        let registry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps])
+        let skills: [[String: Any]] = [
+            ["name": "pdf", "category": "docs", "enabled": true],
+            ["name": "sql", "category": "data", "enabled": false],
+        ]
+        let sqlOn: [[String: Any]] = [
+            ["name": "pdf", "category": "docs", "enabled": true],
+            ["name": "sql", "category": "data", "enabled": true],
+        ]
+        let toolsets: [[String: Any]] = [["name": "web", "label": "Web", "enabled": true]]
+        let first = rosterAppState(registry)
+        first.showKeptCapabilities()
+        XCTAssertNil(first.capabilitiesOwner, "Nothing kept yet")
+        let held = connectRoster(first, to: mac)
+        let load = Task { await first.loadCapabilities() }
+        try await answerCapabilityLists(held, after: 0, skills: skills, toolsets: toolsets)
+        _ = await load.value
+        XCTAssertEqual(first.skills.map(\.name), ["sql", "pdf"])
+        XCTAssertFalse(first.capabilitiesAreKept)
+        let cache = first.offlineChatCacheForTesting
+        XCTAssertNotNil(cache.keptAnswer(AppState.KeptRoute.toolsets, dashboardID: mac.id, profile: "default"))
+
+        let older = Task { await first.loadCapabilities() }
+        try await held.waitForRequests(4)
+        let flip = Task { await first.toggleSkill(name: "sql", enabled: true) }
+        try await held.waitForRequests(5)
+        try await held.answer(["ok": true], at: 2)
+        await flip.value
+        try await answerCapabilityLists(held, after: 2, skills: skills, toolsets: toolsets)
+        _ = await older.value
+        XCTAssertEqual(held.sent.count, 5, "Hermes' rows aren't read again for a switch")
+        XCTAssertEqual(first.skills.first { $0.name == "sql" }?.enabled, true, "Asked before the switch")
+        let keptSkills = cache.keptAnswer(AppState.KeptRoute.skills, dashboardID: mac.id, profile: "default")?["_array"] as? [[String: Any]]
+        XCTAssertEqual(keptSkills?.first { $0["name"] as? String == "sql" }?["enabled"] as? Bool, true, "and not kept over it")
+
+        // The next launch opens on them, the switch included.
+        let next = rosterAppState(registry, cache: cache)
+        let nextHeld = connectRoster(next, to: mac)
+        next.showKeptCapabilities()
+        XCTAssertTrue(next.capabilitiesAreKept)
+        XCTAssertTrue(next.capabilitiesAreCurrent)
+        XCTAssertEqual(next.skills.map(\.name), ["sql", "pdf"])
+        XCTAssertEqual(next.skills.first?.enabled, true)
+        XCTAssertEqual(next.toolsets.map(\.label), ["Web"])
+        XCTAssertTrue(nextHeld.sent.isEmpty)
+
+        let reload = Task { await next.loadCapabilities() }
+        try await nextHeld.waitForRequests(2)
+        let flipKept = Task { await next.toggleToolset(name: "web", enabled: false) }
+        try await nextHeld.waitForRequests(3)
+        XCTAssertEqual(nextHeld.sent.last?.method, "PUT")
+        try await nextHeld.answer(["ok": true], at: 2)
+        try await nextHeld.waitForRequests(5)   // the lists, read again
+        try await answerCapabilityLists(nextHeld, after: 0, skills: skills, toolsets: toolsets)
+        _ = await reload.value
+        XCTAssertTrue(next.capabilitiesAreKept, "Asked before the switch")
+        try await answerCapabilityLists(nextHeld, after: 3, skills: sqlOn, toolsets: [["name": "web", "label": "Web", "enabled": false]])
+        await flipKept.value
+        XCTAssertFalse(next.capabilitiesAreKept, "Hermes' answer")
+        XCTAssertEqual(next.toolsets.first?.enabled, false)
+
+        // No toolsets is a Hermes still loading its plugins: shown as Hermes
+        // gave it, but not kept over the toolsets kept before.
+        let loading = Task { await next.loadCapabilities() }
+        try await answerCapabilityLists(nextHeld, after: 5, skills: sqlOn, toolsets: [])
+        _ = await loading.value
+        XCTAssertTrue(next.toolsets.isEmpty)
+        let keptToolsets = cache.keptAnswer(AppState.KeptRoute.toolsets, dashboardID: mac.id, profile: "default")?["_array"] as? [[String: Any]]
+        XCTAssertEqual(keptToolsets?.compactMap { $0["name"] as? String }, ["web"])
+
+        let elsewhere = rosterAppState(SavedDashboardRegistry(activeDashboardID: vps.id, dashboards: [mac, vps]), cache: cache)
+        elsewhere.showKeptCapabilities()
+        XCTAssertTrue(elsewhere.skills.isEmpty, "Another dashboard's lists")
+        XCTAssertFalse(elsewhere.capabilitiesAreKept)
+    }
+
+    /// Answers Capabilities' two list reads, which go out together, each by
+    /// its path: the `after`th request sent and the next, the oldest waiting.
+    private func answerCapabilityLists(
+        _ held: HeldDashboardRequests,
+        after earlier: Int,
+        skills: [[String: Any]],
+        toolsets: [[String: Any]]
+    ) async throws {
+        try await held.waitForRequests(earlier + 2)
+        for request in held.sent[earlier..<earlier + 2] {
+            try await held.answer(request.path == AppState.KeptRoute.skills ? skills : toolsets)
+        }
     }
 }

@@ -2615,6 +2615,12 @@ final class AppState: ObservableObject {
     /// while this equals `currentCapabilitiesOwner`: two dashboards can have
     /// a profile of the same name.
     @Published private(set) var capabilitiesOwner: CapabilitySnapshotOwner?
+    /// The installed skills and toolsets shown are the ones kept from
+    /// Hermes' last answer (#1533), drawn until it answers again.
+    @Published private(set) var capabilitiesAreKept = false
+    /// Switches write through the dashboard: offline, with only the kept
+    /// lists to show, they wait for it instead of flipping back unsaid.
+    var canChangeCapabilities: Bool { dashboardTicketBridge != nil }
     /// Monotonic request token for capability loads; older requests can never
     /// commit over newer ones (protects the A -> B -> A race).
     private var capabilityLoadGeneration: UInt64 = 0
@@ -32560,9 +32566,10 @@ final class AppState: ObservableObject {
         let generation = capabilityLoadGeneration
         let profile = activeProfile
         let owner = currentCapabilitiesOwner
-        guard let dashboardTicketBridge else { return .unavailable(profile: profile) }
-        async let skillsResult = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/skills", profile: profile))
-        async let toolsetsResult = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/tools/toolsets", profile: profile))
+        guard let runtime = currentDashboardRuntimeOwner() else { return .unavailable(profile: profile) }
+        // Kept for Capabilities to open on next time (#1533).
+        async let skillsResult = readKeepingAnswer(KeptRoute.skills, profile: profile, owner: runtime)
+        async let toolsetsResult = readKeepingToolsets(profile: profile, owner: runtime)
         // Commit gate: this exact request must still be the newest one AND
         // target the still-active dashboard and profile (A -> B -> A stale
         // commits rejected).
@@ -32577,19 +32584,11 @@ final class AppState: ObservableObject {
         do {
             let (skillsResponse, toolsetsResponse) = try await (skillsResult, toolsetsResult)
             guard ownsRequest() else { return .superseded(requested: owner, active: currentCapabilitiesOwner) }
-            let skillsValues = skillsResponse["_array"] as? [Any] ?? []
-            self.skills = skillsValues.compactMap(decodeCapabilitySkill)
-                .sorted { lhs, rhs in
-                    let lhsCat = lhs.category ?? ""
-                    let rhsCat = rhs.category ?? ""
-                    if lhsCat != rhsCat { return lhsCat < rhsCat }
-                    return lhs.name < rhs.name
-                }
-            let toolsetsValues = toolsetsResponse["_array"] as? [Any] ?? []
-            self.toolsets = toolsetsValues.compactMap(decodeCapabilityToolset)
-                .sorted { ($0.label ?? $0.name) < ($1.label ?? $1.name) }
+            self.skills = capabilitySkills(from: skillsResponse)
+            self.toolsets = capabilityToolsets(from: toolsetsResponse)
             adoptToolCatalog(ToolCatalog(toolsets: self.toolsets), key: toolCatalogKey)
             capabilitiesOwner = owner
+            capabilitiesAreKept = false
             return .success(profile: profile)
         } catch {
             guard ownsRequest() else { return .superseded(requested: owner, active: currentCapabilitiesOwner) }
@@ -32598,12 +32597,60 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Draws the installed skills and toolsets Hermes gave last time on
+    /// this dashboard and profile, kept on the phone (#1533), unless this
+    /// profile's are already showing; only once both lists are kept.
+    func showKeptCapabilities() {
+        guard !capabilitiesAreCurrent,
+              let skillsAnswer = keptAnswer(KeptRoute.skills),
+              let toolsetsAnswer = keptAnswer(KeptRoute.toolsets) else { return }
+        skills = capabilitySkills(from: skillsAnswer)
+        toolsets = capabilityToolsets(from: toolsetsAnswer)
+        capabilitiesOwner = currentCapabilitiesOwner
+        capabilitiesAreKept = true
+    }
+
+    private func capabilitySkills(from answer: [String: Any]) -> [CapabilitySkill] {
+        (answer["_array"] as? [Any] ?? []).compactMap(decodeCapabilitySkill)
+            .sorted { lhs, rhs in
+                let lhsCat = lhs.category ?? ""
+                let rhsCat = rhs.category ?? ""
+                if lhsCat != rhsCat { return lhsCat < rhsCat }
+                return lhs.name < rhs.name
+            }
+    }
+
+    private func capabilityToolsets(from answer: [String: Any]) -> [CapabilityToolset] {
+        (answer["_array"] as? [Any] ?? []).compactMap(decodeCapabilityToolset)
+            .sorted { ($0.label ?? $0.name) < ($1.label ?? $1.name) }
+    }
+
+    /// Keeps a switch Hermes took in the list it's kept in, so Capabilities
+    /// opens on it next time, the dashboard switched away from included.
+    /// A flip drops the read on its way (it was asked before it): rows
+    /// still kept ask again, as they'd otherwise stay up.
+    private func keepFlip(_ route: String, name: String, enabled: Bool, profile: String, owner: DashboardRuntimeOwner, removals: Int) async {
+        if let kept = keptAnswer(route, profile: profile, on: owner), let rows = kept["_array"] as? [Any] {
+            let flipped = rows.map { row -> Any in
+                guard var row = row as? [String: Any], row["name"] as? String == name else { return row }
+                row["enabled"] = enabled
+                return row
+            }
+            keepWrittenAnswer(["_array": flipped], for: route, profile: profile, owner: owner, removals: removals)
+        } else {
+            noteKeptAnswerWrite(for: route, profile: profile, owner: owner)
+        }
+        guard capabilitiesAreKept, ownsDashboardRuntime(owner), profile == activeProfile else { return }
+        await loadCapabilities()
+    }
+
     /// `rows` is the snapshot the switch was flipped in (a bulk change's
     /// first one); nothing is sent once it is no longer the one showing.
     func toggleSkill(name: String, enabled: Bool, rows: CapabilitySnapshotOwner? = nil) async {
         let profile = activeProfile
         guard capabilityRowsAreCurrent(rows), let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
+        let removals = offlineChatCache.removals
         let current = skills.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update. A list read still on its way was read before
         // this flip: it no longer commits (as CapabilitiesStore, #867).
@@ -32624,11 +32671,18 @@ final class AppState: ObservableObject {
                 )
             }
         }
+        // Kept only once Hermes took it: a refused flip a newer one
+        // replaced says nothing failed, but was never saved.
+        if outcome.taken {
+            await keepFlip(KeptRoute.skills, name: name, enabled: enabled, profile: profile, owner: owner, removals: removals)
+        }
         guard ownsDashboardRuntime(owner), let error = outcome.error, profile == activeProfile else { return }
         if let restore = outcome.restore, let index = skills.firstIndex(where: { $0.name == name }) {
             skills[index].enabled = restore
         }
         errorMessage = AppLocalization.string("Could not update skill: \(UserFacingError.message(for: error))")
+        // The flip dropped the read on its way: a list still kept asks again.
+        if capabilitiesAreKept { await loadCapabilities() }
     }
 
     /// `rows` is the snapshot the switch was flipped in (a bulk change's
@@ -32637,6 +32691,7 @@ final class AppState: ObservableObject {
         let profile = activeProfile
         guard capabilityRowsAreCurrent(rows), let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
+        let removals = offlineChatCache.removals
         let current = toolsets.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update. A list read still on its way was read before
         // this flip: it no longer commits (as CapabilitiesStore, #867).
@@ -32657,11 +32712,18 @@ final class AppState: ObservableObject {
                 )
             }
         }
+        // Kept only once Hermes took it: a refused flip a newer one
+        // replaced says nothing failed, but was never saved.
+        if outcome.taken {
+            await keepFlip(KeptRoute.toolsets, name: name, enabled: enabled, profile: profile, owner: owner, removals: removals)
+        }
         guard ownsDashboardRuntime(owner), let error = outcome.error, profile == activeProfile else { return }
         if let restore = outcome.restore, let index = toolsets.firstIndex(where: { $0.name == name }) {
             toolsets[index].enabled = restore
         }
         errorMessage = AppLocalization.string("Could not update toolset: \(UserFacingError.message(for: error))")
+        // The flip dropped the read on its way: a list still kept asks again.
+        if capabilitiesAreKept { await loadCapabilities() }
     }
 
     /// The dashboard, bridge and profile a capability read made now would
@@ -32694,6 +32756,7 @@ final class AppState: ObservableObject {
     private func retireCapabilitySnapshot() {
         capabilityLoadGeneration &+= 1
         capabilitiesOwner = nil
+        capabilitiesAreKept = false
         skills = []
         toolsets = []
     }
@@ -32728,12 +32791,12 @@ final class AppState: ObservableObject {
             toolCatalog = ToolCatalog.saved(key: key, defaults: defaults)
         }
         guard !toolCatalogFetched.contains(key), !toolCatalogLoading.contains(key),
-              let dashboardTicketBridge else { return }
+              let owner = currentDashboardRuntimeOwner() else { return }
         // Two chats opened in a row ask once.
         toolCatalogLoading.insert(key)
         defer { toolCatalogLoading.remove(key) }
-        let path = dashboardPath("/api/tools/toolsets", profile: activeProfile)
-        guard let response = try? await dashboardTicketBridge.requestJSON(path: path) else { return }
+        // The answer Capabilities' Tools tab opens on, kept for it too.
+        guard let response = try? await readKeepingToolsets(profile: activeProfile, owner: owner) else { return }
         let toolsets = (response["_array"] as? [Any] ?? []).compactMap(decodeCapabilityToolset)
         adoptToolCatalog(ToolCatalog(toolsets: toolsets), key: key)
     }
@@ -33566,8 +33629,9 @@ final class AppState: ObservableObject {
 
     /// The reads whose answers the settings pages keep (#1533): dashboard
     /// routes, and gateway calls kept beside them. Usage's periods
-    /// (UsageReport.route), Pulse's routes (PulseClient.keptRoute) and Voice
-    /// settings' (HermesVoiceConfigurationService.KeptRead) are kept under
+    /// (UsageReport.route), Pulse's routes (PulseClient.keptRoute), Voice
+    /// settings' (HermesVoiceConfigurationService.KeptRead) and the
+    /// Capabilities tabs' (CapabilitiesStore.KeptRoute) are kept under
     /// their own.
     enum KeptRoute {
         static let config = "/api/config"
@@ -33577,6 +33641,9 @@ final class AppState: ObservableObject {
         /// Hermes' auxiliary model slots, for Voice settings' voice reply model.
         static let modelAuxiliary = "/api/model/auxiliary"
         static let pluginsHub = "/api/dashboard/plugins/hub"
+        /// Capabilities' installed skills and toolsets.
+        static let skills = "/api/skills"
+        static let toolsets = "/api/tools/toolsets"
         static let delegationStatus = "rpc:delegation.status"
         /// Settings > Usage's quota: the gateway's `model.options`, whose
         /// models the Voice and Pulse model pickers list too.
@@ -33603,6 +33670,20 @@ final class AppState: ObservableObject {
     func readKeepingAnswer(_ route: String, profile: String, owner: DashboardRuntimeOwner) async throws -> [String: Any] {
         try await keepingAnswer(profile: profile, owner: owner, keptAs: { _ in route }) {
             try await owner.bridge.requestJSON(path: dashboardPath(route, profile: profile))
+        }
+    }
+
+    /// The toolsets, read and kept as `readKeepingAnswer` does unless
+    /// Hermes lists none: a Hermes still loading its plugins answers an
+    /// empty list, which the chat's tool catalog refuses too
+    /// (adoptToolCatalog), and the Tools tab would open on nothing.
+    private func readKeepingToolsets(profile: String, owner: DashboardRuntimeOwner) async throws -> [String: Any] {
+        try await keepingAnswer(
+            profile: profile,
+            owner: owner,
+            keptAs: { ($0["_array"] as? [Any])?.isEmpty == false ? KeptRoute.toolsets : nil }
+        ) {
+            try await owner.bridge.requestJSON(path: dashboardPath(KeptRoute.toolsets, profile: profile))
         }
     }
 
@@ -33746,9 +33827,9 @@ final class AppState: ObservableObject {
     /// Where Voice settings keep their answers for the profile, beside the
     /// other settings pages': on this dashboard, which they read only while
     /// it's the one open. Nil without a bridge.
-    func voiceSettingsAnswers(profile: String) -> VoiceKeptAnswers? {
+    func voiceSettingsAnswers(profile: String) -> KeptAnswers? {
         guard let owner = currentDashboardRuntimeOwner() else { return nil }
-        return VoiceKeptAnswers(
+        return KeptAnswers(
             kept: { [weak self] route in
                 guard let self, self.ownsDashboardRuntime(owner) else { return nil }
                 return self.keptAnswer(route, profile: profile)
@@ -33756,6 +33837,30 @@ final class AppState: ObservableObject {
             keep: { [weak self] route, writes, read in
                 guard let self else { return try await read() }
                 return try await self.keepingAnswer(profile: profile, owner: owner, keptAs: { _ in route }, writes: writes, read)
+            }
+        )
+    }
+
+    /// Where Capabilities keeps its tabs' answers for the profile (or the
+    /// dashboard's own, as `KeptRoute.everyProfile`), beside the settings
+    /// pages': on the dashboard open when they're asked for, offline too,
+    /// whose kept answers a change that lands after a switch still changes.
+    /// A read keeps its answer only with a bridge to read through.
+    func capabilityAnswers(profile: String) -> KeptAnswers {
+        let dashboardID = activeDashboardID
+        let owner = currentDashboardRuntimeOwner()
+        return KeptAnswers(
+            kept: { [weak self] route in
+                guard let self, let dashboardID else { return nil }
+                return self.offlineChatCache.keptAnswer(route, dashboardID: dashboardID, profile: profile)
+            },
+            keep: { [weak self] route, writes, read in
+                guard let self, let owner else { return try await read() }
+                return try await self.keepingAnswer(profile: profile, owner: owner, keptAs: { _ in route }, writes: writes, read)
+            },
+            noteWrite: { [weak self] route in
+                guard let self, let owner else { return }
+                self.noteKeptAnswerWrite(for: route, profile: profile, owner: owner)
             }
         )
     }

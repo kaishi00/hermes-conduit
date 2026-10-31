@@ -673,6 +673,7 @@ struct KanbanSkillsPickerSheet: View {
 
     /// The skills Capabilities last read, while they're this dashboard's
     /// and profile's: another dashboard's names are no suggestion here.
+    /// Kept on the phone, so they're here before Capabilities opens (#1533).
     private var availableSkills: [CapabilitySkill] {
         appState.capabilitiesAreCurrent ? appState.skills : []
     }
@@ -760,6 +761,7 @@ struct KanbanSkillsPickerSheet: View {
                 }
             }
         }
+        .onAppear { appState.showKeptCapabilities() }
     }
 
     private func isSelected(_ name: String) -> Bool {

@@ -11,11 +11,13 @@ default in the rows, with nothing to say so.
 So every key Conduit declares (a `var` in an `extension EnvironmentValues`)
 is copied there, set in its init (`key = values.key`, or the chat's own
 value, as for the disclosure) and applied to the rows
-(`.environment(\\.key, ...)`), or listed in its `setInsideRows`, for a key
+(`.environment(\\.key, values.key)`), or listed in its `setInsideRows`, for a key
 the rows set for what they hold. A listed key must be one Conduit declares,
 and one something in Conduit sets (`.environment(\\.key, ...)`), or its
-default would reach the rows with nothing to say so. SwiftUI's own keys are
-left to the struct: the traits carry most of them, and it copies the rest.
+default would reach the rows with nothing to say so. A key set or applied
+from another key's value (`key = values.other`) fails too. SwiftUI's own
+keys are left to the struct: the traits carry most of them, and it copies
+the rest.
 
 Text-level, like check-sheet-environment.py, whose Swift reader it uses.
 
@@ -34,7 +36,9 @@ ENVIRONMENT_EXTENSION = re.compile(r"\bextension\s+EnvironmentValues\b[^{]*\{")
 DECLARED_VAR = re.compile(r"\bvar\s+(\w+)\s*:")
 COPYING_INIT = re.compile(r"\binit\s*\(\s*_\s+values\s*:\s*EnvironmentValues\b[^{]*\{")
 SET_IN_INIT = re.compile(r"^\s*(\w+)\s*=(?!=)", re.MULTILINE)
+SET_FROM_VALUES = re.compile(r"^\s*(\w+)\s*=\s*values\.(\w+)\b", re.MULTILINE)
 APPLIED = re.compile(r"\.environment\(\s*\\\.(\w+)\s*,")
+APPLIED_FROM_VALUES = re.compile(r"\.environment\(\s*\\\.(\w+)\s*,\s*values\.(\w+)\b")
 SET_INSIDE = re.compile(r"\bstatic\s+let\s+setInsideRows\s*=\s*\[([^\]]*)\]")
 
 
@@ -79,7 +83,8 @@ def find_problems(sources):
     init = COPYING_INIT.search(text)
     if not init:
         return [f"{CELL_ENVIRONMENT}: no init(_ values: EnvironmentValues, ...) copying the chat's values"]
-    copied = set(SET_IN_INIT.findall(text[init.end():swift.block_end(text, init.end() - 1)]))
+    init_text = text[init.end():swift.block_end(text, init.end() - 1)]
+    copied = set(SET_IN_INIT.findall(init_text))
     applied = set(APPLIED.findall(text))
     # The list holds strings, which the reader blanks: found in the read
     # text, so no copy in a comment stands for it, and read as written.
@@ -103,6 +108,12 @@ def find_problems(sources):
             problems.append(
                 f"{path}: \\.{key} reaches no transcript row; copy it in TranscriptCellEnvironment "
                 f"(set in its init, applied in its modifiers) or list it in setInsideRows")
+    for key, source in SET_FROM_VALUES.findall(init_text):
+        if key != source:
+            problems.append(f"{CELL_ENVIRONMENT}: \\.{key} is set in the init from values.{source}")
+    for key, source in APPLIED_FROM_VALUES.findall(text):
+        if key != source:
+            problems.append(f"{CELL_ENVIRONMENT}: \\.{key} is applied to the rows from values.{source}")
     for key in sorted(set_inside - set(keys)):
         problems.append(f"{CELL_ENVIRONMENT}: setInsideRows lists {key}, which Conduit doesn't declare")
     for key in sorted((set_inside & set(keys)) - set_elsewhere):

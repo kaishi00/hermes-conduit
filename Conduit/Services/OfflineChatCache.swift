@@ -399,6 +399,23 @@ struct OfflineChatPresentation: Equatable {
     var displayedSessionID: String? { displayedTranscript?.sessionID }
 }
 
+/// Where a page that reads Hermes through its own service (Voice
+/// settings, Capabilities) keeps the answers on the phone, so it opens on
+/// what it showed last time while it asks again (#1533). AppState's
+/// `voiceSettingsAnswers` and `capabilityAnswers` keep them with the other
+/// settings pages', per dashboard and profile.
+struct KeptAnswers {
+    /// The answer kept for a route, or nil.
+    let kept: @MainActor (_ route: String) -> [String: Any]?
+    /// Runs a read, or a save answering with what it wrote (`writes`), and
+    /// keeps its answer for the route, unless an answer newer than it is
+    /// kept by then.
+    let keep: @MainActor (_ route: String, _ writes: Bool, _ read: () async throws -> [String: Any]) async throws -> [String: Any]
+    /// Counts a write that left nothing to keep for the route, so the
+    /// answer to a read asked before it isn't kept after it.
+    var noteWrite: @MainActor (_ route: String) -> Void = { _ in }
+}
+
 /// File-backed store. Per (dashboard, profile): an index, a file for each
 /// saved conversation's rows and one for the Chats list, all JSON written
 /// atomically with complete-until-first-user-authentication protection and

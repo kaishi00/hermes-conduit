@@ -4993,7 +4993,9 @@ private struct ConduitBreathingTimeline<Content: View>: View {
 /// A chat's transcript (`underChatHeader`) fades out under the chat's header
 /// before iOS 26 too: its text turns transparent across the navigation bar,
 /// as under a bar's fade (`V2LegacyEdgeBar`), rather than a material
-/// drawn behind the header.
+/// drawn behind the header. A chat's transcript is a collection view,
+/// which takes its iOS 26 soft edge from TranscriptViewController's
+/// applyEdgeEffect: on it, only the fade before iOS 26 is this modifier's.
 struct V2SoftTopScrollEdge: ViewModifier {
     let isOn: Bool
     var underChatHeader = false

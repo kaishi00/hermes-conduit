@@ -70,6 +70,25 @@ class TranscriptEnvironmentTests(unittest.TestCase):
         found = problems(set_in_init=())
         self.assertEqual(found, [f"{CELL}: \\.chatRowState is applied to the rows but never set in the init"])
 
+    def test_a_key_set_or_applied_from_another_keys_value_is_reported(self):
+        swapped = cell(set_in_init=(), applied=()).replace(
+            "    init(_ values: EnvironmentValues, disclosure: ChatRowDisclosure?) {",
+            "    init(_ values: EnvironmentValues, disclosure: ChatRowDisclosure?) {\n"
+            "        chatRowState = values.markdownReferences",
+        ).replace("        content\n", "        content\n            .environment(\\.chatRowState, values.locale)\n")
+        found = check.find_problems({"Conduit/Keys.swift": KEYS, "Conduit/Rows.swift": ROWS, CELL: swapped})
+        self.assertEqual(found, [
+            f"{CELL}: \\.chatRowState is set in the init from values.markdownReferences",
+            f"{CELL}: \\.chatRowState is applied to the rows from values.locale",
+        ])
+
+    def test_a_key_set_from_the_chats_own_value_passes(self):
+        own = cell(set_in_init=()).replace(
+            "    init(_ values: EnvironmentValues, disclosure: ChatRowDisclosure?) {",
+            "    init(_ values: EnvironmentValues, disclosure: ChatRowDisclosure?) {\n        chatRowState = disclosure",
+        )
+        self.assertEqual(check.find_problems({"Conduit/Keys.swift": KEYS, "Conduit/Rows.swift": ROWS, CELL: own}), [])
+
     def test_a_listed_key_conduit_does_not_declare_is_reported(self):
         found = problems(set_inside=("markdownReferences", "gone"))
         self.assertEqual(found, [f"{CELL}: setInsideRows lists gone, which Conduit doesn't declare"])

@@ -53,7 +53,7 @@ struct VoiceSettingsRoute: View {
         bridge: DashboardTicketBridge,
         profile: String,
         profileParameter: @escaping @MainActor () -> String = { "profile" },
-        answers: VoiceKeptAnswers? = nil,
+        answers: KeptAnswers? = nil,
         profileName: String? = nil,
         conversationController: VoiceConversationController,
         actions: VoiceSettingsActions,
