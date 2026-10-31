@@ -1614,9 +1614,11 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
 
     /// An answer can be megabytes (a long chat's page): one bigger than
     /// `inlineLimit` is parsed off the main thread, which only hands it to
-    /// its request (#1533), and its task is returned. A smaller one, a
-    /// write's among them, is parsed here, so it lands before a reload or a
-    /// sign-out after it can reject its request.
+    /// its request (#1533), and its task is returned. If a reload, a stall
+    /// (another request's included) or a sign-out rejects that request
+    /// while it's parsed, the answer is dropped and the request fails as
+    /// it would have a moment earlier. A smaller one, a write's among them,
+    /// is parsed here, so it lands before any of those can reject it.
     @discardableResult
     func receive(
         _ raw: String,

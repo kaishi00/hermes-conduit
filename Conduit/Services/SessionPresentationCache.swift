@@ -212,6 +212,9 @@ final class SessionPresentationCache {
     /// dropped; see `removingDurably`. Guarded by `memoryLock`; nil until
     /// read from disk.
     private var tombstones: [(tombstone: Tombstone, tickets: [StoreKind: Int])]?
+    /// The tombstones' last write didn't land (a full disk): a store write
+    /// that lands writes them again. Guarded by `memoryLock`.
+    private var tombstonesUnwritten = false
     /// Ticket of the newest write that reached disk for each store.
     /// Guarded by `memoryLock`.
     private var landedWriteTicket: [StoreKind: Int] = [:]
@@ -1489,7 +1492,7 @@ final class SessionPresentationCache {
         let canRetireTombstones = memoryLock.withLock { () -> Bool in
             landedWriteTicket[kind] = max(landedWriteTicket[kind] ?? 0, ticket)
             guard let tombstones else { return false }
-            return tombstones.contains { hasLandedLocked($0.tickets) }
+            return tombstonesUnwritten || tombstones.contains { hasLandedLocked($0.tickets) }
         }
         if canRetireTombstones {
             DispatchQueue.main.async { self.retireLandedTombstones() }
@@ -1526,25 +1529,34 @@ final class SessionPresentationCache {
         retireLandedTombstones()
     }
 
-    /// Drops tombstones whose removal both stores on disk now reflect.
-    /// Main thread only (see `removingDurably`).
+    /// Drops tombstones whose removal both stores on disk now reflect, and
+    /// writes again the ones whose last write didn't land. Main thread only
+    /// (see `removingDurably`).
     private func retireLandedTombstones() {
         let remaining = memoryLock.withLock { () -> [Tombstone]? in
             guard let current = tombstones else { return nil }
             let kept = current.filter { !hasLandedLocked($0.tickets) }
-            guard kept.count != current.count else { return nil }
+            guard kept.count != current.count || tombstonesUnwritten else { return nil }
             tombstones = kept
             return kept.map(\.tombstone)
         }
         if let remaining { storeTombstones(remaining) }
     }
 
+    /// A write that doesn't land (a full disk) is tried again when a store
+    /// write lands, so a delete still holds across a kill once the disk
+    /// takes writes, even before the stores reflect it.
     private func storeTombstones(_ stored: [Tombstone]) {
+        let landed: Bool
         if stored.isEmpty {
             storage.removeObject(forKey: tombstonesStorageKey)
+            landed = true
         } else if let data = try? JSONEncoder().encode(stored) {
-            storage.storeData(data, forKey: tombstonesStorageKey)
+            landed = storage.storeData(data, forKey: tombstonesStorageKey)
+        } else {
+            landed = false
         }
+        memoryLock.withLock { tombstonesUnwritten = !landed }
     }
 
     /// Whether each store has landed a write at least as new as its ticket
