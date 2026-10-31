@@ -888,6 +888,8 @@ final class WatchDirectBroker {
         let profile = ledger.call(id)?.connection.profile ?? appState.activeProfile
         let tokens = appState.makeLiveTokenClient(provider: .gemini) { profile }
         let supervisor = WatchCallJobSupervisor(appState.voiceBackgroundJobSupervisor, callProfile: appState.jobProfile(for: profile))
+        // Its jobs on another profile take that profile's voice-job model.
+        if callID == id { appState.watchCallJobProfile = supervisor.callProfile }
         // Noted in the saved call, as the phone's own calls note theirs.
         supervisor.onJobCreated = { [weak self] jobID in self?.callJobs[id, default: []].append(jobID) }
         supervisor.callIsLive = { [weak self] in self?.callID == id }
@@ -1548,6 +1550,7 @@ final class WatchDirectBroker {
         hostToolsMode = nil
         callMode = nil
         appState.watchCallUserTurn = nil
+        appState.watchCallJobProfile = nil
         revokeGrants()
         appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = false
         callID = nil

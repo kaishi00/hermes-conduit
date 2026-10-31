@@ -23,6 +23,40 @@ extension VoiceConversationControllerTests {
                        "kept until the list has loaded")
     }
 
+    func testSiriTakesTheHandsFreeProfileOnlyWhenTheShortcutNamesNone() {
+        let siri = PendingVoiceIntent(profile: nil, startsFreshConversation: true, source: .siri)
+        XCTAssertEqual(AppState.applyingHandsFreeProfile("personal", to: siri).profile, "personal")
+        XCTAssertNil(AppState.applyingHandsFreeProfile(nil, to: siri).profile, "none picked: the iPhone's, as before")
+        let named = PendingVoiceIntent(profile: "work", startsFreshConversation: true, source: .siri)
+        XCTAssertEqual(AppState.applyingHandsFreeProfile("personal", to: named).profile, "work", "a named profile wins")
+        let composer = PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer)
+        XCTAssertNil(AppState.applyingHandsFreeProfile("personal", to: composer).profile, "a start on the iPhone's screen is left alone")
+    }
+
+    func testAWatchCallStartsOnTheHandsFreeProfileAndAnAnsweredOneOnItsCallers() {
+        let profiles = ["default", "work", "Personal"]
+        func profile(answers: Bool, caller: String? = nil, onActive: Bool = true) -> String {
+            AppState.watchCallProfile(answers: answers, callerProfile: caller, callerOnActiveDashboard: onActive,
+                                      handsFree: "Personal", active: "work", profiles: profiles)
+        }
+        XCTAssertEqual(profile(answers: false), "Personal")
+        XCTAssertEqual(profile(answers: true, caller: "default"), "default", "the profile that called")
+        XCTAssertEqual(profile(answers: true, caller: "PERSONAL"), "Personal", "in the dashboard's spelling")
+        XCTAssertEqual(profile(answers: true, caller: nil), "work", "a push naming none is the iPhone's")
+        XCTAssertEqual(profile(answers: true, caller: "default", onActive: false), "work", "another dashboard's caller")
+    }
+
+    func testASwitchOnTheIPhoneEndsAWatchCallOnAnotherProfile() {
+        let call = WatchDirectConnection(profile: "personal", dashboard: "d1", phoneProfile: "work")
+        XCTAssertTrue(AppState.watchConnection(call, isCurrentOn: "d1", phoneProfile: "work"))
+        XCTAssertFalse(AppState.watchConnection(call, isCurrentOn: "d1", phoneProfile: "personal"),
+                       "the iPhone's switch resets the jobs it runs for the call")
+        XCTAssertFalse(AppState.watchConnection(call, isCurrentOn: "d2", phoneProfile: "work"))
+        let stored = WatchDirectConnection(profile: "work", dashboard: "d1")
+        XCTAssertTrue(AppState.watchConnection(stored, isCurrentOn: "d1", phoneProfile: "work"),
+                      "a call stored before calls had their own profile")
+    }
+
     func testAWatchCallOnAnotherProfileRunsItsJobsAndItsChatThere() async {
         let fake = FakeVoiceJobBackend()
         fake.profileTargets["personal"] = .other("personal")

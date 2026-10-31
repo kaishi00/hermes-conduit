@@ -4554,7 +4554,18 @@ final class AppState: ObservableObject {
                 if let targetProfile {
                     // A job on another profile or bot runs on that profile's
                     // own model: this profile's voice-job model is not its.
-                    let created = try await client.createSession(inProfile: targetProfile)
+                    // A Watch call running on that profile uses its voice-job
+                    // model, as the call's relay jobs do (#1564).
+                    var options: (model: String?, provider: String?, reasoningEffort: String?) = (nil, nil, nil)
+                    if let callProfile = self.watchCallJobProfile, self.profilesMatch(callProfile, targetProfile) {
+                        options = self.watchCallJobSession(self.loadVoiceProfilePreferences(profile: callProfile), profile: callProfile)
+                    }
+                    let created = try await client.createSession(
+                        model: options.model,
+                        provider: options.provider,
+                        reasoningEffort: options.reasoningEffort,
+                        inProfile: targetProfile
+                    )
                     if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, targetProfile) {
                         throw HermesError.invalidResponse
                     }
@@ -36982,6 +36993,11 @@ final class AppState: ObservableObject {
     /// user's calendar, reminders or alarms takes their own yes.
     var watchCallUserTurn: (id: UUID, text: String)?
 
+    /// The running Watch call's profile when it isn't the iPhone's (#1564):
+    /// the jobs the iPhone starts there take that profile's voice-job model,
+    /// as the call's relay jobs do. Nil without such a call.
+    var watchCallJobProfile: String?
+
     /// What a Watch call to Gemini Live starts with: the setup this
     /// profile's Gemini Live call gets on the phone, and the session's
     /// first single-use token (designs/apple-watch-voice-direct.md).
@@ -37409,8 +37425,11 @@ final class AppState: ObservableObject {
     /// the iPhone resets the jobs it runs for the call, so the call ends,
     /// as it always has; the call's own profile needn't be the iPhone's.
     func watchConnectionIsCurrent(_ connection: WatchDirectConnection) -> Bool {
-        connection.dashboard == (activeDashboardID?.uuidString ?? "-")
-            && profilesMatch(connection.phoneProfile ?? connection.profile, activeProfile)
+        Self.watchConnection(connection, isCurrentOn: activeDashboardID?.uuidString ?? "-", phoneProfile: activeProfile)
+    }
+
+    nonisolated static func watchConnection(_ connection: WatchDirectConnection, isCurrentOn dashboard: String, phoneProfile: String) -> Bool {
+        connection.dashboard == dashboard && profilesMatch(connection.phoneProfile ?? connection.profile, phoneProfile)
     }
 
     /// A single-use token for the Watch call's next connection, on the

@@ -65,20 +65,44 @@ extension AppState {
     /// names none is the iPhone's, as on the iPhone); any other starts on
     /// the hands-free profile.
     func watchCallProfile(answering target: ConduitNotificationTarget?) -> String {
-        guard let target else { return handsFreeProfile }
-        let profile = target.profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !profile.isEmpty, target.dashboardID == nil || target.dashboardID == activeDashboardID else { return activeProfile }
-        return profile
+        Self.watchCallProfile(
+            answers: target != nil,
+            callerProfile: target?.profile,
+            callerOnActiveDashboard: target.map { $0.dashboardID == nil || $0.dashboardID == activeDashboardID } ?? false,
+            handsFree: handsFreeProfile,
+            active: activeProfile,
+            profiles: profiles
+        )
+    }
+
+    /// The caller's profile in the dashboard's own spelling, so the phone
+    /// tools' checks match it.
+    nonisolated static func watchCallProfile(
+        answers: Bool,
+        callerProfile: String?,
+        callerOnActiveDashboard: Bool,
+        handsFree: String,
+        active: String,
+        profiles: [String]
+    ) -> String {
+        guard answers else { return handsFree }
+        let profile = callerProfile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !profile.isEmpty, callerOnActiveDashboard else { return active }
+        return profiles.first { profilesMatch($0, profile) } ?? profile
     }
 
     /// A Siri or Action button start that names no profile takes the
     /// hands-free one. Every other start is left as it came.
     func applyingHandsFreeProfile(to intent: PendingVoiceIntent) -> PendingVoiceIntent {
-        guard intent.source == .siri,
-              (intent.profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty,
-              handsFreeProfileChoice != nil else { return intent }
+        Self.applyingHandsFreeProfile(handsFreeProfileChoice == nil ? nil : handsFreeProfile, to: intent)
+    }
+
+    /// `handsFree` nil: none picked, the start is left as it came.
+    nonisolated static func applyingHandsFreeProfile(_ handsFree: String?, to intent: PendingVoiceIntent) -> PendingVoiceIntent {
+        guard let handsFree, intent.source == .siri,
+              (intent.profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty else { return intent }
         var intent = intent
-        intent.profile = handsFreeProfile
+        intent.profile = handsFree
         return intent
     }
 
