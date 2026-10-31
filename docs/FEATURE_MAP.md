@@ -3958,6 +3958,7 @@ platform list) · the chat header (shows no source)
 
 **Rulings**
 - Each Hermes gateway platform (`gateway.config.Platform` and the bundled platform plugins) is its own source, by name, with its own filter; a platform with two backends is one source (WhatsApp and WhatsApp Cloud, iMessage over BlueBubbles or Photon, WeCom and its callback app, a Microsoft Graph webhook under Webhook). A plugin platform Conduit doesn't know yet is Other, not a guess (2026-10-31, #1572, issue #1561, which Eric asked to fix).
+- A chat handed off to a platform is filed under it once the handoff completed; a pending or failed handoff leaves it where it started (Hermes keeps `handoff_platform` on both). A host that reports no `handoff_state` files by the platform (2026-10-31, #1572 review).
 - A source added to the filter order takes its default place after the source before it in a saved order, as Voice and Cron did, so the new platforms follow Telegram wherever the user moved it.
 - Chats Conduit starts are Hermes `desktop` sessions, the same as Hermes Desktop's, and aren't a source of their own: a chat started on either side resumes on the other and is listed where Desktop users expect it (2026-10-31, Eric, issue #1561).
 

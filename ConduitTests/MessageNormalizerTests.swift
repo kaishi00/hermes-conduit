@@ -200,6 +200,17 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(MessageNormalizer.classifySource(["source": .string("desktop")]), .chat)
         XCTAssertEqual(MessageNormalizer.classifySource(["source": .string("relay")]), .other)
         XCTAssertEqual(MessageNormalizer.classifySource(["source": .string("voice")]), .other)
+        // A handoff files the chat where it went once it completed, not
+        // while it's pending or after it failed.
+        XCTAssertEqual(MessageNormalizer.classifySource([
+            "source": .string("desktop"), "handoff_platform": .string("slack"), "handoff_state": .string("completed")
+        ]), .slack)
+        XCTAssertEqual(MessageNormalizer.classifySource([
+            "source": .string("desktop"), "handoff_platform": .string("slack"), "handoff_state": .string("failed")
+        ]), .chat)
+        XCTAssertEqual(MessageNormalizer.classifySource([
+            "source": .string("desktop"), "handoff_platform": .string("slack"), "handoff_state": .string("pending")
+        ]), .chat)
         // Every platform has a place in the filter order.
         XCTAssertTrue(SessionSource.gatewayPlatforms.allSatisfy(AppState.defaultSessionFilterOrder.contains))
         XCTAssertEqual(Set(AppState.defaultSessionFilterOrder), Set(SessionSource.allCases))

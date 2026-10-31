@@ -4214,7 +4214,14 @@ enum MessageNormalizer {
         // test them against it, everything falls through to 'other'.
 
         let directSources = ["source", "origin", "platform"].compactMap { obj[$0]?.stringValue?.lowercased() }.filter { !$0.isEmpty }
-        let handoffSource = (obj["handoff_platform"]?.stringValue ?? "").lowercased()
+        // A handoff names where the chat went only once it completed: Hermes
+        // keeps the platform on a pending or failed one, and that chat is
+        // still where it started. A host that reports no state files by the
+        // platform, as before.
+        let handoffState = (obj["handoff_state"]?.stringValue ?? "").lowercased()
+        let handoffSource = handoffState.isEmpty || handoffState == "completed"
+            ? (obj["handoff_platform"]?.stringValue ?? "").lowercased()
+            : ""
 
         // Check for cron metadata
         let hasCronMeta = ["cron_job_id", "cron_run_id", "scheduled_job_id", "schedule_id"].contains { obj[$0] != nil && obj[$0] != .null }
