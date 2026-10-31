@@ -49,7 +49,7 @@ enum HermesApprovalText {
         if let action = between(trimmed, "Allow computer_use to perform `", "`?"), isName(action) {
             return AppLocalization.string("Allow computer_use to perform `\(action)`?")
         }
-        if let directory = between(trimmed, "Codex requests exec in ", ""), isPath(directory) || isName(directory) {
+        if let directory = between(trimmed, "Codex requests exec in ", ""), isName(directory) {
             return AppLocalization.string("Codex requests exec in \(directory)")
         }
         if trimmed == "Hermes needs your approval. Open Conduit for details." {
@@ -87,20 +87,11 @@ enum HermesApprovalText {
         return String(text.dropFirst(prefix.count).dropLast(suffix.count))
     }
 
-    /// One word, as a tool, an action or a flag Hermes names: a text
+    /// One word, as a tool, a directory, an action or a flag Hermes names: a text
     /// that only starts like Hermes' own (a plugin's own reason, "Plugin
     /// requires approval for deleting the cache") isn't one of its texts.
     private static func isName(_ text: String) -> Bool {
         !text.isEmpty && !text.unicodeScalars.contains { CharacterSet.whitespacesAndNewlines.contains($0) || $0 == "`" }
-    }
-
-    /// A directory Codex names: absolute, home-relative or a Windows drive,
-    /// on one line (it may hold spaces).
-    private static func isPath(_ text: String) -> Bool {
-        guard !text.contains(where: \.isNewline) else { return false }
-        if text.hasPrefix("/") || text.hasPrefix("~") { return true }
-        let scalars = Array(text.unicodeScalars.prefix(3))
-        return scalars.count == 3 && CharacterSet.letters.contains(scalars[0]) && scalars[1] == ":" && (scalars[2] == "\\" || scalars[2] == "/")
     }
 
     /// The two names in a text of the shape prefix, first, middle, second,

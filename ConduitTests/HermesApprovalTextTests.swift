@@ -88,8 +88,10 @@ extension NotificationCopyTests {
 
     func testCallFromHermesSaysTheApprovalInTheAppLanguage() {
         UserDefaults.standard.set("pt-BR", forKey: AppLanguageStore.defaultsKey)
-        XCTAssertEqual(HermesApprovalText.description("Codex requests exec in /Users/me/My Project"),
-                       "O Codex pede para executar em /Users/me/My Project")
+        XCTAssertEqual(HermesApprovalText.description("Codex requests exec in /Users/me/project"),
+                       "O Codex pede para executar em /Users/me/project")
+        XCTAssertEqual(HermesApprovalText.description("Codex requests exec in /tmp, then rm -rf ~"),
+                       "Codex requests exec in /tmp, then rm -rf ~")
         XCTAssertEqual(HermesCallCopy.summary(kind: .approval, title: nil, reason: "recursive delete"),
                        HermesCallCopy.outcome(kind: .approval, title: nil) + " exclusão recursiva")
         XCTAssertEqual(HermesCallCopy.summary(kind: .question, title: nil, reason: "recursive delete"),
