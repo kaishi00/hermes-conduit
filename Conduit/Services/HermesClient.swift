@@ -4210,11 +4210,18 @@ enum MessageNormalizer {
 
     static func classifySource(_ obj: [String: AnyCodable]) -> SessionSource {
         // CRITICAL: classify BEFORE the chat whitelist (build 18 fix).
-        // discord/telegram/webhook/api are NOT in the chat whitelist, so if we
+        // The messaging platforms, webhook and api are NOT in the chat whitelist, so if we
         // test them against it, everything falls through to 'other'.
 
         let directSources = ["source", "origin", "platform"].compactMap { obj[$0]?.stringValue?.lowercased() }.filter { !$0.isEmpty }
-        let handoffSource = (obj["handoff_platform"]?.stringValue ?? "").lowercased()
+        // A handoff names where the chat went only once it completed: Hermes
+        // keeps the platform on a pending or failed one, and that chat is
+        // still where it started. A host that reports no state files by the
+        // platform, as before.
+        let handoffState = (obj["handoff_state"]?.stringValue ?? "").lowercased()
+        let handoffSource = handoffState.isEmpty || handoffState == "completed"
+            ? (obj["handoff_platform"]?.stringValue ?? "").lowercased()
+            : ""
 
         // Check for cron metadata
         let hasCronMeta = ["cron_job_id", "cron_run_id", "scheduled_job_id", "schedule_id"].contains { obj[$0] != nil && obj[$0] != .null }
@@ -4232,8 +4239,31 @@ enum MessageNormalizer {
             switch source {
             case "discord": return .discord
             case "telegram": return .telegram
-            case "webhook": return .webhook
+            case "whatsapp", "whatsapp_cloud": return .whatsapp
+            case "bluebubbles", "photon", "imessage": return .imessage
+            case "wecom", "wecom_callback": return .wecom
+            case "webhook", "msgraph_webhook": return .webhook
             case "api", "api-server", "api_server", "server": return .api
+            case "slack": return .slack
+            case "signal": return .signal
+            case "matrix": return .matrix
+            case "mattermost": return .mattermost
+            case "teams": return .teams
+            case "google_chat": return .googleChat
+            case "email": return .email
+            case "sms": return .sms
+            case "irc": return .irc
+            case "line": return .line
+            case "simplex": return .simplex
+            case "weixin": return .wechat
+            case "feishu": return .feishu
+            case "dingtalk": return .dingtalk
+            case "qqbot": return .qq
+            case "yuanbao": return .yuanbao
+            case "buzz": return .buzz
+            case "raft": return .raft
+            case "ntfy": return .ntfy
+            case "a2a": return .a2a
             default: return nil
             }
         }

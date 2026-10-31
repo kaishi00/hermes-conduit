@@ -3934,6 +3934,42 @@ captions, Settings captions, the invite's share message
 
 **Checked:** 2026-10-29, #1497 (asks between linked agents: the tool, the rules, the CLI and routes, the README section, the gap left for C7), with notifier #465; 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-29, #1495 (a fork of a room's chat neither hears nor is framed with the owner's answers, notifier #464); 2026-10-29, #1494 (Use my data's free/busy: the tool, its rules, the README section, the gap closed), with notifier #463; 2026-10-29, #1485 (Ask me first: the tool, its prompt and its answers, the gap left for C5c), with notifier #460 and #461; 2026-10-29, #1475 (the room chats routes, the tool's "you were taken out", the README section in the text sibling), with notifier #457; 2026-10-29, #1470 (your agent reading your rooms, the room chats and their notes, N7a's minors), with notifier #448; 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1448 (a member known only by name matches a bot's own name before an unnamed bot's id capitalized); #1450 (posting in rooms hosted elsewhere), with notifier #441; #1410 (copies of rooms hosted elsewhere), with notifier #434; 2026-10-27, #1381 (the invite push and quiet room turns), with notifier #425; #1360 (new drafts and the setup on a profile the dashboard didn't start with), with notifier #387, #390, #396, #397, #398, #401, #406, #409, #411, #416 and #419.
 
+## Chat sources
+
+Where a chat came from: Hermes' `source` on each session row, which Conduit
+files under a source (`SessionSource`) for the row's icon and the Chats
+filter's Sources section. Cron runs and the sessions that aren't chats are
+kept out of the chats list (see Kanban workers' transcripts).
+
+**Siblings:** the V2 Chats row icon and the Sources filter · the iPad and Mac
+list (same view) · the older sidebar's source filters · All profiles · the
+saved chat list and offline copies (they store the source) · CarPlay's chat
+list (a speech bubble for every messaging source) · the notifier's messaging
+group for reply notifications (`notifier/reply_sources.py`, the same Hermes
+platform list) · the chat header (shows no source)
+
+**Code**
+- Sources and their names, icons and colors: `Conduit/Models/Models.swift` (SessionSource, gatewayPlatforms)
+- Filing a row: `Conduit/Services/HermesClient.swift` (MessageNormalizer.classifySource), `Conduit/Services/AppState.swift` (sessionCategory)
+- Filter order: `Conduit/Services/AppState.swift` (defaultSessionFilterOrder, normalizedSessionFilterOrder)
+- Filters and icons: `Conduit/Views/V2/V2ChatsView.swift` (sourceFilters, sourceRows), `Conduit/Views/V2/V2SessionRow.swift` (V2SessionIcon), `Conduit/Views/SidebarView.swift` (availableSources)
+- Saved copies: `Conduit/Services/OfflineChatCache.swift` (OfflineCachedSession.source, SavedChatList: rows keep the source they were filed under)
+- CarPlay: `Conduit/CarPlay/CarPlayBrowseTemplates.swift` (chatSymbol)
+- Tests: `ConduitTests/MessageNormalizerTests.swift` (testGatewayPlatformsAreNamedByTheirHermesSource), `ConduitTests/VoiceHistoryTests.swift` (testVoiceFiltersJoinASavedOrderAfterChat), `ConduitTests/SidebarLayoutTests+CronFilter.swift`
+
+**Rulings**
+- Each Hermes gateway platform (`gateway.config.Platform` and the bundled platform plugins) is its own source, by name, with its own filter; a platform with two backends is one source (WhatsApp and WhatsApp Cloud, iMessage over BlueBubbles or Photon, WeCom and its callback app, a Microsoft Graph webhook under Webhook). A plugin platform Conduit doesn't know yet is Other, not a guess (2026-10-31, #1572, issue #1561, which Eric asked to fix).
+- A chat handed off to a platform is filed under it once the handoff completed; a pending or failed handoff leaves it where it started (Hermes keeps `handoff_platform` on both). A host that reports no `handoff_state` files by the platform (2026-10-31, #1572 review).
+- A source added to the filter order takes its default place after the source before it in a saved order, as Voice and Cron did, so the new platforms follow Telegram wherever the user moved it.
+- Chats Conduit starts are Hermes `desktop` sessions, the same as Hermes Desktop's, and aren't a source of their own: a chat started on either side resumes on the other and is listed where Desktop users expect it (2026-10-31, Eric, issue #1561).
+
+**Open gaps**
+- The chat header shows no source; only the row icon does.
+- A plugin platform Hermes adds after this list shows as Other until it's added here.
+- A saved chat list written before #1572 keeps Other on its platform rows until the live list replaces it: a saved row keeps no raw Hermes source, as in Kanban workers' transcripts.
+
+**Checked:** 2026-10-31, #1572 (every gateway platform named, issue #1561).
+
 ## Kanban workers' transcripts
 
 A Kanban task's worker runs in a Hermes session of its own (source
