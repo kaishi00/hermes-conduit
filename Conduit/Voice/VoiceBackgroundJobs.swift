@@ -1346,10 +1346,21 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// first such job's chat becomes the call's, so later requests are its
     /// next turns (#1250).
     func startJob(
-        instructions requested: String,
-        profile spokenProfile: String? = nil,
+        instructions: String,
+        profile: String? = nil,
         joinsCall: Bool = false,
-        callsModel: Bool = false,
+        onJobCreated: (@MainActor (UUID) -> Void)? = nil
+    ) async -> String {
+        await startJob(instructions: instructions, profile: profile, joinsCall: joinsCall, callsModel: false, onJobCreated: onJobCreated)
+    }
+
+    /// `callsModel`: a Watch call's own job on its profile, which runs on
+    /// that profile's voice-job model (#1564).
+    func startJob(
+        instructions requested: String,
+        profile spokenProfile: String?,
+        joinsCall: Bool = false,
+        callsModel: Bool,
         onJobCreated: (@MainActor (UUID) -> Void)? = nil
     ) async -> String {
         if joinsCall, liveThread == nil {
