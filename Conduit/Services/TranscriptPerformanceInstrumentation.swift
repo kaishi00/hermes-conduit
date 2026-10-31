@@ -33,7 +33,6 @@ enum TranscriptPerf {
         case .selectableTextViewUpdate: storage.selectableTextViewUpdate += 1
         case .selectableTextViewTextRebuild: storage.selectableTextViewTextRebuild += 1
         case .textKitMeasurement: storage.textKitMeasurement += 1
-        case .rowFramePreferenceUpdate: storage.rowFramePreferenceUpdate += 1
         case .layoutMetricsChanged: storage.layoutMetricsChanged += 1
         case .transcriptChanged: storage.transcriptChanged += 1
         case .chatViewBody: storage.chatViewBody += 1
@@ -207,7 +206,6 @@ enum TranscriptPerf {
         case selectableTextViewUpdate
         case selectableTextViewTextRebuild
         case textKitMeasurement
-        case rowFramePreferenceUpdate
         case layoutMetricsChanged
         case transcriptChanged
         case chatViewBody
@@ -280,10 +278,6 @@ enum TranscriptPerf {
 
     static var textKitMeasurementCalls: Int {
         get { read(\.textKitMeasurement) }
-    }
-
-    static var rowFramePreferenceUpdates: Int {
-        get { read(\.rowFramePreferenceUpdate) }
     }
 
     static var layoutMetricsChangedCalls: Int {
@@ -573,7 +567,6 @@ enum TranscriptPerf {
         var selectableTextViewUpdate = 0
         var selectableTextViewTextRebuild = 0
         var textKitMeasurement = 0
-        var rowFramePreferenceUpdate = 0
         var layoutMetricsChanged = 0
         var transcriptChanged = 0
         var chatViewBody = 0

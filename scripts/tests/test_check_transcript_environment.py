@@ -19,6 +19,15 @@ extension EnvironmentValues {
 """
 
 
+ROWS = """
+struct Row: View {
+    var body: some View {
+        Text(verbatim: "").environment(\\.markdownReferences, [:])
+    }
+}
+"""
+
+
 def cell(set_in_init=("chatRowState",), applied=("chatRowState",), set_inside=("markdownReferences",)):
     lines = [
         "struct TranscriptCellEnvironment {",
@@ -39,8 +48,8 @@ def cell(set_in_init=("chatRowState",), applied=("chatRowState",), set_inside=("
     return "\n".join(lines)
 
 
-def problems(keys=KEYS, **kwargs):
-    return check.find_problems({"Conduit/Keys.swift": keys, CELL: cell(**kwargs)})
+def problems(keys=KEYS, rows=ROWS, **kwargs):
+    return check.find_problems({"Conduit/Keys.swift": keys, "Conduit/Rows.swift": rows, CELL: cell(**kwargs)})
 
 
 class TranscriptEnvironmentTests(unittest.TestCase):
@@ -64,6 +73,10 @@ class TranscriptEnvironmentTests(unittest.TestCase):
     def test_a_listed_key_conduit_does_not_declare_is_reported(self):
         found = problems(set_inside=("markdownReferences", "gone"))
         self.assertEqual(found, [f"{CELL}: setInsideRows lists gone, which Conduit doesn't declare"])
+
+    def test_a_listed_key_nothing_sets_is_reported(self):
+        found = problems(rows="")
+        self.assertEqual(found, [f"{CELL}: setInsideRows lists markdownReferences, which nothing in Conduit sets"])
 
     def test_only_the_extensions_own_members_are_keys(self):
         keys = KEYS + """

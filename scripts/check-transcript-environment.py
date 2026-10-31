@@ -12,9 +12,10 @@ So every key Conduit declares (a `var` in an `extension EnvironmentValues`)
 is copied there, set in its init (`key = values.key`, or the chat's own
 value, as for the disclosure) and applied to the rows
 (`.environment(\\.key, ...)`), or listed in its `setInsideRows`, for a key
-the rows set for what they hold. A listed key must be one Conduit declares.
-SwiftUI's own keys are left to the struct: the traits carry most of them,
-and it copies the rest.
+the rows set for what they hold. A listed key must be one Conduit declares,
+and one something in Conduit sets (`.environment(\\.key, ...)`), or its
+default would reach the rows with nothing to say so. SwiftUI's own keys are
+left to the struct: the traits carry most of them, and it copies the rest.
 
 Text-level, like check-sheet-environment.py, whose Swift reader it uses.
 
@@ -85,6 +86,10 @@ def find_problems(sources):
     set_inside = set(re.findall(r'"(\w+)"', listed.group(1))) if listed else set()
 
     keys = declared_keys(sources)
+    set_elsewhere = set()
+    for path, source in sources.items():
+        if path != CELL_ENVIRONMENT:
+            set_elsewhere |= set(APPLIED.findall(swift.strip_comments(source)))
     problems = []
     for key, path in sorted(keys.items()):
         if key in set_inside or (key in copied and key in applied):
@@ -99,6 +104,8 @@ def find_problems(sources):
                 f"(set in its init, applied in its modifiers) or list it in setInsideRows")
     for key in sorted(set_inside - set(keys)):
         problems.append(f"{CELL_ENVIRONMENT}: setInsideRows lists {key}, which Conduit doesn't declare")
+    for key in sorted((set_inside & set(keys)) - set_elsewhere):
+        problems.append(f"{CELL_ENVIRONMENT}: setInsideRows lists {key}, which nothing in Conduit sets")
     return problems
 
 
