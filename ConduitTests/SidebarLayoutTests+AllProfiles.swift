@@ -148,6 +148,26 @@ extension SidebarLayoutTests {
         XCTAssertEqual(preview.hidden, 0)
     }
 
+    func testAllProfilesGroupKeepsANestWhoseChildIsNewestThoughItsRootIsOld() {
+        // Roots in the list's order; r6's own row is old, its child new.
+        let nodes = (1...6).map { index in
+            SessionNesting.Node(
+                session: allRow("r\(index)", profile: "atlas", at: TimeInterval(100 - index)),
+                children: index == 6 ? [SessionNesting.Node(session: allRow("new-child", profile: "atlas", at: 500), children: [])] : []
+            )
+        }
+        let preview = AllProfilesChats.preview(
+            nodes,
+            showsAll: false,
+            isPinned: { _ in false },
+            isOpen: { _ in false },
+            activity: ChatListSection.latestActivity(in:)
+        )
+        // The nest with the newest chat stays; the list keeps its order.
+        XCTAssertEqual(preview.shown.map(\.id), ["r1", "r2", "r3", "r4", "r6"])
+        XCTAssertEqual(preview.hidden, 1)
+    }
+
     func testAllProfilesSettingsAreKeptPerDashboard() throws {
         let suite = "AllProfilesChatsTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

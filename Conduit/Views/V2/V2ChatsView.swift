@@ -1521,7 +1521,8 @@ struct V2ChatsView: View, Equatable {
                     nodes,
                     showsAll: !sectionsCollapsible,
                     isPinned: { appState.isSessionPinned($0.session) },
-                    isOpen: holdsOpenChat
+                    isOpen: holdsOpenChat,
+                    activity: ChatListSection.latestActivity(in:)
                 )
                 let showsAll = profilesShowingAll.contains(profile)
                 listRows(

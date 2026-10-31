@@ -162,27 +162,37 @@ enum AllProfilesChats {
     /// off the screen.
     static let groupPreviewCount = 5
 
-    /// The items a profile's section lists: every pinned one, the first
-    /// `groupPreviewCount` of the rest (newest first, as given) and the
-    /// open chat wherever it falls; all of them when `showsAll`. `hidden`
-    /// counts what "Show more" brings.
+    /// The items a profile's section lists, in their own order: every
+    /// pinned one, the `groupPreviewCount` others with the newest
+    /// `activity` (a nest's newest row, as the date sections file it) and
+    /// the open chat wherever it falls; all of them when `showsAll`.
+    /// `hidden` counts what "Show more" brings.
     static func preview<Item>(
         _ items: [Item],
         showsAll: Bool,
         isPinned: (Item) -> Bool,
-        isOpen: (Item) -> Bool
+        isOpen: (Item) -> Bool,
+        activity: (Item) -> TimeInterval? = { _ in nil }
     ) -> (shown: [Item], hidden: Int) {
         guard !showsAll else { return (items, 0) }
+        let pinned = items.map(isPinned)
+        let newest = items.indices
+            .filter { !pinned[$0] }
+            .map { (index: $0, time: activity(items[$0])) }
+            .sorted { lhs, rhs in
+                switch (lhs.time, rhs.time) {
+                case let (l?, r?) where l != r: return l > r
+                case (_?, nil): return true
+                case (nil, _?): return false
+                default: return lhs.index < rhs.index
+                }
+            }
+            .prefix(groupPreviewCount)
+        let kept = Set(newest.map(\.index))
         var shown: [Item] = []
-        var unpinned = 0
         var hidden = 0
-        for item in items {
-            if isPinned(item) {
-                shown.append(item)
-            } else if unpinned < groupPreviewCount {
-                unpinned += 1
-                shown.append(item)
-            } else if isOpen(item) {
+        for (index, item) in items.enumerated() {
+            if pinned[index] || kept.contains(index) || isOpen(item) {
                 shown.append(item)
             } else {
                 hidden += 1
