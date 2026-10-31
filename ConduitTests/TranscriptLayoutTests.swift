@@ -280,4 +280,33 @@ final class TranscriptLayoutTests: XCTestCase {
         XCTAssertEqual(TranscriptLayout.estimatedHeight(of: reply("a", String(repeating: "👋", count: 400)), width: width), ascii)
         XCTAssertGreaterThan(ascii, TranscriptLayout.estimatedHeight(of: reply("a", "a"), width: width))
     }
+
+    /// A group room's rows are guessed from their text as a chat's are: a
+    /// caption is a line, a member's message grows with its text beside
+    /// its picture, and the message on its way is guessed as its event
+    /// will be, so the event taking its row starts at the same height.
+    func testARoomsRowsAreGuessedFromTheirText() {
+        let width: CGFloat = 300
+        func guess(_ row: GroupRoomRow) -> CGFloat {
+            TranscriptLayout.estimatedHeight(of: TranscriptRow(id: "r", kind: .room(row)), width: width)
+        }
+        func event(_ kind: String, _ text: String?) -> GroupRoomRow {
+            var payload: [String: AnyCodable] = [:]
+            if let text { payload["text"] = .string(text) }
+            let event = GroupEvent(
+                roomID: "room-1", seq: 1, eventID: "e1", kind: kind,
+                actor: GroupActor(kind: "member", id: "furina", profile: "furina", displayName: nil, connectionID: nil),
+                authorityEpoch: nil, payload: payload, createdAt: 1
+            )
+            return .event(event, members: [], continuesRun: false)
+        }
+        XCTAssertEqual(guess(event("turn.failed", nil)), TranscriptLayout.rowGap + 24, "a caption is a line")
+        let long = String(repeating: "A member's reply runs on for a while. ", count: 30)
+        XCTAssertGreaterThan(guess(event("message.member", long)), guess(event("message.member", "Hi")))
+        XCTAssertEqual(
+            guess(.pending(text: long, members: [], isSending: true)),
+            guess(event("message.user", long)),
+            "the message on its way is guessed as its event"
+        )
+    }
 }
