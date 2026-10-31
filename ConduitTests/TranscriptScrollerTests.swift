@@ -753,6 +753,23 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertTrue(scroller.isFollowingLatest)
     }
 
+    /// 60 pt above the end, a row above grows 10 pt as the last one shrinks
+    /// 30: keeping the reader's row puts them 30 pt short of the end, near
+    /// enough to follow again, and the pass ends at the end.
+    func testAKeepThatLeavesTheReaderFollowingEndsThePassAtTheEnd() {
+        let (scroller, surface) = makeScroller()
+        surface.userScroll(to: 3140)
+        XCTAssertEqual(scroller.mode, .browsing, "60 pt from the end")
+        surface.sets = []
+        surface.setHeight("m2", 410)
+        surface.setHeight("m9", 370)
+        surface.layOut()
+        XCTAssertTrue(scroller.isFollowingLatest)
+        XCTAssertEqual(surface.sets.map(\.y), [3150, 3180], "the row kept, then the end")
+        XCTAssertEqual(surface.sets.map(\.animated), [false, false])
+        XCTAssertEqual(surface.distanceFromBottom, 0)
+    }
+
     func testARowGrowingAboveTheReaderWhileRowsBelowShrinkStillMovesThem() {
         let (_, surface) = browsingReader()
         surface.setHeight("m2", 627)

@@ -428,7 +428,15 @@ final class TranscriptScroller: ObservableObject {
             }
         case .browsing:
             keepAnchor(on: surface, barChanged: barChanged)
-            if mode == .browsing { refreshTopVisibleRow(persist: true) }
+            if mode == .browsing {
+                refreshTopVisibleRow(persist: true)
+            } else if canPinWhileFollowing(surface) {
+                // The keep's write left the reader near the end, following
+                // again, and its move reports back inside the write, where
+                // nothing pins: the pass ends at the end, as a following
+                // pass does.
+                pin(surface)
+            }
         case .restoring:
             placeRestorationIfReady()
         }
@@ -776,7 +784,7 @@ final class TranscriptScroller: ObservableObject {
         disarmReplyHold()
         cancelDisclosureSettle()
         emit(.cancelAutomaticRestoration)
-        setMode(.browsing)
+        setMode(.browsing, anchoringOn: nil)
         let target = surface.clampedOffsetY(frame.minY - surface.insetTop)
         if abs(surface.contentOffsetY - target) > 0.5 {
             write(target, animated: false, on: surface, by: "message")
@@ -794,12 +802,16 @@ final class TranscriptScroller: ObservableObject {
         disarmReplyHold()
         cancelDisclosureSettle()
         emit(.cancelAutomaticRestoration)
-        setMode(.browsing)
-        guard !isPaused, let surface else { return }
+        guard !isPaused, let surface else {
+            setMode(.browsing)
+            return
+        }
         if abs(surface.contentOffsetY - surface.minOffsetY) > 0.5 {
+            setMode(.browsing, anchoringOn: nil)
             write(surface.minOffsetY, animated: false, on: surface, by: "top")
             if mode == .browsing { captureAnchor(on: surface) }
         } else {
+            setMode(.browsing)
             // Already there (a short chat): no offset change will report,
             // so following is weighed here.
             surfaceScrolled()
@@ -860,7 +872,7 @@ final class TranscriptScroller: ObservableObject {
         // A short reply ends within reach: following, the hold left armed
         // for it to stop at as it grows.
         if surface.maxOffsetY - target > Self.nearBottomTolerance {
-            setMode(.browsing)
+            setMode(.browsing, anchoringOn: nil)
             emit(.persistSnapshot(renderedSessionKey))
         }
         if abs(surface.contentOffsetY - target) > 0.5 {
@@ -1259,14 +1271,16 @@ final class TranscriptScroller: ObservableObject {
         }
     }
 
-    /// Browsing starts on the row the reader is on (`choice`); leaving it
-    /// forgets the row, and any pin owed to following.
-    private func setMode(_ newMode: Mode, anchoringOn choice: AnchorChoice = .firstOnScreen) {
+    /// Browsing starts on the row the reader is on (`choice`), or, for a
+    /// command that moves them (`nil`), on the row its write leaves them on,
+    /// which it takes after the write; leaving it forgets the row, and any
+    /// pin owed to following.
+    private func setMode(_ newMode: Mode, anchoringOn choice: AnchorChoice? = .firstOnScreen) {
         guard mode != newMode else { return }
         mode = newMode
         if newMode == .browsing {
             pinOwed = false
-            if let surface { captureAnchor(on: surface, choosing: choice) }
+            if let surface, let choice { captureAnchor(on: surface, choosing: choice) }
         } else {
             anchor = nil
         }
