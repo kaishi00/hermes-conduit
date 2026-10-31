@@ -33293,8 +33293,9 @@ final class AppState: ObservableObject {
 
     /// The reads whose answers the settings pages keep (#1533): dashboard
     /// routes, and gateway calls kept beside them. Usage's periods
-    /// (UsageReport.route) and Pulse's routes (PulseClient.keptRoute) are
-    /// kept under their own.
+    /// (UsageReport.route), Pulse's routes (PulseClient.keptRoute) and Voice
+    /// settings' (HermesVoiceConfigurationService.KeptRead) are kept under
+    /// their own.
     enum KeptRoute {
         static let config = "/api/config"
         static let configSchema = "/api/config/schema"
@@ -33357,6 +33358,23 @@ final class AppState: ObservableObject {
     func keptAnswer(_ route: String, profile: String? = nil) -> [String: Any]? {
         guard let dashboardID = activeDashboardID else { return nil }
         return offlineChatCache.keptAnswer(route, dashboardID: dashboardID, profile: profile ?? activeProfile)
+    }
+
+    /// Where Voice settings keep their answers for the profile, beside the
+    /// other settings pages': on this dashboard, while it's the one open.
+    /// Nil without a bridge.
+    func voiceSettingsAnswers(profile: String) -> VoiceKeptAnswers? {
+        guard let owner = currentDashboardRuntimeOwner() else { return nil }
+        return VoiceKeptAnswers(
+            kept: { [weak self] route in
+                guard let self, self.ownsDashboardRuntime(owner) else { return nil }
+                return self.keptAnswer(route, profile: profile)
+            },
+            keep: { [weak self] route, read in
+                guard let self else { return try await read() }
+                return try await self.keepingAnswer(profile: profile, owner: owner, keptAs: { _ in route }, read)
+            }
+        )
     }
 
     /// Hermes' value wins and is kept on the phone; a read that fails keeps

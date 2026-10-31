@@ -24,6 +24,10 @@ struct SpeechServerSettingsView: View {
     @State private var saveError: String?
     /// The profile whose saved values the drafts were loaded from.
     @State private var draftsProfile: String?
+    /// The host answered this load. Until then the address and key shown
+    /// are the ones kept on the phone, which may be stale, and a kept
+    /// address has no user or password to write back (#1533).
+    @State private var answered = false
 
     static let urlKey = "voice.speech_server.url"
     static let apiKeyKey = "voice.speech_server.api_key"
@@ -50,6 +54,7 @@ struct SpeechServerSettingsView: View {
                         .textInputAutocapitalization(.never)
                         .submitLabel(.done)
                         .onSubmit { Task { await saveURL() } }
+                        .disabled(!answered)
                         .accessibilityIdentifier("voice.speechServer.url")
                     Text("Plain ws:// works for home network and Tailscale addresses. A server on the internet needs wss://.")
                         .scaledFont(.caption)
@@ -74,7 +79,7 @@ struct SpeechServerSettingsView: View {
 
                 HStack(spacing: 16) {
                     Button("Save") { Task { await saveAll() } }
-                        .disabled(isSaving || !hasChanges)
+                        .disabled(!answered || isSaving || !hasChanges)
                     Button {
                         Task { await runTest(profile: draftsProfile) }
                     } label: {
@@ -91,7 +96,7 @@ struct SpeechServerSettingsView: View {
                     if status?.hasKey == true {
                         Button("Remove key", role: .destructive) { Task { await removeKey() } }
                             .scaledFont(.footnote)
-                            .disabled(isSaving)
+                            .disabled(!answered || isSaving)
                     }
                 }
                 .buttonStyle(.borderless)
@@ -115,6 +120,7 @@ struct SpeechServerSettingsView: View {
                 }
             }
         }
+        .onAppear(perform: showKept)
         .task(id: service.profile) { await load() }
     }
 
@@ -125,19 +131,30 @@ struct SpeechServerSettingsView: View {
         return url != savedURL || !keyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// A profile switch starts from that profile's saved values.
+    /// The status last read, kept on the phone, drawn before the first
+    /// frame while the host is asked again (#1533).
+    private func showKept() {
+        guard status == nil else { return }
+        status = service.speechServer
+        urlDraft = status?.url ?? ""
+    }
+
+    /// A profile switch starts from that profile's saved values: the
+    /// status last read, while the host is asked again.
     private func load() async {
         draftsProfile = service.profile
-        status = nil
-        urlDraft = ""
+        status = service.speechServer
+        urlDraft = status?.url ?? ""
         keyDraft = ""
         testResult = nil
         saveError = nil
+        answered = false
         let loaded = await service.speechServerStatus()
         // A newer profile switch replaced this load.
         guard !Task.isCancelled else { return }
         status = loaded
         urlDraft = loaded.url ?? ""
+        answered = true
     }
 
     private func saveURL() async {

@@ -1818,6 +1818,46 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.keptPulseMemory())
     }
 
+    /// Voice settings keep Hermes' config and speech toolsets for the
+    /// dashboard and profile that answered, and Local's fast model without
+    /// the speech server's key, never `/api/env`, and open on them next
+    /// time, as the agent pages open on the same config; another profile's
+    /// or dashboard's page opens on nothing.
+    func testVoiceSettingsOpenOnTheirKeptAnswers() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": ["stt": ["enabled": true], "tts": ["provider": "edge"]],
+            "/api/tools/toolsets/stt/config": ["providers": []],
+            "/api/tools/toolsets/tts/config": ["providers": [["name": "Microsoft Edge TTS", "tts_provider": "edge", "status": "ready", "is_active": true]]],
+            "/api/env": ["ELEVENLABS_API_KEY": ["is_set": true, "redacted_value": "sk_...wxyz"]],
+            SpeechServerSpeechStream.statusPath: [
+                "available": true, "model_path": "/api/plugins/conduit_push/local-live/v1", "api_key": "sk-local-1",
+                "front_model": ["configured": true, "available": true, "base_url": "http://box:8080/v1", "model": "qwen3-4b"],
+            ],
+        ]
+        let page = HermesVoiceConfigurationService(requester: requester, profile: "default", answers: appState.voiceSettingsAnswers(profile: "default"))
+        XCTAssertFalse(page.snapshot.capability.isGatewayConnected, "Nothing kept yet")
+        await page.reload()
+        _ = await page.speechServerVoiceStatus()
+
+        let next = HermesVoiceConfigurationService(requester: requester, profile: "default", answers: appState.voiceSettingsAnswers(profile: "default"))
+        XCTAssertTrue(next.snapshot.capability.supportsSpeech, "Opens on what Hermes said")
+        XCTAssertFalse(next.snapshot.environmentLoaded)
+        XCTAssertNil(appState.offlineChatCacheForTesting.keptAnswer("/api/env", dashboardID: mac, profile: "default"), "Never kept")
+        XCTAssertEqual(appState.keptProfileSettings(keys: ["tts.provider"])?["tts.provider"], .text("edge"), "The agent pages' config")
+        XCTAssertEqual(next.lastFrontModel?.model, "qwen3-4b")
+        let keptVoice = appState.offlineChatCacheForTesting.keptAnswer(SpeechServerSpeechStream.statusPath, dashboardID: mac, profile: "default")
+        XCTAssertNotNil(keptVoice)
+        XCTAssertNil(keptVoice?["api_key"], "The speech server's key isn't kept")
+        let work = HermesVoiceConfigurationService(requester: requester, profile: "work", answers: appState.voiceSettingsAnswers(profile: "work"))
+        XCTAssertFalse(work.snapshot.capability.isGatewayConnected, "Another profile's page")
+        await appState.switchDashboard(to: vps.id)
+        let vpsPage = HermesVoiceConfigurationService(requester: requester, profile: "default", answers: appState.voiceSettingsAnswers(profile: "default"))
+        XCTAssertFalse(vpsPage.snapshot.capability.isGatewayConnected, "Another dashboard's page")
+    }
+
     /// Usage opens on each period's numbers as the active profile last read
     /// them, and the quota beside them; another period or profile opens on
     /// its own, or on nothing.

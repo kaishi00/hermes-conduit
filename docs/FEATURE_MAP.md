@@ -1679,18 +1679,23 @@ what changed.
 **Siblings:** the agent settings pages: Model (Default model, Fast mode and
 limits, Fallback models), Chat, Workspace, Memory & delegation (Delegate
 model, Pause delegation) and Advanced · Settings > Pulse and What Pulse
-remembers · Settings > Usage · the saved chats, whose wipes take the kept
-answers (Delete Saved Chats, a sign-out, a removed dashboard; a deleted bot
-takes its own) · Settings' Data handling caption and the Delete Saved Chats
-confirmation · the screens still waiting for Hermes (Open gaps): Voice
-settings, the Model sheet's catalog, Capabilities' tabs, the Bots roster,
-Tasks boards, the Artifacts and Workspace listings · the Pulse screen (not
-needed: its cards are their own feed; Quiet for today there keeps the state
-Pulse answers with, which Settings > Pulse opens on) · a Pulse
-notification's Quiet for today (done: it keeps the state Pulse answers with
-too) · Watch and CarPlay (not needed: neither shows these screens) · the
-notifier (not needed: the pages read the same routes) · README and docs (not
-needed: neither describes these pages' loading)
+remembers · Settings > Usage · Voice settings (the setup steps, the provider
+sections, the API keys, Speech to text's speech server and Local's fast
+model) · the saved chats, whose wipes take the kept answers (Delete Saved
+Chats, a sign-out, a removed dashboard; a deleted bot takes its own) ·
+Settings' Data handling caption and the Delete Saved Chats confirmation ·
+the screens still waiting for Hermes (Open gaps): the Model sheet's catalog,
+Capabilities' tabs, the Bots roster, Tasks boards, the Artifacts and
+Workspace listings · Assistant speech on the speech server (not needed: the
+notifier's status answers with the server's key, which is never kept, and
+the server's address and steps hang on it) · voice itself (not needed:
+AppState's voice check reads Hermes each time, and the pages keep what they
+read) · the Pulse screen (not needed: its cards are their own feed; Quiet
+for today there keeps the state Pulse answers with, which Settings > Pulse
+opens on) · a Pulse notification's Quiet for today (done: it keeps the state
+Pulse answers with too) · Watch and CarPlay (not needed: neither shows these
+screens) · the notifier (not needed: the pages read the same routes) ·
+README and docs (not needed: neither describes these pages' loading)
 
 **Code**
 - Store: `Conduit/Services/OfflineChatCache.swift` (keptAnswer, recordAnswer, withoutCredentials, trimKeptAnswersLocked, removeKeptAnswers, readKeptAnswersAhead from prefetch's answers, forgetMemory)
@@ -1698,7 +1703,8 @@ needed: neither describes these pages' loading)
 - Pages: `Conduit/Views/AuxiliaryViews.swift` (KeptAnswerGate, ProfileConfigSettingsPage's showKept, reload and answerChanges, ProfileModelSettingsDetail, DelegationModelSettings, DelegationPauseSettings, FallbackModelsSettings, ChatSettingsDetail, MemorySettingsDetail; AboutSettingsDetail's caption and confirmation)
 - Pulse: `Conduit/Services/AppState+Pulse.swift` (pulseClient and quietPulseForToday keep what PulseClient.keptRoute names, keptPulseState, keptPulseMemory), `Conduit/Services/PulseSettings.swift` (PulseClient.keptRoute, memoryItems), `Conduit/Views/PulseSettingsViews.swift` (PulseSettingsPage's showKept, answered and waiting, and reload, which offers Try again before Pulse ever answered; PulseMemoryList's showKept)
 - Usage: `Conduit/Services/AppState+Usage.swift` (loadUsageReport, keptUsageReport, loadProviderQuotas, keptProviderQuotas), `Conduit/Models/UsageReport.swift` (route), `Conduit/Services/HermesClient.swift` (providerQuotaAnswer), `Conduit/Views/UsageSettingsViews.swift` (showKept, the line over kept numbers offline)
-- Tests: `ConduitTests/OfflineChatCacheTests.swift` (Kept answers, testAKeptSchemaKeepsItsFieldNames), `ConduitTests/AppStateMultiDashboardTests.swift` (Kept settings answers, Pulse's and Usage's among them; testAModelSaveLandedBeforeAProfileSwitchStillWritesItsProfileConfig), `ConduitTests/ProfileModelDefaultsTests+ConfigSchema.swift` (testAnAnswerChangesOnlyWhatHermesChanged, testASaveOfAKeptPageWaitsForHermesAnswer)
+- Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (VoiceKeptAnswers, KeptRead, keptSnapshot, answered, isChecking, keeping, putConfig, speechServerStatus, speechServerVoiceStatus and lastFrontModel), `Conduit/Views/VoiceSettingsView.swift` (hermesStep, the speech steps, advancedSection, classicSpeechNeedsAttention, answeredValues, VoiceProviderFieldEditor's ready and its choice saved when picked), `Conduit/Views/VoiceAPIKeyRow.swift` (awaitingKeys), `Conduit/Views/SpeechServerSettingsView.swift` (showKept, answered), `Conduit/Views/LocalLiveViews.swift` (LocalLiveFrontModelSettingsView's showKept and loaded), `Conduit/Services/AppState.swift` (voiceSettingsAnswers), `Conduit/Views/AuxiliaryViews.swift` (VoiceSettingsRoute's answers)
+- Tests: `ConduitTests/OfflineChatCacheTests.swift` (Kept answers, testAKeptSchemaKeepsItsFieldNames), `ConduitTests/AppStateMultiDashboardTests.swift` (Kept settings answers, Pulse's, Usage's and Voice's among them; testAModelSaveLandedBeforeAProfileSwitchStillWritesItsProfileConfig), `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift`, `ConduitTests/ProfileModelDefaultsTests+ConfigSchema.swift` (testAnAnswerChangesOnlyWhatHermesChanged, testASaveOfAKeptPageWaitsForHermesAnswer)
 
 **Rulings**
 - Every screen shows its last saved state at once, and an update never redraws the whole screen (Eric, 2026-10-30, issue #1533).
@@ -1707,13 +1713,14 @@ needed: neither describes these pages' loading)
 - A page draws its kept answer before its first frame, with its kept schema when it reads one, so no row comes or goes when Hermes answers; with nothing kept it shows its loader as before. A config Conduit saves is what the pages open on next, and a Default model save reads the catalog and the model's info again so their kept copies follow it. Pulse's state is kept from every step that answers with it (a change, a step reading older chats, Quiet for today on the Pulse screen or from a Pulse notification), so Settings > Pulse opens on the last state Pulse gave. A kept Pulse state is only drawn: one with Where you are or Walking past off doesn't stop this iPhone watching shops until Pulse's own answer says so.
 - Hermes' answer changes only the fields it changed: a field changed on the page since it asked (a save still in flight included), and the one being typed in, stay as they are. A read that fails keeps what's shown.
 - A save that writes several values or a whole list (Save model defaults, Save delegate defaults, Save fallbacks) waits for Hermes' answer, and the kept fallback list can't be edited until then: it may be stale and has no credentials to write back. A single setting saves at once, since its write reads Hermes' config first. On Settings > Pulse, a step that writes back what the page shows besides what was picked (report times, quiet days, the night's start and end, the note, the model, whose refusal puts the shown one back) or acts on it (Set up Pulse, Pin it, reading older chats) waits for Pulse's answer; a setting picked outright saves at once. Forgetting a kept item in What Pulse remembers doesn't wait: it's named by its id.
+- Voice settings open on Hermes' config and speech toolsets as last read, the config being the one the agent pages keep, and only once both toolsets are kept, so no voice reads not ready for want of one. Which keys are set comes from `/api/env`, which is never kept: a key the kept toolsets don't list as set reads Checking…, with no field, until Hermes answers. Meanwhile the setup steps show the kept settings and the Hermes step says Checking…; if Hermes doesn't answer, it says to connect and the settings stay. Speech to text's speech server opens on the notifier's status as last read, and Local's fast model on the one Assistant speech's status gave, kept without the server's key; Assistant speech's own steps wait for the host, since they hang on that key. The provider pickers, the provider fields, Show words while you speak, the speech server's address and the fast model's fields, with their Save and Remove key, wait for the answer, as the pickers always waited for a read: a kept value may be stale, and a kept address has no user or password to write back. A choice saves when it's picked, never when Hermes' answer changes it. A voice config save is what the page opens on next.
 - Offline, Settings > Usage shows the numbers it kept, the quota with them, under "Connect to Hermes to update these numbers." instead of clearing the page as it did since #813; a refresh that fails says so over them, and a quota that can't be read while connected still goes (Eric's ruling above, #1555).
 
 **Open gaps**
-- Voice settings, the Model sheet's catalog, Capabilities' tabs, the Bots roster, Tasks boards, and the Artifacts and Workspace listings still wait for Hermes; the next PRs of issue #1533's plan move them onto kept answers, Voice settings first.
+- The Model sheet's catalog, Capabilities' tabs, the Bots roster, Tasks boards, and the Artifacts and Workspace listings still wait for Hermes; the next PRs of issue #1533's plan move them onto kept answers.
 - A page whose answers weren't read ahead (another profile's, delegation's pause, Pulse's and Usage's, or one opened before the live list landed) reads its kept files on the main thread: a config or schema is usually tens of kilobytes, and a file can be up to 2 MB.
 
-**Checked:** 2026-10-31, #1555 (Settings > Pulse, What Pulse remembers and Settings > Usage open on their kept answers, and a Pulse notification's Quiet for today keeps Pulse's answer; the filter's pairs, counts, schema names and a URL's query; a Default model save's catalog; the Save gate's test); 2026-10-31, #1552 (the agent settings pages open on their kept answers).
+**Checked:** 2026-10-31, #1556 (Voice settings, Speech to text's speech server and Local's fast model open on their kept answers; their provider settings wait for the answer; voice config saves are what the page opens on next); 2026-10-31, #1555 (Settings > Pulse, What Pulse remembers and Settings > Usage open on their kept answers, and a Pulse notification's Quiet for today keeps Pulse's answer; the filter's pairs, counts, schema names and a URL's query; a Default model save's catalog; the Save gate's test); 2026-10-31, #1552 (the agent settings pages open on their kept answers).
 
 ## Composer drafts
 
@@ -2575,7 +2582,7 @@ the plugin list)
 
 **Code**
 - Queue: `Conduit/Services/ProfileConfigWriteQueue.swift`
-- Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (save, saveLiveTranscription, saveVendorSelection, saveProviderSelection), used by `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/SpeechServerSettingsView.swift`, `Conduit/Views/LocalLiveViews.swift`
+- Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (save, saveLiveTranscription, saveVendorSelection, saveProviderSelection; putConfig keeps what it wrote), used by `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/SpeechServerSettingsView.swift`, `Conduit/Views/LocalLiveViews.swift`
 - AppState: `Conduit/Services/AppState.swift` (updateProfileConfig, setDisplayPreference, setProfileFallbackModels, setProfileMainModel, setVoiceReplyModel, setProfileSetting, toggleSkill, toggleToolset)
 - Capabilities: `Conduit/Services/CapabilitiesStore.swift` (request, writesProfileConfig)
 - Gateway RPCs: `Conduit/Services/HermesClient.swift` (configureBotProfile, configureBotModel, addBotMcpServer, setBusyInputMode)
@@ -2596,7 +2603,7 @@ not the config.
 **Open gaps**
 - A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.
 
-**Checked:** 2026-10-31, #1552 (a config save, a single setting's included, is what the settings pages open on next, kept on the phone; what's written is unchanged); 2026-10-26, #1282 (the Thinking choice writes `display.show_reasoning` and `display.conduit_thinking_on_request` in one save); 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
+**Checked:** 2026-10-31, #1556 (voice settings' saves are what the page opens on next, kept on the phone; what's written is unchanged); 2026-10-31, #1552 (a config save, a single setting's included, is what the settings pages open on next, kept on the phone; what's written is unchanged); 2026-10-26, #1282 (the Thinking choice writes `display.show_reasoning` and `display.conduit_thinking_on_request` in one save); 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
 
 ## Wake phrase
 

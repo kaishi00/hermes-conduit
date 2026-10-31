@@ -61,12 +61,16 @@ struct LocalLiveFrontModelSettingsView: View {
     @ObservedObject var service: HermesVoiceConfigurationService
 
     @State private var status: LocalLiveFrontModelStatus?
+    /// The host answered. Until then the fields show the fast model it gave
+    /// last time, kept on the phone, and wait (#1533): a kept address has
+    /// no user or password to write back.
     @State private var loaded = false
     @State private var urlDraft = ""
     @State private var modelDraft = ""
     @State private var keyDraft = ""
     @State private var isSaving = false
-    @State private var saveError: String?
+    /// A save's error, or a read's that kept what's shown.
+    @State private var errorMessage: String?
 
     static let baseURLKey = "voice.local_live.front_model.base_url"
     static let modelKey = "voice.local_live.front_model.model"
@@ -117,14 +121,15 @@ struct LocalLiveFrontModelSettingsView: View {
                 statusLine
             }
         }
-        .disabled(isSaving)
+        .disabled(isSaving || !loaded)
+        .onAppear(perform: showKept)
         .task(id: service.profile) { await load() }
     }
 
     @ViewBuilder
     private var statusLine: some View {
-        if let saveError {
-            Label(saveError, systemImage: "exclamationmark.triangle.fill")
+        if let errorMessage {
+            Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                 .scaledFont(.footnote)
                 .foregroundStyle(.orange)
         } else if let status {
@@ -165,15 +170,28 @@ struct LocalLiveFrontModelSettingsView: View {
             || !keyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// A profile switch starts from that profile's saved values.
+    /// A profile switch starts from that profile's saved values, as the
+    /// host gave them last until it answers.
     private func load() async {
         loaded = false
-        status = nil
-        saveError = nil
+        errorMessage = nil
         keyDraft = ""
+        showKept()
         let voice = await service.speechServerVoiceStatus()
         guard !Task.isCancelled else { return }
+        // A read that fails keeps what's shown (the service keeps the fast
+        // model the host gave last), and the fields still wait.
+        if voice.frontModel == nil, service.lastFrontModel != nil {
+            errorMessage = voice.reason
+            return
+        }
         apply(voice)
+    }
+
+    private func showKept() {
+        status = service.lastFrontModel
+        urlDraft = status?.baseURL ?? ""
+        modelDraft = status?.model ?? ""
     }
 
     private func apply(_ voice: SpeechServerVoiceStatus) {
@@ -186,7 +204,7 @@ struct LocalLiveFrontModelSettingsView: View {
     private func save() async {
         isSaving = true
         defer { isSaving = false }
-        saveError = nil
+        errorMessage = nil
         if trimmedURL != (status?.baseURL ?? "") {
             guard await save(trimmedURL, for: Self.baseURLKey) else { return }
         }
@@ -206,7 +224,7 @@ struct LocalLiveFrontModelSettingsView: View {
     private func removeKey() async {
         isSaving = true
         defer { isSaving = false }
-        saveError = nil
+        errorMessage = nil
         // A typed key left in the field would come back on the next Save.
         keyDraft = ""
         let removed = await save("", for: Self.apiKeyKey)
@@ -233,7 +251,7 @@ struct LocalLiveFrontModelSettingsView: View {
     private func save(_ value: String, for key: String) async -> Bool {
         let saved = await service.save(value: value, for: key)
         if !saved {
-            saveError = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.")
+            errorMessage = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.")
         }
         return saved
     }

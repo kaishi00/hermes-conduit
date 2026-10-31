@@ -1231,7 +1231,7 @@ extension HermesVoiceConfigurationServiceTests {
 }
 
 @MainActor
-private final class MockVoiceConfigurationRequester: VoiceConfigurationRequesting {
+final class MockVoiceConfigurationRequester: VoiceConfigurationRequesting {
     var routes: [String: [String: Any]] = [:]
     /// Paths whose PUT requests must fail (route-missing already fails GETs
     /// and PUTs alike; this simulates a read-succeeds/write-fails gateway).

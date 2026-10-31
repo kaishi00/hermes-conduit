@@ -724,6 +724,8 @@ struct SettingsView: View {
                     bridge: bridge,
                     profile: snapshot.profile,
                     profileParameter: { appState.notifierPlugin.dashboardProfileParameter },
+                    // Opens on what it showed last time while Hermes is asked.
+                    answers: appState.voiceSettingsAnswers(profile: snapshot.profile),
                     profileName: appState.profileDisplayName(snapshot.profile),
                     conversationController: appState.voiceConversationController,
                     actions: VoiceSettingsActions(
