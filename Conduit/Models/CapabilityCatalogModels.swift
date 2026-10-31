@@ -342,16 +342,22 @@ struct ConnectorServer: Equatable, Identifiable {
                 url: (row["url"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 command: (row["command"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 // A number argument shows as written (--port 8080), not dropped.
-                args: (row["args"] as? [Any])?.compactMap { value -> String? in
-                    if let text = value as? String { return text }
-                    guard let number = value as? NSNumber else { return nil }
-                    return CFGetTypeID(number) == CFBooleanGetTypeID() ? (number.boolValue ? "true" : "false") : number.stringValue
-                } ?? [],
+                args: (row["args"] as? [Any])?.map(argumentText) ?? [],
                 auth: (row["auth"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 enabled: row["enabled"] as? Bool ?? true,
                 plugin: plugin
             )
         }
+    }
+
+    /// An argument as written: a number as its digits, true/false as words
+    /// (a JSON boolean would otherwise print as 1 or 0).
+    static func argumentText(_ value: Any) -> String {
+        if let text = value as? String { return text }
+        if let number = value as? NSNumber {
+            return CFGetTypeID(number) == CFBooleanGetTypeID() ? (number.boolValue ? "true" : "false") : number.stringValue
+        }
+        return "\(value)"
     }
 
     /// A row for a server just saved, made from its entry when the list
@@ -366,7 +372,7 @@ struct ConnectorServer: Equatable, Identifiable {
             transport: url != nil ? "http" : (command != nil ? "stdio" : (before?.transport ?? "unknown")),
             url: url,
             command: command,
-            args: (entry["args"] as? [Any])?.map { "\($0)" } ?? [],
+            args: (entry["args"] as? [Any])?.map(argumentText) ?? [],
             auth: (entry["auth"] as? String).flatMap { $0.isEmpty ? nil : $0 }
                 ?? ((entry["headers"] as? [String: Any])?.keys.contains { $0.lowercased() == "authorization" } == true ? "header" : nil),
             enabled: entry["enabled"] as? Bool ?? true,
@@ -417,11 +423,7 @@ struct ConnectorCatalogEntry: Equatable, Identifiable {
                 url: (row["url"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 command: (row["command"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 // A number argument shows as written (--port 8080), not dropped.
-                args: (row["args"] as? [Any])?.compactMap { value -> String? in
-                    if let text = value as? String { return text }
-                    guard let number = value as? NSNumber else { return nil }
-                    return CFGetTypeID(number) == CFBooleanGetTypeID() ? (number.boolValue ? "true" : "false") : number.stringValue
-                } ?? [],
+                args: (row["args"] as? [Any])?.map(argumentText) ?? [],
                 needsInstall: row["needs_install"] as? Bool ?? false,
                 installed: row["installed"] as? Bool ?? false
             )
@@ -802,7 +804,7 @@ struct ConnectorServerEdit {
     }
 
     private static func argumentLines(_ entry: [String: Any]) -> String {
-        (entry["args"] as? [Any] ?? []).map { "\($0)" }.joined(separator: "\n")
+        (entry["args"] as? [Any] ?? []).map(ConnectorServer.argumentText).joined(separator: "\n")
     }
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -836,7 +838,7 @@ struct ConnectorServerEdit {
     /// the text typed, trimmed, and a blank one is dropped.
     private static func editedArguments(_ text: String, original: [Any]) -> [Any] {
         let lines = text.components(separatedBy: .newlines)
-        let shown = original.map { "\($0)" }
+        let shown = original.map(ConnectorServer.argumentText)
         var used = Set<Int>()
         var next = 0
         var args: [Any] = []

@@ -725,6 +725,7 @@ extension KanbanTests {
         XCTAssertEqual(store.servers.map(\.name), ["griply"])
         XCTAssertEqual(store.servers.first?.url, "https://new", "not the address from before the save")
         XCTAssertEqual(store.servers.first?.enabled, false, "a server saved off isn't started by a re-test")
+        XCTAssertEqual(store.servers.first?.args, [], "a remote entry has no arguments")
         XCTAssertFalse(requester.calls.contains { $0.method == "POST" && $0.path.contains("/test") })
     }
 
@@ -744,6 +745,7 @@ extension KanbanTests {
         try await store.saveServer(original: "griply", loaded: entry, name: "Griply", entry: ["url": "https://new"], openedOn: store.generation)
         let row = try XCTUnwrap(store.servers.first)
         XCTAssertEqual(store.servers.map(\.name), ["Griply"], "the page follows the rename instead of saying it's gone")
+        XCTAssertFalse(store.connectorsError == nil, "the failed reload still says so")
         XCTAssertEqual(row.url, "https://new")
         XCTAssertNil(row.auth, "the saved entry has no sign-in, whatever the old row had")
         XCTAssertTrue(row.enabled)
@@ -752,6 +754,11 @@ extension KanbanTests {
     func testAListRowShowsNumberArguments() {
         let rows = ConnectorServer.list(from: ["servers": [["name": "files", "transport": "stdio", "command": "npx", "args": ["--port", 9090, "-y"]]]])
         XCTAssertEqual(rows.first?.args, ["--port", "9090", "-y"])
+        // A JSON boolean reads as a word everywhere, not 1.
+        let decoded = try? JSONSerialization.jsonObject(with: Data(#"["--watch", true, 8080]"#.utf8)) as? [Any]
+        let entry: [String: Any] = ["command": "npx", "args": decoded ?? []]
+        XCTAssertEqual(ConnectorServer.saved(name: "files", entry: entry, replacing: nil).args, ["--watch", "true", "8080"])
+        XCTAssertEqual(ConnectorServerEdit(name: "files", entry: entry).arguments, "--watch\ntrue\n8080")
     }
 
     func testAServerSaveSendsNothingAfterAProfileSwitch() async throws {
@@ -896,7 +903,7 @@ extension KanbanTests {
         try await store.setServerEnabled("linear", enabled: true)
         held.forEach { $0.resume() }
         await plugins.value
-        await connectors.value
+        _ = await connectors.value
 
         XCTAssertTrue(store.plugins[0].isEnabled, "the refresh read the plugin before it was turned on")
         XCTAssertEqual(store.servers.first?.enabled, true, "the refresh read the server before it was turned on")

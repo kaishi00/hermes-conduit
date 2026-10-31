@@ -326,7 +326,9 @@ final class CapabilitiesStore {
 
     // MARK: Connectors
 
-    func loadConnectors() async {
+    /// True when this read put a fresh list in place.
+    @discardableResult
+    func loadConnectors() async -> Bool {
         let token = generation
         connectorsEpoch &+= 1
         let epoch = connectorsEpoch
@@ -335,7 +337,7 @@ final class CapabilitiesStore {
         do {
             let servers = ConnectorServer.list(from: try await serversResponse)
             let catalog = await catalogResponse.map(ConnectorCatalogEntry.list) ?? connectorCatalog
-            guard token == generation, epoch == connectorsEpoch else { return }
+            guard token == generation, epoch == connectorsEpoch else { return false }
             self.servers = servers
             connectorCatalog = catalog
             connectorsError = nil
@@ -343,12 +345,15 @@ final class CapabilitiesStore {
             probes = probes.filter { names.contains($0.key) }
         } catch {
             _ = await catalogResponse
-            guard token == generation, epoch == connectorsEpoch else { return }
+            guard token == generation, epoch == connectorsEpoch else { return false }
             // A read cut off under it isn't the list failing: read again next time.
-            guard !(error is CancellationError) else { return }
+            guard !(error is CancellationError) else { return false }
             connectorsError = UserFacingError.message(for: error)
+            connectorsLoaded = true
+            return false
         }
         connectorsLoaded = true
+        return true
     }
 
     /// Tests every server that's on and hasn't been tested lately, a few at a
@@ -527,12 +532,12 @@ final class CapabilitiesStore {
         probeEpochs[original, default: 0] &+= 1
         probeEpochs[name, default: 0] &+= 1
         let before = servers.first { $0.name == original }
-        await loadConnectors()
+        let reloaded = await loadConnectors()
         guard token == generation else { return }
-        // A reload that failed leaves the list from before the save: show the
-        // saved server there, so a renamed page doesn't read as removed and
-        // the re-test goes by the saved entry.
-        if connectorsError != nil || !servers.contains(where: { $0.name == name }) {
+        // A reload that failed, was cut off or was overtaken leaves the list
+        // from before the save: show the saved server there, so a renamed
+        // page doesn't read as removed and the re-test goes by the saved entry.
+        if !reloaded || !servers.contains(where: { $0.name == name }) {
             let saved = ConnectorServer.saved(name: name, entry: entry, replacing: before)
             if let at = servers.firstIndex(where: { $0.name == name || $0.name == original }) {
                 servers[at] = saved
