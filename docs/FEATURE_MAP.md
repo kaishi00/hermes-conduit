@@ -1864,7 +1864,7 @@ fork's; the note on its turns listing open work; the work updates that come
 in as hidden turns, which the transcript leaves out as it does every hidden
 user turn) · a workstream's session (hidden, titled, on the bot's own
 profile, its steps journaled; a reply in it sends no push, the Bot Chat's
-reply to the update is the one push) · the `conduit://session/` link a work
+reply to the update is the one push, and its turns start no Live Activity) · the `conduit://session/` link a work
 tool's answer carries, with the bot's profile (see Links in messages) · an
 approval in a workstream (marks it waiting on you and tells the Bot Chat) ·
 Bot mentions and teammate messages (`message_agent` refused in a coordinator,
