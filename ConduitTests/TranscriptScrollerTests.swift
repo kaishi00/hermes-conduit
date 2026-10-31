@@ -1718,6 +1718,22 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertEqual(scroller.mode, .browsing)
     }
 
+    /// The reader lets go within reach of the end the dropped room leaves,
+    /// before the pass that lays it out: that pass has them follow again.
+    func testLettingGoNearTheEndADroppedRoomLeavesFollowsAgain() {
+        let (scroller, surface) = sendIntoHold()
+        surface.layOut()
+        finishLandingAnimation()
+        streamReply(surface, 100)
+        surface.userScroll(to: 3370)
+        XCTAssertEqual(scroller.mode, .browsing, "measured against the room still laid out")
+        surface.layOut()
+        XCTAssertEqual(surface.contentHeight, 4180)
+        XCTAssertTrue(scroller.isFollowingLatest)
+        streamReply(surface, 300)
+        XCTAssertEqual(surface.contentOffsetY, 3580, "the reply is followed")
+    }
+
     /// A reader who scrolls only a little, with part of the room still on
     /// screen, keeps it.
     func testScrollingWhileTheRoomShowsKeepsIt() {

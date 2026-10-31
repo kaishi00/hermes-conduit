@@ -309,6 +309,10 @@ final class TranscriptScroller: ObservableObject {
     private var replyRoomLaidOut = false
     /// The first move to the stop after a send is still to come.
     private var replyRoomLanding = false
+    /// The reader scrolled the room out of sight and it was dropped
+    /// (`dropReplyRoomOutOfSight`): the pass that lays the shorter content
+    /// out checks whether that left them at the new end.
+    private var replyRoomDropPending = false
     /// The user message the latest turn answers, by id, so a new one (a
     /// turn started on another device) arms the hold.
     private var latestUserRowID: String?
@@ -443,6 +447,7 @@ final class TranscriptScroller: ObservableObject {
             }
         case .browsing:
             keepAnchor(on: surface, barChanged: barChanged)
+            relatchAfterReplyRoomDrop(on: surface)
             if mode == .browsing {
                 refreshTopVisibleRow(persist: true)
             } else if canPinWhileFollowing(surface) {
@@ -1305,6 +1310,20 @@ final class TranscriptScroller: ObservableObject {
               surface.visibleBand.upperBound <= surface.rowsHeight + 0.5 else { return }
         ChatViewportTrace.shared.log("replyRoom out of sight")
         replyRoomArmed = false
+        replyRoomDropPending = true
+    }
+
+    /// The shorter content a dropped room leaves is laid out: a reader at
+    /// rest within reach of its end follows again, as one who scrolled
+    /// there would. One still scrolling is weighed when they stop, against
+    /// the new end.
+    private func relatchAfterReplyRoomDrop(on surface: TranscriptScrollSurface) {
+        guard replyRoomDropPending, surface.reservedContentHeight <= 0.5 else { return }
+        replyRoomDropPending = false
+        guard mode == .browsing, !isUserScrolling,
+              surface.distanceFromBottom <= Self.nearBottomTolerance else { return }
+        setMode(.following)
+        emit(.persistSnapshot(renderedSessionKey))
     }
 
     private func disarmReplyHold() {

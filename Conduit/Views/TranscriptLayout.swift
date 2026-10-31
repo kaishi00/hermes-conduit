@@ -54,9 +54,10 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// The rows' bottom the next pass lays out, kept as rows change height
     /// between passes (`noteHeight`).
     private var pendingRowsBottom: CGFloat = 0
-    /// The rows' own height, without the room under a sent message
-    /// (TranscriptScrollSurface).
-    var rowsHeight: CGFloat { pendingRowsBottom }
+    /// The rows' own height as the last pass laid them out, without the
+    /// room under a sent message (TranscriptScrollSurface): a row grown
+    /// since isn't drawn at its new height yet.
+    private(set) var rowsHeight: CGFloat = 0
     /// Whether the next pass asks for the content size: one invalidating
     /// everything or the rows' count does, one for some rows never does.
     private var asksContentSize = true
@@ -262,6 +263,7 @@ final class TranscriptLayout: UICollectionViewLayout {
         let rowsBottom = (rows.isEmpty ? Self.topPadding : itemTop[rows.count - 1] + itemHeight[rows.count - 1])
             + Self.bottomPadding
         pendingRowsBottom = rowsBottom
+        rowsHeight = rowsBottom
         asksContentSize = false
         appliedReserve = requestedReserve
         let height = max(rowsBottom, appliedReserve)
