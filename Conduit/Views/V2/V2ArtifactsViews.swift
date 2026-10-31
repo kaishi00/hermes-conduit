@@ -704,6 +704,20 @@ private struct ArtifactsList: View {
         // before it: the previous dashboard's page can't land under this one.
         generation &+= 1
         let ticket = generation
+        // Connected, and the plugin never said what it serves (its read
+        // failed as Conduit connected): asked again here, as Settings ›
+        // Conduit plugin asks on every visit, so the list isn't left on
+        // its loader until the next connect.
+        if !appState.supportsArtifacts, appState.isConnected, appState.notifierPlugin.state == .unknown {
+            isLoading = true
+            await appState.refreshNotifierPluginStatus()
+            guard ticket == generation else { return }
+            if appState.notifierPlugin.state == .unknown, loadedKey != key {
+                failure = AppLocalization.string("Couldn't reach this dashboard's notifier.")
+                feed = nil
+                loadedKey = key
+            }
+        }
         guard appState.supportsArtifacts else {
             isLoading = false
             return
