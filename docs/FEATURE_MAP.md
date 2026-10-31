@@ -2174,7 +2174,7 @@ the lists they sit in.
 
 **Siblings:** installed skills and toolsets (AppState) · the catalog, tool
 counts, backends, MCP servers and plugins (CapabilitiesStore) · the Skills
-and Tools tabs · the bot editor's skills, tools and MCP lists (see Bots:
+and Tools tabs · the Connectors tab's list and server page (their tests) · the bot editor's skills, tools and MCP lists (see Bots:
 create and edit) · the skill, toolset and catalog skill detail pages · the Kanban
 task composer's skill picker · a connector's editor (Edit Server: the form
 and the JSON, as Hermes Desktop's mcp.json editor) · the Capabilities
@@ -2185,6 +2185,7 @@ README.md's Capabilities line
 - Installed lists and switches: `Conduit/Services/AppState.swift` (loadCapabilities, toggleSkill, toggleToolset, capabilityLoadGeneration, capabilitiesOwner, currentCapabilitiesOwner, capabilitiesAreCurrent, capabilityRowsAreCurrent, retireCapabilitySnapshot, CapabilitySnapshotOwner, CapabilityDetailScope, CapabilityLoadPolicy), `Conduit/Services/CapabilityToggleWrites.swift`
 - The rest of the page: `Conduit/Services/CapabilitiesStore.swift` (configure, serves, probe, probeServers)
 - Views: `Conduit/Views/CapabilitiesView.swift`, `Conduit/Views/Capabilities/CapabilitySkillsTab.swift`, `Conduit/Views/Capabilities/CapabilityToolsTab.swift`, `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanSkillsPickerSheet)
+- Connectors tab: `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift` (CapabilityConnectorsTab's tests, ConnectorDetailPage)
 - Editing a connector: `Conduit/Models/CapabilityCatalogModels.swift` (ConnectorServerEdit), `Conduit/Services/CapabilitiesStore.swift` (serverConfig, saveServer), `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift` (ConnectorDetailPage, ConnectorEditSheet)
 - Tests: `ConduitTests/KanbanTests+Capabilities.swift`, `ConduitTests/KanbanTests.swift` (CapabilityLoadPolicy)
 

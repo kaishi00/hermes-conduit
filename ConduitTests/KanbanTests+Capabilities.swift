@@ -518,6 +518,52 @@ extension KanbanTests {
         XCTAssertEqual(store.probes["griply"]?.tools.map(\.name), ["list_goals"])
     }
 
+    /// Leaving the list while its first tests run starts no more of them.
+    func testLeavingTheConnectorsListStartsNoMoreTests() async {
+        let names = ["a", "b", "c", "d", "e"]
+        var responses: [String: [String: Any]] = [
+            "/api/mcp/servers": ["servers": names.map { ["name": $0, "transport": "http", "url": "https://\($0)", "enabled": true] }],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+        ]
+        for name in names { responses["/api/mcp/servers/\(name)/test"] = ["ok": true] }
+        let requester = CapabilityMockRequester(responses: responses)
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        await store.loadConnectors()
+        var held: [CheckedContinuation<Void, Never>] = []
+        requester.beforeAnswering = { path in
+            guard path.hasSuffix("/test") else { return }
+            await withCheckedContinuation { held.append($0) }
+        }
+
+        let list = Task { await store.probeServers() }
+        while held.count < 3 { await Task.yield() }
+        list.cancel()
+        held.forEach { $0.resume() }
+        await list.value
+
+        XCTAssertEqual(requester.calls.filter { $0.path.hasSuffix("/test") }.count, 3)
+        XCTAssertEqual(store.probes.count, 3)
+        XCTAssertTrue(store.probing.isEmpty)
+    }
+
+    /// A test cancelled under it (the dashboard gone) isn't a failed test:
+    /// nothing is recorded, so it's tested again.
+    func testACancelledConnectorTestRecordsNothing() async {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [["name": "griply", "transport": "http", "url": "https://g", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+        ])
+        requester.failures["/api/mcp/servers/griply/test"] = CancellationError()
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        await store.loadConnectors()
+
+        await store.probe("griply")
+        XCTAssertNil(store.probes["griply"])
+        XCTAssertTrue(store.probing.isEmpty)
+    }
+
     // MARK: Editing a server (#1570)
 
     func testTheServerFormChangesOnlyItsFieldsAndKeepsTheRest() throws {
@@ -676,6 +722,8 @@ private final class CapabilityMockRequester: DashboardJSONRequester {
     }
 
     var responses: [String: [String: Any]]
+    /// Paths that fail with this error instead of answering.
+    var failures: [String: Error] = [:]
     var calls: [Call] = []
     /// Runs before each answer, which is read when the request is made: a
     /// test can hold a request here.
@@ -698,6 +746,7 @@ private final class CapabilityMockRequester: DashboardJSONRequester {
         await beforeAnswering?(bare)
         // As the dashboard bridge does: a cancelled caller gets no answer.
         try Task.checkCancellation()
+        if let failure = failures[bare] { throw failure }
         guard let response else {
             throw URLError(.fileDoesNotExist)
         }

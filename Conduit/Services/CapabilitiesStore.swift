@@ -364,6 +364,8 @@ final class CapabilitiesStore {
             return now.timeIntervalSince(probe.checkedAt) > Self.probeLifetime
         }
         var pending = due[...]
+        // The list may have gone while it was still reading the servers.
+        guard !Task.isCancelled else { return }
         await withTaskGroup(of: Void.self) { group in
             for _ in 0..<3 {
                 guard let next = pending.popFirst() else { break }
@@ -388,8 +390,20 @@ final class CapabilitiesStore {
         // away (opening a server from the list cancels the list's tests):
         // the host already started the server, and an interrupted test
         // isn't the server failing (#1570).
+        // The path and the dashboard are taken together, now: a switch
+        // while the task starts can't send this profile's test to another.
         let path = scoped("/api/mcp/servers/\(Self.component(name))/test")
-        let test = Task { ConnectorProbe(try await self.request(path, method: "POST", timeout: 60_000)) }
+        let requester = self.requester
+        let test = Task { () -> ConnectorProbe in
+            guard let requester else { throw CapabilitiesStoreError.notConnected }
+            return ConnectorProbe(try await requester.requestJSON(
+                path: path,
+                method: "POST",
+                body: nil,
+                timeoutMilliseconds: 60_000,
+                maxResponseBytes: DataURLLimits.maxJSONResponseBytes
+            ))
+        }
         let probe: ConnectorProbe?
         do {
             probe = try await test.value
