@@ -28,7 +28,9 @@ enum ChatTraceReason: String, CaseIterable {
     case stall
     /// Layout ran more than 30 times a second for 3 s with no row changing.
     case storm
-    /// The blank-screen recovery rebuilt the transcript's scroll view.
+    /// A group room's blank-screen recovery rebuilt its scroll view. No
+    /// build saves it since rooms moved onto the transcript (#1533); kept
+    /// so a trace an older build saved still lists and sends.
     case rebuild
     /// The user sent the chat's trace from Diagnostics & logs.
     case manual

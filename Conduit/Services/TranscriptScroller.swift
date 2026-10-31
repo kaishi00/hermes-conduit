@@ -144,6 +144,11 @@ enum ChatReplyStartPreference {
 /// the reply (#1436), and a reply that outgrows the screen leaves the
 /// reader browsing there. An unread chat opens at the same stop.
 ///
+/// A group room's transcript is moved by one too (GroupChatView), by the
+/// same rules: its new member messages stop at their own start
+/// (`roomTranscriptChanged`), and it has no saved place or session to
+/// switch.
+///
 /// Only the scroller writes the offset, and the recorder
 /// (ChatViewportTrace) names the rule behind each write.
 @MainActor
@@ -274,7 +279,10 @@ final class TranscriptScroller: ObservableObject {
     private(set) var replyHoldArmed = false {
         didSet {
             if replyHoldArmed != oldValue { ChatViewportTrace.shared.log("hold \(replyHoldArmed ? "armed" : "disarmed")") }
-            if !replyHoldArmed { replyRoomArmed = false }
+            if !replyHoldArmed {
+                replyRoomArmed = false
+                roomReplyStartID = nil
+            }
             refreshReplyRoom()
         }
     }
@@ -301,6 +309,10 @@ final class TranscriptScroller: ObservableObject {
     /// The user message the latest turn answers, by id, so a new one (a
     /// turn started on another device) arms the hold.
     private var latestUserRowID: String?
+    /// A group room's new member message the hold stops at the start of
+    /// (`roomTranscriptChanged`): the message itself goes to the top, where
+    /// a chat's stop puts the user's message above its reply.
+    private var roomReplyStartID: String?
     /// An unread chat just opened: once its transcript is in, it lands at
     /// the start of its latest reply instead of the end.
     private var replyStartLandingPending = false
@@ -883,6 +895,33 @@ final class TranscriptScroller: ObservableObject {
         refreshJumpButton()
     }
 
+    // MARK: - Group rooms
+
+    /// A group room's rows changed (its events, or the member responding),
+    /// told before the transcript lays them out (GroupRoomTranscriptBox).
+    /// Its events are the rows a reader can be taken to (the "Replying to"
+    /// jump). `replyStart`, a member message among new events
+    /// (GroupRoomTranscript.replyStart), is where a following room stops:
+    /// at the message's start, which goes to the top, and the reader is
+    /// left browsing there once what came runs past the screen, as a long
+    /// chat reply stops at its start (#365). Anything else new (a caption,
+    /// a member starting its turn) is followed to the end. A room makes no
+    /// room under the message: members' messages arrive whole.
+    func roomTranscriptChanged(eventIDs: Set<String>, replyStart: String?) {
+        ChatViewportTrace.shared.log("room events n=\(eventIDs.count)")
+        ChatViewportWatch.shared.transcriptChanged()
+        targetIDs = eventIDs
+        // A reader scrolled away stays where they are.
+        guard mode == .following, !isUserScrolling else { return }
+        if let replyStart, holdsRepliesAtStart() {
+            roomReplyStartID = replyStart
+            replyRoomArmed = false
+            replyHoldArmed = true
+        } else {
+            replyHoldArmed = false
+        }
+    }
+
     // MARK: - Automatic restoration
 
     /// A saved place to put the reader back at (the chat they left, its
@@ -1205,11 +1244,17 @@ final class TranscriptScroller: ObservableObject {
     /// offset that puts the user's latest message at the top of the
     /// viewport, `replyStartTopGap` below it, with the reply under it
     /// (#1436). A message taller than a third of the screen shows only its
-    /// last third there. Nil while unarmed, switched off, or for a message
-    /// the transcript doesn't draw (following then pins the end).
+    /// last third there. In a group room it's the new member message
+    /// itself that goes there. Nil while unarmed, switched off, or for a
+    /// message the transcript doesn't draw (following then pins the end).
     private func replyHoldOffset(on surface: TranscriptScrollSurface) -> CGFloat? {
-        guard replyHoldArmed, holdsRepliesAtStart(),
-              let id = latestUserRowID, let frame = surface.frame(ofRow: id) else { return nil }
+        guard replyHoldArmed, holdsRepliesAtStart() else { return nil }
+        // A group room's member message: its own start at the top.
+        if let id = roomReplyStartID {
+            guard let frame = surface.frame(ofRow: id) else { return nil }
+            return max(surface.minOffsetY, frame.minY - surface.insetTop - Self.replyStartTopGap)
+        }
+        guard let id = latestUserRowID, let frame = surface.frame(ofRow: id) else { return nil }
         let visibleHeight = surface.viewportHeight - surface.insetTop - surface.insetBottom
         let messageTop = frame.minY - surface.insetTop - Self.replyStartTopGap
         let messageTail = frame.maxY - surface.insetTop - visibleHeight / 3

@@ -11,7 +11,6 @@ import Foundation
 ///   while no row changes (a reply streaming in grows its row, which
 ///   counts) and the reader isn't scrolling, which is what a chat that
 ///   stops taking scrolls and typing would look like.
-/// - A group room's blank-screen recovery rebuilding its scroll view.
 ///
 /// Each saves at most once a minute. A stall is MainThreadHangWatchdog's.
 @MainActor
@@ -21,7 +20,7 @@ final class ChatViewportWatch {
     static let stormPassesPerSecond = 30
     static let stormSeconds = 3
     /// How long after a command, a resize or another scroll view a move is
-    /// taken as theirs: a group room can wait for layout before it writes.
+    /// taken as theirs.
     static let askedWindow: CFAbsoluteTime = 1
     /// UIKit's animated offset change runs about a third of a second.
     static let animatedWriteWindow: CFAbsoluteTime = 0.6
@@ -107,11 +106,6 @@ final class ChatViewportWatch {
     /// changing is.
     func rowResized() {
         transcriptChanged()
-    }
-
-    /// A group room's blank-screen recovery is rebuilding its scroll view.
-    func blankViewportRebuilt() {
-        saveOnce(.rebuild, at: now())
     }
 
     /// Closes the second that ended when `time` is in a new one.
