@@ -19,30 +19,44 @@ import Foundation
 extension AppState {
     nonisolated static let handsFreeProfileKeyPrefix = "voice.handsFreeProfile."
 
-    private var handsFreeProfileKey: String? {
-        activeDashboardID.map { Self.handsFreeProfileKeyPrefix + $0.uuidString }
-    }
-
     /// The profile picked in Settings > Voice > Watch and Siri calls for
     /// the active dashboard, or nil to follow the iPhone.
     var handsFreeProfileChoice: String? {
-        guard let key = handsFreeProfileKey else { return nil }
-        let stored = UserDefaults.standard.string(forKey: key)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return stored.isEmpty ? nil : stored
+        activeDashboardID.flatMap { Self.handsFreeProfileChoice(in: .standard, dashboard: $0) }
     }
 
     func setHandsFreeProfileChoice(_ profile: String?) {
-        guard let key = handsFreeProfileKey else { return }
-        let value = profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard value != (handsFreeProfileChoice ?? "") else { return }
+        guard let dashboard = activeDashboardID,
+              (profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") != (handsFreeProfileChoice ?? "") else { return }
         objectWillChange.send()
-        if value.isEmpty {
-            UserDefaults.standard.removeObject(forKey: key)
-        } else {
-            UserDefaults.standard.set(value, forKey: key)
-        }
+        Self.storeHandsFreeProfileChoice(profile, in: .standard, dashboard: dashboard)
         // The Watch's voices are checked on the profile its calls use now.
         Task { await refreshWatchCallVoices() }
+    }
+
+    nonisolated static func handsFreeProfileChoice(in defaults: UserDefaults, dashboard: UUID) -> String? {
+        let stored = defaults.string(forKey: handsFreeProfileKeyPrefix + dashboard.uuidString)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return stored.isEmpty ? nil : stored
+    }
+
+    /// Saves `profile` (nil or blank: follow the iPhone) for `dashboard`.
+    /// False when it was already the choice.
+    @discardableResult
+    nonisolated static func storeHandsFreeProfileChoice(
+        _ profile: String?,
+        in defaults: UserDefaults,
+        dashboard: UUID
+    ) -> Bool {
+        let value = profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard value != (handsFreeProfileChoice(in: defaults, dashboard: dashboard) ?? "") else { return false }
+        let key = handsFreeProfileKeyPrefix + dashboard.uuidString
+        if value.isEmpty {
+            defaults.removeObject(forKey: key)
+        } else {
+            defaults.set(value, forKey: key)
+        }
+        return true
     }
 
     /// The profile a hands-free call starts on: the one picked, while this

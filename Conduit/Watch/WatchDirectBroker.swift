@@ -888,8 +888,6 @@ final class WatchDirectBroker {
         let profile = ledger.call(id)?.connection.profile ?? appState.activeProfile
         let tokens = appState.makeLiveTokenClient(provider: .gemini) { profile }
         let supervisor = WatchCallJobSupervisor(appState.voiceBackgroundJobSupervisor, callProfile: appState.jobProfile(for: profile))
-        // Its jobs on another profile take that profile's voice-job model.
-        if callID == id { appState.watchCallJobProfile = supervisor.callProfile }
         // Noted in the saved call, as the phone's own calls note theirs.
         supervisor.onJobCreated = { [weak self] jobID in self?.callJobs[id, default: []].append(jobID) }
         supervisor.callIsLive = { [weak self] in self?.callID == id }
@@ -1550,7 +1548,6 @@ final class WatchDirectBroker {
         hostToolsMode = nil
         callMode = nil
         appState.watchCallUserTurn = nil
-        appState.watchCallJobProfile = nil
         revokeGrants()
         appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = false
         callID = nil
@@ -1884,7 +1881,9 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
         let base = self.base
         // A request that names no profile is the call's own.
         let named = (profile ?? "").isEmpty ? nil : profile
-        let reply = await base.startJob(instructions: instructions, profile: named ?? callProfile, onJobCreated: { jobID in
+        // The call's own jobs on another profile take that profile's
+        // voice-job model; named work runs on its profile's own.
+        let reply = await base.startJob(instructions: instructions, profile: named ?? callProfile, callsModel: named == nil, onJobCreated: { jobID in
             startedID = jobID
             // Marked before Hermes can answer, so its reply is matched
             // against replays from the start.
@@ -1945,10 +1944,10 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
     // Chats are found and read as on the phone, for a call whose grant
     // can't (a plugin before 0.18); opening one stays on the phone.
     func findChats(query: String, retryingWords: Bool) async -> VoiceChatSearchOutcome {
-        await base.findChats(query: query, retryingWords: retryingWords)
+        await base.findChats(query: query, retryingWords: retryingWords, profile: callProfile)
     }
     func openFoundChat(_ reference: String) -> VoiceChatOpenOutcome { .unavailable }
-    func readFoundChat(_ reference: String) async -> VoiceChatReadOutcome { await base.readFoundChat(reference) }
+    func readFoundChat(_ reference: String) async -> VoiceChatReadOutcome { await base.readFoundChat(reference, profile: callProfile) }
 
     /// The phone's own tools the call declared, run on this iPhone.
     var hostTools: [VoiceHostTool] = []

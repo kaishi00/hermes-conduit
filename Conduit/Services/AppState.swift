@@ -4548,17 +4548,17 @@ final class AppState: ObservableObject {
     /// finished result is handed back to the Voice conversation.
     lazy var voiceBackgroundJobSupervisor: VoiceBackgroundJobSupervisor = {
         let supervisor = VoiceBackgroundJobSupervisor(backend: VoiceBackgroundJobBackend(
-            createSession: { [weak self] targetProfile in
+            createSession: { [weak self] targetProfile, callsModel in
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
                 if let targetProfile {
                     // A job on another profile or bot runs on that profile's
                     // own model: this profile's voice-job model is not its.
-                    // A Watch call running on that profile uses its voice-job
+                    // A Watch call's own job on that profile uses its voice-job
                     // model, as the call's relay jobs do (#1564).
                     var options: (model: String?, provider: String?, reasoningEffort: String?) = (nil, nil, nil)
-                    if let callProfile = self.watchCallJobProfile, self.profilesMatch(callProfile, targetProfile) {
-                        options = self.watchCallJobSession(self.loadVoiceProfilePreferences(profile: callProfile), profile: callProfile)
+                    if callsModel {
+                        options = self.watchCallJobSession(self.loadVoiceProfilePreferences(profile: targetProfile), profile: targetProfile)
                     }
                     let created = try await client.createSession(
                         model: options.model,
@@ -4643,13 +4643,13 @@ final class AppState: ObservableObject {
                       let message = Self.liveVoiceUnansweredPrompt(in: self.messages) else { return nil }
                 return Self.liveVoiceTypedPrompt(message)
             },
-            searchChats: { [weak self] query in
+            searchChats: { [weak self] query, profile in
                 guard let self else { throw HermesError.notConnected }
-                return try await self.searchChatsForVoice(query)
+                return try await self.searchChatsForVoice(query, profile: profile)
             },
-            readChat: { [weak self] sessionID in
+            readChat: { [weak self] sessionID, profile in
                 guard let self else { throw HermesError.notConnected }
-                return try await self.readChatForVoice(sessionID)
+                return try await self.readChatForVoice(sessionID, profile: profile)
             },
             respondToApproval: { [weak self] approval, choice, profile in
                 guard let self else { throw HermesError.notConnected }
@@ -8888,25 +8888,26 @@ final class AppState: ObservableObject {
     /// for a call asked to find one: Hermes' own search over ids, message
     /// text and titles. A Hermes without that route is asked by the titles
     /// of the chats Conduit lists.
-    func searchChatsForVoice(_ query: String) async throws -> [VoiceChatMatch] {
+    /// `callProfile`: a Watch call's own profile when it isn't the one in
+    /// use (#1564), so it finds that profile's chats.
+    func searchChatsForVoice(_ query: String, profile callProfile: String? = nil) async throws -> [VoiceChatMatch] {
         guard isConnected, let dashboardTicketBridge else { throw HermesError.notConnected }
-        // A Watch call on another profile finds that profile's chats (#1564).
-        let profile = watchCallJobProfile ?? activeProfile
+        let profile = callProfile ?? activeProfile
         do {
             let response = try await dashboardTicketBridge.requestJSON(path: VoiceChatFinder.path(query: query, profile: profile))
             return VoiceChatFinder.matches(from: response)
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
             // Only the iPhone's own profile's chats are loaded here.
-            return watchCallJobProfile == nil ? VoiceChatFinder.titleMatches(in: activeProfileSessions, query: query) : []
+            return callProfile == nil ? VoiceChatFinder.titleMatches(in: activeProfileSessions, query: query) : []
         }
     }
 
     /// A chat a call found, read for the call to talk about: the same text
     /// turns a resumed call gets, with a long chat's older part summarized
     /// once and the summary kept on the host.
-    func readChatForVoice(_ sessionID: String) async throws -> VoiceResumeContext {
+    func readChatForVoice(_ sessionID: String, profile callProfile: String? = nil) async throws -> VoiceResumeContext {
         guard isConnected, dashboardTicketBridge != nil else { throw HermesError.notConnected }
-        guard let context = await voiceResumeContext(sessionID: sessionID, profile: watchCallJobProfile ?? activeProfile) else {
+        guard let context = await voiceResumeContext(sessionID: sessionID, profile: callProfile ?? activeProfile) else {
             // Said to the model, not shown: not localized.
             throw VoiceAudioError.unavailable("Conduit couldn't read that chat.")
         }
@@ -36994,11 +36995,6 @@ final class AppState: ObservableObject {
     /// it led to: the iPhone doesn't hear the call, and a change to the
     /// user's calendar, reminders or alarms takes their own yes.
     var watchCallUserTurn: (id: UUID, text: String)?
-
-    /// The running Watch call's profile when it isn't the iPhone's (#1564):
-    /// the jobs the iPhone starts there take that profile's voice-job model,
-    /// as the call's relay jobs do. Nil without such a call.
-    var watchCallJobProfile: String?
 
     /// What a Watch call to Gemini Live starts with: the setup this
     /// profile's Gemini Live call gets on the phone, and the session's
