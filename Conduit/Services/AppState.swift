@@ -2773,9 +2773,11 @@ final class AppState: ObservableObject {
             if result["confirm_required"] as? Bool == true {
                 return result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
             }
+            // The answer to a read asked before the save isn't kept after
+            // it, and the kept slots follow the save, so the section opens
+            // on it next time (#1533).
+            noteKeptAnswerWrite(for: KeptRoute.modelAuxiliary, profile: profile, owner: owner)
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
-            // The kept slots follow the save, so the section opens on it
-            // next time (#1533).
             Task { [weak self] in
                 _ = try? await self?.readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner)
             }

@@ -234,7 +234,15 @@ struct GPTLiveSettingsSection: View {
         .onChange(of: model.memory) { _, newValue in memory = newValue }
         .onChange(of: model.personality) { _, newValue in personality = newValue }
         .onChange(of: model.saveCalls) { _, newValue in saveCalls = newValue }
-        .onChange(of: model.billing) { _, newValue in billing = newValue }
+        .onChange(of: model.billing) { _, newValue in
+            guard newValue != billing else { return }
+            // Changed in another window: the line is the new billing's as
+            // last checked, while it's checked again.
+            billing = newValue
+            status = model.keptStatus?.text
+            isAvailable = model.keptStatus?.isAvailable
+            Task { await check() }
+        }
         .onChange(of: model.apiVoice) { _, newValue in apiVoice = newValue ?? "" }
         .onChange(of: model.apiMaxMinutes) { _, newValue in apiMaxMinutes = newValue }
         .onChange(of: model.apiHermesCalls) { _, newValue in apiHermesCalls = newValue }

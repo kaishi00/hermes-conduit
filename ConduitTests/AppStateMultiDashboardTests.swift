@@ -1834,6 +1834,31 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.keptProfileSettings(keys: ["memory.provider"]), "Asked before the save")
     }
 
+    /// A Voice replies model save outranks a read of the slots asked
+    /// before it, which keeps nothing when it answers after the save; the
+    /// read the save asks for keeps the slot saved.
+    func testAVoiceReplyModelSaveOutranksAnOlderRead() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let fast = VoiceReplyModelSetting(provider: "openrouter", model: "fast/model", reasoningEffort: "none")
+        let older = Task { try await appState.loadVoiceReplyModel() }
+        try await held.waitForRequests(1)
+        let save = Task { await appState.setVoiceReplyModel(fast) }
+        try await held.waitForRequests(2)       // the save
+        try await held.answer(at: 1)
+        let refusal = await save.value
+        XCTAssertNil(refusal)
+        try await held.waitForRequests(3)       // the read it asks for
+        try await held.answer(["tasks": [["task": "voice_chat", "provider": "auto", "model": ""]]])
+        _ = try await older.value
+        XCTAssertNil(appState.keptVoiceReplyModel(), "Asked before the save")
+
+        try await held.answer(["tasks": [["task": "voice_chat", "provider": "openrouter", "model": "fast/model", "reasoning_effort": "none"]]])
+        for _ in 0..<1_000 where appState.keptVoiceReplyModel() == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(appState.keptVoiceReplyModel(), fast, "Asked after it")
+    }
+
     /// Pulse is one per host: its state is kept once per dashboard, from a
     /// read or a change that answers with it (a notification's Quiet for
     /// today too), and What Pulse remembers' list beside it, without what
