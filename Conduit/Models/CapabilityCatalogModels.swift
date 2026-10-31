@@ -341,12 +341,44 @@ struct ConnectorServer: Equatable, Identifiable {
                 transport: row["transport"] as? String ?? "unknown",
                 url: (row["url"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 command: (row["command"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-                args: (row["args"] as? [Any])?.compactMap { $0 as? String } ?? [],
+                // A number argument shows as written (--port 8080), not dropped.
+                args: (row["args"] as? [Any])?.map(argumentText) ?? [],
                 auth: (row["auth"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 enabled: row["enabled"] as? Bool ?? true,
                 plugin: plugin
             )
         }
+    }
+
+    /// An argument as written: a number as its digits, true/false as words
+    /// (a JSON boolean would otherwise print as 1 or 0).
+    static func argumentText(_ value: Any) -> String {
+        if let text = value as? String { return text }
+        if let number = value as? NSNumber {
+            return CFGetTypeID(number) == CFBooleanGetTypeID() ? (number.boolValue ? "true" : "false") : number.stringValue
+        }
+        if value is NSNull { return "" }
+        return "\(value)"
+    }
+
+    /// A row for a server just saved, made from its entry when the list
+    /// couldn't be read again. The PUT replaced the whole entry, so what it
+    /// leaves out is the default (no sign-in, on); only a transport the entry
+    /// can't show comes from the row it replaces.
+    static func saved(name: String, entry: [String: Any], replacing before: ConnectorServer?) -> ConnectorServer {
+        let url = (entry["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let command = (entry["command"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return ConnectorServer(
+            name: name,
+            transport: url != nil ? "http" : (command != nil ? "stdio" : (before?.transport ?? "unknown")),
+            url: url,
+            command: command,
+            args: (entry["args"] as? [Any])?.map(argumentText) ?? [],
+            auth: (entry["auth"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                ?? ((entry["headers"] as? [String: Any])?.keys.contains { $0.lowercased() == "authorization" } == true ? "header" : nil),
+            enabled: entry["enabled"] as? Bool ?? true,
+            plugin: nil
+        )
     }
 }
 
@@ -391,7 +423,8 @@ struct ConnectorCatalogEntry: Equatable, Identifiable {
                 requiredEnv: env,
                 url: (row["url"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 command: (row["command"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-                args: (row["args"] as? [Any])?.compactMap { $0 as? String } ?? [],
+                // A number argument shows as written (--port 8080), not dropped.
+                args: (row["args"] as? [Any])?.map(ConnectorServer.argumentText) ?? [],
                 needsInstall: row["needs_install"] as? Bool ?? false,
                 installed: row["installed"] as? Bool ?? false
             )
@@ -758,8 +791,21 @@ struct ConnectorServerEdit {
         entry["url"] != nil || entry["command"] == nil
     }
 
+    /// A number argument, not true/false.
+    private static func isNumber(_ value: Any) -> Bool {
+        guard let number = value as? NSNumber else { return false }
+        return CFGetTypeID(number) != CFBooleanGetTypeID()
+    }
+
+    /// The typed text as a whole number when it reads back exactly as typed
+    /// ("9090", not "007", "1.10" or "1e3", which stay text).
+    private static func wholeNumber(_ typed: String) -> Int? {
+        guard let whole = Int(typed), String(whole) == typed else { return nil }
+        return whole
+    }
+
     private static func argumentLines(_ entry: [String: Any]) -> String {
-        (entry["args"] as? [Any] ?? []).map { "\($0)" }.joined(separator: "\n")
+        (entry["args"] as? [Any] ?? []).map(ConnectorServer.argumentText).joined(separator: "\n")
     }
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -776,27 +822,56 @@ struct ConnectorServerEdit {
             guard !program.isEmpty else { throw Problem.noTarget }
             next["command"] = program
             guard arguments != shownArguments else { return next }
-            // A line left exactly as it was keeps its own value (a number
-            // stays a number, an empty or spaced argument stays as it is),
-            // each original used once; a changed or new line is the text
-            // typed, trimmed, and a blank new line is dropped.
-            var unused = entry["args"] as? [Any] ?? []
-            var args: [Any] = []
-            for line in arguments.components(separatedBy: .newlines) {
-                if let match = unused.firstIndex(where: { "\($0)" == line }) {
-                    args.append(unused.remove(at: match))
-                    continue
-                }
-                let typed = line.trimmingCharacters(in: .whitespaces)
-                if !typed.isEmpty { args.append(typed) }
-            }
-            if args.isEmpty && entry["args"] == nil {
+            next["args"] = Self.editedArguments(arguments, original: entry["args"] as? [Any] ?? [])
+            if (next["args"] as? [Any])?.isEmpty == true && entry["args"] == nil {
                 next.removeValue(forKey: "args")
-            } else {
-                next["args"] = args
             }
         }
         return next
+    }
+
+    /// The arguments typed, one per line, walked against the original ones
+    /// in order. A line left exactly as it was keeps its own value (a number
+    /// stays a number, an empty or spaced argument stays as it is), each
+    /// original used once, also when lines moved. A line typed over an
+    /// original keeps a number a number when it's a whole number written
+    /// plainly (8080 to 9090; "007" or "1.10" stay text). An added line is
+    /// the text typed, trimmed, and a blank one is dropped.
+    private static func editedArguments(_ text: String, original: [Any]) -> [Any] {
+        let lines = text.components(separatedBy: .newlines)
+        let shown = original.map(ConnectorServer.argumentText)
+        var used = Set<Int>()
+        var next = 0
+        var args: [Any] = []
+        func skipUsed() { while used.contains(next) { next += 1 } }
+        for (row, line) in lines.enumerated() {
+            skipUsed()
+            // Left as it was, here or further on (the lines between deleted),
+            // or moved from earlier.
+            if let at = shown.indices.first(where: { $0 >= next && !used.contains($0) && shown[$0] == line })
+                ?? shown.indices.first(where: { !used.contains($0) && shown[$0] == line }) {
+                used.insert(at)
+                args.append(original[at])
+                if at >= next { next = at + 1 }
+                continue
+            }
+            let typed = line.trimmingCharacters(in: .whitespaces)
+            guard !typed.isEmpty else { continue }
+            // Typed over the next original, unless that one still comes later
+            // as it was (then this line was added).
+            let later = lines[(row + 1)...]
+            if next < original.count, !later.contains(shown[next]) {
+                let replaced = original[next]
+                used.insert(next)
+                next += 1
+                if isNumber(replaced), let whole = wholeNumber(typed) {
+                    args.append(whole)
+                    continue
+                }
+            }
+            args.append(typed)
+        }
+        return args
     }
 
     /// The JSON as an entry: one object with an address or a command.
