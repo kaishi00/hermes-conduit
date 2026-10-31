@@ -1435,12 +1435,13 @@ same stored-id open)
 - One chat per bot, found by its title on the bot's profile; a lookup that fails, or comes back empty while the roster still names a chat, never makes a new one (Desktop's rule).
 - A chat Conduit makes is opened by its stored id, as Desktop does: Hermes resumes a chat by its stored key and answers 4007 for a runtime id. Opening the runtime id failed the open, so a new bot's first message went to a chat Conduit didn't have open and was gone on the way back (2026-10-26, a tester's report via Eric, #1300). A create that names no stored id is found by its title, which has just landed, and that row is opened; the runtime id is never resumed.
 - A title collision while making the chat adopts the chat that won instead of making a second one.
-- A row of the kept roster opens through the same lookup, its kept chat counting as the roster's last confirmation, so an empty lookup still makes no chat (2026-10-31, #1568).
+- A row of the kept roster opens through the same lookup, its kept chat counting as the roster's last confirmation, so an empty lookup still makes no chat, and so does a widget's open of a kept bot's chat (2026-10-31, #1568).
+- A push or a call from a Bot Chat is routed by the roster Hermes confirmed on this connection, never the kept one: a push that crosses profiles asks for the roster again at the tap, and one that can't be told apart from a workspace's waits or is refused, as before. A kept copy is no evidence: a bot made since its answer is missing from it, and its chat would open as the workspace's own (2026-10-31, #1568).
 
 **Open gaps**
 - The new-bot fix (#1300) was read from Conduit's and Hermes' code, not reproduced on a device; a tester confirms it on the next build.
 
-**Checked:** 2026-10-31, #1568 (a kept row's tap); 2026-10-28, #1457 (the main bot goes by its Conduit name, see Profile names); 2026-10-28, #1448 (a restored Bot Chat names an unnamed bot by its id capitalized, also when saved with the id as its label); 2026-10-26, #1300.
+**Checked:** 2026-10-31, #1568 (a kept row's tap and a widget's open of a kept bot's chat; a push's routing keeps to Hermes' confirmed roster, recorded); 2026-10-28, #1457 (the main bot goes by its Conduit name, see Profile names); 2026-10-28, #1448 (a restored Bot Chat names an unnamed bot by its id capitalized, also when saved with the id as its label); 2026-10-26, #1300.
 
 ## Bot mentions and teammate messages
 

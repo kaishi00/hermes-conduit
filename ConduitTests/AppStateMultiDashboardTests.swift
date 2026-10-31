@@ -2377,5 +2377,24 @@ extension AppStateMultiDashboardTests {
         await later.openGroupRoom(planning)
         XCTAssertEqual(later.errorMessage, AppLocalization.string("That chat is no longer available."), "Not \"Try again\"")
         XCTAssertNil(later.activeRoomSurface)
+
+        // A list that fails: the room may still be there, so try again.
+        let failing = GroupChatLifecycleOperations(
+            capabilities: { _ in
+                GroupCapabilities(
+                    protocolVersion: 2, driverReady: true, authorityGatewayID: "gw-a", features: [],
+                    methods: ["groups.list", "groups.create", "groups.state", "groups.send", "groups.log", "groups.disband", "groups.stop"],
+                    maxLogLimit: 500
+                )
+            },
+            list: { _ in throw URLError(.timedOut) }
+        )
+        let unlisted = rosterAppState(registry, groups: failing, cache: next.offlineChatCacheForTesting)
+        connectRoster(unlisted, to: mac)
+        let kept = try XCTUnwrap(unlisted.shownGroupRooms.first { $0.roomID == "room-1" })
+        await unlisted.openGroupRoom(kept)
+        XCTAssertEqual(unlisted.errorMessage, AppLocalization.string("Couldn't open that chat. Try again."))
+        XCTAssertNil(unlisted.activeRoomSurface)
+        XCTAssertEqual(unlisted.shownGroupRooms.map(\.roomID), ["room-1"], "The kept rooms stay up")
     }
 }

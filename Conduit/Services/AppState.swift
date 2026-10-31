@@ -23379,9 +23379,11 @@ final class AppState: ObservableObject {
             return outcome == .opened ? .handled : .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
         }
 
+        // A kept bot opens as its Bots list row does: Hermes' lookup below
+        // confirms the chat.
         guard let botName = reference.botName,
               botName == reference.scopeProfile,
-              let bot = botRoster.first(where: { $0.name == botName && !$0.isHiddenByMeta }) else {
+              let bot = shownBotRoster.first(where: { $0.name == botName && !$0.isHiddenByMeta }) else {
             return .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
         }
         do {
