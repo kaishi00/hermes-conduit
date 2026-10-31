@@ -444,7 +444,14 @@ struct KanbanModelOverrideSheet: View {
     @Binding var value: TaskModelOverride
 
     @State private var providers: [KanbanModelProviderOption] = []
+    /// The roster shown is the one kept from last time (#1533): its models
+    /// wait for Hermes' answer before one is picked.
+    @State private var showsKept = false
     @State private var isLoadingOptions = false
+    /// The plugin answered, or its read failed: until then the sheet is
+    /// loading, so neither the empty roster's note nor the free-text entry
+    /// shows.
+    @State private var optionsAnswered = false
     @State private var loadFailed = false
     @State private var query = ""
     @State private var expandedProvider: String?
@@ -477,7 +484,7 @@ struct KanbanModelOverrideSheet: View {
 
                 reasoningSection
                 catalogSection
-                if loadFailed || providers.isEmpty {
+                if loadFailed || (optionsAnswered && providers.isEmpty) {
                     customEntrySection
                 }
             }
@@ -490,7 +497,10 @@ struct KanbanModelOverrideSheet: View {
                 }
             }
             .task { await loadOptions() }
-            .onAppear(perform: seedCustomFields)
+            .onAppear {
+                seedCustomFields()
+                showKept()
+            }
         }
     }
 
@@ -520,7 +530,8 @@ struct KanbanModelOverrideSheet: View {
     @ViewBuilder
     private var catalogSection: some View {
         Section {
-            if isLoadingOptions {
+            // Over a kept roster, nothing comes or goes when Hermes answers.
+            if isLoadingOptions || !optionsAnswered, !showsKept {
                 HStack { ProgressView(); Text("Loading models…") }.foregroundStyle(.secondary)
             }
             if ModelSearchQuery(query).isEmpty {
@@ -537,7 +548,17 @@ struct KanbanModelOverrideSheet: View {
                     modelButton(match.model, provider: match.provider, showsProvider: true)
                 }
             }
-            if !isLoadingOptions && providers.isEmpty {
+            if loadFailed {
+                // A failed read keeps the roster shown, under this.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Could not load models.")
+                        .foregroundStyle(.secondary)
+                    Button("Try Again") {
+                        loadFailed = false
+                        Task { await loadOptions() }
+                    }
+                }
+            } else if optionsAnswered && !isLoadingOptions && providers.isEmpty {
                 Text("No curated model catalog available from Hermes — enter a provider and model below.")
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
@@ -579,6 +600,7 @@ struct KanbanModelOverrideSheet: View {
             }
         }
         .foregroundStyle(.primary)
+        .disabled(showsKept)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
@@ -630,20 +652,37 @@ struct KanbanModelOverrideSheet: View {
         customModel = value.model ?? ""
     }
 
+    /// The roster as the picker listed it last time, while Hermes is asked
+    /// again.
+    private func showKept() {
+        guard providers.isEmpty, let kept = store.keptModelOptions(), !kept.isEmpty else { return }
+        providers = kept
+        showsKept = true
+        expandCurrentProvider()
+    }
+
     private func loadOptions() async {
-        guard providers.isEmpty else { return }
+        guard providers.isEmpty || showsKept else { return }
         isLoadingOptions = true
-        defer { isLoadingOptions = false }
+        defer {
+            isLoadingOptions = false
+            optionsAnswered = true
+        }
         do {
             providers = try await store.fetchModelOptions().filter { !$0.models.isEmpty }
-            // Pre-expand the provider matching the current override.
-            if let current = value.provider,
-               let match = providers.first(where: { $0.slug == current }) {
-                expandedProvider = match.slug
-            }
+            showsKept = false
+            loadFailed = false
+            expandCurrentProvider()
         } catch {
             loadFailed = true
         }
+    }
+
+    /// Pre-expands the provider matching the current override.
+    private func expandCurrentProvider() {
+        guard expandedProvider == nil, let current = value.provider,
+              let match = providers.first(where: { $0.slug == current }) else { return }
+        expandedProvider = match.slug
     }
 }
 

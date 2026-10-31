@@ -73,6 +73,15 @@ final class CapabilitiesStore {
         /// The answer Settings keeps for the Conduit plugin's status too.
         static let plugins = AppState.KeptRoute.pluginsHub
         static let pluginCatalog = "/api/dashboard/plugins/catalog"
+        /// Where the terminal toolset runs, for its page.
+        static let terminalBackends = "/api/tools/terminal/backends"
+
+        /// A detail page's answer (a skill's SKILL.md, a catalog skill's
+        /// preview, a toolset's backends): one page's of many, kept for
+        /// the pages opened last.
+        static func page(_ path: String) -> String {
+            OfflineChatCacheStore.lastOpenedRoutePrefix + path
+        }
     }
 
     /// A tab's list drawn from what was kept, until Hermes answers. A
@@ -246,12 +255,13 @@ final class CapabilitiesStore {
         _ path: String,
         keptAs route: String,
         in answers: KeptAnswers?,
+        timeout: Int = 30_000,
         keeping kept: (([String: Any]) -> [String: Any])? = nil
     ) async throws -> [String: Any] {
-        guard let answers else { return try await request(path, timeout: 30_000) }
+        guard let answers else { return try await request(path, timeout: timeout) }
         var answer: [String: Any] = [:]
         _ = try await answers.keep(route, false, {
-            answer = try await self.request(path, timeout: 30_000)
+            answer = try await self.request(path, timeout: timeout)
             return kept?(answer) ?? answer
         })
         return answer
@@ -325,19 +335,36 @@ final class CapabilitiesStore {
         (response["skills"] as? [Any] ?? []).compactMap { OfficialSkill($0) }
     }
 
-    /// A skill's SKILL.md, frontmatter included.
+    /// A skill's SKILL.md, frontmatter included, kept for its page to open
+    /// on next time.
     func skillContent(name: String) async throws -> String {
-        let response = try await request(scoped("/api/skills/content?name=\(Self.component(name))"))
+        let path = Self.skillContentPath(name)
+        let response = try await read(scoped(path), keptAs: KeptRoute.page(path), in: answers)
         return response["content"] as? String ?? ""
     }
 
-    /// A catalog skill's SKILL.md before it's installed.
+    /// The SKILL.md the skill's page showed last time, or nil.
+    func keptSkillContent(name: String) -> String? {
+        answers?.kept(KeptRoute.page(Self.skillContentPath(name)))?["content"] as? String
+    }
+
+    private static func skillContentPath(_ name: String) -> String {
+        "/api/skills/content?name=\(component(name))"
+    }
+
+    /// A catalog skill's SKILL.md before it's installed, kept as a skill's is.
     func skillPreview(identifier: String) async throws -> String {
-        let response = try await request(
-            scoped("/api/skills/hub/preview?identifier=\(Self.component(identifier))"),
-            timeout: 45_000
-        )
+        let path = Self.skillPreviewPath(identifier)
+        let response = try await read(scoped(path), keptAs: KeptRoute.page(path), in: answers, timeout: 45_000)
         return response["skill_md"] as? String ?? ""
+    }
+
+    func keptSkillPreview(identifier: String) -> String? {
+        answers?.kept(KeptRoute.page(Self.skillPreviewPath(identifier)))?["skill_md"] as? String
+    }
+
+    private static func skillPreviewPath(_ identifier: String) -> String {
+        "/api/skills/hub/preview?identifier=\(component(identifier))"
     }
 
     /// Installs a catalog skill (Hermes runs `hermes skills install` in the
@@ -399,13 +426,25 @@ final class CapabilitiesStore {
         showsKept.remove(.toolCalls)
     }
 
+    /// A toolset's backends and their keys, kept for its page to open on
+    /// next time.
     func toolsetConfig(name: String) async throws -> ToolsetConfig {
-        ToolsetConfig(try await request(scoped("/api/tools/toolsets/\(Self.component(name))/config"), timeout: 30_000))
+        let path = Self.toolsetConfigPath(name)
+        return ToolsetConfig(try await read(scoped(path), keptAs: KeptRoute.page(path), in: answers))
+    }
+
+    func keptToolsetConfig(name: String) -> ToolsetConfig? {
+        answers?.kept(KeptRoute.page(Self.toolsetConfigPath(name))).map(ToolsetConfig.init)
+    }
+
+    private static func toolsetConfigPath(_ name: String) -> String {
+        "/api/tools/toolsets/\(component(name))/config"
     }
 
     /// Makes `provider` the toolset's backend (for the web toolset, for one
     /// capability). True when Hermes says it still needs a Nous sign-in.
     func selectProvider(toolset: String, provider: String, capability: String? = nil) async throws -> Bool {
+        let answers = self.answers
         var body: [String: Any] = ["provider": provider]
         if let capability { body["capability"] = capability }
         let response = try await request(
@@ -413,28 +452,46 @@ final class CapabilitiesStore {
             method: "PUT",
             body: scopedBody(body)
         )
+        await keepChange(KeptRoute.page(Self.toolsetConfigPath(toolset)), in: answers) {
+            ToolsetConfig.choosing(provider, capability: capability, in: $0)
+        }
         return response["needs_nous_auth"] as? Bool ?? false
     }
 
     func terminalBackends() async throws -> [TerminalBackendOption] {
-        TerminalBackendOption.list(from: try await request(scoped("/api/tools/terminal/backends"), timeout: 30_000))
+        TerminalBackendOption.list(
+            from: try await read(scoped(KeptRoute.terminalBackends), keptAs: KeptRoute.terminalBackends, in: answers)
+        )
+    }
+
+    func keptTerminalBackends() -> [TerminalBackendOption]? {
+        answers?.kept(KeptRoute.terminalBackends).map(TerminalBackendOption.list(from:))
     }
 
     func selectTerminalBackend(_ backend: String) async throws {
+        let answers = self.answers
         _ = try await request(
             scoped("/api/tools/terminal/backend"),
             method: "PUT",
             body: scopedBody(["backend": backend])
         )
+        await keepChange(KeptRoute.terminalBackends, in: answers) {
+            TerminalBackendOption.choosing(backend, in: $0)
+        }
     }
 
-    /// Saves an API key to the profile's `.env`. Conduit never reads keys back.
-    func saveKey(_ key: String, value: String) async throws {
+    /// Saves an API key to the profile's `.env`, from `toolset`'s page,
+    /// whose kept answer then shows it set. Conduit never reads keys back.
+    func saveKey(_ key: String, value: String, toolset: String) async throws {
+        let answers = self.answers
         _ = try await request(
             scoped("/api/env"),
             method: "PUT",
             body: scopedBody(["key": key, "value": value])
         )
+        await keepChange(KeptRoute.page(Self.toolsetConfigPath(toolset)), in: answers) {
+            ToolsetConfig.settingKey(key, in: $0)
+        }
     }
 
     // MARK: Connectors
@@ -815,7 +872,9 @@ final class CapabilitiesStore {
             showsKept.remove(.plugins)
         } catch {
             _ = await catalogResponse
-            guard token == generation, epoch == pluginsEpoch else { return }
+            // A read cut off by leaving the tab isn't a failure: the tab
+            // asks again when it next shows, as the Connectors tab does.
+            guard token == generation, epoch == pluginsEpoch, !(error is CancellationError) else { return }
             pluginsError = UserFacingError.message(for: error)
         }
         pluginsLoaded = true
@@ -910,6 +969,23 @@ final class CapabilitiesStore {
         }
         kept[key] = change(rows)
         _ = try? await answers.keep(route, true, { [kept] in kept })
+    }
+
+    /// Changes a page's kept answer as Hermes took a change, as the list
+    /// form does a list's rows: so the page opens on the change next time,
+    /// and shows it should the read after the change fail (#1533).
+    private func keepChange(
+        _ route: String,
+        in answers: KeptAnswers?,
+        answer change: ([String: Any]) -> [String: Any]
+    ) async {
+        guard let answers else { return }
+        guard let kept = answers.kept(route) else {
+            answers.noteWrite(route)
+            return
+        }
+        let changed = change(kept)
+        _ = try? await answers.keep(route, true, { changed })
     }
 
     /// Marks the catalog entries `matches` picks installed or not, with no

@@ -378,6 +378,11 @@ struct KanbanView: View {
 
     @EnvironmentObject private var appState: AppState
     @State private var store: KanbanStore
+    /// The dashboard (`serverIdentityKey`) the store was last pointed at.
+    /// The board shows only once it matches, so nothing the store held
+    /// before (or its empty state) is drawn: it's pointed before the first
+    /// frame, and on a switch before the next one (#1533).
+    @State private var configuredServerKey: String?
     @State private var selectedTask: KanbanTask?
     /// The task request being opened (AppState.kanbanTaskOpenRequest).
     @State private var openingRequest: UUID?
@@ -632,6 +637,7 @@ struct KanbanView: View {
             serverIdentity: appState.dashboardTicketBridge?.baseURL ?? dashboardURL ?? "",
             answers: appState.screenAnswers(profile: AppState.KeptRoute.everyProfile)
         )
+        configuredServerKey = serverIdentityKey
     }
 
     private var visibleColumns: [KanbanColumn] {
@@ -648,7 +654,7 @@ struct KanbanView: View {
         VStack(spacing: 12) {
             header
 
-            if store.isLoading && store.board == nil {
+            if configuredServerKey != serverIdentityKey || (store.isLoading && store.board == nil) {
                 Spacer()
                 ProgressView("Loading board…")
                     .tint(.conduitAccent)
@@ -892,6 +898,8 @@ struct KanbanView: View {
             pendingBoardArchive = nil
             nudgeNoticeState.invalidateOnContextChange()
             exitSelectionMode()
+            // The new one's kept board, before the next frame.
+            configureStore()
         }
         // V3C: the authoritative board keeps polling during selection mode;
         // prune ghost selections against it (never transfer by index).

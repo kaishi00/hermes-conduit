@@ -326,11 +326,12 @@ struct CapabilitySkillDetailPage: View {
                 .padding(.horizontal, 16)
         }
         .navigationTitle(Text(verbatim: name))
+        // Before the first frame, so the page doesn't open on a spinner.
+        .onAppear { if document == nil { showKept() } }
         // Read again for another dashboard or profile.
         .task(id: detailScope) {
+            showKept()
             let owner = appState.currentCapabilitiesOwner
-            document = nil
-            loadError = nil
             guard store.serves(owner) else { return }
             do {
                 let content = try await store.skillContent(name: name)
@@ -338,9 +339,19 @@ struct CapabilitySkillDetailPage: View {
                 document = SkillFrontmatter.parse(content)
             } catch {
                 guard appState.currentCapabilitiesOwner == owner, store.serves(owner), !Task.isCancelled else { return }
-                loadError = UserFacingError.message(for: error)
+                // A read that fails keeps the SKILL.md shown.
+                if document == nil { loadError = UserFacingError.message(for: error) }
             }
         }
+    }
+
+    /// The SKILL.md as the page showed it last time on this dashboard and
+    /// profile, while Hermes is asked again (#1533).
+    private func showKept() {
+        loadError = nil
+        document = store.serves(appState.currentCapabilitiesOwner)
+            ? store.keptSkillContent(name: name).map(SkillFrontmatter.parse)
+            : nil
     }
 }
 
@@ -357,6 +368,8 @@ struct OfficialSkillDetailPage: View {
     /// state, Install and SKILL.md belong to them, and after a switch the
     /// page shows only the skill's name and description.
     @State private var openedFor: CapabilitySnapshotOwner?
+    /// Hermes answered: the SKILL.md shown is its, not the one kept.
+    @State private var answered = false
 
     private var isCurrent: Bool {
         guard let openedFor else { return false }
@@ -404,7 +417,8 @@ struct OfficialSkillDetailPage: View {
                         .padding(.vertical, 6)
                         .frame(minHeight: 44)
                     }
-                    .disabled(state == .running)
+                    // Off with no dashboard to write through, as the switches are.
+                    .disabled(state == .running || !appState.canChangeCapabilities)
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
                     if case .failed(let reason) = state {
                         Text(verbatim: reason)
@@ -418,21 +432,33 @@ struct OfficialSkillDetailPage: View {
             }
         }
         .navigationTitle(Text(verbatim: skill.name))
+        // Before the first frame, so the page doesn't open on a spinner.
+        .onAppear { showKept() }
         // Again on a return to the dashboard and profile it was opened for,
         // in case a switch cut the first read short.
         .task(id: isCurrent) {
-            if openedFor == nil { openedFor = appState.currentCapabilitiesOwner }
-            guard isCurrent, document == nil else { return }
+            showKept()
+            guard isCurrent, !answered else { return }
             do {
                 let content = try await store.skillPreview(identifier: skill.identifier)
                 guard isCurrent, !Task.isCancelled else { return }
                 document = SkillFrontmatter.parse(content)
                 loadError = nil
+                answered = true
             } catch {
                 guard isCurrent, !Task.isCancelled else { return }
-                loadError = UserFacingError.message(for: error)
+                // A read that fails keeps the SKILL.md shown.
+                if document == nil { loadError = UserFacingError.message(for: error) }
             }
         }
+    }
+
+    /// The SKILL.md as the page showed it last time, while Hermes is asked
+    /// again (#1533).
+    private func showKept() {
+        if openedFor == nil { openedFor = appState.currentCapabilitiesOwner }
+        guard isCurrent, document == nil else { return }
+        document = store.keptSkillPreview(identifier: skill.identifier).map(SkillFrontmatter.parse)
     }
 }
 
