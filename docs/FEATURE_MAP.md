@@ -2176,13 +2176,16 @@ the lists they sit in.
 counts, backends, MCP servers and plugins (CapabilitiesStore) · the Skills
 and Tools tabs · the bot editor's skills, tools and MCP lists (see Bots:
 create and edit) · the skill, toolset and catalog skill detail pages · the Kanban
-task composer's skill picker · the Capabilities captions ("Changes apply
-to new sessions."; no other behavior text describes these lists)
+task composer's skill picker · a connector's editor (Edit Server: the form
+and the JSON, as Hermes Desktop's mcp.json editor) · the Capabilities
+captions ("Changes apply to new sessions."; the editor's footers) ·
+README.md's Capabilities line
 
 **Code**
 - Installed lists and switches: `Conduit/Services/AppState.swift` (loadCapabilities, toggleSkill, toggleToolset, capabilityLoadGeneration, capabilitiesOwner, currentCapabilitiesOwner, capabilitiesAreCurrent, capabilityRowsAreCurrent, retireCapabilitySnapshot, CapabilitySnapshotOwner, CapabilityDetailScope, CapabilityLoadPolicy), `Conduit/Services/CapabilityToggleWrites.swift`
 - The rest of the page: `Conduit/Services/CapabilitiesStore.swift` (configure, serves, probe, probeServers)
 - Views: `Conduit/Views/CapabilitiesView.swift`, `Conduit/Views/Capabilities/CapabilitySkillsTab.swift`, `Conduit/Views/Capabilities/CapabilityToolsTab.swift`, `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanSkillsPickerSheet)
+- Editing a connector: `Conduit/Models/CapabilityCatalogModels.swift` (ConnectorServerEdit), `Conduit/Services/CapabilitiesStore.swift` (serverConfig, saveServer), `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift` (ConnectorDetailPage, ConnectorEditSheet)
 - Tests: `ConduitTests/KanbanTests+Capabilities.swift`, `ConduitTests/KanbanTests.swift` (CapabilityLoadPolicy)
 
 **Rulings**
@@ -2191,13 +2194,14 @@ to new sessions."; no other behavior text describes these lists)
 - The installed lists belong to a dashboard, its bridge and a profile, not a profile name: two dashboards can both have "default". Another dashboard's rows never show, act or seed a picker, a dashboard switch clears them, and Turn All On/Off stops once the list it started from isn't the one showing, and a pushed detail page reads its skill or toolset again once Capabilities points at the new dashboard and profile; a catalog skill's page keeps to the one it was opened for and shows only its name and description after a switch (2026-10-24, #1005, #1219; Eric approved the #1005 fixes).
 - Switches, the store's other config-changing writes and the bot editor's writes wait their turn with every other profile config save (Profile config saves), so a settings GET→PUT can't put a flip back (2026-10-24, #1222).
 - A connector test runs to its answer once sent, even when the list or page that started it goes away (opening a server from the list cancels the list's tests), and leaving the list starts no more. A test cancelled under it (the dashboard gone) records nothing, so it's tested again rather than shown as "interrupted" (2026-10-31, #1574, issue 1570).
+- A connector is edited where it lives: the profile's `mcp_servers` in config.yaml, read with `include_defaults=false` so `${NAME}` key references stay references and keys stay in .env. The form changes the name, address, command and arguments and keeps every other key; the JSON is the whole entry. Saving reads the map again and writes it back whole (`PUT /api/mcp/servers`, Desktop's mcp.json save) in one turn of the config queue, so the other servers go back as the host had them. A rename that would take another server's name is refused, an OAuth server's rename says it signs out (Hermes keeps tokens by name), a plugin's server has no Edit, and a Hermes without the route says to update (2026-10-31, #1574, issue 1570).
 
 **Open gaps**
 - AppState's list reads go through a live DashboardTicketBridge with no test seam, so its generation guard has no test.
 - Whether a list read can overwrite a flip in the bot editor's lists hasn't been checked.
 - The Kanban skill picker says "No skills match." when it withholds another dashboard's skills, the same as a search miss.
 
-**Checked:** 2026-10-31, #1574 (connector tests outlive the page that started them); 2026-10-24, at #1219 and #1222.
+**Checked:** 2026-10-31, #1574 (connector tests outlive the page that started them; Edit Server); 2026-10-24, at #1219 and #1222.
 
 ## Reply progress signals
 

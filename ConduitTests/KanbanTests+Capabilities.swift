@@ -518,6 +518,94 @@ extension KanbanTests {
         XCTAssertEqual(store.probes["griply"]?.tools.map(\.name), ["list_goals"])
     }
 
+    // MARK: Editing a server (#1570)
+
+    func testTheServerFormChangesOnlyItsFieldsAndKeepsTheRest() throws {
+        var edit = ConnectorServerEdit(name: "griply", entry: [
+            "url": "https://mcp.griply.app/mcp",
+            "headers": ["Authorization": "Bearer ${MCP_GRIPLY_API_KEY}"],
+            "timeout": 30,
+        ])
+        XCTAssertTrue(edit.isRemote)
+        XCTAssertTrue(edit.json.contains("${MCP_GRIPLY_API_KEY}"), "a key shows as its reference")
+        edit.url = "  https://mcp.griply.app/v2  "
+        edit.name = "Griply"
+        let saved = try edit.saved(fromJSON: false)
+        XCTAssertEqual(saved.name, "Griply")
+        XCTAssertEqual(saved.entry["url"] as? String, "https://mcp.griply.app/v2")
+        XCTAssertEqual((saved.entry["headers"] as? [String: String])?["Authorization"], "Bearer ${MCP_GRIPLY_API_KEY}")
+        XCTAssertEqual(saved.entry["timeout"] as? Int, 30)
+        XCTAssertTrue(edit.renameSignsOut(auth: "oauth"))
+        XCTAssertFalse(edit.renameSignsOut(auth: "header"))
+
+        // The JSON shows the form's change, and the form what the JSON says.
+        try edit.showJSON()
+        XCTAssertTrue(edit.json.contains("https://mcp.griply.app/v2"))
+        edit.json = #"{"url": "https://other.example/mcp", "enabled": false}"#
+        try edit.showForm()
+        XCTAssertEqual(edit.url, "https://other.example/mcp")
+        XCTAssertEqual(try edit.saved(fromJSON: true).entry["enabled"] as? Bool, false)
+
+        edit.url = ""
+        XCTAssertThrowsError(try edit.saved(fromJSON: false)) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .noTarget) }
+        edit.name = " "
+        XCTAssertThrowsError(try edit.saved(fromJSON: false)) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .noName) }
+    }
+
+    func testServerJSONMustBeOneObjectWithAnAddressOrCommand() {
+        var edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["-y", "server-filesystem"]])
+        XCTAssertFalse(edit.isRemote)
+        XCTAssertEqual(edit.arguments, "-y\nserver-filesystem")
+        edit.arguments = "-y\n\n  server-filesystem\n/tmp  "
+        XCTAssertEqual(try edit.formEntry()["args"] as? [String], ["-y", "server-filesystem", "/tmp"])
+
+        edit.json = "{ not json"
+        XCTAssertThrowsError(try edit.showForm()) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .invalidJSON) }
+        edit.json = #"["npx"]"#
+        XCTAssertThrowsError(try edit.jsonEntry()) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .notAnObject) }
+        edit.json = #"{"timeout": 5}"#
+        XCTAssertThrowsError(try edit.jsonEntry()) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .noTarget) }
+    }
+
+    func testSavingAServerReplacesOnlyItInTheProfilesMap() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/config": ["mcp_servers": [
+                "griply": ["url": "https://old", "headers": ["Authorization": "Bearer ${MCP_GRIPLY_API_KEY}"]],
+                "linear": ["url": "https://l", "enabled": false],
+            ]],
+            "/api/mcp/servers": ["ok": true, "servers": [["name": "Griply", "transport": "http", "url": "https://new", "enabled": false]]],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+
+        let entry = try await store.serverConfig("griply")
+        XCTAssertEqual(entry["url"] as? String, "https://old")
+        XCTAssertEqual(requester.calls.last?.path, "/api/config?include_defaults=false&profile=work")
+
+        try await store.saveServer(original: "griply", name: "Griply", entry: ["url": "https://new"])
+        let put = try XCTUnwrap(requester.calls.first { $0.method == "PUT" })
+        XCTAssertEqual(put.path, "/api/mcp/servers?profile=work")
+        XCTAssertEqual(put.body?["profile"] as? String, "work")
+        let servers = try XCTUnwrap(put.body?["servers"] as? [String: Any])
+        XCTAssertEqual(Set(servers.keys), ["Griply", "linear"], "a rename drops the old name")
+        XCTAssertEqual((servers["linear"] as? [String: Any])?["enabled"] as? Bool, false, "other servers go back as they were")
+        XCTAssertEqual(store.servers.map(\.name), ["Griply"])
+
+        do {
+            try await store.saveServer(original: "Griply", name: "linear", entry: ["url": "https://x"])
+            XCTFail("a taken name is refused")
+        } catch {
+            XCTAssertEqual(error as? ConnectorServerEdit.Problem, .gone("Griply"), "the host's map still says griply")
+        }
+        do {
+            try await store.saveServer(original: "griply", name: "linear", entry: ["url": "https://x"])
+            XCTFail("a taken name is refused")
+        } catch {
+            XCTAssertEqual(error as? ConnectorServerEdit.Problem, .nameTaken("linear"))
+        }
+    }
+
     func testARefreshOnItsWayDoesntUndoASwitchFlippedMeanwhile() async throws {
         let requester = CapabilityMockRequester(responses: [
             "/api/dashboard/plugins/hub": ["plugins": [["name": "Weather", "source": "git", "runtime_status": "disabled"]]],
@@ -584,6 +672,7 @@ private final class CapabilityMockRequester: DashboardJSONRequester {
     struct Call {
         let path: String
         let method: String
+        var body: [String: Any]? = nil
     }
 
     var responses: [String: [String: Any]]
@@ -603,7 +692,7 @@ private final class CapabilityMockRequester: DashboardJSONRequester {
         timeoutMilliseconds: Int,
         maxResponseBytes: Int
     ) async throws -> [String: Any] {
-        calls.append(Call(path: path, method: method))
+        calls.append(Call(path: path, method: method, body: body))
         let bare = path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? path
         let response = responses[bare]
         await beforeAnswering?(bare)

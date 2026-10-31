@@ -17,6 +17,8 @@ enum CapabilitiesStoreError: LocalizedError, Equatable {
     case notConnected
     case timedOut
     case declined(String)
+    /// A Hermes without `PUT /api/mcp/servers`, which edits servers.
+    case editUnsupported
 
     var errorDescription: String? {
         switch self {
@@ -26,6 +28,8 @@ enum CapabilitiesStoreError: LocalizedError, Equatable {
             return AppLocalization.string("Hermes is still working on it. Check again in a moment.")
         case .declined(let reason):
             return reason
+        case .editUnsupported:
+            return AppLocalization.string("This Hermes can't change servers yet. Update Hermes and try again.")
         }
     }
 }
@@ -138,20 +142,32 @@ final class CapabilitiesStore {
         body: [String: Any]? = nil,
         timeout: Int = 12_000
     ) async throws -> [String: Any] {
-        guard let requester else { throw CapabilitiesStoreError.notConnected }
-        let send = {
-            try await requester.requestJSON(
-                path: path,
-                method: method,
-                body: body,
-                timeoutMilliseconds: timeout,
-                maxResponseBytes: DataURLLimits.maxJSONResponseBytes
-            )
-        }
         // A backend, connector or install change makes Hermes rewrite the
         // profile config: in turn with every other config save.
-        guard Self.writesProfileConfig(method: method, path: path) else { return try await send() }
-        return try await ProfileConfigWriteQueue.runThrowing { try await send() }
+        guard Self.writesProfileConfig(method: method, path: path) else {
+            return try await unqueuedRequest(path, method: method, body: body, timeout: timeout)
+        }
+        return try await ProfileConfigWriteQueue.runThrowing {
+            try await self.unqueuedRequest(path, method: method, body: body, timeout: timeout)
+        }
+    }
+
+    /// A request that doesn't wait for config saves: for reads, and for a
+    /// read and write already running in the queue together.
+    private func unqueuedRequest(
+        _ path: String,
+        method: String = "GET",
+        body: [String: Any]? = nil,
+        timeout: Int = 12_000
+    ) async throws -> [String: Any] {
+        guard let requester else { throw CapabilitiesStoreError.notConnected }
+        return try await requester.requestJSON(
+            path: path,
+            method: method,
+            body: body,
+            timeoutMilliseconds: timeout,
+            maxResponseBytes: DataURLLimits.maxJSONResponseBytes
+        )
     }
 
     /// Writes Hermes keeps in the profile config. Keys (`/api/env`),
@@ -412,6 +428,57 @@ final class CapabilitiesStore {
             await probe(name)
         } else {
             probes[name] = nil
+        }
+    }
+
+    /// The profile's `mcp_servers` as written in config.yaml: defaults not
+    /// merged and `${NAME}` references not expanded, so keys kept in .env
+    /// show as their names.
+    private func configuredServers() async throws -> [String: Any] {
+        let config = try await unqueuedRequest(scoped("/api/config?include_defaults=false"), timeout: 30_000)
+        return config["mcp_servers"] as? [String: Any] ?? [:]
+    }
+
+    /// One server's entry, to edit.
+    func serverConfig(_ name: String) async throws -> [String: Any] {
+        guard let entry = try await configuredServers()[name] as? [String: Any] else {
+            throw ConnectorServerEdit.Problem.gone(name)
+        }
+        return entry
+    }
+
+    /// Saves an edited server, renamed or not. The map is read again and
+    /// written back in one turn of the config queue, so a save elsewhere
+    /// can't land between them and be undone. Hermes checks the entry and
+    /// says what it refused.
+    func saveServer(original: String, name: String, entry: [String: Any]) async throws {
+        let token = generation
+        try await ProfileConfigWriteQueue.runThrowing {
+            guard token == self.generation else { throw CancellationError() }
+            let servers = try ConnectorServerEdit.replacing(
+                in: try await self.configuredServers(),
+                original: original,
+                name: name,
+                entry: entry
+            )
+            do {
+                _ = try await self.unqueuedRequest(
+                    self.scoped("/api/mcp/servers"),
+                    method: "PUT",
+                    body: self.scopedBody(["servers": servers]),
+                    timeout: 30_000
+                )
+            } catch DashboardTicketBridgeError.http(let status, _) where status == 404 || status == 405 {
+                throw CapabilitiesStoreError.editUnsupported
+            }
+        }
+        guard token == generation else { return }
+        probes[original] = nil
+        probes[name] = nil
+        await loadConnectors()
+        // Tested again in the background: the editor closes on the save.
+        if servers.first(where: { $0.name == name })?.enabled == true {
+            Task { await probe(name) }
         }
     }
 
