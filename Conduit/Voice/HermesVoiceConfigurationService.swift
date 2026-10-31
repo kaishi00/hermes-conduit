@@ -521,7 +521,10 @@ final class HermesVoiceConfigurationService: ObservableObject {
         do {
             let response = try await requester.requestJSON(
                 path: dashboardProfilePath(SpeechServerSpeechStream.keyPath), method: "POST", body: [:])
-            if (response["api_key"] as? String)?.isEmpty == false {
+            if let key = response["api_key"] as? String, !key.isEmpty {
+                // The status shown carries the new key, should the read
+                // after this fail: the old key stopped working (#1533).
+                if speechServerVoice?.apiKey != nil { speechServerVoice?.apiKey = key }
                 errorMessage = nil
                 return true
             }

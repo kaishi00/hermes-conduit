@@ -29,8 +29,9 @@ struct VoiceAPIKeyRow: View {
     private var configured: VoiceCredentialStatus? { service.configuredCredential(among: keys) }
     /// Hermes is still to say whether a key is set (`/api/env` is never
     /// kept, so a page opened on its kept answers doesn't know): no field
-    /// yet, which would go again once the key reads set (#1533).
-    private var awaitingKeys: Bool { service.isChecking && !service.snapshot.environmentLoaded }
+    /// until it answers, a read that fails included, since the field would
+    /// go again once the key reads set (#1533).
+    private var awaitingKeys: Bool { service.answered != true && !service.snapshot.environmentLoaded }
     /// The key shown: the one Hermes uses now, else the one a save writes.
     private var targetKey: String { configured?.key ?? writeKey }
     private var writeKey: String { keys.first ?? "" }

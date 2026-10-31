@@ -188,6 +188,14 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertNotNil(failedVoice.reason)
         XCTAssertEqual(service.lastFrontModel?.model, "qwen3-8b")
         XCTAssertEqual(service.speechServerVoice, shownVoice)
+        // A new key while the read still fails: the status shown carries
+        // it, the old one having stopped working.
+        requester.routes[SpeechServerSpeechStream.keyPath] = ["api_key": "sk-new"]
+        let rotated = await service.rotateSpeechServerVoiceKey()
+        XCTAssertTrue(rotated)
+        var withNewKey = shownVoice
+        withNewKey?.apiKey = "sk-new"
+        XCTAssertEqual(service.speechServerVoice, withNewKey)
         requester.routes[SpeechServerTranscription.statusPath] = nil
         let failed = await service.speechServerStatus()
         XCTAssertTrue(failed.readFailed)
