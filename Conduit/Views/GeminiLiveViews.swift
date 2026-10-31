@@ -638,15 +638,21 @@ struct VoiceReplyModelPicks {
     /// Counts the writes: an answer to a read asked before one, or while
     /// one was out, may predate it.
     private var writes = 0
+    /// Counts the reads, and names the newest one Hermes answered: an
+    /// answer to a read asked before it is older than what's shown.
+    private var reads = 0
+    private var newestAnsweredRead = 0
 
     /// A read, as it was asked.
     struct Read {
+        fileprivate let number: Int
         fileprivate let writes: Int
         fileprivate let duringWrite: Bool
     }
 
-    func readAsked() -> Read {
-        Read(writes: writes, duringWrite: writing)
+    mutating func readAsked() -> Read {
+        reads += 1
+        return Read(number: reads, writes: writes, duringWrite: writing)
     }
 
     /// Nothing from Hermes is shown yet: the kept setting can be.
@@ -660,8 +666,11 @@ struct VoiceReplyModelPicks {
     }
 
     /// Hermes' answer to `read`, shown unless a pick's write was out when
-    /// it was asked or went out since, as the pick stays then.
+    /// it was asked or went out since, as the pick stays then, or a read
+    /// asked after it answered first.
     mutating func hermesAnswered(_ setting: VoiceReplyModelSetting?, to read: Read) {
+        guard read.number > newestAnsweredRead else { return }
+        newestAnsweredRead = read.number
         readFailed = false
         if !read.duringWrite, read.writes == writes { show(setting) }
         answered = true

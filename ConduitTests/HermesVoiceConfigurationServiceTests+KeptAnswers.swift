@@ -152,9 +152,9 @@ extension HermesVoiceConfigurationServiceTests {
     }
 
     /// The Voice replies model shows Hermes' answer unless a pick's write
-    /// was out when it was asked or went out since, writes one pick at a
-    /// time, and a write Hermes refuses puts back what it holds and says
-    /// why.
+    /// was out when it was asked or went out since, or a read asked after
+    /// it answered first, writes one pick at a time, and a write Hermes
+    /// refuses puts back what it holds and says why.
     func testTheVoiceRepliesModelKeepsAPickOverAnOlderAnswer() throws {
         let chats = VoiceReplyModelSetting(provider: "auto", model: "", reasoningEffort: "none")
         let fast = VoiceReplyModelSetting(provider: "openrouter", model: "fast", reasoningEffort: "none")
@@ -164,7 +164,8 @@ extension HermesVoiceConfigurationServiceTests {
         picks.selection = fastTag
         XCTAssertNil(picks.writeAsked(), "The pickers wait for Hermes")
 
-        picks.hermesAnswered(chats, to: picks.readAsked())
+        let first = picks.readAsked()
+        picks.hermesAnswered(chats, to: first)
         XCTAssertEqual(picks.selection, VoiceReplyModelPicks.sameAsChats)
         picks.selection = fastTag
         let askedBefore = picks.readAsked()
@@ -190,9 +191,17 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(picks.refusal, "Hermes requires confirmation before using this model.")
         XCTAssertNil(picks.writeAsked(), "Putting it back writes nothing")
 
-        picks.hermesAnswered(chats, to: picks.readAsked())
+        let after = picks.readAsked()
+        picks.hermesAnswered(chats, to: after)
         XCTAssertEqual(picks.saved, chats, "Asked after the writes")
         XCTAssertEqual(picks.selection, VoiceReplyModelPicks.sameAsChats)
+
+        let older = picks.readAsked()
+        let newer = picks.readAsked()
+        picks.hermesAnswered(fast, to: newer)
+        picks.hermesAnswered(chats, to: older)
+        XCTAssertEqual(picks.saved, fast, "Asked before a read that answered first")
+        XCTAssertEqual(picks.selection, fastTag)
     }
 
     /// What a save wrote is what the page opens on next, as the other
