@@ -654,8 +654,15 @@ extension KanbanTests {
 
     func testTheFormFollowsAServerMovedBetweenAddressAndCommandInJSON() throws {
         var edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["-y", 3]])
-        // Untouched arguments go back as they were, numbers included.
+        // Untouched arguments go back as they were, numbers included, and
+        // an edit elsewhere keeps the number.
         XCTAssertEqual((try edit.formEntry()["args"] as? [Any])?.last as? Int, 3)
+        edit.arguments = "-y\n--port\n3"
+        let edited = try XCTUnwrap(try edit.formEntry()["args"] as? [Any])
+        XCTAssertEqual(edited.count, 3)
+        XCTAssertEqual(edited[1] as? String, "--port")
+        XCTAssertEqual(edited[2] as? Int, 3)
+        edit.arguments = "-y\n3"
         try edit.showJSON()
         edit.json = #"{"url": "https://files.example/mcp"}"#
         try edit.showForm()
@@ -724,6 +731,40 @@ extension KanbanTests {
             XCTAssertEqual(error as? ConnectorServerEdit.Problem, .changedOnHost("griply"))
         }
         XCTAssertFalse(requester.calls.contains { $0.method == "PUT" })
+    }
+
+    func testATestRunningWhenTheServerIsSavedIsRunAgainOnTheSavedEntry() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["ok": true, "servers": [["name": "griply", "transport": "http", "url": "https://g", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+            "/api/config": ["mcp_servers": ["griply": ["url": "https://old"]]],
+            "/api/mcp/servers/griply/test": ["ok": false, "error": "old address"],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        await store.loadConnectors()
+        var held: CheckedContinuation<Void, Never>?
+        requester.beforeAnswering = { path in
+            guard path == "/api/mcp/servers/griply/test", held == nil else { return }
+            await withCheckedContinuation { held = $0 }
+        }
+        let first = Task { await store.probe("griply") }
+        while held == nil { await Task.yield() }
+
+        try await store.saveServer(
+            original: "griply",
+            loaded: ["url": "https://old"],
+            name: "griply",
+            entry: ["url": "https://new"],
+            openedOn: store.generation
+        )
+        requester.responses["/api/mcp/servers/griply/test"] = ["ok": true]
+        held?.resume()
+        await first.value
+
+        XCTAssertEqual(store.probes["griply"]?.ok, true, "the old entry's answer is dropped and the saved one tested")
+        XCTAssertGreaterThanOrEqual(requester.calls.filter { $0.path.hasSuffix("/test") }.count, 2)
+        XCTAssertTrue(store.probing.isEmpty)
     }
 
     func testAHermesWithoutTheEditRouteSaysToUpdate() async {

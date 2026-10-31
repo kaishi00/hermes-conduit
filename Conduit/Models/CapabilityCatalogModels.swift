@@ -776,9 +776,13 @@ struct ConnectorServerEdit {
             guard !program.isEmpty else { throw Problem.noTarget }
             next["command"] = program
             guard arguments != shownArguments else { return next }
-            let args = arguments.split(whereSeparator: \.isNewline)
+            // A line left as it was keeps its own value (a number stays a
+            // number); a changed or new one is the text typed.
+            let original = entry["args"] as? [Any] ?? []
+            let args: [Any] = arguments.split(whereSeparator: \.isNewline)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
+                .map { line in original.first { "\($0)" == line } ?? line }
             if args.isEmpty && entry["args"] == nil {
                 next.removeValue(forKey: "args")
             } else {
