@@ -8897,8 +8897,12 @@ final class AppState: ObservableObject {
             let response = try await dashboardTicketBridge.requestJSON(path: VoiceChatFinder.path(query: query, profile: profile))
             return VoiceChatFinder.matches(from: response)
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
-            // Only the iPhone's own profile's chats are loaded here.
-            return callProfile == nil ? VoiceChatFinder.titleMatches(in: activeProfileSessions, query: query) : []
+            // A Watch call on another profile is asked by that profile's
+            // chats Conduit has listed (All profiles lists them).
+            let listed = callProfile.map { profile in
+                sessions.filter { sessionBelongsToProfile($0, profile: profile) && !BotChatHygiene.isCanonicalBotChatRow($0, roster: botRoster) }
+            } ?? activeProfileSessions
+            return VoiceChatFinder.titleMatches(in: listed, query: query)
         }
     }
 
