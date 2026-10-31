@@ -786,8 +786,10 @@ struct PulseSettingsPage: View {
         }
         .task(id: appState.activeDashboardID) {
             let dashboard = appState.activeDashboardID
-            let loaded = await appState.loadVoiceJobModelProviders()
-            if appState.activeDashboardID == dashboard { providers = loaded }
+            // One that fails keeps the models listed, the kept ones included.
+            if let loaded = await appState.loadModelProviders(), appState.activeDashboardID == dashboard {
+                providers = loaded
+            }
         }
     }
 
@@ -970,6 +972,7 @@ struct PulseSettingsPage: View {
     /// doesn't stop this iPhone watching shops (`apply` does, on Pulse's
     /// answer), and the days to read follow the answer again.
     private func showKept() {
+        if providers.isEmpty { providers = appState.keptModelProviders() }
         guard state == nil, let kept = appState.keptPulseState() else { return }
         state = kept
         dayCount = kept.backfillDays
@@ -1336,6 +1339,7 @@ struct PulseMemoryList: View {
                 items.removeAll { $0.id == item.id }
                 errorMessage = nil
                 Haptics.success()
+                await appState.forgetKeptPulseMemoryItem(id: item.id)
             } catch {
                 guard isShown(client) else { return }
                 errorMessage = PulseRefusal.message(for: error)

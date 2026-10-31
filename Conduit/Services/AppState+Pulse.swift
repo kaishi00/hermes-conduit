@@ -51,6 +51,17 @@ extension AppState {
         keptAnswer(PulseClient.memoryPath, profile: KeptRoute.everyProfile).map(PulseClient.memoryItems(from:))
     }
 
+    /// Takes an item Pulse forgot out of the kept list too, so the list
+    /// never opens on it, even when reading it again fails.
+    func forgetKeptPulseMemoryItem(id: Int) async {
+        guard var kept = keptAnswer(PulseClient.memoryPath, profile: KeptRoute.everyProfile),
+              let owner = currentDashboardRuntimeOwner() else { return }
+        kept["items"] = (kept["items"] as? [Any] ?? []).filter { PulseMemoryItem(json: $0)?.id != id }
+        _ = try? await keepingAnswer(profile: KeptRoute.everyProfile, owner: owner, keptAs: { _ in PulseClient.memoryPath }) {
+            kept
+        }
+    }
+
     /// Makes Pulse's chat: a new chat in the dashboard's default profile,
     /// titled as Pulse looks for it, and pinned so pruning never removes it.
     /// A pin Hermes doesn't take leaves the chat made; the page then offers

@@ -457,6 +457,9 @@ struct SpeechServerVoiceStatus: Equatable {
     var pluginMissing: Bool
     /// Local's fast model (agent mode); nil from a plugin before it.
     var frontModel: LocalLiveFrontModelStatus?
+    /// Hermes didn't answer; `reason` says why. The fast model shown stays
+    /// (#1533).
+    var readFailed = false
 
     static var pluginMissingReason: String {
         AppLocalization.string("Update the Conduit plugin on your Hermes host to have your speech server speak the replies.")

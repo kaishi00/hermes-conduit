@@ -724,6 +724,8 @@ struct SettingsView: View {
                     bridge: bridge,
                     profile: snapshot.profile,
                     profileParameter: { appState.notifierPlugin.dashboardProfileParameter },
+                    // Opens on what it showed last time while Hermes is asked.
+                    answers: appState.voiceSettingsAnswers(profile: snapshot.profile),
                     profileName: appState.profileDisplayName(snapshot.profile),
                     conversationController: appState.voiceConversationController,
                     actions: VoiceSettingsActions(
@@ -890,14 +892,17 @@ struct SettingsView: View {
                         provider: voicePreferences.voiceJobProvider,
                         model: voicePreferences.voiceJobModel,
                         reasoningEffort: voicePreferences.voiceJobReasoningEffort,
-                        loadProviders: { await appState.loadVoiceJobModelProviders() },
+                        keptProviders: { appState.keptModelProviders() },
+                        loadProviders: { await appState.loadModelProviders() },
                         save: { provider, model, reasoning in
                             appState.setVoiceJobModel(provider: provider, model: model, reasoningEffort: reasoning)
                         }
                     ),
                     voiceReplies: VoiceReplyModelSettingsModel(
-                        load: { await appState.loadVoiceReplyModel() },
-                        loadProviders: { await appState.loadVoiceJobModelProviders() },
+                        kept: { appState.keptVoiceReplyModel() },
+                        keptProviders: { appState.keptModelProviders() },
+                        load: { try await appState.loadVoiceReplyModel() },
+                        loadProviders: { await appState.loadModelProviders() },
                         save: { await appState.setVoiceReplyModel($0) }
                     ),
                     wake: wakeSettings(profile: snapshot.profile),

@@ -1769,8 +1769,8 @@ extension AppStateMultiDashboardTests {
 
     /// Pulse is one per host: its state is kept once per dashboard, from a
     /// read or a change that answers with it (a notification's Quiet for
-    /// today too), and What Pulse remembers' list beside it; an estimate
-    /// isn't a state. Settings > Pulse opens on them in any profile, and
+    /// today too), and What Pulse remembers' list beside it, without what
+    /// Pulse forgot; an estimate isn't a state. Settings > Pulse opens on them in any profile, and
     /// another dashboard's opens on nothing.
     func testPulsesStateAndMemoryAreKeptOncePerDashboard() async throws {
         let (appState, held, vps) = heldSwitchFixture()
@@ -1798,9 +1798,13 @@ extension AppStateMultiDashboardTests {
 
         let memory = Task { try await client.memory() }
         try await held.waitForRequests(4)
-        try await held.answer(["items": [["id": 1, "text": "Call Ann", "kind": "commitment"]]])
+        try await held.answer(["items": [
+            ["id": 1, "text": "Call Ann", "kind": "commitment"], ["id": 2, "text": "Book the flights", "kind": "commitment"],
+        ]])
         _ = try await memory.value
-        XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Call Ann"])
+        XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Call Ann", "Book the flights"])
+        await appState.forgetKeptPulseMemoryItem(id: 1)
+        XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Book the flights"], "A forgotten item leaves the kept list")
 
         // Quiet for today from a Pulse notification is kept as the page's own steps are.
         let here = PulseQuietTarget(dashboardID: appState.activeDashboardID?.uuidString, gatewayID: nil)
@@ -1816,6 +1820,114 @@ extension AppStateMultiDashboardTests {
         await appState.switchDashboard(to: vps.id)
         XCTAssertNil(appState.keptPulseState(), "Another dashboard's page doesn't")
         XCTAssertNil(appState.keptPulseMemory())
+    }
+
+    /// Voice settings keep Hermes' config and speech toolsets for the
+    /// dashboard and profile that answered, and Local's fast model without
+    /// the speech server's key, never `/api/env`, and open on them next
+    /// time, as the agent pages open on the same config; another profile's
+    /// or dashboard's page opens on nothing.
+    func testVoiceSettingsOpenOnTheirKeptAnswers() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": ["stt": ["enabled": true], "tts": ["provider": "edge"]],
+            "/api/tools/toolsets/stt/config": ["providers": []],
+            "/api/tools/toolsets/tts/config": ["providers": [["name": "Microsoft Edge TTS", "tts_provider": "edge", "status": "ready", "is_active": true]]],
+            "/api/env": ["ELEVENLABS_API_KEY": ["is_set": true, "redacted_value": "sk_...wxyz"]],
+            SpeechServerSpeechStream.statusPath: [
+                "available": true, "model_path": "/api/plugins/conduit_push/local-live/v1", "api_key": "sk-local-1",
+                "front_model": ["configured": true, "available": true, "base_url": "http://box:8080/v1", "model": "qwen3-4b"],
+            ],
+        ]
+        let page = HermesVoiceConfigurationService(requester: requester, profile: "default", answers: appState.voiceSettingsAnswers(profile: "default"))
+        XCTAssertFalse(page.snapshot.capability.isGatewayConnected, "Nothing kept yet")
+        await page.reload()
+        _ = await page.speechServerVoiceStatus()
+
+        let next = HermesVoiceConfigurationService(requester: requester, profile: "default", answers: appState.voiceSettingsAnswers(profile: "default"))
+        XCTAssertTrue(next.snapshot.capability.supportsSpeech, "Opens on what Hermes said")
+        XCTAssertFalse(next.snapshot.environmentLoaded)
+        XCTAssertNil(appState.offlineChatCacheForTesting.keptAnswer("/api/env", dashboardID: mac, profile: "default"), "Never kept")
+        XCTAssertEqual(appState.keptProfileSettings(keys: ["tts.provider"])?["tts.provider"], .text("edge"), "The agent pages' config")
+        XCTAssertEqual(next.lastFrontModel?.model, "qwen3-4b")
+        let keptVoice = appState.offlineChatCacheForTesting.keptAnswer(SpeechServerSpeechStream.statusPath, dashboardID: mac, profile: "default")
+        XCTAssertNotNil(keptVoice)
+        XCTAssertNil(keptVoice?["api_key"], "The speech server's key isn't kept")
+        let work = HermesVoiceConfigurationService(requester: requester, profile: "work", answers: appState.voiceSettingsAnswers(profile: "work"))
+        XCTAssertFalse(work.snapshot.capability.isGatewayConnected, "Another profile's page")
+        await appState.switchDashboard(to: vps.id)
+        let vpsPage = HermesVoiceConfigurationService(requester: requester, profile: "default", answers: appState.voiceSettingsAnswers(profile: "default"))
+        XCTAssertFalse(vpsPage.snapshot.capability.isGatewayConnected, "Another dashboard's page")
+    }
+
+    /// Voice settings' voice reply model opens on the slot Hermes gave
+    /// last, and the Voice and Pulse model pickers on the models Usage's
+    /// read keeps too; a read that fails keeps the slot, and an answer
+    /// without it says this Hermes has none (#1533).
+    func testTheVoiceModelSectionsOpenOnTheirKeptAnswers() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        XCTAssertNil(appState.keptVoiceReplyModel(), "Nothing kept yet")
+        let setting = VoiceReplyModelSetting(provider: "openrouter", model: "fast/model", reasoningEffort: "none")
+
+        let load = Task { try await appState.loadVoiceReplyModel() }
+        try await held.waitForRequests(1)
+        try await held.answer(["tasks": [["task": "voice_chat", "provider": "openrouter", "model": "fast/model", "reasoning_effort": "none"]]])
+        let answered = try await load.value
+        XCTAssertEqual(answered, setting)
+        XCTAssertEqual(appState.keptVoiceReplyModel(), setting)
+
+        let failing = Task { try await appState.loadVoiceReplyModel() }
+        try await held.waitForRequests(2)
+        try await held.answer(["error": "boom"], status: 500)
+        do {
+            _ = try await failing.value
+            XCTFail("A read Hermes didn't answer throws")
+        } catch {}
+        XCTAssertEqual(appState.keptVoiceReplyModel(), setting, "A read that fails keeps it")
+
+        let withoutSlot = Task { try await appState.loadVoiceReplyModel() }
+        try await held.waitForRequests(3)
+        try await held.answer(["tasks": [["task": "vision"]]])
+        let none = try await withoutSlot.value
+        XCTAssertNil(none)
+        XCTAssertNil(appState.keptVoiceReplyModel(), "This Hermes has no voice reply slot")
+        XCTAssertEqual(held.sent.map(\.path), Array(repeating: AppState.KeptRoute.modelAuxiliary, count: 3))
+
+        appState.offlineChatCacheForTesting.recordAnswer(
+            ["providers": [["slug": "openrouter", "name": "OpenRouter", "models": [["id": "fast/model"]]]]],
+            route: AppState.KeptRoute.providerQuotas, dashboardID: mac, profile: "default"
+        )
+        XCTAssertEqual(appState.keptModelProviders().map(\.name), ["openrouter"])
+        XCTAssertEqual(appState.keptModelProviders().first?.models.map(\.id), ["fast/model"])
+        appState.setActiveProfileForTesting("work")
+        XCTAssertTrue(appState.keptModelProviders().isEmpty, "Another profile's models")
+    }
+
+    /// A models read that fails keeps no split beside the period's new
+    /// numbers: Usage opens on the usage route's own rows, as it showed
+    /// them, never on an older split and its cost.
+    func testAUsageLoadWhoseModelsReadFailsKeepsNoOlderSplit() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let modelsRoute = UsageReport.route(UsageReport.modelsPath, days: 30)
+        appState.offlineChatCacheForTesting.recordAnswer(
+            ["models": [["model": "old-model", "input_tokens": 5]]], route: modelsRoute, dashboardID: mac, profile: "default"
+        )
+        appState.isConnected = true
+
+        let load = Task { try await appState.loadUsageReport(days: 30) }
+        try await held.waitForRequests(1)
+        try await held.answer(["totals": ["total_input": 1200], "by_model": [["model": "new-model", "input_tokens": 1200]], "period_days": 30])
+        try await held.waitForRequests(2)
+        try await held.answer(["error": "boom"], status: 500)
+        let report = try await load.value
+
+        XCTAssertEqual(held.sent.map(\.path), [UsageReport.usagePath, UsageReport.modelsPath])
+        XCTAssertEqual(report.models.map(\.model), ["new-model"])
+        XCTAssertEqual(appState.keptUsageReport(days: 30)?.models.map(\.model), ["new-model"], "Opens on what it showed")
     }
 
     /// Usage opens on each period's numbers as the active profile last read

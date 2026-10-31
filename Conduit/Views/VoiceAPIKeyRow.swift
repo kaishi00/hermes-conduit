@@ -27,6 +27,11 @@ struct VoiceAPIKeyRow: View {
     @State private var saveError: String?
 
     private var configured: VoiceCredentialStatus? { service.configuredCredential(among: keys) }
+    /// Hermes is still to say whether a key is set (`/api/env` is never
+    /// kept, so a page opened on its kept answers doesn't know): no field
+    /// until it answers, a read that fails included, since the field would
+    /// go again once the key reads set (#1533).
+    private var awaitingKeys: Bool { service.answered != true && !service.snapshot.environmentLoaded }
     /// The key shown: the one Hermes uses now, else the one a save writes.
     private var targetKey: String { configured?.key ?? writeKey }
     private var writeKey: String { keys.first ?? "" }
@@ -55,7 +60,7 @@ struct VoiceAPIKeyRow: View {
                         .accessibilityIdentifier("voice.apiKey.\(targetKey).replace")
                 }
             }
-            if configured == nil || isEditing {
+            if (configured == nil && !awaitingKeys) || isEditing {
                 SecureField(AppLocalization.string("Paste API key"), text: $draft)
                     .disabled(isSaving)
                     .textContentType(.password)
@@ -118,7 +123,7 @@ struct VoiceAPIKeyRow: View {
                     .scaledFont(.caption)
                     .foregroundStyle(.green)
             }
-        } else if service.isLoading {
+        } else if service.isChecking {
             Text(AppLocalization.string("Checking…"))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)

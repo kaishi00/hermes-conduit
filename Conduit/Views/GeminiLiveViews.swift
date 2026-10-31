@@ -416,7 +416,11 @@ struct VoiceJobModelSettingsModel {
     var provider: String?
     var model: String?
     var reasoningEffort: String?
-    var loadProviders: () async -> [ProviderInfo]
+    /// The models as last read, kept on the phone, for the menu to open on
+    /// (#1533).
+    var keptProviders: () -> [ProviderInfo] = { [] }
+    /// Nil when Hermes didn't answer: the menu keeps the models it lists.
+    var loadProviders: () async -> [ProviderInfo]?
     var save: (_ provider: String?, _ model: String?, _ reasoningEffort: String?) -> Void
 }
 
@@ -462,7 +466,8 @@ struct VoiceJobModelSettingsSection: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
-        .task { providers = await settings.loadProviders() }
+        .onAppear { if providers.isEmpty { providers = settings.keptProviders() } }
+        .task { if let loaded = await settings.loadProviders() { providers = loaded } }
         .onChange(of: selection) { _, _ in save() }
         .onChange(of: reasoning) { _, _ in save() }
     }
@@ -569,8 +574,14 @@ struct VoiceReplyModelSetting: Equatable {
 
 /// What Voice settings needs for the voice reply model choice.
 struct VoiceReplyModelSettingsModel {
-    var load: () async -> VoiceReplyModelSetting?
-    var loadProviders: () async -> [ProviderInfo]
+    /// The setting and models as Hermes gave them last, kept on the phone:
+    /// the section opens on them (#1533).
+    var kept: () -> VoiceReplyModelSetting? = { nil }
+    var keptProviders: () -> [ProviderInfo] = { [] }
+    /// Nil when this Hermes has no voice reply slot; throws when Hermes
+    /// didn't answer.
+    var load: () async throws -> VoiceReplyModelSetting?
+    var loadProviders: () async -> [ProviderInfo]?
     var save: (VoiceReplyModelSetting) async -> Bool
 }
 
@@ -578,10 +589,20 @@ struct VoiceReplyModelSettingsModel {
 /// on a Hermes without the slot.
 struct VoiceReplyModelSettingsSection: View {
     let settings: VoiceReplyModelSettingsModel
+    /// The page is asking Hermes again (Check again too).
+    var pageIsChecking = false
     @State private var saved: VoiceReplyModelSetting?
     @State private var selection = Self.sameAsChats
     @State private var reasoning = "none"
     @State private var providers: [ProviderInfo] = []
+    /// Hermes answered. Until then the section shows the setting kept on
+    /// the phone, and its pickers wait: a save writes the whole setting,
+    /// which may be stale (#1533).
+    @State private var answered = false
+    @State private var readFailed = false
+    /// Counts the writes, so a read asked before a pick's write doesn't
+    /// put the old setting back over it (#1533).
+    @State private var writes = 0
 
     private static let sameAsChats = ""
     private static let inheritReasoning = "inherit"
@@ -613,19 +634,57 @@ struct VoiceReplyModelSettingsSection: View {
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
+                .disabled(!answered)
             }
         }
-        .task {
-            guard let setting = await settings.load() else { return }
-            providers = await settings.loadProviders()
-            selection = setting.model.isEmpty
-                ? Self.sameAsChats
-                : VoiceJobModelSettingsSection.tag(provider: setting.provider, model: setting.model)
-            reasoning = setting.reasoningEffort ?? Self.inheritReasoning
-            saved = setting
+        .onAppear(perform: showKept)
+        .task { await read() }
+        // After a read that failed, the page's next check (its Check again
+        // too) asks Hermes again.
+        .onChange(of: pageIsChecking) { _, checking in
+            guard !checking, readFailed else { return }
+            Task { await read() }
         }
         .onChange(of: selection) { _, _ in save() }
         .onChange(of: reasoning) { _, _ in save() }
+    }
+
+    /// A read that fails keeps what's shown, and the pickers wait.
+    private func read() async {
+        let writesBefore = writes
+        let setting: VoiceReplyModelSetting?
+        do {
+            setting = try await settings.load()
+        } catch {
+            readFailed = true
+            return
+        }
+        readFailed = false
+        if setting != nil, let loaded = await settings.loadProviders() { providers = loaded }
+        // A pick written while Hermes was asked stays: this answer
+        // predates it.
+        if writes == writesBefore { apply(setting) }
+        answered = true
+    }
+
+    /// The setting Hermes gave last, kept on the phone, drawn before the
+    /// first frame while Hermes is asked again.
+    private func showKept() {
+        guard saved == nil, !answered else { return }
+        providers = settings.keptProviders()
+        apply(settings.kept())
+    }
+
+    /// Shows `setting`, or hides the section for a Hermes without the slot.
+    /// The saved value goes with the pickers', so these changes write
+    /// nothing (`save`).
+    private func apply(_ setting: VoiceReplyModelSetting?) {
+        saved = setting
+        guard let setting else { return }
+        selection = setting.model.isEmpty
+            ? Self.sameAsChats
+            : VoiceJobModelSettingsSection.tag(provider: setting.provider, model: setting.model)
+        reasoning = setting.reasoningEffort ?? Self.inheritReasoning
     }
 
     private var reasoningChoices: [(id: String, title: String)] {
@@ -646,9 +705,10 @@ struct VoiceReplyModelSettingsSection: View {
 
     private func save() {
         // Loading the saved values fires these changes too: only a real
-        // change is written.
-        guard let saved, chosen != saved else { return }
+        // change is written, and only to what Hermes answered.
+        guard answered, let saved, chosen != saved else { return }
         let next = chosen
+        writes += 1
         Task {
             if await settings.save(next) { self.saved = next }
         }

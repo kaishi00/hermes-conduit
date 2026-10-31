@@ -2669,20 +2669,49 @@ final class AppState: ObservableObject {
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
     }
 
-    /// The models Hermes offers, for the voice-job model picker.
-    func loadVoiceJobModelProviders() async -> [ProviderInfo] {
-        guard let client else { return [] }
-        return (try? await client.modelOptions(sessionId: activeSessionId))?.2 ?? []
+    /// The models Hermes offers, for the model pickers in Voice and Pulse
+    /// settings: the gateway's `model.options`, kept on the phone as the
+    /// same answer Usage keeps (#1533). Nil when Hermes didn't answer, so a
+    /// picker keeps the models it shows.
+    func loadModelProviders() async -> [ProviderInfo]? {
+        let profile = activeProfile
+        guard let client else { return nil }
+        let read = { try await client.providerQuotaAnswer() }
+        let answer: [String: Any]?
+        if let owner = currentDashboardRuntimeOwner() {
+            answer = try? await keepingAnswer(profile: profile, owner: owner, keptAs: { _ in KeptRoute.providerQuotas }, read)
+        } else {
+            answer = try? await read()
+        }
+        guard let answer, profile == activeProfile else { return nil }
+        return Self.modelProviders(in: answer)
+    }
+
+    /// Those models as last read, kept on the phone, for the pickers to
+    /// open on.
+    func keptModelProviders() -> [ProviderInfo] {
+        keptAnswer(KeptRoute.providerQuotas).map(Self.modelProviders(in:)) ?? []
+    }
+
+    /// The providers of a `model.options` answer.
+    static func modelProviders(in answer: [String: Any]) -> [ProviderInfo] {
+        (AnyCodable.from(answer).objectValue?["providers"]?.arrayValue ?? []).compactMap(ProviderInfo.init(from:))
     }
 
     /// Hermes' voice reply model (`auxiliary.voice_chat`) for this profile,
-    /// or nil when this Hermes has no such slot.
-    func loadVoiceReplyModel() async -> VoiceReplyModelSetting? {
+    /// or nil when this Hermes has no such slot; it throws when Hermes
+    /// didn't answer. The answer is kept for the section to open on (#1533).
+    func loadVoiceReplyModel() async throws -> VoiceReplyModelSetting? {
         let profile = activeProfile
-        guard let dashboardTicketBridge,
-              let response = try? await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/model/auxiliary", profile: profile)),
-              profile == activeProfile else { return nil }
+        guard let owner = currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }
+        let response = try await readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner)
+        guard profile == activeProfile else { throw CancellationError() }
         return VoiceReplyModelSetting(auxiliaryResponse: response)
+    }
+
+    /// The voice reply model as Hermes gave it last, kept on the phone.
+    func keptVoiceReplyModel() -> VoiceReplyModelSetting? {
+        keptAnswer(KeptRoute.modelAuxiliary).flatMap(VoiceReplyModelSetting.init(auxiliaryResponse:))
     }
 
     func setVoiceReplyModel(_ setting: VoiceReplyModelSetting) async -> Bool {
@@ -2703,6 +2732,11 @@ final class AppState: ObservableObject {
             if result["confirm_required"] as? Bool == true {
                 errorMessage = result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
                 return false
+            }
+            // The kept slots follow the save, so the section opens on it
+            // next time (#1533).
+            Task { [weak self] in
+                _ = try? await self?.readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner)
             }
             return true
         } catch {
@@ -32938,7 +32972,7 @@ final class AppState: ObservableObject {
         config: [String: Any]
     ) -> ProfileModelDefaults {
         let optionsObject = AnyCodable.from(options).objectValue ?? [:]
-        let providers = (optionsObject["providers"]?.arrayValue ?? []).compactMap(ProviderInfo.init(from:))
+        let providers = modelProviders(in: options)
         // Profile config is the persisted default. Hermes stores it under
         // `model.default` and `model.provider`, but `/api/config` flattens
         // `model` to the bare model string and drops the provider, so the
@@ -33293,16 +33327,20 @@ final class AppState: ObservableObject {
 
     /// The reads whose answers the settings pages keep (#1533): dashboard
     /// routes, and gateway calls kept beside them. Usage's periods
-    /// (UsageReport.route) and Pulse's routes (PulseClient.keptRoute) are
-    /// kept under their own.
+    /// (UsageReport.route), Pulse's routes (PulseClient.keptRoute) and Voice
+    /// settings' (HermesVoiceConfigurationService.KeptRead) are kept under
+    /// their own.
     enum KeptRoute {
         static let config = "/api/config"
         static let configSchema = "/api/config/schema"
         static let modelOptions = "/api/model/options?explicit_only=true"
         static let modelInfo = "/api/model/info"
+        /// Hermes' auxiliary model slots, for Voice settings' voice reply model.
+        static let modelAuxiliary = "/api/model/auxiliary"
         static let pluginsHub = "/api/dashboard/plugins/hub"
         static let delegationStatus = "rpc:delegation.status"
-        /// Settings > Usage's quota: the gateway's `model.options`.
+        /// Settings > Usage's quota: the gateway's `model.options`, whose
+        /// models the Voice and Pulse model pickers list too.
         static let providerQuotas = "rpc:model.options"
         /// The scope of an answer about all of a Hermes' profiles at once
         /// (delegation's pause), kept once per dashboard: no profile is
@@ -33357,6 +33395,23 @@ final class AppState: ObservableObject {
     func keptAnswer(_ route: String, profile: String? = nil) -> [String: Any]? {
         guard let dashboardID = activeDashboardID else { return nil }
         return offlineChatCache.keptAnswer(route, dashboardID: dashboardID, profile: profile ?? activeProfile)
+    }
+
+    /// Where Voice settings keep their answers for the profile, beside the
+    /// other settings pages': on this dashboard, while it's the one open.
+    /// Nil without a bridge.
+    func voiceSettingsAnswers(profile: String) -> VoiceKeptAnswers? {
+        guard let owner = currentDashboardRuntimeOwner() else { return nil }
+        return VoiceKeptAnswers(
+            kept: { [weak self] route in
+                guard let self, self.ownsDashboardRuntime(owner) else { return nil }
+                return self.keptAnswer(route, profile: profile)
+            },
+            keep: { [weak self] route, read in
+                guard let self else { return try await read() }
+                return try await self.keepingAnswer(profile: profile, owner: owner, keptAs: { _ in route }, read)
+            }
+        )
     }
 
     /// Hermes' value wins and is kept on the phone; a read that fails keeps

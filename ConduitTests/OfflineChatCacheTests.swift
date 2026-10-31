@@ -3277,13 +3277,15 @@ extension OfflineChatCacheTests {
             // A header or variable as a pair: its value goes when its name is a credential's.
             "extra_headers": [["name": "Authorization", "value": "Bearer 22"], ["name": "Accept", "value": "json"]],
             "env_pairs": [["key": "OPENAI_API_KEY", "value": "sk-23"]],
+            // A count in a pair named like tokens is no credential.
+            "limits": [["name": "max_tokens", "value": 4096], ["key": "max_tokens", "value": 4096], ["name": "API_TOKEN", "value": "t-28"]],
             // Hermes' row for a variable says only whether it's set, by its name.
             "env_vars": [["key": "ELEVENLABS_API_KEY", "is_set": true, "prompt": "ElevenLabs", "value": "sk-24"]],
         ]
         let secrets = [
             "sk-live-1", "ghp-2", "Bearer three", "key-4", "sk-fallback-5", "sk-6", "k-7", "k-8",
             "p-9", "pp-10", "a-11", "k-12", "cs-13", "pw-14", "sk-15", "ssh-16", "Basic 17", "c-18", "h-19",
-            "t-20", "t-21", "Bearer 22", "sk-23", "sk-24", "sk-25", "t-26", "t-27",
+            "t-20", "t-21", "Bearer 22", "sk-23", "sk-24", "sk-25", "t-26", "t-27", "t-28",
         ]
 
         store.recordAnswer(config, route: AppState.KeptRoute.config, dashboardID: dashboard, profile: "default")
@@ -3315,6 +3317,15 @@ extension OfflineChatCacheTests {
             "URLs without their user or a key in their query, true or false and numbers that only mention them, and a name that only starts like auth"
         )
         XCTAssertEqual(kept["extra_headers"] as? [[String: String]], [["name": "Authorization"], ["name": "Accept", "value": "json"]])
+        XCTAssertEqual(
+            (kept["limits"] as? [[String: Any]])?.map { NSDictionary(dictionary: $0) },
+            [
+                ["name": "max_tokens", "value": 4096] as NSDictionary,
+                ["key": "max_tokens", "value": 4096] as NSDictionary,
+                ["name": "API_TOKEN"] as NSDictionary,
+            ],
+            "A count keeps its name, by `name` or by `key`"
+        )
         XCTAssertEqual(
             (kept["env_vars"] as? [[String: Any]])?.map { NSDictionary(dictionary: $0) },
             [["key": "ELEVENLABS_API_KEY", "is_set": true, "prompt": "ElevenLabs"] as NSDictionary],
