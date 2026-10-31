@@ -1027,9 +1027,12 @@ final class TranscriptScrollerTests: XCTestCase {
     }
 
     func testATitleTapOnAShortChatKeepsFollowing() {
-        let (scroller, _) = makeScroller(surface: FakeTranscriptSurface(rowHeight: 60))
+        // Kept here: the scroller holds its surface weakly.
+        let surface = FakeTranscriptSurface(rowHeight: 60)
+        let (scroller, _) = makeScroller(surface: surface)
         scroller.explicitTopRequested()
         XCTAssertTrue(scroller.isFollowingLatest)
+        XCTAssertEqual(surface.contentOffsetY, 0)
     }
 
     func testAJumpToLatestDoesNotTakeTheTranscriptFromAFinger() {
