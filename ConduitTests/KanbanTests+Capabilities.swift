@@ -486,6 +486,38 @@ extension KanbanTests {
         XCTAssertEqual(store.plugins.first { $0.name == "Weather" }?.isEnabled, true)
     }
 
+    /// Opening a server from the Connectors list cancels the list's tests;
+    /// a test already sent still lands, and isn't shown as interrupted (#1570).
+    func testAConnectorTestFinishesWhenTheListThatStartedItGoesAway() async {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [
+                ["name": "griply", "transport": "http", "url": "https://g", "enabled": true],
+                ["name": "linear", "transport": "http", "url": "https://l", "enabled": true],
+            ]],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+            "/api/mcp/servers/griply/test": ["ok": true, "tools": [["name": "list_goals"]]],
+            "/api/mcp/servers/linear/test": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        await store.loadConnectors()
+        var held: CheckedContinuation<Void, Never>?
+        requester.beforeAnswering = { path in
+            guard path == "/api/mcp/servers/griply/test", held == nil else { return }
+            await withCheckedContinuation { held = $0 }
+        }
+
+        let list = Task { await store.probeServers() }
+        while held == nil { await Task.yield() }
+        list.cancel()
+        held?.resume()
+        await list.value
+        while store.probing.contains("griply") { await Task.yield() }
+
+        XCTAssertEqual(store.probes["griply"]?.ok, true)
+        XCTAssertEqual(store.probes["griply"]?.tools.map(\.name), ["list_goals"])
+    }
+
     func testARefreshOnItsWayDoesntUndoASwitchFlippedMeanwhile() async throws {
         let requester = CapabilityMockRequester(responses: [
             "/api/dashboard/plugins/hub": ["plugins": [["name": "Weather", "source": "git", "runtime_status": "disabled"]]],
@@ -575,6 +607,8 @@ private final class CapabilityMockRequester: DashboardJSONRequester {
         let bare = path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? path
         let response = responses[bare]
         await beforeAnswering?(bare)
+        // As the dashboard bridge does: a cancelled caller gets no answer.
+        try Task.checkCancellation()
         guard let response else {
             throw URLError(.fileDoesNotExist)
         }

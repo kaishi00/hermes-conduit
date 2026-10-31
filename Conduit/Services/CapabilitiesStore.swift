@@ -354,7 +354,9 @@ final class CapabilitiesStore {
                 group.addTask { await self.probe(next.name) }
             }
             while await group.next() != nil {
-                if let next = pending.popFirst() {
+                // Leaving the list starts no more tests; the ones running
+                // finish (see probe).
+                if !Task.isCancelled, let next = pending.popFirst() {
                     group.addTask { await self.probe(next.name) }
                 }
             }
@@ -366,19 +368,25 @@ final class CapabilitiesStore {
         guard !probing.contains(name) else { return }
         let token = generation
         probing.insert(name)
-        let probe: ConnectorProbe
+        // The test runs to its answer even when the page that asked goes
+        // away (opening a server from the list cancels the list's tests):
+        // the host already started the server, and an interrupted test
+        // isn't the server failing (#1570).
+        let path = scoped("/api/mcp/servers/\(Self.component(name))/test")
+        let test = Task { ConnectorProbe(try await self.request(path, method: "POST", timeout: 60_000)) }
+        let probe: ConnectorProbe?
         do {
-            probe = ConnectorProbe(try await request(
-                scoped("/api/mcp/servers/\(Self.component(name))/test"),
-                method: "POST",
-                timeout: 60_000
-            ))
+            probe = try await test.value
+        } catch is CancellationError {
+            // Cancelled under the test (the dashboard went away): no result,
+            // so it's tested again next time rather than shown as failed.
+            probe = nil
         } catch {
             probe = ConnectorProbe(failure: UserFacingError.message(for: error))
         }
         guard token == generation else { return }
         probing.remove(name)
-        probes[name] = probe
+        if let probe { probes[name] = probe }
     }
 
     func setServerEnabled(_ name: String, enabled: Bool) async throws {
