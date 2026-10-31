@@ -589,6 +589,8 @@ struct VoiceReplyModelSettingsModel {
 /// on a Hermes without the slot.
 struct VoiceReplyModelSettingsSection: View {
     let settings: VoiceReplyModelSettingsModel
+    /// The page is asking Hermes again (Check again too).
+    var pageIsChecking = false
     @State private var saved: VoiceReplyModelSetting?
     @State private var selection = Self.sameAsChats
     @State private var reasoning = "none"
@@ -597,6 +599,7 @@ struct VoiceReplyModelSettingsSection: View {
     /// the phone, and its pickers wait: a save writes the whole setting,
     /// which may be stale (#1533).
     @State private var answered = false
+    @State private var readFailed = false
 
     private static let sameAsChats = ""
     private static let inheritReasoning = "inherit"
@@ -632,20 +635,30 @@ struct VoiceReplyModelSettingsSection: View {
             }
         }
         .onAppear(perform: showKept)
-        .task {
-            let setting: VoiceReplyModelSetting?
-            do {
-                setting = try await settings.load()
-            } catch {
-                // A read that fails keeps what's shown, and the pickers wait.
-                return
-            }
-            if setting != nil, let loaded = await settings.loadProviders() { providers = loaded }
-            apply(setting)
-            answered = true
+        .task { await read() }
+        // After a read that failed, the page's next check (its Check again
+        // too) asks Hermes again.
+        .onChange(of: pageIsChecking) { _, checking in
+            guard !checking, readFailed else { return }
+            Task { await read() }
         }
         .onChange(of: selection) { _, _ in save() }
         .onChange(of: reasoning) { _, _ in save() }
+    }
+
+    /// A read that fails keeps what's shown, and the pickers wait.
+    private func read() async {
+        let setting: VoiceReplyModelSetting?
+        do {
+            setting = try await settings.load()
+        } catch {
+            readFailed = true
+            return
+        }
+        readFailed = false
+        if setting != nil, let loaded = await settings.loadProviders() { providers = loaded }
+        apply(setting)
+        answered = true
     }
 
     /// The setting Hermes gave last, kept on the phone, drawn before the

@@ -496,7 +496,10 @@ final class HermesVoiceConfigurationService: ObservableObject {
             status = SpeechServerVoiceStatus(unavailable: UserFacingError.message(for: error))
             status.readFailed = true
         }
-        if !Task.isCancelled {
+        // As the speech server's: a profile switch's older read changes
+        // nothing, and one that fails keeps the status shown, so the
+        // Assistant voice step stays as it was (#1533).
+        if !Task.isCancelled, !status.readFailed || speechServerVoice == nil {
             speechServerVoice = status
             if !status.readFailed { lastFrontModel = status.frontModel }
         }

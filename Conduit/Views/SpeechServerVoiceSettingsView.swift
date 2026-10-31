@@ -84,6 +84,12 @@ struct SpeechServerVoiceSettingsView: View {
             }
         }
         .task(id: service.profile) { await load() }
+        // After a read that failed, the page's next check (its Check again
+        // too) asks the host again.
+        .onChange(of: service.isLoading) { _, loading in
+            guard !loading, status?.readFailed == true, !isRotating else { return }
+            Task { await read() }
+        }
     }
 
     /// Everything above as one block, for an agent or whoever sets up the
@@ -153,10 +159,14 @@ struct SpeechServerVoiceSettingsView: View {
 
     /// A profile switch starts from that profile's status.
     private func load() async {
-        generation += 1
-        let started = generation
         status = nil
         rotateError = nil
+        await read()
+    }
+
+    private func read() async {
+        generation += 1
+        let started = generation
         let loaded = await service.speechServerVoiceStatus()
         // A rotate meanwhile shows the new key, not this older read.
         guard !Task.isCancelled, generation == started else { return }
@@ -176,6 +186,8 @@ struct SpeechServerVoiceSettingsView: View {
         // A profile switch meanwhile loads that profile's own status.
         guard generation == started else { return }
         rotateError = failure
-        status = loaded
+        // A read that fails keeps what's shown while its key still works
+        // (#1533); after a new key, the one shown would be wrong.
+        if rotated || !loaded.readFailed { status = loaded }
     }
 }

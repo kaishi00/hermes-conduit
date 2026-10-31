@@ -138,14 +138,17 @@ extension HermesVoiceConfigurationServiceTests {
         let keptVoice = kept.saved[SpeechServerSpeechStream.statusPath]
         XCTAssertEqual((keptVoice?["front_model"] as? [String: Any])?["model"] as? String, "qwen3-8b")
 
-        // A read that fails keeps the fast model and the speech server's
-        // status shown, and says it failed.
+        // A read that fails keeps the fast model, Assistant speech's status
+        // (so its setup step doesn't change) and the speech server's shown,
+        // and says it failed.
+        let shownVoice = service.speechServerVoice
+        XCTAssertEqual(shownVoice?.apiKey, "sk-local")
         requester.routes[SpeechServerSpeechStream.statusPath] = nil
         let failedVoice = await service.speechServerVoiceStatus()
         XCTAssertTrue(failedVoice.readFailed)
         XCTAssertNotNil(failedVoice.reason)
         XCTAssertEqual(service.lastFrontModel?.model, "qwen3-8b")
-        XCTAssertNil(service.speechServerVoice?.frontModel)
+        XCTAssertEqual(service.speechServerVoice, shownVoice)
         requester.routes[SpeechServerTranscription.statusPath] = nil
         let failed = await service.speechServerStatus()
         XCTAssertTrue(failed.readFailed)
@@ -158,6 +161,8 @@ extension HermesVoiceConfigurationServiceTests {
         let unkept = HermesVoiceConfigurationService(requester: MockVoiceConfigurationRequester(), profile: "default")
         _ = await unkept.speechServerStatus()
         XCTAssertEqual(unkept.speechServer?.readFailed, true)
+        _ = await unkept.speechServerVoiceStatus()
+        XCTAssertEqual(unkept.speechServerVoice?.readFailed, true)
     }
 
     /// A speech toolset whose read fails while the config answers keeps the

@@ -1177,7 +1177,7 @@ struct VoiceSettingsView: View {
                         .padding(.horizontal, 4)
                 }
                 if let voiceReplies {
-                    VoiceReplyModelSettingsSection(settings: voiceReplies)
+                    VoiceReplyModelSettingsSection(settings: voiceReplies, pageIsChecking: service.isLoading)
                 }
             }
             if let voiceJobs {
