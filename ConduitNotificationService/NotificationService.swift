@@ -26,11 +26,13 @@ final class NotificationService: UNNotificationServiceExtension {
             deliver(request.content)
             return
         }
+        // Only this extension writes the chat note, on a push it verified:
+        // one the push arrived with is dropped on every path.
+        content.userInfo.removeValue(forKey: ReadChatHint.userInfoKey)
         let userInfo = content.userInfo
         let type = (NotificationE2E.routingStub(userInfo)?["type"] as? String)
         // Prepared up front so a timeout can only ever deliver generic text.
-        // It carries no chat note, so once its envelope expires reading the
-        // chat can't clear it; its slot's next push still replaces it.
+        // It takes the chat note once the push verifies.
         let prepared = Self.generic(content.mutableCopy() as? UNMutableNotificationContent ?? content, type: type)
         lock.withLock { fallback = prepared }
 
@@ -41,14 +43,18 @@ final class NotificationService: UNNotificationServiceExtension {
             keysProvisioned: NotificationSharedSettings.keysProvisioned
         ) {
         case .legacy:
-            // Only this extension writes the chat note, on a push it verified.
-            content.userInfo.removeValue(forKey: ReadChatHint.userInfoKey)
             deliver(content)
         case .untrusted(let type):
             deliver(Self.generic(content, type: type))
         case .verified(let verified):
             // Which chat this is, for Conduit to clear it once that chat is read.
             let note = ReadChatHint.note(verified.routingPayload)
+            lock.withLock {
+                if let noted = fallback?.mutableCopy() as? UNMutableNotificationContent {
+                    noted.userInfo[ReadChatHint.userInfoKey] = note
+                    fallback = noted
+                }
+            }
             guard E2ESeenStore.shared.insert(verified.envelope.replayKey, namespace: "delivered") else {
                 // A second copy: generic and routing nowhere, but it clears with its chat.
                 let copy = Self.generic(content, type: verified.type)
