@@ -1090,13 +1090,15 @@ final class OfflineChatCacheStore {
         }
     }
 
-    /// An answer without its credential-shaped keys, at any depth: an API
-    /// key, a token, a password, passphrase or secret, credentials, an
-    /// Authorization header or a cookie (a config can hold them, as a custom
-    /// endpoint's `api_key`), and without the user and password a URL can
-    /// carry. A key shaped like one whose value is true or false stays: it's
-    /// a setting about them (`redact_secrets`). No screen shows a
-    /// credential, and a key to an account mustn't sit in a file.
+    /// An answer without its credential-shaped keys, at any depth: any key
+    /// (`api_key`, `ssh_key`, `api_keys`), a token, a password, passphrase or
+    /// secret, credentials, an Authorization header, auth or a cookie (a
+    /// config can hold them, as a custom endpoint's `api_key`), and without
+    /// the user and password a URL can carry. A key shaped like one whose
+    /// value is true or false stays: it's a setting about them
+    /// (`redact_secrets`). No screen shows a credential, and a key to an
+    /// account mustn't sit in a file; a name that only looks like one
+    /// (`sort_key`) comes back with Hermes' answer.
     static func withoutCredentials(_ answer: [String: Any]) -> [String: Any] {
         answer.reduce(into: [String: Any]()) { kept, entry in
             guard !isCredentialKey(entry.key) || isFlag(entry.value) else { return }
@@ -1111,20 +1113,22 @@ final class OfflineChatCacheStore {
         return value
     }
 
-    /// Names that end like a credential's, with or without the underscore.
+    /// Names that end like a credential's, with or without the underscore:
+    /// `signing_key`, `apikeys`, `GITHUB_TOKEN`, `clientSecret`,
+    /// `session_cookie`, `proxy_authorization`, `basic_auth`. Not `tokens`:
+    /// `max_tokens` is a number.
     private static let credentialKeySuffixes = [
-        "api_key", "apikey", "api_keys", "apikeys", "private_key", "privatekey",
-        "access_key", "accesskey", "secret_key", "secretkey", "token", "secret", "secrets",
+        "key", "keys", "token", "secret", "secrets", "cookie", "cookies", "auth", "authorization",
     ]
     /// Words that make any name a credential's.
     private static let credentialKeyWords = ["password", "passwd", "passphrase", "credential"]
-    private static let credentialKeyNames: Set<String> = ["authorization", "cookie", "auth", "key"]
 
     static func isCredentialKey(_ key: String) -> Bool {
         let name = key.lowercased().replacingOccurrences(of: "-", with: "_")
-        return credentialKeyNames.contains(name)
-            || credentialKeySuffixes.contains { name.hasSuffix($0) }
+        return credentialKeySuffixes.contains { name.hasSuffix($0) }
             || credentialKeyWords.contains { name.contains($0) }
+            // `auth_header`, `proxy_auth_user`, but not `author`.
+            || name.split(separator: "_").contains("auth")
     }
 
     /// A JSON true or false, which never holds a credential.
@@ -1161,17 +1165,18 @@ final class OfflineChatCacheStore {
     }
 
     /// Writes the answer's file and returns its size, or removes the file
-    /// and returns nil when the answer is too big to keep.
+    /// and returns nil when the answer is too big to keep or the write
+    /// failed (a full disk).
     private func writeKeptAnswer(_ answer: [String: Any], route: String, to url: URL) -> Int? {
         let object: [String: Any] = ["route": route, "answer": answer]
         guard JSONSerialization.isValidJSONObject(object),
               let data = try? JSONSerialization.data(withJSONObject: object),
-              data.count <= Self.maxKeptAnswerBytes else {
+              data.count <= Self.maxKeptAnswerBytes,
+              write(data, to: url) else {
             // Not kept: an older answer mustn't open the screen next time.
             try? fileManager.removeItem(at: url)
             return nil
         }
-        write(data, to: url)
         return data.count
     }
 

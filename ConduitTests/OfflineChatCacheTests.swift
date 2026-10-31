@@ -3260,15 +3260,21 @@ extension OfflineChatCacheTests {
                 "key": "k-12",
                 "clientSecret": "cs-13",
                 "base_url": "https://u:pw-14@llm.example/v1",
+                "signing_key": "sk-15",
+                "ssh_key": "ssh-16",
+                "proxy_authorization": "Basic 17",
+                "session_cookie": "c-18",
+                "auth_header": "h-19",
                 "password_required": false,
                 "max_tokens": 4096,
+                "author": "ann",
             ]],
             "security": ["redact_secrets": true],
             "agent": ["max_turns": 90],
         ]
         let secrets = [
             "sk-live-1", "ghp-2", "Bearer three", "key-4", "sk-fallback-5", "sk-6", "k-7", "k-8",
-            "p-9", "pp-10", "a-11", "k-12", "cs-13", "pw-14",
+            "p-9", "pp-10", "a-11", "k-12", "cs-13", "pw-14", "sk-15", "ssh-16", "Basic 17", "c-18", "h-19",
         ]
 
         store.recordAnswer(config, route: AppState.KeptRoute.config, dashboardID: dashboard, profile: "default")
@@ -3293,8 +3299,8 @@ extension OfflineChatCacheTests {
         let custom = try XCTUnwrap((kept["providers"] as? [String: Any])?["custom"] as? [String: Any])
         XCTAssertEqual(
             NSDictionary(dictionary: custom),
-            ["base_url": "https://llm.example/v1", "password_required": false, "max_tokens": 4096] as NSDictionary,
-            "The URL without its user, and true or false and numbers that only mention them"
+            ["base_url": "https://llm.example/v1", "password_required": false, "max_tokens": 4096, "author": "ann"] as NSDictionary,
+            "The URL without its user, true or false and numbers that only mention them, and a name that only starts like auth"
         )
     }
 }
