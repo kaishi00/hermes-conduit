@@ -2334,7 +2334,10 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
 
 /// A Model page editor's stand-in for its pickers until the catalog has
 /// rows: loading, a failed fetch with Try Again, or a gateway with none.
-private struct ModelCatalogPlaceholder: View {
+/// A models list's state when it isn't drawn as models: loading, failed
+/// with Try Again (also under the voice and Pulse pickers' kept models),
+/// or empty.
+struct ModelCatalogPlaceholder: View {
     let state: ModelCatalogState
     let retry: () -> Void
 

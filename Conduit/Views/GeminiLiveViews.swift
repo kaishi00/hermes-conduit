@@ -461,6 +461,7 @@ struct VoiceJobModelSettingsSection: View {
     @State private var selection: String
     @State private var reasoning: String
     @State private var providers: [ProviderInfo] = []
+    @State private var providersFailed = false
 
     private static let profileDefault = ""
 
@@ -484,6 +485,10 @@ struct VoiceJobModelSettingsSection: View {
             ) {
                 Text("Model").foregroundStyle(.secondary)
             }
+            if providersFailed {
+                // The models listed stay up; Hermes didn't answer.
+                ModelCatalogPlaceholder(state: .failed) { Task { await loadProviders() } }
+            }
             ConduitMenuPicker(
                 value: reasoning,
                 choices: reasoningChoices,
@@ -496,9 +501,15 @@ struct VoiceJobModelSettingsSection: View {
                 .foregroundStyle(.secondary)
         }
         .onAppear { if providers.isEmpty { providers = settings.keptProviders() } }
-        .task { if let loaded = await settings.loadProviders() { providers = loaded } }
+        .task { await loadProviders() }
         .onChange(of: selection) { _, _ in save() }
         .onChange(of: reasoning) { _, _ in save() }
+    }
+
+    private func loadProviders() async {
+        let loaded = await settings.loadProviders()
+        if let loaded { providers = loaded }
+        providersFailed = loaded == nil
     }
 
     private func save() {
@@ -738,6 +749,7 @@ struct VoiceReplyModelSettingsSection: View {
     var pageIsChecking = false
     @State private var picks = VoiceReplyModelPicks()
     @State private var providers: [ProviderInfo] = []
+    @State private var providersFailed = false
 
     var body: some View {
         Group {
@@ -754,6 +766,10 @@ struct VoiceReplyModelSettingsSection: View {
                         onSelect: { picks.selection = $0 }
                     ) {
                         Text("Model").foregroundStyle(.secondary)
+                    }
+                    if providersFailed {
+                        // The models listed stay up; Hermes didn't answer.
+                        ModelCatalogPlaceholder(state: .failed) { Task { await reloadProviders() } }
                     }
                     ConduitMenuPicker(
                         value: picks.reasoning,
@@ -801,6 +817,13 @@ struct VoiceReplyModelSettingsSection: View {
         if setting != nil { loaded = await settings.loadProviders() }
         guard picks.hermesAnswered(setting, to: asked) else { return }
         if let loaded { providers = loaded }
+        providersFailed = setting != nil && loaded == nil
+    }
+
+    private func reloadProviders() async {
+        guard let loaded = await settings.loadProviders() else { return }
+        providers = loaded
+        providersFailed = false
     }
 
     private func showKept() {

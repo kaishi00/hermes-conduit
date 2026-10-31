@@ -2669,14 +2669,15 @@ final class AppState: ObservableObject {
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
     }
 
-    /// The models Hermes offers, for the model pickers in Voice and Pulse
-    /// settings: the gateway's `model.options`, kept on the phone as the
-    /// same answer Usage keeps (#1533). Nil when Hermes didn't answer, so a
-    /// picker keeps the models it shows.
-    func loadModelProviders() async -> [ProviderInfo]? {
+    /// The models Hermes offers, for the model pickers (the model sheet,
+    /// the bot editor's, Voice and Pulse settings'): the gateway's
+    /// `model.options`, kept on the phone as the same answer Usage keeps
+    /// (#1533). The model sheet asks for its chat's session. Nil when
+    /// Hermes didn't answer, so a picker keeps the models it shows.
+    func loadModelProviders(sessionId: String? = nil) async -> [ProviderInfo]? {
         let profile = activeProfile
         guard let client else { return nil }
-        let read = { try await client.providerQuotaAnswer() }
+        let read = { try await client.modelOptionsAnswer(sessionId: sessionId) }
         let answer: [String: Any]?
         if let owner = currentDashboardRuntimeOwner() {
             answer = try? await keepingAnswer(profile: profile, owner: owner, keptAs: { _ in KeptRoute.providerQuotas }, read)
@@ -22433,13 +22434,6 @@ final class AppState: ObservableObject {
     func loadBotDetails(_ bot: BotProfile) async -> BotProfileDetails? {
         guard let client, isConnected else { return nil }
         return try? await client.describeBotProfile(name: bot.name)
-    }
-
-    /// The gateway's provider and model inventory for the bot editor's
-    /// Model page. Nil when it could not be read.
-    func loadBotModelProviders() async -> [ProviderInfo]? {
-        guard let client, isConnected else { return nil }
-        return try? await client.modelOptions().providers
     }
 
     /// Whether Hermes can generate pictures, as last asked

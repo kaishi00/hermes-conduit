@@ -42,6 +42,7 @@ struct PulseSettingsPage: View {
     @State private var timesSave: Task<Void, Never>?
     /// The models Hermes offers, for the Model picker.
     @State private var providers: [ProviderInfo] = []
+    @State private var modelsFailed = false
     /// The note to Pulse as it's being edited; nil shows the plugin's.
     @State private var noteDraft: String?
     @FocusState private var noteFocused: Bool
@@ -780,17 +781,25 @@ struct PulseSettingsPage: View {
             }
             .disabled(waiting)
             .accessibilityIdentifier("settings.pulse.model")
+            if modelsFailed {
+                // The models listed stay up; Hermes didn't answer.
+                ModelCatalogPlaceholder(state: .failed) { Task { await loadModels() } }
+            }
             Text("Pulse's reports, morning brief, follow-ups and memory run on this model. A fast, cheap model is plenty.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
-        .task(id: appState.activeDashboardID) {
-            let dashboard = appState.activeDashboardID
-            // One that fails keeps the models listed, the kept ones included.
-            if let loaded = await appState.loadModelProviders(), appState.activeDashboardID == dashboard {
-                providers = loaded
-            }
-        }
+        .task(id: appState.activeDashboardID) { await loadModels() }
+    }
+
+    /// One that fails keeps the models listed, the kept ones included,
+    /// and says so with Try Again.
+    private func loadModels() async {
+        let dashboard = appState.activeDashboardID
+        let loaded = await appState.loadModelProviders()
+        guard appState.activeDashboardID == dashboard else { return }
+        if let loaded { providers = loaded }
+        modelsFailed = loaded == nil
     }
 
     /// The turns' model first, as Pulse checks it, then memory's slot. A

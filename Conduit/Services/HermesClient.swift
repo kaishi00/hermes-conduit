@@ -3203,24 +3203,16 @@ final class HermesClient: ObservableObject {
         return state
     }
 
-    func modelOptions(sessionId: String? = nil) async throws -> (model: String?, provider: String?, providers: [ProviderInfo]?) {
+    /// Hermes' models (`model.options`), for the model pickers, as the
+    /// answer came, which they keep (AppState.modelProviders(in:) reads it).
+    /// Its rows also carry each signed-in provider's subscription windows
+    /// and rate limit from Hermes' cache, Settings > Usage's quota (#813),
+    /// and asking starts Hermes' background refresh of that cache. The model
+    /// sheet names its chat's session.
+    func modelOptionsAnswer(sessionId: String? = nil) async throws -> [String: Any] {
         var params: [String: Any] = ["explicit_only": true]
         if let sessionId { params["session_id"] = sessionId }
         let result = try await rpc("model.options", params: params)
-        let obj = result.objectValue ?? [:]
-        let model = obj["model"]?.stringValue
-        let provider = obj["provider"]?.stringValue
-        let providers = (obj["providers"]?.arrayValue ?? []).compactMap { ProviderInfo(from: $0) }
-        return (model, provider, providers)
-    }
-
-    /// Settings > Usage's quota (#813): `model.options` rows carry each
-    /// signed-in provider's subscription windows and rate limit from Hermes'
-    /// cache, and asking starts Hermes' background refresh of that cache.
-    /// The answer as it came, which the page keeps (ProviderQuota.list
-    /// reads it).
-    func providerQuotaAnswer() async throws -> [String: Any] {
-        let result = try await rpc("model.options", params: ["explicit_only": true])
         return result.anyValue as? [String: Any] ?? [:]
     }
 
