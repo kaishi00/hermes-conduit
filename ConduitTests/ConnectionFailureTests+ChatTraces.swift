@@ -180,26 +180,47 @@ extension ConnectionFailureTests {
         watch.layoutPass()
         XCTAssertEqual(saved, [], "the reader scrolling")
 
-        second(1_020, passes: 40)
-        second(1_021, passes: 20)
-        second(1_022, passes: 40)
+        var height: CGFloat = 100
+        func replyGrows() {
+            let before = ["live": ChatScrollRowFrame(minY: 500, maxY: 500 + height, order: Int.max)]
+            height += 20
+            watch.liveRowsLaidOut(from: before, to: ["live": ChatScrollRowFrame(minY: 500, maxY: 500 + height, order: Int.max)])
+        }
+        second(1_020, passes: 40) { replyGrows() }
+        second(1_021, passes: 40) { replyGrows() }
+        second(1_022, passes: 40) { replyGrows() }
         time = 1_023
+        watch.layoutPass()
+        XCTAssertEqual(saved, [], "a reply streaming in grows its row")
+
+        second(1_030, passes: 40)
+        second(1_031, passes: 20)
+        second(1_032, passes: 40)
+        time = 1_033
         watch.layoutPass()
         XCTAssertEqual(saved, [], "30 a second at most is layout at work")
 
-        second(1_030, passes: 40)
-        second(1_031, passes: 40)
-        second(1_033, passes: 40)
-        time = 1_034
+        second(1_040, passes: 40)
+        second(1_041, passes: 40)
+        second(1_043, passes: 40)
+        time = 1_044
         watch.layoutPass()
         XCTAssertEqual(saved, [], "a second without layout ended the run")
 
-        second(1_040, passes: 40)
-        second(1_041, passes: 40)
-        second(1_042, passes: 40)
-        time = 1_043
+        second(1_050, passes: 40)
+        second(1_051, passes: 40)
+        second(1_052, passes: 40)
+        time = 1_053
         watch.layoutPass()
         XCTAssertEqual(saved, [.storm], "three seconds of it, no row changing")
+
+        // A live row that came, went or changed height is content; one that
+        // only moved (rows above it relaid) is layout.
+        let row = ChatScrollRowFrame(minY: 0, maxY: 100, order: Int.max)
+        XCTAssertTrue(ChatViewportWatch.resized(from: ["live": row], to: ["live": ChatScrollRowFrame(minY: 0, maxY: 140, order: Int.max)]))
+        XCTAssertFalse(ChatViewportWatch.resized(from: ["live": row], to: ["live": ChatScrollRowFrame(minY: 40, maxY: 140, order: Int.max)]))
+        XCTAssertTrue(ChatViewportWatch.resized(from: ["live": row], to: [:]))
+        XCTAssertTrue(ChatViewportWatch.resized(from: ["live": row], to: ["step": row]))
     }
 
     @MainActor

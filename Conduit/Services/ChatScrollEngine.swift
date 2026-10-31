@@ -638,7 +638,7 @@ final class ChatScrollEngine: ObservableObject {
 
     func liveRowFramesChanged(_ frames: [String: ChatScrollRowFrame]) {
         ChatViewportTrace.shared.log("liveRowFrames n=\(frames.count)")
-        ChatViewportWatch.shared.layoutPass()
+        ChatViewportWatch.shared.liveRowsLaidOut(from: liveRowFrames, to: frames)
         let lostARow = liveRowFrames.keys.contains { frames[$0] == nil }
         liveRowFrames = frames
         // A stack that dropped its rows may change no size at all.

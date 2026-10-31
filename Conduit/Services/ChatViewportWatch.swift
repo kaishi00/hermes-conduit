@@ -8,8 +8,9 @@ import Foundation
 ///   momentum on it, and no command, offset write of the engine's, resize
 ///   or newly attached scroll view in the second before.
 /// - A layout storm: layout runs more than 30 times a second for 3 seconds
-///   while no row changes and the reader isn't scrolling, which is what a
-///   chat that stops taking scrolls and typing would look like.
+///   while no row changes (a reply streaming in grows its row, which
+///   counts) and the reader isn't scrolling, which is what a chat that
+///   stops taking scrolls and typing would look like.
 /// - The blank-screen recovery rebuilding the scroll view.
 ///
 /// Each saves at most once a minute. A stall is MainThreadHangWatchdog's.
@@ -95,10 +96,29 @@ final class ChatViewportWatch {
         passes += 1
     }
 
-    /// The transcript's rows changed (Hermes' rows, a reply streaming in).
+    /// The transcript's rows changed (Hermes' rows, a saved copy's).
     func transcriptChanged() {
         roll(to: now())
         rowsChanged = true
+    }
+
+    /// The running turn's rows reported their frames. One that came, went
+    /// or changed height (a reply streaming in, a step arriving) is content
+    /// arriving, as the transcript's rows changing is; rows that only moved
+    /// are a layout pass.
+    func liveRowsLaidOut(from old: [String: ChatScrollRowFrame], to new: [String: ChatScrollRowFrame]) {
+        if Self.resized(from: old, to: new) {
+            transcriptChanged()
+        } else {
+            layoutPass()
+        }
+    }
+
+    nonisolated static func resized(from old: [String: ChatScrollRowFrame], to new: [String: ChatScrollRowFrame]) -> Bool {
+        old.count != new.count || new.contains { id, frame in
+            guard let before = old[id] else { return true }
+            return abs((frame.maxY - frame.minY) - (before.maxY - before.minY)) > 0.5
+        }
     }
 
     /// The blank-screen recovery is rebuilding the scroll view.
