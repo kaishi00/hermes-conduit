@@ -48,6 +48,21 @@ struct TranscriptRow: Identifiable, Equatable {
     static let streamingID = "streaming"
     static let workingID = "typing"
     static let pendingSendID = "pending-send"
+
+    /// Whether `other` draws as this row does. One of the chat's rows is
+    /// what it draws (its message and its places in runs of steps or
+    /// reviews), not where it sits among the targets: a page of earlier
+    /// messages landing above it moves it down without changing it.
+    func drawsSame(as other: TranscriptRow) -> Bool {
+        guard id == other.id else { return false }
+        if case .message(let target) = kind, case .message(let otherTarget) = other.kind {
+            return target.message == otherTarget.message
+                && target.step == otherTarget.step
+                && target.stepsAbove == otherTarget.stepsAbove
+                && target.reviewRun == otherTarget.reviewRun
+        }
+        return kind == other.kind
+    }
 }
 
 /// What the working line says, apart from its timer's ticks.
@@ -66,27 +81,29 @@ struct TranscriptWorkingLine: Equatable {
     var repliesElsewhere = false
 }
 
-/// What an update changed, by row id: rows that came, rows that went, and
-/// rows still there whose content changed. Text streaming into a live row
-/// isn't a change here: that row reads it from the live projection.
+/// What an update changed, by row id: rows that came, rows that went,
+/// rows still there that draw differently (TranscriptRow.drawsSame), and
+/// rows still there in another order. Text streaming into a live row isn't
+/// a change here: that row reads it from the live projection.
 struct TranscriptChangeSet: Equatable {
     var inserted: [String] = []
     var removed: [String] = []
     var changed: [String] = []
+    var moved: [String] = []
 
-    var isEmpty: Bool { inserted.isEmpty && removed.isEmpty && changed.isEmpty }
+    var isEmpty: Bool { inserted.isEmpty && removed.isEmpty && changed.isEmpty && moved.isEmpty }
 
     /// From `old` to `new`, both with unique ids. The rows both start or
     /// end with unchanged (most updates touch only the end) are skipped
     /// before anything is compared by id.
     static func between(_ old: [TranscriptRow], _ new: [TranscriptRow]) -> TranscriptChangeSet {
         var start = 0
-        while start < old.count, start < new.count, old[start] == new[start] {
+        while start < old.count, start < new.count, old[start].drawsSame(as: new[start]) {
             start += 1
         }
         var oldEnd = old.count
         var newEnd = new.count
-        while oldEnd > start, newEnd > start, old[oldEnd - 1] == new[newEnd - 1] {
+        while oldEnd > start, newEnd > start, old[oldEnd - 1].drawsSame(as: new[newEnd - 1]) {
             oldEnd -= 1
             newEnd -= 1
         }
@@ -98,12 +115,17 @@ struct TranscriptChangeSet: Equatable {
         let afterIDs = Set(after.map(\.id))
         for row in after {
             if let was = beforeByID[row.id] {
-                if was != row { changes.changed.append(row.id) }
+                if !was.drawsSame(as: row) { changes.changed.append(row.id) }
             } else {
                 changes.inserted.append(row.id)
             }
         }
         changes.removed = before.filter { !afterIDs.contains($0.id) }.map(\.id)
+        // Rows in both whose order changed (a saved row Hermes places
+        // elsewhere): each one whose place among them differs.
+        let stayedBefore = before.map(\.id).filter { afterIDs.contains($0) }
+        let stayedAfter = after.map(\.id).filter { beforeByID[$0] != nil }
+        changes.moved = zip(stayedBefore, stayedAfter).filter { $0.0 != $0.1 }.map(\.1)
         return changes
     }
 
@@ -114,7 +136,8 @@ struct TranscriptChangeSet: Equatable {
             list.isEmpty ? "" : " \(mark)[\(list.prefix(3).joined(separator: ","))\(list.count > 3 ? ",..." : "")]"
         }
         return "rows n=\(rowCount) +\(inserted.count) -\(removed.count) ~\(changed.count)"
-            + ids("+", inserted) + ids("-", removed) + ids("~", changed)
+            + (moved.isEmpty ? "" : " >\(moved.count)")
+            + ids("+", inserted) + ids("-", removed) + ids("~", changed) + ids(">", moved)
     }
 }
 

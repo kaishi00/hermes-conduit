@@ -216,8 +216,8 @@ extension ChatScrollStateTests {
         )
 
         // Older rows land above while the page loads, and the control goes.
-        // (The rows below move down in the targets' order, so they change
-        // too.)
+        // The rows below move down in the targets' order but draw the same,
+        // so only the page's rows come.
         input.targetsRevision = 4
         input.loadsEarlier = false
         input.isLoadingEarlier = false
@@ -225,9 +225,10 @@ extension ChatScrollStateTests {
             message("u0", .user), message("a0", .assistant),
             message("u1", .user), message("a1", .assistant, "better"), message("u2", .user),
         ])
-        let landed = model.update(input, targets: paged, disclosure: disclosure)
-        XCTAssertEqual(landed?.inserted, ["u0", "a0"])
-        XCTAssertEqual(landed?.removed, [TranscriptRow.loadEarlierID])
+        XCTAssertEqual(
+            model.update(input, targets: paged, disclosure: disclosure),
+            TranscriptChangeSet(inserted: ["u0", "a0"], removed: [TranscriptRow.loadEarlierID])
+        )
         XCTAssertEqual(model.rows.map(\.id), ["u0", "a0", "u1", "a1", "u2", TranscriptRow.streamingID])
 
         XCTAssertEqual(
@@ -235,6 +236,18 @@ extension ChatScrollStateTests {
             "rows n=9 +4 -1 ~0 +[a,b,c,...] -[e]",
             "the recorder's line names counts and the first few ids, never a row's text"
         )
+    }
+
+    /// A row that only changes place is a move, not nothing.
+    func testRowsThatOnlyChangePlaceAreMoved() {
+        let three = ["a", "b", "c"].map { TranscriptRow(id: $0, kind: .empty) }
+        let swapped = TranscriptChangeSet.between(three, [three[1], three[0], three[2]])
+        XCTAssertEqual(swapped, TranscriptChangeSet(moved: ["b", "a"]))
+        XCTAssertFalse(swapped.isEmpty)
+        XCTAssertEqual(swapped.traceLine(rowCount: 3), "rows n=3 +0 -0 ~0 >2 >[b,a]")
+
+        let landed = TranscriptChangeSet.between(three, [three[0], TranscriptRow(id: "x", kind: .empty), three[1], three[2]])
+        XCTAssertEqual(landed, TranscriptChangeSet(inserted: ["x"]), "a row landing between others moves none of them")
     }
 
     @MainActor

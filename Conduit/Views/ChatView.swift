@@ -622,6 +622,7 @@ struct ChatView: View {
             .reportsLiveRowFrame(id: row.id)
         case .pendingSend(let pending):
             PendingComposerSendBubble(pending: pending)
+                .id(row.id)
                 .reportsLiveRowFrame(id: row.id)
         }
     }
