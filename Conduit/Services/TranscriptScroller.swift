@@ -1175,7 +1175,7 @@ final class TranscriptScroller: ObservableObject {
             height = (hold + surface.viewportHeight - surface.insetBottom).rounded(.up)
         }
         guard height != replyRoomHeight else { return }
-        ChatViewportTrace.shared.log(String(format: "room %.1f", height))
+        ChatViewportTrace.shared.log(String(format: "replyRoom minContentHeight %.1f", height))
         replyRoomHeight = height
         surface?.reserveContentHeight(height)
     }
