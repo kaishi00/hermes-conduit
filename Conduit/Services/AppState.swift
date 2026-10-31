@@ -166,6 +166,15 @@ struct ChatResumeLifecycleOperations {
     /// cwd in, the created ids out. Not an init parameter: tests set it on
     /// the value.
     var createSession: (@MainActor (HermesClient, String?) async throws -> BranchResult)?
+    /// Test seams for the bot editor, client and profile in: its
+    /// `profiles.describe`, its MCP page's `mcp.catalog` and
+    /// `mcp.servers.list`, and a save's skills, tools and MCP sections
+    /// (`profiles.configure`, the sections in, Hermes' answer out). Not init
+    /// parameters either.
+    var describeBotProfile: (@MainActor (HermesClient, String) async throws -> BotProfileDetails)?
+    var botMcpCatalog: (@MainActor (HermesClient, String) async throws -> [BotMcpCatalogEntry])?
+    var botMcpServers: (@MainActor (HermesClient, String) async throws -> [BotMcpServerSummary])?
+    var configureBotSections: (@MainActor (HermesClient, String, [String: Any]) async throws -> AnyCodable)?
 
     init(
         connectClient: (@MainActor (HermesClient) async throws -> Void)? = nil,
@@ -22461,21 +22470,86 @@ final class AppState: ObservableObject {
     /// The skills, toolsets and MCP servers a new bot starting from
     /// `profile` would have (`profiles.describe` of that profile).
     func loadBotCapabilities(startingFrom profile: String) async -> BotCapabilities? {
-        guard let client, isConnected else { return nil }
-        return try? await client.describeBotProfile(name: profile).capabilities
+        await readBotDetails(profile: profile)?.capabilities
+    }
+
+    /// What `loadBotCapabilities` kept for the profile on this dashboard.
+    func keptBotCapabilities(startingFrom profile: String) -> BotCapabilities? {
+        keptRead(BotProfileDetails.self, KeptRoute.botDetails, profile: profile)?.capabilities
     }
 
     /// The MCP catalog and the bot's servers' sign-in state, for Edit Bot's
-    /// MCP page. Nil when Hermes doesn't offer them (an older gateway), so
-    /// the page keeps its plain on/off list.
+    /// MCP page, kept for it to open on (#1533). Nil when Hermes doesn't
+    /// offer them (an older gateway), so the page keeps its plain on/off
+    /// list.
     func loadBotMcpSetup(profile: String) async -> BotMcpSetupSnapshot? {
-        guard let client, isConnected,
-              let catalog = try? await client.botMcpCatalog(profile: profile) else { return nil }
-        let servers = (try? await client.botMcpServers(profile: profile)) ?? []
-        return BotMcpSetupSnapshot(
-            catalog: catalog,
-            servers: Dictionary(servers.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
-        )
+        guard let client, isConnected else { return nil }
+        let operations = chatResumeLifecycleOperations
+        // A servers list that failed isn't the bot's servers: the read then
+        // keeps nothing, and the page shows Hermes' catalog with the
+        // sign-ins kept last time, as a read that failed whole keeps them.
+        var serversRead = true
+        let answer = try? await keepingRead(
+            as: KeptRoute.botMcpSetup,
+            profile: profile,
+            owner: currentDashboardRuntimeOwner(),
+            keeps: { _ in serversRead }
+        ) {
+            let catalog: [BotMcpCatalogEntry]
+            if let read = operations.botMcpCatalog {
+                catalog = try await read(client, profile)
+            } else {
+                catalog = try await client.botMcpCatalog(profile: profile)
+            }
+            var servers: [BotMcpServerSummary] = []
+            do {
+                if let read = operations.botMcpServers {
+                    servers = try await read(client, profile)
+                } else {
+                    servers = try await client.botMcpServers(profile: profile)
+                }
+            } catch {
+                serversRead = false
+            }
+            return BotMcpSetupSnapshot(
+                catalog: catalog,
+                servers: Dictionary(servers.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+            )
+        }
+        guard var setup = answer else { return nil }
+        if !serversRead {
+            setup.servers = keptBotMcpSetup(profile: profile)?.servers ?? [:]
+        }
+        return setup
+    }
+
+    /// What `loadBotMcpSetup` kept for the bot on this dashboard.
+    func keptBotMcpSetup(profile: String) -> BotMcpSetupSnapshot? {
+        keptRead(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile)
+    }
+
+    /// A catalog server Hermes added to a bot's profile, kept as Hermes now
+    /// holds it (#1533): on in the bot's lists, installed in its catalog,
+    /// and, signing in with OAuth, waiting for a sign-in.
+    private func keepBotMcpServerAdded(
+        _ entry: BotMcpCatalogEntry,
+        oauth: Bool,
+        profile: String,
+        on owner: DashboardRuntimeOwner?
+    ) {
+        keepWrittenChange(BotProfileDetails.self, KeptRoute.botDetails, profile: profile, on: owner) { details in
+            guard !details.capabilities.mcpServers.contains(where: { $0.name == entry.name }) else { return }
+            details.capabilities.mcpServers.append(BotCapability(name: entry.name, description: entry.description, enabled: true))
+        }
+        keepWrittenChange(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile, on: owner) { setup in
+            setup.catalog = setup.catalog.map { listed in
+                guard listed.name == entry.name else { return listed }
+                return BotMcpCatalogEntry(name: listed.name, description: listed.description, requires: listed.requires, installed: true)
+            }
+            if oauth {
+                setup.servers[entry.name] = BotMcpServerSummary(name: entry.name, auth: "oauth", oauthTokensPresent: false)
+            }
+        }
     }
 
     /// Adds a catalog server to the bot's profile with the keys typed for
@@ -22492,12 +22566,14 @@ final class AppState: ObservableObject {
         // Every step is checked against the Hermes it started on: after a
         // switch, keys and tests must not go to the other one.
         let epoch = botRosterEpoch
+        let owner = currentDashboardRuntimeOwner()
         let moved = BotMcpInstallOutcome.failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
         var oauth = false
         if !entry.installed {
             do {
                 let added = try await client.addBotMcpServer(profile: profile, name: entry.name, preset: entry.name)
                 oauth = BotMcpSetup.addedServer(from: added, name: entry.name)?.auth?.lowercased() == "oauth"
+                keepBotMcpServerAdded(entry, oauth: oauth, profile: profile, on: owner)
             } catch {
                 return .failed(AppLocalization.string("Could not add \(entry.name): \(UserFacingError.message(for: error))"))
             }
@@ -22539,6 +22615,7 @@ final class AppState: ObservableObject {
             return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
         }
         let epoch = botRosterEpoch
+        let owner = currentDashboardRuntimeOwner()
         let moved = BotMcpSignInOutcome.failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
         let loopback = NativeOAuthLoopbackServer(expectedState: nil, relaysCallback: true)
         defer { loopback.stop() }
@@ -22597,6 +22674,10 @@ final class AppState: ObservableObject {
                 switch BotMcpSetup.pollStatus(polled) {
                 case "approved":
                     approved = true
+                    // The MCP page opens on it signed in (#1533).
+                    keepWrittenChange(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile, on: owner) {
+                        $0.servers[name] = BotMcpServerSummary(name: name, auth: "oauth", oauthTokensPresent: true)
+                    }
                     return .signedIn
                 case "error":
                     return .failed(BotMcpSetup.pollError(polled))
@@ -22614,8 +22695,33 @@ final class AppState: ObservableObject {
 
     /// `profiles.describe` for the edit sheet: the description and SOUL.md.
     func loadBotDetails(_ bot: BotProfile) async -> BotProfileDetails? {
+        await readBotDetails(profile: bot.name)
+    }
+
+    /// What `loadBotDetails` kept for the bot on this dashboard: what the
+    /// editor shows until Hermes answers.
+    func keptBotDetails(_ bot: BotProfile) -> BotProfileDetails? {
+        keptRead(BotProfileDetails.self, KeptRoute.botDetails, profile: bot.name)
+    }
+
+    /// `profiles.describe` of a profile, kept in that profile's answers for
+    /// the bot editor to open on (#1533), so a deleted bot takes its own.
+    private func readBotDetails(profile: String) async -> BotProfileDetails? {
         guard let client, isConnected else { return nil }
-        return try? await client.describeBotProfile(name: bot.name)
+        return try? await keepingRead(as: KeptRoute.botDetails, profile: profile, owner: currentDashboardRuntimeOwner()) {
+            if let read = self.chatResumeLifecycleOperations.describeBotProfile { return try await read(client, profile) }
+            return try await client.describeBotProfile(name: profile)
+        }
+    }
+
+    /// A bot's details as Hermes took a write to them, kept for the editor
+    /// to open on next time, even if the read after it fails.
+    private func keepBotDetailsWritten(
+        _ profile: String,
+        on owner: DashboardRuntimeOwner?,
+        _ change: (inout BotProfileDetails) -> Void
+    ) {
+        keepWrittenChange(BotProfileDetails.self, KeptRoute.botDetails, profile: profile, on: owner, change)
     }
 
     /// Whether Hermes can generate pictures, as last asked
@@ -22822,6 +22928,7 @@ final class AppState: ObservableObject {
         guard let client, isConnected else {
             return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
         }
+        let owner = currentDashboardRuntimeOwner()
         do {
             let result = try await client.configureBotModel(
                 name: bot.name,
@@ -22830,10 +22937,16 @@ final class AppState: ObservableObject {
                 confirmed: confirmed
             )
             if let message = BotModelConfirmation.message(in: result) { return .confirmModel(message) }
-            if refreshesRoster { await refreshBotRosterAfterWrite() }
-            if !BotConfigureSections.failed(in: result, among: ["model"]).isEmpty {
-                return .saved(warning: AppLocalization.string("The model was not saved."))
+            let saved = BotConfigureSections.failed(in: result, among: ["model"]).isEmpty
+            // The editor opens on the model Hermes took (#1533).
+            if saved {
+                keepBotDetailsWritten(bot.name, on: owner) { details in
+                    details.provider = provider
+                    details.model = model
+                }
             }
+            if refreshesRoster { await refreshBotRosterAfterWrite() }
+            guard saved else { return .saved(warning: AppLocalization.string("The model was not saved.")) }
             return .saved(warning: nil)
         } catch {
             return .saved(warning: AppLocalization.string("The model was not saved."))
@@ -22887,6 +23000,7 @@ final class AppState: ObservableObject {
         // SOUL is only editable once `profiles.describe` answered, so an
         // unloaded editor can never blank a bot's personality.
         let soulChanged = loadedDetails.map { draft.soul != $0.soul } ?? false
+        let owner = currentDashboardRuntimeOwner()
         let capabilitySections = loadedDetails.flatMap { details in
             draft.capabilities.map { BotCapabilities.configureParams(original: details.capabilities, edited: $0) }
         } ?? [:]
@@ -22938,8 +23052,16 @@ final class AppState: ObservableObject {
                 var sections: [String] = []
                 if descriptionChanged { sections.append("description") }
                 if soulChanged { sections.append("soul") }
-                if !BotConfigureSections.failed(in: result, among: sections).isEmpty {
+                let failed = BotConfigureSections.failed(in: result, among: sections)
+                if !failed.isEmpty {
                     problems.append(AppLocalization.string("The description or personality was not saved."))
+                }
+                // What Hermes took is what the editor opens on next (#1533).
+                if failed.count < sections.count {
+                    keepBotDetailsWritten(bot.name, on: owner) { details in
+                        if descriptionChanged, !failed.contains("description") { details.description = description }
+                        if soulChanged, !failed.contains("soul") { details.soul = draft.soul }
+                    }
                 }
                 if !patch.isEmpty {
                     var outcome = BotMetaWriteOutcome(configureResult: result)
@@ -23003,12 +23125,21 @@ final class AppState: ObservableObject {
         // only once the editor loaded them from the bot itself.
         if !capabilitySections.isEmpty {
             do {
-                let result = try await client.configureBotProfile(name: bot.name, sections: capabilitySections)
-                if !BotConfigureSections.failed(
-                    in: result,
-                    among: BotCapabilities.appliedSections(for: capabilitySections)
-                ).isEmpty {
+                let result: AnyCodable
+                if let configure = chatResumeLifecycleOperations.configureBotSections {
+                    result = try await configure(client, bot.name, capabilitySections)
+                } else {
+                    result = try await client.configureBotProfile(name: bot.name, sections: capabilitySections)
+                }
+                let sections = BotCapabilities.appliedSections(for: capabilitySections)
+                let failed = BotConfigureSections.failed(in: result, among: sections)
+                if !failed.isEmpty {
                     problems.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
+                }
+                if let edited = draft.capabilities, failed.count < sections.count {
+                    keepBotDetailsWritten(bot.name, on: owner) { details in
+                        details.capabilities = details.capabilities.taking(sections.filter { !failed.contains($0) }, from: edited)
+                    }
                 }
             } catch {
                 problems.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
@@ -33658,6 +33789,14 @@ final class AppState: ObservableObject {
         /// The Bots list's hosted rooms and their pictures
         /// (`KeptGroupRooms`), once per dashboard too.
         static let groupRooms = "rpc:groups.list"
+        /// The bot editor's details of a profile (`BotProfileDetails`: its
+        /// description, SOUL, model, skills, tools and MCP servers, as
+        /// `profiles.describe` gave them), kept in that profile's answers:
+        /// Edit Bot's bot, or New Bot's Start From profile.
+        static let botDetails = "rpc:profiles.describe"
+        /// Edit Bot's MCP catalog and its servers' sign-in states
+        /// (`BotMcpSetupSnapshot`, with `mcp.servers.list`), in the bot's.
+        static let botMcpSetup = "rpc:mcp.catalog"
         /// The scope of an answer about all of a Hermes' profiles at once
         /// (delegation's pause), kept once per dashboard: no profile is
         /// named with nothing.
@@ -33720,6 +33859,7 @@ final class AppState: ObservableObject {
         as route: String,
         profile: String,
         owner: DashboardRuntimeOwner?,
+        keeps: (Kept) -> Bool = { _ in true },
         _ read: () async throws -> Kept
     ) async throws -> Kept {
         guard let owner else { return try await read() }
@@ -33727,8 +33867,8 @@ final class AppState: ObservableObject {
         _ = try await keepingAnswer(profile: profile, owner: owner, keptAs: { $0.isEmpty ? nil : route }) {
             let value = try await read()
             kept = value
-            return (try? JSONEncoder().encode(value))
-                .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+            // A read only partly Hermes' answer (`keeps` says) keeps nothing.
+            return keeps(value) ? Self.keptJSON(value) ?? [:] : [:]
         }
         guard let kept else { throw CancellationError() }
         return kept
@@ -33736,8 +33876,36 @@ final class AppState: ObservableObject {
 
     /// What `keepingRead` kept for the route on the open dashboard, or nil.
     func keptRead<Kept: Decodable>(_ type: Kept.Type, _ route: String, profile: String) -> Kept? {
-        guard let answer = keptAnswer(route, profile: profile),
-              let data = try? JSONSerialization.data(withJSONObject: answer) else { return nil }
+        keptAnswer(route, profile: profile).flatMap { Self.decodeKept(type, from: $0) }
+    }
+
+    /// Changes what `keepingRead` kept for the route on the owner's
+    /// dashboard, the one open or not, as Hermes took a write there, and
+    /// keeps it over the answer to any read asked before it (#1533). With
+    /// nothing kept to change, the write counts all the same.
+    func keepWrittenChange<Kept: Codable>(
+        _ type: Kept.Type,
+        _ route: String,
+        profile: String,
+        on owner: DashboardRuntimeOwner?,
+        _ change: (inout Kept) -> Void
+    ) {
+        guard let owner else { return }
+        guard var kept = keptAnswer(route, profile: profile, on: owner).flatMap({ Self.decodeKept(type, from: $0) }) else {
+            noteKeptAnswerWrite(for: route, profile: profile, owner: owner)
+            return
+        }
+        change(&kept)
+        guard let answer = Self.keptJSON(kept) else { return }
+        keepWrittenAnswer(answer, for: route, profile: profile, owner: owner, removals: offlineChatCache.removals)
+    }
+
+    private static func keptJSON<Kept: Encodable>(_ value: Kept) -> [String: Any]? {
+        (try? JSONEncoder().encode(value)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+    }
+
+    private static func decodeKept<Kept: Decodable>(_ type: Kept.Type, from answer: [String: Any]) -> Kept? {
+        guard let data = try? JSONSerialization.data(withJSONObject: answer) else { return nil }
         return try? JSONDecoder().decode(type, from: data)
     }
 
