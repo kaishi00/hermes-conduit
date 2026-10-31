@@ -712,6 +712,9 @@ struct ConnectorEditSheet: View {
     let store: CapabilitiesStore
     let onSaved: (String) -> Void
     @State private var edit: ConnectorServerEdit?
+    /// The profile and dashboard the entry was read from, by the store's
+    /// generation: a save after a switch writes nothing.
+    @State private var openedOn: Int?
     @State private var loadError: String?
     @State private var showingJSON = false
     @State private var problem: String?
@@ -773,6 +776,7 @@ struct ConnectorEditSheet: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .accessibilityLabel(Text("Edit Server"))
             TextField(AppLocalization.string("Name"), text: edit.name)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -793,6 +797,7 @@ struct ConnectorEditSheet: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .frame(minHeight: 240)
+                    .accessibilityLabel(Text(verbatim: "JSON"))
                 Button(AppLocalization.string("Format")) {
                     do {
                         try edit.wrappedValue.formatJSON()
@@ -831,6 +836,7 @@ struct ConnectorEditSheet: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .frame(minHeight: 88)
+                    .accessibilityLabel(Text("Arguments"))
             } header: {
                 Text("Arguments")
             } footer: {
@@ -850,7 +856,9 @@ struct ConnectorEditSheet: View {
     private func load() async {
         guard edit == nil else { return }
         do {
+            let generation = store.generation
             edit = ConnectorServerEdit(name: name, entry: try await store.serverConfig(name))
+            openedOn = generation
         } catch {
             loadError = UserFacingError.message(for: error)
         }
@@ -871,7 +879,7 @@ struct ConnectorEditSheet: View {
     }
 
     private func save() {
-        guard let edit else { return }
+        guard let edit, let openedOn else { return }
         problem = nil
         let saved: (name: String, entry: [String: Any])
         do {
@@ -883,7 +891,12 @@ struct ConnectorEditSheet: View {
         saving = true
         Task {
             do {
-                try await store.saveServer(original: edit.originalName, name: saved.name, entry: saved.entry)
+                try await store.saveServer(
+                    original: edit.originalName,
+                    name: saved.name,
+                    entry: saved.entry,
+                    openedOn: openedOn
+                )
                 Haptics.success()
                 onSaved(saved.name)
                 dismiss()

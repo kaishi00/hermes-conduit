@@ -629,7 +629,7 @@ extension KanbanTests {
         XCTAssertEqual(entry["url"] as? String, "https://old")
         XCTAssertEqual(requester.calls.last?.path, "/api/config?include_defaults=false&profile=work")
 
-        try await store.saveServer(original: "griply", name: "Griply", entry: ["url": "https://new"])
+        try await store.saveServer(original: "griply", name: "Griply", entry: ["url": "https://new"], openedOn: store.generation)
         let put = try XCTUnwrap(requester.calls.first { $0.method == "PUT" })
         XCTAssertEqual(put.path, "/api/mcp/servers?profile=work")
         XCTAssertEqual(put.body?["profile"] as? String, "work")
@@ -639,13 +639,13 @@ extension KanbanTests {
         XCTAssertEqual(store.servers.map(\.name), ["Griply"])
 
         do {
-            try await store.saveServer(original: "Griply", name: "linear", entry: ["url": "https://x"])
+            try await store.saveServer(original: "Griply", name: "linear", entry: ["url": "https://x"], openedOn: store.generation)
             XCTFail("a taken name is refused")
         } catch {
             XCTAssertEqual(error as? ConnectorServerEdit.Problem, .gone("Griply"), "the host's map still says griply")
         }
         do {
-            try await store.saveServer(original: "griply", name: "linear", entry: ["url": "https://x"])
+            try await store.saveServer(original: "griply", name: "linear", entry: ["url": "https://x"], openedOn: store.generation)
             XCTFail("a taken name is refused")
         } catch {
             XCTAssertEqual(error as? ConnectorServerEdit.Problem, .nameTaken("linear"))
@@ -677,13 +677,31 @@ extension KanbanTests {
         }
 
         do {
-            try await store.saveServer(original: "griply", name: "griply", entry: ["url": "https://new"])
+            try await store.saveServer(original: "griply", name: "griply", entry: ["url": "https://new"], openedOn: store.generation)
             XCTFail("a save after a switch writes nothing")
         } catch {
             XCTAssertEqual(error as? CapabilitiesStoreError, .profileChanged)
         }
         XCTAssertFalse(requester.calls.contains { $0.method == "PUT" })
         XCTAssertTrue(other.calls.isEmpty)
+    }
+
+    func testAServerEditorOpenedBeforeASwitchSavesNothing() async {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/config": ["mcp_servers": ["griply": ["url": "https://old"]]],
+            "/api/mcp/servers": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        let opened = store.generation
+        store.configure(requester: requester, profile: "default")
+        do {
+            try await store.saveServer(original: "griply", name: "griply", entry: ["url": "https://new"], openedOn: opened)
+            XCTFail("the entry came from another profile")
+        } catch {
+            XCTAssertEqual(error as? CapabilitiesStoreError, .profileChanged)
+        }
+        XCTAssertTrue(requester.calls.isEmpty)
     }
 
     func testAHermesWithoutTheEditRouteSaysToUpdate() async {
@@ -694,7 +712,7 @@ extension KanbanTests {
         let store = CapabilitiesStore()
         store.configure(requester: requester, profile: "default")
         do {
-            try await store.saveServer(original: "griply", name: "griply", entry: ["url": "https://new"])
+            try await store.saveServer(original: "griply", name: "griply", entry: ["url": "https://new"], openedOn: store.generation)
             XCTFail("a 405 is a Hermes without the route")
         } catch {
             XCTAssertEqual(error as? CapabilitiesStoreError, .editUnsupported)

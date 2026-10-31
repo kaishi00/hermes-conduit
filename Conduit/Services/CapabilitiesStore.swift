@@ -86,8 +86,8 @@ final class CapabilitiesStore {
     @ObservationIgnored private weak var requester: (any DashboardJSONRequester)?
     private(set) var profile = "default"
     /// Bumped on every profile or dashboard switch: work started before it
-    /// commits nothing.
-    @ObservationIgnored private var generation = 0
+    /// commits nothing. An editor keeps the one it read under.
+    @ObservationIgnored private(set) var generation = 0
     /// Bumped by every load of a list and every change made to it here: a
     /// load commits only if nothing newer touched its list meanwhile, so a
     /// refresh that answers late can't bring back an older list or undo a
@@ -469,8 +469,11 @@ final class CapabilitiesStore {
     /// can't land between them and be undone, and both go to the dashboard
     /// and profile the editor opened on: after a switch nothing is written.
     /// Hermes checks the entry and says what it refused.
-    func saveServer(original: String, name: String, entry: [String: Any]) async throws {
+    func saveServer(original: String, name: String, entry: [String: Any], openedOn: Int) async throws {
         let token = generation
+        // The editor read its entry before this: a switch since then would
+        // write that profile's entry into this one.
+        guard token == openedOn else { throw CapabilitiesStoreError.profileChanged }
         guard let requester else { throw CapabilitiesStoreError.notConnected }
         let profile = self.profile
         try await ProfileConfigWriteQueue.runThrowing {
