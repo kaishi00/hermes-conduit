@@ -2196,15 +2196,19 @@ the lists they sit in.
 
 **Siblings:** installed skills and toolsets (AppState) · the catalog, tool
 counts, backends, MCP servers and plugins (CapabilitiesStore) · the Skills
-and Tools tabs · the bot editor's skills, tools and MCP lists (see Bots:
+and Tools tabs · the Connectors tab's list and server page (their tests) · the bot editor's skills, tools and MCP lists (see Bots:
 create and edit) · the skill, toolset and catalog skill detail pages · the Kanban
-task composer's skill picker · the Capabilities captions ("Changes apply
-to new sessions."; no other behavior text describes these lists)
+task composer's skill picker · a connector's editor (Edit Server: the form
+and the JSON, as Hermes Desktop's mcp.json editor) · the Capabilities
+captions ("Changes apply to new sessions."; the editor's footers) ·
+README.md's Capabilities line
 
 **Code**
 - Installed lists and switches: `Conduit/Services/AppState.swift` (loadCapabilities, toggleSkill, toggleToolset, capabilityLoadGeneration, capabilitiesOwner, currentCapabilitiesOwner, capabilitiesAreCurrent, capabilityRowsAreCurrent, retireCapabilitySnapshot, CapabilitySnapshotOwner, CapabilityDetailScope, CapabilityLoadPolicy), `Conduit/Services/CapabilityToggleWrites.swift`
-- The rest of the page: `Conduit/Services/CapabilitiesStore.swift` (configure, serves)
+- The rest of the page: `Conduit/Services/CapabilitiesStore.swift` (configure, serves, probe, probeServers)
 - Views: `Conduit/Views/CapabilitiesView.swift`, `Conduit/Views/Capabilities/CapabilitySkillsTab.swift`, `Conduit/Views/Capabilities/CapabilityToolsTab.swift`, `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanSkillsPickerSheet)
+- Connectors tab: `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift` (CapabilityConnectorsTab's tests, ConnectorDetailPage)
+- Editing a connector: `Conduit/Models/CapabilityCatalogModels.swift` (ConnectorServerEdit), `Conduit/Services/CapabilitiesStore.swift` (serverConfig, saveServer), `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift` (ConnectorDetailPage, ConnectorEditSheet)
 - Tests: `ConduitTests/KanbanTests+Capabilities.swift`, `ConduitTests/KanbanTests.swift` (CapabilityLoadPolicy)
 
 **Rulings**
@@ -2212,13 +2216,15 @@ to new sessions."; no other behavior text describes these lists)
 - Switches reach Hermes one after another in the order flipped, since each rewrites one config.yaml. A failed write puts back what Hermes last confirmed only when no newer flip of that switch is on its way, and a flip a newer one replaced reports no failure (#868 follow-up, #1191).
 - The installed lists belong to a dashboard, its bridge and a profile, not a profile name: two dashboards can both have "default". Another dashboard's rows never show, act or seed a picker, a dashboard switch clears them, and Turn All On/Off stops once the list it started from isn't the one showing, and a pushed detail page reads its skill or toolset again once Capabilities points at the new dashboard and profile; a catalog skill's page keeps to the one it was opened for and shows only its name and description after a switch (2026-10-24, #1005, #1219; Eric approved the #1005 fixes).
 - Switches, the store's other config-changing writes and the bot editor's writes wait their turn with every other profile config save (Profile config saves), so a settings GET→PUT can't put a flip back (2026-10-24, #1222).
+- A connector test runs to its answer once sent, even when the list or page that started it goes away (opening a server from the list cancels the list's tests), and leaving the list starts no more. A test cancelled under it (the dashboard gone) records nothing, so it's tested again rather than shown as "interrupted"; the server page then says it's untested (Eric asked for issue 1570's fix, 2026-10-31, #1574).
+- A connector is edited where it lives: the profile's `mcp_servers` in config.yaml, read with `include_defaults=false` so `${NAME}` key references stay references and keys stay in .env. The form changes the name, address, command and arguments and keeps every other key; the JSON is the whole entry. Saving reads the map again and writes it back whole (`PUT /api/mcp/servers`, Desktop's mcp.json save) in one turn of the config queue, so the other servers go back as the host had them a moment before (a Desktop or terminal write landing between those two requests is still overwritten, Profile config saves' open gap); both go to the dashboard and profile the editor opened on, and after a switch nothing is written and the editor says so. A server the host changed while the editor was open is refused rather than overwritten, and a test of the old entry still running is run again on the saved one. A rename that would take another server's name is refused, an OAuth server's rename says it signs out (Hermes keeps tokens by name), a plugin's server has no Edit, and a Hermes without the route says to update (Eric asked for editing 2026-10-31, #1574, issue 1570).
 
 **Open gaps**
 - AppState's list reads go through a live DashboardTicketBridge with no test seam, so its generation guard has no test.
 - Whether a list read can overwrite a flip in the bot editor's lists hasn't been checked.
 - The Kanban skill picker says "No skills match." when it withholds another dashboard's skills, the same as a search miss.
 
-**Checked:** 2026-10-24, at #1219 and #1222.
+**Checked:** 2026-10-31, #1574 (connector tests outlive the page that started them; Edit Server); 2026-10-24, at #1219 and #1222.
 
 ## Reply progress signals
 
@@ -2616,7 +2622,7 @@ the plugin list)
 - Queue: `Conduit/Services/ProfileConfigWriteQueue.swift`
 - Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (save, saveLiveTranscription, saveVendorSelection, saveProviderSelection; putConfig keeps what it wrote), used by `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/SpeechServerSettingsView.swift`, `Conduit/Views/LocalLiveViews.swift`
 - AppState: `Conduit/Services/AppState.swift` (updateProfileConfig, setDisplayPreference, setProfileFallbackModels, setProfileMainModel, setVoiceReplyModel, setProfileSetting, toggleSkill, toggleToolset)
-- Capabilities: `Conduit/Services/CapabilitiesStore.swift` (request, writesProfileConfig)
+- Capabilities: `Conduit/Services/CapabilitiesStore.swift` (request, writesProfileConfig, serverConfig and saveServer: Edit Server's read, and its read and whole-map write in one turn)
 - Gateway RPCs: `Conduit/Services/HermesClient.swift` (configureBotProfile, configureBotModel, addBotMcpServer, setBusyInputMode)
 - Plugin update: `Conduit/Services/NotifierPluginUpdate.swift` (NotifierPluginUpdater install and update requests)
 - Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+OverlappingSaves.swift`
@@ -2635,7 +2641,7 @@ not the config.
 **Open gaps**
 - A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.
 
-**Checked:** 2026-10-31, #1558 (voice settings' saves are what the page opens on next, kept on the phone; what's written is unchanged); 2026-10-31, #1552 (a config save, a single setting's included, is what the settings pages open on next, kept on the phone; what's written is unchanged); 2026-10-26, #1282 (the Thinking choice writes `display.show_reasoning` and `display.conduit_thinking_on_request` in one save); 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
+**Checked:** 2026-10-31, #1574 (Edit Server reads in turn, and reads and writes the whole MCP map in one turn); 2026-10-31, #1558 (voice settings' saves are what the page opens on next, kept on the phone; what's written is unchanged); 2026-10-31, #1552 (a config save, a single setting's included, is what the settings pages open on next, kept on the phone; what's written is unchanged); 2026-10-26, #1282 (the Thinking choice writes `display.show_reasoning` and `display.conduit_thinking_on_request` in one save); 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
 
 ## Wake phrase
 

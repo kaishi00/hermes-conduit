@@ -691,3 +691,193 @@ enum CapabilityInstallState: Equatable {
     case running
     case failed(String)
 }
+
+// MARK: - Editing a server
+
+/// One MCP server's entry in the profile's `mcp_servers` (config.yaml), being
+/// edited (#1570). The form's fields and the JSON are two views of the same
+/// entry: the form changes only the name, address, command and arguments,
+/// and every other key (headers, env, tools, timeouts) is kept as written.
+/// Keys Hermes saved for the server stay in .env; the entry holds only their
+/// `${NAME}` references, since the config is read without expanding them.
+struct ConnectorServerEdit {
+    enum Problem: LocalizedError, Equatable {
+        case noName
+        case nameTaken(String)
+        case noTarget
+        case notAnObject
+        case invalidJSON
+        case gone(String)
+        case changedOnHost(String)
+
+        var message: String {
+            switch self {
+            case .noName: return AppLocalization.string("Give the server a name.")
+            case .nameTaken(let name): return AppLocalization.string("Another server is already called \(name).")
+            case .noTarget: return AppLocalization.string("Give the server an address or a command.")
+            case .notAnObject: return AppLocalization.string("Write the server as one JSON object, such as {\"url\": \"https://…\"}.")
+            case .invalidJSON: return AppLocalization.string("That isn't valid JSON.")
+            case .gone(let name): return AppLocalization.string("\(name) isn't in this profile's config anymore.")
+            case .changedOnHost(let name): return AppLocalization.string("\(name) changed on your host while you were editing. Close this and edit it again.")
+            }
+        }
+
+        var errorDescription: String? { message }
+    }
+
+    let originalName: String
+    /// The entry as it was read, to tell whether the host changed it since.
+    let loaded: [String: Any]
+    var name: String
+    var url: String
+    var command: String
+    /// One argument per line.
+    var arguments: String
+    var json: String
+    /// A server reached by address, rather than a command the host runs.
+    private(set) var isRemote: Bool
+    private var entry: [String: Any]
+    /// The arguments as the form last showed them: untouched, the entry's
+    /// own (numbers stay numbers).
+    private var shownArguments: String
+
+    init(name: String, entry: [String: Any]) {
+        originalName = name
+        loaded = entry
+        self.name = name
+        self.entry = entry
+        isRemote = Self.reachedByAddress(entry)
+        url = entry["url"] as? String ?? ""
+        command = entry["command"] as? String ?? ""
+        arguments = Self.argumentLines(entry)
+        shownArguments = arguments
+        json = Self.pretty(entry)
+    }
+
+    private static func reachedByAddress(_ entry: [String: Any]) -> Bool {
+        entry["url"] != nil || entry["command"] == nil
+    }
+
+    private static func argumentLines(_ entry: [String: Any]) -> String {
+        (entry["args"] as? [Any] ?? []).map { "\($0)" }.joined(separator: "\n")
+    }
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// The entry with the form's fields written in, every other key kept.
+    func formEntry() throws -> [String: Any] {
+        var next = entry
+        if isRemote {
+            let address = url.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !address.isEmpty else { throw Problem.noTarget }
+            next["url"] = address
+        } else {
+            let program = command.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !program.isEmpty else { throw Problem.noTarget }
+            next["command"] = program
+            guard arguments != shownArguments else { return next }
+            // A line left exactly as it was keeps its own value (a number
+            // stays a number, an empty or spaced argument stays as it is),
+            // each original used once; a changed or new line is the text
+            // typed, trimmed, and a blank new line is dropped.
+            var unused = entry["args"] as? [Any] ?? []
+            var args: [Any] = []
+            for line in arguments.components(separatedBy: .newlines) {
+                if let match = unused.firstIndex(where: { "\($0)" == line }) {
+                    args.append(unused.remove(at: match))
+                    continue
+                }
+                let typed = line.trimmingCharacters(in: .whitespaces)
+                if !typed.isEmpty { args.append(typed) }
+            }
+            if args.isEmpty && entry["args"] == nil {
+                next.removeValue(forKey: "args")
+            } else {
+                next["args"] = args
+            }
+        }
+        return next
+    }
+
+    /// The JSON as an entry: one object with an address or a command.
+    func jsonEntry() throws -> [String: Any] {
+        guard let data = json.data(using: .utf8),
+              let parsed = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else {
+            throw Problem.invalidJSON
+        }
+        guard let object = parsed as? [String: Any] else { throw Problem.notAnObject }
+        let hasURL = !((object["url"] as? String) ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+        let hasCommand = !((object["command"] as? String) ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+        guard hasURL || hasCommand else { throw Problem.noTarget }
+        return object
+    }
+
+    /// Moving from the form to the JSON: the JSON shows the form's changes.
+    mutating func showJSON() throws {
+        let next = try formEntry()
+        entry = next
+        json = Self.pretty(next)
+    }
+
+    /// Moving from the JSON to the form: the form shows what the JSON says.
+    mutating func showForm() throws {
+        let next = try jsonEntry()
+        entry = next
+        // The JSON may have moved it between an address and a command.
+        isRemote = Self.reachedByAddress(next)
+        url = next["url"] as? String ?? ""
+        command = next["command"] as? String ?? ""
+        arguments = Self.argumentLines(next)
+        shownArguments = arguments
+        json = Self.pretty(next)
+    }
+
+    /// Re-indents the JSON, when it parses.
+    mutating func formatJSON() throws {
+        json = Self.pretty(try jsonEntry())
+    }
+
+    /// The name and entry to save, from the form or the JSON.
+    func saved(fromJSON: Bool) throws -> (name: String, entry: [String: Any]) {
+        guard !trimmedName.isEmpty else { throw Problem.noName }
+        return (trimmedName, fromJSON ? try jsonEntry() : try formEntry())
+    }
+
+    /// Whether saving signs an OAuth server out: Hermes keeps its tokens
+    /// under the server's name.
+    func renameSignsOut(auth: String?) -> Bool {
+        auth == "oauth" && trimmedName != originalName && !trimmedName.isEmpty
+    }
+
+    /// The whole `mcp_servers` map with `original` replaced by `name`'s
+    /// entry, read fresh just before saving: Hermes replaces the map as a
+    /// whole (`PUT /api/mcp/servers`), so every other server goes back as
+    /// it was on the host.
+    static func replacing(
+        in servers: [String: Any],
+        original: String,
+        loaded: [String: Any],
+        name: String,
+        entry: [String: Any]
+    ) throws -> [String: Any] {
+        guard let current = servers[original] as? [String: Any] else { throw Problem.gone(original) }
+        // Written back whole, so a change the host made meanwhile would be
+        // undone: refused instead.
+        guard pretty(current) == pretty(loaded) else { throw Problem.changedOnHost(original) }
+        if name != original, servers[name] != nil { throw Problem.nameTaken(name) }
+        var next = servers
+        next.removeValue(forKey: original)
+        next[name] = entry
+        return next
+    }
+
+    static func pretty(_ entry: [String: Any]) -> String {
+        guard JSONSerialization.isValidJSONObject(entry),
+              let data = try? JSONSerialization.data(
+                withJSONObject: entry,
+                options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+              ),
+              let text = String(data: data, encoding: .utf8) else { return "{}" }
+        return text
+    }
+}

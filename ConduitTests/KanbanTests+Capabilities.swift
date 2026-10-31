@@ -486,6 +486,314 @@ extension KanbanTests {
         XCTAssertEqual(store.plugins.first { $0.name == "Weather" }?.isEnabled, true)
     }
 
+    /// Opening a server from the Connectors list cancels the list's tests;
+    /// a test already sent still lands, and isn't shown as interrupted (#1570).
+    func testAConnectorTestFinishesWhenTheListThatStartedItGoesAway() async {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [
+                ["name": "griply", "transport": "http", "url": "https://g", "enabled": true],
+                ["name": "linear", "transport": "http", "url": "https://l", "enabled": true],
+            ]],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+            "/api/mcp/servers/griply/test": ["ok": true, "tools": [["name": "list_goals"]]],
+            "/api/mcp/servers/linear/test": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        await store.loadConnectors()
+        var held: CheckedContinuation<Void, Never>?
+        requester.beforeAnswering = { path in
+            guard path == "/api/mcp/servers/griply/test", held == nil else { return }
+            await withCheckedContinuation { held = $0 }
+        }
+
+        let list = Task { await store.probeServers() }
+        while held == nil { await Task.yield() }
+        list.cancel()
+        held?.resume()
+        await list.value
+        while store.probing.contains("griply") { await Task.yield() }
+
+        XCTAssertEqual(store.probes["griply"]?.ok, true)
+        XCTAssertEqual(store.probes["griply"]?.tools.map(\.name), ["list_goals"])
+    }
+
+    /// Leaving the list while its first tests run starts no more of them.
+    func testLeavingTheConnectorsListStartsNoMoreTests() async {
+        let names = ["a", "b", "c", "d", "e"]
+        var responses: [String: [String: Any]] = [
+            "/api/mcp/servers": ["servers": names.map { ["name": $0, "transport": "http", "url": "https://\($0)", "enabled": true] }],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+        ]
+        for name in names { responses["/api/mcp/servers/\(name)/test"] = ["ok": true] }
+        let requester = CapabilityMockRequester(responses: responses)
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        await store.loadConnectors()
+        var held: [CheckedContinuation<Void, Never>] = []
+        requester.beforeAnswering = { path in
+            guard path.hasSuffix("/test") else { return }
+            await withCheckedContinuation { held.append($0) }
+        }
+
+        let list = Task { await store.probeServers() }
+        while held.count < 3 { await Task.yield() }
+        list.cancel()
+        held.forEach { $0.resume() }
+        await list.value
+
+        XCTAssertEqual(requester.calls.filter { $0.path.hasSuffix("/test") }.count, 3)
+        XCTAssertEqual(store.probes.count, 3)
+        XCTAssertTrue(store.probing.isEmpty)
+    }
+
+    /// A test cancelled under it (the dashboard gone) isn't a failed test:
+    /// nothing is recorded, so it's tested again.
+    func testACancelledConnectorTestRecordsNothing() async {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [["name": "griply", "transport": "http", "url": "https://g", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+        ])
+        requester.failures["/api/mcp/servers/griply/test"] = CancellationError()
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        await store.loadConnectors()
+
+        await store.probe("griply")
+        XCTAssertNil(store.probes["griply"])
+        XCTAssertTrue(store.probing.isEmpty)
+    }
+
+    // MARK: Editing a server (#1570)
+
+    func testTheServerFormChangesOnlyItsFieldsAndKeepsTheRest() throws {
+        var edit = ConnectorServerEdit(name: "griply", entry: [
+            "url": "https://mcp.griply.app/mcp",
+            "headers": ["Authorization": "Bearer ${MCP_GRIPLY_API_KEY}"],
+            "timeout": 30,
+        ])
+        XCTAssertTrue(edit.isRemote)
+        XCTAssertTrue(edit.json.contains("${MCP_GRIPLY_API_KEY}"), "a key shows as its reference")
+        edit.url = "  https://mcp.griply.app/v2  "
+        edit.name = "Griply"
+        let saved = try edit.saved(fromJSON: false)
+        XCTAssertEqual(saved.name, "Griply")
+        XCTAssertEqual(saved.entry["url"] as? String, "https://mcp.griply.app/v2")
+        XCTAssertEqual((saved.entry["headers"] as? [String: String])?["Authorization"], "Bearer ${MCP_GRIPLY_API_KEY}")
+        XCTAssertEqual(saved.entry["timeout"] as? Int, 30)
+        XCTAssertTrue(edit.renameSignsOut(auth: "oauth"))
+        XCTAssertFalse(edit.renameSignsOut(auth: "header"))
+
+        // The JSON shows the form's change, and the form what the JSON says.
+        try edit.showJSON()
+        XCTAssertTrue(edit.json.contains("https://mcp.griply.app/v2"))
+        edit.json = #"{"url": "https://other.example/mcp", "enabled": false}"#
+        try edit.showForm()
+        XCTAssertEqual(edit.url, "https://other.example/mcp")
+        XCTAssertEqual(try edit.saved(fromJSON: true).entry["enabled"] as? Bool, false)
+
+        edit.url = ""
+        XCTAssertThrowsError(try edit.saved(fromJSON: false)) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .noTarget) }
+        edit.name = " "
+        XCTAssertThrowsError(try edit.saved(fromJSON: false)) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .noName) }
+    }
+
+    func testServerJSONMustBeOneObjectWithAnAddressOrCommand() {
+        var edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["-y", "server-filesystem"]])
+        XCTAssertFalse(edit.isRemote)
+        XCTAssertEqual(edit.arguments, "-y\nserver-filesystem")
+        edit.arguments = "-y\n\n  server-filesystem\n/tmp  "
+        XCTAssertEqual(try edit.formEntry()["args"] as? [String], ["-y", "server-filesystem", "/tmp"])
+
+        edit.json = "{ not json"
+        XCTAssertThrowsError(try edit.showForm()) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .invalidJSON) }
+        edit.json = #"["npx"]"#
+        XCTAssertThrowsError(try edit.jsonEntry()) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .notAnObject) }
+        edit.json = #"{"timeout": 5}"#
+        XCTAssertThrowsError(try edit.jsonEntry()) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .noTarget) }
+    }
+
+    func testSavingAServerReplacesOnlyItInTheProfilesMap() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/config": ["mcp_servers": [
+                "griply": ["url": "https://old", "headers": ["Authorization": "Bearer ${MCP_GRIPLY_API_KEY}"]],
+                "linear": ["url": "https://l", "enabled": false],
+            ]],
+            "/api/mcp/servers": ["ok": true, "servers": [["name": "Griply", "transport": "http", "url": "https://new", "enabled": false]]],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+
+        let entry = try await store.serverConfig("griply")
+        XCTAssertEqual(entry["url"] as? String, "https://old")
+        XCTAssertEqual(requester.calls.last?.path, "/api/config?include_defaults=false&profile=work")
+
+        try await store.saveServer(original: "griply", loaded: entry, name: "Griply", entry: ["url": "https://new"], openedOn: store.generation)
+        let put = try XCTUnwrap(requester.calls.first { $0.method == "PUT" })
+        XCTAssertEqual(put.path, "/api/mcp/servers?profile=work")
+        XCTAssertEqual(put.body?["profile"] as? String, "work")
+        let servers = try XCTUnwrap(put.body?["servers"] as? [String: Any])
+        XCTAssertEqual(Set(servers.keys), ["Griply", "linear"], "a rename drops the old name")
+        XCTAssertEqual((servers["linear"] as? [String: Any])?["enabled"] as? Bool, false, "other servers go back as they were")
+        XCTAssertEqual(store.servers.map(\.name), ["Griply"])
+
+        do {
+            try await store.saveServer(original: "Griply", loaded: entry, name: "linear", entry: ["url": "https://x"], openedOn: store.generation)
+            XCTFail("a taken name is refused")
+        } catch {
+            XCTAssertEqual(error as? ConnectorServerEdit.Problem, .gone("Griply"), "the host's map still says griply")
+        }
+        do {
+            try await store.saveServer(original: "griply", loaded: entry, name: "linear", entry: ["url": "https://x"], openedOn: store.generation)
+            XCTFail("a taken name is refused")
+        } catch {
+            XCTAssertEqual(error as? ConnectorServerEdit.Problem, .nameTaken("linear"))
+        }
+    }
+
+    func testTheFormFollowsAServerMovedBetweenAddressAndCommandInJSON() throws {
+        var edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["-y", 3]])
+        // Untouched arguments go back as they were, numbers included, and
+        // an edit elsewhere keeps the number.
+        XCTAssertEqual((try edit.formEntry()["args"] as? [Any])?.last as? Int, 3)
+        edit.arguments = "-y\n--port\n3"
+        let edited = try XCTUnwrap(try edit.formEntry()["args"] as? [Any])
+        XCTAssertEqual(edited.count, 3)
+        XCTAssertEqual(edited[1] as? String, "--port")
+        XCTAssertEqual(edited[2] as? Int, 3)
+        // An original is reused once: a second "3" is the text typed.
+        edit.arguments = "-y\n3\n3"
+        let twice = try XCTUnwrap(try edit.formEntry()["args"] as? [Any])
+        XCTAssertEqual(twice[1] as? Int, 3)
+        XCTAssertEqual(twice[2] as? String, "3")
+        edit.arguments = "-y\n3"
+        try edit.showJSON()
+        edit.json = #"{"url": "https://files.example/mcp"}"#
+        try edit.showForm()
+        XCTAssertTrue(edit.isRemote)
+        XCTAssertEqual(try edit.saved(fromJSON: false).entry["url"] as? String, "https://files.example/mcp")
+    }
+
+    func testEditingOneArgumentKeepsEmptyAndSpacedOnes() throws {
+        var edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["--name", "", " x", "old"]])
+        edit.arguments = "--name\n\n x\nnew"
+        XCTAssertEqual(try edit.formEntry()["args"] as? [String], ["--name", "", " x", "new"])
+    }
+
+    func testAServerSaveSendsNothingAfterAProfileSwitch() async throws {
+        let config: [String: [String: Any]] = [
+            "/api/config": ["mcp_servers": ["griply": ["url": "https://old"]]],
+            "/api/mcp/servers": ["ok": true, "servers": [[String: Any]]()],
+        ]
+        let requester = CapabilityMockRequester(responses: config)
+        let other = CapabilityMockRequester(responses: config)
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        requester.beforeAnswering = { path in
+            if path == "/api/config" { store.configure(requester: other, profile: "default") }
+        }
+
+        do {
+            try await store.saveServer(original: "griply", loaded: ["url": "https://old"], name: "griply", entry: ["url": "https://new"], openedOn: store.generation)
+            XCTFail("a save after a switch writes nothing")
+        } catch {
+            XCTAssertEqual(error as? CapabilitiesStoreError, .profileChanged)
+        }
+        XCTAssertFalse(requester.calls.contains { $0.method == "PUT" })
+        XCTAssertTrue(other.calls.isEmpty)
+    }
+
+    func testAServerEditorOpenedBeforeASwitchSavesNothing() async {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/config": ["mcp_servers": ["griply": ["url": "https://old"]]],
+            "/api/mcp/servers": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        let opened = store.generation
+        store.configure(requester: requester, profile: "default")
+        do {
+            try await store.saveServer(original: "griply", loaded: ["url": "https://old"], name: "griply", entry: ["url": "https://new"], openedOn: opened)
+            XCTFail("the entry came from another profile")
+        } catch {
+            XCTAssertEqual(error as? CapabilitiesStoreError, .profileChanged)
+        }
+        XCTAssertTrue(requester.calls.isEmpty)
+    }
+
+    func testAServerChangedOnTheHostWhileEditingIsntOverwritten() async {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/config": ["mcp_servers": ["griply": ["url": "https://old", "enabled": false]]],
+            "/api/mcp/servers": ["ok": true],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        do {
+            try await store.saveServer(
+                original: "griply",
+                loaded: ["url": "https://old"],
+                name: "griply",
+                entry: ["url": "https://new"],
+                openedOn: store.generation
+            )
+            XCTFail("the host turned it off since the editor read it")
+        } catch {
+            XCTAssertEqual(error as? ConnectorServerEdit.Problem, .changedOnHost("griply"))
+        }
+        XCTAssertFalse(requester.calls.contains { $0.method == "PUT" })
+    }
+
+    func testATestRunningWhenTheServerIsSavedIsRunAgainOnTheSavedEntry() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["ok": true, "servers": [["name": "griply", "transport": "http", "url": "https://g", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+            "/api/config": ["mcp_servers": ["griply": ["url": "https://old"]]],
+            "/api/mcp/servers/griply/test": ["ok": false, "error": "old address"],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        await store.loadConnectors()
+        var held: CheckedContinuation<Void, Never>?
+        requester.beforeAnswering = { path in
+            guard path == "/api/mcp/servers/griply/test", held == nil else { return }
+            await withCheckedContinuation { held = $0 }
+        }
+        let first = Task { await store.probe("griply") }
+        while held == nil { await Task.yield() }
+
+        try await store.saveServer(
+            original: "griply",
+            loaded: ["url": "https://old"],
+            name: "griply",
+            entry: ["url": "https://new"],
+            openedOn: store.generation
+        )
+        requester.responses["/api/mcp/servers/griply/test"] = ["ok": true]
+        held?.resume()
+        await first.value
+        // The save's own background test may still be finishing.
+        while store.probing.contains("griply") { await Task.yield() }
+
+        XCTAssertEqual(store.probes["griply"]?.ok, true, "the old entry's answer is dropped and the saved one tested")
+        XCTAssertGreaterThanOrEqual(requester.calls.filter { $0.path.hasSuffix("/test") }.count, 2)
+    }
+
+    func testAHermesWithoutTheEditRouteSaysToUpdate() async {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/config": ["mcp_servers": ["griply": ["url": "https://old"]]],
+        ])
+        requester.failures["PUT /api/mcp/servers"] = DashboardTicketBridgeError.http(status: 405, detail: "Method Not Allowed")
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        do {
+            try await store.saveServer(original: "griply", loaded: ["url": "https://old"], name: "griply", entry: ["url": "https://new"], openedOn: store.generation)
+            XCTFail("a 405 is a Hermes without the route")
+        } catch {
+            XCTAssertEqual(error as? CapabilitiesStoreError, .editUnsupported)
+        }
+    }
+
     func testARefreshOnItsWayDoesntUndoASwitchFlippedMeanwhile() async throws {
         let requester = CapabilityMockRequester(responses: [
             "/api/dashboard/plugins/hub": ["plugins": [["name": "Weather", "source": "git", "runtime_status": "disabled"]]],
@@ -552,9 +860,13 @@ private final class CapabilityMockRequester: DashboardJSONRequester {
     struct Call {
         let path: String
         let method: String
+        var body: [String: Any]? = nil
     }
 
     var responses: [String: [String: Any]]
+    /// Paths ("/api/x", or "PUT /api/x" for one method) that fail with
+    /// this error instead of answering.
+    var failures: [String: Error] = [:]
     var calls: [Call] = []
     /// Runs before each answer, which is read when the request is made: a
     /// test can hold a request here.
@@ -571,10 +883,13 @@ private final class CapabilityMockRequester: DashboardJSONRequester {
         timeoutMilliseconds: Int,
         maxResponseBytes: Int
     ) async throws -> [String: Any] {
-        calls.append(Call(path: path, method: method))
+        calls.append(Call(path: path, method: method, body: body))
         let bare = path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? path
         let response = responses[bare]
         await beforeAnswering?(bare)
+        // As the dashboard bridge does: a cancelled caller gets no answer.
+        try Task.checkCancellation()
+        if let failure = failures["\(method) \(bare)"] ?? failures[bare] { throw failure }
         guard let response else {
             throw URLError(.fileDoesNotExist)
         }
