@@ -83,11 +83,11 @@ struct TranscriptWorkingLine: Equatable {
 
 /// What an update changed, by row id: rows that came, rows that went,
 /// rows still there that draw differently (TranscriptRow.drawsSame), and
-/// rows still there in another order. A row can be both changed and moved:
-/// it draws differently in its new place (a diffable snapshot takes the
-/// move from the ids and redraws the changed rows). Text streaming into a
-/// live row isn't a change here: that row reads it from the live
-/// projection.
+/// the fewest rows still there that moved for the rest to keep their
+/// order. A row can be both changed and moved: it draws differently in its
+/// new place (a diffable snapshot takes the move from the ids and redraws
+/// the changed rows). Text streaming into a live row isn't a change here:
+/// that row reads it from the live projection.
 struct TranscriptChangeSet: Equatable {
     var inserted: [String] = []
     var removed: [String] = []
@@ -125,11 +125,39 @@ struct TranscriptChangeSet: Equatable {
         }
         changes.removed = before.filter { !afterIDs.contains($0.id) }.map(\.id)
         // Rows in both whose order changed (a saved row Hermes places
-        // elsewhere): each one whose place among them differs.
-        let stayedBefore = before.map(\.id).filter { afterIDs.contains($0) }
-        let stayedAfter = after.map(\.id).filter { beforeByID[$0] != nil }
-        changes.moved = zip(stayedBefore, stayedAfter).filter { $0.0 != $0.1 }.map(\.1)
+        // elsewhere): all but the longest run of them still in order.
+        let oldPlace = Dictionary(before.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        changes.moved = outOfOrder(after.map(\.id).filter { oldPlace[$0] != nil }, oldPlace: oldPlace)
         return changes
+    }
+
+    /// The ids, in their new order, that leave the longest run in their
+    /// old order (`oldPlace`) when taken out: one row moved across three
+    /// others is that one row, not four.
+    private static func outOfOrder(_ ids: [String], oldPlace: [String: Int]) -> [String] {
+        let places = ids.map { oldPlace[$0] ?? 0 }
+        // Patience sorting: tails[k] is the index of the lowest last place
+        // a run in order of length k + 1 ends at, and `previous` links each
+        // index to the one before it in its run.
+        var tails: [Int] = []
+        var previous = [Int](repeating: -1, count: places.count)
+        for (index, place) in places.enumerated() {
+            var low = 0
+            var high = tails.count
+            while low < high {
+                let middle = (low + high) / 2
+                if places[tails[middle]] < place { low = middle + 1 } else { high = middle }
+            }
+            if low > 0 { previous[index] = tails[low - 1] }
+            if low == tails.count { tails.append(index) } else { tails[low] = index }
+        }
+        var inOrder = Set<Int>()
+        var index = tails.last ?? -1
+        while index >= 0 {
+            inOrder.insert(index)
+            index = previous[index]
+        }
+        return ids.indices.filter { !inOrder.contains($0) }.map { ids[$0] }
     }
 
     /// The recorder's line: counts, then the first ids of each kind. Row

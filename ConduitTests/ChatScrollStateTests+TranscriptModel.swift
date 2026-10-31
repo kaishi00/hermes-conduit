@@ -244,21 +244,28 @@ extension ChatScrollStateTests {
         )
     }
 
-    /// A row that only changes place is a move, not nothing.
+    /// A row that only changes place is a move, not nothing, and only the
+    /// rows that moved are named.
     func testRowsThatOnlyChangePlaceAreMoved() {
         let three = ["a", "b", "c"].map { TranscriptRow(id: $0, kind: .empty) }
         let swapped = TranscriptChangeSet.between(three, [three[1], three[0], three[2]])
-        XCTAssertEqual(swapped, TranscriptChangeSet(moved: ["b", "a"]))
+        XCTAssertEqual(swapped, TranscriptChangeSet(moved: ["b"]), "one of the two moved past the other")
         XCTAssertFalse(swapped.isEmpty)
-        XCTAssertEqual(swapped.traceLine(rowCount: 3), "rows n=3 +0 -0 ~0 >2 >[b,a]")
+        XCTAssertEqual(swapped.traceLine(rowCount: 3), "rows n=3 +0 -0 ~0 >1 >[b]")
 
         let landed = TranscriptChangeSet.between(three, [three[0], TranscriptRow(id: "x", kind: .empty), three[1], three[2]])
         XCTAssertEqual(landed, TranscriptChangeSet(inserted: ["x"]), "a row landing between others moves none of them")
 
+        let four = ["a", "b", "c", "d"].map { TranscriptRow(id: $0, kind: .empty) }
+        XCTAssertEqual(
+            TranscriptChangeSet.between(four, [four[1], four[2], four[3], four[0]]),
+            TranscriptChangeSet(moved: ["a"]),
+            "one row moved past three is that row, not four"
+        )
         let redrawn = TranscriptRow(id: "a", kind: .loadEarlier(isLoading: false))
         XCTAssertEqual(
-            TranscriptChangeSet.between(three, [three[1], redrawn, three[2]]),
-            TranscriptChangeSet(changed: ["a"], moved: ["b", "a"]),
+            TranscriptChangeSet.between(four, [four[1], four[2], four[3], redrawn]),
+            TranscriptChangeSet(changed: ["a"], moved: ["a"]),
             "a row that draws differently in another place is both"
         )
     }
