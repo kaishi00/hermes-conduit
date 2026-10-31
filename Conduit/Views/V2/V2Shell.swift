@@ -587,6 +587,8 @@ struct V2Shell: View {
                 // A room still waiting to open keeps its record until it
                 // opens or is given up, so a launch cut short tries again.
                 guard kept != nil || roomToReopen == nil else { return }
+                // A chat or room on screen meanwhile: the reader moved on.
+                if kept != nil { roomToReopen = nil }
                 let value = kept?.encoded ?? ""
                 if conversationOnLeave != value { conversationOnLeave = value }
             }
