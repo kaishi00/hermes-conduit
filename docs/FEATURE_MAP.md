@@ -1876,7 +1876,7 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 
 **Code**
 - Notifier, on its `bot-workstreams` branch (plain text until it reaches main): work_store.py (the registry, conduit/workstreams.db in the bot's home), work_broker.py (Hermes' session API in the dashboard's process), work_tool.py (the tools, the policy, the hooks' work, the note and the updates), __init__.py (the hook calls), cli.py (`work`), tests/test_work.py, upstream/test_bot_work.py
-- App: `Conduit/Services/HermesClient.swift` (userTurn, which leaves hidden turns out), `Conduit/Services/ConduitAppLink.swift` and `Conduit/Services/AppState.swift` (openAppLink, the link's profile)
+- App: `Conduit/Services/HermesClient.swift` (normalizeMessages, which drops hidden rows from the transcript), `Conduit/Services/ConduitAppLink.swift` and `Conduit/Services/AppState.swift` (openAppLink, the link's profile)
 - Design: designs/bot-mode-coordinator (project files)
 
 **Rulings**
@@ -1884,6 +1884,7 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - Each bot's Bot Chat coordinates its own work; bots ask each other rather than one coordinator for all (2026-10-31, Eric).
 - The model names work by ref only: a session id appears only inside the link, and a ref from another bot's registry names nothing (2026-10-31, notifier #484).
 - Off unless the bot turns it on; once on, a registry that can't be read holds the Bot Chat to strict rather than freeing it (2026-10-31, notifier #484's review).
+- Once on, a chat whose title can't be read is held to the policy for that call, since it might be the coordinator (2026-10-31, notifier #484's review).
 - Under `plugins.isolation: host` the tools answer with the reason rather than starting anything, since the session API is only in the dashboard's process (2026-10-31, notifier #484).
 
 **Open gaps**
