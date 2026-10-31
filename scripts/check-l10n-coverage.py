@@ -1148,6 +1148,7 @@ WATCH_SHARED_SOURCES = (
     "Shared/GrokLive",
     "Shared/LocalLive",
     "Shared/WatchVoice",
+    "Shared/Approvals",
     "Conduit/Voice/GPTLive/GPTLiveProtocol.swift",
 )
 

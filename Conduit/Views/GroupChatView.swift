@@ -513,7 +513,7 @@ struct GroupApprovalCard: View {
                     Text(memberName)
                         .scaledFont(.subheadline.weight(.semibold))
                     if !approval.description.isEmpty {
-                        Text(verbatim: ApprovalDisplayText.revealingHidden(approval.description))
+                        Text(verbatim: ApprovalDisplayText.revealingHidden(HermesApprovalText.description(approval.description)))
                             .scaledFont(.subheadline)
                             .textSelection(.enabled)
                     }
@@ -531,7 +531,7 @@ struct GroupApprovalCard: View {
                     maxHeight: ApprovalCommandBox<EmptyView>.maxLines
                         * UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnText).lineHeight
                 ) {
-                    Text(verbatim: ApprovalDisplayText.revealingHidden(approval.command))
+                    Text(verbatim: ApprovalDisplayText.revealingHidden(HermesApprovalText.command(approval.command)))
                         .scaledFont(.caption.monospaced())
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)

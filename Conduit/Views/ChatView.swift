@@ -4262,7 +4262,7 @@ struct ApprovalCard: View {
                         }
                     }
                     SelectableTextView(
-                        text: ApprovalDisplayText.revealingHidden(approval.description),
+                        text: ApprovalDisplayText.revealingHidden(HermesApprovalText.description(approval.description)),
                         font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText).withTraits(.traitBold),
                         textColor: .label
                     )
@@ -4273,7 +4273,7 @@ struct ApprovalCard: View {
                     let commandFont = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnText).pointSize, weight: .regular)
                     ApprovalCommandBox(maxHeight: ApprovalCommandBox<EmptyView>.maxLines * commandFont.lineHeight) {
                         SelectableTextView(
-                            text: ApprovalDisplayText.revealingHidden(approval.command),
+                            text: ApprovalDisplayText.revealingHidden(HermesApprovalText.command(approval.command)),
                             font: commandFont,
                             textColor: .label
                         )

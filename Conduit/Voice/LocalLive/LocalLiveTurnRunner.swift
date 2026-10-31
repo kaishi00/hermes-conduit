@@ -444,8 +444,8 @@ final class LocalLiveTurnRunner {
 
     /// The command Hermes asks to run, which a yes or no answers here.
     static func approvalLine(_ approval: ApprovalActivity) -> String {
-        let asked = approval.description.trimmingCharacters(in: .whitespacesAndNewlines)
-        let what = asked.isEmpty ? approval.command : asked
+        let asked = HermesApprovalText.description(approval.description).trimmingCharacters(in: .whitespacesAndNewlines)
+        let what = asked.isEmpty ? HermesApprovalText.command(approval.command) : asked
         let clipped = what.count > 200 ? String(what.prefix(200)) + "…" : what
         return AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.")
     }

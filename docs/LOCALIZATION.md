@@ -135,6 +135,17 @@ the host's own text as the body. A plaintext
 push from a pairing without encryption still shows the relay's English
 copy.
 
+## Hermes' approval texts
+
+Hermes writes an approval's explanation in English. The texts it is known
+to write (a flagged command's pattern, the protected-file warning, the
+consent prompts) are keys in both `Conduit/Localizable.xcstrings` and
+`ConduitWatch/Localizable.xcstrings`, and `HermesApprovalText`
+(`Shared/Approvals/`) shows them in the App Language on every card, voice
+line, notification and the Watch (#1589). A text it doesn't know shows as
+Hermes sent it. When Hermes adds or rewords one, add its English as Hermes
+writes it to `HermesApprovalText` and translate it in both catalogs.
+
 ## What CI checks
 
 `check-l10n-coverage.py` runs in the `Plan & validate` job:

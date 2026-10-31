@@ -73,6 +73,11 @@ enum NotificationCopy {
             // notifier 0.104.0): the host sent only this line, in English.
             return (finalTitle, subtitle, AppLocalization.string("Pulse has something for you."))
         }
+        if label == "approval.needed", let hostBody {
+            // Hermes' explanation, which the plugin sends as written, in
+            // the App Language when Hermes wrote it (#1589).
+            return (finalTitle, subtitle, HermesApprovalText.description(hostBody))
+        }
         return (finalTitle, subtitle, hostBody)
     }
 
