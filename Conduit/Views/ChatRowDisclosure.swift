@@ -39,7 +39,7 @@ final class ChatRowDisclosure {
 
     /// Call before changing the row's height, inside the same tap.
     func willToggle(_ id: String?, to expanded: Bool) {
-        scroller?.userWillToggleRow()
+        scroller?.userWillToggleRow(id)
         guard let id else { return }
         followConversation()
         states[id] = expanded
@@ -56,7 +56,7 @@ final class ChatRowDisclosure {
     }
 
     func willToggleGroup(_ id: String, to expanded: Bool) {
-        scroller?.userWillToggleRow()
+        scroller?.userWillToggleRow(id)
         followConversation()
         states[Self.groupKey(id)] = expanded
         groupToggles.revision &+= 1
@@ -73,7 +73,7 @@ final class ChatRowDisclosure {
     /// the thinking itself, not one more folded line; hiding it puts them
     /// back as they were.
     func willShowThinking(in group: ChatStepGroup, _ shown: Bool) {
-        scroller?.userWillToggleRow()
+        scroller?.userWillToggleRow(group.id)
         followConversation()
         let flag = Self.thinkingKey(group.id)
         if shown {
