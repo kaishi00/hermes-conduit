@@ -7,11 +7,12 @@
 //  can still show the last chat, and of the Chats list as it was last shown,
 //  so a launch opens to the real list while it connects.
 //
-//  The copy is PRESENTATION ONLY. It never enters `AppState.messages` or
-//  `AppState.sessions`, so nothing that decides resume, pagination,
-//  conversation selection, bot-vs-workspace routing, or pending
-//  approval/clarify cards can read it. The first authoritative answer from
-//  the server replaces it wholesale.
+//  The copy never enters `AppState.messages` or `AppState.sessions`, so
+//  nothing that decides resume, pagination, conversation selection,
+//  bot-vs-workspace routing, or pending approval/clarify cards can read it.
+//  While it stands in for a chat, the chat's own scroll view draws its rows,
+//  marked provisional, and the server's first answer replaces them by id, so
+//  rows that didn't change aren't drawn again (#1533).
 //
 
 import CryptoKit
@@ -39,6 +40,10 @@ struct OfflineCachedMessage: Codable, Equatable {
     let code: String?
     let reactions: [MessageReaction]?
     let stepDuration: TimeInterval?
+    /// Hermes' own id for the row, so a row Hermes sends again unchanged
+    /// equals the one drawn from the copy and isn't drawn again. Rows saved
+    /// before it was kept have none.
+    let rowId: Int?
 
     static let storableRoles: Set<MessageRole> = [.user, .assistant, .reasoning, .system, .tool]
 
@@ -58,6 +63,7 @@ struct OfflineCachedMessage: Codable, Equatable {
         code = message.code
         reactions = message.reactions.isEmpty ? nil : message.reactions
         stepDuration = message.stepDuration
+        rowId = message.rowId
     }
 
     var chatMessage: ChatMessage {
@@ -74,6 +80,7 @@ struct OfflineCachedMessage: Codable, Equatable {
             attachments: attachments,
             code: code,
             displayKind: displayKind,
+            rowId: rowId,
             reactions: reactions ?? []
         )
         message.stepDuration = stepDuration
@@ -324,7 +331,9 @@ struct SavedChatListPresentation: Equatable {
     }
 }
 
-/// What the chat surface presents while the server has not answered yet.
+/// What the chat surface presents while the server has not answered yet:
+/// the saved rows the chat's scroll view draws as the chat's own, marked
+/// provisional, until Hermes' rows replace them (#1533).
 struct OfflineChatPresentation: Equatable {
     let dashboardID: UUID
     let profile: String
@@ -332,13 +341,12 @@ struct OfflineChatPresentation: Equatable {
     let snapshot: OfflineChatSnapshot
     /// The saved conversation on screen, with its rows.
     let displayedTranscript: OfflineCachedTranscript?
-    /// Its rows as the live transcript has them, each turn's run of steps
-    /// placed so it draws as one card. Worked out once per displayed
-    /// conversation, not on every render.
-    let displayedRows: [ChatMessageScrollTarget]
+    /// Its rows as chat rows, made once per displayed conversation, not on
+    /// every render. The chat view places them as it does Hermes' rows.
+    let displayedMessages: [ChatMessage]
     /// A chat tapped in the saved list before the live one landed. Its
-    /// saved copy (or the wait for one) shows over any transcript still on
-    /// screen until that chat's own open lands.
+    /// saved copy (or the wait for one) shows in place of any transcript
+    /// still on screen until that chat's own open lands.
     var picked: PickedChat?
 
     struct PickedChat: Equatable {
@@ -384,15 +392,11 @@ struct OfflineChatPresentation: Equatable {
         self.profile = profile
         self.snapshot = snapshot
         self.displayedTranscript = displayedTranscript
-        var rows = ChatMessageScrollTargetCache()
-        rows.update(for: displayedTranscript?.messages.map(\.chatMessage) ?? [])
-        self.displayedRows = rows.targets
+        self.displayedMessages = displayedTranscript?.messages.map(\.chatMessage) ?? []
         self.picked = picked
     }
 
     var displayedSessionID: String? { displayedTranscript?.sessionID }
-
-    var displayedMessages: [ChatMessage] { displayedRows.map(\.message) }
 }
 
 /// File-backed store. Per (dashboard, profile): an index, a file for each
