@@ -282,7 +282,9 @@ final class WatchDirectBroker {
                 defer { end() }
                 let startedAt = Date()
                 do {
-                    let token = try await self.appState.watchDirectToken(provider: provider)
+                    // The call's own profile, which may not be the iPhone's.
+                    let profile = self.ledger.call(id)?.connection.profile ?? self.connection?.profile ?? self.appState.watchDirectConnection.profile
+                    let token = try await self.appState.watchDirectToken(provider: provider, profile: profile)
                     // Minted while the phone switched: not this call's.
                     guard self.onCallsConnection(id) else {
                         answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged))
@@ -392,7 +394,7 @@ final class WatchDirectBroker {
         do {
             let plan = try await appState.prepareWatchDirectCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }, provider: provider)
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
-            guard appState.watchDirectConnection == plan.connection else {
+            guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
@@ -416,7 +418,7 @@ final class WatchDirectBroker {
             let grant = await requestGrant(id, profile: plan.connection.profile)
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             ledger.setGrant(grantScope, for: id)
-            guard appState.watchDirectConnection == plan.connection else {
+            guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             // The model answers approvals only when the user allowed it and
@@ -522,7 +524,7 @@ final class WatchDirectBroker {
         do {
             let plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
-            guard appState.watchDirectConnection == plan.connection else {
+            guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
@@ -555,7 +557,7 @@ final class WatchDirectBroker {
                 try await prepareRuntime(id, profile: plan.connection.profile)
                 guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             }
-            guard appState.watchDirectConnection == plan.connection else {
+            guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             guard let packed = WatchVoiceWire.BridgeSession.pack(plan.briefing) else {
@@ -639,7 +641,7 @@ final class WatchDirectBroker {
         do {
             let plan = try await appState.prepareWatchGrokCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
-            guard appState.watchDirectConnection == plan.connection else {
+            guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
@@ -664,7 +666,7 @@ final class WatchDirectBroker {
                 throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open Grok for the Watch: \($0)") }
                     ?? AppLocalization.string("Hermes couldn't open Grok for the Watch. Update the Conduit notifier plugin and the push relay."))
             }
-            guard appState.watchDirectConnection == plan.connection else {
+            guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             var functions = plan.functions
@@ -769,7 +771,7 @@ final class WatchDirectBroker {
         do {
             let plan = try await appState.prepareWatchLocalLiveCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
-            guard appState.watchDirectConnection == plan.connection else {
+            guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
@@ -794,7 +796,7 @@ final class WatchDirectBroker {
                 throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open Local Live for the Watch: \($0)") }
                     ?? AppLocalization.string("Hermes couldn't open Local Live for the Watch. Update the Conduit notifier plugin and the push relay."))
             }
-            guard appState.watchDirectConnection == plan.connection else {
+            guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             let reply = WatchVoiceWire.Message.localLiveSession(callID: id, call: .init(
@@ -881,8 +883,11 @@ final class WatchDirectBroker {
     }
 
     private func makeBridge(for id: UInt32) -> GeminiLiveToolBridge {
-        let tokens = appState.geminiLiveTokenClient
-        let supervisor = WatchCallJobSupervisor(appState.voiceBackgroundJobSupervisor)
+        // The call's own profile (#1564): its lookups, its jobs and its
+        // phone tools are that profile's, whichever the iPhone is on.
+        let profile = ledger.call(id)?.connection.profile ?? appState.activeProfile
+        let tokens = appState.makeLiveTokenClient(provider: .gemini) { profile }
+        let supervisor = WatchCallJobSupervisor(appState.voiceBackgroundJobSupervisor, callProfile: appState.jobProfile(for: profile))
         // Noted in the saved call, as the phone's own calls note theirs.
         supervisor.onJobCreated = { [weak self] jobID in self?.callJobs[id, default: []].append(jobID) }
         supervisor.callIsLive = { [weak self] in self?.callID == id }
@@ -890,7 +895,7 @@ final class WatchDirectBroker {
         if callID == id, let mode = hostToolsMode {
             supervisor.hostTools = hostTools
             supervisor.runHostTool = { [weak appState] tool, arguments in
-                await appState?.callVoiceHostTool(tool, arguments: arguments, mode: mode)
+                await appState?.callVoiceHostTool(tool, arguments: arguments, mode: mode, profile: profile)
                     ?? ["error": "That isn't available on this call."]
             }
         }
@@ -1449,12 +1454,14 @@ final class WatchDirectBroker {
         if isCurrent { endCall(keepRecovery: true) }
         let appState = self.appState
         // Jobs on another profile are filed there, so the call lists only
-        // its own profile's.
+        // its own profile's, which may not be the iPhone's (#1564).
         let started = callJobs.removeValue(forKey: id) ?? []
         let supervisor = appState.voiceBackgroundJobSupervisor
         let waiting = waitingJobs(started)
+        let callsProfile = known?.connection.profile ?? appState.activeProfile
         let phoneJobs = supervisor.jobs.compactMap { job -> WatchVoiceWire.DirectJob? in
-            guard started.contains(job.id), !waiting.contains(job.id), job.profile == nil,
+            guard started.contains(job.id), !waiting.contains(job.id),
+                  AppState.profilesMatch(job.profile ?? appState.activeProfile, callsProfile),
                   !(job.continuesChat && job.status == .cancelled && !job.requestSent) else { return nil }
             let sessionID = [job.storedSessionID, job.runtimeSessionID].compactMap { $0 }.first { !$0.isEmpty }
             return .init(jobID: job.id.uuidString, title: job.title, sessionID: sessionID, startedAt: job.startedAt)
@@ -1472,9 +1479,8 @@ final class WatchDirectBroker {
     /// Whether `id`'s messages may be answered: it began on the connection
     /// active now. A running call whose connection the phone left ends.
     private func onCallsConnection(_ id: UInt32) -> Bool {
-        let current = appState.watchDirectConnection
         let known = ledger.call(id)
-        if let known, known.connection == current { return true }
+        if let known, appState.watchConnectionIsCurrent(known.connection) { return true }
         // The running call, or one still running when the phone restarted.
         if id == callID || (callID == nil && known?.ended == false) {
             link.log.note("watchDirectConnectionChanged", ["callID": Int(id), "known": known != nil])
@@ -1650,8 +1656,14 @@ final class WatchDirectBroker {
 /// The Hermes connection a Watch call belongs to: the dashboard and the
 /// profile it began on.
 struct WatchDirectConnection: Codable, Equatable {
+    /// The call's own profile: the hands-free one, or that of the call
+    /// from Hermes it answers (#1564). Not always the iPhone's.
     let profile: String
     let dashboard: String
+    /// The profile the iPhone was on when the call began: a switch there
+    /// ends the call (AppState.watchConnectionIsCurrent). Missing in calls
+    /// stored before calls had a profile of their own, whose `profile` it was.
+    var phoneProfile: String? = nil
 }
 
 /// What the phone keeps about its recent Watch calls across a restart:
@@ -1812,9 +1824,13 @@ private final class WatchDirectResumeOnce<Value> {
 @MainActor
 final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
     private let base: VoiceBackgroundJobSupervisor
+    /// The call's profile when it isn't the iPhone's (#1564): the call's
+    /// ordinary jobs run there, as its relay jobs do. Nil for the iPhone's.
+    let callProfile: String?
 
-    init(_ base: VoiceBackgroundJobSupervisor) {
+    init(_ base: VoiceBackgroundJobSupervisor, callProfile: String? = nil) {
         self.base = base
+        self.callProfile = callProfile
     }
 
     var jobs: [VoiceBackgroundJob] { base.jobs }
@@ -1863,22 +1879,33 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
         }
         var startedID: UUID?
         let base = self.base
-        let reply = await base.startJob(instructions: instructions, profile: profile, onJobCreated: { jobID in
+        // A request that names no profile is the call's own.
+        let named = (profile ?? "").isEmpty ? nil : profile
+        let reply = await base.startJob(instructions: instructions, profile: named ?? callProfile, onJobCreated: { jobID in
             startedID = jobID
             // Marked before Hermes can answer, so its reply is matched
             // against replays from the start.
             if claims { base.markOpensCallChat(jobID) }
             created(jobID)
         })
-        if joins, callChat == nil, let startedID, let job = base.jobs.first(where: { $0.id == startedID }), job.profile == nil,
+        if joins, callChat == nil, let startedID, let job = base.jobs.first(where: { $0.id == startedID }), isCallsProfile(job.profile),
            job.requestSent, let runtimeID = job.runtimeSessionID, !runtimeID.isEmpty {
             switch job.status {
             case .failed, .cancelled: break
             case .starting, .running, .needsInput, .finished:
-                callChat = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title)
+                callChat = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: job.storedSessionID, title: job.title, profile: callProfile)
             }
         }
         return reply
+    }
+
+    /// Whether a job's profile (nil: the iPhone's) is the call's own.
+    func isCallsProfile(_ profile: String?) -> Bool {
+        switch (profile, callProfile) {
+        case (nil, nil): return true
+        case let (job?, call?): return AppState.profilesMatch(job, call)
+        default: return false
+        }
     }
 
     func statusSummary() -> String { base.statusSummary() }

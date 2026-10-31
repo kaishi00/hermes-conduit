@@ -3021,19 +3021,23 @@ final class AppState: ObservableObject {
 
     /// Hermes-hosted Gemini Live credentials (the conduit_push plugin), read
     /// through whichever dashboard bridge is current at call time.
-    lazy var geminiLiveTokenClient = GeminiLiveTokenClient(profile: { [weak self] in
+    lazy var geminiLiveTokenClient = makeLiveTokenClient(provider: .gemini) { [weak self] in
         self?.activeProfile ?? "default"
-    }, request: { [weak self] path, method, body, timeout in
-        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
-    })
+    }
 
-    lazy var qwenLiveTokenClient = GeminiLiveTokenClient(profile: { [weak self] in
+    lazy var qwenLiveTokenClient = makeLiveTokenClient(provider: .qwen) { [weak self] in
         self?.activeProfile ?? "default"
-    }, provider: { .qwen }, request: { [weak self] path, method, body, timeout in
-        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
-    })
+    }
+
+    /// Gemini or Qwen Live's host routes for `profile`: the active
+    /// profile's for the phone's calls, a Watch call's own profile for the
+    /// Watch's, which may not be the one the iPhone is on (#1564).
+    func makeLiveTokenClient(provider: DirectLiveProvider, profile: @escaping @MainActor () -> String) -> GeminiLiveTokenClient {
+        GeminiLiveTokenClient(profile: profile, provider: { provider }, request: { [weak self] path, method, body, timeout in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+        })
+    }
 
     /// Built on first use only: boundaries that merely check whether Gemini
     /// Live is running must not construct its audio engines.
@@ -3559,15 +3563,20 @@ final class AppState: ObservableObject {
 
     /// GPT-Live calls start on the Hermes host (the conduit_push plugin),
     /// through whichever dashboard bridge is current at call time.
-    lazy var gptLiveClient = GPTLiveClient(profile: { [weak self] in
+    lazy var gptLiveClient = makeGPTLiveClient { [weak self] in
         self?.activeProfile ?? "default"
-    }, billing: { [weak self] in
-        // Never the API key without an AppState to say the user chose it.
-        self?.gptLiveCallBilling ?? .subscription
-    }, request: { [weak self] path, method, body, timeout in
-        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
-    })
+    }
+
+    /// GPT-Live's host routes for `profile` (see makeLiveTokenClient).
+    func makeGPTLiveClient(profile: @escaping @MainActor () -> String) -> GPTLiveClient {
+        GPTLiveClient(profile: profile, billing: { [weak self] in
+            // Never the API key without an AppState to say the user chose it.
+            self?.gptLiveCallBilling ?? .subscription
+        }, request: { [weak self] path, method, body, timeout in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+        })
+    }
 
     /// Built on first use only, like Gemini Live's.
     private var gptLiveControllerCreated = false
@@ -3844,27 +3853,32 @@ final class AppState: ObservableObject {
     /// Grok Live's relay socket and status on the Hermes host (the
     /// conduit_push plugin), through whichever dashboard bridge is current
     /// at call time.
-    lazy var grokLiveClient = GrokLiveClient(profile: { [weak self] in
+    lazy var grokLiveClient = makeGrokLiveClient { [weak self] in
         self?.activeProfile ?? "default"
-    }, profileParameter: { [weak self] in
-        self?.notifierPlugin.dashboardProfileParameter ?? "profile"
-    }, request: { [weak self] path, method, body, timeout in
-        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
-    }, mintTicket: { [weak self] in
-        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.mintTicket()
-    }, socketRequest: { [weak self] path, queryItems in
-        guard let bridge = self?.dashboardTicketBridge, let connection = self?.connection else {
-            throw DashboardTicketBridgeError.notReady
-        }
-        let url = try ConnectionURLPolicy.webSocketURL(baseURL: connection.baseUrl, path: path, queryItems: queryItems)
-        // Behind Cloudflare Access the upgrade needs the service-token
-        // headers, like the speech stream's. The authorizer then adds the
-        // dashboard's own session cookies (cookie mode).
-        let request = URLRequest(url: url).applyingProxyHeaders(cloudflare: bridge.cloudflareAccess)
-        return try await bridge.requestAuthorizer.authorizeUpgrade(request)
-    })
+    }
+
+    /// Grok Live's host routes for `profile` (see makeLiveTokenClient).
+    func makeGrokLiveClient(profile: @escaping @MainActor () -> String) -> GrokLiveClient {
+        GrokLiveClient(profile: profile, profileParameter: { [weak self] in
+            self?.notifierPlugin.dashboardProfileParameter ?? "profile"
+        }, request: { [weak self] path, method, body, timeout in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+        }, mintTicket: { [weak self] in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.mintTicket()
+        }, socketRequest: { [weak self] path, queryItems in
+            guard let bridge = self?.dashboardTicketBridge, let connection = self?.connection else {
+                throw DashboardTicketBridgeError.notReady
+            }
+            let url = try ConnectionURLPolicy.webSocketURL(baseURL: connection.baseUrl, path: path, queryItems: queryItems)
+            // Behind Cloudflare Access the upgrade needs the service-token
+            // headers, like the speech stream's. The authorizer then adds the
+            // dashboard's own session cookies (cookie mode).
+            let request = URLRequest(url: url).applyingProxyHeaders(cloudflare: bridge.cloudflareAccess)
+            return try await bridge.requestAuthorizer.authorizeUpgrade(request)
+        })
+    }
 
     /// Built on first use only, like Gemini Live's.
     private var grokLiveControllerCreated = false
@@ -4179,29 +4193,34 @@ final class AppState: ObservableObject {
     /// Local Live's relay socket and status on the Hermes host (the
     /// conduit_push plugin), through whichever dashboard bridge is current
     /// at call time.
-    lazy var localLiveClient = LocalLiveClient(profile: { [weak self] in
+    lazy var localLiveClient = makeLocalLiveClient { [weak self] in
         self?.activeProfile ?? "default"
-    }, profileParameter: { [weak self] in
-        self?.notifierPlugin.dashboardProfileParameter ?? "profile"
-    }, dashboardBaseURL: { [weak self] in
-        self?.connection?.baseUrl
-    }, request: { [weak self] path, method, body, timeout in
-        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
-    }, mintTicket: { [weak self] in
-        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.mintTicket()
-    }, socketRequest: { [weak self] path, queryItems in
-        guard let bridge = self?.dashboardTicketBridge, let connection = self?.connection else {
-            throw DashboardTicketBridgeError.notReady
-        }
-        let url = try ConnectionURLPolicy.webSocketURL(baseURL: connection.baseUrl, path: path, queryItems: queryItems)
-        // Behind Cloudflare Access the upgrade needs the service-token
-        // headers, like the speech stream's. The authorizer then adds the
-        // dashboard's own session cookies (cookie mode), as for Grok's relay.
-        let request = URLRequest(url: url).applyingProxyHeaders(cloudflare: bridge.cloudflareAccess)
-        return try await bridge.requestAuthorizer.authorizeUpgrade(request)
-    })
+    }
+
+    /// Local Live's host routes for `profile` (see makeLiveTokenClient).
+    func makeLocalLiveClient(profile: @escaping @MainActor () -> String) -> LocalLiveClient {
+        LocalLiveClient(profile: profile, profileParameter: { [weak self] in
+            self?.notifierPlugin.dashboardProfileParameter ?? "profile"
+        }, dashboardBaseURL: { [weak self] in
+            self?.connection?.baseUrl
+        }, request: { [weak self] path, method, body, timeout in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+        }, mintTicket: { [weak self] in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.mintTicket()
+        }, socketRequest: { [weak self] path, queryItems in
+            guard let bridge = self?.dashboardTicketBridge, let connection = self?.connection else {
+                throw DashboardTicketBridgeError.notReady
+            }
+            let url = try ConnectionURLPolicy.webSocketURL(baseURL: connection.baseUrl, path: path, queryItems: queryItems)
+            // Behind Cloudflare Access the upgrade needs the service-token
+            // headers, like the speech stream's. The authorizer then adds the
+            // dashboard's own session cookies (cookie mode), as for Grok's relay.
+            let request = URLRequest(url: url).applyingProxyHeaders(cloudflare: bridge.cloudflareAccess)
+            return try await bridge.requestAuthorizer.authorizeUpgrade(request)
+        })
+    }
 
     /// Built on first use only, like the other live modes'.
     private var localLiveControllerCreated = false
@@ -8922,7 +8941,7 @@ final class AppState: ObservableObject {
         if let link = widgetLaunchCoordinator.pendingLink, link.action == .talk {
             guard let workspace = link.workspace, workspace.dashboardID == activeDashboardID else { return }
             presentWaitingCall(owner: .widget, profile: workspace.profile)
-        } else if let intent = PendingVoiceIntentStore.shared.peekClaim()?.intent,
+        } else if let intent = PendingVoiceIntentStore.shared.peekClaim().map({ applyingHandsFreeProfile(to: $0.intent) }),
                   intent.source == .siri, intent.startsFreshConversation {
             let profile = intent.profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             presentWaitingCall(owner: .siri, profile: profile.isEmpty ? activeProfile : profile)
@@ -36493,6 +36512,8 @@ final class AppState: ObservableObject {
         initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil
     ) async -> Bool {
         guard isConnected else { return false }
+        // Siri or the Action button naming no profile: the hands-free one.
+        let intent = applyingHandsFreeProfile(to: intent)
         guard widgetLease?.isCurrent != false else { return false }
         if widgetLease != nil, isVoiceCallInProgress {
             errorMessage = AppLocalization.string("End the call before starting another voice conversation.")
@@ -37009,20 +37030,23 @@ final class AppState: ObservableObject {
         }
         // The phone's microphone and the Watch's would both feed Hermes.
         guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
-        // Every lookup below goes to the connection active now.
-        let connection = watchDirectConnection
+        // Every lookup below goes to the call's own profile, which may not
+        // be the one open on the iPhone (#1564).
+        let connection = watchDirectConnection(answering: target)
+        let profile = connection.profile
+        let preferences = loadVoiceProfilePreferences(profile: profile)
         let qwen = provider == .qwen
-        let tokens = qwen ? qwenLiveTokenClient : geminiLiveTokenClient
-        let wantsMemory = qwen ? qwenLiveMemoryEnabled : geminiLiveMemoryEnabled
-        let wantsPersonality = qwen ? qwenLivePersonalityEnabled : geminiLivePersonalityEnabled
-        async let searchLookup = qwen ? resolveQwenLiveSearchSource() : resolveGeminiLiveSearchSource()
+        let tokens = makeLiveTokenClient(provider: provider) { profile }
+        let wantsMemory = (qwen ? preferences.qwenLiveMemory : preferences.geminiLiveMemory) ?? false
+        let wantsPersonality = (qwen ? preferences.qwenLivePersonality : preferences.geminiLivePersonality) ?? false
+        async let searchLookup = Self.watchCallSearchSource(qwen: qwen, preferences: preferences, tokens: tokens)
         async let memoryLookup = wantsMemory ? tokens.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? tokens.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         async let waitingLookup = watchHermesCallWaiting(for: target, approvals: WatchJobSettings.voiceApprovals)
-        async let hostToolsLookup = watchCallHostTools(for: qwen ? .qwenLive : .geminiLive)
+        async let hostToolsLookup = watchCallHostTools(for: qwen ? .qwenLive : .geminiLive, profile: profile)
         let status = try await tokens.availability()
-        noteWatchCallVoice(qwen ? .qwenLive : .geminiLive, ready: status.isAvailable)
+        noteWatchCallVoice(qwen ? .qwenLive : .geminiLive, ready: status.isAvailable, profile: profile)
         guard status.isAvailable else {
             throw WatchDirectPrepareError(status.userFacingReason(for: provider) ?? GeminiLiveAvailability.notAvailable(for: provider))
         }
@@ -37034,12 +37058,8 @@ final class AppState: ObservableObject {
         let waiting = await waitingLookup
         let hostTools = await hostToolsLookup
         let token = try await tokens.freshToken()
-        let style = liveVoiceStyle
-        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        let jobSession = preferences.voiceJobSessionOptions(
-            runtimeModel: runtime.model,
-            runtimeProvider: runtime.provider
-        )
+        let style = preferences.liveVoiceStyle
+        let jobSession = watchCallJobSession(preferences, profile: profile)
         var jobOptions: [String: String] = [:]
         if let model = jobSession.model {
             jobOptions["model"] = model
@@ -37047,7 +37067,7 @@ final class AppState: ObservableObject {
         }
         if let effort = jobSession.reasoningEffort { jobOptions["reasoning_effort"] = effort }
         // A switch while the lookups ran would mix two connections' setup.
-        guard watchDirectConnection == connection else {
+        guard watchConnectionIsCurrent(connection) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
         }
         return WatchDirectPlan(
@@ -37066,16 +37086,16 @@ final class AppState: ObservableObject {
                 answers: waiting?.waiting.kind
             ),
             googleSearch: search == .google,
-            voice: qwen ? qwenLiveVoice : geminiLiveVoice,
+            voice: qwen ? preferences.qwenLiveVoice : preferences.geminiLiveVoice,
             openingPrompt: hermesCall?.watchOpeningTurn(canAnswer: waiting != nil) ?? style.openingPrompt,
             token: token,
             connection: connection,
-            saveCalls: voiceCallSavingEnabled,
+            saveCalls: preferences.saveVoiceCalls ?? true,
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
             endPhrases: preferences.resolvedSpokenEndConversationPhrases,
-            jobProfiles: watchJobProfileNames(),
+            jobProfiles: watchJobProfileNames(callProfile: profile),
             hostTools: hostTools.tools,
             hostToolsBriefing: hostTools.briefing,
             answerSessions: waiting?.sessionIDs ?? []
@@ -37116,17 +37136,19 @@ final class AppState: ObservableObject {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
         }
         guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
-        let connection = watchDirectConnection
-        let hostContext = geminiLiveTokenClient
-        let wantsMemory = gptLiveMemoryEnabled
-        let wantsPersonality = gptLivePersonalityEnabled
+        let connection = watchDirectConnection(answering: target)
+        let profile = connection.profile
+        let preferences = loadVoiceProfilePreferences(profile: profile)
+        let hostContext = makeLiveTokenClient(provider: .gemini) { profile }
+        let wantsMemory = preferences.gptLiveMemory ?? false
+        let wantsPersonality = preferences.gptLivePersonality ?? false
         async let memoryLookup = wantsMemory ? hostContext.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         async let waitingLookup = watchHermesCallWaiting(for: target, approvals: false)
         // The host's Watch bridge only starts GPT-Live on the subscription.
-        let status = try await gptLiveClient.availability(billing: .subscription)
-        noteWatchCallVoice(.gptLive, ready: status.isAvailable)
+        let status = try await makeGPTLiveClient { profile }.availability(billing: .subscription)
+        noteWatchCallVoice(.gptLive, ready: status.isAvailable, profile: profile)
         guard status.isAvailable else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("GPT-Live is not available on this Hermes server."))
         }
@@ -37135,19 +37157,15 @@ final class AppState: ObservableObject {
         let hermesCall = await hermesCallLookup
         // "Answer:", "Approve:" and "Deny:" go to the host (WatchCallAnswer).
         let waiting = await waitingLookup
-        let style = liveVoiceStyle
-        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        let jobSession = preferences.voiceJobSessionOptions(
-            runtimeModel: runtime.model,
-            runtimeProvider: runtime.provider
-        )
+        let style = preferences.liveVoiceStyle
+        let jobSession = watchCallJobSession(preferences, profile: profile)
         var jobOptions: [String: String] = [:]
         if let model = jobSession.model {
             jobOptions["model"] = model
             if let provider = jobSession.provider { jobOptions["provider"] = provider }
         }
         if let effort = jobSession.reasoningEffort { jobOptions["reasoning_effort"] = effort }
-        guard watchDirectConnection == connection else {
+        guard watchConnectionIsCurrent(connection) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
         }
         return WatchBridgePlan(
@@ -37165,14 +37183,14 @@ final class AppState: ObservableObject {
             // A call Hermes made opens with its brief instead (#449).
             greeting: hermesCall == nil ? style.greeting : nil,
             openingTurn: hermesCall?.watchOpeningTurn(canAnswer: waiting != nil),
-            voice: gptLiveVoice,
+            voice: preferences.gptLiveVoice,
             connection: connection,
-            saveCalls: voiceCallSavingEnabled,
+            saveCalls: preferences.saveVoiceCalls ?? true,
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
             endPhrases: preferences.resolvedSpokenEndConversationPhrases,
-            jobProfiles: watchJobProfileNames(),
+            jobProfiles: watchJobProfileNames(callProfile: profile),
             answerSessions: waiting?.sessionIDs ?? []
         )
     }
@@ -37214,17 +37232,19 @@ final class AppState: ObservableObject {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
         }
         guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
-        let connection = watchDirectConnection
-        let hostContext = geminiLiveTokenClient
-        let wantsMemory = grokLiveMemoryEnabled
-        let wantsPersonality = grokLivePersonalityEnabled
+        let connection = watchDirectConnection(answering: target)
+        let profile = connection.profile
+        let preferences = loadVoiceProfilePreferences(profile: profile)
+        let hostContext = makeLiveTokenClient(provider: .gemini) { profile }
+        let wantsMemory = preferences.grokLiveMemory ?? false
+        let wantsPersonality = preferences.grokLivePersonality ?? false
         async let memoryLookup = wantsMemory ? hostContext.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         async let waitingLookup = watchHermesCallWaiting(for: target, approvals: WatchJobSettings.voiceApprovals)
-        async let hostToolsLookup = watchCallHostTools(for: .grokLive)
-        let status = try await grokLiveClient.availability()
-        noteWatchCallVoice(.grokLive, ready: status.isAvailable)
+        async let hostToolsLookup = watchCallHostTools(for: .grokLive, profile: profile)
+        let status = try await makeGrokLiveClient { profile }.availability()
+        noteWatchCallVoice(.grokLive, ready: status.isAvailable, profile: profile)
         guard case .available(_, let voice, _) = status else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Grok Live is not available on this Hermes server."))
         }
@@ -37235,19 +37255,15 @@ final class AppState: ObservableObject {
         let hermesCall = await hermesCallLookup
         let waiting = await waitingLookup
         let hostTools = await hostToolsLookup
-        let style = liveVoiceStyle
-        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        let jobSession = preferences.voiceJobSessionOptions(
-            runtimeModel: runtime.model,
-            runtimeProvider: runtime.provider
-        )
+        let style = preferences.liveVoiceStyle
+        let jobSession = watchCallJobSession(preferences, profile: profile)
         var jobOptions: [String: String] = [:]
         if let model = jobSession.model {
             jobOptions["model"] = model
             if let provider = jobSession.provider { jobOptions["provider"] = provider }
         }
         if let effort = jobSession.reasoningEffort { jobOptions["reasoning_effort"] = effort }
-        guard watchDirectConnection == connection else {
+        guard watchConnectionIsCurrent(connection) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
         }
         return WatchGrokPlan(
@@ -37270,12 +37286,12 @@ final class AppState: ObservableObject {
             voice: voice,
             openingPrompt: hermesCall?.watchOpeningTurn(canAnswer: waiting != nil) ?? style.openingPrompt,
             connection: connection,
-            saveCalls: voiceCallSavingEnabled,
+            saveCalls: preferences.saveVoiceCalls ?? true,
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
             endPhrases: preferences.resolvedSpokenEndConversationPhrases,
-            jobProfiles: watchJobProfileNames(),
+            jobProfiles: watchJobProfileNames(callProfile: profile),
             hostTools: hostTools.tools,
             hostToolsBriefing: hostTools.briefing,
             answerSessions: waiting?.sessionIDs ?? []
@@ -37287,10 +37303,10 @@ final class AppState: ObservableObject {
     /// location and maps, each as the user lets `mode` use it), and their
     /// briefing. Not the on-screen confirmations: nobody is looking at the
     /// phone. Run here, wrist up; the wrist-down relay doesn't carry them.
-    func watchCallHostTools(for mode: LiveVoiceModeName) async -> (tools: [VoiceHostTool], briefing: String) {
-        let fetched = await voiceHostTools(for: mode)
+    func watchCallHostTools(for mode: LiveVoiceModeName, profile: String) async -> (tools: [VoiceHostTool], briefing: String) {
+        let fetched = await voiceHostTools(for: mode, profile: profile)
         let tools = ((fetched.host ?? []) + fetched.local).filter { $0.key != PresentVoiceTool.key }
-        return (tools, phoneVoiceSettingHint(for: mode) + VoiceHostTool.functionToolsFirst(tools))
+        return (tools, phoneVoiceSettingHint(for: mode, profile: profile) + VoiceHostTool.functionToolsFirst(tools))
     }
 
     /// What a Watch call to Local Live starts with. The host relays the
@@ -37320,18 +37336,20 @@ final class AppState: ObservableObject {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
         }
         guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
-        let connection = watchDirectConnection
+        let connection = watchDirectConnection(answering: target)
+        let profile = connection.profile
+        let preferences = loadVoiceProfilePreferences(profile: profile)
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         async let waitingLookup = watchHermesCallWaiting(for: target, approvals: WatchJobSettings.voiceApprovals)
-        let status = try await localLiveClient.status()
-        noteWatchCallVoice(.localLive, ready: status.available)
+        let status = try await makeLocalLiveClient { profile }.status()
+        noteWatchCallVoice(.localLive, ready: status.available, profile: profile)
         if let reason = LocalLiveClient.unavailableReason(status) {
             throw WatchDirectPrepareError(reason)
         }
-        guard watchDirectConnection == connection else {
+        guard watchConnectionIsCurrent(connection) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
         }
-        var greeting = liveVoiceStyle.greeting.map { $0.isEmpty ? AppLocalization.string("Hi, I'm listening.") : $0 }
+        var greeting = preferences.liveVoiceStyle.greeting.map { $0.isEmpty ? AppLocalization.string("Hi, I'm listening.") : $0 }
         let hermesCall = await hermesCallLookup
         let waiting = await waitingLookup
         if let hermesCall {
@@ -37345,8 +37363,8 @@ final class AppState: ObservableObject {
         return WatchLocalLivePlan(
             greeting: greeting,
             connection: connection,
-            saveCalls: voiceCallSavingEnabled,
-            endPhrases: loadVoiceProfilePreferences(profile: activeProfile).resolvedSpokenEndConversationPhrases,
+            saveCalls: preferences.saveVoiceCalls ?? true,
+            endPhrases: preferences.resolvedSpokenEndConversationPhrases,
             answerSessions: hermesCall == nil ? [] : waiting?.sessionIDs ?? []
         )
     }
@@ -37372,17 +37390,59 @@ final class AppState: ObservableObject {
         return HermesCallOpening(kind: call.kind, title: call.title, result: result, reason: call.reason, sessionIDs: call.sessionIDs)
     }
 
-    /// The connection a Watch call started now would belong to.
-    var watchDirectConnection: WatchDirectConnection {
-        WatchDirectConnection(profile: activeProfile, dashboard: activeDashboardID?.uuidString ?? "-")
+    /// The connection a Watch call started now would belong to: the
+    /// hands-free profile, or the profile of the call from Hermes it
+    /// answers (#1564), with the profile the iPhone is on.
+    func watchDirectConnection(answering target: ConduitNotificationTarget? = nil) -> WatchDirectConnection {
+        WatchDirectConnection(
+            profile: watchCallProfile(answering: target),
+            dashboard: activeDashboardID?.uuidString ?? "-",
+            phoneProfile: activeProfile
+        )
     }
 
-    /// A single-use token for the Watch call's next connection.
-    func watchDirectToken(provider: DirectLiveProvider = .gemini) async throws -> GeminiLiveToken {
+    /// The connection a Watch call started now would belong to.
+    var watchDirectConnection: WatchDirectConnection { watchDirectConnection() }
+
+    /// Whether a Watch call that began on `connection` still may run: the
+    /// iPhone is on the dashboard and profile it was on then. A switch on
+    /// the iPhone resets the jobs it runs for the call, so the call ends,
+    /// as it always has; the call's own profile needn't be the iPhone's.
+    func watchConnectionIsCurrent(_ connection: WatchDirectConnection) -> Bool {
+        connection.dashboard == (activeDashboardID?.uuidString ?? "-")
+            && profilesMatch(connection.phoneProfile ?? connection.profile, activeProfile)
+    }
+
+    /// A single-use token for the Watch call's next connection, on the
+    /// call's own profile.
+    func watchDirectToken(provider: DirectLiveProvider = .gemini, profile: String) async throws -> GeminiLiveToken {
         guard await connectForWatchDirectCall(timeout: WatchDirectBroker.connectWait) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
         }
-        return try await (provider == .qwen ? qwenLiveTokenClient : geminiLiveTokenClient).freshToken()
+        return try await makeLiveTokenClient(provider: provider) { profile }.freshToken()
+    }
+
+    /// The model a Watch call's jobs run on, as `createSession` sends a
+    /// phone job's: the profile's voice-job model, else the model the
+    /// iPhone runs, which is only the call's when it's on that profile.
+    func watchCallJobSession(_ preferences: VoiceProfilePreferences, profile: String) -> (model: String?, provider: String?, reasoningEffort: String?) {
+        let onPhonesProfile = profilesMatch(profile, activeProfile)
+        return preferences.voiceJobSessionOptions(
+            runtimeModel: onPhonesProfile ? runtime.model : "",
+            runtimeProvider: onPhonesProfile ? runtime.provider : ""
+        )
+    }
+
+    /// Where a Watch call's quick lookups search, as the phone's Gemini or
+    /// Qwen Live call resolves it, for the call's profile.
+    static func watchCallSearchSource(qwen: Bool, preferences: VoiceProfilePreferences, tokens: GeminiLiveTokenClient) async -> GeminiLiveSearchSource {
+        if qwen {
+            guard (preferences.qwenLiveSearch ?? .automatic) != .off else { return .none }
+            return await tokens.webSearchAvailable() ? .hermes : .none
+        }
+        let mode = preferences.geminiLiveSearch ?? .automatic
+        let hermesAvailable = mode == .automatic ? await tokens.webSearchAvailable() : false
+        return mode.resolved(hermesAvailable: hermesAvailable)
     }
 
     /// Reconnects to Hermes if the phone's suspension dropped the

@@ -1475,6 +1475,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             id: UUID(),
             title: Self.title(for: instructions),
             instructions: instructions,
+            // A Watch call on a profile the iPhone isn't on (#1564) keeps
+            // its chat there.
+            profile: chat.profile,
             runtimeSessionID: chat.runtimeSessionID,
             storedSessionID: chat.storedSessionID,
             status: .starting,
