@@ -3952,6 +3952,7 @@ platform list) · the chat header (shows no source)
 - Filing a row: `Conduit/Services/HermesClient.swift` (MessageNormalizer.classifySource), `Conduit/Services/AppState.swift` (sessionCategory)
 - Filter order: `Conduit/Services/AppState.swift` (defaultSessionFilterOrder, normalizedSessionFilterOrder)
 - Filters and icons: `Conduit/Views/V2/V2ChatsView.swift` (sourceFilters, sourceRows), `Conduit/Views/V2/V2SessionRow.swift` (V2SessionIcon), `Conduit/Views/SidebarView.swift` (availableSources)
+- Saved copies: `Conduit/Services/OfflineChatCache.swift` (OfflineCachedSession.source, SavedChatList: rows keep the source they were filed under)
 - CarPlay: `Conduit/CarPlay/CarPlayBrowseTemplates.swift` (chatSymbol)
 - Tests: `ConduitTests/MessageNormalizerTests.swift` (testGatewayPlatformsAreNamedByTheirHermesSource), `ConduitTests/VoiceHistoryTests.swift` (testVoiceFiltersJoinASavedOrderAfterChat), `ConduitTests/SidebarLayoutTests+CronFilter.swift`
 
@@ -3963,6 +3964,7 @@ platform list) · the chat header (shows no source)
 **Open gaps**
 - The chat header shows no source; only the row icon does.
 - A plugin platform Hermes adds after this list shows as Other until it's added here.
+- A saved chat list written before #1572 keeps Other on its platform rows until the live list replaces it: a saved row keeps no raw Hermes source, as in Kanban workers' transcripts.
 
 **Checked:** 2026-10-31, #1572 (every gateway platform named, issue #1561).
 

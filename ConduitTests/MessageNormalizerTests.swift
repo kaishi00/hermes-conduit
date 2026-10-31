@@ -203,6 +203,7 @@ final class MessageNormalizerTests: XCTestCase {
         // Every platform has a place in the filter order.
         XCTAssertTrue(SessionSource.gatewayPlatforms.allSatisfy(AppState.defaultSessionFilterOrder.contains))
         XCTAssertEqual(Set(AppState.defaultSessionFilterOrder), Set(SessionSource.allCases))
+        XCTAssertEqual(AppState.defaultSessionFilterOrder.count, SessionSource.allCases.count)
     }
 
     func testSessionNormalizationLeavesSessionsThatArentChatsOut() {
