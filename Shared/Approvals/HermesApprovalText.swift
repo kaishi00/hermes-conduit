@@ -43,13 +43,13 @@ enum HermesApprovalText {
         if case let (server, tool)? = pair(trimmed, "Server '", "' declares a spend limit per chat. Approve to run '", "' once (every further paid call in this chat asks again), or deny to block it.") {
             return AppLocalization.string("Server '\(server)' declares a spend limit per chat. Approve to run '\(tool)' once (every further paid call in this chat asks again), or deny to block it.")
         }
-        if let tool = between(trimmed, "Plugin requires approval for ", "") {
+        if let tool = between(trimmed, "Plugin requires approval for ", ""), isName(tool) {
             return AppLocalization.string("Plugin requires approval for \(tool)")
         }
-        if let action = between(trimmed, "Allow computer_use to perform `", "`?") {
+        if let action = between(trimmed, "Allow computer_use to perform `", "`?"), isName(action) {
             return AppLocalization.string("Allow computer_use to perform `\(action)`?")
         }
-        if let directory = between(trimmed, "Codex requests exec in ", "") {
+        if let directory = between(trimmed, "Codex requests exec in ", ""), isName(directory) {
             return AppLocalization.string("Codex requests exec in \(directory)")
         }
         if trimmed == "Hermes needs your approval. Open Conduit for details." {
@@ -58,7 +58,9 @@ enum HermesApprovalText {
             // push makes before the chat loads.
             return AppLocalization.string("Hermes needs your approval. Open Conduit for details.")
         }
-        if let flag = between(trimmed, "arbitrary program execution via ", "") {
+        if let flag = between(trimmed, "arbitrary program execution via ", ""),
+           case let words = flag.split(separator: " ", omittingEmptySubsequences: false),
+           words.count == 2, words.allSatisfy({ isName(String($0)) }) {
             return AppLocalization.string("arbitrary program execution via \(flag)")
         }
         return text
@@ -77,6 +79,13 @@ enum HermesApprovalText {
         guard text.hasPrefix(prefix), text.hasSuffix(suffix),
               text.count > prefix.count + suffix.count else { return nil }
         return String(text.dropFirst(prefix.count).dropLast(suffix.count))
+    }
+
+    /// One word, as a tool, a path, an action or a flag Hermes names: a text
+    /// that only starts like Hermes' own (a plugin's own reason, "Plugin
+    /// requires approval for deleting the cache") isn't one of its texts.
+    private static func isName(_ text: String) -> Bool {
+        !text.isEmpty && !text.unicodeScalars.contains { CharacterSet.whitespacesAndNewlines.contains($0) || $0 == "`" }
     }
 
     /// The two names in a text of the shape prefix, first, middle, second,

@@ -43,6 +43,12 @@ extension NotificationCopyTests {
         XCTAssertEqual(HermesApprovalText.description("Deploys to production"), "Deploys to production")
         XCTAssertEqual(HermesApprovalText.description("recursive delete, twice"), "recursive delete, twice")
         XCTAssertEqual(HermesApprovalText.description("Plugin requires approval for "), "Plugin requires approval for ")
+        XCTAssertEqual(HermesApprovalText.description("Plugin requires approval for deleting the cache at /x"),
+                       "Plugin requires approval for deleting the cache at /x", "a plugin's own reason")
+        XCTAssertEqual(HermesApprovalText.description("Plugin requires approval for clear_cache"),
+                       "Um plugin exige aprovação para clear_cache")
+        XCTAssertEqual(HermesApprovalText.description("arbitrary program execution via find -exec rm"),
+                       "arbitrary program execution via find -exec rm")
         XCTAssertEqual(HermesApprovalText.command("rm -rf build"), "rm -rf build")
         XCTAssertEqual(HermesApprovalText.command("<write to >"), "<write to >")
     }
@@ -55,5 +61,25 @@ extension NotificationCopyTests {
         XCTAssertEqual(preview.body, "exclusão recursiva")
         let reply = NotificationCopy.preview(["title_label": "response.ready", "body": "recursive delete"])
         XCTAssertEqual(reply.body, "recursive delete", "only an approval's body is Hermes' approval text")
+    }
+
+    func testSpokenApprovalLinesFollowTheAppLanguage() {
+        UserDefaults.standard.set("pt-BR", forKey: AppLanguageStore.defaultsKey)
+        func approval(_ description: String, command: String = "rm -rf build") -> ApprovalActivity {
+            ApprovalActivity(sessionId: "s", requestId: "r", command: command, description: description,
+                             choices: nil, allowPermanent: false, smartDenied: false,
+                             status: .pending, choice: nil, error: nil)
+        }
+        XCTAssertEqual(LocalLiveTurnRunner.approvalLine(approval("recursive delete")),
+                       "O Hermes precisa do seu OK para continuar: exclusão recursiva. Diga sim para permitir uma vez, ou não.")
+        XCTAssertEqual(LocalLiveTurnRunner.approvalLine(approval("", command: "<write to AGENTS.md>")),
+                       "O Hermes precisa do seu OK para continuar: <escrever em AGENTS.md>. Diga sim para permitir uma vez, ou não.")
+        XCTAssertEqual(LocalLiveTurnRunner.approvalLine(approval("Deploys to production")),
+                       "O Hermes precisa do seu OK para continuar: Deploys to production. Diga sim para permitir uma vez, ou não.")
+
+        var job = VoiceBackgroundJob(id: UUID(), title: "Limpar", instructions: "x", status: .needsInput, startedAt: Date())
+        job.waitingApproval = approval("recursive delete")
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.waitingNotice(for: job),
+                       "O trabalho Limpar precisa do seu OK para continuar: exclusão recursiva. Diga sim para permitir uma vez, ou não.")
     }
 }
