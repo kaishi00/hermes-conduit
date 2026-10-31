@@ -203,6 +203,8 @@ struct GroupChatView: View {
             }
             .id(transcriptScrollID)
             .onPreferenceChange(GroupRoomRowFramesPreferenceKey.self) { frames in
+                ChatViewportTrace.shared.log("room rowFrames n=\(frames.count)")
+                ChatViewportWatch.shared.layoutPass()
                 let lostARow = followFlag.rowFrames.keys.contains { frames[$0] == nil }
                 followFlag.rowFrames = frames
                 // A stack that dropped its rows may change no size at all.
@@ -221,6 +223,8 @@ struct GroupChatView: View {
             // New events and a member starting its turn move the transcript
             // only while it follows the latest; a reader scrolled up stays.
             .onChange(of: appState.activeRoomReplay.cursor) { _, _ in
+                ChatViewportTrace.shared.log("room events n=\(visibleEvents.count)")
+                ChatViewportWatch.shared.transcriptChanged()
                 let previousLastID = lastSeenEventID
                 lastSeenEventID = visibleEvents.last?.id
                 guard followFlag.isFollowing else { return }
@@ -232,6 +236,7 @@ struct GroupChatView: View {
                 }
             }
             .onChange(of: respondingMember?.identityKey) { _, _ in
+                ChatViewportWatch.shared.transcriptChanged()
                 guard followFlag.isFollowing else { return }
                 withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
             }
@@ -251,6 +256,7 @@ struct GroupChatView: View {
                 appState.pendingQuotedReplyJump = nil
                 followFlag.isFollowing = false
                 isFollowingLatest = false
+                ChatViewportWatch.shared.command("room quotedReply")
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(jump.messageID, anchor: .top) }
             }
             .onAppear {
@@ -322,6 +328,7 @@ struct GroupChatView: View {
         followFlag.landingGeneration &+= 1
         let generation = followFlag.landingGeneration
         isFollowingLatest = false
+        ChatViewportWatch.shared.command("room replyStart")
         withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(eventID, anchor: .top) }
         // Decide from where it lands once the animation is over (it may not
         // move the offset at all).
@@ -337,6 +344,7 @@ struct GroupChatView: View {
     /// The bottom-most row: the responding member, else the pending send,
     /// else the last visible event.
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        ChatViewportWatch.shared.command("room latest")
         if respondingMember != nil {
             proxy.scrollTo("responding-row", anchor: .bottom)
         } else if appState.pendingRoomMessage != nil {

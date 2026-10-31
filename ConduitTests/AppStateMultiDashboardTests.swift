@@ -1260,7 +1260,9 @@ extension AppStateMultiDashboardTests {
 
     /// A model save whose /api/model/set landed before a profile switch on
     /// the same dashboard still writes that profile's config: Hermes already
-    /// uses the new model there, and the defaults must say so.
+    /// uses the new model there, and the defaults must say so. The catalog
+    /// and the model's info are read again after, so the copies kept for the
+    /// Model page follow the save (#1533).
     func testAModelSaveLandedBeforeAProfileSwitchStillWritesItsProfileConfig() async throws {
         let (appState, held, _) = heldSwitchFixture()
         let save = Task { await appState.setProfileMainModel(provider: "p", model: "m", reasoning: "low") }
@@ -1272,9 +1274,14 @@ extension AppStateMultiDashboardTests {
         try await held.waitForRequests(3)       // ... and its write
         try await held.answer()
         let saved = await save.value
+        try await held.waitForRequests(4)       // the catalog
+        try await held.answer()
+        try await held.waitForRequests(5)       // the model's info
+        try await held.answer()
 
         XCTAssertTrue(saved)
-        XCTAssertEqual(held.sent.last?.method, "PUT")
+        XCTAssertEqual(held.sent.map(\.method), ["POST", "GET", "PUT", "GET", "GET"])
+        XCTAssertEqual(held.sent.suffix(2).map(\.path), ["/api/model/options", "/api/model/info"])
         XCTAssertTrue(held.sent.allSatisfy { !$0.path.contains("work") }, "every request is the captured profile's")
         XCTAssertNil(appState.errorMessage)
     }
@@ -1658,5 +1665,484 @@ extension AppStateMultiDashboardTests {
         try await held.waitForRequests(3)
         XCTAssertEqual(held.sent.map(\.path).last, "/api/plugins/conduit_push/voice/tags")
         XCTAssertTrue(VoiceTranscriptOutbox.load(from: defaults).entries.isEmpty)
+    }
+}
+
+// MARK: - Kept settings answers (#1533)
+
+extension AppStateMultiDashboardTests {
+    /// A settings page's read is kept for the dashboard and profile that
+    /// answered, so the page opens on it next time; another profile's or
+    /// dashboard's pages don't.
+    func testSettingsAnswersAreKeptForTheDashboardAndProfileThatAnswered() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]), "Nothing kept yet")
+        let load = Task { await appState.loadProfileSettings(keys: ["display.skin"]) }
+        try await held.waitForRequests(1)
+        try await held.answer(["display": ["skin": "ares"]])
+        let settings = await load.value
+
+        XCTAssertEqual(settings["display.skin"], .text("ares"))
+        XCTAssertEqual(appState.keptProfileSettings(keys: ["display.skin"])?["display.skin"], .text("ares"))
+        appState.setActiveProfileForTesting("work")
+        XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]), "Another profile's pages")
+        appState.setActiveProfileForTesting("default")
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]), "Another dashboard's pages")
+    }
+
+    /// A read that lands after a switch is kept for neither dashboard.
+    func testASettingsReadLandingAfterASwitchIsNotKept() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let load = Task { await appState.loadProfileSettings(keys: ["display.skin"]) }
+        try await held.waitForRequests(1)
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer(["display": ["skin": "ares"]])
+        _ = await load.value
+
+        let store = appState.offlineChatCacheForTesting
+        XCTAssertNil(store.keptAnswer(AppState.KeptRoute.config, dashboardID: mac, profile: "default"))
+        XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]))
+    }
+
+    /// A write that lands after a switch is kept for the dashboard it was
+    /// made on, whose pages open on it when it's back, a config save and a
+    /// forget alike; the dashboard open by then keeps nothing of it.
+    func testAWriteLandingAfterASwitchIsKeptForItsDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let owner = try XCTUnwrap(appState.currentDashboardRuntimeOwner())
+        let memory = Task { try await appState.pulseClient.memory() }
+        try await held.waitForRequests(1)
+        try await held.answer(["items": [
+            ["id": 1, "text": "Call Ann", "kind": "commitment"], ["id": 2, "text": "Book the flights", "kind": "commitment"],
+        ]])
+        _ = try await memory.value
+
+        let save = Task { await appState.setProfileSetting("display.skin", value: .text("slate")) }
+        try await held.waitForRequests(2)       // the save's config read
+        try await held.answer(["display": ["skin": "ares"]])
+        try await held.waitForRequests(3)       // ... and its write
+        appState.selectDashboardTarget(vps.id)
+        try await held.answer()
+        _ = await save.value
+        await appState.forgetKeptPulseMemoryItem(id: 1, owner: owner)      // a forget landing now
+        XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]), "Nothing of them on the VPS")
+        XCTAssertNil(appState.keptPulseMemory())
+
+        appState.selectDashboardTarget(mac)
+        XCTAssertEqual(appState.keptProfileSettings(keys: ["display.skin"])?["display.skin"], .text("slate"), "The Mac's pages open on its save")
+        XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Book the flights"], "and its list without what it forgot")
+    }
+
+    /// Delete Saved Chats takes the settings pages' kept answers, and a
+    /// read it overtook keeps nothing: the page shows Hermes' answer, and
+    /// nothing comes back on the phone.
+    func testDeleteSavedChatsTakesTheKeptSettingsAnswers() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let first = Task { await appState.loadProfileSettings(keys: ["display.skin"]) }
+        try await held.waitForRequests(1)
+        try await held.answer(["display": ["skin": "ares"]])
+        _ = await first.value
+        XCTAssertNotNil(appState.keptProfileSettings(keys: ["display.skin"]))
+
+        appState.deleteSavedChats()
+        XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]), "Deleted with the saved chats")
+
+        let second = Task { await appState.loadProfileSettings(keys: ["display.skin"]) }
+        try await held.waitForRequests(2)
+        appState.deleteSavedChats()
+        try await held.answer(["display": ["skin": "slate"]])
+        let settings = await second.value
+        XCTAssertEqual(settings["display.skin"], .text("slate"), "The page shows Hermes' answer")
+        XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]), "but a read the delete overtook keeps nothing")
+    }
+
+    /// Delegation's pause holds every profile on a Hermes, so every
+    /// profile's page opens on the value any of them last read; another
+    /// dashboard's doesn't.
+    func testDelegationsKeptPauseIsTheDashboards() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        appState.offlineChatCacheForTesting.recordAnswer(
+            ["paused": true],
+            route: AppState.KeptRoute.delegationStatus,
+            dashboardID: mac,
+            profile: AppState.KeptRoute.everyProfile
+        )
+
+        XCTAssertEqual(appState.keptDelegationPaused(), true)
+        appState.setActiveProfileForTesting("work")
+        XCTAssertEqual(appState.keptDelegationPaused(), true, "Another profile's page opens on it")
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.keptDelegationPaused(), "Another dashboard's page doesn't")
+    }
+
+    /// A config save is what the settings pages open on next, without
+    /// another read.
+    func testAConfigSaveIsWhatTheSettingsPagesOpenOnNext() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let save = Task { await appState.setProfileSetting("display.skin", value: .text("slate")) }
+        try await held.waitForRequests(1)       // the config read
+        try await held.answer(["display": ["skin": "ares"], "agent": ["max_turns": 90]])
+        try await held.waitForRequests(2)       // ... and its write
+        try await held.answer()
+        let saved = await save.value
+
+        XCTAssertTrue(saved)
+        let kept = try XCTUnwrap(appState.keptProfileSettings(keys: ["display.skin", "agent.max_turns"]))
+        XCTAssertEqual(kept["display.skin"], .text("slate"))
+        XCTAssertEqual(kept["agent.max_turns"], .number(90))
+    }
+
+    /// A read asked before the phone wrote what it answers with, a forget
+    /// or a save, never puts its older answer back over the write; one
+    /// asked after it does replace it.
+    func testAReadAskedBeforeAWriteNeverPutsItsAnswerBack() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let owner = try XCTUnwrap(appState.currentDashboardRuntimeOwner())
+        let client = appState.pulseClient
+        let items: [String: Any] = ["items": [
+            ["id": 1, "text": "Call Ann", "kind": "commitment"], ["id": 2, "text": "Book the flights", "kind": "commitment"],
+        ]]
+        let first = Task { try await client.memory() }
+        try await held.waitForRequests(1)
+        try await held.answer(items)
+        _ = try await first.value
+
+        let older = Task { try await client.memory() }
+        try await held.waitForRequests(2)
+        await appState.forgetKeptPulseMemoryItem(id: 1, owner: owner)
+        try await held.answer(items)
+        _ = try await older.value
+        XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Book the flights"], "Asked before the forget")
+
+        // A settings page's read, asked before a save, answers after it.
+        let load = Task { await appState.loadProfileSettings(keys: ["display.skin"]) }
+        try await held.waitForRequests(3)
+        let save = Task { await appState.setProfileSetting("display.skin", value: .text("slate")) }
+        try await held.waitForRequests(4)       // the save's config read
+        try await held.answer(["display": ["skin": "ares"]], at: 1)
+        try await held.waitForRequests(5)       // ... and its write
+        try await held.answer(at: 1)
+        let saved = await save.value
+        XCTAssertTrue(saved)
+        try await held.answer(["display": ["skin": "ares"]])
+        let shown = await load.value
+        XCTAssertEqual(shown["display.skin"], .text("ares"), "The page shows its read's answer")
+        XCTAssertEqual(appState.keptProfileSettings(keys: ["display.skin"])?["display.skin"], .text("slate"), "but the save stays kept")
+
+        let after = Task { await appState.loadProfileSettings(keys: ["display.skin"]) }
+        try await held.waitForRequests(6)
+        try await held.answer(["display": ["skin": "mono"]])
+        _ = await after.value
+        XCTAssertEqual(appState.keptProfileSettings(keys: ["display.skin"])?["display.skin"], .text("mono"), "Asked after the save")
+    }
+
+    /// A write that leaves nothing to keep, a forget with no list kept or a
+    /// memory provider's save with no config kept, still outranks a read
+    /// asked before it: that read's answer isn't kept after it.
+    func testAWriteWithNothingKeptStillOutranksAnOlderRead() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let owner = try XCTUnwrap(appState.currentDashboardRuntimeOwner())
+        let older = Task { try await appState.pulseClient.memory() }
+        try await held.waitForRequests(1)
+        await appState.forgetKeptPulseMemoryItem(id: 1, owner: owner)
+        try await held.answer(["items": [["id": 1, "text": "Call Ann", "kind": "commitment"]]])
+        _ = try await older.value
+        XCTAssertNil(appState.keptPulseMemory(), "Asked before the forget")
+
+        let load = Task { await appState.loadProfileSettings(keys: ["memory.provider"]) }
+        try await held.waitForRequests(2)
+        let save = Task { await appState.setProfileSetting("memory.provider", value: .text("honcho")) }
+        try await held.waitForRequests(3)       // the plugin providers' write
+        try await held.answer(at: 1)
+        let saved = await save.value
+        XCTAssertTrue(saved)
+        try await held.answer(["memory": ["provider": "builtin"]])
+        _ = await load.value
+        XCTAssertNil(appState.keptProfileSettings(keys: ["memory.provider"]), "Asked before the save")
+
+        // A save that lands after a switch to another profile counts for
+        // the profile it was made on all the same.
+        let olderLoad = Task { await appState.loadProfileSettings(keys: ["memory.provider"]) }
+        try await held.waitForRequests(4)
+        let switchedSave = Task { await appState.setProfileSetting("memory.provider", value: .text("holographic")) }
+        try await held.waitForRequests(5)
+        appState.setActiveProfileForTesting("work")
+        try await held.answer(at: 1)
+        let switchedSaved = await switchedSave.value
+        XCTAssertFalse(switchedSaved, "The page it was made on is gone")
+        try await held.answer(["memory": ["provider": "builtin"]])
+        _ = await olderLoad.value
+        appState.setActiveProfileForTesting("default")
+        XCTAssertNil(appState.keptProfileSettings(keys: ["memory.provider"]), "Asked before a save that landed after a switch")
+
+        // And one that lands after a switch to another dashboard counts for
+        // the dashboard it was made on, where a read asked before it then
+        // answers.
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let leftLoad = Task { await appState.loadProfileSettings(keys: ["memory.provider"]) }
+        try await held.waitForRequests(6)
+        let leftSave = Task { await appState.setProfileSetting("memory.provider", value: .text("mem0")) }
+        try await held.waitForRequests(7)
+        appState.selectDashboardTarget(vps.id)
+        try await held.answer(at: 1)
+        let leftSaved = await leftSave.value
+        XCTAssertFalse(leftSaved, "The dashboard it was made on is gone")
+        appState.selectDashboardTarget(mac)
+        try await held.answer(["memory": ["provider": "builtin"]])
+        _ = await leftLoad.value
+        XCTAssertNil(appState.keptProfileSettings(keys: ["memory.provider"]), "Asked before a save that landed after a dashboard switch")
+    }
+
+    /// A Voice replies model save outranks a read of the slots asked
+    /// before it, which keeps nothing when it answers after the save; the
+    /// read the save asks for keeps the slot saved.
+    func testAVoiceReplyModelSaveOutranksAnOlderRead() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let fast = VoiceReplyModelSetting(provider: "openrouter", model: "fast/model", reasoningEffort: "none")
+        let older = Task { try await appState.loadVoiceReplyModel() }
+        try await held.waitForRequests(1)
+        let save = Task { await appState.setVoiceReplyModel(fast) }
+        try await held.waitForRequests(2)       // the save
+        try await held.answer(at: 1)
+        let refusal = await save.value
+        XCTAssertNil(refusal)
+        try await held.waitForRequests(3)       // the read it asks for
+        try await held.answer(["tasks": [["task": "voice_chat", "provider": "auto", "model": ""]]])
+        _ = try await older.value
+        XCTAssertNil(appState.keptVoiceReplyModel(), "Asked before the save")
+
+        try await held.answer(["tasks": [["task": "voice_chat", "provider": "openrouter", "model": "fast/model", "reasoning_effort": "none"]]])
+        for _ in 0..<1_000 where appState.keptVoiceReplyModel() == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(appState.keptVoiceReplyModel(), fast, "Asked after it")
+    }
+
+    /// Pulse is one per host: its state is kept once per dashboard, from a
+    /// read or a change that answers with it (a notification's Quiet for
+    /// today too), and What Pulse remembers' list beside it, without what
+    /// Pulse forgot; an estimate isn't a state. Settings > Pulse opens on them in any profile, and
+    /// another dashboard's opens on nothing.
+    func testPulsesStateAndMemoryAreKeptOncePerDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let owner = try XCTUnwrap(appState.currentDashboardRuntimeOwner())
+        let client = appState.pulseClient
+        XCTAssertNil(appState.keptPulseState(), "Nothing kept yet")
+
+        let read = Task { try await client.state() }
+        try await held.waitForRequests(1)
+        try await held.answer(["enabled": true, "memory": true, "memory_tokens": 1200])
+        _ = try await read.value
+        XCTAssertEqual(appState.keptPulseState()?.enabled, true)
+        XCTAssertEqual(appState.keptPulseState()?.memoryTokens, 1200, "A count of tokens is no credential")
+
+        let change = Task { try await client.update(["enabled": false]) }
+        try await held.waitForRequests(2)
+        try await held.answer(["enabled": false])
+        _ = try await change.value
+        XCTAssertEqual(appState.keptPulseState()?.enabled, false, "A change answers with the state it made")
+
+        let estimate = Task { try? await client.estimate(days: 30) }
+        try await held.waitForRequests(3)
+        try await held.answer(["estimate": ["days": 30, "chats": 4, "tokens": 900, "days_needed": 1]])
+        _ = await estimate.value
+        XCTAssertEqual(appState.keptPulseState()?.enabled, false, "An estimate isn't a state")
+
+        let memory = Task { try await client.memory() }
+        try await held.waitForRequests(4)
+        try await held.answer(["items": [
+            ["id": 1, "text": "Call Ann", "kind": "commitment"], ["id": 2, "text": "Book the flights", "kind": "commitment"],
+        ]])
+        _ = try await memory.value
+        XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Call Ann", "Book the flights"])
+        await appState.forgetKeptPulseMemoryItem(id: 1, owner: owner)
+        XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Book the flights"], "A forgotten item leaves the kept list")
+
+        // Quiet for today from a Pulse notification is kept as the page's own steps are.
+        let here = PulseQuietTarget(dashboardID: appState.activeDashboardID?.uuidString, gatewayID: nil)
+        let quiet = Task { await appState.quietPulseForToday(here, switching: false, wait: .zero) }
+        try await held.waitForRequests(5)
+        try await held.answer(["enabled": false, "quiet_until": 1800000000])
+        let quieted = await quiet.value
+        XCTAssertTrue(quieted)
+        XCTAssertEqual(appState.keptPulseState()?.quietUntil, Date(timeIntervalSince1970: 1800000000))
+
+        appState.setActiveProfileForTesting("work")
+        XCTAssertEqual(appState.keptPulseState()?.enabled, false, "Another profile's page opens on it")
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.keptPulseState(), "Another dashboard's page doesn't")
+        XCTAssertNil(appState.keptPulseMemory())
+    }
+
+    /// Voice settings keep Hermes' config and speech toolsets for the
+    /// dashboard and profile that answered, and Local's fast model without
+    /// the speech server's key, never `/api/env`, and open on them next
+    /// time, as the agent pages open on the same config; another profile's
+    /// or dashboard's page opens on nothing.
+    func testVoiceSettingsOpenOnTheirKeptAnswers() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": ["stt": ["enabled": true], "tts": ["provider": "edge"]],
+            "/api/tools/toolsets/stt/config": ["providers": []],
+            "/api/tools/toolsets/tts/config": ["providers": [["name": "Microsoft Edge TTS", "tts_provider": "edge", "status": "ready", "is_active": true]]],
+            "/api/env": ["ELEVENLABS_API_KEY": ["is_set": true, "redacted_value": "sk_...wxyz"]],
+            SpeechServerSpeechStream.statusPath: [
+                "available": true, "model_path": "/api/plugins/conduit_push/local-live/v1", "api_key": "sk-local-1",
+                "front_model": ["configured": true, "available": true, "base_url": "http://box:8080/v1", "model": "qwen3-4b"],
+            ],
+        ]
+        let page = HermesVoiceConfigurationService(requester: requester, profile: "default", answers: appState.voiceSettingsAnswers(profile: "default"))
+        XCTAssertFalse(page.snapshot.capability.isGatewayConnected, "Nothing kept yet")
+        await page.reload()
+        _ = await page.speechServerVoiceStatus()
+
+        let next = HermesVoiceConfigurationService(requester: requester, profile: "default", answers: appState.voiceSettingsAnswers(profile: "default"))
+        XCTAssertTrue(next.snapshot.capability.supportsSpeech, "Opens on what Hermes said")
+        XCTAssertFalse(next.snapshot.environmentLoaded)
+        XCTAssertNil(appState.offlineChatCacheForTesting.keptAnswer("/api/env", dashboardID: mac, profile: "default"), "Never kept")
+        XCTAssertEqual(appState.keptProfileSettings(keys: ["tts.provider"])?["tts.provider"], .text("edge"), "The agent pages' config")
+        XCTAssertEqual(next.lastFrontModel?.model, "qwen3-4b")
+        let keptVoice = appState.offlineChatCacheForTesting.keptAnswer(SpeechServerSpeechStream.statusPath, dashboardID: mac, profile: "default")
+        XCTAssertNotNil(keptVoice)
+        XCTAssertNil(keptVoice?["api_key"], "The speech server's key isn't kept")
+        let work = HermesVoiceConfigurationService(requester: requester, profile: "work", answers: appState.voiceSettingsAnswers(profile: "work"))
+        XCTAssertFalse(work.snapshot.capability.isGatewayConnected, "Another profile's page")
+        await appState.switchDashboard(to: vps.id)
+        let vpsPage = HermesVoiceConfigurationService(requester: requester, profile: "default", answers: appState.voiceSettingsAnswers(profile: "default"))
+        XCTAssertFalse(vpsPage.snapshot.capability.isGatewayConnected, "Another dashboard's page")
+    }
+
+    /// Voice settings' voice reply model opens on the slot Hermes gave
+    /// last, and the Voice and Pulse model pickers on the models Usage's
+    /// read keeps too; a read that fails keeps the slot, and an answer
+    /// without it says this Hermes has none (#1533).
+    func testTheVoiceModelSectionsOpenOnTheirKeptAnswers() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        XCTAssertNil(appState.keptVoiceReplyModel(), "Nothing kept yet")
+        let setting = VoiceReplyModelSetting(provider: "openrouter", model: "fast/model", reasoningEffort: "none")
+
+        let load = Task { try await appState.loadVoiceReplyModel() }
+        try await held.waitForRequests(1)
+        try await held.answer(["tasks": [["task": "voice_chat", "provider": "openrouter", "model": "fast/model", "reasoning_effort": "none"]]])
+        let answered = try await load.value
+        XCTAssertEqual(answered, setting)
+        XCTAssertEqual(appState.keptVoiceReplyModel(), setting)
+
+        let failing = Task { try await appState.loadVoiceReplyModel() }
+        try await held.waitForRequests(2)
+        try await held.answer(["error": "boom"], status: 500)
+        do {
+            _ = try await failing.value
+            XCTFail("A read Hermes didn't answer throws")
+        } catch {}
+        XCTAssertEqual(appState.keptVoiceReplyModel(), setting, "A read that fails keeps it")
+
+        let withoutSlot = Task { try await appState.loadVoiceReplyModel() }
+        try await held.waitForRequests(3)
+        try await held.answer(["tasks": [["task": "vision"]]])
+        let none = try await withoutSlot.value
+        XCTAssertNil(none)
+        XCTAssertNil(appState.keptVoiceReplyModel(), "This Hermes has no voice reply slot")
+        XCTAssertEqual(held.sent.map(\.path), Array(repeating: AppState.KeptRoute.modelAuxiliary, count: 3))
+
+        appState.offlineChatCacheForTesting.recordAnswer(
+            ["providers": [["slug": "openrouter", "name": "OpenRouter", "models": [["id": "fast/model"]]]]],
+            route: AppState.KeptRoute.providerQuotas, dashboardID: mac, profile: "default"
+        )
+        XCTAssertEqual(appState.keptModelProviders().map(\.name), ["openrouter"])
+        XCTAssertEqual(appState.keptModelProviders().first?.models.map(\.id), ["fast/model"])
+        appState.setActiveProfileForTesting("work")
+        XCTAssertTrue(appState.keptModelProviders().isEmpty, "Another profile's models")
+    }
+
+    /// A live voice mode's status line on Voice settings opens on what its
+    /// last check said, GPT-Live's per billing (the one its check asked
+    /// about), for the dashboard and profile that checked; a check from a
+    /// dashboard left keeps nothing.
+    func testTheLiveVoiceStatusLinesOpenOnTheirLastCheck() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let grok = LiveVoiceStatusLine(text: "Available (grok-4, via SuperGrok)", isAvailable: true)
+        XCTAssertNil(appState.keptLiveVoiceStatus(.grokLive), "Nothing kept yet")
+        appState.liveVoiceStatusKeeper(.grokLive)(grok)
+        XCTAssertEqual(appState.keptLiveVoiceStatus(.grokLive), grok)
+        XCTAssertNil(appState.keptLiveVoiceStatus(.geminiLive), "Another mode's")
+
+        // The billing switched to API while a subscription check was out.
+        let keepGPT = appState.gptLiveStatusKeeper()
+        appState.setGPTLiveBilling(.api)
+        keepGPT(LiveVoiceStatusLine(text: "Available (gpt-realtime)", isAvailable: true), .subscription)
+        XCTAssertNil(appState.keptLiveVoiceStatus(.gptLive), "The other billing's")
+        appState.setGPTLiveBilling(.subscription)
+        XCTAssertEqual(appState.keptLiveVoiceStatus(.gptLive)?.text, "Available (gpt-realtime)")
+
+        appState.setActiveProfileForTesting("work")
+        XCTAssertNil(appState.keptLiveVoiceStatus(.grokLive), "Another profile's")
+        appState.setActiveProfileForTesting("default")
+        let left = appState.liveVoiceStatusKeeper(.grokLive)
+        await appState.switchDashboard(to: vps.id)
+        left(LiveVoiceStatusLine(text: "Grok Live isn't set up", isAvailable: false))
+        XCTAssertNil(appState.keptLiveVoiceStatus(.grokLive), "Another dashboard's page")
+    }
+
+    /// A models read that fails keeps no split beside the period's new
+    /// numbers: Usage opens on the usage route's own rows, as it showed
+    /// them, never on an older split and its cost.
+    func testAUsageLoadWhoseModelsReadFailsKeepsNoOlderSplit() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let modelsRoute = UsageReport.route(UsageReport.modelsPath, days: 30)
+        appState.offlineChatCacheForTesting.recordAnswer(
+            ["models": [["model": "old-model", "input_tokens": 5]]], route: modelsRoute, dashboardID: mac, profile: "default"
+        )
+        appState.isConnected = true
+
+        let load = Task { try await appState.loadUsageReport(days: 30) }
+        try await held.waitForRequests(1)
+        try await held.answer(["totals": ["total_input": 1200], "by_model": [["model": "new-model", "input_tokens": 1200]], "period_days": 30])
+        try await held.waitForRequests(2)
+        try await held.answer(["error": "boom"], status: 500)
+        let report = try await load.value
+
+        XCTAssertEqual(held.sent.map(\.path), [UsageReport.usagePath, UsageReport.modelsPath])
+        XCTAssertEqual(report.models.map(\.model), ["new-model"])
+        XCTAssertEqual(appState.keptUsageReport(days: 30)?.models.map(\.model), ["new-model"], "Opens on what it showed")
+    }
+
+    /// Usage opens on each period's numbers as the active profile last read
+    /// them, and the quota beside them; another period or profile opens on
+    /// its own, or on nothing.
+    func testUsageOpensOnThePeriodsKeptNumbers() throws {
+        let (appState, _, _) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let store = appState.offlineChatCacheForTesting
+        store.recordAnswer(
+            [
+                "totals": ["total_input": 1200, "total_output": 300, "total_sessions": 2],
+                "daily": [["day": "2026-10-30", "input_tokens": 1000, "output_tokens": 200]],
+                "period_days": 30,
+            ],
+            route: UsageReport.route(UsageReport.usagePath, days: 30), dashboardID: mac, profile: "default"
+        )
+        store.recordAnswer(
+            ["providers": [["slug": "openai", "name": "OpenAI", "usage": ["windows": [["label": "5h", "used_percent": 40]]]]]],
+            route: AppState.KeptRoute.providerQuotas, dashboardID: mac, profile: "default"
+        )
+
+        let report = try XCTUnwrap(appState.keptUsageReport(days: 30))
+        XCTAssertEqual(report.totals.input, 1200)
+        XCTAssertEqual(report.daily.first?.usage.input, 1000, "A day's token counts are numbers, kept")
+        XCTAssertNil(appState.keptUsageReport(days: 7), "Another period")
+        XCTAssertEqual(appState.keptProviderQuotas()?.map(\.slug), ["openai"])
+        appState.setActiveProfileForTesting("work")
+        XCTAssertNil(appState.keptUsageReport(days: 30), "Another profile")
+        XCTAssertNil(appState.keptProviderQuotas())
     }
 }

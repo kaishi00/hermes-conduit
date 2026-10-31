@@ -328,6 +328,16 @@ class WorkflowContractTests(unittest.TestCase):
                       "-skipPackageUpdates only when the restored cache holds the checkout")
         self.assertIn('${package_flag:+"$package_flag"}', build)
 
+    def test_a_failed_build_posts_its_source_errors(self):
+        """A failed build posts its first source errors as annotations, which
+        the API serves when the job log can't be read."""
+        build = _read(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"))
+        self.assertIn('echo "::error file=${file#"$PWD/"},line=$row,col=$col::', build)
+        self.assertLess(
+            build.index("  annotate_source_errors\n"),
+            build.index('echo "::error::build-for-testing failed'),
+        )
+
     def test_no_shared_build_job_remains(self):
         text = self._workflow_text()
         self.assertFalse(

@@ -762,6 +762,12 @@ extension VoiceConversationControllerTests {
         new?.decides = true
         XCTAssertEqual(new?.payload["decides"] as? Bool, true)
         XCTAssertEqual(new?.payload["alerts"] as? Bool, true)
+        XCTAssertNil(new?.payload["quiet_at_screen"], "a host before plugin 0.122 refuses it")
+        var quiet = HermesCallSettings(json: ["enabled": true, "when_asked": true, "alerts": true, "quiet_at_screen": true, "min_gap_s": 120, "per_hour": 6, "per_day": 20])
+        XCTAssertEqual(quiet?.quietAtScreen, true)
+        XCTAssertEqual(quiet?.payload["quiet_at_screen"] as? Bool, true)
+        quiet?.quietAtScreen = false
+        XCTAssertEqual(quiet?.payload["quiet_at_screen"] as? Bool, false, "turning it off is sent too")
     }
 
     func testARingingCallRingsOnlyWhenItCanBeAnswered() {

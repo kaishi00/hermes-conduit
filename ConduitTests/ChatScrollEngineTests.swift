@@ -2940,6 +2940,65 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertTrue(engine.isFollowingLatest)
     }
 
+    /// A chat opened on its saved rows: Hermes' rows taking over are its
+    /// first sync, so a turn started elsewhere since it was saved doesn't
+    /// arm the hold, as when it opened on no rows (#1533). A turn after
+    /// that does.
+    func testHermesRowsAfterSavedOnesDoNotArmTheHold() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.transcriptChanged(
+            messages: Self.messages(0..<10),
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            isInitialSync: true,
+            isProvisional: true
+        )
+        engine.transcriptChanged(
+            messages: Self.messages(0..<12),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertFalse(engine.replyHoldArmed)
+
+        engine.transcriptChanged(
+            messages: Self.messages(0..<13),
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertTrue(engine.replyHoldArmed)
+        withExtendedLifetime(surface) {}
+    }
+
+    /// Saved rows that matched Hermes' leave without the rows drawn
+    /// changing, and the view tells the engine with the same rows: the next
+    /// turn, one started elsewhere included, arms the hold (#1550 review).
+    func testSavedRowsThatMatchedHermesLeaveAndTheNextTurnArmsTheHold() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.transcriptChanged(
+            messages: Self.messages(0..<10),
+            transcriptRevision: 1,
+            viewportTransitionGeneration: 1,
+            isInitialSync: true,
+            isProvisional: true
+        )
+        // Hermes' rows are the saved ones: only the copy leaves.
+        engine.transcriptChanged(
+            messages: Self.messages(0..<10),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+
+        engine.transcriptChanged(
+            messages: Self.messages(0..<11),
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 1
+        )
+        XCTAssertTrue(engine.replyHoldArmed)
+        withExtendedLifetime(surface) {}
+    }
+
     func testAUserMessageNotLaidOutYetFollowsAsBefore() {
         let (engine, surface) = makeEngine()
         engine.holdsRepliesAtStart = { true }
@@ -3113,5 +3172,46 @@ final class ChatScrollEngineTests: XCTestCase {
         engine.replyStartLandingRequested()
         XCTAssertTrue(scheduled.isEmpty)
         XCTAssertEqual(surface.contentOffsetY, 3200)
+    }
+
+    /// An unread chat left mid-turn asks for its landing as it opens, from
+    /// its saved rows, and the view can hand the engine that request before
+    /// the switch the same open made: the switch keeps it (#1533).
+    func testASwitchKeepsTheLandingItsOwnOpenAskedFor() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        events = []
+        engine.replyStartLandingRequested(viewportTransitionGeneration: 2)
+        engine.renderedSessionChanged(to: keyB, identity: identity("b"), viaNotification: false, viewportTransitionGeneration: 2)
+        engine.transcriptChanged(
+            messages: Self.messages(10..<20),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 2,
+            isInitialSync: true
+        )
+        runScheduled()
+        XCTAssertTrue(events.contains(.revealRow(id: "m19")), "It lands at the start of b's reply")
+        XCTAssertEqual(engine.mode, .browsing)
+        withExtendedLifetime(surface) {}
+    }
+
+    /// A landing an earlier open asked for doesn't follow the reader into
+    /// the next chat they open before it ran.
+    func testASwitchDropsALandingAnEarlierOpenAskedFor() {
+        let (engine, surface) = makeEngine()
+        engine.holdsRepliesAtStart = { true }
+        engine.replyStartLandingRequested(viewportTransitionGeneration: 1)
+        engine.renderedSessionChanged(to: keyB, identity: identity("b"), viaNotification: false, viewportTransitionGeneration: 2)
+        engine.transcriptChanged(
+            messages: Self.messages(10..<20),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 2,
+            isInitialSync: true
+        )
+        events = []
+        runScheduled()
+        XCTAssertFalse(events.contains { if case .revealRow = $0 { return true }; return false })
+        XCTAssertTrue(engine.isFollowingLatest)
+        withExtendedLifetime(surface) {}
     }
 }

@@ -32,6 +32,9 @@ struct HealthSyncState: Codable, Equatable {
     var history: HealthHistoryDepth?
     /// The oldest day already sent; history before it is still to go.
     var backfillCursor: Date?
+    /// Where the walk stops: the history start, or the day of the oldest
+    /// reading when that's later. Nil before a walk has asked.
+    var backfillFloor: Date?
     /// The categories the history walk covers (its chunks go out with the
     /// categories on now). Nil in a state from before this was kept, or
     /// before the first walk: the next walk starts over to be safe.
@@ -392,6 +395,7 @@ final class HealthSyncEngine: ObservableObject {
         state.recentWindows = nil
         state.recentWholeAt = nil
         state.backfillCursor = nil
+        state.backfillFloor = nil
         state.backfilledCategories = nil
         state.historyStart = nil
         state.history = nil
@@ -403,9 +407,16 @@ final class HealthSyncEngine: ObservableObject {
     /// until the user deletes it.
     private func prepareHistory(_ depth: HealthHistoryDepth) {
         let today = calendar.startOfDay(for: now())
-        let start: Date = depth.days.map { calendar.date(byAdding: .day, value: -$0, to: today) ?? today }
-            ?? calendar.startOfDay(for: source.earliestDate())
-        if state.historyStart != nil, state.history == depth { return }
+        // Health keeps dates from before the host's first day (issue 1537).
+        let oldest = HealthSyncLimits.oldestDay(calendar: calendar)
+        let start = max(oldest, depth.days.map { calendar.date(byAdding: .day, value: -$0, to: today) ?? today }
+            ?? calendar.startOfDay(for: source.earliestDate()))
+        if let saved = state.historyStart, state.history == depth {
+            // Fixed before that limit: anchors kept, as the host refused
+            // anything they read from before it.
+            if saved < oldest { state.historyStart = oldest }
+            return
+        }
         if state.historyStart != nil { state.anchors = [:] }
         state.historyStart = start
         state.history = depth
@@ -596,9 +607,17 @@ private struct Session {
                 if !missing.isEmpty { state.backfillCursor = from }
             }
         }
-        while let cursor = engine.state.backfillCursor, cursor > target {
+        guard let cursor = engine.state.backfillCursor, cursor > target else { return }
+        // No older than the first day with a reading, so the years before
+        // the user had any go unscanned. Asked every pass: readings added
+        // later with older dates (an import) move it back again.
+        try checkTime()
+        let reading = try await engine.source.oldestReading(in: categories)
+        let floor = max(target, reading.map { calendar.startOfDay(for: $0) } ?? cursor)
+        if engine.state.backfillFloor != floor { engine.acknowledged { $0.backfillFloor = floor } }
+        while let cursor = engine.state.backfillCursor, cursor > floor {
             try checkTime()
-            let start = max(target, calendar.date(byAdding: .day, value: -HealthSyncLimits.backfillChunkDays, to: cursor) ?? target)
+            let start = max(floor, calendar.date(byAdding: .day, value: -HealthSyncLimits.backfillChunkDays, to: cursor) ?? floor)
             var batch = newBatch()
             batch.windows = try await windows(from: start, to: cursor)
             try await send(batch)

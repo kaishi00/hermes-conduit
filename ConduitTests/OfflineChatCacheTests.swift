@@ -439,6 +439,211 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(copy("e", dashboard))
     }
 
+    /// The app's store saves on its own queue, so leaving a chat never
+    /// waits on encoding or the disk, and answers from memory meanwhile:
+    /// the Chats list at once, a copy and the index once written.
+    func testTheAppsStoreSavesOffTheCallerAndAnswersFromMemory() throws {
+        let store = makeStore(writesAsynchronously: true)
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        let list = SavedChatList.capture(sessions: [session("a")], cronSessions: [], isPinned: { _ in false }, voiceTags: [:], projects: [], supportsProjects: false, now: Date(timeIntervalSince1970: 1_790_000_000))
+        store.record(dashboardID: dashboard, profile: "default", sessionID: "a", title: "A", messages: row, sessions: [session("a")])
+        store.recordChatList(list, dashboardID: dashboard, profile: "default")
+        XCTAssertEqual(store.loadChatList(dashboardID: dashboard, profile: "default"), list, "The list answers before its file lands")
+
+        store.waitForPendingWrites()
+        let index = store.fileURL(dashboardID: dashboard, profile: "default")
+        let copy = store.transcriptFileURL("a", dashboardID: dashboard, profile: "default")
+        let listFile = store.chatListFileURL(dashboardID: dashboard, profile: "default")
+        for file in [index, copy, listFile] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: file.path), "\(file.lastPathComponent) lands on the queue")
+        }
+        // The next launch reads what landed.
+        let next = OfflineChatCacheStore(directory: index.deletingLastPathComponent())
+        XCTAssertEqual(next.load(dashboardID: dashboard, profile: "default")?.lastSessionID, "a")
+        XCTAssertEqual(next.loadTranscript("a", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["m"])
+        XCTAssertEqual(next.loadChatList(dashboardID: dashboard, profile: "default"), list)
+
+        // Memory is what this run answers from.
+        for file in [index, copy, listFile] { try FileManager.default.removeItem(at: file) }
+        XCTAssertEqual(store.load(dashboardID: dashboard, profile: "default")?.lastSessionID, "a")
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["m"])
+        XCTAssertEqual(store.loadChatList(dashboardID: dashboard, profile: "default"), list)
+    }
+
+    /// A removal waits for the saves queued before it, so a copy or held
+    /// rows queued just before a delete or a sign-out never land after it,
+    /// and what it took is gone when it returns.
+    func testARemovalTakesWhatWasQueuedBeforeIt() {
+        let store = makeStore(writesAsynchronously: true)
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        let copy = store.transcriptFileURL("a", dashboardID: dashboard, profile: "default")
+        let held = store.heldRowsFileURL("a", dashboardID: dashboard, profile: "default")
+        store.record(dashboardID: dashboard, profile: "default", sessionID: "a", title: "A", messages: row, sessions: [session("a")])
+        store.recordHeldRows(HistoryPage.HeldRows(sessionID: "a", digests: ["d"], rows: [["id": 1]]), to: held)
+
+        store.removeTranscripts(sessionIDs: ["a"], dashboardID: dashboard, profile: "default")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: copy.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: held.path))
+        XCTAssertNil(store.loadTranscript("a", dashboardID: dashboard, profile: "default"))
+        XCTAssertNil(store.load(dashboardID: dashboard, profile: "default")?.transcript(for: "a"))
+
+        store.record(dashboardID: dashboard, profile: "default", sessionID: "b", title: "B", messages: row, sessions: [session("b")])
+        store.removeAll()
+        store.waitForPendingWrites()
+        XCTAssertNil(store.load(dashboardID: dashboard, profile: "default"))
+        XCTAssertNil(store.loadTranscript("b", dashboardID: dashboard, profile: "default"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: copy.deletingLastPathComponent().path), "Nothing came back after the wipe")
+    }
+
+    /// Leaving a chat with nothing new doesn't write its copy again, until
+    /// its saved time would say it's older than it is.
+    func testAnUnchangedCopyIsNotWrittenAgain() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        let start = Date()
+        let file = store.transcriptFileURL("a", dashboardID: dashboard, profile: "default")
+        func save(after seconds: TimeInterval, _ messages: [ChatMessage] = row) {
+            store.record(dashboardID: dashboard, profile: "default", sessionID: "a", title: "A",
+                         messages: messages, sessions: [session("a")], now: start.addingTimeInterval(seconds))
+        }
+        func markWritten() throws {
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_000)], ofItemAtPath: file.path)
+        }
+        func wasWrittenAgain() throws -> Bool {
+            let date = try FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate] as? Date
+            return date != Date(timeIntervalSince1970: 1_000)
+        }
+
+        save(after: 0)
+        try markWritten()
+        save(after: 60)
+        XCTAssertFalse(try wasWrittenAgain(), "Left again with the same rows: its file stays")
+
+        save(after: 120, row + [ChatMessage(id: "n", role: .assistant, content: "hello", timestamp: "2")])
+        XCTAssertTrue(try wasWrittenAgain(), "A new row is written")
+
+        try markWritten()
+        save(after: 120 + OfflineChatCacheStore.unchangedCopyRewriteInterval + 1, row + [ChatMessage(id: "n", role: .assistant, content: "hello", timestamp: "2")])
+        XCTAssertTrue(try wasWrittenAgain(), "Written again once its saved time is stale")
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["m", "n"])
+    }
+
+    /// A chat left again unchanged writes nothing, but a copy no index
+    /// lists (its index write failed) still goes.
+    func testAnUnchangedLeaveStillClearsACopyLeftBehind() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        let start = Date()
+        func save(after seconds: TimeInterval) {
+            store.record(dashboardID: dashboard, profile: "default", sessionID: "a", title: "A",
+                         messages: row, sessions: [session("a")], now: start.addingTimeInterval(seconds))
+        }
+        save(after: 0)
+        let stray = store.transcriptFileURL("gone", dashboardID: dashboard, profile: "default")
+        try Data("{}".utf8).write(to: stray)
+
+        save(after: 60)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stray.path))
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: "default")?.messages.map(\.id), ["m"])
+    }
+
+    /// Once the live list is in, the store reads ahead the copies of the
+    /// chats opened last, so opening one doesn't read its file on the tap.
+    func testRecentCopiesAreReadAheadIntoMemory() throws {
+        let writer = makeStore()
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        for id in ["a", "b", "c"] {
+            writer.record(dashboardID: dashboard, profile: "default", sessionID: id, title: id, messages: row, sessions: [])
+        }
+        let list = SavedChatList.capture(sessions: [session("c")], cronSessions: [], isPinned: { _ in false }, voiceTags: [:], projects: [], supportsProjects: false, now: Date(timeIntervalSince1970: 1_790_000_000))
+        writer.recordChatList(list, dashboardID: dashboard, profile: "default")
+        let directory = writer.fileURL(dashboardID: dashboard, profile: "default").deletingLastPathComponent()
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+
+        store.prefetch(dashboardID: dashboard, profile: "default", transcripts: 2)
+        store.waitForPendingWrites()
+
+        for id in ["a", "b", "c"] {
+            try FileManager.default.removeItem(at: store.transcriptFileURL(id, dashboardID: dashboard, profile: "default"))
+        }
+        try FileManager.default.removeItem(at: store.chatListFileURL(dashboardID: dashboard, profile: "default"))
+        XCTAssertNotNil(store.loadTranscript("c", dashboardID: dashboard, profile: "default"), "The chat opened last is in memory")
+        XCTAssertNotNil(store.loadTranscript("b", dashboardID: dashboard, profile: "default"))
+        XCTAssertNil(store.loadTranscript("a", dashboardID: dashboard, profile: "default"), "Past the limit: not read ahead")
+        XCTAssertEqual(store.loadChatList(dashboardID: dashboard, profile: "default"), list, "Its saved list too")
+    }
+
+    /// A profile read ahead for a switch (its last chat) is read further
+    /// once it's the one open and asks for more copies.
+    func testAScopeReadAheadForASwitchIsReadFurtherOnceOpen() throws {
+        let writer = makeStore()
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        for id in ["a", "b", "c"] {
+            writer.record(dashboardID: dashboard, profile: "work", sessionID: id, title: id, messages: row, sessions: [])
+        }
+        let directory = writer.fileURL(dashboardID: dashboard, profile: "work").deletingLastPathComponent()
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+
+        store.prefetch(dashboardID: dashboard, profile: "work", transcripts: 1)
+        store.prefetch(dashboardID: dashboard, profile: "work", transcripts: 1)
+        store.waitForPendingWrites()
+        try FileManager.default.removeItem(at: store.transcriptFileURL("b", dashboardID: dashboard, profile: "work"))
+        XCTAssertNil(store.loadTranscript("b", dashboardID: dashboard, profile: "work"), "For a switch, only its last chat")
+
+        store.prefetch(dashboardID: dashboard, profile: "work", transcripts: 3)
+        store.waitForPendingWrites()
+        for id in ["a", "c"] {
+            try FileManager.default.removeItem(at: store.transcriptFileURL(id, dashboardID: dashboard, profile: "work"))
+        }
+        XCTAssertNotNil(store.loadTranscript("c", dashboardID: dashboard, profile: "work"))
+        XCTAssertNotNil(store.loadTranscript("a", dashboardID: dashboard, profile: "work"), "Open, it's read further")
+    }
+
+    /// Once the live list is in, the app reads ahead this profile's chats
+    /// opened last and, for a switch, each other profile's saved list and
+    /// last chat, so none of them reads a file on the tap.
+    func testTheLiveListReadsAheadWhatATapShowsNext() async throws {
+        let writer = makeStore()
+        let dashboard = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        for (profile, id) in [("default", "a"), ("work", "w")] {
+            writer.record(dashboardID: dashboard, profile: profile, sessionID: id, title: id, messages: row, sessions: [])
+            seedChatList(writer, dashboard: dashboard, profile: profile, sessions: [session(id, profile: profile)])
+        }
+        let directory = writer.fileURL(dashboardID: dashboard, profile: "default").deletingLastPathComponent()
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+        addTeardownBlock { store.waitForPendingWrites() }
+        let live = [session("a")]
+        let saved = SavedDashboard(id: dashboard, label: "One", normalizedURL: "https://one.example")
+        let (appState, _, _) = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: dashboard, dashboards: [saved]),
+            store: store,
+            sessionCatalogLoader: { _ in live }
+        )
+        appState.profiles = ["default", "work"]
+        appState.connection = HermesConnection(baseUrl: saved.normalizedURL, ticket: "ticket")
+        appState.showLogin = false
+
+        await appState.loadSessions()
+        store.waitForPendingWrites()
+
+        for (profile, id) in [("default", "a"), ("work", "w")] {
+            try FileManager.default.removeItem(at: store.transcriptFileURL(id, dashboardID: dashboard, profile: profile))
+            try FileManager.default.removeItem(at: store.chatListFileURL(dashboardID: dashboard, profile: profile))
+        }
+        XCTAssertNotNil(store.loadTranscript("a", dashboardID: dashboard, profile: "default"), "This profile's chat opened last")
+        XCTAssertNotNil(store.loadTranscript("w", dashboardID: dashboard, profile: "work"), "Another profile's last chat, for a switch")
+        XCTAssertEqual(store.loadChatList(dashboardID: dashboard, profile: "work")?.sessions.map(\.id), ["w"], "and its saved list")
+    }
+
     /// The last chat saved being deleted leaves no chat to open to.
     func testRemovingTheOnlySavedChatClearsTheChatALaunchOpensTo() throws {
         let store = makeStore()
@@ -492,14 +697,17 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(store.load(dashboardID: dashboard, profile: "default"), snapshot)
     }
 
-    /// The copy draws as the live transcript does: a turn's steps as one
-    /// card with their times, pictures, reactions.
+    /// The copy draws as the live transcript does, in the chat's own scroll
+    /// view: a turn's steps as one card with their times, pictures,
+    /// reactions, and Hermes' row ids, so Hermes' rows sent again unchanged
+    /// equal the copy's and aren't drawn again (#1533).
     func testSavedRowsKeepWhatTheLiveTranscriptDraws() throws {
         let (appState, store, dashboard) = makeAppState()
         let picture = Attachment(id: "u1-gateway-image-0", name: "photo.jpg", uri: "/files/photo.jpg", mimeType: "image/jpeg", kind: .image)
         let reaction = MessageReaction(emoji: "👍", author: MessageReaction.agentAuthor, at: 1_790_000_000)
         var thinking = ChatMessage(id: "r1", role: .reasoning, content: "Looking it up", timestamp: "2")
         thinking.stepDuration = 4
+        let reply = ChatMessage(id: "a1", role: .assistant, content: "Here it is", timestamp: "4", rowId: 42)
         store.record(
             dashboardID: dashboard,
             profile: "default",
@@ -509,14 +717,19 @@ final class OfflineChatCacheTests: XCTestCase {
                 ChatMessage(id: "u1", role: .user, content: "Find it", timestamp: "1", attachments: [picture], reactions: [reaction]),
                 thinking,
                 ChatMessage(id: "t1", role: .tool, content: "", timestamp: "3", tool: ToolActivity(name: "web_search", status: .complete, duration: 3)),
-                ChatMessage(id: "a1", role: .assistant, content: "Here it is", timestamp: "4"),
+                reply,
             ],
             sessions: [session("stored-a")]
         )
 
         appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
 
-        let rows = try XCTUnwrap(appState.offlineChatPresentation?.displayedRows)
+        let drawn = appState.chatRowsOnScreen
+        XCTAssertEqual(drawn, try XCTUnwrap(appState.offlineChatPresentation?.displayedMessages))
+        XCTAssertEqual(drawn.last, reply, "Hermes' row, row id and all")
+        var placed = ChatMessageScrollTargetCache()
+        placed.update(for: drawn)
+        let rows = placed.targets
         XCTAssertEqual(rows.map(\.id), ["u1", "r1", "t1", "a1"])
         XCTAssertEqual(rows[0].message.attachments, [picture])
         XCTAssertEqual(rows[0].message.reactions, [reaction])
@@ -551,10 +764,13 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(appState.persistedTranscriptWindow)
         XCTAssertFalse(appState.canLoadEarlierMessagesForActiveConversation)
         // Viewport (#147/#193): no transcript revision, transition, or scroll
-        // identity change — the live chat view sees a plain empty cold launch.
+        // identity change. The chat view draws the copy's rows under the
+        // copy's own key until its chat resumes (#1533).
         XCTAssertEqual(appState.chatTranscriptRevision, revision)
         XCTAssertEqual(appState.chatViewportTransitionGeneration, transition)
         XCTAssertEqual(appState.activeChatScrollSessionIdentity, identity)
+        XCTAssertEqual(appState.chatRowsOnScreen.map(\.id), ["u1", "a1"])
+        XCTAssertEqual(appState.savedCopyScrollSessionKey, ChatScrollSessionKey(profile: "default", sessionID: "stored-a"))
         // Read-only.
         XCTAssertFalse(appState.composerIsEnabled)
         XCTAssertEqual(appState.composerAction(hasText: true, hasAttachments: false), .unavailable)
@@ -610,6 +826,11 @@ final class OfflineChatCacheTests: XCTestCase {
         presentation = try XCTUnwrap(appState.offlineChatPresentation)
         XCTAssertEqual(presentation.displayedMessages.map(\.id), ["u1", "a1"])
         XCTAssertEqual(appState.chatPickedFromSavedListIDForTesting, "stored-a", "The latest tap is the one that opens")
+        XCTAssertEqual(appState.chatRowsOnScreen.map(\.id), ["u1", "a1"])
+        XCTAssertEqual(
+            appState.savedCopyScrollSessionKey, ChatScrollSessionKey(profile: "default", sessionID: "stored-a"),
+            "Drawn as the picked chat, not as the chat under it"
+        )
         // Nothing live moved.
         XCTAssertNil(appState.activeSessionId)
         XCTAssertTrue(appState.messages.isEmpty)
@@ -1533,8 +1754,9 @@ final class OfflineChatCacheTests: XCTestCase {
     }
 
     /// Going back to a chat shows its saved copy at once while Hermes sends
-    /// its transcript, instead of a blank chat, and the live transcript
-    /// replaces it wholesale (#1352).
+    /// its transcript, instead of a blank chat (#1352), drawn as the chat's
+    /// own rows, and Hermes' rows take over from them in the same update
+    /// (#1533).
     func testAChatOpenedAgainShowsItsSavedCopyUntilItsTranscriptLands() async throws {
         useInMemoryKeychain()
         let gate = ControlledSuspension()
@@ -1571,12 +1793,92 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(appState.showsOfflineChatCopy)
         XCTAssertEqual(appState.displayedChatTitle, "stored-a")
         XCTAssertTrue(appState.messages.isEmpty, "The copy never feeds the live transcript")
+        XCTAssertEqual(appState.chatRowsOnScreen.map(\.id), ["u1", "a1"], "The chat's own scroll view draws them")
+        XCTAssertNil(
+            appState.savedCopyScrollSessionKey,
+            "Drawn under the opening chat's own key, so Hermes' rows taking over isn't a switch"
+        )
+        XCTAssertEqual(
+            ChatRowState(appState).latestAssistantMessageID, "a1",
+            "Its rows fold and hide as Hermes' will"
+        )
+        XCTAssertTrue(ChatRowState(appState).isOffline, "Nothing needing Hermes' word acts on them")
 
         gate.resume()
         let landed = await opening.value
         XCTAssertTrue(landed)
         XCTAssertNil(appState.offlineChatPresentation)
         XCTAssertEqual(appState.messages.map(\.id), ["live-stored-a"])
+        XCTAssertEqual(appState.chatRowsOnScreen.map(\.id), ["live-stored-a"])
+    }
+
+    /// An unread chat left while its turn ran lands at that turn's reply
+    /// start from its saved rows as it opens: Hermes' rows start there too,
+    /// so nothing moves when they land, and they don't land it again
+    /// (#1533).
+    func testAnUnreadChatLeftMidTurnLandsFromItsSavedRows() async throws {
+        useInMemoryKeychain()
+        let gate = ControlledSuspension()
+        var gated = false
+        var unread = session("stored-a")
+        unread.isUnread = true
+        let live = [unread, session("stored-b")]
+        let opened = OpenedChats()
+        let (appState, store, dashboard) = makeAppState(
+            configureDefaults: { defaults in
+                ChatResumeStore(defaults: defaults).setLastSessionID("stored-b", for: "default")
+            },
+            lifecycleOperations: connectedLifecycle(
+                catalog: { _ in live },
+                opened: opened,
+                beforeOpen: { sessionID in
+                    guard sessionID == "stored-a", !gated else { return }
+                    gated = true
+                    await gate.suspend()
+                }
+            )
+        )
+        addTeardownBlock { appState.client?.disconnect() }
+        await appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"))
+        await waitUntil { appState.activeSessionId == "stored-b" && appState.messages.map(\.id) == ["live-stored-b"] }
+        store.record(
+            dashboardID: dashboard,
+            profile: "default",
+            sessionID: "stored-a",
+            title: "A",
+            messages: [
+                ChatMessage(id: "u1", role: .user, content: "Question", timestamp: "1"),
+                ChatMessage(id: "t1", role: .tool, content: "Searching", timestamp: "2"),
+            ],
+            sessions: live
+        )
+        XCTAssertTrue(appState.isSessionUnread(unread))
+        let landingsBefore = appState.chatReplyStartLandingRequest
+
+        let opening = Task { @MainActor in await appState.openSession("stored-a") }
+        await gate.waitUntilSuspended()
+
+        XCTAssertEqual(appState.chatRowsOnScreen.map(\.id), ["u1", "t1"])
+        XCTAssertEqual(appState.chatReplyStartLandingRequest, landingsBefore + 1, "It lands from the saved rows")
+
+        gate.resume()
+        let landed = await opening.value
+        XCTAssertTrue(landed)
+        XCTAssertEqual(appState.chatRowsOnScreen.map(\.id), ["live-stored-a"])
+        XCTAssertEqual(appState.chatReplyStartLandingRequest, landingsBefore + 1, "Hermes' rows don't land it again")
+    }
+
+    /// Saved rows end mid-turn while the user's latest message has no reply
+    /// after it, only steps or nothing.
+    func testSavedRowsEndMidTurnUntilTheReply() {
+        let question = ChatMessage(id: "u", role: .user, content: "Question", timestamp: "1")
+        let step = ChatMessage(id: "t", role: .tool, content: "Searching", timestamp: "2")
+        let reply = ChatMessage(id: "a", role: .assistant, content: "Answer", timestamp: "3")
+        XCTAssertTrue(AppState.savedRowsEndMidTurn([reply, question]))
+        XCTAssertTrue(AppState.savedRowsEndMidTurn([reply, question, step]))
+        XCTAssertFalse(AppState.savedRowsEndMidTurn([question, step, reply]))
+        XCTAssertFalse(AppState.savedRowsEndMidTurn([reply]), "No question: no turn to land in")
+        XCTAssertFalse(AppState.savedRowsEndMidTurn([]))
     }
 
     /// A Bot Chat keeps no copy on the phone; the one left this run shows
@@ -2596,11 +2898,15 @@ final class OfflineChatCacheTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeStore() -> OfflineChatCacheStore {
+    private func makeStore(writesAsynchronously: Bool = false) -> OfflineChatCacheStore {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("OfflineChatCacheTests-\(UUID().uuidString)", isDirectory: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
-        return OfflineChatCacheStore(directory: directory)
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: writesAsynchronously)
+        addTeardownBlock {
+            store.waitForPendingWrites()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        return store
     }
 
     private func makeAppState(sharing store: OfflineChatCacheStore, dashboard: UUID) -> (AppState, OfflineChatCacheStore, UUID) {
@@ -2777,4 +3083,305 @@ private final class OpenedChats {
 @MainActor
 private final class SentPrompts {
     var prompts: [(sessionID: String, text: String)] = []
+}
+
+// MARK: - Kept answers (#1533)
+
+extension OfflineChatCacheTests {
+    /// A screen's answer is kept for its dashboard, profile and route, and
+    /// the next launch's store reads it from its file.
+    func testAKeptAnswerIsReadBackForItsDashboardProfileAndRoute() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        store.recordAnswer(["display": ["skin": "ares"]], route: "/api/config", dashboardID: dashboard, profile: "default")
+
+        let kept = store.keptAnswer("/api/config", dashboardID: dashboard, profile: "default")
+        XCTAssertEqual(kept?["display"] as? [String: String], ["skin": "ares"])
+        XCTAssertNil(store.keptAnswer("/api/config/schema", dashboardID: dashboard, profile: "default"), "Another route")
+        XCTAssertNil(store.keptAnswer("/api/config", dashboardID: dashboard, profile: "work"), "Another profile")
+        XCTAssertNil(store.keptAnswer("/api/config", dashboardID: UUID(), profile: "default"), "Another dashboard")
+
+        let file = store.keptAnswerFileURL("/api/config", dashboardID: dashboard, profile: "default")
+        let next = OfflineChatCacheStore(directory: file.deletingLastPathComponent())
+        let read = next.keptAnswer("/api/config", dashboardID: dashboard, profile: "default")
+        XCTAssertEqual(read?["display"] as? [String: String], ["skin": "ares"], "Read from its file")
+    }
+
+    /// Every wipe that takes the saved chats takes the kept answers:
+    /// Delete Saved Chats, a dashboard signed out of or removed, a wipe of
+    /// everything.
+    func testKeptAnswersGoWithTheSavedChats() {
+        let dashboard = UUID()
+        let wipes: [(OfflineChatCacheStore) -> Void] = [
+            { $0.removeSavedChats() },
+            { $0.removeDashboard(dashboard) },
+            { $0.removeAll() },
+        ]
+        for wipe in wipes {
+            let store = makeStore()
+            store.recordAnswer(["model": "m"], route: "/api/config", dashboardID: dashboard, profile: "default")
+            let file = store.keptAnswerFileURL("/api/config", dashboardID: dashboard, profile: "default")
+            XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+
+            wipe(store)
+
+            XCTAssertNil(store.keptAnswer("/api/config", dashboardID: dashboard, profile: "default"))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        }
+    }
+
+    /// A deleted bot's kept answers go, and only its: a new bot of the same
+    /// name doesn't open its settings on them.
+    func testADeletedProfileTakesOnlyItsKeptAnswers() {
+        let store = makeStore()
+        let dashboard = UUID()
+        for profile in ["bot", "bot2", "default"] {
+            store.recordAnswer(["profile": profile], route: "/api/config", dashboardID: dashboard, profile: profile)
+        }
+        let removals = store.removals
+
+        store.removeKeptAnswers(dashboardID: dashboard, profile: "bot")
+
+        XCTAssertNil(store.keptAnswer("/api/config", dashboardID: dashboard, profile: "bot"))
+        let file = store.keptAnswerFileURL("/api/config", dashboardID: dashboard, profile: "bot")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        for profile in ["bot2", "default"] {
+            XCTAssertEqual(store.keptAnswer("/api/config", dashboardID: dashboard, profile: profile)?["profile"] as? String, profile)
+        }
+        XCTAssertNotEqual(store.removals, removals, "A read in flight across the delete keeps nothing")
+    }
+
+    /// The open profile's kept answers are read ahead with its chats, so
+    /// its settings pages open on them without reading a file; a profile
+    /// read ahead only for a switch keeps its answers on disk.
+    func testTheOpenProfilesKeptAnswersAreReadAhead() throws {
+        let writer = makeStore()
+        let dashboard = UUID()
+        for profile in ["default", "work"] {
+            writer.recordAnswer(["profile": profile], route: "/api/config", dashboardID: dashboard, profile: profile)
+        }
+        let directory = writer.keptAnswerFileURL("/api/config", dashboardID: dashboard, profile: "default")
+            .deletingLastPathComponent()
+        let store = OfflineChatCacheStore(directory: directory, writesAsynchronously: true)
+        addTeardownBlock { store.waitForPendingWrites() }
+
+        store.prefetch(dashboardID: dashboard, profile: "default", transcripts: 0, answers: true)
+        store.prefetch(dashboardID: dashboard, profile: "work", transcripts: 1)
+        store.waitForPendingWrites()
+        for profile in ["default", "work"] {
+            try FileManager.default.removeItem(at: store.keptAnswerFileURL("/api/config", dashboardID: dashboard, profile: profile))
+        }
+
+        XCTAssertEqual(store.keptAnswer("/api/config", dashboardID: dashboard, profile: "default")?["profile"] as? String, "default")
+        XCTAssertNil(store.keptAnswer("/api/config", dashboardID: dashboard, profile: "work"), "Only the open profile's")
+    }
+
+    /// Memory holds the answers used last, up to its cap; an older one is
+    /// read from its file again.
+    func testMemoryHoldsTheKeptAnswersUsedLast() throws {
+        let store = makeStore(writesAsynchronously: true)
+        let dashboard = UUID()
+        let routes = (0...OfflineChatCacheStore.maxKeptAnswersInMemory).map { "/route/\($0)" }
+        for route in routes {
+            store.recordAnswer(["route": route], route: route, dashboardID: dashboard, profile: "default")
+        }
+        store.waitForPendingWrites()
+        let oldest = try XCTUnwrap(routes.first)
+        let newest = try XCTUnwrap(routes.last)
+        for route in [oldest, newest] {
+            try FileManager.default.removeItem(at: store.keptAnswerFileURL(route, dashboardID: dashboard, profile: "default"))
+        }
+
+        XCTAssertNil(store.keptAnswer(oldest, dashboardID: dashboard, profile: "default"), "Past the cap, and its file is gone")
+        XCTAssertEqual(store.keptAnswer(newest, dashboardID: dashboard, profile: "default")?["route"] as? String, newest)
+    }
+
+    /// An answer too big to keep isn't written, and the older one goes, so
+    /// the screen doesn't open on it next time.
+    func testAnAnswerTooBigToKeepDropsTheOlderOne() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let route = AppState.KeptRoute.modelOptions
+        store.recordAnswer(["providers": [String]()], route: route, dashboardID: dashboard, profile: "default")
+        let file = store.keptAnswerFileURL(route, dashboardID: dashboard, profile: "default")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+
+        let huge = String(repeating: "x", count: OfflineChatCacheStore.maxKeptAnswerBytes)
+        store.recordAnswer(["providers": [huge]], route: route, dashboardID: dashboard, profile: "default")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        XCTAssertNil(store.keptAnswer(route, dashboardID: dashboard, profile: "default"), "Not from memory either")
+        let next = OfflineChatCacheStore(directory: file.deletingLastPathComponent())
+        XCTAssertNil(next.keptAnswer(route, dashboardID: dashboard, profile: "default"))
+    }
+
+    /// Memory holds kept answers within its bytes as well as its count: the
+    /// least recently used goes first.
+    func testMemoryKeepsTheKeptAnswersWithinItsBytes() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        // Five answers of about 1.9 MB pass memory's 8 MB.
+        let big = String(repeating: "x", count: 1_900_000)
+        let routes = (0..<5).map { "/route/\($0)" }
+        for route in routes {
+            store.recordAnswer(["text": big], route: route, dashboardID: dashboard, profile: "default")
+        }
+        for route in routes {
+            try FileManager.default.removeItem(at: store.keptAnswerFileURL(route, dashboardID: dashboard, profile: "default"))
+        }
+
+        XCTAssertNil(store.keptAnswer(routes[0], dashboardID: dashboard, profile: "default"), "Left memory, and its file is gone")
+        for route in routes.dropFirst() {
+            XCTAssertNotNil(store.keptAnswer(route, dashboardID: dashboard, profile: "default"), route)
+        }
+    }
+
+    /// Memory and the file leave out credentials at any depth (a custom
+    /// endpoint's API key, an MCP server's token and Authorization header,
+    /// a fallback's key, a provider's secret key, key list, credentials,
+    /// passphrase, bare auth or key, and a URL's user and password or a
+    /// credential in its query, in text the URL parser rejects too), and
+    /// keep settings that only mention them, and the prose around a URL.
+    func testAKeptAnswersFileLeavesOutCredentials() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let config: [String: Any] = [
+            "model": ["default": "m", "api_key": "sk-live-1"],
+            "mcp_servers": ["github": [
+                "env": ["GITHUB_TOKEN": "ghp-2"],
+                "headers": ["Authorization": "Bearer three", "X-Api-Key": "key-4"],
+            ]],
+            "fallback_providers": [["provider": "custom", "model": "f", "api_key": "sk-fallback-5"]],
+            "providers": ["custom": [
+                "secret_key": "sk-6",
+                "api_keys": ["k-7", "k-8"],
+                "credentials": ["user": "u", "pass": "p-9"],
+                "passphrase": "pp-10",
+                "auth": "a-11",
+                "key": "k-12",
+                "clientSecret": "cs-13",
+                "base_url": "https://u:pw-14@llm.example/v1",
+                "signing_key": "sk-15",
+                "ssh_key": "ssh-16",
+                "proxy_authorization": "Basic 17",
+                "session_cookie": "c-18",
+                "auth_header": "h-19",
+                "password_required": false,
+                "max_tokens": 4096,
+                "author": "ann",
+                "access_tokens": ["t-20", "t-21"],
+                "stream_url": "wss://relay.example/ws?region=eu&api_key=sk-25&access_token=t-26",
+                "hook_url": "https://hooks.example/in?token=t-27",
+            ]],
+            "security": ["redact_secrets": true],
+            "agent": ["max_turns": 90],
+            // A header or variable as a pair: its value goes when its name is a credential's.
+            "extra_headers": [["name": "Authorization", "value": "Bearer 22"], ["name": "Accept", "value": "json"]],
+            "env_pairs": [["key": "OPENAI_API_KEY", "value": "sk-23"]],
+            // A count in a pair named like tokens is no credential.
+            "limits": [["name": "max_tokens", "value": 4096], ["key": "max_tokens", "value": 4096], ["name": "API_TOKEN", "value": "t-28"]],
+            // Hermes' row for a variable says only whether it's set, by its name.
+            "env_vars": [["key": "ELEVENLABS_API_KEY", "is_set": true, "prompt": "ElevenLabs", "value": "sk-24"]],
+            // Text with a space in it loses them too, a space in them
+            // included, and keeps the prose after a URL.
+            "notes": "see https://ann:pw-29@docs.example/a b?api_key=sk-30&page=2 for more",
+            "mirror": "https://bo:my pw-31@mirror.example/x",
+            "relay_address": "https://relay.example/in?password=my pw-32&page=2",
+            "nearby": "https://me:pw-33@host.example and mail bob@corp.example",
+            "reminder": "Check https://example.com and ask alice@corp.example",
+            "dashboard": "Open http://localhost:9119 and mail me@corp.example\nor see http://wiki:home\nadmin@corp.example",
+            "access": "Docs at https://docs.example: ask bob@corp.example for access",
+        ]
+        let secrets = [
+            "sk-live-1", "ghp-2", "Bearer three", "key-4", "sk-fallback-5", "sk-6", "k-7", "k-8",
+            "p-9", "pp-10", "a-11", "k-12", "cs-13", "pw-14", "sk-15", "ssh-16", "Basic 17", "c-18", "h-19",
+            "t-20", "t-21", "Bearer 22", "sk-23", "sk-24", "sk-25", "t-26", "t-27", "t-28", "pw-29", "sk-30", "pw-31",
+            "pw-32", "pw-33",
+        ]
+
+        store.recordAnswer(config, route: AppState.KeptRoute.config, dashboardID: dashboard, profile: "default")
+
+        let memory = try XCTUnwrap(store.keptAnswer(AppState.KeptRoute.config, dashboardID: dashboard, profile: "default"))
+        let memoryText = try XCTUnwrap(String(data: JSONSerialization.data(withJSONObject: memory), encoding: .utf8))
+        let file = store.keptAnswerFileURL(AppState.KeptRoute.config, dashboardID: dashboard, profile: "default")
+        let text = try XCTUnwrap(String(data: Data(contentsOf: file), encoding: .utf8))
+        for secret in secrets {
+            XCTAssertFalse(memoryText.contains(secret), "memory: \(secret)")
+            XCTAssertFalse(text.contains(secret), secret)
+        }
+        let next = OfflineChatCacheStore(directory: file.deletingLastPathComponent())
+        let kept = try XCTUnwrap(next.keptAnswer(AppState.KeptRoute.config, dashboardID: dashboard, profile: "default"))
+        XCTAssertEqual(kept["model"] as? [String: String], ["default": "m"])
+        let github = (kept["mcp_servers"] as? [String: Any])?["github"] as? [String: Any]
+        XCTAssertEqual(github?["env"] as? [String: String], [:])
+        XCTAssertEqual(github?["headers"] as? [String: String], [:])
+        XCTAssertEqual((kept["fallback_providers"] as? [[String: String]])?.first, ["provider": "custom", "model": "f"])
+        XCTAssertEqual((kept["security"] as? [String: Bool])?["redact_secrets"], true, "A setting about secrets stays")
+        XCTAssertEqual((kept["agent"] as? [String: Int])?["max_turns"], 90)
+        let custom = try XCTUnwrap((kept["providers"] as? [String: Any])?["custom"] as? [String: Any])
+        XCTAssertEqual(
+            NSDictionary(dictionary: custom),
+            [
+                "base_url": "https://llm.example/v1", "stream_url": "wss://relay.example/ws?region=eu",
+                "hook_url": "https://hooks.example/in", "password_required": false, "max_tokens": 4096, "author": "ann",
+            ] as NSDictionary,
+            "URLs without their user or a key in their query, true or false and numbers that only mention them, and a name that only starts like auth"
+        )
+        XCTAssertEqual(kept["notes"] as? String, "see https://docs.example/a b?api_key=&page=2 for more", "Text with a space keeps the rest")
+        XCTAssertEqual(kept["mirror"] as? String, "https://mirror.example/x", "A space in the password")
+        XCTAssertEqual(kept["relay_address"] as? String, "https://relay.example/in?password=&page=2", "and one in a query's credential")
+        XCTAssertEqual(kept["nearby"] as? String, "https://host.example and mail bob@corp.example", "An address after the host stays")
+        XCTAssertEqual(kept["reminder"] as? String, "Check https://example.com and ask alice@corp.example", "and so does one after a URL without a user")
+        XCTAssertEqual(
+            kept["dashboard"] as? String,
+            "Open http://localhost:9119 and mail me@corp.example\nor see http://wiki:home\nadmin@corp.example",
+            "A port isn't a password, and none runs past the line's end"
+        )
+        XCTAssertEqual(
+            kept["access"] as? String,
+            "Docs at https://docs.example: ask bob@corp.example for access",
+            "nor starts with a space"
+        )
+        XCTAssertEqual(kept["extra_headers"] as? [[String: String]], [["name": "Authorization"], ["name": "Accept", "value": "json"]])
+        XCTAssertEqual(
+            (kept["limits"] as? [[String: Any]])?.map { NSDictionary(dictionary: $0) },
+            [
+                ["name": "max_tokens", "value": 4096] as NSDictionary,
+                ["key": "max_tokens", "value": 4096] as NSDictionary,
+                ["name": "API_TOKEN"] as NSDictionary,
+            ],
+            "A count keeps its name, by `name` or by `key`"
+        )
+        XCTAssertEqual(
+            (kept["env_vars"] as? [[String: Any]])?.map { NSDictionary(dictionary: $0) },
+            [["key": "ELEVENLABS_API_KEY", "is_set": true, "prompt": "ElevenLabs"] as NSDictionary],
+            "A row saying whether a variable is set keeps its name"
+        )
+    }
+
+    /// A schema's fields are named by config path, so a field about a key
+    /// keeps its name; what each holds still goes through the filter, and
+    /// only the names under `fields` are spared (#1533).
+    func testAKeptSchemaKeepsItsFieldNames() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let schema: [String: Any] = [
+            "fields": [
+                "providers.custom.api_key": ["type": "string", "secret": true, "description": "The provider's key"],
+                "model.default": ["type": "string", "options": ["a", "b"], "api_key": "sk-25"],
+            ],
+            "category_order": ["model", "providers"],
+            "api_key": "sk-26",
+        ]
+
+        store.recordAnswer(schema, route: AppState.KeptRoute.configSchema, dashboardID: dashboard, profile: "default", namesUnder: ["fields"])
+
+        let kept = try XCTUnwrap(store.keptAnswer(AppState.KeptRoute.configSchema, dashboardID: dashboard, profile: "default"))
+        let fields = try XCTUnwrap(kept["fields"] as? [String: Any])
+        XCTAssertEqual(Set(fields.keys), ["providers.custom.api_key", "model.default"], "Config paths, not credentials")
+        XCTAssertEqual((fields["providers.custom.api_key"] as? [String: Any])?["secret"] as? Bool, true)
+        XCTAssertNil((fields["model.default"] as? [String: Any])?["api_key"], "What a field holds is filtered")
+        XCTAssertNil(kept["api_key"], "Only the names under fields are spared")
+        XCTAssertEqual(kept["category_order"] as? [String], ["model", "providers"])
+    }
 }

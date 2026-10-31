@@ -257,7 +257,11 @@ final class ChatScrollEngine: ObservableObject {
     let replyRoom = ChatReplyRoom()
     private var renderInputsPublishScheduled = false
 
-    private(set) var mode: Mode = .following
+    private(set) var mode: Mode = .following {
+        didSet {
+            if mode != oldValue { ChatViewportTrace.shared.log("mode \(oldValue) -> \(mode)") }
+        }
+    }
     private(set) var identity: ChatScrollSessionIdentity = .none
     private(set) var renderedSessionKey: ChatScrollSessionKey?
     private(set) var activeSessionKey: ChatScrollSessionKey?
@@ -365,9 +369,17 @@ final class ChatScrollEngine: ObservableObject {
     /// An unread chat just opened: once its transcript is in, it lands at
     /// the start of its latest reply instead of the end.
     private var replyStartLandingPending = false
+    /// The viewport transition of the open that asked for the landing, so
+    /// the switch that open makes doesn't drop it.
+    private var replyStartLandingGeneration: UInt64?
     /// Landed there, and the reader hasn't moved since: the end of a
     /// notification's handoff doesn't take them to the end.
     private var landedAtReplyStart = false
+    /// The rows drawn are saved ones standing in for the chat's (#1533).
+    /// Hermes' first rows after them are the chat's first sync: a user
+    /// message among them (a turn started elsewhere since) doesn't arm the
+    /// hold, as when the chat opened on no rows.
+    private var transcriptIsProvisional = false
     private let now: () -> TimeInterval
     private let prefersReducedMotion: @MainActor () -> Bool
     private let schedule: (TimeInterval, @escaping @MainActor () -> Void) -> Void
@@ -496,6 +508,7 @@ final class ChatScrollEngine: ObservableObject {
     /// bottom, they are moved up to it, still browsing, so no empty space
     /// shows under the last message.
     func bottomBarResized() {
+        ChatViewportTrace.shared.log("bottomBarResized")
         checkBottomBarInset()
         bottomBarChecksLeft = Self.bottomBarCheckDelays.count
         guard !bottomBarCheckScheduled else { return }
@@ -532,7 +545,7 @@ final class ChatScrollEngine: ObservableObject {
         guard lastBottomBarInset == surface.insetBottom, mode == .browsing,
               surface.distanceFromBottom < -0.5 else { return }
         closingBarGap = true
-        surface.setContentOffsetY(surface.maxOffsetY, animated: false)
+        write(surface.maxOffsetY, animated: false, on: surface, by: "close bar gap")
         closingBarGap = false
     }
 
@@ -602,6 +615,8 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     func rowFramesChanged(_ frames: [String: ChatScrollRowFrame]) {
+        ChatViewportTrace.shared.log("rowFrames n=\(frames.count)")
+        ChatViewportWatch.shared.layoutPass()
         surfaceCallbackDepth += 1
         defer { surfaceCallbackDepth -= 1 }
         rowFrames = frames
@@ -622,6 +637,8 @@ final class ChatScrollEngine: ObservableObject {
     }
 
     func liveRowFramesChanged(_ frames: [String: ChatScrollRowFrame]) {
+        ChatViewportTrace.shared.log("liveRowFrames n=\(frames.count)")
+        ChatViewportWatch.shared.liveRowsLaidOut(from: liveRowFrames, to: frames)
         let lostARow = liveRowFrames.keys.contains { frames[$0] == nil }
         liveRowFrames = frames
         // A stack that dropped its rows may change no size at all.
@@ -897,7 +914,7 @@ final class ChatScrollEngine: ObservableObject {
             landed, surface.contentOffsetY, written, cardShiftOwed
         ))
         landingCardShift = true
-        surface.setContentOffsetY(written, animated: false)
+        write(written, animated: false, on: surface, by: "card growth")
         landingCardShift = false
     }
 
@@ -956,9 +973,9 @@ final class ChatScrollEngine: ObservableObject {
 
         let previous = renderedSessionKey
         renderedSessionKey = key
-        // Adopting the first key is not a switch, and an equivalent spelling
-        // of the same conversation is not one either.
-        if !viaNotification, previous == nil || identity.areEquivalent(previous, key) {
+        // Adopting the first key is not a switch, and the same key or an
+        // equivalent spelling of the same conversation is not one either.
+        if !viaNotification, previous == nil || previous == key || identity.areEquivalent(previous, key) {
             return
         }
         prependAnchor = nil
@@ -974,10 +991,14 @@ final class ChatScrollEngine: ObservableObject {
         dropCardShifts()
         // The new conversation's first transcript names its latest user
         // message without arming; an open with an unread reply asks for its
-        // landing after this.
+        // landing after this, or in the same update when it lands from its
+        // saved rows: that landing, asked for by this switch's transition,
+        // stays.
         replyHoldArmed = false
         latestUserRowID = nil
-        replyStartLandingPending = false
+        if replyStartLandingGeneration == nil || replyStartLandingGeneration != viewportTransitionGeneration {
+            replyStartLandingPending = false
+        }
         landedAtReplyStart = false
         refreshTrackedMessageVisibility()
         guard !isDragging else {
@@ -1031,8 +1052,11 @@ final class ChatScrollEngine: ObservableObject {
         transcriptRevision: UInt64,
         viewportTransitionGeneration: UInt64,
         isInitialSync: Bool = false,
+        isProvisional: Bool = false,
         activeSessionKey: ChatScrollSessionKey? = nil
     ) {
+        ChatViewportTrace.shared.log("transcript n=\(messages.count) revision \(transcriptRevision)")
+        ChatViewportWatch.shared.transcriptChanged()
         TranscriptPerf.note(.transcriptChanged)
         if let activeSessionKey {
             self.activeSessionKey = activeSessionKey
@@ -1041,9 +1065,11 @@ final class ChatScrollEngine: ObservableObject {
         let update = targetCache.update(for: messages)
         renderedTranscriptRevision = transcriptRevision
         mirroredViewportTransitionGeneration = viewportTransitionGeneration
+        let followsProvisionalRows = transcriptIsProvisional
+        transcriptIsProvisional = isProvisional
         defer { renderInputsMayHaveChanged() }
         guard update != .unchanged else { return }
-        noteLatestUserRow(arming: !isInitialSync)
+        noteLatestUserRow(arming: !isInitialSync && !followsProvisionalRows)
         if replyStartLandingPending {
             schedule(0) { [weak self] in
                 self?.landAtReplyStartIfPending()
@@ -1129,7 +1155,7 @@ final class ChatScrollEngine: ObservableObject {
         let distance = surface.distanceFromBottom
         if animated, !prefersReducedMotion(), distance > 0.5, distance <= surface.viewportHeight * 3 {
             latestAnimationUntil = now() + Self.latestAnimationDuration
-            surface.setContentOffsetY(surface.maxOffsetY, animated: true)
+            write(surface.maxOffsetY, animated: true, on: surface, by: "latest")
         } else {
             latestAnimationUntil = nil
             // A send's hold is for the message being sent. Its row may reach
@@ -1193,7 +1219,7 @@ final class ChatScrollEngine: ObservableObject {
         }
         if abs(surface.contentOffsetY - surface.minOffsetY) > 0.5 {
             // The offset change reports back through surfaceScrolled().
-            surface.setContentOffsetY(surface.minOffsetY, animated: false)
+            write(surface.minOffsetY, animated: false, on: surface, by: "top")
         } else {
             // Already there (a short chat): no offset change will report,
             // so re-evaluate following here.
@@ -1217,10 +1243,13 @@ final class ChatScrollEngine: ObservableObject {
     /// start of its latest reply instead of the end, as the reply would
     /// have stopped there had the chat been open (#365). Runs on the next
     /// turn, so the transcript, and the end of a notification's handoff,
-    /// reach the engine first.
-    func replyStartLandingRequested() {
+    /// reach the engine first. `viewportTransitionGeneration`: the open's
+    /// transition, when it asks before its switch reaches the engine (it
+    /// lands from the saved rows).
+    func replyStartLandingRequested(viewportTransitionGeneration: UInt64? = nil) {
         guard holdsRepliesAtStart() else { return }
         replyStartLandingPending = true
+        replyStartLandingGeneration = viewportTransitionGeneration
         schedule(0) { [weak self] in
             self?.landAtReplyStartIfPending()
         }
@@ -1255,7 +1284,7 @@ final class ChatScrollEngine: ObservableObject {
                 emit(.persistSnapshot(renderedSessionKey))
             }
             if abs(surface.contentOffsetY - target) > 0.5 {
-                surface.setContentOffsetY(target, animated: false)
+                write(target, animated: false, on: surface, by: "reply start")
             }
         } else {
             // Not laid out: the reply's start is more than a screen up.
@@ -1351,7 +1380,7 @@ final class ChatScrollEngine: ObservableObject {
             }
             state.placed = true
             restoration = state
-            surface.setContentOffsetY(target, animated: false)
+            write(target, animated: false, on: surface, by: "restore")
             refreshTrackedMessageVisibility()
             return true
         }
@@ -1401,6 +1430,18 @@ final class ChatScrollEngine: ObservableObject {
 
     var latestAnimationInFlight: Bool {
         latestAnimationUntil.map { now() < $0 } ?? false
+    }
+
+    /// Every offset the engine writes: the trace names the rule that asked,
+    /// and ChatViewportWatch takes the move it makes as asked for.
+    private func write(_ y: CGFloat, animated: Bool, on surface: ChatScrollSurface, by rule: String) {
+        ChatViewportTrace.shared.log(String(
+            format: "write %@: %.1f -> %.1f%@ (content %.1f, viewport %.1f)",
+            rule, surface.contentOffsetY, y, animated ? " animated" : "", surface.contentHeight, surface.viewportHeight
+        ))
+        ChatViewportWatch.shared.engineWrites(animated: animated) {
+            surface.setContentOffsetY(y, animated: animated)
+        }
     }
 
     private func setMode(_ newMode: Mode) {
@@ -1552,6 +1593,7 @@ final class ChatScrollEngine: ObservableObject {
             rebuildsLeft > 0 ? "rebuilding the scroll view" : "still blank after a rebuild"
         ))
         guard rebuildsLeft > 0 else { return }
+        ChatViewportWatch.shared.blankViewportRebuilt()
         // The old layout's frames would answer the follow-up check.
         rowFrames = [:]
         liveRowFrames = [:]
@@ -1626,13 +1668,13 @@ final class ChatScrollEngine: ObservableObject {
         guard abs(surface.contentOffsetY - target) > 0.5 else { return }
         if animates {
             latestAnimationUntil = now() + Self.latestAnimationDuration
-            surface.setContentOffsetY(target, animated: true)
+            write(target, animated: true, on: surface, by: "pin")
             schedule(Self.latestAnimationDuration) { [weak self] in
                 self?.latestAnimationFinished()
             }
             return
         }
-        surface.setContentOffsetY(target, animated: false)
+        write(target, animated: false, on: surface, by: "pin")
     }
 
     /// Where following stops for the reply the hold is armed for: the
@@ -1666,6 +1708,7 @@ final class ChatScrollEngine: ObservableObject {
             height = (hold + surface.viewportHeight - surface.insetBottom).rounded(.up)
         }
         guard height != replyRoomMinContentHeight else { return }
+        ChatViewportTrace.shared.log(String(format: "replyRoom minContentHeight %.1f", height))
         replyRoomMinContentHeight = height
         guard isHandlingSurfaceCallback else {
             replyRoom.minContentHeight = height
@@ -1783,11 +1826,7 @@ final class ChatScrollEngine: ObservableObject {
         }
         prependAnchor = anchor
         guard moves else { return }
-        ChatViewportTrace.shared.log(String(
-            format: "prepend hold content %.1f offset %.1f -> %.1f (%@)",
-            surface.contentHeight, surface.contentOffsetY, target, rowTarget == nil ? "estimate" : "row"
-        ))
-        surface.setContentOffsetY(target, animated: false)
+        write(target, animated: false, on: surface, by: rowTarget == nil ? "prepend hold, estimate" : "prepend hold, row")
     }
 
     /// A landed page of earlier messages still holding the reader's rows.

@@ -723,7 +723,11 @@ struct ComposerBar: View, Equatable {
                 // row waits.
                 HStack(spacing: 2) {
                     if rests {
+                        // Capped as in the controls row: at accessibility
+                        // sizes its button chrome grew and left the field
+                        // a few letters a line.
                         attachmentButton
+                            .conduitFixedGlyph()
                             .padding(.leading, 6)
                             .transition(.opacity)
                     }
@@ -735,12 +739,14 @@ struct ComposerBar: View, Equatable {
                         // Spaced like the controls row, so its widened hit
                         // shape stays clear of the field and Stop.
                         dictateButton
+                            .conduitFixedGlyph()
                             .padding(.leading, 6)
                             .padding(.trailing, stopOnly ? 6 : 4)
                             .transition(.opacity)
                     }
                     if rests && stopOnly {
                         trailingSlot
+                            .conduitFixedGlyph()
                             .padding(.trailing, 4)
                             .transition(.opacity)
                     }
@@ -775,7 +781,10 @@ struct ComposerBar: View, Equatable {
         ZStack(alignment: .topLeading) {
             let currentEditorIdentity = editorIdentity
             if text.isEmpty {
-                Text(appState.composerPlaceholder)
+                ComposerPlaceholderText(
+                    text: appState.composerPlaceholder,
+                    short: appState.composerShortPlaceholder
+                )
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
@@ -958,7 +967,7 @@ struct ComposerBar: View, Equatable {
     /// The minimised call bar above a V2 composer hides only while someone
     /// types. A running turn, a notice or a draft left unfocused keeps it,
     /// so a call minimised in a chat can always be brought back (#695).
-    /// Where the field keeps focus after a send (a Mac, a hardware
+    /// Where the field keeps focus after a send (a Mac, an iPad's
     /// keyboard: `ComposerLayout.keepsFocusAfterSend`), focus alone isn't
     /// typing: the bar hides only while the field holds words.
     static func hidesMinimisedCallBar(
@@ -2082,7 +2091,7 @@ struct ComposerBar: View, Equatable {
     /// Waiting for the gateway RPC leaves the side controls aligned to the old
     /// multiline field while the keyboard's safe area is already animating.
     /// `keepingFocus`: the user was typing (in the field or the full
-    /// editor), which on a Mac or with a hardware keyboard carries on.
+    /// editor), which on a Mac or an iPad's keyboard carries on.
     private func collapseSubmittedDraft(clearingReply: Bool, keepingFocus: Bool, fromFullEditor: Bool) {
         endInput(keepingFocus: keepingFocus, fromFullEditor: fromFullEditor)
         let updates = {
@@ -2338,7 +2347,7 @@ struct ComposerBar: View, Equatable {
         isShowingSlashSuggestions = false
     }
 
-    /// A send or Stop: on a Mac or with a hardware keyboard the field keeps
+    /// A send or Stop: on a Mac or an iPad's keyboard the field keeps
     /// focus for the next message, as a desktop client's does, when the
     /// user was typing; otherwise the keyboard goes (`dismissComposer`).
     private func endInput(keepingFocus wasTyping: Bool, fromFullEditor: Bool = false) {

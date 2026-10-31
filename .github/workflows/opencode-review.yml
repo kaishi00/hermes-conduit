@@ -24,7 +24,7 @@ jobs:
   # the review when the PR's change is the same as one a review already ran
   # on (a clean merge of main, a reopen), and gives a PR that only touches
   # docs and config files (Markdown, text, JSON, YAML, TOML; not .github/,
-  # opencode.json, or manifests that declare code or dependencies) to GLM-5.3
+  # opencode.json, or manifests that declare code or dependencies) to GLM-5.3-Flash
   # alone. A manual run, or adding run-review to a fork's PR, always reviews.
   plan:
     name: plan
@@ -67,8 +67,8 @@ jobs:
           WORKFLOW_FILE: opencode-review.yml
           ALL_REVIEWERS: >-
             [{"reviewer": "Claude Haiku 5.5", "model": "anthropic/claude-haiku-5-5"},
-             {"reviewer": "GLM-5.3", "model": "zai-custom/glm-5.3"}]
-          DOCS_REVIEWER: GLM-5.3
+             {"reviewer": "GLM-5.3-Flash", "model": "zai-custom/glm-5.3-flash"}]
+          DOCS_REVIEWER: GLM-5.3-Flash
           CHANGE_ID_PY: |
             import collections, hashlib, sys
             out, md, index = [], False, ""

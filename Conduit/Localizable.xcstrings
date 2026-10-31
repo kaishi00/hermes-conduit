@@ -7511,6 +7511,88 @@
         }
       }
     },
+    "%@…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@…"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@…"
+          }
+        }
+      }
+    },
     "%lld active": {
       "localizations": {
         "de": {
@@ -71740,84 +71822,84 @@
         }
       }
     },
-    "Conduit keeps your Chats lists and recent conversations on this device, so it opens straight to them while it connects. Each dashboard keeps its own until you sign out of it or remove it.": {
+    "Conduit keeps your Chats lists, recent conversations and what each screen last showed on this device, so it opens straight to them while it connects. Each dashboard keeps its own until you sign out of it or remove it.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit speichert deine Chat-Listen und letzten Unterhaltungen auf diesem Gerät, damit sie beim Verbinden sofort da sind. Jedes Dashboard behält seine eigenen, bis du dich davon abmeldest oder es entfernst."
+            "value": "Conduit speichert deine Chat-Listen, letzten Unterhaltungen und das, was jeder Bildschirm zuletzt gezeigt hat, auf diesem Gerät, damit sie beim Verbinden sofort da sind. Jedes Dashboard behält seine eigenen, bis du dich davon abmeldest oder es entfernst."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit guarda tus listas de chats y conversaciones recientes en este dispositivo para abrirlas al instante mientras se conecta. Cada panel conserva las suyas hasta que cierres sesión en él o lo quites."
+            "value": "Conduit guarda tus listas de chats, conversaciones recientes y lo que cada pantalla mostró por última vez en este dispositivo para abrirlos al instante mientras se conecta. Cada panel conserva los suyos hasta que cierres sesión en él o lo quites."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit conserve vos listes de discussions et vos conversations récentes sur cet appareil pour les afficher aussitôt pendant la connexion. Chaque tableau de bord garde les siennes jusqu'à ce que vous vous en déconnectiez ou le supprimiez."
+            "value": "Conduit conserve vos listes de discussions, vos conversations récentes et ce que chaque écran affichait en dernier sur cet appareil pour les afficher aussitôt pendant la connexion. Chaque tableau de bord garde les siens jusqu'à ce que vous vous en déconnectiez ou le supprimiez."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit menyimpan daftar obrolan dan percakapan terbaru Anda di perangkat ini agar langsung terbuka saat sedang menghubungkan. Setiap dasbor menyimpan miliknya sendiri sampai Anda keluar darinya atau menghapusnya."
+            "value": "Conduit menyimpan daftar obrolan, percakapan terbaru, dan apa yang terakhir ditampilkan setiap layar di perangkat ini agar langsung terbuka saat sedang menghubungkan. Setiap dasbor menyimpan miliknya sendiri sampai Anda keluar darinya atau menghapusnya."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit conserva gli elenchi delle chat e le conversazioni recenti su questo dispositivo, così le mostra subito mentre si connette. Ogni dashboard conserva i propri finché non esci o non la rimuovi."
+            "value": "Conduit conserva gli elenchi delle chat, le conversazioni recenti e ciò che ogni schermata mostrava per ultimo su questo dispositivo, così li mostra subito mentre si connette. Ogni dashboard conserva i propri finché non esci o non la rimuovi."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduitはチャット一覧と最近の会話をこのデバイスに保存し、接続中でもすぐに表示します。ダッシュボードごとに保存され、サインアウトするか削除するまで残ります。"
+            "value": "Conduitはチャット一覧、最近の会話、各画面に最後に表示された内容をこのデバイスに保存し、接続中でもすぐに表示します。ダッシュボードごとに保存され、サインアウトするか削除するまで残ります。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit은 연결하는 동안에도 바로 열 수 있도록 채팅 목록과 최근 대화를 이 기기에 저장해요. 대시보드마다 따로 저장되며, 로그아웃하거나 대시보드를 제거할 때까지 유지돼요."
+            "value": "Conduit은 연결하는 동안에도 바로 열 수 있도록 채팅 목록, 최근 대화, 각 화면에 마지막으로 표시된 내용을 이 기기에 저장해요. 대시보드마다 따로 저장되며, 로그아웃하거나 대시보드를 제거할 때까지 유지돼요."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit przechowuje listy czatów i ostatnie rozmowy na tym urządzeniu, aby od razu je pokazać podczas łączenia. Każdy panel ma własne, dopóki się z niego nie wylogujesz lub go nie usuniesz."
+            "value": "Conduit przechowuje listy czatów, ostatnie rozmowy i to, co każdy ekran pokazał ostatnio, na tym urządzeniu, aby od razu je pokazać podczas łączenia. Każdy panel ma własne, dopóki się z niego nie wylogujesz lub go nie usuniesz."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O Conduit guarda suas listas de chats e conversas recentes neste aparelho para abri-las na hora enquanto conecta. Cada painel mantém as suas até você sair dele ou removê-lo."
+            "value": "O Conduit guarda suas listas de chats, conversas recentes e o que cada tela mostrou por último neste aparelho para abri-los na hora enquanto conecta. Cada painel mantém os seus até você sair dele ou removê-lo."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit хранит списки чатов и недавние разговоры на этом устройстве, чтобы сразу показывать их, пока идёт подключение. У каждого дашборда они свои и хранятся, пока вы не выйдете из него или не удалите его."
+            "value": "Conduit хранит списки чатов, недавние разговоры и то, что последним показывал каждый экран, на этом устройстве, чтобы сразу показывать их, пока идёт подключение. У каждого дашборда они свои и хранятся, пока вы не выйдете из него или не удалите его."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit, bağlanırken hemen açılabilmesi için sohbet listelerinizi ve son konuşmalarınızı bu cihazda saklar. Her panel kendi kopyalarını, oturumu kapatana ya da paneli kaldırana kadar tutar."
+            "value": "Conduit, bağlanırken hemen açılabilmesi için sohbet listelerinizi, son konuşmalarınızı ve her ekranın en son gösterdiklerini bu cihazda saklar. Her panel kendi kopyalarını, oturumu kapatana ya da paneli kaldırana kadar tutar."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit 会在此设备上保存你的聊天列表和最近的对话，连接时即可直接打开。每个仪表板各自保存，直到你退出登录或移除该仪表板。"
+            "value": "Conduit 会在此设备上保存你的聊天列表、最近的对话以及每个界面上次显示的内容，连接时即可直接打开。每个仪表板各自保存，直到你退出登录或移除该仪表板。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit 會在此裝置上儲存你的聊天列表和最近的對話，連線時即可直接開啟。每個儀表板各自儲存，直到你登出或移除該儀表板。"
+            "value": "Conduit 會在此裝置上儲存你的聊天列表、最近的對話以及每個畫面上次顯示的內容，連線時即可直接開啟。每個儀表板各自儲存，直到你登出或移除該儀表板。"
           }
         }
       }
@@ -140513,6 +140595,88 @@
         }
       }
     },
+    "Hermes calls when it has waited for your OK or an answer, or when a request fails. In a live call you can answer out loud.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes ruft an, wenn er auf dein OK oder eine Antwort gewartet hat oder wenn eine Anfrage fehlschlägt. In einem Live-Anruf kannst du laut antworten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes llama cuando lleva un rato esperando tu aprobación o una respuesta, o cuando falla una solicitud. En una llamada en vivo puedes responder en voz alta."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes appelle quand il attend votre accord ou une réponse, ou quand une demande échoue. Pendant un appel en direct, vous pouvez répondre à voix haute."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes menelepon saat sudah menunggu persetujuan atau jawaban Anda, atau saat permintaan gagal. Dalam panggilan langsung, Anda bisa menjawab dengan suara."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes chiama quando aspetta il tuo OK o una risposta, o quando una richiesta non va a buon fine. In una chiamata live puoi rispondere a voce."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "承認や回答を待っても返事がないとき、またはリクエストが失敗したときにHermesが電話します。ライブ通話では声で答えられます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "승인이나 답변을 기다렸거나 요청이 실패하면 Hermes가 전화해요. 라이브 통화에서는 말로 답할 수 있어요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes dzwoni, gdy czeka na Twoją zgodę lub odpowiedź albo gdy prośba się nie powiedzie. W połączeniu Live możesz odpowiedzieć na głos."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Hermes liga quando espera pela sua aprovação ou resposta, ou quando um pedido falha. Em uma chamada ao vivo, você pode responder em voz alta."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes звонит, если ждёт вашего одобрения или ответа, или если запрос не удался. В Live-звонке можно ответить вслух."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes, onayınızı ya da yanıtınızı beklediğinde veya bir istek başarısız olduğunda arar. Canlı aramada sesli yanıt verebilirsiniz."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes 等待你批准或回答时，或请求失败时，会给你打电话。在实时通话中可以直接开口回答。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes 等待你核准或回答時，或請求失敗時，會打電話給你。在即時通話中可以直接開口回答。"
+          }
+        }
+      }
+    },
     "Hermes can ask to add events but can't read your calendar.": {
       "localizations": {
         "de": {
@@ -188117,6 +188281,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "在此 App、其小工具和 Watch 上傳送的訊息"
+          }
+        }
+      }
+    },
+    "Message…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nachricht …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensaje…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Écrire…"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kirim pesan…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scrivi…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メッセージを送信…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "메시지…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wiadomość…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensagem…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сообщение…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mesaj…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发消息…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "傳送訊息…"
           }
         }
       }
@@ -243909,6 +244155,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "排隊傳給%@的訊息…"
+          }
+        }
+      }
+    },
+    "Queue a message…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nachricht einreihen …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poner un mensaje en cola…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mettre un message en attente…"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Antrekan pesan…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Metti in coda un messaggio…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メッセージをキューに追加…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "메시지를 대기열에 추가…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dodaj wiadomość do kolejki…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Colocar uma mensagem na fila…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Поставить сообщение в очередь…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mesajı sıraya al…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排队发消息…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排隊傳送訊息…"
           }
         }
       }
@@ -331388,84 +331716,84 @@
         }
       }
     },
-    "This deletes the saved Chats lists, conversation copies and pictures for every dashboard. Nothing changes on Hermes, and Conduit saves them again as you use it.": {
+    "This deletes the saved Chats lists, conversation copies, pictures and what each screen last showed, for every dashboard. Nothing changes on Hermes, and Conduit saves them again as you use it.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Damit werden die gespeicherten Chat-Listen, Kopien von Unterhaltungen und Bilder aller Dashboards gelöscht. Auf Hermes ändert sich nichts, und Conduit speichert sie bei der Nutzung erneut."
+            "value": "Damit werden die gespeicherten Chat-Listen, Kopien von Unterhaltungen, Bilder und das, was jeder Bildschirm zuletzt gezeigt hat, aller Dashboards gelöscht. Auf Hermes ändert sich nichts, und Conduit speichert sie bei der Nutzung erneut."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Se eliminan las listas de chats, las copias de conversaciones y las imágenes guardadas de todos los paneles. Nada cambia en Hermes, y Conduit las vuelve a guardar a medida que lo usas."
+            "value": "Se eliminan las listas de chats, las copias de conversaciones, las imágenes guardadas y lo que cada pantalla mostró por última vez, de todos los paneles. Nada cambia en Hermes, y Conduit los vuelve a guardar a medida que lo usas."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Les listes de discussions, copies de conversations et images enregistrées de tous les tableaux de bord sont supprimées. Rien ne change sur Hermes, et Conduit les enregistre à nouveau à mesure que vous l'utilisez."
+            "value": "Les listes de discussions, copies de conversations, images enregistrées et ce que chaque écran affichait en dernier sont supprimés pour tous les tableaux de bord. Rien ne change sur Hermes, et Conduit les enregistre à nouveau à mesure que vous l'utilisez."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ini menghapus daftar obrolan, salinan percakapan, dan gambar yang tersimpan untuk semua dasbor. Tidak ada yang berubah di Hermes, dan Conduit akan menyimpannya lagi saat Anda menggunakannya."
+            "value": "Ini menghapus daftar obrolan, salinan percakapan, gambar yang tersimpan, dan apa yang terakhir ditampilkan setiap layar untuk semua dasbor. Tidak ada yang berubah di Hermes, dan Conduit akan menyimpannya lagi saat Anda menggunakannya."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vengono eliminati gli elenchi delle chat, le copie delle conversazioni e le immagini salvate di ogni dashboard. Su Hermes non cambia nulla e Conduit li salva di nuovo man mano che lo usi."
+            "value": "Vengono eliminati gli elenchi delle chat, le copie delle conversazioni, le immagini salvate e ciò che ogni schermata mostrava per ultimo, per ogni dashboard. Su Hermes non cambia nulla e Conduit li salva di nuovo man mano che lo usi."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "すべてのダッシュボードの保存済みチャット一覧、会話のコピー、画像を削除します。Hermes側は何も変わらず、Conduitを使うと再び保存されます。"
+            "value": "すべてのダッシュボードの保存済みチャット一覧、会話のコピー、画像、各画面に最後に表示された内容を削除します。Hermes側は何も変わらず、Conduitを使うと再び保存されます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "모든 대시보드의 저장된 채팅 목록, 대화 사본, 사진이 삭제돼요. Hermes에는 아무 변화가 없고, Conduit을 사용하면 다시 저장돼요."
+            "value": "모든 대시보드의 저장된 채팅 목록, 대화 사본, 사진, 각 화면에 마지막으로 표시된 내용이 삭제돼요. Hermes에는 아무 변화가 없고, Conduit을 사용하면 다시 저장돼요."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Usuwa to zapisane listy czatów, kopie rozmów i obrazy wszystkich paneli. Na Hermes nic się nie zmienia, a Conduit zapisze je ponownie podczas używania."
+            "value": "Usuwa to zapisane listy czatów, kopie rozmów, obrazy i to, co każdy ekran pokazał ostatnio, we wszystkich panelach. Na Hermes nic się nie zmienia, a Conduit zapisze je ponownie podczas używania."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Isso apaga as listas de chats, cópias de conversas e imagens salvas de todos os painéis. Nada muda no Hermes, e o Conduit as salva de novo conforme você usa."
+            "value": "Isso apaga as listas de chats, cópias de conversas, imagens salvas e o que cada tela mostrou por último em todos os painéis. Nada muda no Hermes, e o Conduit os salva de novo conforme você usa."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Будут удалены сохранённые списки чатов, копии разговоров и изображения всех дашбордов. На Hermes ничего не изменится, а Conduit снова сохранит их по мере использования."
+            "value": "Будут удалены сохранённые списки чатов, копии разговоров, изображения и то, что последним показывал каждый экран, для всех дашбордов. На Hermes ничего не изменится, а Conduit снова сохранит их по мере использования."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bu işlem tüm panellerin kayıtlı sohbet listelerini, konuşma kopyalarını ve resimlerini siler. Hermes'te hiçbir şey değişmez ve Conduit bunları kullandıkça yeniden kaydeder."
+            "value": "Bu işlem tüm panellerin kayıtlı sohbet listelerini, konuşma kopyalarını, resimlerini ve her ekranın en son gösterdiklerini siler. Hermes'te hiçbir şey değişmez ve Conduit bunları kullandıkça yeniden kaydeder."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这会删除所有仪表板已保存的聊天列表、对话副本和图片。Hermes 上不会有任何变化，Conduit 会在你使用时重新保存。"
+            "value": "这会删除所有仪表板已保存的聊天列表、对话副本、图片以及每个界面上次显示的内容。Hermes 上不会有任何变化，Conduit 会在你使用时重新保存。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "這會刪除所有儀表板已儲存的聊天列表、對話副本和圖片。Hermes 上不會有任何變化，Conduit 會在你使用時重新儲存。"
+            "value": "這會刪除所有儀表板已儲存的聊天列表、對話副本、圖片以及每個畫面上次顯示的內容。Hermes 上不會有任何變化，Conduit 會在你使用時重新儲存。"
           }
         }
       }
@@ -362836,6 +363164,88 @@
         }
       }
     },
+    "Wait while I'm at a screen": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Warten, während ich am Bildschirm bin"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esperar mientras estoy ante una pantalla"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attendre quand je suis devant un écran"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tunggu saat saya di depan layar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aspetta quando sono davanti a uno schermo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画面の前にいるときは待つ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "화면 앞에 있을 때는 기다리기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Czekaj, gdy jestem przy ekranie"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esperar quando estou diante de uma tela"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ждать, пока я у экрана"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekran başındayken bekle"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在屏幕前时等待"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在螢幕前時等待"
+          }
+        }
+      }
+    },
     "Waiting for %lld running chats to finish…": {
       "localizations": {
         "de": {
@@ -369174,6 +369584,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "登入頁面開啟時會重新開始，並顯示所有登入方式，例如登入碼。"
+          }
+        }
+      }
+    },
+    "When this is on, Hermes waits longer before calling, up to 10 minutes, while you're talking to it in Hermes Desktop, the dashboard or a terminal, or have the chat open in Conduit, and a failed request there only sends a notification.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn das an ist, wartet Hermes länger mit dem Anruf, bis zu 10 Minuten, während du mit ihm in Hermes Desktop, im Dashboard oder in einem Terminal sprichst oder den Chat in Conduit geöffnet hast, und eine fehlgeschlagene Anfrage sendet dort nur eine Mitteilung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si está activado, Hermes espera más antes de llamar, hasta 10 minutos, mientras hablas con él en Hermes Desktop, el panel o un terminal, o tienes el chat abierto en Conduit, y ahí una solicitud fallida solo envía una notificación."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quand c’est activé, Hermes attend plus longtemps avant d’appeler, jusqu’à 10 minutes, pendant que vous lui parlez dans Hermes Desktop, le tableau de bord ou un terminal, ou que la discussion est ouverte dans Conduit, et une demande échouée n’envoie alors qu’une notification."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jika aktif, Hermes menunggu lebih lama sebelum menelepon, hingga 10 menit, saat Anda berbicara dengannya di Hermes Desktop, dasbor, atau terminal, atau membuka obrolan di Conduit, dan permintaan yang gagal di sana hanya mengirim notifikasi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se è attivo, Hermes aspetta più a lungo prima di chiamare, fino a 10 minuti, mentre gli parli in Hermes Desktop, nella dashboard o in un terminale, o hai la chat aperta in Conduit, e lì una richiesta non riuscita invia solo una notifica."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オンにすると、Hermes Desktop、ダッシュボード、ターミナルで話しているときや、Conduitでチャットを開いているときは、電話をかけるまで長めに（最大10分）待ちます。その場合、失敗したリクエストは通知だけを送ります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "켜 두면 Hermes Desktop, 대시보드, 터미널에서 대화 중이거나 Conduit에서 채팅을 열어 두었을 때 Hermes가 전화하기 전에 더 오래(최대 10분) 기다려요. 이때 실패한 요청은 알림만 보내요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gdy to jest włączone, Hermes czeka dłużej, zanim zadzwoni, do 10 minut, gdy rozmawiasz z nim w Hermes Desktop, panelu lub terminalu albo masz otwarty czat w Conduit, a nieudana prośba wysyła wtedy tylko powiadomienie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando isso está ativado, o Hermes espera mais antes de ligar, até 10 minutos, enquanto você fala com ele no Hermes Desktop, no painel ou em um terminal, ou está com a conversa aberta no Conduit, e nesses casos um pedido com falha só envia uma notificação."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Если включено, Hermes ждёт дольше, прежде чем позвонить, до 10 минут, пока вы общаетесь с ним в Hermes Desktop, на панели или в терминале либо чат открыт в Conduit, а неудачный запрос тогда только отправляет уведомление."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Açıkken Hermes, Hermes Desktop’ta, panoda veya bir terminalde onunla konuşurken ya da sohbet Conduit’te açıkken aramadan önce daha uzun, en fazla 10 dakika bekler; bu durumda başarısız bir istek yalnızca bildirim gönderir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启后，当你在 Hermes Desktop、仪表板或终端中与 Hermes 交谈，或在 Conduit 中打开了该聊天时，它会等更久（最多 10 分钟）再打电话，此时请求失败只会发送通知。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟後，當你在 Hermes Desktop、儀表板或終端機中與 Hermes 交談，或在 Conduit 中開著該聊天時，它會等更久（最多 10 分鐘）再打電話，此時請求失敗只會傳送通知。"
           }
         }
       }
@@ -388802,6 +389294,498 @@
           "stringUnit": {
             "state": "translated",
             "value": "顯示卡片的完整摘要和 Hermes 寫下的那一行。"
+          }
+        }
+      }
+    },
+    "Chat traces": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat-Protokolle"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registros del chat"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Traces du chat"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jejak chat"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tracce della chat"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チャットのトレース"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "채팅 추적 기록"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ślady czatu"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registros do chat"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Трассировка чата"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sohbet izleri"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天轨迹"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天軌跡"
+          }
+        }
+      }
+    },
+    "Conduit notes how the open chat scrolls and lays out: row counts, sizes and timings, never what the messages say. When a chat jumps, freezes or stops scrolling, it saves the last few minutes on this device.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit hält fest, wie der offene Chat scrollt und sich aufbaut: Zeilenzahlen, Größen und Zeiten, nie was in den Nachrichten steht. Wenn ein Chat springt, einfriert oder nicht mehr scrollt, speichert es die letzten Minuten auf diesem Gerät."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit anota cómo se desplaza y se dibuja el chat abierto: número de filas, tamaños y tiempos, nunca lo que dicen los mensajes. Cuando un chat salta, se congela o deja de desplazarse, guarda los últimos minutos en este dispositivo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit note comment le chat ouvert défile et se met en page : nombre de lignes, tailles et durées, jamais ce que disent les messages. Quand un chat saute, se fige ou ne défile plus, il enregistre les dernières minutes sur cet appareil."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit mencatat cara chat yang terbuka bergulir dan ditata: jumlah baris, ukuran, dan waktu, tidak pernah isi pesannya. Saat chat melompat, macet, atau berhenti bergulir, Conduit menyimpan beberapa menit terakhir di perangkat ini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit annota come la chat aperta scorre e si dispone: numero di righe, dimensioni e tempi, mai cosa dicono i messaggi. Quando una chat salta, si blocca o smette di scorrere, salva gli ultimi minuti su questo dispositivo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit は、開いているチャットのスクロールとレイアウトの様子（行数、サイズ、タイミング）を記録します。メッセージの内容は記録しません。チャットが飛んだり、フリーズしたり、スクロールしなくなったりすると、直前の数分間をこのデバイスに保存します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit는 열린 채팅이 스크롤되고 배치되는 방식(행 수, 크기, 시간)을 기록하며, 메시지 내용은 절대 기록하지 않습니다. 채팅이 튀거나 멈추거나 스크롤되지 않으면 마지막 몇 분을 이 기기에 저장합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit zapisuje, jak otwarty czat się przewija i układa: liczbę wierszy, rozmiary i czasy, nigdy treść wiadomości. Gdy czat przeskoczy, zawiesi się lub przestanie się przewijać, zapisuje ostatnie minuty na tym urządzeniu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Conduit anota como o chat aberto rola e se organiza: número de linhas, tamanhos e tempos, nunca o que as mensagens dizem. Quando um chat pula, trava ou para de rolar, ele salva os últimos minutos neste dispositivo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit отмечает, как открытый чат прокручивается и раскладывается: число строк, размеры и время, но никогда не содержимое сообщений. Когда чат прыгает, зависает или перестаёт прокручиваться, Conduit сохраняет последние минуты на этом устройстве."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit, açık sohbetin nasıl kaydığını ve yerleştiğini kaydeder: satır sayıları, boyutlar ve süreler; mesajların içeriğini asla kaydetmez. Bir sohbet sıçradığında, donduğunda ya da kaymayı bıraktığında son birkaç dakikayı bu cihaza kaydeder."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 会记录打开的聊天如何滚动和排版：行数、尺寸和时间，绝不记录消息内容。当聊天跳动、卡住或无法滚动时，它会把最近几分钟保存在这台设备上。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 會記錄開啟的聊天如何捲動和排版：列數、尺寸和時間，絕不記錄訊息內容。當聊天跳動、卡住或無法捲動時，它會把最近幾分鐘保存在這部裝置上。"
+          }
+        }
+      }
+    },
+    "If a chat jumped or got stuck, send its traces right after, while they still hold that moment.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn ein Chat gesprungen oder hängen geblieben ist, sende seine Protokolle gleich danach, solange sie diesen Moment noch enthalten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si un chat saltó o se quedó atascado, envía sus registros justo después, mientras aún guardan ese momento."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si un chat a sauté ou s’est bloqué, envoyez ses traces juste après, tant qu’elles contiennent encore ce moment."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jika chat melompat atau tersangkut, segera kirim jejaknya setelah itu, selagi masih memuat momen tersebut."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se una chat è saltata o si è bloccata, invia le sue tracce subito dopo, finché contengono ancora quel momento."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チャットが飛んだり固まったりしたら、その場面が残っているうちに、すぐにトレースを送信してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "채팅이 튀거나 멈췄다면 그 순간이 남아 있을 때 바로 추적 기록을 보내세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeśli czat przeskoczył lub się zaciął, wyślij jego ślady od razu, póki jeszcze obejmują ten moment."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se um chat pulou ou travou, envie os registros logo depois, enquanto eles ainda guardam esse momento."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Если чат прыгнул или застрял, отправьте его трассировку сразу после этого, пока в ней ещё есть этот момент."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir sohbet sıçradıysa ya da takıldıysa, izlerini hemen ardından, o anı hâlâ içerirken gönderin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果聊天跳动或卡住，请在之后立即发送它的轨迹，趁其中还保留着那一刻。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果聊天跳動或卡住，請在之後立即傳送它的軌跡，趁其中還保留著那一刻。"
+          }
+        }
+      }
+    },
+    "Send to Conduit's developer": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An den Entwickler von Conduit senden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar al desarrollador de Conduit"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyer au développeur de Conduit"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kirim ke pengembang Conduit"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invia allo sviluppatore di Conduit"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit の開発者に送信"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 개발자에게 보내기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wyślij twórcy Conduit"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar ao desenvolvedor do Conduit"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отправить разработчику Conduit"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit'in geliştiricisine gönder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送给 Conduit 的开发者"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "傳送給 Conduit 的開發者"
+          }
+        }
+      }
+    },
+    "Share chat traces": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat-Protokolle teilen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compartir registros del chat"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Partager les traces du chat"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bagikan jejak chat"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Condividi tracce della chat"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チャットのトレースを共有"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "채팅 추적 기록 공유"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Udostępnij ślady czatu"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compartilhar registros do chat"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Поделиться трассировкой чата"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sohbet izlerini paylaş"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分享聊天轨迹"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分享聊天軌跡"
+          }
+        }
+      }
+    },
+    "Connect to Hermes to update these numbers.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verbinde dich mit Hermes, um diese Zahlen zu aktualisieren."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conéctate a Hermes para actualizar estas cifras."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connectez-vous à Hermes pour mettre à jour ces chiffres."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hubungkan ke Hermes untuk memperbarui angka-angka ini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connettiti a Hermes per aggiornare questi numeri."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これらの数値を更新するには Hermes に接続してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 수치를 업데이트하려면 Hermes에 연결하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Połącz się z Hermesem, aby zaktualizować te liczby."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conecte-se ao Hermes para atualizar estes números."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подключитесь к Hermes, чтобы обновить эти цифры."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu sayıları güncellemek için Hermes'e bağlanın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接 Hermes 以更新这些数字。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連線 Hermes 以更新這些數字。"
           }
         }
       }

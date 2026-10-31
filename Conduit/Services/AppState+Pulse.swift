@@ -21,13 +21,52 @@ extension AppState {
 
     /// Pulse's routes on the dashboard in use now. Each request checks it is
     /// still that dashboard before it goes out, so one made after a switch
-    /// fails instead of reaching another host.
+    /// fails instead of reaching another host. Pulse's state and what it
+    /// remembers are kept as they're answered, once per dashboard (Pulse is
+    /// one per host), so Settings > Pulse and What Pulse remembers open on
+    /// them next time (#1533).
     var pulseClient: PulseClient {
         let dashboard = activeDashboardID
         return PulseClient(dashboardID: dashboard) { [weak self] path, method, body in
             guard let self, self.activeDashboardID == dashboard,
-                  let bridge = self.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-            return try await bridge.requestJSON(path: path, method: method, body: body)
+                  let owner = self.currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }
+            // A step answers with the state it made.
+            return try await self.keepingAnswer(
+                profile: KeptRoute.everyProfile, owner: owner,
+                keptAs: { PulseClient.keptRoute(path: path, method: method, answer: $0) }, writes: method != "GET"
+            ) {
+                try await owner.bridge.requestJSON(path: path, method: method, body: body)
+            }
+        }
+    }
+
+    /// Pulse's state as Settings > Pulse last showed it on this dashboard,
+    /// or nil when none is kept.
+    func keptPulseState() -> PulseState? {
+        keptAnswer(PulseClient.path, profile: KeptRoute.everyProfile).flatMap(PulseState.init(json:))
+    }
+
+    /// What Pulse remembers, as its list last showed it, or nil when none
+    /// is kept.
+    func keptPulseMemory() -> [PulseMemoryItem]? {
+        keptAnswer(PulseClient.memoryPath, profile: KeptRoute.everyProfile).map(PulseClient.memoryItems(from:))
+    }
+
+    /// Takes an item Pulse forgot out of the list kept for the dashboard it
+    /// was forgotten on (`owner`, as the forget was asked), another one
+    /// open by then or not, so the list never opens on it, even when
+    /// reading it again fails, or when a read asked before the forget
+    /// answers after it.
+    func forgetKeptPulseMemoryItem(id: Int, owner: DashboardRuntimeOwner) async {
+        guard var kept = keptAnswer(PulseClient.memoryPath, profile: KeptRoute.everyProfile, on: owner) else {
+            noteKeptAnswerWrite(for: PulseClient.memoryPath, profile: KeptRoute.everyProfile, owner: owner)
+            return
+        }
+        kept["items"] = (kept["items"] as? [Any] ?? []).filter { PulseMemoryItem(json: $0)?.id != id }
+        _ = try? await keepingAnswer(
+            profile: KeptRoute.everyProfile, owner: owner, keptAs: { _ in PulseClient.memoryPath }, writes: true
+        ) {
+            kept
         }
     }
 
@@ -152,10 +191,16 @@ extension AppState {
         case .failClosed:
             return false
         }
-        guard let active = activeDashboardID, let bridge = dashboardTicketBridge else { return false }
+        guard let active = activeDashboardID, let owner = currentDashboardRuntimeOwner() else { return false }
         do {
-            let response = try await bridge.requestJSON(path: PulseClient.path, method: "PUT",
-                                                        body: ["quiet_until": "today"], timeoutMilliseconds: timeoutMilliseconds)
+            // Kept as Pulse's own steps are, so Settings > Pulse opens on the quiet it set.
+            let response = try await keepingAnswer(
+                profile: KeptRoute.everyProfile, owner: owner,
+                keptAs: { PulseClient.keptRoute(path: PulseClient.path, method: "PUT", answer: $0) }, writes: true
+            ) {
+                try await owner.bridge.requestJSON(path: PulseClient.path, method: "PUT",
+                                                   body: ["quiet_until": "today"], timeoutMilliseconds: timeoutMilliseconds)
+            }
             guard activeDashboardID == active else { return false }
             // A plugin from before quiet times answers without them: nothing went quiet.
             return (try? PulseClient.state(from: response))?.quietUntil != nil

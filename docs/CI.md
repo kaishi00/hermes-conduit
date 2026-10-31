@@ -137,7 +137,10 @@ on the destination, waiting for the simulator and the packages before the
 build), and the longest
 stretches where the build log stopped growing, with the lines around each
 (`ci-build-quiet-stretches.py`). The second shows time the first cannot:
-package resolution, build planning, waiting on the simulator service.
+package resolution, build planning, waiting on the simulator service. A
+build that fails posts its first source errors (up to 8) as annotations,
+which the API serves when the job log can't be read: the log is fetched
+from storage some networks can't reach.
 
 The smoke job then runs two test steps on the one build and booted
 simulator. **Unit smoke** runs the pinned unit tests as one

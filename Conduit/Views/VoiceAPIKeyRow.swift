@@ -55,7 +55,7 @@ struct VoiceAPIKeyRow: View {
                         .accessibilityIdentifier("voice.apiKey.\(targetKey).replace")
                 }
             }
-            if configured == nil || isEditing {
+            if (configured == nil && !service.awaitsKeys) || isEditing {
                 SecureField(AppLocalization.string("Paste API key"), text: $draft)
                     .disabled(isSaving)
                     .textContentType(.password)
@@ -118,7 +118,7 @@ struct VoiceAPIKeyRow: View {
                     .scaledFont(.caption)
                     .foregroundStyle(.green)
             }
-        } else if service.isLoading {
+        } else if service.isChecking {
             Text(AppLocalization.string("Checking…"))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)

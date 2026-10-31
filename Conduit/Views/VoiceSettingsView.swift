@@ -53,6 +53,7 @@ struct VoiceSettingsRoute: View {
         bridge: DashboardTicketBridge,
         profile: String,
         profileParameter: @escaping @MainActor () -> String = { "profile" },
+        answers: VoiceKeptAnswers? = nil,
         profileName: String? = nil,
         conversationController: VoiceConversationController,
         actions: VoiceSettingsActions,
@@ -102,7 +103,9 @@ struct VoiceSettingsRoute: View {
         self.chatVoiceButton = chatVoiceButton
         self.speakerTalkOver = speakerTalkOver
         self.callSaves = callSaves
-        _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile, profileParameter: profileParameter))
+        _service = StateObject(wrappedValue: HermesVoiceConfigurationService(
+            bridge: bridge, profile: profile, profileParameter: profileParameter, answers: answers
+        ))
         _conversationController = ObservedObject(wrappedValue: conversationController)
         self.actions = actions
         self.voiceEnabled = voiceEnabled
@@ -503,15 +506,17 @@ struct VoiceSettingsView: View {
 
     private var hermesStep: some View {
         let capability = service.snapshot.capability
-        if service.isLoading {
+        if service.isChecking {
             return setupStep(AppLocalization.string("Hermes"), detail: AppLocalization.string("Checking…"), state: .pending)
         }
-        if capability.isGatewayConnected {
+        if service.answered == true {
             return setupStep(AppLocalization.string("Hermes"), detail: AppLocalization.string("Connected to \(profileDisplayName)"), state: .done)
         }
+        // Settings shown from before carry their voices' reason, not why
+        // Hermes didn't answer.
         return setupStep(
             AppLocalization.string("Hermes"),
-            detail: capability.unavailableReason ?? AppLocalization.string("Connect to Hermes before starting voice."),
+            detail: (capability.isGatewayConnected ? nil : capability.unavailableReason) ?? AppLocalization.string("Connect to Hermes before starting voice."),
             state: .attention
         )
     }
@@ -569,7 +574,7 @@ struct VoiceSettingsView: View {
             }
             return setupStep(title, detail: AppLocalization.string("Your speech server. Use Test connection under Speech to text to check it."), state: .pending)
         }
-        if service.isLoading || !service.snapshot.capability.isGatewayConnected {
+        if !service.snapshot.capability.isGatewayConnected {
             return setupStep(title, detail: AppLocalization.string("Not checked yet"), state: .pending)
         }
         let name = providerName(service.snapshot.selectedSTTProvider, kind: .stt)
@@ -621,7 +626,7 @@ struct VoiceSettingsView: View {
         if service.snapshot.capability.supportsSpeech {
             return setupStep(title, detail: AppLocalization.string("\(name) on Hermes"), state: .done)
         }
-        if service.isLoading || !service.snapshot.capability.isGatewayConnected {
+        if !service.snapshot.capability.isGatewayConnected {
             return setupStep(title, detail: AppLocalization.string("Not checked yet"), state: .pending)
         }
         return setupStep(
@@ -762,7 +767,7 @@ struct VoiceSettingsView: View {
         isApplyingDefaults = true
         defer { isApplyingDefaults = false }
         guard voiceMode == .classic else { return }
-        if !service.snapshot.capability.isGatewayConnected { await load() }
+        if service.answered != true { await load() }
         let plan = VoiceSetupDefaults.plan(
             transcriptionModeChosen: transcriptionModeChosen,
             appleSpeechAvailability: AppleOnDeviceSpeechTranscriber.currentAvailability(),
@@ -1039,7 +1044,8 @@ struct VoiceSettingsView: View {
     ) -> some View {
         // Once picked, the button leads to the rest of setup (for the voice
         // server, its Base URL) rather than offering to pick it again.
-        let buttonTitle = chosen || inUse ? AppLocalization.string("Set up") : AppLocalization.string("Use")
+        let picks = !(chosen || inUse)
+        let buttonTitle = picks ? AppLocalization.string("Use") : AppLocalization.string("Set up")
         // At accessibility text sizes the button goes under the text so
         // neither is squeezed.
         let layout = dynamicTypeSize.isAccessibilitySize
@@ -1061,7 +1067,9 @@ struct VoiceSettingsView: View {
             if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
             Button(action: action) { Text(verbatim: buttonTitle) }
                 .buttonStyle(.bordered)
-                .disabled(service.isLoading || savingField != nil || !available)
+                // Picking waits for Hermes' answer, as the pickers do: what
+                // it compares with may be the kept answer (#1533).
+                .disabled(service.isLoading || savingField != nil || !available || (picks && service.answered != true))
                 .accessibilityLabel(Text(verbatim: "\(buttonTitle), \(title)"))
                 .accessibilityIdentifier(identifier)
         }
@@ -1078,6 +1086,7 @@ struct VoiceSettingsView: View {
         let selectable = provider == Self.speechServerProviderID || provider == Self.speechServerVoiceProviderID
             || providers.contains { $0.descriptor.id == provider }
         if selectable, provider != selectedProviderChoice(kind) {
+            guard service.answered == true else { return }
             savingField = "\(kind.rawValue).provider"
             Task { @MainActor in
                 await applyProvider(provider, kind: kind)
@@ -1155,19 +1164,20 @@ struct VoiceSettingsView: View {
             }
             spokenControlsSection
             if voiceMode == .classic {
-                if service.isLoading {
-                    ProgressView("Loading profile voice settings…")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 4)
-                } else if service.snapshot.capability.isGatewayConnected {
+                // The settings shown stay while Hermes is asked again (#1533).
+                if service.snapshot.capability.isGatewayConnected {
                     providerSection(title: AppLocalization.string("Speech to text"), symbol: "waveform", kind: .stt, providers: service.snapshot.sttProviders)
                         .id(Self.sttSectionID)
                     providerSection(title: AppLocalization.string("Assistant speech"), symbol: "speaker.wave.3", kind: .tts, providers: service.snapshot.ttsProviders)
                         .id(Self.ttsSectionID)
                     credentialsSection
+                } else if service.isLoading {
+                    ProgressView("Loading profile voice settings…")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 4)
                 }
                 if let voiceReplies {
-                    VoiceReplyModelSettingsSection(settings: voiceReplies)
+                    VoiceReplyModelSettingsSection(settings: voiceReplies, pageIsChecking: service.isLoading)
                 }
             }
             if let voiceJobs {
@@ -1179,8 +1189,7 @@ struct VoiceSettingsView: View {
 
     /// A Classic step the provider sections below fix.
     private var classicSpeechNeedsAttention: Bool {
-        guard voiceEnabled, voiceMode == .classic, !service.isLoading,
-              service.snapshot.capability.isGatewayConnected else { return false }
+        guard voiceEnabled, voiceMode == .classic, service.answered == true else { return false }
         return !supportsSelectedTranscription || !supportsSelectedSpeech
     }
 
@@ -1375,8 +1384,10 @@ struct VoiceSettingsView: View {
                     Text("Provider").foregroundStyle(.secondary)
                 }
                 // Any save in flight, including a Private voice pick of the
-                // other kind, holds both pickers so picks never overlap.
-                .disabled(service.isLoading || savingField != nil)
+                // other kind, holds both pickers so picks never overlap. On
+                // a page opened on its kept answers, they wait for Hermes'
+                // own rows (#1533).
+                .disabled(service.answered != true || service.isLoading || savingField != nil)
                 .accessibilityHint(kind == .stt ? AppLocalization.string("Choose on-device Apple speech or a provider reported by Hermes") : AppLocalization.string("Provider options are reported by Hermes for this profile"))
 
                 if kind == .stt, transcriptionMode == .appleOnDevice {
@@ -1406,7 +1417,7 @@ struct VoiceSettingsView: View {
                 get: { service.snapshot.liveTranscription },
                 set: { enabled in Task { _ = await service.saveLiveTranscription(enabled) } }
             ))
-            .disabled(service.isLoading)
+            .disabled(service.answered != true || service.isLoading)
             Text("Hermes transcribes while you talk, so your words show up as you say them and are ready as soon as you stop. Works with OpenAI, xAI and ElevenLabs speech to text. This is a Hermes setting, so Hermes Desktop and the terminal use it too.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
@@ -1509,6 +1520,9 @@ struct VoiceSettingsView: View {
                     set: { values[field.key] = $0 }
                 ),
                 isSaving: savingField == field.key,
+                // A kept value may be stale, and a kept address has no user
+                // or password to write back (#1533).
+                ready: service.answered == true,
                 save: { value in await save(value: value, field: field) }
             )
         }
@@ -1766,11 +1780,21 @@ struct VoiceSettingsView: View {
     private func load() async {
         appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
         microphonePermission = AVAudioApplication.shared.recordPermission
+        let shown = service.snapshot.values
         await service.reload()
-        values = service.snapshot.values
+        values = Self.answeredValues(service.snapshot.values, shown: shown, fields: values)
         if resolvedSpeechOutput == .speechServer, service.speechServerVoice == nil {
             _ = await service.speechServerVoiceStatus()
         }
+    }
+
+    /// Hermes' answer over the provider fields (#1533): one changed here
+    /// since the page asked keeps its text, typed or saving; every other
+    /// takes Hermes' value.
+    static func answeredValues(_ answered: [String: String], shown: [String: String], fields: [String: String]) -> [String: String] {
+        var values = answered
+        for (key, text) in fields where text != shown[key] { values[key] = text }
+        return values
     }
 
     private func save(value: String, field: VoiceTypedField) async {
@@ -2122,6 +2146,8 @@ private struct VoiceProviderFieldEditor: View {
     let field: VoiceTypedField
     @Binding var value: String
     let isSaving: Bool
+    /// Hermes answered, so the value shown is its own.
+    let ready: Bool
     let save: (String) async -> Void
 
     /// Mirrors the service-side save guard so out-of-range numbers are
@@ -2145,20 +2171,27 @@ private struct VoiceProviderFieldEditor: View {
         VStack(alignment: .leading, spacing: 5) {
             switch field.kind {
             case .choice(let options):
+                // Saved when picked: Hermes' answer changing the value
+                // isn't a pick.
                 ConduitMenuPicker(
                     value: value,
                     choices: options.map { (id: $0, title: $0.replacingOccurrences(of: "_", with: " ").capitalized) },
-                    onSelect: { value = $0 }
+                    onSelect: { picked in
+                        guard picked != value else { return }
+                        value = picked
+                        saveChoice(picked)
+                    }
                 ) {
                     Text(field.label).foregroundStyle(.secondary)
                 }
-                .onChange(of: value) { _, updated in saveChoice(updated) }
+                .disabled(!ready)
             case .decimal:
                 TextField(field.label, text: $value)
                     .keyboardType(.decimalPad)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(submitIfValid)
                     .accessibilityHint(Text(validationMessage ?? field.help))
+                    .disabled(!ready)
             case .text:
                 TextField(field.label, text: $value)
                     .textInputAutocapitalization(.never)
@@ -2166,6 +2199,7 @@ private struct VoiceProviderFieldEditor: View {
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(submitIfValid)
                     .accessibilityHint(Text(validationMessage ?? field.help))
+                    .disabled(!ready)
             }
             if let validationMessage {
                 Text(validationMessage)
@@ -2181,7 +2215,7 @@ private struct VoiceProviderFieldEditor: View {
                 } else {
                     Button(isSaving ? AppLocalization.string("Saving…") : AppLocalization.string("Save")) { Task { await save(value) } }
                         .scaledFont(.caption.weight(.semibold))
-                        .disabled(isSaving || validationMessage != nil)
+                        .disabled(!ready || isSaving || validationMessage != nil)
                         .accessibilityHint(saveHint)
                 }
             }
@@ -2191,7 +2225,7 @@ private struct VoiceProviderFieldEditor: View {
 
     /// Keyboard submit must respect the same guard as the Save button.
     private func submitIfValid() {
-        guard !isSaving, validationMessage == nil else { return }
+        guard ready, !isSaving, validationMessage == nil else { return }
         Task { await save(value) }
     }
 }

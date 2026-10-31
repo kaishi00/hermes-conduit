@@ -5,7 +5,8 @@
 //  Settings > Usage (#813): the profile's tokens and cost over 7, 30 or 90
 //  days, a bar per day, a row per model, and each provider's quota. Read
 //  only, from what Hermes already keeps (UsageReport.swift); refreshed by
-//  hand, never polled.
+//  hand, never polled. Opens on the numbers it showed last, kept on the
+//  phone, while Hermes is asked again (#1533).
 //
 
 import Charts
@@ -22,7 +23,8 @@ struct UsageSettingsDetail: View {
     /// Bumped by the Refresh button, which reruns the page's load task.
     @State private var refreshes = 0
     /// What `report` and `quotas` were loaded for: another period, profile
-    /// or dashboard's numbers never stay up under this one.
+    /// or dashboard's numbers never stay up under this one. Offline, the
+    /// numbers stay, saying to connect to update them.
     @State private var scope: Scope?
     /// The newest load. The page's task and a pull-down can overlap; only
     /// the newest one writes its answer.
@@ -35,22 +37,25 @@ struct UsageSettingsDetail: View {
         let days: Int
         let profile: String
         let dashboardID: UUID?
-        /// Disconnecting clears the page too: "Connect to Hermes" never
-        /// sits over numbers it can't vouch for.
-        let connected: Bool
     }
 
     private struct LoadKey: Equatable {
         let days: Int
         let profile: String
         let dashboardID: UUID?
+        /// Connecting again asks again.
         let connected: Bool
         let refreshes: Int
     }
 
+    private var shownScope: Scope {
+        Scope(days: days, profile: appState.activeProfile, dashboardID: appState.activeDashboardID)
+    }
+
     var body: some View {
         SettingsDetailContainer {
-            Picker(AppLocalization.string("Period"), selection: $days) {
+            // The new period's kept numbers in the same frame, never the old one's.
+            Picker(AppLocalization.string("Period"), selection: Binding(get: { days }, set: { days = $0; showKept() })) {
                 ForEach(UsageReport.periods, id: \.self) { period in
                     Text(periodLabel(period)).tag(period)
                 }
@@ -59,8 +64,11 @@ struct UsageSettingsDetail: View {
             .accessibilityIdentifier("settings.usage.period")
 
             if report != nil, let failure {
-                // A failed refresh says so over the numbers it couldn't renew.
-                Label(failureText(failure), systemImage: "exclamationmark.triangle")
+                // A failed refresh says so over the numbers it couldn't renew,
+                // the kept ones too.
+                let text = failure == .notConnected
+                    ? AppLocalization.string("Connect to Hermes to update these numbers.") : failureText(failure)
+                Label(text, systemImage: "exclamationmark.triangle")
                     .scaledFont(.footnote)
                     .foregroundStyle(.orange)
             }
@@ -103,6 +111,9 @@ struct UsageSettingsDetail: View {
             }
         }
         .refreshable { await load() }
+        // The numbers it showed last, before the first frame; Hermes'
+        // answer follows.
+        .onAppear(perform: showKept)
         .task(id: LoadKey(
             days: days,
             profile: appState.activeProfile,
@@ -114,20 +125,26 @@ struct UsageSettingsDetail: View {
         }
     }
 
+    /// Another period, profile or dashboard: its own numbers as the page
+    /// last showed them, or the loader when none are kept.
+    private func showKept() {
+        let wanted = shownScope
+        guard scope != wanted else { return }
+        report = appState.keptUsageReport(days: wanted.days)
+        quotas = appState.keptProviderQuotas()
+        failure = nil
+        scope = wanted
+    }
+
     private func load() async {
         generation += 1
         let mine = generation
-        let wanted = Scope(days: days, profile: appState.activeProfile, dashboardID: appState.activeDashboardID, connected: appState.isConnected)
+        let wanted = shownScope
         isLoading = true
         defer {
             if generation == mine { isLoading = false }
         }
-        if scope != wanted {
-            report = nil
-            quotas = nil
-            failure = nil
-            scope = wanted
-        }
+        showKept()
         let result: Result<UsageReport, UsageLoadError>
         do {
             let loaded = try await appState.loadUsageReport(days: wanted.days)
@@ -147,7 +164,7 @@ struct UsageSettingsDetail: View {
         }
         // The report is in: Refresh works again while the quota comes.
         isLoading = false
-        // Offline, the page says to connect; no quota card under that.
+        // Offline, the kept quota stays under the line saying to connect.
         if case .failure(.notConnected) = result { return }
         let loadedQuotas = await appState.loadProviderQuotas()
         guard generation == mine, !Task.isCancelled else { return }

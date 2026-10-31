@@ -22,6 +22,9 @@ struct SpeechServerVoiceSettingsView: View {
     @State private var status: SpeechServerVoiceStatus?
     @State private var isRotating = false
     @State private var rotateError: String?
+    /// Why a read failed while a status was shown: the status stays, with
+    /// this under it, and the page's next check reads again (#1533).
+    @State private var readError: String?
     /// Bumped by each load (a profile switch), so a rotate that finishes
     /// later doesn't show the old profile's status.
     @State private var generation = 0
@@ -73,6 +76,13 @@ struct SpeechServerVoiceSettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("voice.speechServerVoice.reason")
                 }
+                if let readError {
+                    Label(readError, systemImage: "exclamationmark.triangle.fill")
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("voice.speechServerVoice.readError")
+                }
                 if let rotateError {
                     Label(rotateError, systemImage: "exclamationmark.triangle.fill")
                         .scaledFont(.footnote)
@@ -84,6 +94,12 @@ struct SpeechServerVoiceSettingsView: View {
             }
         }
         .task(id: service.profile) { await load() }
+        // After a read that failed, the page's next check (its Check again
+        // too) asks the host again.
+        .onChange(of: service.isLoading) { _, loading in
+            guard !loading, status?.readFailed == true || readError != nil, !isRotating else { return }
+            Task { await read() }
+        }
     }
 
     /// Everything above as one block, for an agent or whoever sets up the
@@ -151,16 +167,35 @@ struct SpeechServerVoiceSettingsView: View {
         }
     }
 
-    /// A profile switch starts from that profile's status.
+    /// Opens on the status the page read earlier, held in memory with its
+    /// key, while the host is asked again; a profile switch brings that
+    /// profile's page, with nothing read yet.
     private func load() async {
+        status = service.speechServerVoice
+        readError = nil
+        rotateError = nil
+        await read()
+    }
+
+    private func read() async {
         generation += 1
         let started = generation
-        status = nil
-        rotateError = nil
         let loaded = await service.speechServerVoiceStatus()
         // A rotate meanwhile shows the new key, not this older read.
         guard !Task.isCancelled, generation == started else { return }
-        status = loaded
+        show(loaded)
+    }
+
+    /// A read that fails keeps the status shown, as the service keeps it,
+    /// a new key included, and says why under it (#1533).
+    private func show(_ loaded: SpeechServerVoiceStatus) {
+        if loaded.readFailed, let shown = service.speechServerVoice, !shown.readFailed {
+            status = shown
+            readError = loaded.reason
+        } else {
+            status = loaded
+            readError = nil
+        }
     }
 
     private func rotate() async {
@@ -176,6 +211,6 @@ struct SpeechServerVoiceSettingsView: View {
         // A profile switch meanwhile loads that profile's own status.
         guard generation == started else { return }
         rotateError = failure
-        status = loaded
+        show(loaded)
     }
 }

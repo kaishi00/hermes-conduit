@@ -52,21 +52,23 @@ final class HeldDashboardRequests {
         XCTAssertGreaterThanOrEqual(sent.count, count, "requests sent", file: file, line: line)
     }
 
-    /// Answers the oldest request still waiting, once one is.
+    /// Answers the oldest request still waiting, once one is, or the one
+    /// `at` that place among those waiting, oldest first.
     func answer(
         _ json: Any = [String: Any](),
         status: Int = 200,
+        at place: Int = 0,
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws {
-        for _ in 0..<1_000 where waiting.isEmpty {
+        for _ in 0..<1_000 where waiting.count <= place {
             try await Task.sleep(for: .milliseconds(10))
         }
-        guard !waiting.isEmpty else {
-            XCTFail("no request is waiting for an answer", file: file, line: line)
+        guard waiting.count > place else {
+            XCTFail("no request is waiting for an answer there", file: file, line: line)
             return
         }
-        let (url, continuation) = waiting.removeFirst()
+        let (url, continuation) = waiting.remove(at: place)
         let data = try JSONSerialization.data(withJSONObject: json, options: [.fragmentsAllowed])
         let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil)!
         continuation.resume(returning: (data, response))
