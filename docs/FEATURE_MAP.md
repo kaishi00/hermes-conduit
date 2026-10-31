@@ -3956,7 +3956,7 @@ platform list) · the chat header (shows no source)
 - Tests: `ConduitTests/MessageNormalizerTests.swift` (testGatewayPlatformsAreNamedByTheirHermesSource), `ConduitTests/VoiceHistoryTests.swift` (testVoiceFiltersJoinASavedOrderAfterChat), `ConduitTests/SidebarLayoutTests+CronFilter.swift`
 
 **Rulings**
-- Each Hermes gateway platform (`gateway.config.Platform` and the bundled platform plugins) is its own source, by name, with its own filter; a platform with two backends is one source (WhatsApp and WhatsApp Cloud, iMessage over BlueBubbles or Photon, WeCom and its callback app, a Microsoft Graph webhook under Webhook). A plugin platform Conduit doesn't know yet is Other, not a guess (2026-10-31, #PRNUM, issue #1561, which Eric asked to fix).
+- Each Hermes gateway platform (`gateway.config.Platform` and the bundled platform plugins) is its own source, by name, with its own filter; a platform with two backends is one source (WhatsApp and WhatsApp Cloud, iMessage over BlueBubbles or Photon, WeCom and its callback app, a Microsoft Graph webhook under Webhook). A plugin platform Conduit doesn't know yet is Other, not a guess (2026-10-31, #1572, issue #1561, which Eric asked to fix).
 - A source added to the filter order takes its default place after the source before it in a saved order, as Voice and Cron did, so the new platforms follow Telegram wherever the user moved it.
 - Chats Conduit starts are Hermes `desktop` sessions, the same as Hermes Desktop's, and aren't a source of their own: a chat started on either side resumes on the other and is listed where Desktop users expect it (2026-10-31, Eric, issue #1561).
 
@@ -3964,7 +3964,7 @@ platform list) · the chat header (shows no source)
 - The chat header shows no source; only the row icon does.
 - A plugin platform Hermes adds after this list shows as Other until it's added here.
 
-**Checked:** 2026-10-31, #PRNUM (every gateway platform named, issue #1561).
+**Checked:** 2026-10-31, #1572 (every gateway platform named, issue #1561).
 
 ## Kanban workers' transcripts
 
