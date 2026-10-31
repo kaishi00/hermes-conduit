@@ -3533,6 +3533,7 @@ notifier's live read of the setting for chats already open
 - Two or more reviews in a row fold into one line, "N self-improvement reviews" with the last one's time, closed every time the chat opens; a tap opens it to every card as before, and the choice lasts while the chat stays open, like a run of steps. Any other row ends the run, so an approval, a question or an error is never folded into it; a lone review keeps its own card. Live and in the offline copy, every chat kind. No setting of its own: Never show still hides them all (2026-10-30, #1519, issue #1518).
 
 **Open gaps**
+- A saved review's place uses the phone's clock and Hermes' rows the host's (Hermes' review event carries no time), so a host clock that is off by more than the time between a review and the next row puts the review on the wrong side of that row when the chat reloads. Reviews are stamped to the millisecond, so a row from the same second doesn't (#1551).
 - An open run of reviews keeps its choice by its first review, so loading older history that holds reviews right above it closes it again; runs of steps do the same.
 
 **Checked:** 2026-10-30, #1551 (saved reviews placed by time, not after the newest message, #1549); 2026-10-30, #1519 (runs of reviews fold into one line, #1518); 2026-10-29, #1507 (caption and time on the row's top line, summary full width below, #1440); 2026-10-26, #1282 (display settings kept on the phone, so the offline copy follows Never show from launch); 2026-10-25, #1260.

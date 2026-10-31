@@ -5354,6 +5354,12 @@ final class AppState: ObservableObject {
         ISO8601DateFormatter().string(from: Date())
     }
 
+    private static let reviewTimestampFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
     /// Durable-owned presentation persistence: once the conversation's
     /// durable identity is positively established (a catalog-confirmed or
     /// admission-established canonical), the durable key is the only key
@@ -6377,8 +6383,9 @@ final class AppState: ObservableObject {
     /// the whole transcript by an ISO-only read used to put every saved
     /// review after the newest message (issue #1549). A row with no time it
     /// can read never decides a review's place. A review's time is the
-    /// phone's clock and a row's the host's, so a clock gap of a few seconds
-    /// can put a review a row early or late.
+    /// phone's clock and a row's the host's, so a host clock that is off
+    /// moves a review by as much (an open gap in the feature map: Hermes'
+    /// review event carries no time of its own).
     static func placingReviews(_ reviews: [ChatMessage], into history: [ChatMessage]) -> [ChatMessage] {
         guard !reviews.isEmpty else { return history }
         // Parse each timestamp once: a long chat resumes with every row.
@@ -34115,18 +34122,21 @@ final class AppState: ObservableObject {
             // eventual commit — settle first so chronology matches the
             // pre-projection transcript.
             settleReasoningSegmentIntoTranscript()
+            // To the millisecond: a review placed among Hermes' rows on a
+            // reload must not land before a row from the same second.
+            let reviewTimestamp = Self.reviewTimestampFormatter.string(from: Date())
             messages.append(ChatMessage(
                 id: id,
                 role: .system,
                 content: activity.summary,
-                timestamp: Self.localTimestamp(),
+                timestamp: reviewTimestamp,
                 review: activity
             ))
             persistReview(ReviewSummaryRecord(
                 id: id,
                 profile: activeProfile,
                 sessionId: reviewRecordSessionID(eventSessionId: sessionId),
-                timestamp: Self.localTimestamp(),
+                timestamp: reviewTimestamp,
                 activity: activity
             ))
 
