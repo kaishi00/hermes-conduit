@@ -18,6 +18,7 @@ private final class FakeTranscriptSurface: TranscriptScrollSurface {
     var isTracking = false
     var isDecelerating = false
     private(set) var reservedContentHeight: CGFloat = 0
+    private(set) var rowsHeight: CGFloat = 0
     /// The room the scroller asked for last, laid out at the next pass.
     private(set) var askedReserve: CGFloat = 0
     var sets: [(y: CGFloat, animated: Bool)] = []
@@ -129,6 +130,7 @@ private final class FakeTranscriptSurface: TranscriptScrollSurface {
             return TranscriptRowFrame(id: row.id, minY: y, maxY: y + row.height)
         }
         reservedContentHeight = askedReserve
+        rowsHeight = y
         contentHeight = max(y, reservedContentHeight)
     }
 }
@@ -1686,6 +1688,86 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 3963)
         XCTAssertTrue(scroller.isFollowingLatest)
         XCTAssertTrue(surface.sets.isEmpty)
+    }
+
+    /// Issue 1546: a reader who scrolls up from the stop until none of the
+    /// room shows takes it away, without anything on screen moving; back
+    /// down, the end is the reply's last row, and a reply still streaming
+    /// is followed until it outgrows the screen, then stops at its start.
+    func testScrollingAwayFromTheRoomTakesItAway() {
+        let (scroller, surface) = sendIntoHold()
+        surface.layOut()
+        finishLandingAnimation()
+        streamReply(surface, 100)
+        XCTAssertEqual(surface.contentOffsetY, 3963)
+        surface.userScroll(to: 3000)
+        XCTAssertEqual(scroller.replyRoomHeight, 0)
+        XCTAssertEqual(surface.askedReserve, 0)
+        surface.layOut()
+        XCTAssertEqual(surface.contentHeight, 4180)
+        XCTAssertEqual(surface.contentOffsetY, 3000, "nothing on screen moves")
+        XCTAssertEqual(scroller.mode, .browsing)
+        surface.userScroll(to: surface.maxOffsetY)
+        XCTAssertEqual(surface.contentOffsetY, 3380, "the end is the reply's last row, not the stop")
+        XCTAssertTrue(scroller.isFollowingLatest)
+        XCTAssertTrue(scroller.replyHoldArmed)
+        streamReply(surface, 300)
+        XCTAssertEqual(surface.contentOffsetY, 3580, "a short reply is followed")
+        streamReply(surface, 1200)
+        XCTAssertEqual(surface.contentOffsetY, 3963, "a long one stops at its start")
+        XCTAssertEqual(scroller.mode, .browsing)
+    }
+
+    /// The reader lets go within reach of the end the dropped room leaves,
+    /// before the pass that lays it out: that pass has them follow again.
+    func testLettingGoNearTheEndADroppedRoomLeavesFollowsAgain() {
+        let (scroller, surface) = sendIntoHold()
+        surface.layOut()
+        finishLandingAnimation()
+        streamReply(surface, 100)
+        surface.userScroll(to: 3370)
+        XCTAssertEqual(scroller.mode, .browsing, "measured against the room still laid out")
+        surface.layOut()
+        XCTAssertEqual(surface.contentHeight, 4180)
+        XCTAssertTrue(scroller.isFollowingLatest)
+        streamReply(surface, 300)
+        XCTAssertEqual(surface.contentOffsetY, 3580, "the reply is followed")
+    }
+
+    /// Sent with Long replies off, then scrolled away from: switching it on
+    /// brings no room back under a reader who has left it.
+    func testARoomScrolledAwayFromWithLongRepliesOffDoesntComeBack() {
+        let (scroller, surface) = makeScroller()
+        scroller.holdsRepliesAtStart = { false }
+        scroller.transcriptChanged(
+            messages: Self.messages(0..<11),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        scroller.explicitLatestRequested(animated: false, armsReplyHold: true)
+        surface.append("m10", height: 80)
+        surface.layOut()
+        streamReply(surface, 100)
+        XCTAssertEqual(surface.contentOffsetY, 3380)
+        surface.userScroll(to: 2000)
+        scroller.holdsRepliesAtStart = { true }
+        scroller.replyStartPreferenceChanged()
+        XCTAssertEqual(scroller.replyRoomHeight, 0)
+        XCTAssertEqual(surface.askedReserve, 0)
+    }
+
+    /// A reader who scrolls only a little, with part of the room still on
+    /// screen, keeps it.
+    func testScrollingWhileTheRoomShowsKeepsIt() {
+        let (scroller, surface) = sendIntoHold()
+        surface.layOut()
+        finishLandingAnimation()
+        streamReply(surface, 100)
+        surface.userScroll(to: 3700)
+        surface.layOut()
+        XCTAssertEqual(scroller.replyRoomHeight, 4763)
+        XCTAssertEqual(surface.contentHeight, 4763)
+        XCTAssertEqual(surface.contentOffsetY, 3700)
     }
 
     /// The next send lands in the room the last reply left: nothing moves

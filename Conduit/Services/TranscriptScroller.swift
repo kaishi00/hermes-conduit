@@ -19,6 +19,9 @@ protocol TranscriptScrollSurface: AnyObject {
     /// The least content height the layout's last pass gave the transcript:
     /// what `reserveContentHeight` asked for, once a pass has taken it.
     var reservedContentHeight: CGFloat { get }
+    /// The rows' own height, without the room: where the rows and the
+    /// padding under the last one end.
+    var rowsHeight: CGFloat { get }
     /// Reports back through `TranscriptScroller.surfaceScrolled` before it
     /// returns, as UIKit does. A write under a finger or during a fling
     /// leaves it moving from the new offset, as setting UIKit's
@@ -306,6 +309,10 @@ final class TranscriptScroller: ObservableObject {
     private var replyRoomLaidOut = false
     /// The first move to the stop after a send is still to come.
     private var replyRoomLanding = false
+    /// The reader scrolled the room out of sight and it was dropped
+    /// (`dropReplyRoomOutOfSight`): the pass that lays the shorter content
+    /// out checks whether that left them at the new end.
+    private var replyRoomDropPending = false
     /// The user message the latest turn answers, by id, so a new one (a
     /// turn started on another device) arms the hold.
     private var latestUserRowID: String?
@@ -440,6 +447,7 @@ final class TranscriptScroller: ObservableObject {
             }
         case .browsing:
             keepAnchor(on: surface, barChanged: barChanged)
+            relatchAfterReplyRoomDrop(on: surface)
             if mode == .browsing {
                 refreshTopVisibleRow(persist: true)
             } else if canPinWhileFollowing(surface) {
@@ -473,6 +481,7 @@ final class TranscriptScroller: ObservableObject {
         // it left them on.
         if mode == .browsing, writeDepth == 0 {
             captureAnchor(on: surface)
+            dropReplyRoomOutOfSight(on: surface)
         }
         if mode != .following {
             refreshTopVisibleRow(persist: mode == .browsing)
@@ -1286,6 +1295,37 @@ final class TranscriptScroller: ObservableObject {
         ChatViewportTrace.shared.log(String(format: "replyRoom minContentHeight %.1f", height))
         replyRoomHeight = height
         surface?.reserveContentHeight(height)
+    }
+
+    /// The reader scrolled away from a stop with room under it, far enough
+    /// that none of the room shows: it goes, so coming back down ends at
+    /// the reply's last row above the composer, not at the stop over empty
+    /// space left from before (issue 1546). Nothing on screen moves: the
+    /// content shrinks only below what the reader sees. The hold stays
+    /// armed, so a reply still streaming stops at its start once it
+    /// outgrows the screen. Long replies switched off and on again
+    /// afterwards doesn't bring it back: the reader has left it.
+    private func dropReplyRoomOutOfSight(on surface: TranscriptScrollSurface) {
+        // Armed with Long replies off there is no room laid out, but it
+        // goes too: switched on later, it would come back under a reader
+        // who has left it.
+        guard replyRoomArmed, surface.visibleBand.upperBound <= surface.rowsHeight + 0.5 else { return }
+        ChatViewportTrace.shared.log("replyRoom out of sight")
+        replyRoomArmed = false
+        replyRoomDropPending = true
+    }
+
+    /// The shorter content a dropped room leaves is laid out: a reader at
+    /// rest within reach of its end follows again, as one who scrolled
+    /// there would. One still scrolling is weighed when they stop, against
+    /// the new end.
+    private func relatchAfterReplyRoomDrop(on surface: TranscriptScrollSurface) {
+        guard replyRoomDropPending, surface.reservedContentHeight <= 0.5 else { return }
+        replyRoomDropPending = false
+        guard mode == .browsing, !isUserScrolling,
+              surface.distanceFromBottom <= Self.nearBottomTolerance else { return }
+        setMode(.following)
+        emit(.persistSnapshot(renderedSessionKey))
     }
 
     private func disarmReplyHold() {

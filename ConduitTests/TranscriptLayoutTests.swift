@@ -176,9 +176,12 @@ final class TranscriptLayoutTests: XCTestCase {
         XCTAssertEqual(view.contentSize.height, 5_000)
         XCTAssertEqual(layout.appliedReserve, 5_000)
 
+        XCTAssertEqual(layout.rowsHeight, rowsBottom, "The rows' own height leaves the room out")
+
         layout.reserveContentHeight(0)
         view.layoutIfNeeded()
         XCTAssertEqual(view.contentSize.height, rowsBottom)
+        XCTAssertEqual(layout.rowsHeight, rowsBottom)
     }
 
     /// A pass for some rows never asks for the content size again: the
