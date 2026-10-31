@@ -150,7 +150,7 @@ struct CapabilityPluginsTab: View {
             }
         }
         .task(id: store.profile) {
-            if !store.pluginsLoaded || store.showsKept.contains(.plugins) { await store.loadPlugins() }
+            if !store.pluginsLoaded || !store.showsKept.isDisjoint(with: [.plugins, .pluginCatalog]) { await store.loadPlugins() }
         }
         .confirmationDialog(
             Text("Install \(pendingInstall?.displayName ?? "")?"),

@@ -1899,6 +1899,27 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.keptProfileSettings(keys: ["memory.provider"]), "Asked before a save that landed after a dashboard switch")
     }
 
+    /// Capabilities' kept answers are those of the dashboard they were
+    /// made for: a change that lands after a switch to another one changes
+    /// that dashboard's copy, which its tabs open on when it's back, and the
+    /// dashboard open by then keeps nothing of it (#1533).
+    func testACapabilitiesChangeLandingAfterASwitchChangesItsDashboardsCopy() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let route = CapabilitiesStore.KeptRoute.servers
+        let answers = appState.capabilityAnswers(profile: "default")
+        _ = try await answers.keep(route, false) { ["servers": [["name": "github", "enabled": true]]] }
+
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.capabilityAnswers(profile: "default").kept(route), "The VPS keeps none")
+        let rows = answers.kept(route)?["servers"] as? [[String: Any]]
+        XCTAssertEqual(rows?.first?["enabled"] as? Bool, true, "The Mac's copy, for a change landing now to change")
+        _ = try await answers.keep(route, true) { ["servers": [["name": "github", "enabled": false]]] }
+        let kept = appState.offlineChatCacheForTesting.keptAnswer(route, dashboardID: mac, profile: "default")
+        XCTAssertEqual((kept?["servers"] as? [[String: Any]])?.first?["enabled"] as? Bool, false)
+        XCTAssertNil(appState.capabilityAnswers(profile: "default").kept(route))
+    }
+
     /// A Voice replies model save outranks a read of the slots asked
     /// before it, which keeps nothing when it answers after the save; the
     /// read the save asks for keeps the slot saved.

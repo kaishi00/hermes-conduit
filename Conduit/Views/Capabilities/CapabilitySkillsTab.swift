@@ -77,7 +77,7 @@ struct CapabilitySkillsTab: View {
                 } content: {
                     ForEach(Array(installed.enumerated()), id: \.element.name) { index, skill in
                         CapabilityCardRow(divided: index > 0) {
-                            CapabilitySkillRow(skill: skill, store: store) { enabled in
+                            CapabilitySkillRow(skill: skill, store: store, canChange: appState.canChangeCapabilities) { enabled in
                                 Task { await appState.toggleSkill(name: skill.name, enabled: enabled) }
                             }
                         }
@@ -188,9 +188,10 @@ enum CapabilitySkillStyle {
 /// changes, and hundreds of observing rows each redid their body on every
 /// AppState publish.
 private struct CapabilitySkillRow: View {
-    @EnvironmentObject private var appState: AppState
     let skill: CapabilitySkill
     let store: CapabilitiesStore
+    /// Off with no dashboard to write through (AppState's canChangeCapabilities).
+    let canChange: Bool
     let setEnabled: (Bool) -> Void
 
     var body: some View {
@@ -217,7 +218,7 @@ private struct CapabilitySkillRow: View {
                 Text(verbatim: skill.name)
             }
             .labelsHidden()
-            .disabled(!appState.canChangeCapabilities)
+            .disabled(!canChange)
             .tint(.conduitAccent)
         }
     }

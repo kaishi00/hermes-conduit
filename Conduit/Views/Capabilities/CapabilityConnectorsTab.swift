@@ -101,7 +101,7 @@ struct CapabilityConnectorsTab: View {
             }
         }
         .task(id: store.profile) {
-            if !store.connectorsLoaded || store.showsKept.contains(.connectors) { await store.loadConnectors() }
+            if !store.connectorsLoaded || !store.showsKept.isDisjoint(with: [.connectors, .connectorCatalog]) { await store.loadConnectors() }
             await store.probeServers()
         }
         .sheet(item: $installing) { entry in
