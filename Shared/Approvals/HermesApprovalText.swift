@@ -49,7 +49,7 @@ enum HermesApprovalText {
         if let action = between(trimmed, "Allow computer_use to perform `", "`?"), isName(action) {
             return AppLocalization.string("Allow computer_use to perform `\(action)`?")
         }
-        if let directory = between(trimmed, "Codex requests exec in ", ""), isName(directory) {
+        if let directory = between(trimmed, "Codex requests exec in ", ""), !directory.contains(where: \.isNewline) {
             return AppLocalization.string("Codex requests exec in \(directory)")
         }
         if trimmed == "Hermes needs your approval. Open Conduit for details." {
@@ -81,7 +81,7 @@ enum HermesApprovalText {
         return String(text.dropFirst(prefix.count).dropLast(suffix.count))
     }
 
-    /// One word, as a tool, a path, an action or a flag Hermes names: a text
+    /// One word, as a tool, an action or a flag Hermes names: a text
     /// that only starts like Hermes' own (a plugin's own reason, "Plugin
     /// requires approval for deleting the cache") isn't one of its texts.
     private static func isName(_ text: String) -> Bool {

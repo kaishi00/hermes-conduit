@@ -226,7 +226,10 @@ enum NotificationCopy {
         case nil:
             return nil
         }
-        return reason.map { outcome + " " + $0 } ?? outcome
+        // An approval call's reason is the approval's description: Hermes'
+        // own texts in the App Language (#1589), as HermesCallCopy.summary.
+        let said = call["kind"] as? String == "approval" ? reason.map(HermesApprovalText.description) : reason
+        return said.map { outcome + " " + $0 } ?? outcome
     }
 
     private static func nonEmpty(_ value: Any?) -> String? {

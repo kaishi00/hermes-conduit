@@ -82,4 +82,22 @@ extension NotificationCopyTests {
         XCTAssertEqual(VoiceBackgroundJobSupervisor.waitingNotice(for: job),
                        "O trabalho Limpar precisa do seu OK para continuar: exclusão recursiva. Diga sim para permitir uma vez, ou não.")
     }
+
+    func testCallFromHermesSaysTheApprovalInTheAppLanguage() {
+        UserDefaults.standard.set("pt-BR", forKey: AppLanguageStore.defaultsKey)
+        XCTAssertEqual(HermesApprovalText.description("Codex requests exec in /Users/me/My Project"),
+                       "O Codex pede para executar em /Users/me/My Project")
+        XCTAssertEqual(HermesCallCopy.summary(kind: .approval, title: nil, reason: "recursive delete"),
+                       HermesCallCopy.outcome(kind: .approval, title: nil) + " exclusão recursiva")
+        XCTAssertEqual(HermesCallCopy.summary(kind: .question, title: nil, reason: "recursive delete"),
+                       HermesCallCopy.outcome(kind: .question, title: nil) + " recursive delete",
+                       "a question's reason is Hermes' own words")
+        XCTAssertEqual(NotificationCopy.callLine(["kind": "approval", "reason": "recursive delete"]),
+                       AppLocalization.string("Hermes needs your OK.") + " exclusão recursiva")
+
+        let waiting = HermesCallWaiting(host: ["kind": "approval", "description": "recursive delete", "command": "rm -rf build"])
+        let call = HermesCallOpening(kind: .approval, title: nil, result: nil, reason: "recursive delete")
+        XCTAssertTrue(call.spokenBrief(waiting: waiting).hasSuffix("exclusão recursiva. Diga sim para permitir uma vez, ou não."))
+        XCTAssertEqual(waiting.map { $0.block.contains("Why: recursive delete") }, true, "the model's brief keeps Hermes' words")
+    }
 }
