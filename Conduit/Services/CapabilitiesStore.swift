@@ -539,12 +539,11 @@ final class CapabilitiesStore {
         // page doesn't read as removed and the re-test goes by the saved entry.
         if !reloaded || !servers.contains(where: { $0.name == name }) {
             let saved = ConnectorServer.saved(name: name, entry: entry, replacing: before)
-            if let at = servers.firstIndex(where: { $0.name == name || $0.name == original }) {
-                servers[at] = saved
-                servers.removeAll { $0.name == original && original != name }
-            } else {
-                servers.append(saved)
-            }
+            // One row for it: the old name's place, any row already under
+            // the saved name dropped.
+            let at = servers.firstIndex { $0.name == original } ?? servers.firstIndex { $0.name == name }
+            servers.removeAll { $0.name == original || $0.name == name }
+            servers.insert(saved, at: min(at ?? servers.count, servers.count))
         }
         // Tested again in the background: the editor closes on the save.
         if servers.first(where: { $0.name == name })?.enabled == true {

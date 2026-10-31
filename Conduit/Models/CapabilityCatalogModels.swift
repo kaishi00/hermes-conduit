@@ -423,7 +423,7 @@ struct ConnectorCatalogEntry: Equatable, Identifiable {
                 url: (row["url"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 command: (row["command"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 // A number argument shows as written (--port 8080), not dropped.
-                args: (row["args"] as? [Any])?.map(argumentText) ?? [],
+                args: (row["args"] as? [Any])?.map(ConnectorServer.argumentText) ?? [],
                 needsInstall: row["needs_install"] as? Bool ?? false,
                 installed: row["installed"] as? Bool ?? false
             )

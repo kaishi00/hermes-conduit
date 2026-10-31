@@ -746,6 +746,7 @@ extension KanbanTests {
         let row = try XCTUnwrap(store.servers.first)
         XCTAssertEqual(store.servers.map(\.name), ["Griply"], "the page follows the rename instead of saying it's gone")
         XCTAssertFalse(store.connectorsError == nil, "the failed reload still says so")
+        XCTAssertEqual(store.servers.filter { $0.name == "Griply" }.count, 1, "one row under the saved name")
         XCTAssertEqual(row.url, "https://new")
         XCTAssertNil(row.auth, "the saved entry has no sign-in, whatever the old row had")
         XCTAssertTrue(row.enabled)
