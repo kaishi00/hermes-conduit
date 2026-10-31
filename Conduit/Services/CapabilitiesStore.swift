@@ -19,6 +19,8 @@ enum CapabilitiesStoreError: LocalizedError, Equatable {
     case declined(String)
     /// A Hermes without `PUT /api/mcp/servers`, which edits servers.
     case editUnsupported
+    /// Conduit moved to another profile or dashboard before a save was sent.
+    case profileChanged
 
     var errorDescription: String? {
         switch self {
@@ -30,6 +32,8 @@ enum CapabilitiesStoreError: LocalizedError, Equatable {
             return reason
         case .editUnsupported:
             return AppLocalization.string("This Hermes can't change servers yet. Update Hermes and try again.")
+        case .profileChanged:
+            return AppLocalization.string("Conduit switched to another profile, so nothing was saved.")
         }
     }
 }
@@ -142,32 +146,20 @@ final class CapabilitiesStore {
         body: [String: Any]? = nil,
         timeout: Int = 12_000
     ) async throws -> [String: Any] {
+        guard let requester else { throw CapabilitiesStoreError.notConnected }
+        let send = {
+            try await requester.requestJSON(
+                path: path,
+                method: method,
+                body: body,
+                timeoutMilliseconds: timeout,
+                maxResponseBytes: DataURLLimits.maxJSONResponseBytes
+            )
+        }
         // A backend, connector or install change makes Hermes rewrite the
         // profile config: in turn with every other config save.
-        guard Self.writesProfileConfig(method: method, path: path) else {
-            return try await unqueuedRequest(path, method: method, body: body, timeout: timeout)
-        }
-        return try await ProfileConfigWriteQueue.runThrowing {
-            try await self.unqueuedRequest(path, method: method, body: body, timeout: timeout)
-        }
-    }
-
-    /// A request that doesn't wait for config saves: for reads, and for a
-    /// read and write already running in the queue together.
-    private func unqueuedRequest(
-        _ path: String,
-        method: String = "GET",
-        body: [String: Any]? = nil,
-        timeout: Int = 12_000
-    ) async throws -> [String: Any] {
-        guard let requester else { throw CapabilitiesStoreError.notConnected }
-        return try await requester.requestJSON(
-            path: path,
-            method: method,
-            body: body,
-            timeoutMilliseconds: timeout,
-            maxResponseBytes: DataURLLimits.maxJSONResponseBytes
-        )
+        guard Self.writesProfileConfig(method: method, path: path) else { return try await send() }
+        return try await ProfileConfigWriteQueue.runThrowing { try await send() }
     }
 
     /// Writes Hermes keeps in the profile config. Keys (`/api/env`),
@@ -447,15 +439,26 @@ final class CapabilitiesStore {
 
     /// The profile's `mcp_servers` as written in config.yaml: defaults not
     /// merged and `${NAME}` references not expanded, so keys kept in .env
-    /// show as their names.
-    private func configuredServers() async throws -> [String: Any] {
-        let config = try await unqueuedRequest(scoped("/api/config?include_defaults=false"), timeout: 30_000)
+    /// show as their names. Read from the dashboard and profile given, so a
+    /// save reads and writes the same ones.
+    private static func configuredServers(
+        _ requester: any DashboardJSONRequester,
+        profile: String
+    ) async throws -> [String: Any] {
+        let config = try await requester.requestJSON(
+            path: DashboardPath.withProfile("/api/config?include_defaults=false", profile: profile),
+            method: "GET",
+            body: nil,
+            timeoutMilliseconds: 30_000,
+            maxResponseBytes: DataURLLimits.maxJSONResponseBytes
+        )
         return config["mcp_servers"] as? [String: Any] ?? [:]
     }
 
     /// One server's entry, to edit.
     func serverConfig(_ name: String) async throws -> [String: Any] {
-        guard let entry = try await configuredServers()[name] as? [String: Any] else {
+        guard let requester else { throw CapabilitiesStoreError.notConnected }
+        guard let entry = try await Self.configuredServers(requester, profile: profile)[name] as? [String: Any] else {
             throw ConnectorServerEdit.Problem.gone(name)
         }
         return entry
@@ -463,29 +466,35 @@ final class CapabilitiesStore {
 
     /// Saves an edited server, renamed or not. The map is read again and
     /// written back in one turn of the config queue, so a save elsewhere
-    /// can't land between them and be undone. Hermes checks the entry and
-    /// says what it refused.
+    /// can't land between them and be undone, and both go to the dashboard
+    /// and profile the editor opened on: after a switch nothing is written.
+    /// Hermes checks the entry and says what it refused.
     func saveServer(original: String, name: String, entry: [String: Any]) async throws {
         let token = generation
+        guard let requester else { throw CapabilitiesStoreError.notConnected }
+        let profile = self.profile
         try await ProfileConfigWriteQueue.runThrowing {
-            guard token == self.generation else { throw CancellationError() }
+            guard token == self.generation else { throw CapabilitiesStoreError.profileChanged }
             let servers = try ConnectorServerEdit.replacing(
-                in: try await self.configuredServers(),
+                in: try await Self.configuredServers(requester, profile: profile),
                 original: original,
                 name: name,
                 entry: entry
             )
+            guard token == self.generation else { throw CapabilitiesStoreError.profileChanged }
             do {
-                _ = try await self.unqueuedRequest(
-                    self.scoped("/api/mcp/servers"),
+                _ = try await requester.requestJSON(
+                    path: DashboardPath.withProfile("/api/mcp/servers", profile: profile),
                     method: "PUT",
-                    body: self.scopedBody(["servers": servers]),
-                    timeout: 30_000
+                    body: DashboardPath.bodyWithProfile(["servers": servers], profile: profile),
+                    timeoutMilliseconds: 30_000,
+                    maxResponseBytes: DataURLLimits.maxJSONResponseBytes
                 )
             } catch DashboardTicketBridgeError.http(let status, _) where status == 404 || status == 405 {
                 throw CapabilitiesStoreError.editUnsupported
             }
         }
+        // Saved on the host; what's showing now is another profile's.
         guard token == generation else { return }
         probes[original] = nil
         probes[name] = nil

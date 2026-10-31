@@ -652,6 +652,55 @@ extension KanbanTests {
         }
     }
 
+    func testTheFormFollowsAServerMovedBetweenAddressAndCommandInJSON() throws {
+        var edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["-y", 3]])
+        // Untouched arguments go back as they were, numbers included.
+        XCTAssertEqual((try edit.formEntry()["args"] as? [Any])?.last as? Int, 3)
+        try edit.showJSON()
+        edit.json = #"{"url": "https://files.example/mcp"}"#
+        try edit.showForm()
+        XCTAssertTrue(edit.isRemote)
+        XCTAssertEqual(try edit.saved(fromJSON: false).entry["url"] as? String, "https://files.example/mcp")
+    }
+
+    func testAServerSaveSendsNothingAfterAProfileSwitch() async throws {
+        let config: [String: [String: Any]] = [
+            "/api/config": ["mcp_servers": ["griply": ["url": "https://old"]]],
+            "/api/mcp/servers": ["ok": true, "servers": [[String: Any]]()],
+        ]
+        let requester = CapabilityMockRequester(responses: config)
+        let other = CapabilityMockRequester(responses: config)
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        requester.beforeAnswering = { path in
+            if path == "/api/config" { store.configure(requester: other, profile: "default") }
+        }
+
+        do {
+            try await store.saveServer(original: "griply", name: "griply", entry: ["url": "https://new"])
+            XCTFail("a save after a switch writes nothing")
+        } catch {
+            XCTAssertEqual(error as? CapabilitiesStoreError, .profileChanged)
+        }
+        XCTAssertFalse(requester.calls.contains { $0.method == "PUT" })
+        XCTAssertTrue(other.calls.isEmpty)
+    }
+
+    func testAHermesWithoutTheEditRouteSaysToUpdate() async {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/config": ["mcp_servers": ["griply": ["url": "https://old"]]],
+        ])
+        requester.failures["PUT /api/mcp/servers"] = DashboardTicketBridgeError.http(status: 405, detail: "Method Not Allowed")
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        do {
+            try await store.saveServer(original: "griply", name: "griply", entry: ["url": "https://new"])
+            XCTFail("a 405 is a Hermes without the route")
+        } catch {
+            XCTAssertEqual(error as? CapabilitiesStoreError, .editUnsupported)
+        }
+    }
+
     func testARefreshOnItsWayDoesntUndoASwitchFlippedMeanwhile() async throws {
         let requester = CapabilityMockRequester(responses: [
             "/api/dashboard/plugins/hub": ["plugins": [["name": "Weather", "source": "git", "runtime_status": "disabled"]]],
@@ -722,7 +771,8 @@ private final class CapabilityMockRequester: DashboardJSONRequester {
     }
 
     var responses: [String: [String: Any]]
-    /// Paths that fail with this error instead of answering.
+    /// Paths ("/api/x", or "PUT /api/x" for one method) that fail with
+    /// this error instead of answering.
     var failures: [String: Error] = [:]
     var calls: [Call] = []
     /// Runs before each answer, which is read when the request is made: a
@@ -746,7 +796,7 @@ private final class CapabilityMockRequester: DashboardJSONRequester {
         await beforeAnswering?(bare)
         // As the dashboard bridge does: a cancelled caller gets no answer.
         try Task.checkCancellation()
-        if let failure = failures[bare] { throw failure }
+        if let failure = failures["\(method) \(bare)"] ?? failures[bare] { throw failure }
         guard let response else {
             throw URLError(.fileDoesNotExist)
         }

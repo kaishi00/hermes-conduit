@@ -74288,6 +74288,88 @@
         }
       }
     },
+    "Conduit switched to another profile, so nothing was saved.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit hat zu einem anderen Profil gewechselt, daher wurde nichts gesichert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit cambió a otro perfil, así que no se guardó nada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit est passé à un autre profil, donc rien n’a été enregistré."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit beralih ke profil lain, jadi tidak ada yang disimpan."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit è passato a un altro profilo, quindi non è stato salvato nulla."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduitが別のプロファイルに切り替わったため、何も保存されませんでした。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit가 다른 프로필로 전환되어 아무것도 저장되지 않았습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit przełączył się na inny profil, więc nic nie zapisano."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Conduit mudou para outro perfil, então nada foi salvo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit переключился на другой профиль, поэтому ничего не сохранено."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit başka bir profile geçti, bu yüzden hiçbir şey kaydedilmedi."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 已切换到另一个配置文件，因此没有保存任何内容。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 已切換到另一個設定檔，因此沒有儲存任何內容。"
+          }
+        }
+      }
+    },
     "Conduit voice is ready for this profile.": {
       "localizations": {
         "de": {

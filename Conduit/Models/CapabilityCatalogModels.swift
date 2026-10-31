@@ -731,18 +731,30 @@ struct ConnectorServerEdit {
     var arguments: String
     var json: String
     /// A server reached by address, rather than a command the host runs.
-    let isRemote: Bool
+    private(set) var isRemote: Bool
     private var entry: [String: Any]
+    /// The arguments as the form last showed them: untouched, the entry's
+    /// own (numbers stay numbers).
+    private var shownArguments: String
 
     init(name: String, entry: [String: Any]) {
         originalName = name
         self.name = name
         self.entry = entry
-        isRemote = entry["url"] != nil || entry["command"] == nil
+        isRemote = Self.reachedByAddress(entry)
         url = entry["url"] as? String ?? ""
         command = entry["command"] as? String ?? ""
-        arguments = (entry["args"] as? [Any] ?? []).map { "\($0)" }.joined(separator: "\n")
+        arguments = Self.argumentLines(entry)
+        shownArguments = arguments
         json = Self.pretty(entry)
+    }
+
+    private static func reachedByAddress(_ entry: [String: Any]) -> Bool {
+        entry["url"] != nil || entry["command"] == nil
+    }
+
+    private static func argumentLines(_ entry: [String: Any]) -> String {
+        (entry["args"] as? [Any] ?? []).map { "\($0)" }.joined(separator: "\n")
     }
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -758,6 +770,7 @@ struct ConnectorServerEdit {
             let program = command.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !program.isEmpty else { throw Problem.noTarget }
             next["command"] = program
+            guard arguments != shownArguments else { return next }
             let args = arguments.split(whereSeparator: \.isNewline)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
@@ -794,9 +807,12 @@ struct ConnectorServerEdit {
     mutating func showForm() throws {
         let next = try jsonEntry()
         entry = next
+        // The JSON may have moved it between an address and a command.
+        isRemote = Self.reachedByAddress(next)
         url = next["url"] as? String ?? ""
         command = next["command"] as? String ?? ""
-        arguments = (next["args"] as? [Any] ?? []).map { "\($0)" }.joined(separator: "\n")
+        arguments = Self.argumentLines(next)
+        shownArguments = arguments
         json = Self.pretty(next)
     }
 
