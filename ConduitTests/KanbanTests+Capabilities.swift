@@ -674,6 +674,65 @@ extension KanbanTests {
         XCTAssertTrue(installed)
         XCTAssertEqual(Array(kept.noted.suffix(2)), [CapabilitiesStore.KeptRoute.servers, CapabilitiesStore.KeptRoute.connectorCatalog])
     }
+
+    /// A kept list reads again after a switch Hermes refused, and its
+    /// servers are tested once Hermes lists them, after a connector install
+    /// too; a plugin update counts as a write, as an install does.
+    func testChangesOnKeptListsReadThemAgain() async throws {
+        let github: [String: Any] = ["name": "github", "transport": "http", "url": "https://g", "enabled": true]
+        let hermes = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [github]],
+            "/api/mcp/catalog": ["entries": [["name": "notion", "auth_type": "oauth"]]],
+            "/api/dashboard/plugins/hub": ["plugins": [["name": "Weather", "source": "git", "runtime_status": "disabled"]]],
+        ])
+        let kept = KeptCapabilityAnswers()
+        let dashboardKept = KeptCapabilityAnswers()
+        let first = CapabilitiesStore()
+        first.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        await first.loadConnectors()
+        await first.loadPlugins()
+
+        let store = CapabilitiesStore()
+        store.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertEqual(store.showsKept, [.connectors, .plugins])
+        hermes.calls.removeAll()
+        do {
+            try await store.setPluginEnabled(store.plugins[0], enabled: true)
+            XCTFail("Hermes refused the switch")
+        } catch {}
+        XCTAssertTrue(hermes.calls.contains { $0.path == "/api/dashboard/plugins/hub" && $0.method == "GET" }, "The kept plugins ask again")
+        XCTAssertFalse(store.showsKept.contains(.plugins))
+
+        hermes.calls.removeAll()
+        do {
+            try await store.setServerEnabled("github", enabled: false)
+            XCTFail("Hermes refused the switch")
+        } catch {}
+        XCTAssertTrue(hermes.calls.contains { $0.path == "/api/mcp/servers" && $0.method == "GET" }, "The kept servers ask again")
+        XCTAssertTrue(hermes.calls.contains { $0.path == "/api/mcp/servers/github/test" && $0.method == "POST" }, "and are tested once Hermes lists them")
+        XCTAssertEqual(store.servers.first?.enabled, true)
+
+        let other = CapabilitiesStore()
+        other.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertTrue(other.showsKept.contains(.connectors))
+        let notion = try XCTUnwrap(other.connectorCatalog.first { $0.name == "notion" })
+        hermes.responses["/api/mcp/catalog/install"] = ["ok": true]
+        hermes.responses["/api/mcp/servers"] = ["servers": [github, ["name": "notion", "transport": "http", "url": "https://n", "enabled": true]]]
+        hermes.calls.removeAll()
+        let installed = await other.installConnector(notion, env: [:])
+        XCTAssertTrue(installed)
+        XCTAssertEqual(
+            hermes.calls.filter { $0.path.hasSuffix("/test") }.map(\.path).sorted(),
+            ["/api/mcp/servers/github/test", "/api/mcp/servers/notion/test"],
+            "Every server Hermes listed is tested, once"
+        )
+
+        hermes.responses["/api/dashboard/plugins/hub"] = nil
+        hermes.responses["/api/dashboard/agent-plugins/Weather/update"] = ["ok": true]
+        let outcome = try await store.updatePlugin(store.plugins[0])
+        XCTAssertEqual(outcome, .updated(restartRequired: true))
+        XCTAssertEqual(kept.noted.last, CapabilitiesStore.KeptRoute.plugins, "A read asked before the update isn't kept after it")
+    }
 }
 
 @MainActor

@@ -505,7 +505,10 @@ final class CapabilitiesStore {
                 connectorsEpoch &+= 1
                 servers[index].enabled = !enabled
             }
-            if token == generation, showsKept.contains(.connectors) { await loadConnectors() }
+            if token == generation, showsKept.contains(.connectors) {
+                await loadConnectors()
+                if token == generation { await probeServers() }
+            }
             throw error
         }
         guard token == generation else { return }
@@ -576,8 +579,17 @@ final class CapabilitiesStore {
             // install isn't kept after it.
             answers?.noteWrite(KeptRoute.servers)
             answers?.noteWrite(KeptRoute.connectorCatalog)
+            let wasKept = showsKept.contains(.connectors)
             await loadConnectors()
-            await probe(entry.name)
+            guard token == generation else { return true }
+            if wasKept {
+                // Hermes' list took the kept one's place: its servers are
+                // tested now, as the tab's open would have, the new one
+                // with them.
+                await probeServers()
+            } else {
+                await probe(entry.name)
+            }
             return true
         } catch {
             guard token == generation, !(error is CancellationError) else { return false }
@@ -663,11 +675,19 @@ final class CapabilitiesStore {
         let token = generation
         pluginBusy.insert(plugin.name)
         defer { if token == generation { pluginBusy.remove(plugin.name) } }
-        let response = try await request(
-            "/api/dashboard/agent-plugins/\(Self.pluginPath(plugin.name))/\(enabled ? "enable" : "disable")",
-            method: "POST",
-            timeout: 60_000
-        )
+        let response: [String: Any]
+        do {
+            response = try await request(
+                "/api/dashboard/agent-plugins/\(Self.pluginPath(plugin.name))/\(enabled ? "enable" : "disable")",
+                method: "POST",
+                timeout: 60_000
+            )
+        } catch {
+            // Refused: a list still showing its kept copy reads again, as
+            // after a switch Hermes took.
+            if token == generation, showsKept.contains(.plugins) { await loadPlugins() }
+            throw error
+        }
         guard token == generation else { return }
         let status = enabled ? "enabled" : "disabled"
         if let index = plugins.firstIndex(where: { $0.name == plugin.name }) {
@@ -747,6 +767,9 @@ final class CapabilitiesStore {
         // its next start.
         let restart = response["restart_required"] as? Bool ?? true
         if restart { pluginsNeedRestart = true }
+        // Its new version comes with Hermes' answer: a read asked before
+        // the update isn't kept after it.
+        answers?.noteWrite(KeptRoute.plugins)
         await loadPlugins()
         return .updated(restartRequired: restart)
     }
