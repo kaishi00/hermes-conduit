@@ -57,7 +57,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 - Calls stay with their chat, keep going with the screen locked, shrink to a bar while you read, and are saved as chats you can resume
 - Hermes calls you: a CallKit call when a job is done, Hermes needs you, or a check you scheduled is due, on the phone or the Watch
 - Classic voice and dictation with on-device, Apple, Hermes or your own speech-to-text, spoken Stop and End, wake phrases, and Read Aloud for any reply
-- Apple Watch app that calls on its own, CarPlay, Siri and the Action Button
+- Apple Watch app that calls on its own, CarPlay, Siri and the Action Button; Watch and Siri calls can start on a profile you pick, whichever one the iPhone has open
 
 **Tasks, bots and groups**
 
@@ -83,7 +83,7 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 - Home Screen widgets to start a chat or talk in one tap
 - Provider, model and reasoning effort switching mid-conversation
 - Multiple dashboards and profiles, each with its own credentials and settings; rename a profile or change its photo and glow in Settings > Profiles; All in the profile row lists every profile's chats together, newest first with each row's profile picture, or grouped by profile with each profile's pinned chats and five newest until Show more
-- Capabilities: skills, tools, connectors and plugins, plus Hermes settings and gateway logs
+- Capabilities: skills, tools, connectors (MCP servers you can test and edit, by form or as JSON) and plugins, plus Hermes settings and gateway logs
 - Native OAuth sign-in through your dashboard, QR code and setup links, Cloudflare Access service tokens
 - Face ID or Touch ID lock, credentials in the Keychain
 - Available in English, French, German, Indonesian, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Russian, Simplified Chinese, Spanish, Traditional Chinese and Turkish

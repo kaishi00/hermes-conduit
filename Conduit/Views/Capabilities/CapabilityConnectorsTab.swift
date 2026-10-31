@@ -282,20 +282,33 @@ private struct ConnectorCatalogRow: View {
 /// the tools it brings, and Remove.
 struct ConnectorDetailPage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    @EnvironmentObject var appState: AppState
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let name: String
+    /// Follows a rename made in the editor.
+    @State private var name: String
     let store: CapabilitiesStore
+    @State private var editing = false
+    /// The page's own first test has been asked for: from then on an
+    /// untested server says so instead of waiting.
+    @State private var firstTestAsked = false
     @State private var signInFlow: String?
     @State private var signInTask: Task<Void, Never>?
     @State private var message: String?
     @State private var confirmingRemove = false
     @State private var removing = false
 
+    init(name: String, store: CapabilitiesStore) {
+        _name = State(initialValue: name)
+        self.store = store
+    }
+
     private var server: ConnectorServer? { store.servers.first { $0.name == name } }
     private var probe: ConnectorProbe? { store.probes[name] }
     private var catalogEntry: ConnectorCatalogEntry? { store.connectorCatalog.first { $0.name == name } }
+    /// The kept list's read failed: no test comes until Hermes answers.
+    private var keptListFailed: Bool { store.showsKept.contains(.connectors) && store.connectorsError != nil }
 
     var body: some View {
         SettingsDetailContainer {
@@ -305,7 +318,7 @@ struct ConnectorDetailPage: View {
                 // command (#1533): they show once Hermes answers.
                 let showsWhere = !store.showsKept.contains(.connectors)
                 header(server, state: state)
-                if showsWhere || server.enabled || message != nil {
+                if showsWhere || server.enabled || !server.isFromPlugin || message != nil {
                     ConduitSettingsSection(title: AppLocalization.string("Connection"), symbol: "link", tint: .conduitAura) {
                         if showsWhere, let url = server.url {
                             SettingsMetricRow(label: AppLocalization.string("Address"), value: url, lineLimit: 2)
@@ -315,6 +328,19 @@ struct ConnectorDetailPage: View {
                         }
                         if server.enabled {
                             actions(server, state: state)
+                        }
+                        if !server.isFromPlugin {
+                            Button {
+                                Haptics.selection()
+                                message = nil
+                                editing = true
+                            } label: {
+                                Label(AppLocalization.string("Edit Server"), systemImage: "pencil")
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 6)
+                                    .frame(minHeight: 44)
+                            }
+                            .conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.12))
                         }
                         if let message {
                             Text(verbatim: message)
@@ -353,7 +379,9 @@ struct ConnectorDetailPage: View {
         .navigationTitle(Text(verbatim: name))
         // A kept server is tested once Hermes lists it, as on the tab.
         .task(id: store.showsKept.contains(.connectors) ? nil : name) {
-            if let server, server.enabled, probe == nil, !store.probing.contains(name), !store.showsKept.contains(.connectors) {
+            guard !store.showsKept.contains(.connectors) else { return }
+            firstTestAsked = true
+            if let server, server.enabled, probe == nil, !store.probing.contains(name) {
                 await store.probe(name)
             }
         }
@@ -364,6 +392,17 @@ struct ConnectorDetailPage: View {
             if signInFlow != nil {
                 signInFlow = nil
                 message = nil
+            }
+        }
+        .sheet(isPresented: $editing) {
+            ConnectorEditSheet(
+                name: name,
+                auth: server?.auth,
+                profileName: appState.profileDisplayName(store.profile),
+                store: store
+            ) { saved in
+                name = saved
+                message = AppLocalization.string("Saved. Changes apply to new sessions.")
             }
         }
         .confirmationDialog(
@@ -485,7 +524,7 @@ struct ConnectorDetailPage: View {
                 Text(verbatim: AppLocalization.string("\(server.name) is off. Turn it on to read the tools it brings."))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
-            } else if state == .checking || (probe == nil && state == .unknown) {
+            } else if state == .checking || (probe == nil && state == .unknown && !firstTestAsked && !keptListFailed) {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text("Reading the tool list…")
@@ -512,6 +551,11 @@ struct ConnectorDetailPage: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+            } else if probe == nil && state == .unknown {
+                // A test cut off under it recorded nothing.
+                Text("Not tested yet. Test Connection reads its tools.")
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
             } else if state == .needsSignIn {
                 Text(verbatim: AppLocalization.string("Sign in to \(server.name) to read its tools."))
                     .scaledFont(.footnote)
@@ -668,6 +712,223 @@ struct ConnectorInstallSheet: View {
                     }
                     .disabled(!canInstall)
                 }
+            }
+        }
+    }
+}
+
+/// Edit a server's entry in the profile's config (#1570): its name, address
+/// or command in a form, or the whole entry as JSON, as Hermes Desktop's
+/// mcp.json editor shows it. Takes plain values (no AppState) as a sheet
+/// should.
+struct ConnectorEditSheet: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @Environment(\.dismiss) private var dismiss
+    let name: String
+    let auth: String?
+    let profileName: String
+    let store: CapabilitiesStore
+    let onSaved: (String) -> Void
+    @State private var edit: ConnectorServerEdit?
+    /// The profile and dashboard the entry was read from, by the store's
+    /// generation: a save after a switch writes nothing.
+    @State private var openedOn: Int?
+    @State private var loadError: String?
+    @State private var showingJSON = false
+    @State private var problem: String?
+    @State private var saving = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let loadError {
+                    Section {
+                        Text(verbatim: loadError)
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.red)
+                        Button("Try Again") {
+                            self.loadError = nil
+                            Task { await load() }
+                        }
+                    }
+                } else if let edit = Binding($edit) {
+                    content(edit)
+                } else {
+                    Section {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Reading the server's settings…")
+                                .scaledFont(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .navigationTitle(Text("Edit Server"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    // A save on its way finishes here, so what Hermes says
+                    // about it is shown.
+                    Button(AppLocalization.string("Cancel")) { dismiss() }
+                        .disabled(saving)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if saving {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button(AppLocalization.string("Save")) { save() }
+                            .disabled(edit == nil)
+                    }
+                }
+            }
+            .interactiveDismissDisabled(saving)
+            .task { await load() }
+        }
+    }
+
+    @ViewBuilder
+    private func content(_ edit: Binding<ConnectorServerEdit>) -> some View {
+        Section {
+            Picker(selection: Binding(
+                get: { showingJSON },
+                set: { toJSON in switchView(toJSON: toJSON) }
+            )) {
+                Text("Settings").tag(false)
+                Text(verbatim: "JSON").tag(true)
+            } label: {
+                EmptyView()
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityLabel(Text("Edit as"))
+            TextField(AppLocalization.string("Name"), text: edit.name)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        } header: {
+            Text("Name")
+        } footer: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(verbatim: AppLocalization.string("Saved to \(profileName)'s config on your host. Changes apply to new sessions."))
+                if edit.wrappedValue.renameSignsOut(auth: auth) {
+                    Text("A new name signs it out. Sign in again after saving.")
+                }
+            }
+        }
+        if showingJSON {
+            Section {
+                TextEditor(text: edit.json)
+                    .scaledFont(.footnote.monospaced())
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .frame(minHeight: 240)
+                    .accessibilityLabel(Text(verbatim: "JSON"))
+                Button(AppLocalization.string("Format")) {
+                    do {
+                        try edit.wrappedValue.formatJSON()
+                        problem = nil
+                    } catch {
+                        problem = UserFacingError.message(for: error)
+                    }
+                }
+            } header: {
+                Text(verbatim: "JSON")
+            } footer: {
+                Text("Keys Hermes saved for this server stay in .env on your host. The JSON shows only their names.")
+            }
+        } else if edit.wrappedValue.isRemote {
+            Section {
+                TextField(AppLocalization.string("Address"), text: edit.url)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            } header: {
+                Text("Address")
+            } footer: {
+                Text("Headers, keys and the rest stay as they are. Change them in JSON.")
+            }
+        } else {
+            Section {
+                TextField(AppLocalization.string("Command"), text: edit.command)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            } header: {
+                Text("Command")
+            }
+            Section {
+                TextEditor(text: edit.arguments)
+                    .scaledFont(.footnote.monospaced())
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .frame(minHeight: 88)
+                    .accessibilityLabel(Text("Arguments"))
+            } header: {
+                Text("Arguments")
+            } footer: {
+                Text("One per line. Keys, env and the rest stay as they are. Change them in JSON.")
+            }
+        }
+        if let problem {
+            Section {
+                Text(verbatim: problem)
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    private func load() async {
+        guard edit == nil else { return }
+        do {
+            let generation = store.generation
+            edit = ConnectorServerEdit(name: name, entry: try await store.serverConfig(name))
+            openedOn = generation
+        } catch {
+            loadError = UserFacingError.message(for: error)
+        }
+    }
+
+    /// The form and the JSON show the same entry; a JSON that doesn't parse
+    /// keeps the JSON open with what's wrong.
+    private func switchView(toJSON: Bool) {
+        guard var next = edit, toJSON != showingJSON else { return }
+        do {
+            if toJSON { try next.showJSON() } else { try next.showForm() }
+            edit = next
+            showingJSON = toJSON
+            problem = nil
+        } catch {
+            problem = UserFacingError.message(for: error)
+        }
+    }
+
+    private func save() {
+        guard let edit, let openedOn else { return }
+        problem = nil
+        let saved: (name: String, entry: [String: Any])
+        do {
+            saved = try edit.saved(fromJSON: showingJSON)
+        } catch {
+            problem = UserFacingError.message(for: error)
+            return
+        }
+        saving = true
+        Task {
+            do {
+                try await store.saveServer(
+                    original: edit.originalName,
+                    loaded: edit.loaded,
+                    name: saved.name,
+                    entry: saved.entry,
+                    openedOn: openedOn
+                )
+                Haptics.success()
+                onSaved(saved.name)
+                dismiss()
+            } catch {
+                problem = UserFacingError.message(for: error)
+                saving = false
             }
         }
     }

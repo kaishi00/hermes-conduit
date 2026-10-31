@@ -19,6 +19,10 @@ enum CapabilitiesStoreError: LocalizedError, Equatable {
     case notConnected
     case timedOut
     case declined(String)
+    /// A Hermes without `PUT /api/mcp/servers`, which edits servers.
+    case editUnsupported
+    /// Conduit moved to another profile or dashboard before a save was sent.
+    case profileChanged
 
     var errorDescription: String? {
         switch self {
@@ -28,6 +32,10 @@ enum CapabilitiesStoreError: LocalizedError, Equatable {
             return AppLocalization.string("Hermes is still working on it. Check again in a moment.")
         case .declined(let reason):
             return reason
+        case .editUnsupported:
+            return AppLocalization.string("This Hermes can't change servers yet. Update Hermes and try again.")
+        case .profileChanged:
+            return AppLocalization.string("Conduit switched to another profile, so nothing was saved.")
         }
     }
 }
@@ -109,14 +117,17 @@ final class CapabilitiesStore {
     @ObservationIgnored private var dashboardAnswers: KeptAnswers?
     private(set) var profile = "default"
     /// Bumped on every profile or dashboard switch: work started before it
-    /// commits nothing.
-    @ObservationIgnored private var generation = 0
+    /// commits nothing. An editor keeps the one it read under.
+    @ObservationIgnored private(set) var generation = 0
     /// Bumped by every load of a list and every change made to it here: a
     /// load commits only if nothing newer touched its list meanwhile, so a
     /// refresh that answers late can't bring back an older list or undo a
     /// switch just flipped.
     @ObservationIgnored private var skillsEpoch = 0
     @ObservationIgnored private var connectorsEpoch = 0
+    /// Bumped when a server's entry is saved: a test that started before
+    /// tested the old entry.
+    @ObservationIgnored private var probeEpochs: [String: Int] = [:]
     @ObservationIgnored private var pluginsEpoch = 0
 
     /// A connector's probe stays fresh this long, as on Desktop.
@@ -439,6 +450,8 @@ final class CapabilitiesStore {
         } catch {
             _ = await catalogResponse
             guard token == generation, epoch == connectorsEpoch else { return }
+            // A read cut off under it isn't the list failing: read again next time.
+            guard !(error is CancellationError) else { return }
             connectorsError = UserFacingError.message(for: error)
         }
         connectorsLoaded = true
@@ -456,13 +469,17 @@ final class CapabilitiesStore {
             return now.timeIntervalSince(probe.checkedAt) > Self.probeLifetime
         }
         var pending = due[...]
+        // The list may have gone while it was still reading the servers.
+        guard !Task.isCancelled else { return }
         await withTaskGroup(of: Void.self) { group in
             for _ in 0..<3 {
                 guard let next = pending.popFirst() else { break }
                 group.addTask { await self.probe(next.name) }
             }
             while await group.next() != nil {
-                if let next = pending.popFirst() {
+                // Leaving the list starts no more tests; the ones running
+                // finish (see probe).
+                if !Task.isCancelled, let next = pending.popFirst() {
                     group.addTask { await self.probe(next.name) }
                 }
             }
@@ -473,20 +490,44 @@ final class CapabilitiesStore {
         // Each test starts the server on the host: one at a time.
         guard !probing.contains(name) else { return }
         let token = generation
+        let entryEpoch = probeEpochs[name, default: 0]
         probing.insert(name)
-        let probe: ConnectorProbe
-        do {
-            probe = ConnectorProbe(try await request(
-                scoped("/api/mcp/servers/\(Self.component(name))/test"),
+        // The test runs to its answer even when the page that asked goes
+        // away (opening a server from the list cancels the list's tests):
+        // the host already started the server, and an interrupted test
+        // isn't the server failing (#1570).
+        // The path and the dashboard are taken together, now: a switch
+        // while the task starts can't send this profile's test to another.
+        let path = scoped("/api/mcp/servers/\(Self.component(name))/test")
+        let requester = self.requester
+        let test = Task { () -> ConnectorProbe in
+            guard let requester else { throw CapabilitiesStoreError.notConnected }
+            return ConnectorProbe(try await requester.requestJSON(
+                path: path,
                 method: "POST",
-                timeout: 60_000
+                body: nil,
+                timeoutMilliseconds: 60_000,
+                maxResponseBytes: DataURLLimits.maxJSONResponseBytes
             ))
+        }
+        let probe: ConnectorProbe?
+        do {
+            probe = try await test.value
+        } catch is CancellationError {
+            // Cancelled under the test (the dashboard went away): no result,
+            // so it's tested again next time rather than shown as failed.
+            probe = nil
         } catch {
             probe = ConnectorProbe(failure: UserFacingError.message(for: error))
         }
         guard token == generation else { return }
         probing.remove(name)
-        probes[name] = probe
+        guard entryEpoch == probeEpochs[name, default: 0] else {
+            // Saved while this ran: test what's there now.
+            if servers.first(where: { $0.name == name })?.enabled == true { await self.probe(name) }
+            return
+        }
+        if let probe { probes[name] = probe }
     }
 
     func setServerEnabled(_ name: String, enabled: Bool) async throws {
@@ -537,6 +578,95 @@ final class CapabilitiesStore {
         guard token == generation, showsKept.contains(.connectors) else { return }
         await loadConnectors()
         if token == generation { await probeServers() }
+    }
+
+    /// The profile's `mcp_servers` as written in config.yaml: defaults not
+    /// merged and `${NAME}` references not expanded, so keys kept in .env
+    /// show as their names. Read from the dashboard and profile given, so a
+    /// save reads and writes the same ones.
+    private static func configuredServers(
+        _ requester: any DashboardJSONRequester,
+        profile: String
+    ) async throws -> [String: Any] {
+        let config = try await requester.requestJSON(
+            path: DashboardPath.withProfile("/api/config?include_defaults=false", profile: profile),
+            method: "GET",
+            body: nil,
+            timeoutMilliseconds: 30_000,
+            maxResponseBytes: DataURLLimits.maxJSONResponseBytes
+        )
+        return config["mcp_servers"] as? [String: Any] ?? [:]
+    }
+
+    /// One server's entry, to edit. Read in turn with config saves, so a
+    /// switch flipped just before shows in it.
+    func serverConfig(_ name: String) async throws -> [String: Any] {
+        guard let requester else { throw CapabilitiesStoreError.notConnected }
+        let profile = self.profile
+        return try await ProfileConfigWriteQueue.runThrowing {
+            guard let entry = try await Self.configuredServers(requester, profile: profile)[name] as? [String: Any] else {
+                throw ConnectorServerEdit.Problem.gone(name)
+            }
+            return entry
+        }
+    }
+
+    /// Saves an edited server, renamed or not. The map is read again and
+    /// written back in one turn of the config queue, so a save elsewhere
+    /// can't land between them and be undone, and both go to the dashboard
+    /// and profile the editor opened on: after a switch nothing is written.
+    /// Hermes checks the entry and says what it refused.
+    func saveServer(
+        original: String,
+        loaded: [String: Any],
+        name: String,
+        entry: [String: Any],
+        openedOn: Int
+    ) async throws {
+        let token = generation
+        // The editor read its entry before this: a switch since then would
+        // write that profile's entry into this one.
+        guard token == openedOn else { throw CapabilitiesStoreError.profileChanged }
+        guard let requester else { throw CapabilitiesStoreError.notConnected }
+        let profile = self.profile
+        try await ProfileConfigWriteQueue.runThrowing {
+            guard token == self.generation else { throw CapabilitiesStoreError.profileChanged }
+            let servers = try ConnectorServerEdit.replacing(
+                in: try await Self.configuredServers(requester, profile: profile),
+                original: original,
+                loaded: loaded,
+                name: name,
+                entry: entry
+            )
+            guard token == self.generation else { throw CapabilitiesStoreError.profileChanged }
+            do {
+                _ = try await requester.requestJSON(
+                    path: DashboardPath.withProfile("/api/mcp/servers", profile: profile),
+                    method: "PUT",
+                    body: DashboardPath.bodyWithProfile(["servers": servers], profile: profile),
+                    timeoutMilliseconds: 30_000,
+                    maxResponseBytes: DataURLLimits.maxJSONResponseBytes
+                )
+            } catch DashboardTicketBridgeError.http(let status, _) where status == 404 || status == 405 {
+                throw CapabilitiesStoreError.editUnsupported
+            }
+        }
+        // Saved on the host; what's showing now is another profile's.
+        guard token == generation else { return }
+        probes[original] = nil
+        probes[name] = nil
+        // A test of the old entry still running is discarded and run again.
+        probeEpochs[original, default: 0] &+= 1
+        probeEpochs[name, default: 0] &+= 1
+        // Hermes' answer brings the edit: a read asked before the save
+        // isn't kept after it (#1533).
+        answers?.noteWrite(KeptRoute.servers)
+        answers?.noteWrite(KeptRoute.connectorCatalog)
+        await loadConnectors()
+        // Tested again in the background: the editor closes on the save.
+        if servers.first(where: { $0.name == name })?.enabled == true {
+            Task { await probe(name) }
+        }
     }
 
     func removeServer(_ name: String) async throws {
