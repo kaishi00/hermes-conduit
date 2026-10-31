@@ -1907,17 +1907,17 @@ extension AppStateMultiDashboardTests {
         let (appState, _, vps) = heldSwitchFixture()
         let mac = try XCTUnwrap(appState.activeDashboardID)
         let route = CapabilitiesStore.KeptRoute.servers
-        let answers = appState.capabilityAnswers(profile: "default")
+        let answers = appState.screenAnswers(profile: "default")
         _ = try await answers.keep(route, false) { ["servers": [["name": "github", "enabled": true]]] }
 
         await appState.switchDashboard(to: vps.id)
-        XCTAssertNil(appState.capabilityAnswers(profile: "default").kept(route), "The VPS keeps none")
+        XCTAssertNil(appState.screenAnswers(profile: "default").kept(route), "The VPS keeps none")
         let rows = answers.kept(route)?["servers"] as? [[String: Any]]
         XCTAssertEqual(rows?.first?["enabled"] as? Bool, true, "The Mac's copy, for a change landing now to change")
         _ = try await answers.keep(route, true) { ["servers": [["name": "github", "enabled": false]]] }
         let kept = appState.offlineChatCacheForTesting.keptAnswer(route, dashboardID: mac, profile: "default")
         XCTAssertEqual((kept?["servers"] as? [[String: Any]])?.first?["enabled"] as? Bool, false)
-        XCTAssertNil(appState.capabilityAnswers(profile: "default").kept(route))
+        XCTAssertNil(appState.screenAnswers(profile: "default").kept(route))
     }
 
     /// A Voice replies model save outranks a read of the slots asked

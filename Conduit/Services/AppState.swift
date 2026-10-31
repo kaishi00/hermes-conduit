@@ -33841,12 +33841,13 @@ final class AppState: ObservableObject {
         )
     }
 
-    /// Where Capabilities keeps its tabs' answers for the profile (or the
+    /// Where a screen that reads through its own service (Capabilities'
+    /// tabs, the Tasks board) keeps its answers for the profile (or the
     /// dashboard's own, as `KeptRoute.everyProfile`), beside the settings
     /// pages': on the dashboard open when they're asked for, offline too,
     /// whose kept answers a change that lands after a switch still changes.
     /// A read keeps its answer only with a bridge to read through.
-    func capabilityAnswers(profile: String) -> KeptAnswers {
+    func screenAnswers(profile: String) -> KeptAnswers {
         let dashboardID = activeDashboardID
         let owner = currentDashboardRuntimeOwner()
         return KeptAnswers(

@@ -94,8 +94,8 @@ struct CapabilitiesView: View {
         store.configure(
             requester: appState.dashboardTicketBridge,
             profile: scope.profile,
-            answers: appState.capabilityAnswers(profile: scope.profile),
-            dashboardAnswers: appState.capabilityAnswers(profile: AppState.KeptRoute.everyProfile)
+            answers: appState.screenAnswers(profile: scope.profile),
+            dashboardAnswers: appState.screenAnswers(profile: AppState.KeptRoute.everyProfile)
         )
         appState.showKeptCapabilities()
         configuredScope = scope

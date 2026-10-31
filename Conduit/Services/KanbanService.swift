@@ -74,6 +74,26 @@ final class KanbanService {
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     private static let namespace = "/api/plugins/kanban"
+
+    /// Where the reads the board opens on keep their answers, once per
+    /// dashboard, so the Tasks tab opens on them next time (#1533). Nil:
+    /// they're only read.
+    var answers: KeptAnswers?
+
+    /// The answers kept: the boards, each board as it shows without
+    /// archived tasks (by the slug it was read with, "" for the server's
+    /// current one), the profiles, the projects and the orchestration
+    /// settings, as Hermes gave them.
+    enum KeptRoute {
+        static let boards = "/api/plugins/kanban/boards"
+        static let profiles = "/api/plugins/kanban/profiles"
+        static let projects = "/api/plugins/kanban/projects"
+        static let orchestration = "/api/plugins/kanban/orchestration"
+
+        static func board(_ slug: String) -> String {
+            "/api/plugins/kanban/board?board=" + slug
+        }
+    }
     /// Mirrors upstream's 400 ms dispatcher-nudge debounce (api.ts autoNudge).
     static let dispatcherNudgeDebounceNanoseconds: UInt64 = 400_000_000
     private let nudgeDebounceIntervalNanoseconds: UInt64
@@ -90,15 +110,18 @@ final class KanbanService {
     }
 
     func fetchBoards() async throws -> KanbanBoardsResponse {
-        try await decode(KanbanBoardsResponse.self, path: scoped(Self.namespace + "/boards"))
+        try await decode(KanbanBoardsResponse.self, path: scoped(Self.namespace + "/boards"), keptAs: KeptRoute.boards)
     }
 
     func fetchBoard(slug: String?, includeArchived: Bool) async throws -> KanbanBoard {
         var params: [String: String] = [:]
         if includeArchived { params["include_archived"] = "true" }
+        // Kept as the tab opens, without archived tasks.
+        let kept = includeArchived ? nil : slug.map(KeptRoute.board)
         return try await decode(
             KanbanBoard.self,
-            path: try withBoard(Self.namespace + "/board", slug: slug, params: params)
+            path: try withBoard(Self.namespace + "/board", slug: slug, params: params),
+            keptAs: kept
         )
     }
 
@@ -119,17 +142,17 @@ final class KanbanService {
     }
 
     func fetchProfiles() async throws -> [KanbanProfile] {
-        let response = try await decode(KanbanProfilesResponse.self, path: scoped(Self.namespace + "/profiles"))
+        let response = try await decode(KanbanProfilesResponse.self, path: scoped(Self.namespace + "/profiles"), keptAs: KeptRoute.profiles)
         return response.profiles
     }
 
     func fetchProjects() async throws -> [KanbanProject] {
-        let response = try await decode(KanbanProjectsResponse.self, path: scoped(Self.namespace + "/projects"))
+        let response = try await decode(KanbanProjectsResponse.self, path: scoped(Self.namespace + "/projects"), keptAs: KeptRoute.projects)
         return response.projects
     }
 
     func fetchOrchestration() async throws -> KanbanOrchestrationSettings {
-        try await decode(KanbanOrchestrationSettings.self, path: scoped(Self.namespace + "/orchestration"))
+        try await decode(KanbanOrchestrationSettings.self, path: scoped(Self.namespace + "/orchestration"), keptAs: KeptRoute.orchestration)
     }
 
     /// Backend-curated provider/model roster for per-task overrides
@@ -419,9 +442,25 @@ final class KanbanService {
 
     // MARK: - Transport helpers
 
-    private func decode<T: Decodable>(_ type: T.Type, path: String) async throws -> T {
-        let response = try await request(path: path, method: "GET", body: nil)
+    /// Read and decoded, the answer kept under `route` when it's named and
+    /// there are answers to keep it in.
+    private func decode<T: Decodable>(_ type: T.Type, path: String, keptAs route: String? = nil) async throws -> T {
+        let response: [String: Any]
+        if let route, let answers {
+            response = try await answers.keep(route, false, {
+                try await self.request(path: path, method: "GET", body: nil)
+            })
+        } else {
+            response = try await request(path: path, method: "GET", body: nil)
+        }
         return try decodeResponse(type, from: response)
+    }
+
+    /// An answer kept under one of `KeptRoute`'s routes, decoded as Hermes'
+    /// would be, or nil.
+    static func kept<T: Decodable>(_ type: T.Type, from answer: [String: Any]?) -> T? {
+        guard let answer, let data = try? JSONSerialization.data(withJSONObject: answer) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
     }
 
     private func request(path: String, method: String, body: [String: Any]?) async throws -> [String: Any] {

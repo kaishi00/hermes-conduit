@@ -542,9 +542,11 @@ struct KanbanView: View {
 
     /// Configuration/polling key. Deliberately EXCLUDES appState.activeProfile:
     /// Hermes Kanban is a shared cross-profile board anchored at the Hermes
-    /// root, so Conduit's UI profile switch does not change Kanban data.
+    /// root, so Conduit's UI profile switch does not change Kanban data. It
+    /// names the open dashboard, so a switch with no bridge shows the new
+    /// dashboard's kept board.
     private var pollingKey: String {
-        "\(String(describing: bridgeIdentity))|\(appState.dashboardTicketBridge?.baseURL ?? "")|archived=\(includeArchived)"
+        "\(serverIdentityKey)|archived=\(includeArchived)"
     }
 
     /// V3D: the live /events stream identity. ANY component change (server,
@@ -617,7 +619,19 @@ struct KanbanView: View {
     /// server does NOT dismiss them (their data is server-global), and
     /// ordinary board polling never changes this key.
     private var serverIdentityKey: String {
-        "\(String(describing: bridgeIdentity))|\(appState.dashboardTicketBridge?.baseURL ?? "")"
+        "\(String(describing: bridgeIdentity))|\(appState.dashboardTicketBridge?.baseURL ?? "")|\(appState.activeDashboardID?.uuidString ?? "")"
+    }
+
+    /// Points the store at the open dashboard, and shows what the board
+    /// showed last time there (#1533), before the first frame and offline
+    /// too.
+    private func configureStore() {
+        let dashboardURL = appState.activeDashboardID.flatMap { appState.savedDashboardRegistry.dashboard(with: $0)?.normalizedURL }
+        store.configure(
+            requester: appState.dashboardTicketBridge,
+            serverIdentity: appState.dashboardTicketBridge?.baseURL ?? dashboardURL ?? "",
+            answers: appState.screenAnswers(profile: AppState.KeptRoute.everyProfile)
+        )
     }
 
     private var visibleColumns: [KanbanColumn] {
@@ -911,12 +925,10 @@ struct KanbanView: View {
             await runLiveEventStream()
             store.setLiveStreamConnected(false)
         }
+        .onAppear(perform: configureStore)
         .task(id: pollingKey) {
             selectedTask = nil
-            store.configure(
-                requester: appState.dashboardTicketBridge,
-                serverIdentity: appState.dashboardTicketBridge?.baseURL ?? ""
-            )
+            configureStore()
             await store.reload(includeArchived: includeArchived)
         }
         // The stream connecting or dropping restarts the poll: a dropped
@@ -1083,9 +1095,8 @@ struct KanbanView: View {
             if let scrolled = scrolledColumn, !names.contains(scrolled) { scrolledColumn = nil }
         }
         .onChange(of: store.resolvedSelectedBoardSlug) { _, _ in scrolledColumn = nil }
-        .disabled(!store.isSelectedSnapshotLoaded)
         .overlay(alignment: .top) {
-            if !store.isSelectedSnapshotLoaded {
+            if !store.isSelectedSnapshotLoaded, store.errorMessage == nil {
                 Label("Loading \(store.selectedBoardMetadata?.name ?? store.resolvedSelectedBoardSlug)…", systemImage: "hourglass")
                     .scaledFont(.caption)
                     .padding(.horizontal, 10)
@@ -1244,13 +1255,8 @@ struct KanbanView: View {
                 }
                 // NOTE: bottom action bar is applied as an overlay on the
                 // whole lane board (see laneBoard modifiers).
-                // Navigation invariant: while the newly selected board is
-                // still loading, the visible cards belong to the OLD board.
-                // Keep them as read-only cached content - no taps, menus,
-                // moves, or deletes - until the new snapshot lands.
-                .disabled(!store.isSelectedSnapshotLoaded)
                 .overlay(alignment: .top) {
-                    if !store.isSelectedSnapshotLoaded {
+                    if !store.isSelectedSnapshotLoaded, store.errorMessage == nil {
                         Label("Loading \(store.selectedBoardMetadata?.name ?? store.resolvedSelectedBoardSlug)…", systemImage: "hourglass")
                             .scaledFont(.caption)
                             .padding(.horizontal, 10)
@@ -1273,8 +1279,17 @@ struct KanbanView: View {
 
     // MARK: - V3C card interactions
 
-    @ViewBuilder
+    /// Navigation invariant: while the selected board is still loading,
+    /// the cards on screen are another board's, or the kept ones the board
+    /// opened on (#1533). They stay read-only - no taps, menus, moves, or
+    /// deletes - until the snapshot lands; the board still scrolls.
     private func taskCard(_ task: KanbanTask) -> some View {
+        taskCardContent(task)
+            .disabled(!store.isSelectedSnapshotLoaded)
+    }
+
+    @ViewBuilder
+    private func taskCardContent(_ task: KanbanTask) -> some View {
         let isSelected = selectedTaskIDs.contains(task.id)
         let actionsInert = isSelectionActive || bulkBusy
         if isSelectionActive {

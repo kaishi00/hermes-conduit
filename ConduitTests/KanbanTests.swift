@@ -379,6 +379,8 @@ final class KanbanTests: XCTestCase {
         let boardBefore = store.board
 
         let changes = observeAllState(of: store)
+        // Hermes' clock moved on, which nothing shows.
+        requester.responsesByPath["/api/plugins/kanban/board"]?["now"] = 10
         await store.poll()
 
         // Loading on, then off. The unchanged boards, board, profiles,
@@ -877,6 +879,111 @@ final class KanbanTests: XCTestCase {
         )
     }
 
+    // MARK: - Kept board (#1533)
+
+    func testTheBoardOpensOnWhatItShowedLastTime() async throws {
+        let kept = KeptBoardAnswers()
+        var responses = standardKanbanResponses(boardSlug: "alpha")
+        responses["/api/plugins/kanban/board"] = keptBoardResponse(task: "Write the plan")
+        responses["/api/plugins/kanban/board?board=alpha&include_archived=true"] = keptBoardResponse(task: "Archived one")
+        responses["/api/plugins/kanban/profiles"] = [
+            "profiles": [["name": "coder", "is_default": true, "description": "Writes code", "description_auto": false]]
+        ]
+        let requester = MockKanbanRequester(responsesByPath: responses)
+        let store = KanbanStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        store.configure(requester: requester, serverIdentity: "https://example.test", answers: kept.answers)
+        await store.reload()
+        let shown = try XCTUnwrap(store.board)
+
+        // Every read the board opens on is kept, the board by its slug.
+        XCTAssertEqual(Set(kept.saved.keys), [
+            KanbanService.KeptRoute.boards, KanbanService.KeptRoute.board("alpha"), KanbanService.KeptRoute.profiles,
+            KanbanService.KeptRoute.projects, KanbanService.KeptRoute.orchestration,
+        ])
+        // The board with archived tasks isn't: the tab opens without them.
+        await store.reload(includeArchived: true)
+        XCTAssertEqual(KanbanService.kept(KanbanBoard.self, from: kept.saved[KanbanService.KeptRoute.board("alpha")]), shown)
+
+        // Next time, the board shows before Hermes is asked, and none of it
+        // can be changed until Hermes answers.
+        let offline = MockKanbanRequester(errorsByPath: ["/api/plugins/kanban/boards": MockRequestError.failed("dashboard unreachable")])
+        let next = KanbanStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        next.configure(requester: offline, serverIdentity: "https://example.test", answers: kept.answers)
+        XCTAssertEqual(next.board, shown)
+        XCTAssertEqual(next.boards, store.boards)
+        XCTAssertEqual(next.resolvedSelectedBoardSlug, "alpha")
+        XCTAssertEqual(next.profiles.map(\.name), ["coder"])
+        XCTAssertEqual(next.orchestration, store.orchestration)
+        XCTAssertTrue(offline.calls.isEmpty)
+        XCTAssertNil(next.loadedBoardSlug)
+        XCTAssertFalse(next.isSelectedSnapshotLoaded)
+        XCTAssertNil(next.loadedContextStamp)
+        _ = try? await next.createTask(KanbanCreateTaskRequest(title: "Not on a kept board"))
+        XCTAssertFalse(offline.calls.contains { $0.method == "POST" })
+
+        // A read that fails leaves it up.
+        await next.reload()
+        XCTAssertEqual(next.board, shown)
+        XCTAssertTrue(next.errorMessage?.contains("dashboard unreachable") == true)
+        XCTAssertNil(next.loadedBoardSlug)
+
+        // Hermes' answer takes its place, and the board can be changed.
+        offline.errorsByPath = [:]
+        offline.responsesByPath = standardKanbanResponses(boardSlug: "alpha")
+        offline.responsesByPath["/api/plugins/kanban/board"] = keptBoardResponse(task: "Ship it")
+        await next.reload()
+        XCTAssertEqual(next.board?.columns.first?.tasks.map(\.title), ["Ship it"])
+        XCTAssertEqual(next.loadedBoardSlug, "alpha")
+        XCTAssertTrue(next.isSelectedSnapshotLoaded)
+        XCTAssertNil(next.errorMessage)
+
+        // With no dashboard to read, the kept board shows all the same, and
+        // says why it can't change.
+        let unconnected = KanbanStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        unconnected.configure(requester: nil, serverIdentity: "https://example.test", answers: kept.answers)
+        XCTAssertEqual(unconnected.board?.columns.first?.tasks.map(\.title), ["Ship it"])
+        await unconnected.reload()
+        XCTAssertEqual(unconnected.errorMessage, "Connect to a Hermes dashboard to use Kanban.")
+        XCTAssertNotNil(unconnected.board)
+        XCTAssertNil(unconnected.loadedBoardSlug)
+    }
+
+    func testABoardPickedShowsWhatItShowedLastTimeWhileItLoads() async throws {
+        let kept = KeptBoardAnswers()
+        var responses = standardKanbanResponses(boardSlug: "alpha")
+        responses["/api/plugins/kanban/board"] = keptBoardResponse(task: "On alpha")
+        responses["/api/plugins/kanban/board?board=beta"] = keptBoardResponse(task: "On beta")
+        let requester = MockKanbanRequester(responsesByPath: responses)
+        let store = KanbanStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        store.configure(requester: requester, serverIdentity: "https://example.test", answers: kept.answers)
+        await store.reload()
+        let alpha = try XCTUnwrap(store.board)
+        await store.selectBoard(slug: "beta")
+        XCTAssertEqual(store.board?.columns.first?.tasks.map(\.title), ["On beta"])
+
+        // Back to alpha: its kept board shows at once, not beta's cards,
+        // and stays read-only until Hermes answers.
+        requester.hold(pathPrefix: "/api/plugins/kanban/board?board=alpha")
+        let picking = Task { await store.selectBoard(slug: "alpha") }
+        for _ in 0..<5000 where requester.heldCount == 0 { await Task.yield() }
+        XCTAssertEqual(requester.heldCount, 1)
+        XCTAssertEqual(store.board, alpha)
+        XCTAssertNil(store.loadedBoardSlug)
+        XCTAssertFalse(store.isSelectedSnapshotLoaded)
+        requester.releaseAll()
+        await picking.value
+        XCTAssertEqual(store.loadedBoardSlug, "alpha")
+        XCTAssertTrue(store.isSelectedSnapshotLoaded)
+    }
+
+    /// A board answer with one task in To Do, as Hermes sends it.
+    private func keptBoardResponse(task title: String) -> [String: Any] {
+        [
+            "columns": [["name": "todo", "tasks": [["id": "t-\(title.count)", "title": title, "status": "todo"]]]],
+            "tenants": [], "assignees": [], "latest_event_id": 1, "now": 2,
+        ]
+    }
+
     // MARK: - Helpers
 
     private static let capabilityDashboardA = UUID(uuidString: "00000000-0000-0000-0000-00000000000A")!
@@ -975,6 +1082,23 @@ private final class MockKanbanRequester: DashboardJSONRequester {
 
     private static func matchingHoldPrefix(path: String, basePath: String, prefixes: Set<String>) -> String {
         prefixes.first { path.hasPrefix($0) || basePath.hasPrefix($0) } ?? ""
+    }
+}
+
+/// The board's answers kept on the phone, as AppState keeps them.
+@MainActor
+private final class KeptBoardAnswers {
+    private(set) var saved: [String: [String: Any]] = [:]
+
+    var answers: KeptAnswers {
+        KeptAnswers(
+            kept: { route in self.saved[route] },
+            keep: { route, _, read in
+                let answer = try await read()
+                self.saved[route] = answer
+                return answer
+            }
+        )
     }
 }
 
