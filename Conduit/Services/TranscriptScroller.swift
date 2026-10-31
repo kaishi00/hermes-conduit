@@ -897,20 +897,18 @@ final class TranscriptScroller: ObservableObject {
 
     // MARK: - Group rooms
 
-    /// A group room's rows changed (its events, or the member responding),
-    /// told before the transcript lays them out (GroupRoomTranscriptBox).
-    /// Its events are the rows a reader can be taken to (the "Replying to"
-    /// jump). `replyStart`, a member message among new events
-    /// (GroupRoomTranscript.replyStart), is where a following room stops:
-    /// at the message's start, which goes to the top, and the reader is
-    /// left browsing there once what came runs past the screen, as a long
-    /// chat reply stops at its start (#365). Anything else new (a caption,
-    /// a member starting its turn) is followed to the end. A room makes no
-    /// room under the message: members' messages arrive whole.
+    /// Something new at a group room's end (an event, or the member
+    /// responding changed), told before the transcript lays it out
+    /// (GroupRoomTranscriptBox), with the room's events. `replyStart`, a
+    /// member message among new events (GroupRoomTranscript.replyStart), is
+    /// where a following room stops: at the message's start, which goes to
+    /// the top, and the reader is left browsing there once what came runs
+    /// past the screen, as a long chat reply stops at its start (#365).
+    /// Anything else new (a caption, a member starting its turn) is
+    /// followed to the end. A room makes no room under the message:
+    /// members' messages arrive whole.
     func roomTranscriptChanged(eventIDs: Set<String>, replyStart: String?) {
-        ChatViewportTrace.shared.log("room events n=\(eventIDs.count)")
-        ChatViewportWatch.shared.transcriptChanged()
-        targetIDs = eventIDs
+        roomEventsChanged(eventIDs)
         // A reader scrolled away stays where they are.
         guard mode == .following, !isUserScrolling else { return }
         if let replyStart, holdsRepliesAtStart() {
@@ -920,6 +918,16 @@ final class TranscriptScroller: ObservableObject {
         } else {
             replyHoldArmed = false
         }
+    }
+
+    /// A group room's events, the rows a reader can be taken to (the
+    /// "Replying to" jump). Changed with nothing new at the end (its oldest
+    /// rows trimmed, a gap filled), they leave the room where it is, its
+    /// stop too.
+    func roomEventsChanged(_ eventIDs: Set<String>) {
+        ChatViewportTrace.shared.log("room events n=\(eventIDs.count)")
+        ChatViewportWatch.shared.transcriptChanged()
+        targetIDs = eventIDs
     }
 
     // MARK: - Automatic restoration

@@ -617,7 +617,8 @@ final class GroupChatModelsTests: XCTestCase {
     /// GroupChatView's rows box (#1533) tells the room's scroller of new
     /// events as it builds their rows: a new member message arms the stop
     /// at its start, a member starting its turn is followed to the end, and
-    /// a room that didn't change builds nothing.
+    /// a room that didn't change builds nothing. What the log adds without
+    /// a row, and the oldest row going, leave the stop where it is.
     @MainActor
     func testTheRoomBoxTellsTheScrollerOfANewMemberMessage() {
         let scroller = TranscriptScroller()
@@ -629,11 +630,12 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(box.update(input, scroller: scroller).map(\.id), ["e1"])
         XCTAssertFalse(scroller.replyHoldArmed, "the room's first events are its history")
 
-        replay.adopt(page: logPage([eventJSON(
+        let memberHi = eventJSON(
             seq: 2, kind: "message.member",
             actor: ["kind": "member", "id": "furina", "profile": "furina"],
             payload: ["text": "Hi", "member_id": "furina"]
-        )]))
+        )
+        replay.adopt(page: logPage([memberHi]))
         input.replay = replay
         let rows = box.update(input, scroller: scroller)
         XCTAssertEqual(rows.map(\.id), ["e1", "e2"])
@@ -643,8 +645,21 @@ final class GroupChatModelsTests: XCTestCase {
             same.withUnsafeBufferPointer { built.baseAddress == $0.baseAddress }
         }, "the rows it built, not new ones")
 
+        replay.adopt(page: logPage([eventJSON(
+            seq: 3, kind: "turn.heartbeat", actor: ["kind": "gateway", "id": "gw-a"],
+            payload: ["member_id": "furina"]
+        )]))
+        input.replay = replay
+        XCTAssertEqual(box.update(input, scroller: scroller).map(\.id), ["e1", "e2"])
+        XCTAssertTrue(scroller.replyHoldArmed, "the log's bookkeeping adds no row and moves nothing")
+        var trimmed = GroupRoomReplay(roomID: "room-1")
+        trimmed.adoptInitialTail(page: logPage([memberHi]))
+        input.replay = trimmed
+        XCTAssertEqual(box.update(input, scroller: scroller).map(\.id), ["e2"])
+        XCTAssertTrue(scroller.replyHoldArmed, "the oldest row going adds nothing at the end")
+
         input.responder = roomMembers()[1]
-        XCTAssertEqual(box.update(input, scroller: scroller).map(\.id), ["e1", "e2", GroupRoomTranscript.respondingID])
+        XCTAssertEqual(box.update(input, scroller: scroller).map(\.id), ["e2", GroupRoomTranscript.respondingID])
         XCTAssertFalse(scroller.replyHoldArmed, "a member starting its turn is followed to the end")
     }
 

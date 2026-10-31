@@ -453,8 +453,9 @@ enum GroupRoomTranscript {
 /// tells the scroller of new events, and of a member starting or ending
 /// its turn, as it builds them, before the transcript lays them out: the
 /// stop at a new member message is set before the pass that would follow
-/// it to its end. A plain class, so an update during a render asks for no
-/// other render.
+/// it to its end. What draws nothing new at the end (a turn's heartbeat,
+/// the oldest rows trimmed) leaves its stop alone. A plain class, so an
+/// update during a render asks for no other render.
 @MainActor
 final class GroupRoomTranscriptBox {
     struct Input: Equatable {
@@ -467,12 +468,11 @@ final class GroupRoomTranscriptBox {
 
     private var input: Input?
     private(set) var rows: [TranscriptRow] = []
-    /// The last visible event the rows had.
-    private var lastEventID: String?
+    /// The visible events' ids the rows had.
+    private var eventIDs: [String] = []
 
     func update(_ input: Input, scroller: TranscriptScroller) -> [TranscriptRow] {
         guard input != self.input else { return rows }
-        let eventsChanged = input.replay != self.input?.replay
         let responderChanged = input.responder != self.input?.responder
         self.input = input
         let events = input.replay.events.filter(GroupRoomTurns.isVisible)
@@ -484,13 +484,19 @@ final class GroupRoomTranscriptBox {
             isSending: input.isSending,
             responder: input.responder
         )
-        if eventsChanged || responderChanged {
+        let ids = events.map(\.id)
+        // Only an event at the end is new: the oldest rows trimmed, or a
+        // gap filled, change which rows there are and nothing else.
+        let arrived = ids.last != eventIDs.last
+        if arrived || responderChanged {
             scroller.roomTranscriptChanged(
-                eventIDs: Set(events.map(\.id)),
-                replyStart: eventsChanged ? GroupRoomTranscript.replyStart(in: events, after: lastEventID) : nil
+                eventIDs: Set(ids),
+                replyStart: arrived ? GroupRoomTranscript.replyStart(in: events, after: eventIDs.last) : nil
             )
-            lastEventID = events.last?.id
+        } else if ids != eventIDs {
+            scroller.roomEventsChanged(Set(ids))
         }
+        eventIDs = ids
         return rows
     }
 }
