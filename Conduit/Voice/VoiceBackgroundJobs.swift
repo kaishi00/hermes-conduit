@@ -1173,9 +1173,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// matches nothing as a whole is tried again a word at a time.
     /// `retryingWords` false asks once: a call whose tool calls hold its
     /// turn (Grok) shouldn't wait on three searches.
+    func findChats(query: String, retryingWords: Bool = true) async -> VoiceChatSearchOutcome {
+        await findChats(query: query, retryingWords: retryingWords, profile: nil)
+    }
+
     /// `profile`: the profile whose chats to search (nil: the one in use),
     /// a Watch call's own (#1564).
-    func findChats(query rawQuery: String, retryingWords: Bool = true, profile: String? = nil) async -> VoiceChatSearchOutcome {
+    func findChats(query rawQuery: String, retryingWords: Bool, profile: String?) async -> VoiceChatSearchOutcome {
         // Numbers only ever name the newest search's list, so a failed or
         // superseded search leaves nothing to open, and an older one still
         // running can't bring its list back.
@@ -1214,7 +1218,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// Reads one of the last search's chats into the call, so the user can
     /// talk about it. Reading doesn't open it.
-    func readFoundChat(_ reference: String, profile: String? = nil) async -> VoiceChatReadOutcome {
+    func readFoundChat(_ reference: String) async -> VoiceChatReadOutcome {
+        await readFoundChat(reference, profile: nil)
+    }
+
+    func readFoundChat(_ reference: String, profile: String?) async -> VoiceChatReadOutcome {
         guard let match = foundChat(reference) else { return .unknownChat }
         let started = generation
         let call = liveCallID
