@@ -39,12 +39,19 @@ final class NotificationService: UNNotificationServiceExtension {
             keysProvisioned: NotificationSharedSettings.keysProvisioned
         ) {
         case .legacy:
+            // Only this extension writes the chat note, on a push it verified.
+            content.userInfo.removeValue(forKey: ReadChatHint.userInfoKey)
             deliver(content)
         case .untrusted(let type):
             deliver(Self.generic(content, type: type))
         case .verified(let verified):
+            // Which chat this is, for Conduit to clear it once that chat is read.
+            let note = ReadChatHint.note(verified.routingPayload)
             guard E2ESeenStore.shared.insert(verified.envelope.replayKey, namespace: "delivered") else {
-                deliver(Self.generic(content, type: verified.type))
+                // A second copy: generic and routing nowhere, but it clears with its chat.
+                let copy = Self.generic(content, type: verified.type)
+                copy.userInfo[ReadChatHint.userInfoKey] = note
+                deliver(copy)
                 return
             }
             let generic = NotificationCopy.generic(for: verified.type)
@@ -67,9 +74,8 @@ final class NotificationService: UNNotificationServiceExtension {
                 if let title = names.title { content.title = title }
                 if let subtitle = names.subtitle { content.subtitle = subtitle }
             }
+            content.userInfo[ReadChatHint.userInfoKey] = note
             // Quiet for today on a Pulse push, where its plugin takes it.
-            // Which chat this is, for Conduit to clear it once that chat is read.
-            content.userInfo[ReadChatHint.userInfoKey] = ReadChatHint.note(verified.routingPayload)
             if PulseNotifications.offersQuietToday(
                 titleLabel: verified.content["title_label"] as? String,
                 gatewayID: verified.record.gatewayID,

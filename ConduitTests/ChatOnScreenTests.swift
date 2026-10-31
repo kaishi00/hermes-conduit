@@ -52,35 +52,49 @@ final class ChatOnScreenTests: XCTestCase {
     func testReadingAChatClearsItsNotificationsFromItsDashboardOnly() {
         let here = UUID()
         let there = UUID()
-        func target(_ session: String, durable: String? = nil, dashboard: UUID?, malformed: Bool = false) -> ConduitNotificationTarget {
-            ConduitNotificationTarget(profile: "default", sessionId: session, durableSessionID: durable,
-                                      dashboardID: dashboard, hasMalformedDashboardID: malformed, type: "response.ready")
+        func target(_ session: String, durable: String? = nil, dashboard: UUID?, gateway: String? = nil,
+                    malformed: Bool = false, type: String = "response.ready") -> ConduitNotificationTarget {
+            ConduitNotificationTarget(profile: "default", sessionId: session, durableSessionID: durable, dashboardID: dashboard,
+                                      hasMalformedDashboardID: malformed, relayGatewayID: gateway, type: type)
         }
         let delivered: [(identifier: String, target: ConduitNotificationTarget?)] = [
             ("reply", target("rt-1", dashboard: here)),
-            ("by-durable-id", target("rt-old", durable: "stored-1", dashboard: here)),
+            ("by-durable-id", target("rt-old", durable: "stored-1", dashboard: here, type: "turn.failed")),
+            ("same-host-other-entry", target("rt-1", dashboard: there, gateway: "gw-here")),
             ("old-relay", target("rt-1", dashboard: nil)),
-            ("other-dashboard", target("rt-1", dashboard: there)),
+            ("other-dashboard", target("rt-1", dashboard: there, gateway: "gw-there")),
             ("malformed", target("rt-1", dashboard: nil, malformed: true)),
+            ("approval", target("rt-1", dashboard: here, type: "approval.needed")),
+            ("question", target("rt-1", dashboard: here, type: "input.needed")),
+            ("call", target("rt-1", dashboard: here, type: "call.requested")),
             ("other-chat", target("rt-2", dashboard: here)),
             ("unreadable", nil),
         ]
-        XCTAssertEqual(ReadChatNotifications.identifiers(of: delivered, sessionIDs: ["rt-1", "stored-1"], dashboardID: here),
-                       ["reply", "by-durable-id", "old-relay"])
-        XCTAssertEqual(ReadChatNotifications.identifiers(of: delivered, sessionIDs: [], dashboardID: here), [])
+        func read(saved: [UUID], sessionIDs: Set<String> = ["rt-1", "stored-1"]) -> [String] {
+            ReadChatNotifications.identifiers(of: delivered, sessionIDs: sessionIDs, activeDashboardID: here,
+                                              savedDashboardIDs: saved, activeDashboardGatewayIDs: ["gw-here"])
+        }
+        XCTAssertEqual(read(saved: [here]), ["reply", "by-durable-id", "same-host-other-entry", "old-relay"],
+                       "what waits on the user stays until it's answered")
+        XCTAssertEqual(read(saved: [here, there]), ["reply", "by-durable-id", "same-host-other-entry"],
+                       "a push with no dashboard can't be placed among several, as a tap can't")
+        XCTAssertEqual(read(saved: [here], sessionIDs: []), [])
     }
 
     func testTheExtensionsNoteFindsASealedPushsChatAfterItStopsVerifying() {
         let dashboard = UUID()
         let note = ReadChatHint.note(["session_id": "rt-1", "stored_session_id": "stored-1", "dashboard_id": dashboard.uuidString,
-                                      "type": "response.ready", "gateway_id": "gw", "decision": ["kind": "approval"]])
-        XCTAssertEqual(note, ["session_id": "rt-1", "stored_session_id": "stored-1", "dashboard_id": dashboard.uuidString],
-                       "only the chat and its dashboard")
+                                      "type": "response.ready", "gateway_id": "gw", "decision": ["kind": "approval"],
+                                      "profile": "default"])
+        XCTAssertEqual(note, ["session_id": "rt-1", "stored_session_id": "stored-1", "dashboard_id": dashboard.uuidString,
+                              "type": "response.ready", "gateway_id": "gw"], "only the chat, where it's from and its kind")
         let userInfo: [AnyHashable: Any] = [ReadChatHint.userInfoKey: note, "conduit_e2e": ["v": 1]]
-        let target = PushNotificationService.readChatTarget(from: userInfo)
+        let target = PushNotificationService.readChatTarget(from: userInfo, records: [])
         XCTAssertEqual(target?.sessionId, "rt-1")
         XCTAssertEqual(target?.durableSessionID, "stored-1")
         XCTAssertEqual(target?.dashboardID, dashboard)
+        XCTAssertEqual(target?.relayGatewayID, "gw")
+        XCTAssertEqual(target?.type, "response.ready")
         XCTAssertNil(ReadChatHint.read([ReadChatHint.userInfoKey: ["dashboard_id": dashboard.uuidString]]), "no chat, no note")
     }
 

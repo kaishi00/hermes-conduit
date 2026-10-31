@@ -9,6 +9,9 @@
 
 import Foundation
 import UserNotifications
+#if canImport(UIKit) && !os(watchOS)
+import UIKit
+#endif
 
 @MainActor
 extension AppState {
@@ -34,17 +37,31 @@ extension AppState {
     /// device's Notification Center, and the Watch's with the iPhone's
     /// (#1579). Other devices keep theirs.
     func clearShownChatNotifications() {
+        // A launch in the background counts the scene active until its
+        // first phase change: nobody has read anything then.
+        #if canImport(UIKit) && !os(watchOS)
+        guard UIApplication.shared.applicationState == .active else { return }
+        #endif
         guard let sessionID = chatShownOnScreen else { return }
         let sessionIDs = chatOwnSessionIDs(for: sessionID)
-        let dashboardID = activeDashboardID
+        let activeDashboardID = activeDashboardID
+        let savedDashboardIDs = savedDashboardRegistry.dashboards.map(\.id)
+        let gatewayIDs = activeDashboardRelayGatewayIDs
         let center = UNUserNotificationCenter.current()
         Task { @MainActor in
             let delivered = await center.deliveredNotifications()
             guard !delivered.isEmpty else { return }
+            // The keys are read once for every notification on the list.
+            let records = PushNotificationService.e2eKeyStore.records()
             let read = ReadChatNotifications.identifiers(
-                of: delivered.map { (identifier: $0.request.identifier, target: PushNotificationService.readChatTarget(from: $0.request.content.userInfo)) },
+                of: delivered.map {
+                    (identifier: $0.request.identifier,
+                     target: PushNotificationService.readChatTarget(from: $0.request.content.userInfo, records: records))
+                },
                 sessionIDs: sessionIDs,
-                dashboardID: dashboardID
+                activeDashboardID: activeDashboardID,
+                savedDashboardIDs: savedDashboardIDs,
+                activeDashboardGatewayIDs: gatewayIDs
             )
             if !read.isEmpty { center.removeDeliveredNotifications(withIdentifiers: read) }
         }

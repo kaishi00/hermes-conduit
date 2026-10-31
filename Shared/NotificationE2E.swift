@@ -642,10 +642,11 @@ enum NotificationSharedSettings {
 enum ReadChatHint {
     static let userInfoKey = "conduit_chat"
 
-    /// The routing fields that name the chat and its dashboard.
+    /// The routing fields that name the chat, its dashboard and the kind
+    /// of push (one that waits on the user isn't cleared).
     static func note(_ routing: [String: Any]) -> [String: String] {
         var note: [String: String] = [:]
-        for field in ["session_id", "stored_session_id", "session_key", "dashboard_id"] {
+        for field in ["session_id", "stored_session_id", "session_key", "dashboard_id", "gateway_id", "type"] {
             if let value = routing[field] as? String, !value.isEmpty { note[field] = value }
         }
         return note
