@@ -303,6 +303,17 @@ final class ArtifactsClient {
         return answers.kept(route).flatMap { try? parse($0, showMissing: showMissing) }
     }
 
+    /// A kept answer without the rows of the chats `sessionIDs` name, as
+    /// Hermes lists it once they're deleted, or nil when it has none.
+    static func answer(_ answer: [String: Any], withoutRowsOf sessionIDs: Set<String>) -> [String: Any]? {
+        guard let rows = answer["items"] as? [[String: Any]] else { return nil }
+        let left = rows.filter { !sessionIDs.contains($0["session_id"] as? String ?? "") }
+        guard left.count < rows.count else { return nil }
+        var answer = answer
+        answer["items"] = left
+        return answer
+    }
+
     @MainActor
     func page(profile: String, sessionIDs: [String] = [], filter: ArtifactFilter = .all, query: String = "",
               showMissing: Bool = true, before: Int? = nil) async throws -> ArtifactPage {

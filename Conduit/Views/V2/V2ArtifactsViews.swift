@@ -306,7 +306,9 @@ private struct ArtifactsList: View {
                 detail: Text("Update the Conduit plugin on your Hermes host to see artifacts here. Settings › Conduit plugin can update it."),
                 symbol: "arrow.down.circle"
             )
-        } else if items.isEmpty, !appState.supportsArtifacts, !appState.isConnected, !appState.isRecoveringConnection {
+        } else if items.isEmpty, loadedKey != currentKey, !appState.supportsArtifacts, !appState.isConnected,
+                  !appState.isRecoveringConnection {
+            // Nothing kept or loaded: a list kept empty says so below.
             unavailable(
                 title: Text("Artifacts couldn't load"),
                 detail: Text("Conduit isn't connected to Hermes right now. It reconnects on its own, so try again in a moment."),

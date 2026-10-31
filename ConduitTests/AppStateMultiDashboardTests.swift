@@ -1314,6 +1314,13 @@ extension AppStateMultiDashboardTests {
             messages: [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")],
             sessions: [macSession("mac-1")]
         )
+        let artifactsPage = try XCTUnwrap(ArtifactsClient.keptRoute(
+            ArtifactSource(profile: appState.activeProfile, sessionIDs: []), filter: .all, query: "", showMissing: true
+        ))
+        store.recordAnswer(
+            ["ok": true, "items": [["session_id": "mac-1", "message_id": 2], ["session_id": "mac-2", "message_id": 1]]],
+            route: artifactsPage, dashboardID: mac, profile: appState.activeProfile
+        )
         let delete = Task { await appState.deleteSession(self.macSession("mac-1")) }
         try await held.answer()
         try await held.waitForRequests(2)
@@ -1326,6 +1333,8 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.pinSyncNotice)
         XCTAssertNil(store.loadTranscript("mac-1", dashboardID: mac, profile: "default"), "the Mac's saved copy of the deleted chat still goes (#1040)")
         XCTAssertNil(store.load(dashboardID: mac, profile: "default")?.lastSessionID)
+        let rows = store.keptAnswer(artifactsPage, dashboardID: mac, profile: "default")?["items"] as? [[String: Any]]
+        XCTAssertEqual(rows?.compactMap { $0["session_id"] as? String }, ["mac-2"], "and its rows the Mac's kept Artifacts page (#1533)")
     }
 
     func testArchivedConversationsAnsweredAfterASwitchAreNotShownOnTheNewDashboard() async throws {
@@ -1508,6 +1517,18 @@ extension AppStateMultiDashboardTests {
         await opening.value
         XCTAssertEqual(held.sent.count, 4, "Nothing is asked until the plugin answers")
         XCTAssertEqual(waiting.rows().map { $0.entry.name }, ["src"])
+
+        // Connected with no word from the plugin (its read failed as Conduit
+        // connected), the folder asks it again as it opens.
+        appState.isConnected = true
+        let asking = WorkspaceExplorer()
+        asking.attach(appState)
+        await asking.open(root: "/w/app", profile: appState.activeProfile)
+        for _ in 0..<1_000 where !held.sent.contains(where: { $0.path == NotifierPluginStatus.path }) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(held.sent.contains { $0.path == NotifierPluginStatus.path })
+        XCTAssertEqual(asking.rows().map { $0.entry.name }, ["src"], "The kept listing stays while it asks")
     }
 
     func testADisplayPreferenceSaveFailingAfterASwitchSaysNothingOnTheNewDashboard() async throws {
