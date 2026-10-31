@@ -404,9 +404,10 @@ struct V2Shell: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var layoutDirection
     @State private var selectedTab: V2Tab = .chats
-    /// The app opens on the Chats list. Nothing is pushed during the
-    /// launch's first layout: a push then, even without animation, left the
-    /// app never idle.
+    /// The app opens on the Chats list, or on the chat iOS closed it on
+    /// (`V2ReopenedConversation`). Nothing is pushed during the launch's
+    /// first layout: a push then, even without animation, left the app
+    /// never idle, so a reopened chat is in the path from the start.
     @State private var chatsPath: [V2Route] = []
     @State private var botsPath: [V2Route] = []
     /// The custom bar keeps a tab alive once it has been opened, so its
@@ -427,6 +428,9 @@ struct V2Shell: View {
     @State private var programmaticTab: V2Tab?
     /// A settings link waiting for the Settings tab to open its page.
     @State private var settingsLink: ConduitAppLink.SettingsLink?
+    /// The window's record of the chat showing, for the launch after iOS
+    /// ends Conduit in the background (MainView's SceneStorage).
+    @Binding private var conversationOnLeave: String
     /// The floating bar's height as last laid out (the capsule and the
     /// voice button, with their bottom padding).
     @State private var tabBarHeight: CGFloat = 62
@@ -435,6 +439,25 @@ struct V2Shell: View {
     @AppStorage(V2SplitLayout.listWidths.key) private var storedListWidth = Double(V2SplitLayout.listWidths.standard)
     /// The list's width while its line is dragged (`ColumnDivider`).
     @State private var draggedListWidth: CGFloat?
+
+    /// - Parameters:
+    ///   - conversationOnLeave: the window's record of the chat showing,
+    ///     kept current here.
+    ///   - reopening: the tab whose chat this launch opens on, from that
+    ///     record (`V2ReopenedConversation.tab`); nil opens on Chats.
+    init(conversationOnLeave: Binding<String> = .constant(""), reopening tab: V2Tab? = nil) {
+        _conversationOnLeave = conversationOnLeave
+        switch tab {
+        case .bots?:
+            _selectedTab = State(initialValue: .bots)
+            _botsPath = State(initialValue: [.conversation])
+            _visitedTabs = State(initialValue: [.chats, .bots])
+        case .chats?:
+            _chatsPath = State(initialValue: [.conversation])
+        case .tasks?, .settings?, nil:
+            break
+        }
+    }
 
     /// Whether the visible tab shows the conversation.
     private var conversationVisible: Bool {
@@ -450,6 +473,16 @@ struct V2Shell: View {
     /// page in the list column, over the bar like Artifacts.
     private var pulseVisible: Bool {
         selectedTab == .chats && chatsPath.last == .pulse
+    }
+
+    /// What the window keeps for a launch after iOS ends Conduit: the tab
+    /// whose chat is showing. A group room isn't kept (rooms open again
+    /// only from their row), so it reopens on the list.
+    private var conversationToReopen: String {
+        V2ReopenedConversation.storedValue(
+            showing: conversationVisible ? selectedTab : nil,
+            inRoom: appState.activeRoomSurface != nil
+        )
     }
 
     /// Whether either tab holds the conversation, shown or not.
@@ -510,6 +543,9 @@ struct V2Shell: View {
                 if appState.showSidebar == visible {
                     appState.showSidebar = !visible
                 }
+            }
+            .onChange(of: conversationToReopen, initial: true) { _, value in
+                if conversationOnLeave != value { conversationOnLeave = value }
             }
             .onChange(of: appState.showSidebar) { _, covered in
                 if !covered, !conversationVisible {
@@ -1471,6 +1507,36 @@ private struct V2CapsuleTabBar: View {
         .padding(4)
         .conduitGlassControl(cornerRadius: 28, interactive: false)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+    }
+}
+
+/// The chat a launch opens on (#1559). A window keeps the tab whose chat
+/// it was showing as SceneStorage, which iOS restores when it ended
+/// Conduit in the background and drops when the user swiped Conduit away:
+/// so a return after iOS closed Conduit comes back to the chat, and a
+/// launch the user chose still opens on Chats (Eric, 2026-10-15). The chat
+/// is the one Conduit resumes, by "When returning to Conduit".
+enum V2ReopenedConversation {
+    static let sceneStorageKey = "conduit.v2.conversationOnLeave"
+
+    /// What the window keeps: the tab whose chat is showing, or nothing.
+    static func storedValue(showing tab: V2Tab?, inRoom: Bool) -> String {
+        guard !inRoom, let tab, tab == .chats || tab == .bots else { return "" }
+        return tab.rawValue
+    }
+
+    /// The tab whose chat this launch opens on, when there's a chat to
+    /// open: Bots needs the kept chat to be a Bot Chat, Chats any kept chat
+    /// or a saved copy on screen.
+    static func tab(stored: String, lastChat: SessionReference.Kind?, hasSavedCopy: Bool) -> V2Tab? {
+        switch V2Tab(rawValue: stored) {
+        case .bots?:
+            return lastChat == .bot ? .bots : nil
+        case .chats?:
+            return lastChat != nil || hasSavedCopy ? .chats : nil
+        case .tasks?, .settings?, nil:
+            return nil
+        }
     }
 }
 

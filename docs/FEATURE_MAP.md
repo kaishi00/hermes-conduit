@@ -1693,6 +1693,38 @@ Watch and CarPlay (not needed: neither shows a transcript)
 
 **Checked:** 2026-10-31, #1577 (the saved rows are drawn by the chat's transcript, where Hermes' rows replace them by id with the heights they measured; TranscriptScroller keeps their scroll rules; Code, Tests); 2026-10-31, #1566 (TranscriptScroller keeps the saved rows' scroll rules, not called yet; nothing changes; Code); 2026-10-31, #1565 (TranscriptModel decides the rows the chat draws, the saved copy's status and an empty chat's welcome among them, from the rows the engine has, and not while the chat's rows are on their way to it; nothing on screen changes; Code); 2026-10-31, #1552 (the open profile's kept settings answers are read ahead with its chats); 2026-10-30, #1550 (saved rows drawn as the chat's own and replaced in place, Eric's ruling replacing #1404's; an unread chat left mid-turn lands from its saved rows); 2026-10-30, #1547 (the saved lists and lists of copies kept in memory, in Kept; the newest page's answer parsed off the main thread when it's big, in Code); 2026-10-30, #1545 (copies, held rows and saved lists saved on the store's queue; recent copies and other profiles' lists read ahead into memory); 2026-10-30, #1536 (the newest page read without the rows the phone holds, through notifier #477; copies keep up to 500 rows for 100 chats within 64 MB); 2026-10-28, #1461 (a chat's sync error stays out of a room on screen); 2026-10-28, #1447 (a profile switch shows the new profile's chat, not the outgoing transcript); 2026-10-28, #1432.
 
+## The chat Conduit opens on
+
+Coming back to Conduit after iOS closed it in the background opens the chat
+that was showing, as an ordinary return does; a launch the user chose (after
+swiping Conduit away, or the first one) opens on Chats.
+
+**Siblings:** chats and project chats (Chats) · Bot Chat (Bots) · group rooms
+(not reopened: see Open gaps) · an ordinary return, where the tab's path is
+still in memory · iPhone, iPad and Mac windows (split, the chat beside the
+list) · a notification, widget, link or Shortcut at launch (pushes its own
+chat over it, as before) · which chat it is: When returning to Conduit's
+Continue or Latest, and the saved copy that shows while it connects (A chat
+while it opens) · the drawer shell's "Open to" (Sessions) choice · Settings'
+When returning to Conduit caption · Watch and CarPlay (not needed: no chat
+list to land on)
+
+**Code**
+- `Conduit/Views/V2/V2Shell.swift` (V2ReopenedConversation; init(conversationOnLeave:reopening:) seeds the tab's path, conversationToReopen keeps the window's record), `Conduit/Views/RootView.swift` (MainView's SceneStorage conversationOnLeave, conversationToReopen)
+- "Open to": `Conduit/Services/AppState.swift` (chatReturnSurfaceApplies, requestPreferredReturnSurface, claimPreferredReturnSurfacePresentation), `Conduit/Views/AuxiliaryViews.swift` (ChatReturnBehaviorSettings: the picker and the caption for each shell)
+- Tests: `ConduitTests/V2ReopenedConversationTests.swift`, `ConduitTests/ChatReturnSurfaceTests.swift` (testV2IgnoresASessionsPickedUnderTheDrawerShell)
+
+**Rulings**
+- V2 opens on the Chats list, not the last chat (Eric, 2026-10-15), except after iOS ended Conduit in the background: then it opens on the chat that was showing, in Chats or Bots (Eric, 2026-10-31, #PRNUM, from issue #1559). The window keeps the tab as SceneStorage, which iOS restores after it ended the app and drops when the user swipes it away, so the two launches are told apart by iOS itself. The chat is the one Conduit resumes, under the saved copy while it connects; with no chat to resume it opens on Chats.
+- The reopened chat is in the tab's path when the shell is made, never pushed during the launch's first layout (that left the app never idle).
+- "Open to" belongs to the drawer shell, and V2 hides it: a Sessions picked there is ignored under V2, on launch and on return. Before, it closed the chat on every return to Conduit with no setting left to change it (#PRNUM).
+
+**Open gaps**
+- A group room showing when iOS ended Conduit reopens on Chats: rooms are kept in memory only and open from their row.
+- Only the chat comes back, not what was under it in the tab (a project's page, Pulse): Back goes to the Chats list.
+
+**Checked:** 2026-10-31, #PRNUM (added).
+
 ## Screens that open on their last answer
 
 A screen that reads Hermes draws what Hermes told it last time at once,

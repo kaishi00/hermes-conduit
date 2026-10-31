@@ -10555,12 +10555,19 @@ final class AppState: ObservableObject {
         defaults.set(surface.rawValue, forKey: Self.chatReturnSurfaceKey)
     }
 
+    /// "Open to" is the drawer shell's choice. V2 hides it (its tabs keep
+    /// the chat that was showing), so a Sessions picked under the drawer
+    /// shell no longer closes the chat on every return (#1559).
+    var chatReturnSurfaceApplies: Bool {
+        !(defaults.object(forKey: V2ShellPreference.key) as? Bool ?? V2ShellPreference.defaultValue)
+    }
+
     /// Issues a one-shot preferred-return-surface request. Suppressed while
     /// an explicit destination is pending or being opened, or when a modal
     /// sheet already owns the surface; MainView re-checks at presentation
     /// time as a backstop.
     func requestPreferredReturnSurface() {
-        guard chatReturnSurface == .sessions else { return }
+        guard chatReturnSurfaceApplies, chatReturnSurface == .sessions else { return }
         guard !hasPendingExplicitNavigation else { return }
         guard !isOpeningNotificationSession else { return }
         guard !isModalSheetPresented else { return }
@@ -10609,7 +10616,7 @@ final class AppState: ObservableObject {
             return false
         }
         consumedReturnSurfaceRequest = current
-        guard chatReturnSurface == .sessions,
+        guard chatReturnSurfaceApplies, chatReturnSurface == .sessions,
               !isOpeningNotificationSession,
               !isModalSheetPresented else { return false }
         return true
