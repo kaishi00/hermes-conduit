@@ -199,6 +199,11 @@ DISPLAY_BRAND_NAMES = frozenset({
     "Cloudflare Access", "Hermes Conduit", "Gemini Live", "Grok Live",
     "GPT-Live", "LaTeX", "Mermaid", "Discord", "Telegram", "API",
     "Tailscale", "Apple",
+    # Hermes' gateway platforms, as the Chats filter names them (#1561).
+    "Slack", "WhatsApp", "Signal", "iMessage", "Matrix", "Mattermost",
+    "Microsoft Teams", "Google Chat", "SMS", "IRC", "LINE", "SimpleX",
+    "WeChat", "WeCom", "Feishu", "DingTalk", "QQ", "Yuanbao", "Buzz", "Raft",
+    "ntfy", "A2A",
 })
 
 # Dynamic sites the extractor cannot see: variable-key lookups where the

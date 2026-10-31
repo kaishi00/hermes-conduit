@@ -650,7 +650,8 @@ final class AppState: ObservableObject {
     /// Which read `allProfilesCatalogTask` is, so only it clears the handle.
     var allProfilesCatalogRead: UUID?
     @Published private(set) var sessionFilterOrder: [SessionSource] = AppState.defaultSessionFilterOrder
-    static let defaultSessionFilterOrder: [SessionSource] = [.chat, .voice, .voiceJob, .discord, .telegram, .api, .webhook, .cron, .other]
+    static let defaultSessionFilterOrder: [SessionSource] =
+        [.chat, .voice, .voiceJob, .discord, .telegram] + SessionSource.gatewayPlatforms + [.api, .webhook, .cron, .other]
     /// Stable per-profile gateway-media resolver for settled row content.
     /// Created lazily on first read and reused while the active profile is
     /// unchanged, so ChatView's first body pass already has a resolver

@@ -35,6 +35,34 @@ enum SessionSource: String, Codable, CaseIterable {
     case voiceJob = "voice_job"
     case discord
     case telegram
+    /// Hermes' other gateway platforms (`gateway.config.Platform` and the
+    /// bundled platform plugins), each under its own name and filter
+    /// (#1561). Two-backend platforms share one: WhatsApp and WhatsApp
+    /// Cloud, iMessage over BlueBubbles or Photon, WeCom and its callback
+    /// app. A plugin platform Conduit doesn't know yet stays Other.
+    case slack
+    case whatsapp
+    case signal
+    case imessage
+    case matrix
+    case mattermost
+    case teams
+    case googleChat = "google_chat"
+    case email
+    case sms
+    case irc
+    case line
+    case simplex
+    case wechat = "weixin"
+    case wecom
+    case feishu
+    case dingtalk
+    case qq = "qqbot"
+    case yuanbao
+    case buzz
+    case raft
+    case ntfy
+    case a2a
     case api
     case webhook
     case cron
@@ -47,6 +75,29 @@ enum SessionSource: String, Codable, CaseIterable {
         case .voiceJob: return AppLocalization.string("Voice Jobs")
         case .discord: return "Discord"
         case .telegram: return "Telegram"
+        case .slack: return "Slack"
+        case .whatsapp: return "WhatsApp"
+        case .signal: return "Signal"
+        case .imessage: return "iMessage"
+        case .matrix: return "Matrix"
+        case .mattermost: return "Mattermost"
+        case .teams: return "Microsoft Teams"
+        case .googleChat: return "Google Chat"
+        case .email: return AppLocalization.string("Email")
+        case .sms: return "SMS"
+        case .irc: return "IRC"
+        case .line: return "LINE"
+        case .simplex: return "SimpleX"
+        case .wechat: return "WeChat"
+        case .wecom: return "WeCom"
+        case .feishu: return "Feishu"
+        case .dingtalk: return "DingTalk"
+        case .qq: return "QQ"
+        case .yuanbao: return "Yuanbao"
+        case .buzz: return "Buzz"
+        case .raft: return "Raft"
+        case .ntfy: return "ntfy"
+        case .a2a: return "A2A"
         case .api: return "API"
         case .webhook: return AppLocalization.string("Webhook")
         case .cron: return AppLocalization.string("Cron")
@@ -61,6 +112,29 @@ enum SessionSource: String, Codable, CaseIterable {
         case .voiceJob: return "bolt.horizontal.circle.fill"
         case .discord: return "person.2.fill"
         case .telegram: return "paperplane.fill"
+        case .slack: return "number"
+        case .whatsapp: return "phone.bubble.left.fill"
+        case .signal: return "lock.shield.fill"
+        case .imessage: return "message.fill"
+        case .matrix: return "square.grid.3x3.fill"
+        case .mattermost: return "bubble.left.and.bubble.right.fill"
+        case .teams: return "person.3.fill"
+        case .googleChat: return "text.bubble.fill"
+        case .email: return "envelope.fill"
+        case .sms: return "iphone.gen3"
+        case .irc: return "number.square.fill"
+        case .line: return "bubble.right.fill"
+        case .simplex: return "lock.fill"
+        case .wechat: return "bubble.left.and.bubble.right"
+        case .wecom: return "building.2.fill"
+        case .feishu: return "bird.fill"
+        case .dingtalk: return "bell.fill"
+        case .qq: return "person.crop.circle.fill"
+        case .yuanbao: return "sparkles"
+        case .buzz: return "dot.radiowaves.left.and.right"
+        case .raft: return "rectangle.3.group.fill"
+        case .ntfy: return "bell.badge.fill"
+        case .a2a: return "arrow.left.arrow.right"
         case .api: return "globe"
         case .webhook: return "link"
         case .cron: return "clock.fill"
@@ -75,6 +149,29 @@ enum SessionSource: String, Codable, CaseIterable {
         case .voiceJob: return .indigo
         case .discord: return .purple
         case .telegram: return .cyan
+        case .slack: return .purple
+        case .whatsapp: return .green
+        case .signal: return .blue
+        case .imessage: return .green
+        case .matrix: return .mint
+        case .mattermost: return .blue
+        case .teams: return .indigo
+        case .googleChat: return .green
+        case .email: return .orange
+        case .sms: return .green
+        case .irc: return .gray
+        case .line: return .green
+        case .simplex: return .indigo
+        case .wechat: return .green
+        case .wecom: return .blue
+        case .feishu: return .blue
+        case .dingtalk: return .blue
+        case .qq: return .cyan
+        case .yuanbao: return .teal
+        case .buzz: return .orange
+        case .raft: return .brown
+        case .ntfy: return .teal
+        case .a2a: return .gray
         case .api: return .green
         case .webhook: return .orange
         case .cron: return .pink
@@ -84,6 +181,14 @@ enum SessionSource: String, Codable, CaseIterable {
 }
 
 extension SessionSource {
+    /// Hermes' gateway platforms after Discord and Telegram, in the Chats
+    /// filter's default order (#1561).
+    static let gatewayPlatforms: [SessionSource] = [
+        .slack, .whatsapp, .signal, .imessage, .matrix, .mattermost, .teams, .googleChat,
+        .email, .sms, .irc, .line, .simplex, .wechat, .wecom, .feishu, .dingtalk, .qq,
+        .yuanbao, .buzz, .raft, .ntfy, .a2a
+    ]
+
     /// Hermes' source for a Kanban worker's transcript. Hermes refuses to
     /// reopen one as a chat (`session.resume` 4132): the board runs it, and
     /// the task's Worker Log shows it.
