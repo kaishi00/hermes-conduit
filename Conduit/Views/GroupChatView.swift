@@ -32,6 +32,8 @@ struct GroupChatView: View {
     /// (`readableChatColumn`): the room's messages draw as a chat's do.
     @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
     @AppStorage(ChatTypography.fontStylePreferenceKey) private var chatFontStyleRaw = ChatFontStyle.standard.rawValue
+    /// Settings > Chat's Long replies, which rooms share with chats.
+    @AppStorage(ChatReplyStartPreference.key) private var stopsAtReplyStart = ChatReplyStartPreference.defaultOn
     @Environment(\.chatWidthTextSteps) private var chatWidthTextSteps
     @Environment(\.columnText) private var columnText
 
@@ -191,6 +193,12 @@ struct GroupChatView: View {
         // snapshots; the scroller leaves the offset alone until it's back.
         .onChange(of: scenePhase) { _, phase in
             scroller.setPaused(phase == .background)
+        }
+        // Long replies switched, here or synced from another device: a
+        // room at a member message's stop goes on to the end now, not at
+        // its next layout, as a chat does.
+        .onChange(of: stopsAtReplyStart) { _, _ in
+            scroller.replyStartPreferenceChanged()
         }
         .onAppear {
             rowDisclosure.scroller = scroller

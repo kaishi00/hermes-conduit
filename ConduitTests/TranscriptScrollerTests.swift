@@ -2245,6 +2245,22 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertTrue(scroller.isFollowingLatest)
     }
 
+    /// Long replies switched off (here or on another device) while a room
+    /// is at a member message's stop: it goes on to the end at once, not at
+    /// its next layout.
+    func testSwitchingLongRepliesOffTakesARoomsStopAway() {
+        let (scroller, surface) = makeRoomScroller()
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<11), replyStart: "e10")
+        surface.append("e10", height: 790)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 3963)
+        XCTAssertTrue(scroller.isFollowingLatest, "within the near-bottom distance it is still following")
+        scroller.holdsRepliesAtStart = { false }
+        scroller.replyStartPreferenceChanged()
+        XCTAssertEqual(surface.contentOffsetY, 3990)
+        XCTAssertTrue(scroller.isFollowingLatest)
+    }
+
     /// A "Replying to" card's tap: the message it quoted at the top, the
     /// room browsing there. Only the room's events are taken to.
     func testARoomTakesTheReaderToAQuotedMessage() {

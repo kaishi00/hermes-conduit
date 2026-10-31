@@ -4,14 +4,13 @@
 //
 //  Chat traces (#1533): the chat recorder's lines (ChatViewportTrace) saved
 //  when a watcher sees what a tester would report, a chat jumping, its
-//  layout running nonstop, the main thread stalling or the blank-screen
-//  recovery rebuilding the transcript, or when the user sends them from
-//  Diagnostics & logs. A trace names counts, sizes, offsets and timings,
-//  never message text, titles or file names. The newest stall trace rides
-//  with the crash or freeze report Conduit offers once (CrashReportOffer),
-//  and Diagnostics & logs sends or shares the rest. They go to the
-//  developer's relay (`POST /v1/crash-reports`, kind `chat`, notifier
-//  relay/src/crash-reports.mjs, 0.25+).
+//  layout running nonstop or the main thread stalling, or when the user
+//  sends them from Diagnostics & logs. A trace names counts, sizes, offsets
+//  and timings, never message text, titles or file names. The newest stall
+//  trace rides with the crash or freeze report Conduit offers once
+//  (CrashReportOffer), and Diagnostics & logs sends or shares the rest. They
+//  go to the developer's relay (`POST /v1/crash-reports`, kind `chat`,
+//  notifier relay/src/crash-reports.mjs, 0.25+).
 //
 
 import Foundation
