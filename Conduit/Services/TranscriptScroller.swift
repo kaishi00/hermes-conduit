@@ -19,7 +19,8 @@ protocol TranscriptScrollSurface: AnyObject {
     /// The least content height the layout's last pass gave the transcript:
     /// what `reserveContentHeight` asked for, once a pass has taken it.
     var reservedContentHeight: CGFloat { get }
-    /// The rows' own height, without the room: where the last row ends.
+    /// The rows' own height, without the room: where the rows and the
+    /// padding under the last one end.
     var rowsHeight: CGFloat { get }
     /// Reports back through `TranscriptScroller.surfaceScrolled` before it
     /// returns, as UIKit does. A write under a finger or during a fling
@@ -1297,7 +1298,8 @@ final class TranscriptScroller: ObservableObject {
     /// space left from before (issue 1546). Nothing on screen moves: the
     /// content shrinks only below what the reader sees. The hold stays
     /// armed, so a reply still streaming stops at its start once it
-    /// outgrows the screen.
+    /// outgrows the screen. Long replies switched off and on again
+    /// afterwards doesn't bring it back: the reader has left it.
     private func dropReplyRoomOutOfSight(on surface: TranscriptScrollSurface) {
         guard replyRoomArmed, surface.reservedContentHeight > surface.rowsHeight + 0.5,
               surface.visibleBand.upperBound <= surface.rowsHeight + 0.5 else { return }
