@@ -233,7 +233,7 @@ struct CapabilitiesView: View {
             if store.officialSkills.isEmpty || store.showsKept.contains(.officialSkills) {
                 group.addTask { await store.loadOfficialSkills() }
             }
-            if !store.connectorsLoaded || store.connectorsError != nil { group.addTask { await store.loadConnectors() } }
+            if !store.connectorsLoaded || store.connectorsError != nil { group.addTask { _ = await store.loadConnectors() } }
             if !store.pluginsLoaded || store.pluginsError != nil { group.addTask { await store.loadPlugins() } }
         }
         // Only a full read counts: one cleared mid-read or failed, or a
