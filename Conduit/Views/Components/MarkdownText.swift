@@ -1759,7 +1759,7 @@ struct MarkdownTable: View {
                 },
                 selectText: { [turnedOn = $selectionTurnedOn] in turnedOn.wrappedValue = true },
                 selectionCoordinator: selectionCoordinator,
-                selectionSegmentID: selectionSegment(row: 0, column: 0)?.id,
+                selectionSegmentID: selectionSegment(row: 0, column: 0).map { MarkdownSelectionCoordinator.tableMountKey(forSegmentID: $0.id) },
                 tableWidth: MarkdownTableLayout.tableWidth(columnContentWidths: widths)
             ))
         }
@@ -1937,8 +1937,9 @@ private struct MarkdownTableMenu: ViewModifier {
     let copyText: @Sendable () -> String
     let selectText: () -> Void
     let selectionCoordinator: MarkdownSelectionCoordinator?
-    /// The table's first cell segment, the key its deferred mount waits
-    /// under in the message's coordinator.
+    /// The key its deferred mount waits under in the message's
+    /// coordinator, made from the table's first cell segment
+    /// (MarkdownSelectionCoordinator.tableMountKey).
     let selectionSegmentID: String?
     /// The drawn table's width, so the Copy Table button sits at its
     /// corner, not at the column's edge, when the table is narrower.
@@ -2214,7 +2215,7 @@ struct LargeMarkdownTable: View {
                 },
                 selectText: { [turnedOn = $selectionTurnedOn] in turnedOn.wrappedValue = true },
                 selectionCoordinator: selectionCoordinator,
-                selectionSegmentID: segmentDescriptor(row: 0, column: 0)?.id,
+                selectionSegmentID: segmentDescriptor(row: 0, column: 0).map { MarkdownSelectionCoordinator.tableMountKey(forSegmentID: $0.id) },
                 tableWidth: MarkdownTableLayout.tableWidth(columnContentWidths: widths)
             ))
             if renderedRowCount < rows.count {
