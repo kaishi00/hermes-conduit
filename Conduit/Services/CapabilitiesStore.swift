@@ -7,7 +7,9 @@
 //  tool call counts, a toolset's backends and keys, MCP servers (Connectors)
 //  and agent plugins. One store per Capabilities page, scoped to the active
 //  profile; a profile or dashboard switch drops everything it had read, and
-//  a request that lands after the switch commits nothing.
+//  a request that lands after the switch commits nothing. Each tab opens on
+//  the lists it showed last time, kept on the phone, while it asks again
+//  (#1533).
 //
 
 import Foundation
@@ -57,6 +59,34 @@ struct PluginInstallOutcome: Equatable {
 @MainActor
 @Observable
 final class CapabilitiesStore {
+    /// The reads whose answers the tabs keep on the phone (#1533), per
+    /// dashboard and profile, the plugin catalog once per dashboard.
+    enum KeptRoute {
+        static let officialSkills = "/api/skills/hub/official"
+        /// The year's calls per tool: the usage answer's `tools` alone.
+        static let toolCalls = "conduit:capability-tool-calls"
+        /// The servers and the catalog as Conduit read them (their Codable
+        /// copies), so a server's command arguments, which can hold a key,
+        /// are never kept.
+        static let servers = "/api/mcp/servers"
+        static let connectorCatalog = "/api/mcp/catalog"
+        /// The answer Settings keeps for the Conduit plugin's status too.
+        static let plugins = AppState.KeptRoute.pluginsHub
+        static let pluginCatalog = "/api/dashboard/plugins/catalog"
+    }
+
+    /// A tab's list drawn from what was kept, until Hermes answers. A
+    /// catalog counts on its own: its read can fail while the list's
+    /// answers, and it then stays the kept one.
+    enum KeptList: Hashable {
+        case officialSkills, toolCalls, connectors, connectorCatalog, plugins, pluginCatalog
+    }
+
+    /// The lists showing their kept copy: each asks Hermes again when its
+    /// tab shows, and a change made to one reads it again, since the read
+    /// on its way was asked before the change and no longer commits.
+    private(set) var showsKept: Set<KeptList> = []
+
     // Skills
     private(set) var officialSkills: [OfficialSkill] = []
     private(set) var skillInstalls: [String: CapabilityInstallState] = [:]
@@ -84,6 +114,9 @@ final class CapabilitiesStore {
     var pluginsNeedRestart = false
 
     @ObservationIgnored private weak var requester: (any DashboardJSONRequester)?
+    /// Where the profile's answers are kept, and the dashboard's own.
+    @ObservationIgnored private var answers: KeptAnswers?
+    @ObservationIgnored private var dashboardAnswers: KeptAnswers?
     private(set) var profile = "default"
     /// Bumped on every profile or dashboard switch: work started before it
     /// commits nothing. An editor keeps the one it read under.
@@ -102,11 +135,22 @@ final class CapabilitiesStore {
     /// A connector's probe stays fresh this long, as on Desktop.
     static let probeLifetime: TimeInterval = 300
     static let actionPollInterval: Duration = .milliseconds(1_200)
+    static let toolCallsPath = "/api/analytics/usage?days=365"
 
-    func configure(requester: (any DashboardJSONRequester)?, profile: String) {
-        guard !Self.same(requester, self.requester) || profile != self.profile else { return }
+    /// Points the store at a bridge and profile, and draws what each tab
+    /// showed last time there. Every call starts over: the screen calls it
+    /// once per dashboard and profile, the first time offline too, as the
+    /// kept lists show without a bridge.
+    func configure(
+        requester: (any DashboardJSONRequester)?,
+        profile: String,
+        answers: KeptAnswers? = nil,
+        dashboardAnswers: KeptAnswers? = nil
+    ) {
         self.requester = requester
         self.profile = profile
+        self.answers = answers
+        self.dashboardAnswers = dashboardAnswers
         generation &+= 1
         officialSkills = []
         skillInstalls = [:]
@@ -124,6 +168,35 @@ final class CapabilitiesStore {
         pluginsError = nil
         pluginBusy = []
         pluginsNeedRestart = false
+        showsKept = []
+        showKept()
+    }
+
+    private func showKept() {
+        if let kept = answers?.kept(KeptRoute.officialSkills) {
+            officialSkills = Self.officialSkills(from: kept)
+            showsKept.insert(.officialSkills)
+        }
+        if let kept = answers?.kept(KeptRoute.toolCalls) {
+            toolCalls = CapabilityToolsetOrdering.toolCallCounts(from: kept)
+            showsKept.insert(.toolCalls)
+        }
+        if let kept = Self.rows(ConnectorServer.self, under: "servers", in: answers?.kept(KeptRoute.servers)) {
+            servers = kept
+            showsKept.insert(.connectors)
+            if let catalog = Self.rows(ConnectorCatalogEntry.self, under: "entries", in: answers?.kept(KeptRoute.connectorCatalog)) {
+                connectorCatalog = catalog
+                showsKept.insert(.connectorCatalog)
+            }
+        }
+        if let kept = answers?.kept(KeptRoute.plugins) {
+            plugins = AgentPluginRow.list(from: kept)
+            showsKept.insert(.plugins)
+            if let catalog = dashboardAnswers?.kept(KeptRoute.pluginCatalog) {
+                pluginCatalog = PluginCatalogEntry.list(from: catalog)
+                showsKept.insert(.pluginCatalog)
+            }
+        }
     }
 
     /// Whether requests go to `owner`'s bridge and profile. False after a
@@ -131,14 +204,6 @@ final class CapabilitiesStore {
     /// detail page never reads the previous dashboard or profile.
     func serves(_ owner: CapabilitySnapshotOwner) -> Bool {
         requester.map { ObjectIdentifier($0) } == owner.bridge && profile == owner.profile
-    }
-
-    private static func same(_ lhs: (any DashboardJSONRequester)?, _ rhs: (any DashboardJSONRequester)?) -> Bool {
-        switch (lhs, rhs) {
-        case (nil, nil): return true
-        case let (lhs?, rhs?): return ObjectIdentifier(lhs) == ObjectIdentifier(rhs)
-        default: return false
-        }
     }
 
     // MARK: Requests
@@ -172,6 +237,37 @@ final class CapabilitiesStore {
         let route = path.split(separator: "?").first.map(String.init) ?? path
         if route.hasSuffix("/test") || route.hasSuffix("/auth") { return false }
         return !route.hasPrefix("/api/env") && !route.hasPrefix("/api/mcp/oauth/")
+    }
+
+    /// Reads `path` and keeps what `kept` makes of its answer under
+    /// `route`, for the tab to open on next time, unless an answer newer
+    /// than it is kept by then (#1533).
+    private func read(
+        _ path: String,
+        keptAs route: String,
+        in answers: KeptAnswers?,
+        keeping kept: (([String: Any]) -> [String: Any])? = nil
+    ) async throws -> [String: Any] {
+        guard let answers else { return try await request(path, timeout: 30_000) }
+        var answer: [String: Any] = [:]
+        _ = try await answers.keep(route, false, {
+            answer = try await self.request(path, timeout: 30_000)
+            return kept?(answer) ?? answer
+        })
+        return answer
+    }
+
+    /// Rows kept as Conduit's own JSON, under `key`. Off the main actor, as
+    /// a read's `keeping` runs where the read was asked.
+    nonisolated private static func keptJSON<Row: Encodable>(_ rows: [Row], under key: String) -> [String: Any] {
+        guard let data = try? JSONEncoder().encode(rows),
+              let list = try? JSONSerialization.jsonObject(with: data) else { return [:] }
+        return [key: list]
+    }
+
+    private static func rows<Row: Decodable>(_ type: Row.Type, under key: String, in answer: [String: Any]?) -> [Row]? {
+        guard let list = answer?[key], let data = try? JSONSerialization.data(withJSONObject: list) else { return nil }
+        return try? JSONDecoder().decode([Row].self, from: data)
     }
 
     private func scoped(_ path: String) -> String {
@@ -219,9 +315,14 @@ final class CapabilitiesStore {
         let token = generation
         skillsEpoch &+= 1
         let epoch = skillsEpoch
-        guard let response = try? await request(scoped("/api/skills/hub/official"), timeout: 30_000) else { return }
+        guard let response = try? await read(scoped(KeptRoute.officialSkills), keptAs: KeptRoute.officialSkills, in: answers) else { return }
         guard token == generation, epoch == skillsEpoch else { return }
-        officialSkills = (response["skills"] as? [Any] ?? []).compactMap { OfficialSkill($0) }
+        officialSkills = Self.officialSkills(from: response)
+        showsKept.remove(.officialSkills)
+    }
+
+    private static func officialSkills(from response: [String: Any]) -> [OfficialSkill] {
+        (response["skills"] as? [Any] ?? []).compactMap { OfficialSkill($0) }
     }
 
     /// A skill's SKILL.md, frontmatter included.
@@ -244,6 +345,7 @@ final class CapabilitiesStore {
     @discardableResult
     func installSkill(_ skill: OfficialSkill) async -> Bool {
         let token = generation
+        let answers = self.answers
         skillInstalls[skill.identifier] = .running
         do {
             let started = try await request(
@@ -256,6 +358,11 @@ final class CapabilitiesStore {
                 throw CapabilitiesStoreError.declined(AppLocalization.string("Hermes didn't start the install."))
             }
             let status = try await waitForAction(action, token: token)
+            if status.succeeded {
+                await keepChange(KeptRoute.officialSkills, list: "skills", field: "installed", to: true, in: answers) {
+                    OfficialSkill($0)?.identifier == skill.identifier
+                }
+            }
             guard token == generation else { return false }
             guard status.succeeded else {
                 skillInstalls[skill.identifier] = .failed(status.failureReason ?? AppLocalization.string("The install didn't finish."))
@@ -266,6 +373,7 @@ final class CapabilitiesStore {
                 skillsEpoch &+= 1
                 officialSkills[index].installed = true
             }
+            if showsKept.contains(.officialSkills) { await loadOfficialSkills() }
             return true
         } catch {
             guard token == generation, !(error is CancellationError) else { return false }
@@ -281,9 +389,14 @@ final class CapabilitiesStore {
     /// back to A-Z and the next visit asks again).
     func loadToolCalls() async {
         let token = generation
-        guard let response = try? await request(scoped("/api/analytics/usage?days=365"), timeout: 30_000),
-              token == generation else { return }
+        guard let response = try? await read(
+            scoped(Self.toolCallsPath),
+            keptAs: KeptRoute.toolCalls,
+            in: answers,
+            keeping: { ["tools": $0["tools"] ?? [Any]()] }
+        ), token == generation else { return }
         toolCalls = CapabilityToolsetOrdering.toolCallCounts(from: response)
+        showsKept.remove(.toolCalls)
     }
 
     func toolsetConfig(name: String) async throws -> ToolsetConfig {
@@ -330,15 +443,25 @@ final class CapabilitiesStore {
         let token = generation
         connectorsEpoch &+= 1
         let epoch = connectorsEpoch
-        async let serversResponse = request(scoped("/api/mcp/servers"), timeout: 30_000)
-        async let catalogResponse = try? request(scoped("/api/mcp/catalog"), timeout: 30_000)
+        async let serversResponse = read(scoped(KeptRoute.servers), keptAs: KeptRoute.servers, in: answers) {
+            Self.keptJSON(ConnectorServer.list(from: $0).map(\.keptCopy), under: "servers")
+        }
+        async let catalogResponse = try? read(scoped(KeptRoute.connectorCatalog), keptAs: KeptRoute.connectorCatalog, in: answers) {
+            Self.keptJSON(ConnectorCatalogEntry.list(from: $0), under: "entries")
+        }
         do {
             let servers = ConnectorServer.list(from: try await serversResponse)
-            let catalog = await catalogResponse.map(ConnectorCatalogEntry.list) ?? connectorCatalog
+            let catalog = await catalogResponse
             guard token == generation, epoch == connectorsEpoch else { return }
             self.servers = servers
-            connectorCatalog = catalog
+            // A catalog read that fails keeps the catalog shown: a kept one
+            // asks again when the tab next shows.
+            if let catalog {
+                connectorCatalog = ConnectorCatalogEntry.list(from: catalog)
+                showsKept.remove(.connectorCatalog)
+            }
             connectorsError = nil
+            showsKept.remove(.connectors)
             let names = Set(servers.map(\.name))
             probes = probes.filter { names.contains($0.key) }
         } catch {
@@ -352,8 +475,10 @@ final class CapabilitiesStore {
     }
 
     /// Tests every server that's on and hasn't been tested lately, a few at a
-    /// time: each test starts the server on the host.
+    /// time: each test starts the server on the host. Only servers Hermes
+    /// listed: kept ones aren't tested until it answers.
     func probeServers(force: Bool = false) async {
+        guard !showsKept.contains(.connectors) else { return }
         let now = Date()
         let due = servers.filter { server in
             guard server.enabled, !probing.contains(server.name) else { return false }
@@ -424,6 +549,7 @@ final class CapabilitiesStore {
 
     func setServerEnabled(_ name: String, enabled: Bool) async throws {
         let token = generation
+        let answers = self.answers
         guard let index = servers.firstIndex(where: { $0.name == name }) else { return }
         connectorsEpoch &+= 1
         servers[index].enabled = enabled
@@ -438,14 +564,31 @@ final class CapabilitiesStore {
                 connectorsEpoch &+= 1
                 servers[index].enabled = !enabled
             }
+            if token == generation { await readKeptServersAgain() }
             throw error
         }
+        await keepChange(KeptRoute.servers, list: "servers", field: "enabled", to: enabled, in: answers) {
+            $0["name"] as? String == name
+        }
         guard token == generation else { return }
+        let kept = Date()
+        await readKeptServersAgain()
         if enabled {
-            await probe(name)
+            // Unless reading the kept list again just tested it.
+            if (probes[name]?.checkedAt ?? .distantPast) < kept { await probe(name) }
         } else {
             probes[name] = nil
         }
+    }
+
+    /// After a change made here, a list still showing its kept copy reads
+    /// the servers again, since the read on its way was asked before the
+    /// change and no longer commits, and tests them once Hermes lists them.
+    private func readKeptServersAgain() async {
+        let token = generation
+        guard showsKept.contains(.connectors) else { return }
+        await loadConnectors()
+        if token == generation { await probeServers() }
     }
 
     /// The profile's `mcp_servers` as written in config.yaml: defaults not
@@ -497,6 +640,7 @@ final class CapabilitiesStore {
         guard token == openedOn else { throw CapabilitiesStoreError.profileChanged }
         guard let requester else { throw CapabilitiesStoreError.notConnected }
         let profile = self.profile
+        let answers = self.answers
         try await ProfileConfigWriteQueue.runThrowing {
             guard token == self.generation else { throw CapabilitiesStoreError.profileChanged }
             let servers = try ConnectorServerEdit.replacing(
@@ -519,6 +663,10 @@ final class CapabilitiesStore {
                 throw CapabilitiesStoreError.editUnsupported
             }
         }
+        // Hermes' answer brings the edit: a read asked before the save
+        // isn't kept after it (#1533).
+        answers?.noteWrite(KeptRoute.servers)
+        answers?.noteWrite(KeptRoute.connectorCatalog)
         // Saved on the host; what's showing now is another profile's.
         guard token == generation else { return }
         probes[original] = nil
@@ -526,16 +674,29 @@ final class CapabilitiesStore {
         // A test of the old entry still running is discarded and run again.
         probeEpochs[original, default: 0] &+= 1
         probeEpochs[name, default: 0] &+= 1
+        let wasKept = showsKept.contains(.connectors)
         await loadConnectors()
-        // Tested again in the background: the editor closes on the save.
-        if servers.first(where: { $0.name == name })?.enabled == true {
+        guard token == generation else { return }
+        // Tested again in the background: the editor closes on the save. A
+        // kept list Hermes' answer took the place of has its servers tested
+        // now, as the tab's open would have, the saved one with them.
+        if wasKept, !showsKept.contains(.connectors) {
+            Task { await probeServers() }
+        } else if servers.first(where: { $0.name == name })?.enabled == true {
             Task { await probe(name) }
         }
     }
 
     func removeServer(_ name: String) async throws {
         let token = generation
+        let answers = self.answers
         _ = try await request(scoped("/api/mcp/servers/\(Self.component(name))"), method: "DELETE")
+        await keepChange(KeptRoute.servers, list: "servers", in: answers) { rows in
+            rows.filter { ($0 as? [String: Any])?["name"] as? String != name }
+        }
+        await keepChange(KeptRoute.connectorCatalog, list: "entries", field: "installed", to: false, in: answers) {
+            $0["name"] as? String == name
+        }
         guard token == generation else { return }
         connectorsEpoch &+= 1
         servers.removeAll { $0.name == name }
@@ -543,6 +704,7 @@ final class CapabilitiesStore {
         if let index = connectorCatalog.firstIndex(where: { $0.name == name }) {
             connectorCatalog[index].installed = false
         }
+        await readKeptServersAgain()
     }
 
     /// Installs a catalog server with the keys it asks for; entries Hermes
@@ -550,6 +712,7 @@ final class CapabilitiesStore {
     @discardableResult
     func installConnector(_ entry: ConnectorCatalogEntry, env: [String: String]) async -> Bool {
         let token = generation
+        let answers = self.answers
         connectorInstalls[entry.name] = .running
         do {
             let response = try await request(
@@ -566,10 +729,27 @@ final class CapabilitiesStore {
                     return false
                 }
             }
+            // Its row comes with Hermes' answer: a read asked before the
+            // install isn't kept after it. The kept catalog marks it
+            // installed, as a removal unmarks it, so a read after it that
+            // fails doesn't offer it again next time.
+            answers?.noteWrite(KeptRoute.servers)
+            await keepChange(KeptRoute.connectorCatalog, list: "entries", field: "installed", to: true, in: answers) {
+                $0["name"] as? String == entry.name
+            }
             guard token == generation else { return false }
             connectorInstalls[entry.name] = nil
+            let wasKept = showsKept.contains(.connectors)
             await loadConnectors()
-            await probe(entry.name)
+            guard token == generation else { return true }
+            if wasKept {
+                // Hermes' list took the kept one's place: its servers are
+                // tested now, as the tab's open would have, the new one
+                // with them.
+                await probeServers()
+            } else {
+                await probe(entry.name)
+            }
             return true
         } catch {
             guard token == generation, !(error is CancellationError) else { return false }
@@ -617,15 +797,22 @@ final class CapabilitiesStore {
         let token = generation
         pluginsEpoch &+= 1
         let epoch = pluginsEpoch
-        async let hubResponse = request(scoped("/api/dashboard/plugins/hub"), timeout: 30_000)
-        async let catalogResponse = try? request("/api/dashboard/plugins/catalog", timeout: 30_000)
+        async let hubResponse = read(scoped(KeptRoute.plugins), keptAs: KeptRoute.plugins, in: answers)
+        // The same for every profile: kept once per dashboard.
+        async let catalogResponse = try? read(KeptRoute.pluginCatalog, keptAs: KeptRoute.pluginCatalog, in: dashboardAnswers)
         do {
             let plugins = AgentPluginRow.list(from: try await hubResponse)
-            let catalog = await catalogResponse.map(PluginCatalogEntry.list) ?? pluginCatalog
+            let catalog = await catalogResponse
             guard token == generation, epoch == pluginsEpoch else { return }
             self.plugins = plugins
-            pluginCatalog = catalog
+            // A catalog read that fails keeps the catalog shown: a kept one
+            // asks again when the tab next shows.
+            if let catalog {
+                pluginCatalog = PluginCatalogEntry.list(from: catalog)
+                showsKept.remove(.pluginCatalog)
+            }
             pluginsError = nil
+            showsKept.remove(.plugins)
         } catch {
             _ = await catalogResponse
             guard token == generation, epoch == pluginsEpoch else { return }
@@ -651,26 +838,123 @@ final class CapabilitiesStore {
     func setPluginEnabled(_ plugin: AgentPluginRow, enabled: Bool) async throws {
         try requirePluginProfile()
         let token = generation
+        let answers = self.answers
         pluginBusy.insert(plugin.name)
         defer { if token == generation { pluginBusy.remove(plugin.name) } }
-        let response = try await request(
-            "/api/dashboard/agent-plugins/\(Self.pluginPath(plugin.name))/\(enabled ? "enable" : "disable")",
-            method: "POST",
-            timeout: 60_000
-        )
+        let response: [String: Any]
+        do {
+            response = try await request(
+                "/api/dashboard/agent-plugins/\(Self.pluginPath(plugin.name))/\(enabled ? "enable" : "disable")",
+                method: "POST",
+                timeout: 60_000
+            )
+        } catch {
+            // Refused: a list still showing its kept copy reads again, as
+            // after a switch Hermes took.
+            if token == generation, showsKept.contains(.plugins) { await loadPlugins() }
+            throw error
+        }
+        let status = enabled ? "enabled" : "disabled"
+        await keepChange(KeptRoute.plugins, list: "plugins", field: "runtime_status", to: status, in: answers) {
+            $0["name"] as? String == plugin.name
+        }
         guard token == generation else { return }
         if let index = plugins.firstIndex(where: { $0.name == plugin.name }) {
             pluginsEpoch &+= 1
-            plugins[index].runtimeStatus = enabled ? "enabled" : "disabled"
+            plugins[index].runtimeStatus = status
         }
         if response["restart_required"] as? Bool == true {
             pluginsNeedRestart = true
+        }
+        // A list still showing its kept copy reads it again, since the read
+        // on its way was asked before the switch and no longer commits.
+        if showsKept.contains(.plugins) { await loadPlugins() }
+    }
+
+    /// Sets `field` in the kept rows of the route's list (under `key`) that
+    /// `matches`, as Hermes took a change.
+    private func keepChange(
+        _ route: String,
+        list key: String,
+        field: String,
+        to value: Any,
+        in answers: KeptAnswers?,
+        where matches: ([String: Any]) -> Bool
+    ) async {
+        await keepChange(route, list: key, in: answers) { rows in
+            rows.map { row -> Any in
+                guard var row = row as? [String: Any], matches(row) else { return row }
+                row[field] = value
+                return row
+            }
+        }
+    }
+
+    /// Changes the kept rows of the route's list (under `key`) as Hermes
+    /// took a change, and keeps the list over any read asked before it, so
+    /// the tab opens on the change next time (#1533). In the answers the
+    /// change was made under, the profile's or, for a list kept once per
+    /// dashboard, the dashboard's, taken before it went out: a switch while
+    /// it was out neither loses it nor keeps it for the profile switched to.
+    private func keepChange(
+        _ route: String,
+        list key: String,
+        in answers: KeptAnswers?,
+        rows change: ([Any]) -> [Any]
+    ) async {
+        guard let answers else { return }
+        guard var kept = answers.kept(route), let rows = kept[key] as? [Any] else {
+            // Nothing kept to change: the write counts all the same.
+            answers.noteWrite(route)
+            return
+        }
+        kept[key] = change(rows)
+        _ = try? await answers.keep(route, true, { [kept] in kept })
+    }
+
+    /// Marks the catalog entries `matches` picks installed or not, with no
+    /// update waiting, in the kept catalog and, unless a switch came first,
+    /// the one shown, as Hermes took an update or removal. The catalog hides
+    /// an installed entry, so a removal whose read fails still offers the
+    /// plugin again (#1533).
+    private func markCatalog(
+        installed: Bool,
+        token: Int,
+        in answers: KeptAnswers?,
+        where matches: (_ name: String, _ installed: Bool) -> Bool
+    ) async {
+        await keepCatalog(installed: installed, in: answers, where: matches)
+        guard token == generation else { return }
+        pluginsEpoch &+= 1
+        for index in pluginCatalog.indices where matches(pluginCatalog[index].name, pluginCatalog[index].installed) {
+            pluginCatalog[index].installed = installed
+            pluginCatalog[index].updateAvailable = false
+        }
+    }
+
+    /// The kept catalog's side of `markCatalog`, over any catalog read asked
+    /// before the change. An install changes only this one: the catalog
+    /// shown keeps its entry until Hermes' answer brings the installed row.
+    private func keepCatalog(
+        installed: Bool,
+        in answers: KeptAnswers?,
+        where matches: (_ name: String, _ installed: Bool) -> Bool
+    ) async {
+        await keepChange(KeptRoute.pluginCatalog, list: "entries", in: answers) { rows in
+            rows.map { row -> Any in
+                guard var row = row as? [String: Any], let name = row["name"] as? String,
+                      matches(name, row["installed"] as? Bool ?? false) else { return row }
+                row["installed"] = installed
+                row["update_available"] = false
+                return row
+            }
         }
     }
 
     func updatePlugin(_ plugin: AgentPluginRow, acceptCapabilities: Bool = false) async throws -> PluginUpdateOutcome {
         try requirePluginProfile()
         let token = generation
+        let answers = self.answers, dashboardAnswers = self.dashboardAnswers
         pluginBusy.insert(plugin.name)
         defer { if token == generation { pluginBusy.remove(plugin.name) } }
         let response = try await request(
@@ -683,11 +967,18 @@ final class CapabilitiesStore {
             let lines = (response["delta_lines"] as? [Any])?.compactMap { $0 as? String } ?? []
             return .needsConsent(lines: lines.isEmpty ? [response["error"] as? String ?? ""].filter { !$0.isEmpty } : lines)
         }
+        let updated = response["unchanged"] as? Bool != true
+        if updated {
+            // Its new version comes with Hermes' answer: a read asked before
+            // the update isn't kept after it.
+            answers?.noteWrite(KeptRoute.plugins)
+            await markCatalog(installed: true, token: token, in: dashboardAnswers) { name, installed in
+                PluginCatalogEntry.isSource(named: name, installed: installed, of: plugin)
+            }
+        }
         // A profile or dashboard switch discards the answer.
         guard token == generation else { throw CancellationError() }
-        if response["unchanged"] as? Bool == true {
-            return .upToDate
-        }
+        guard updated else { return .upToDate }
         // A git pull reports no activation: the gateway loads the new code on
         // its next start.
         let restart = response["restart_required"] as? Bool ?? true
@@ -699,6 +990,7 @@ final class CapabilitiesStore {
     func removePlugin(_ plugin: AgentPluginRow) async throws {
         try requirePluginProfile()
         let token = generation
+        let answers = self.answers, dashboardAnswers = self.dashboardAnswers
         pluginBusy.insert(plugin.name)
         defer { if token == generation { pluginBusy.remove(plugin.name) } }
         _ = try await request(
@@ -706,6 +998,13 @@ final class CapabilitiesStore {
             method: "DELETE",
             timeout: 60_000
         )
+        // Kept without it, over any read asked before the removal.
+        await keepChange(KeptRoute.plugins, list: "plugins", in: answers) { rows in
+            rows.filter { ($0 as? [String: Any])?["name"] as? String != plugin.name }
+        }
+        await markCatalog(installed: false, token: token, in: dashboardAnswers) { name, installed in
+            PluginCatalogEntry.isSource(named: name, installed: installed, of: plugin)
+        }
         guard token == generation else { return }
         pluginsEpoch &+= 1
         plugins.removeAll { $0.name == plugin.name }
@@ -717,6 +1016,7 @@ final class CapabilitiesStore {
     func installPlugin(_ entry: PluginCatalogEntry) async throws -> PluginInstallOutcome {
         try requirePluginProfile()
         let token = generation
+        let answers = self.answers, dashboardAnswers = self.dashboardAnswers
         pluginBusy.insert(entry.name)
         defer { if token == generation { pluginBusy.remove(entry.name) } }
         let response = try await request(
@@ -735,6 +1035,10 @@ final class CapabilitiesStore {
             missingEnv: missing,
             restartRequired: restart
         )
+        // Its row comes with Hermes' answer: a read asked before the
+        // install isn't kept after it.
+        answers?.noteWrite(KeptRoute.plugins)
+        await keepCatalog(installed: true, in: dashboardAnswers) { name, _ in name == entry.name }
         guard token == generation else { return outcome }
         if restart { pluginsNeedRestart = true }
         await loadPlugins()

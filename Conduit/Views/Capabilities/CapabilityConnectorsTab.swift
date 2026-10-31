@@ -33,7 +33,7 @@ struct CapabilityConnectorsTab: View {
             query: query
         )
         CapabilityTabScroll(refresh: { await reload(force: true) }) {
-            if !store.connectorsLoaded {
+            if !store.connectorsLoaded && !store.showsKept.contains(.connectors) {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 40)
@@ -101,7 +101,7 @@ struct CapabilityConnectorsTab: View {
             }
         }
         .task(id: store.profile) {
-            if !store.connectorsLoaded { await store.loadConnectors() }
+            if !store.connectorsLoaded || !store.showsKept.isDisjoint(with: [.connectors, .connectorCatalog]) { await store.loadConnectors() }
             await store.probeServers()
         }
         .sheet(item: $installing) { entry in
@@ -307,39 +307,46 @@ struct ConnectorDetailPage: View {
     private var server: ConnectorServer? { store.servers.first { $0.name == name } }
     private var probe: ConnectorProbe? { store.probes[name] }
     private var catalogEntry: ConnectorCatalogEntry? { store.connectorCatalog.first { $0.name == name } }
+    /// The kept list's read failed: no test comes until Hermes answers.
+    private var keptListFailed: Bool { store.showsKept.contains(.connectors) && store.connectorsError != nil }
 
     var body: some View {
         SettingsDetailContainer {
             if let server {
                 let state = ConnectorState.of(server, probe: probe, probing: store.probing.contains(name))
+                // The kept copy holds only part of the address and the
+                // command (#1533): they show once Hermes answers.
+                let showsWhere = !store.showsKept.contains(.connectors)
                 header(server, state: state)
-                ConduitSettingsSection(title: AppLocalization.string("Connection"), symbol: "link", tint: .conduitAura) {
-                    if let url = server.url {
-                        SettingsMetricRow(label: AppLocalization.string("Address"), value: url, lineLimit: 2)
-                    }
-                    if let command = server.command {
-                        SettingsMetricRow(label: AppLocalization.string("Command"), value: ([command] + server.args).joined(separator: " "), lineLimit: 3)
-                    }
-                    if server.enabled {
-                        actions(server, state: state)
-                    }
-                    if !server.isFromPlugin {
-                        Button {
-                            Haptics.selection()
-                            message = nil
-                            editing = true
-                        } label: {
-                            Label(AppLocalization.string("Edit Server"), systemImage: "pencil")
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 6)
-                                .frame(minHeight: 44)
+                if showsWhere || server.enabled || !server.isFromPlugin || message != nil {
+                    ConduitSettingsSection(title: AppLocalization.string("Connection"), symbol: "link", tint: .conduitAura) {
+                        if showsWhere, let url = server.url {
+                            SettingsMetricRow(label: AppLocalization.string("Address"), value: url, lineLimit: 2)
                         }
-                        .conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.12))
-                    }
-                    if let message {
-                        Text(verbatim: message)
-                            .scaledFont(.footnote)
-                            .foregroundStyle(.secondary)
+                        if showsWhere, let command = server.command {
+                            SettingsMetricRow(label: AppLocalization.string("Command"), value: ([command] + server.args).joined(separator: " "), lineLimit: 3)
+                        }
+                        if server.enabled {
+                            actions(server, state: state)
+                        }
+                        if !server.isFromPlugin {
+                            Button {
+                                Haptics.selection()
+                                message = nil
+                                editing = true
+                            } label: {
+                                Label(AppLocalization.string("Edit Server"), systemImage: "pencil")
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 6)
+                                    .frame(minHeight: 44)
+                            }
+                            .conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.12))
+                        }
+                        if let message {
+                            Text(verbatim: message)
+                                .scaledFont(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 toolsSection(server, state: state)
@@ -370,7 +377,9 @@ struct ConnectorDetailPage: View {
         // it reveals animate on the value, page-wide.
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: server?.enabled)
         .navigationTitle(Text(verbatim: name))
-        .task(id: name) {
+        // A kept server is tested once Hermes lists it, as on the tab.
+        .task(id: store.showsKept.contains(.connectors) ? nil : name) {
+            guard !store.showsKept.contains(.connectors) else { return }
             firstTestAsked = true
             if let server, server.enabled, probe == nil, !store.probing.contains(name) {
                 await store.probe(name)
@@ -515,7 +524,7 @@ struct ConnectorDetailPage: View {
                 Text(verbatim: AppLocalization.string("\(server.name) is off. Turn it on to read the tools it brings."))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
-            } else if state == .checking || (probe == nil && state == .unknown && !firstTestAsked) {
+            } else if state == .checking || (probe == nil && state == .unknown && !firstTestAsked && !keptListFailed) {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text("Reading the tool list…")

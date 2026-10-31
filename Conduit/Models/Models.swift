@@ -1620,7 +1620,9 @@ struct RuntimeState: Equatable {
 // MARK: - Capabilities
 
 struct CapabilitySkill: Identifiable, Equatable {
-    let id = UUID()
+    /// By name, as Hermes keys them: a list read again (or the kept one
+    /// Hermes' answer replaces) draws only the rows that changed.
+    var id: String { name }
     let name: String
     var description: String?
     var category: String?
@@ -1630,7 +1632,7 @@ struct CapabilitySkill: Identifiable, Equatable {
 }
 
 struct CapabilityToolset: Identifiable, Equatable {
-    let id = UUID()
+    var id: String { name }
     let name: String
     var description: String?
     var enabled: Bool

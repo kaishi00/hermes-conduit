@@ -77,7 +77,7 @@ struct CapabilitySkillsTab: View {
                 } content: {
                     ForEach(Array(installed.enumerated()), id: \.element.name) { index, skill in
                         CapabilityCardRow(divided: index > 0) {
-                            CapabilitySkillRow(skill: skill, store: store) { enabled in
+                            CapabilitySkillRow(skill: skill, store: store, canChange: appState.canChangeCapabilities) { enabled in
                                 Task { await appState.toggleSkill(name: skill.name, enabled: enabled) }
                             }
                         }
@@ -100,7 +100,7 @@ struct CapabilitySkillsTab: View {
             }
         }
         .task(id: store.profile) {
-            if store.officialSkills.isEmpty { await store.loadOfficialSkills() }
+            if store.officialSkills.isEmpty || store.showsKept.contains(.officialSkills) { await store.loadOfficialSkills() }
         }
     }
 
@@ -113,21 +113,26 @@ struct CapabilitySkillsTab: View {
                 Text("Sort")
             }
             Divider()
-            Button {
-                setAll(appState.skills, enabled: true)
-            } label: {
-                Label(AppLocalization.string("Turn All On"), systemImage: "checkmark.circle")
+            // They pick their skills from the list shown: a kept one waits
+            // for Hermes' answer.
+            Group {
+                Button {
+                    setAll(appState.skills, enabled: true)
+                } label: {
+                    Label(AppLocalization.string("Turn All On"), systemImage: "checkmark.circle")
+                }
+                Button {
+                    setAll(appState.skills, enabled: false)
+                } label: {
+                    Label(AppLocalization.string("Turn All Off"), systemImage: "circle")
+                }
+                Button {
+                    setAll(appState.skills.filter { ($0.usage ?? 0) == 0 }, enabled: false)
+                } label: {
+                    Label(AppLocalization.string("Turn Off Unused"), systemImage: "moon.zzz")
+                }
             }
-            Button {
-                setAll(appState.skills, enabled: false)
-            } label: {
-                Label(AppLocalization.string("Turn All Off"), systemImage: "circle")
-            }
-            Button {
-                setAll(appState.skills.filter { ($0.usage ?? 0) == 0 }, enabled: false)
-            } label: {
-                Label(AppLocalization.string("Turn Off Unused"), systemImage: "moon.zzz")
-            }
+            .disabled(appState.capabilitiesAreKept || !appState.canChangeCapabilities)
         } label: {
             if bulkRunning {
                 ProgressView().controlSize(.small)
@@ -146,7 +151,7 @@ struct CapabilitySkillsTab: View {
     /// the rest were this list's, not the next one's.
     private func setAll(_ skills: [CapabilitySkill], enabled: Bool) {
         let targets = skills.filter { $0.enabled != enabled }.map(\.name)
-        guard !bulkRunning, !targets.isEmpty, let rows = appState.capabilitiesOwner else { return }
+        guard !bulkRunning, !appState.capabilitiesAreKept, !targets.isEmpty, let rows = appState.capabilitiesOwner else { return }
         Haptics.selection()
         bulkRunning = true
         Task {
@@ -185,6 +190,8 @@ enum CapabilitySkillStyle {
 private struct CapabilitySkillRow: View {
     let skill: CapabilitySkill
     let store: CapabilitiesStore
+    /// Off with no dashboard to write through (AppState's canChangeCapabilities).
+    let canChange: Bool
     let setEnabled: (Bool) -> Void
 
     var body: some View {
@@ -211,6 +218,7 @@ private struct CapabilitySkillRow: View {
                 Text(verbatim: skill.name)
             }
             .labelsHidden()
+            .disabled(!canChange)
             .tint(.conduitAccent)
         }
     }
@@ -305,6 +313,7 @@ struct CapabilitySkillDetailPage: View {
                         Text("Turned on")
                             .scaledFont(.subheadline.weight(.semibold))
                     }
+                    .disabled(!appState.canChangeCapabilities)
                     .tint(.conduitAccent)
                 }
             }

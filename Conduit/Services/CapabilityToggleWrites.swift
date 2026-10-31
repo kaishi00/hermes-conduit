@@ -20,6 +20,9 @@ final class CapabilityToggleWrites {
         let error: Error?
         /// The value to show again after a failure; nil to leave the row.
         let restore: Bool?
+        /// Hermes took this flip's own write, whether or not a newer flip
+        /// replaced it: only then is the switch kept.
+        let taken: Bool
     }
 
     private struct Pending {
@@ -56,14 +59,14 @@ final class CapabilityToggleWrites {
         }
         tail = Task { _ = await turn.value }
         let error = await turn.value
-        guard var state = pending[key] else { return Outcome(error: error, restore: nil) }
+        guard var state = pending[key] else { return Outcome(error: error, restore: nil, taken: error == nil) }
         if error == nil { state.confirmed = enabled }
         // A newer flip of this switch is still on its way: it decides.
         guard state.newest == flip else {
             pending[key] = state
-            return Outcome(error: nil, restore: nil)
+            return Outcome(error: nil, restore: nil, taken: error == nil)
         }
         pending[key] = nil
-        return Outcome(error: error, restore: error == nil ? nil : state.confirmed)
+        return Outcome(error: error, restore: error == nil ? nil : state.confirmed, taken: error == nil)
     }
 }
