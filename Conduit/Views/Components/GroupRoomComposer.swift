@@ -603,6 +603,9 @@ struct GroupRoomComposer: View {
         dictation.stop()
         Haptics.light()
         isShowingFullEditor = false
+        // As in a chat: the field lets go after a send unless a Mac or an
+        // iPad keyboard is typing on (ComposerLayout.keepsFocusAfterSend).
+        if !ComposerLayout.keepsFocusAfterSend() { isFocused = false }
         if sendsReply { replyReference = nil }
         if sendsRecipients { recipients = [] }
         if files.isEmpty {
