@@ -1275,8 +1275,10 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertNotEqual(scroller.mode, .restoring)
     }
 
-    /// The deadline doesn't count time in the background: there it starts
-    /// again, and the place is made on the return.
+    /// The deadline doesn't count time in the background: a pause disarms
+    /// it, so the timer that came due there does nothing when it runs on
+    /// the return before the scroller hears of it, and the place is made
+    /// on the return.
     func testRestorationWaitsOutTheBackground() {
         let (scroller, surface) = makeScroller()
         surface.insetTop = 50
@@ -1287,10 +1289,9 @@ final class TranscriptScrollerTests: XCTestCase {
             transcriptRevision: 2,
             viewportTransitionGeneration: 1
         )
-        for _ in 0..<3 {
-            XCTAssertEqual(scheduled.map(\.delay), [TranscriptScroller.restorationDeadline])
-            runScheduled()
-        }
+        clock += 60
+        XCTAssertEqual(scheduled.map(\.delay), [TranscriptScroller.restorationDeadline])
+        runScheduled()
         XCTAssertFalse(events.contains(.abandonRestoration(generation: 9)))
         XCTAssertFalse(scroller.showsJumpToLatest, "no jump button while restoring")
         XCTAssertEqual(scroller.mode, .restoring)
@@ -1298,6 +1299,23 @@ final class TranscriptScrollerTests: XCTestCase {
         scroller.setPaused(false)
         XCTAssertEqual(surface.contentOffsetY, 1950)
         XCTAssertEqual(events.last, .completeRestoration(generation: 9))
+    }
+
+    /// The return arms only the foreground time the place has left.
+    func testTheRestorationDeadlineCountsOnlyForegroundTime() {
+        let (scroller, _) = makeScroller()
+        scroller.restorationRequested(anchorRequest(scroller, row: 5), transcriptRevision: 2)
+        clock += 0.5
+        scroller.setPaused(true)
+        clock += 60
+        runScheduled()
+        XCTAssertEqual(scroller.mode, .restoring, "the deadline that came due in the background does nothing")
+
+        scroller.setPaused(false)
+        XCTAssertEqual(scheduled.map(\.delay), [TranscriptScroller.restorationDeadline - 0.5])
+        runScheduled()
+        XCTAssertNil(scroller.restoration)
+        XCTAssertEqual(events.last, .abandonRestoration(generation: 9))
     }
 
     func testAMissingMessageRequestDoesNotCancelRestoration() {

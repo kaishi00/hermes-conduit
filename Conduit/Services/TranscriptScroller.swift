@@ -191,9 +191,13 @@ final class TranscriptScroller: ObservableObject {
     /// The targets' ids: which rows on screen are the chat's messages.
     private var targetIDs: Set<String> = []
     private(set) var restoration: Restoration?
-    /// Bumped by each restoration asked for or dropped, so only the latest
-    /// deadline acts.
+    /// Bumped by each restoration asked for or dropped, and by a pause, so
+    /// only the latest deadline acts.
     private var restorationDeadlineGeneration: UInt64 = 0
+    /// The foreground time a saved place has waited, and when the current
+    /// stretch of it began: time in the background doesn't count.
+    private var restorationWaited: TimeInterval = 0
+    private var restorationWaitResumed: TimeInterval = 0
     private(set) var topVisibleMessageID: String?
     private(set) var showsJumpToLatest = false
     private(set) var isPaused = false
@@ -364,7 +368,10 @@ final class TranscriptScroller: ObservableObject {
 
     /// A layout pass changed the content's size, the viewport's, the insets
     /// or rows' frames. Runs inside that pass, so what it writes is drawn
-    /// with it.
+    /// with it. The view calls it from its collection view's layout pass,
+    /// which compares the adjusted insets, so a bar's change is seen with
+    /// its final inset: nothing checks again on later turns, as the
+    /// engine's bar check did (#1431).
     func layoutChanged() {
         TranscriptPerf.note(.layoutMetricsChanged)
         ChatViewportWatch.shared.layoutPass()
@@ -443,6 +450,16 @@ final class TranscriptScroller: ObservableObject {
     func setPaused(_ paused: Bool) {
         guard paused != isPaused else { return }
         isPaused = paused
+        if restoration != nil {
+            if paused {
+                // The deadline counts foreground time only: it stops here,
+                // and the return arms what's left.
+                restorationWaited += now() - restorationWaitResumed
+                restorationDeadlineGeneration &+= 1
+            } else {
+                armRestorationDeadline()
+            }
+        }
         guard !paused else { return }
         // Catch up on whatever changed while backgrounded.
         layoutChanged()
@@ -523,10 +540,10 @@ final class TranscriptScroller: ObservableObject {
             emit(.cancelAutomaticRestoration)
         }
         let wasBrowsing = mode == .browsing
-        setMode(.browsing)
-        if let surface {
-            captureAnchor(on: surface, choosing: rowID.map(AnchorChoice.row) ?? .topOfScreen)
-        }
+        let choice: AnchorChoice = rowID.map(AnchorChoice.row) ?? .topOfScreen
+        setMode(.browsing, anchoringOn: choice)
+        // Already browsing, the mode keeps its anchor.
+        if wasBrowsing, let surface { captureAnchor(on: surface, choosing: choice) }
         if !wasBrowsing { emit(.persistSnapshot(renderedSessionKey)) }
         cancelDisclosureSettle()
         let generation = disclosureGeneration
@@ -882,17 +899,22 @@ final class TranscriptScroller: ObservableObject {
     }
 
     private func scheduleRestorationDeadline() {
+        restorationWaited = 0
+        armRestorationDeadline()
+    }
+
+    /// Arms the deadline for the foreground time the saved place has left.
+    /// A pause disarms it, so a timer that comes due in the background and
+    /// runs on the return, before the scroller hears of the return, does
+    /// nothing.
+    private func armRestorationDeadline() {
         restorationDeadlineGeneration &+= 1
+        guard !isPaused else { return }
         let generation = restorationDeadlineGeneration
-        schedule(Self.restorationDeadline) { [weak self] in
+        restorationWaitResumed = now()
+        schedule(max(0, Self.restorationDeadline - restorationWaited)) { [weak self] in
             guard let self, generation == self.restorationDeadlineGeneration,
                   let state = self.restoration else { return }
-            // In the background the wait starts again: nothing is laid out
-            // there.
-            guard !self.isPaused else {
-                self.scheduleRestorationDeadline()
-                return
-            }
             ChatViewportTrace.shared.log("restore abandoned")
             self.dropRestoration()
             self.leaveRestoring()
@@ -1196,14 +1218,14 @@ final class TranscriptScroller: ObservableObject {
         }
     }
 
-    /// Browsing starts on the row the reader is on; leaving it forgets the
-    /// row, and any pin owed to following.
-    private func setMode(_ newMode: Mode) {
+    /// Browsing starts on the row the reader is on (`choice`); leaving it
+    /// forgets the row, and any pin owed to following.
+    private func setMode(_ newMode: Mode, anchoringOn choice: AnchorChoice = .firstOnScreen) {
         guard mode != newMode else { return }
         mode = newMode
         if newMode == .browsing {
             pinOwed = false
-            if let surface { captureAnchor(on: surface) }
+            if let surface { captureAnchor(on: surface, choosing: choice) }
         } else {
             anchor = nil
         }
