@@ -247,7 +247,22 @@ printf '{"schema_version": 1, "status": "%s", "duration_s": %d, "started_at": "%
   "$build_status_token" "$duration" "$started_at" "$finished_at" "$xctestrun" \
   > "$LOG_DIR/build-result.json"
 
+# The first source errors go on the job as annotations, which the API
+# serves when the job log can't be read (it comes from storage some
+# networks can't reach). A step keeps 10 error annotations: 8 errors and
+# the failure line below.
+annotate_source_errors() {
+  grep -E ':[0-9]+:[0-9]+: error: ' "$LOG_DIR/build.log" | grep -F "$PWD/" | awk '!seen[$0]++' | head -n 8 \
+    | while IFS= read -r line; do
+        file="${line%%:*}"; rest="${line#*:}"
+        row="${rest%%:*}"; rest="${rest#*:}"
+        col="${rest%%:*}"; rest="${rest#*: error: }"
+        echo "::error file=${file#"$PWD/"},line=$row,col=$col::${rest//%/%25}"
+      done
+}
+
 if [ "$status" -ne 0 ]; then
+  annotate_source_errors
   echo "::error::build-for-testing failed (exit $status); full log: $LOG_DIR/build.log"
   tail -n 100 "$LOG_DIR/build.log" || true
   exit 1

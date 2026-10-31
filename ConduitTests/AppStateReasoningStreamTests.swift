@@ -153,6 +153,11 @@ final class AppStateReasoningStreamTests: XCTestCase {
         var liveTurnPublishes = 0
         let liveTurnObserver = state.liveTurn.objectWillChange.sink { _ in liveTurnPublishes += 1 }
         defer { liveTurnObserver.cancel() }
+        // The transcript's rows (TranscriptModel) follow the live rows
+        // coming and going, never a delta.
+        var shapes: [LiveTurnShape] = []
+        let shapeObserver = state.liveTurn.$shape.dropFirst().sink { shapes.append($0) }
+        defer { shapeObserver.cancel() }
 
         let thoughts = (0..<30).map { "thought \($0) " }
         for thought in thoughts {
@@ -177,6 +182,11 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(liveReasoningContent(on: state), thoughts.joined())
         XCTAssertTrue(state.isBusy)
         XCTAssertGreaterThan(liveTurnPublishes, 0, "the live rows still update")
+        XCTAssertEqual(
+            shapes.last, LiveTurnShape(thinkingID: state.liveReasoningSegment?.id, streams: true),
+            "the thinking card and the streaming reply show"
+        )
+        XCTAssertLessThanOrEqual(shapes.count, 3, "the rows change as a live row comes or goes, not per delta")
         // The invariant: a streaming turn's deltas touch only `liveTurn`.
         // Anything a delta changes that other screens show is a real change
         // and belongs on a turn edge, not on every delta.

@@ -103,6 +103,9 @@ final class MainThreadHangWatchdog: @unchecked Sendable {
         // One within a minute of the last saved stays in the recorder, for
         // the next trace.
         let saves = recorded && clock.savesTrace(at: now)
+        // This stall's end goes in its own trace or none, never an earlier
+        // stall's.
+        stallTrace = nil
         lock.unlock()
 
         let line = String(format: "stall: main thread away %.1f s", away)
@@ -138,9 +141,12 @@ struct StallClock {
     private var stallStart: TimeInterval?
     private var lastSave: TimeInterval?
 
+    /// A stall the app was suspended in isn't reported as ending: the time
+    /// away would count as the main thread's.
     mutating func start(at now: TimeInterval) {
         lastBeat = now
         lastCheck = now
+        stallStart = nil
     }
 
     /// The main thread's beat. How long the stall it ends lasted, when one

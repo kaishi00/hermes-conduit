@@ -302,6 +302,16 @@ extension ConnectionFailureTests {
         XCTAssertEqual(clock.check(at: 165), 2, "counted from the start over")
         XCTAssertTrue(clock.savesTrace(at: 165))
         XCTAssertEqual(clock.beat(at: 165.5), 2.5)
+
+        // A stall the app goes to the background in: back in the
+        // foreground, the clock starts over and the stall isn't reported as
+        // ending, which would count the time away as the main thread's.
+        XCTAssertNil(clock.check(at: 166))
+        XCTAssertNil(clock.check(at: 167))
+        XCTAssertEqual(clock.check(at: 167.5), 2)
+        clock.start(at: 300)
+        XCTAssertNil(clock.beat(at: 300.5), "no stall ended across the suspension")
+        XCTAssertNil(clock.check(at: 301))
     }
 
     func testChatTracesSendPostsWhatTheRecorderHoldsAndEverySavedTrace() async throws {
