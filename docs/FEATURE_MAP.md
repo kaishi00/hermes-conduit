@@ -1932,7 +1932,7 @@ one can be typed straight away, or gives it up so the keyboard goes down.
 Interrupt), and a message that waits for its chat ("Sends when connected";
 done, #1527) · Stop in Send's place (done, #1527) · the full editor (done,
 #1527: a send from it gives the field focus back as the sheet goes) · group
-rooms' composer (done, #1556: it follows the same rule) · a prediction sent from the suggestion row (done, #1527:
+rooms' composer (done, #1556: it follows the same rule, its full editor included) · a prediction sent from the suggestion row (done, #1527:
 the same send, so it keeps whatever focus the field had) · the plan card, which opens whatever the focus on a Mac or with a hardware
 keyboard (not needed: its check is for the keyboard, not the focus; its
 ruling now says the focus stays, see Plan card) · the resting composer and
@@ -1947,8 +1947,8 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.keepsFocusAfterSend)
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView, ImagePasteTextView.setFocusIntent and didMoveToWindow: a field rebuilt with focus takes it once it's in the window), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`, opened by ComposerBar's expand button (which takes focus from the field) and its sheet
-- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send)
-- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndOnAniPadWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow)
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send; focusesAfterFullEditor, read in the full editor sheet's onDismiss)
+- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow)
 
 **Rulings**
 - On a Mac, or on an iPad with a hardware keyboard, a send or Stop

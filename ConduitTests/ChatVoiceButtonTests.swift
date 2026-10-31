@@ -101,7 +101,7 @@ extension ComposerFullEditorTests {
         XCTAssertTrue(ComposerLayout.staysExpanded(width: 400, idiom: .pad, onMac: true))
     }
 
-    func testComposerKeepsFocusAfterSendOnMacAndOnAniPadWithAHardwareKeyboard() {
+    func testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard() {
         // Typing carries on into the next message, as in a desktop client.
         XCTAssertTrue(ComposerLayout.keepsFocusAfterSend(idiom: .pad, onMac: true, hardwareKeyboard: false))
         XCTAssertTrue(ComposerLayout.keepsFocusAfterSend(idiom: .pad, onMac: false, hardwareKeyboard: true))
