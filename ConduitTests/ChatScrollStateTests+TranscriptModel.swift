@@ -41,9 +41,10 @@ extension ChatScrollStateTests {
     private func rows(
         _ input: TranscriptModel.Input,
         _ targets: [ChatMessageScrollTarget] = [],
-        disclosure: ChatRowDisclosure = ChatRowDisclosure()
+        disclosure: ChatRowDisclosure? = nil
     ) -> [TranscriptRow] {
-        TranscriptModel.rows(for: input, targets: targets, disclosure: disclosure)
+        // A default argument can't make the main actor's disclosure.
+        TranscriptModel.rows(for: input, targets: targets, disclosure: disclosure ?? ChatRowDisclosure())
     }
 
     @MainActor
