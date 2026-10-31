@@ -100,6 +100,7 @@
     "SpeechRecognitionLocaleTests": 0.05,
     "StreamEventParserTests": 0.15,
     "TranscriptPerformanceFixtureTests": 2.628,
+    "TranscriptScrollerTests": 0.5,
     "TurnStateTests": 0.006,
     "VoiceAudioSessionConfigurationTests": 0.015,
     "VoiceAudioSessionQueueTests": 3.0,
