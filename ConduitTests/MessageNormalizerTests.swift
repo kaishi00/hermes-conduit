@@ -180,6 +180,31 @@ final class MessageNormalizerTests: XCTestCase {
         )
     }
 
+    func testGatewayPlatformsAreNamedByTheirHermesSource() {
+        let expected: [(String, SessionSource)] = [
+            ("slack", .slack), ("whatsapp", .whatsapp), ("whatsapp_cloud", .whatsapp),
+            ("signal", .signal), ("bluebubbles", .imessage), ("photon", .imessage),
+            ("matrix", .matrix), ("mattermost", .mattermost), ("teams", .teams),
+            ("google_chat", .googleChat), ("email", .email), ("sms", .sms), ("irc", .irc),
+            ("line", .line), ("simplex", .simplex), ("weixin", .wechat), ("wecom", .wecom),
+            ("wecom_callback", .wecom), ("feishu", .feishu), ("dingtalk", .dingtalk),
+            ("qqbot", .qq), ("yuanbao", .yuanbao), ("buzz", .buzz), ("raft", .raft),
+            ("ntfy", .ntfy), ("a2a", .a2a), ("msgraph_webhook", .webhook),
+            ("api_server", .api), ("Slack", .slack)
+        ]
+        for (source, category) in expected {
+            XCTAssertEqual(MessageNormalizer.classifySource(["source": .string(source)]), category, source)
+        }
+        // The app's own sessions stay chats, and a plugin platform Conduit
+        // doesn't know yet is Other rather than a guess.
+        XCTAssertEqual(MessageNormalizer.classifySource(["source": .string("desktop")]), .chat)
+        XCTAssertEqual(MessageNormalizer.classifySource(["source": .string("relay")]), .other)
+        XCTAssertEqual(MessageNormalizer.classifySource(["source": .string("voice")]), .other)
+        // Every platform has a place in the filter order.
+        XCTAssertTrue(SessionSource.gatewayPlatforms.allSatisfy(AppState.defaultSessionFilterOrder.contains))
+        XCTAssertEqual(Set(AppState.defaultSessionFilterOrder), Set(SessionSource.allCases))
+    }
+
     func testSessionNormalizationLeavesSessionsThatArentChatsOut() {
         let sessions = MessageNormalizer.normalizeSessions(
             .object([
