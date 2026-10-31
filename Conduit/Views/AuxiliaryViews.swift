@@ -2159,7 +2159,7 @@ private struct ChatReturnBehaviorSettings: View {
         ) {
             Group {
                 if usesV2 {
-                    Text("Stored only on this device, not in your Hermes profile. When iOS has closed Conduit while you were away, it opens on the chat you were in; after you swipe it away, on Chats. Choose whether it keeps your exact reading position or follows the newest conversation.")
+                    Text("Stored only on this device, not in your Hermes profile. When iOS has closed Conduit while you were away, it opens on a chat, as when you come back; after you swipe it away, on Chats. Choose whether that chat is the one you left, at your exact reading position, or the newest conversation.")
                 } else {
                     Text("Stored only on this device, not in your Hermes profile. Choose which surface Conduit opens to and whether it preserves your exact reading position or follows the newest conversation.")
                 }

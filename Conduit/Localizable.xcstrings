@@ -304310,84 +304310,84 @@
         }
       }
     },
-    "Stored only on this device, not in your Hermes profile. When iOS has closed Conduit while you were away, it opens on the chat you were in; after you swipe it away, on Chats. Choose whether it keeps your exact reading position or follows the newest conversation.": {
+    "Stored only on this device, not in your Hermes profile. When iOS has closed Conduit while you were away, it opens on a chat, as when you come back; after you swipe it away, on Chats. Choose whether that chat is the one you left, at your exact reading position, or the newest conversation.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nur auf diesem Gerät gespeichert, nicht in deinem Hermes-Profil. Hat iOS Conduit geschlossen, während du weg warst, öffnet es den Chat, in dem du warst; nachdem du es weggewischt hast, die Chats. Wähle, ob deine genaue Leseposition erhalten bleibt oder der neuesten Unterhaltung gefolgt wird."
+            "value": "Nur auf diesem Gerät gespeichert, nicht in deinem Hermes-Profil. Hat iOS Conduit geschlossen, während du weg warst, öffnet es einen Chat, wie bei deiner Rückkehr; nachdem du es weggewischt hast, die Chats. Wähle, ob das der Chat ist, den du verlassen hast, an deiner genauen Leseposition, oder die neueste Unterhaltung."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Se guarda solo en este dispositivo, no en tu perfil de Hermes. Si iOS cerró Conduit mientras no estabas, se abre en el chat en el que estabas; después de cerrarlo deslizando, en Chats. Elige si conserva tu posición exacta de lectura o sigue la conversación más reciente."
+            "value": "Se guarda solo en este dispositivo, no en tu perfil de Hermes. Si iOS cerró Conduit mientras no estabas, se abre en un chat, como cuando vuelves; después de cerrarlo deslizando, en Chats. Elige si ese chat es el que dejaste, en tu posición exacta de lectura, o la conversación más reciente."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enregistré uniquement sur cet appareil, pas dans votre profil Hermes. Si iOS a fermé Conduit pendant votre absence, il s'ouvre sur la discussion où vous étiez ; après l'avoir fermé d'un balayage, sur Discussions. Choisissez s'il conserve votre position de lecture exacte ou suit la conversation la plus récente."
+            "value": "Enregistré uniquement sur cet appareil, pas dans votre profil Hermes. Si iOS a fermé Conduit pendant votre absence, il s'ouvre sur une discussion, comme à votre retour ; après l'avoir fermé d'un balayage, sur Discussions. Choisissez si cette discussion est celle que vous avez quittée, à votre position de lecture exacte, ou la conversation la plus récente."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hanya disimpan di perangkat ini, bukan di profil Hermes Anda. Jika iOS menutup Conduit saat Anda pergi, Conduit terbuka di chat terakhir Anda; setelah Anda menggesernya keluar, di Chat. Pilih apakah Conduit mempertahankan posisi baca Anda secara persis atau mengikuti percakapan terbaru."
+            "value": "Hanya disimpan di perangkat ini, bukan di profil Hermes Anda. Jika iOS menutup Conduit saat Anda pergi, Conduit terbuka di sebuah chat, seperti saat Anda kembali; setelah Anda menggesernya keluar, di Chat. Pilih apakah chat itu adalah yang Anda tinggalkan, di posisi baca persis Anda, atau percakapan terbaru."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Salvato solo su questo dispositivo, non nel tuo profilo Hermes. Se iOS ha chiuso Conduit mentre eri via, si apre sulla chat in cui eri; dopo che lo chiudi con uno swipe, su Chat. Scegli se mantiene la tua esatta posizione di lettura o segue la conversazione più recente."
+            "value": "Salvato solo su questo dispositivo, non nel tuo profilo Hermes. Se iOS ha chiuso Conduit mentre eri via, si apre su una chat, come quando torni; dopo che lo chiudi con uno swipe, su Chat. Scegli se quella chat è quella che hai lasciato, alla tua esatta posizione di lettura, o la conversazione più recente."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermesプロファイルではなく、このデバイスにのみ保存されます。離れている間にiOSがConduitを終了した場合は、開いていたチャットに戻ります。スワイプして終了した後は、チャット一覧で開きます。読んでいた位置を正確に保持するか、最新のチャットに移動するかを選択できます。"
+            "value": "Hermesプロファイルではなく、このデバイスにのみ保存されます。離れている間にiOSがConduitを終了した場合は、戻ったときと同じようにチャットを開きます。スワイプして終了した後は、チャット一覧で開きます。そのチャットを、離れたときのチャットの正確な読書位置にするか、最新のチャットにするかを選択できます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermes 프로필이 아닌 이 기기에만 저장됩니다. 자리를 비운 사이 iOS가 Conduit을 종료했다면 보고 있던 채팅으로 열리고, 직접 쓸어 올려 종료했다면 채팅 목록으로 열립니다. 정확한 읽기 위치를 유지할지, 최신 대화를 따라갈지 선택하세요."
+            "value": "Hermes 프로필이 아닌 이 기기에만 저장됩니다. 자리를 비운 사이 iOS가 Conduit을 종료했다면 돌아왔을 때처럼 채팅으로 열리고, 직접 쓸어 올려 종료했다면 채팅 목록으로 열립니다. 그 채팅을 떠났던 채팅의 정확한 읽기 위치로 할지, 최신 대화로 할지 선택하세요."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zapisywane tylko na tym urządzeniu, nie w Twoim profilu Hermes. Jeśli iOS zamknął Conduit podczas Twojej nieobecności, otwiera się on na czacie, w którym byłeś; po zamknięciu go przesunięciem – na liście Czaty. Wybierz, czy zachowuje dokładne miejsce czytania, czy przechodzi do najnowszej rozmowy."
+            "value": "Zapisywane tylko na tym urządzeniu, nie w Twoim profilu Hermes. Jeśli iOS zamknął Conduit podczas Twojej nieobecności, otwiera się on na czacie, jak po powrocie; po zamknięciu go przesunięciem – na liście Czaty. Wybierz, czy ma to być czat, który opuściłeś, w dokładnym miejscu czytania, czy najnowsza rozmowa."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Armazenado apenas neste dispositivo, não no seu perfil do Hermes. Se o iOS fechou o Conduit enquanto você estava fora, ele abre na conversa em que você estava; depois que você o fecha deslizando, em Chats. Escolha se ele mantém sua posição exata de leitura ou acompanha a conversa mais recente."
+            "value": "Armazenado apenas neste dispositivo, não no seu perfil do Hermes. Se o iOS fechou o Conduit enquanto você estava fora, ele abre em uma conversa, como quando você volta; depois que você o fecha deslizando, em Chats. Escolha se essa conversa é a que você deixou, na sua posição exata de leitura, ou a conversa mais recente."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Хранится только на этом устройстве, а не в вашем профиле Hermes. Если iOS закрыла Conduit, пока вас не было, он откроется в чате, где вы были; после того как вы смахнули его, — в списке чатов. Выберите, сохранять ли точное место чтения или переходить к новейшему разговору."
+            "value": "Хранится только на этом устройстве, а не в вашем профиле Hermes. Если iOS закрыла Conduit, пока вас не было, он откроется в чате, как при возвращении; после того как вы смахнули его, — в списке чатов. Выберите, будет ли это чат, который вы покинули, на точном месте чтения, или новейший разговор."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermes profilinde değil, yalnızca bu cihazda saklanır. Siz yokken iOS Conduit'i kapattıysa, bulunduğunuz sohbette açılır; kaydırarak kapattıktan sonra Sohbetler'de açılır. Tam okuma konumunuzu mu korusun, yoksa en yeni konuşmayı mı izlesin seçin."
+            "value": "Hermes profilinde değil, yalnızca bu cihazda saklanır. Siz yokken iOS Conduit'i kapattıysa, geri döndüğünüzdeki gibi bir sohbette açılır; kaydırarak kapattıktan sonra Sohbetler'de açılır. Bu sohbetin, tam okuma konumunuzla bıraktığınız sohbet mi yoksa en yeni konuşma mı olacağını seçin."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "仅存储在此设备上，不在你的 Hermes 配置中。若 iOS 在你离开时关闭了 Conduit，它会打开你之前所在的聊天；你自己滑动关闭后，则打开“聊天”列表。选择保留你的确切阅读位置，还是跟随最新对话。"
+            "value": "仅存储在此设备上，不在你的 Hermes 配置中。若 iOS 在你离开时关闭了 Conduit，它会像你回来时一样打开一个聊天；你自己滑动关闭后，则打开“聊天”列表。选择这个聊天是你离开时的那个（保留确切阅读位置），还是最新对话。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "僅儲存在此裝置上，不在你的 Hermes 設定檔中。若 iOS 在你離開時關閉了 Conduit，它會開啟你先前所在的聊天；你自己滑動關閉後，則開啟「聊天」列表。選擇保留你的確切閱讀位置，還是跟隨最新對話。"
+            "value": "僅儲存在此裝置上，不在你的 Hermes 設定檔中。若 iOS 在你離開時關閉了 Conduit，它會像你回來時一樣開啟一個聊天；你自己滑動關閉後，則開啟「聊天」列表。選擇這個聊天是你離開時的那個（保留確切閱讀位置），還是最新對話。"
           }
         }
       }

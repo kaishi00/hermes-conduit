@@ -492,14 +492,18 @@ struct V2Shell: View {
     /// the tab is still as the launch left it (no tap took the reader
     /// elsewhere meanwhile).
     @MainActor private func reopenRoomIfWaiting() async {
-        guard let launch = roomToReopen, let roomID = launch.roomID, appState.isConnected else { return }
+        guard let launch = roomToReopen, launch.roomID != nil, appState.isConnected else { return }
         roomToReopen = nil
-        let untouched = { selectedTab == launch.tab && path(of: launch.tab) == launch.path && appState.activeRoomSurface == nil }
-        guard untouched() else { return }
-        if !appState.shownGroupRooms.contains(where: { $0.roomID == roomID }) {
+        // Opened or given up: the record follows what shows from here.
+        defer { conversationOnLeave = conversationToReopen?.encoded ?? "" }
+        let listedRoom = {
+            launch.room(in: appState.shownGroupRooms, tab: selectedTab, path: path(of: launch.tab), roomOpen: appState.activeRoomSurface != nil)
+        }
+        guard launch.isUntouched(tab: selectedTab, path: path(of: launch.tab), roomOpen: appState.activeRoomSurface != nil) else { return }
+        if listedRoom() == nil {
             await appState.refreshGroupChatSupport()
         }
-        guard untouched(), let room = appState.shownGroupRooms.first(where: { $0.roomID == roomID }) else { return }
+        guard let room = listedRoom() else { return }
         await appState.openGroupRoom(room)
     }
 
@@ -563,6 +567,9 @@ struct V2Shell: View {
                 }
             }
             .onChange(of: conversationToReopen, initial: true) { _, kept in
+                // A room still waiting to open keeps its record until it
+                // opens or is given up, so a launch cut short tries again.
+                guard kept != nil || roomToReopen == nil else { return }
                 let value = kept?.encoded ?? ""
                 if conversationOnLeave != value { conversationOnLeave = value }
             }
@@ -1555,6 +1562,19 @@ struct V2ReopenedConversation: Codable, Equatable {
         var tab: V2Tab
         var path: [V2Route]
         var roomID: String?
+
+        /// The tab is still as the launch left it: no tap took the reader
+        /// elsewhere, and no room opened another way.
+        func isUntouched(tab shown: V2Tab, path shownPath: [V2Route], roomOpen: Bool) -> Bool {
+            shown == tab && shownPath == path && !roomOpen
+        }
+
+        /// The room to open again: only while the tab is untouched, and
+        /// only one Hermes still lists (a disbanded room never reopens).
+        func room(in rooms: [GroupRoom], tab shown: V2Tab, path shownPath: [V2Route], roomOpen: Bool) -> GroupRoom? {
+            guard let roomID, isUntouched(tab: shown, path: shownPath, roomOpen: roomOpen) else { return nil }
+            return rooms.first { $0.roomID == roomID && !$0.isDisbanded }
+        }
     }
 
     /// What the window keeps: where the showing chat or room is, or
