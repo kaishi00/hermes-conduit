@@ -46,18 +46,10 @@ struct MarkupBlock: View {
     @Environment(\.markupDrawsInPlace) private var drawsInPlace
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.chatTextSize) private var chatTextSize
-    /// The chat's scroll engine, which says when the card takes its height.
-    @Environment(\.chatRowDisclosure) private var disclosure
     /// The room the card holds and the height it has taken (#1238).
     @StateObject private var cardHeight = ChatCardHeight()
-    /// The block's frame, and a failure waiting to take the drawing's
-    /// place (#1238).
-    @StateObject private var fallbackArrival = ChatRowArrival()
     /// A page's failure, when it reported one or never reported.
     @State private var report: MarkupDrawReport?
-    /// The page whose failure shows: it takes the drawing's place only
-    /// once the scroll engine lets it.
-    @State private var shownFailure: MarkupDrawKey?
     /// Bumped by Try again, which rebuilds the page.
     @State private var attempt = 0
     @State private var showsFullScreen = false
@@ -87,9 +79,9 @@ struct MarkupBlock: View {
     private var draws: Bool { isComplete && drawsInPlace }
 
     /// What the current page reported and shows; nil while it's still
-    /// drawing, or while its failure waits to take the drawing's place.
+    /// drawing.
     private var outcome: MarkupDrawReport.Outcome? {
-        report?.key == key && shownFailure == key ? report?.outcome : nil
+        report?.key == key ? report?.outcome : nil
     }
 
     var body: some View {
@@ -110,22 +102,14 @@ struct MarkupBlock: View {
         .sheet(isPresented: $showsFullScreen) {
             MarkupPreviewSheet(document: document)
         }
-        .chatRowFrame(fallbackArrival)
-        // A failure still waiting goes with the block and comes back with
-        // it, since the page doesn't report again.
-        .onDisappear { fallbackArrival.rowDisappeared() }
-        .onAppear {
-            if report?.key == key { showFailure(of: key) }
-        }
         .task(id: MarkupDrawTask(key: key, draws: draws)) {
             await offerRetryIfStillDrawing()
         }
         // Another page (the theme or text size changed, Try again) draws in
         // the same room and shows once it reports; a failure the page before
-        // reported goes with it.
+        // reported goes with it (`outcome`).
         .onChange(of: key) {
             cardHeight.pageReplaced()
-            fallbackArrival.rowDisappeared()
         }
     }
 
@@ -183,11 +167,10 @@ struct MarkupBlock: View {
         .frame(maxWidth: .infinity)
         // The room the page draws in, held from the card's first frame and
         // through a redraw; it changes only when the page has measured
-        // itself and the scroll engine lets the card take the height.
+        // itself.
         .frame(height: cardHeight.frameHeight(
             reserving: TranscriptPictureMemory.height(for: Self.heightKey(for: document)) ?? Self.placeholderHeight(for: kind)
         ))
-        .cardStackFrame(cardHeight)
         .opacity(drawnHeight == nil ? 0 : 1)
         .overlay {
             if drawnHeight == nil {
@@ -248,20 +231,11 @@ struct MarkupBlock: View {
             TranscriptPictureMemory.rememberHeight(height, for: Self.heightKey(for: key.document))
             // A page already replaced reports to nobody.
             guard key == self.key else { return }
-            cardHeight.pageMeasured(height, page: key, engine: disclosure?.engine)
+            cardHeight.pageMeasured(height, page: key)
         case .failed(let detail):
             guard key == self.key else { return }
             report = MarkupDrawReport(key: key, outcome: .failed(detail))
-            showFailure(of: key)
         }
-    }
-
-    /// The failure takes the drawing's place once the reader's scrolling
-    /// allows, the way a card takes its height, with a height only its
-    /// layout tells (#1238).
-    private func showFailure(of key: MarkupDrawKey) {
-        guard shownFailure != key else { return }
-        fallbackArrival.arrive(rowHeight: nil, engine: disclosure?.engine) { shownFailure = key }
     }
 
     /// A page that never reports (the renderer didn't download, WebKit
@@ -270,9 +244,8 @@ struct MarkupBlock: View {
         guard draws, outcome == nil, drawnHeight == nil else { return }
         let key = self.key
         try? await Task.sleep(for: Self.drawTimeout)
-        guard !Task.isCancelled, report?.key != key, !cardHeight.hasMeasured(key) else { return }
+        guard !Task.isCancelled, report?.key != key, !cardHeight.isDrawn(key) else { return }
         report = MarkupDrawReport(key: key, outcome: .failed(nil))
-        showFailure(of: key)
     }
 
     /// Where a page's height is kept across launches: by what decides it,

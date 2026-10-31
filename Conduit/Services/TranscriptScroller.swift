@@ -73,19 +73,54 @@ enum TranscriptScrollerEvent: Equatable {
     case abandonRestoration(generation: UInt64)
 }
 
+/// The viewport values ChatView renders from. Published only when one of
+/// them changes, so scrolling itself never re-evaluates the chat.
+struct ChatScrollRenderInputs: Equatable {
+    var renderedSessionKey: ChatScrollSessionKey?
+    var renderedScrollScope: ChatRenderedScrollScope?
+    /// The target cache's rendering revision. The scope above carries it
+    /// too, but only while a session is rendered; rows without a session
+    /// key must still re-run the body when they change.
+    var targetsRevision: UInt64 = 0
+}
+
+/// The viewport values the chat's jump buttons render from. They change as
+/// the reader scrolls (a drag leaves the latest message, the jump button
+/// appears a screen up), so they publish on their own object: ChatView
+/// re-running for them would re-run every row in the transcript, a hitch at
+/// the start of each scroll.
+struct ChatScrollChromeInputs: Equatable {
+    var isFollowingLatest = true
+    var showsJumpToLatest = false
+    var visibilityTrackedMessageID: String? = nil
+    var isVisibilityTrackedMessageOffscreen = false
+}
+
 /// The values the chat's jump buttons draw from, on their own object so the
-/// chat doesn't redraw as the reader scrolls (as ChatScrollChrome).
+/// chat doesn't redraw as the reader scrolls.
 @MainActor
 final class TranscriptScrollChrome: ObservableObject {
     @Published fileprivate(set) var inputs = ChatScrollChromeInputs()
 }
 
+/// Settings > Chat: a reply longer than the screen stops at its start
+/// instead of following its end (#365). Device setting, shared through
+/// Sync across devices; on by default.
+enum ChatReplyStartPreference {
+    static let key = "conduit.chat.stopAtReplyStart"
+    static let defaultOn = true
+
+    static var isOn: Bool {
+        UserDefaults.standard.object(forKey: key) as? Bool ?? defaultOn
+    }
+}
+
 /// Owns the chat transcript's scroll position (#1533, the transcript
 /// rewrite): a state machine in plain Swift, apart from UIKit, so its rules
-/// can be read and tested whole. It keeps ChatScrollEngine's rules
-/// (TranscriptScrollerTests ports ChatScrollEngineTests rule by rule)
-/// without the work the lazy stack made for them: every row has a frame
-/// here, so a place is found at once.
+/// can be read and tested whole. It keeps the rules of the lazy stack's
+/// scroll engine it replaced (TranscriptScrollerTests ported that engine's
+/// tests rule by rule) without the work the stack made for them: every row
+/// has a frame here, so a place is found at once.
 ///
 /// - Following: the reader is at the latest message, and each layout pass
 ///   puts them back there in that pass, with no animation.
@@ -1040,6 +1075,12 @@ final class TranscriptScroller: ObservableObject {
         if let above, !rows.contains(where: { $0.id == above.id }) {
             rows.append(above)
         }
+        // The Load earlier row stays first as a page lands under it, so
+        // staying on it would take the reader to that page: it stands in
+        // last.
+        if let index = rows.firstIndex(where: { $0.id == TranscriptRow.loadEarlierID }) {
+            rows.append(rows.remove(at: index))
+        }
         anchor = rows.isEmpty ? nil : Anchor(places: rows.map { Anchor.Place(id: $0.id, top: $0.minY - top) })
     }
 
@@ -1213,7 +1254,7 @@ final class TranscriptScroller: ObservableObject {
         ))
         writeDepth += 1
         defer { writeDepth -= 1 }
-        ChatViewportWatch.shared.engineWrites(animated: animated) {
+        ChatViewportWatch.shared.scrollerWrites(animated: animated) {
             surface.setContentOffsetY(y, animated: animated)
         }
     }

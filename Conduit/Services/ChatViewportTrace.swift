@@ -3,9 +3,10 @@ import os
 
 /// The chat transcript's recorder, in every build (#1533): the last 2,000
 /// things the transcript did. ChatView logs the commands it sends to
-/// ChatScrollEngine (ChatViewportWatch.command), the engine logs each offset
-/// it writes with the rule that asked, its mode changes and what SwiftUI
-/// reported, and the scroll view logs its size and inset changes. A line
+/// TranscriptScroller (ChatViewportWatch.command), the scroller logs each
+/// offset it writes with the rule that asked and its mode changes, the
+/// layout each row that changes height, and the collection view its size,
+/// inset and content height changes. A line
 /// names counts, sizes, offsets and timings, never message text, titles or
 /// file names. The watchers (ChatViewportWatch, MainThreadHangWatchdog) save
 /// the ring as a trace (ChatTraceStore) when the chat jumps, its layout runs

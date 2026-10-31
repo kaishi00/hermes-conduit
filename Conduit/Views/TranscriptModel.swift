@@ -197,8 +197,7 @@ struct TranscriptModel {
 
         /// Its rows, in order: the open thinking card, the reply streaming
         /// in, and the working line while nothing streams yet or another
-        /// device gets the reply. The scroll engine's live tail is the same
-        /// rule (ChatView.liveTurn), so both always agree.
+        /// device gets the reply.
         var rows: [TranscriptRow] {
             guard isShown else { return [] }
             var rows: [TranscriptRow] = []
@@ -216,14 +215,12 @@ struct TranscriptModel {
             }
             return rows
         }
-
-        var hasRows: Bool { !rows.isEmpty }
     }
 
     /// Everything that decides the rows besides the targets themselves,
     /// which `targetsRevision` stands for.
     struct Input: Equatable {
-        /// The scroll engine's target cache revision: its targets are the
+        /// The scroller's target cache revision: its targets are the
         /// chat's rows (AppState.chatRowsOnScreen).
         var targetsRevision: UInt64 = 0
         /// The conversation drawn: opened and closed rows are remembered
@@ -243,7 +240,7 @@ struct TranscriptModel {
         var loadsEarlier = false
         var isLoadingEarlier = false
         /// The chat on screen has rows (AppState.chatRowsOnScreen) the
-        /// engine hasn't been given yet, as on a new view's first pass:
+        /// scroller hasn't been given yet, as on a new view's first pass:
         /// it isn't an empty chat, or a saved copy without rows.
         var rowsOnTheirWay = false
         /// The saved copy is the chat on screen.
