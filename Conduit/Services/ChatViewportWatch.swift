@@ -5,13 +5,13 @@ import Foundation
 /// recorder's lines (ChatViewportTrace) as a trace when it happens (#1533):
 ///
 /// - A jump: the offset moves more than a screen at once with no finger or
-///   momentum on it, and no command, offset write of the engine's, resize
+///   momentum on it, and no command, offset write of the scroller's, resize
 ///   or newly attached scroll view in the second before.
 /// - A layout storm: layout runs more than 30 times a second for 3 seconds
 ///   while no row changes (a reply streaming in grows its row, which
 ///   counts) and the reader isn't scrolling, which is what a chat that
 ///   stops taking scrolls and typing would look like.
-/// - The blank-screen recovery rebuilding the scroll view.
+/// - A group room's blank-screen recovery rebuilding its scroll view.
 ///
 /// Each saves at most once a minute. A stall is MainThreadHangWatchdog's.
 @MainActor
@@ -21,7 +21,7 @@ final class ChatViewportWatch {
     static let stormPassesPerSecond = 30
     static let stormSeconds = 3
     /// How long after a command, a resize or another scroll view a move is
-    /// taken as theirs: the engine can wait for layout before it writes.
+    /// taken as theirs: a group room can wait for layout before it writes.
     static let askedWindow: CFAbsoluteTime = 1
     /// UIKit's animated offset change runs about a third of a second.
     static let animatedWriteWindow: CFAbsoluteTime = 0.6
@@ -31,8 +31,8 @@ final class ChatViewportWatch {
     private let save: (ChatTraceReason) -> Void
 
     private var askedUntil: CFAbsoluteTime = 0
-    /// The engine is writing the offset: the move it makes arrives inside,
-    /// and so can a write that move brings on.
+    /// The scroller is writing the offset: the move it makes arrives
+    /// inside, and so can a write that move brings on.
     private var writeDepth = 0
     private var savedAt: [ChatTraceReason: CFAbsoluteTime] = [:]
     // The layout storm's count, one second at a time.
@@ -50,9 +50,9 @@ final class ChatViewportWatch {
         self.save = save
     }
 
-    /// ChatView sent the engine a command (the jump button, Load earlier, a
-    /// title tap, another chat or profile): logged, and the moves it brings
-    /// are asked for.
+    /// ChatView sent the scroller a command (the jump button, Load earlier,
+    /// a title tap, another chat or profile): logged, and the moves it
+    /// brings are asked for.
     func command(_ text: String) {
         ChatViewportTrace.shared.log("event \(text)")
         askedUntil = max(askedUntil, now() + Self.askedWindow)
@@ -64,8 +64,8 @@ final class ChatViewportWatch {
         askedUntil = max(askedUntil, now() + Self.askedWindow)
     }
 
-    /// The engine writes the offset inside `write`.
-    func engineWrites(animated: Bool, _ write: () -> Void) {
+    /// The scroller writes the offset inside `write`.
+    func scrollerWrites(animated: Bool, _ write: () -> Void) {
         writeDepth += 1
         write()
         writeDepth -= 1
@@ -89,8 +89,8 @@ final class ChatViewportWatch {
         saveOnce(.jump, at: time)
     }
 
-    /// A layout pass showed: the content's size changed, or SwiftUI reported
-    /// row frames.
+    /// A layout pass changed the transcript's frames, its size or its
+    /// insets.
     func layoutPass() {
         roll(to: now())
         passes += 1
@@ -102,26 +102,14 @@ final class ChatViewportWatch {
         rowsChanged = true
     }
 
-    /// The running turn's rows reported their frames. One that came, went
-    /// or changed height (a reply streaming in, a step arriving) is content
-    /// arriving, as the transcript's rows changing is; rows that only moved
-    /// are a layout pass.
-    func liveRowsLaidOut(from old: [String: ChatScrollRowFrame], to new: [String: ChatScrollRowFrame]) {
-        if Self.resized(from: old, to: new) {
-            transcriptChanged()
-        } else {
-            layoutPass()
-        }
+    /// A row changed height (a reply streaming in, a step arriving, a
+    /// picture loading): content arriving, as the transcript's rows
+    /// changing is.
+    func rowResized() {
+        transcriptChanged()
     }
 
-    nonisolated static func resized(from old: [String: ChatScrollRowFrame], to new: [String: ChatScrollRowFrame]) -> Bool {
-        old.count != new.count || new.contains { id, frame in
-            guard let before = old[id] else { return true }
-            return abs((frame.maxY - frame.minY) - (before.maxY - before.minY)) > 0.5
-        }
-    }
-
-    /// The blank-screen recovery is rebuilding the scroll view.
+    /// A group room's blank-screen recovery is rebuilding its scroll view.
     func blankViewportRebuilt() {
         saveOnce(.rebuild, at: now())
     }

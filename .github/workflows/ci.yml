@@ -107,6 +107,13 @@ jobs:
         # sizes while the text around it grows (#830).
         run: python3 scripts/check-fixed-text-sizes.py --repo-root .
 
+      - name: Transcript rows get the chat's environment
+        # Each transcript row draws in a hosting controller of its own, so
+        # it inherits nothing from ChatView: every Conduit environment key
+        # is copied through TranscriptCellEnvironment or set in the rows
+        # (#1533).
+        run: python3 scripts/check-transcript-environment.py --repo-root .
+
       - name: Recommended plugin version matches the plugin
         # Conduit only offers the plugin update to hosts below
         # NotifierPluginStatus.recommendedVersion, so it must follow every

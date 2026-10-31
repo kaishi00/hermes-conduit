@@ -39,14 +39,9 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     /// Scopes where the page's height is kept across launches; nil (a
     /// surface that sets no resolver) keeps it by path alone.
     @Environment(\.gatewayMediaFiles) private var gatewayMediaFiles
-    /// The chat's scroll engine, which says when the card takes its height.
-    @Environment(\.chatRowDisclosure) private var disclosure
     @State private var state: LoadState = .loading
     /// The room the card holds and the height it has taken (#1238).
     @StateObject private var cardHeight = ChatCardHeight()
-    /// The block's frame, and the file card waiting to take the card's
-    /// place, or the card the file card's (#1238).
-    @StateObject private var fallbackArrival = ChatRowArrival()
     /// Counts the file's loads; each page reports under its own number.
     @State private var load = 0
     @State private var showsFullScreen = false
@@ -92,10 +87,6 @@ struct HTMLPreviewBlock<Fallback: View>: View {
                 card
             }
         }
-        .chatRowFrame(fallbackArrival)
-        // A swap still waiting goes with the block; its task reads the file
-        // again when the block is back.
-        .onDisappear { fallbackArrival.rowDisappeared() }
         .task(id: LoadKey(path: path, draws: draws)) {
             await loadDocument()
         }
@@ -106,8 +97,8 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             header
             // The page's room, held from the card's first frame: the file
             // loading, the page drawing and a reload all happen inside it,
-            // and it changes only when the page has measured itself and the
-            // scroll engine lets the card take the height (ChatCardHeight).
+            // and it changes only when the page has measured itself
+            // (ChatCardHeight).
             ZStack {
                 if case .loaded(let html) = state {
                     page(html)
@@ -124,7 +115,6 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             .frame(height: cardHeight.frameHeight(
                 reserving: TranscriptPictureMemory.height(for: heightKey) ?? HTMLPreviewPage.placeholderHeight
             ))
-            .cardStackFrame(cardHeight)
         }
         .padding(12)
         .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
@@ -171,14 +161,13 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         let drawn = isDrawn
         let load = self.load
         let heightKey = self.heightKey
-        let engine = disclosure?.engine
         HTMLPreviewWebView(
             html: HTMLPreviewPage.framed(html, theme: HTMLPreviewTheme(light: light), presentation: .inline),
             interactive: false,
             onHeight: { height in
                 let clamped = HTMLPreviewPage.clampedInlineHeight(height)
                 TranscriptPictureMemory.rememberHeight(clamped, for: heightKey)
-                cardHeight.pageMeasured(clamped, page: load, engine: engine)
+                cardHeight.pageMeasured(clamped, page: load)
             },
             // WebKit kept ending the page's process: the file card instead
             // of a blank frame.
@@ -198,7 +187,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             // A page that never reports (WebKit stalled, the file isn't
             // really a page) turns into the file card.
             try? await Task.sleep(for: Self.drawTimeout)
-            guard !Task.isCancelled, !cardHeight.hasMeasured(load) else { return }
+            guard !Task.isCancelled, !cardHeight.isDrawn(load) else { return }
             fallBack()
         }
         .accessibilityElement(children: .ignore)
@@ -237,20 +226,13 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             if !showsFileCard { fallBack() }
             return
         }
-        guard showsFileCard else {
-            state = .loaded(html)
-            return
-        }
-        // The card takes the file card's place the way the file card took
-        // its own.
-        fallbackArrival.arrive(rowHeight: nil, engine: disclosure?.engine) { state = .loaded(html) }
+        // A block showing its file card turns back into the card.
+        state = .loaded(html)
     }
 
-    /// The page can't be drawn: the file card takes the card's place once
-    /// the reader's scrolling allows, the way a card takes its height, with
-    /// a height only its layout tells (#1238).
+    /// The page can't be drawn: the file card takes the card's place.
     private func fallBack() {
-        fallbackArrival.arrive(rowHeight: nil, engine: disclosure?.engine) { state = .unavailable }
+        state = .unavailable
     }
 
     private struct LoadKey: Hashable {

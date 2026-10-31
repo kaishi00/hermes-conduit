@@ -3203,25 +3203,19 @@ final class HermesClient: ObservableObject {
         return state
     }
 
-    func modelOptions(sessionId: String? = nil) async throws -> (model: String?, provider: String?, providers: [ProviderInfo]?) {
+    /// Hermes' models (`model.options`), for the model pickers, as the
+    /// answer came, which they keep (AppState.modelProviders(in:) reads it).
+    /// Its rows also carry each signed-in provider's subscription windows
+    /// and rate limit from Hermes' cache, Settings > Usage's quota (#813),
+    /// and asking starts Hermes' background refresh of that cache. The model
+    /// sheet names its chat's session.
+    func modelOptionsAnswer(sessionId: String? = nil) async throws -> [String: Any] {
         var params: [String: Any] = ["explicit_only": true]
         if let sessionId { params["session_id"] = sessionId }
         let result = try await rpc("model.options", params: params)
-        let obj = result.objectValue ?? [:]
-        let model = obj["model"]?.stringValue
-        let provider = obj["provider"]?.stringValue
-        let providers = (obj["providers"]?.arrayValue ?? []).compactMap { ProviderInfo(from: $0) }
-        return (model, provider, providers)
-    }
-
-    /// Settings > Usage's quota (#813): `model.options` rows carry each
-    /// signed-in provider's subscription windows and rate limit from Hermes'
-    /// cache, and asking starts Hermes' background refresh of that cache.
-    /// The answer as it came, which the page keeps (ProviderQuota.list
-    /// reads it).
-    func providerQuotaAnswer() async throws -> [String: Any] {
-        let result = try await rpc("model.options", params: ["explicit_only": true])
-        return result.anyValue as? [String: Any] ?? [:]
+        // Anything but an answer is a failed read, never one with no models.
+        guard let answer = result.anyValue as? [String: Any] else { throw HermesError.invalidResponse }
+        return answer
     }
 
     /// The gateway can answer without switching: a guarded pick (expensive
@@ -4210,11 +4204,18 @@ enum MessageNormalizer {
 
     static func classifySource(_ obj: [String: AnyCodable]) -> SessionSource {
         // CRITICAL: classify BEFORE the chat whitelist (build 18 fix).
-        // discord/telegram/webhook/api are NOT in the chat whitelist, so if we
+        // The messaging platforms, webhook and api are NOT in the chat whitelist, so if we
         // test them against it, everything falls through to 'other'.
 
         let directSources = ["source", "origin", "platform"].compactMap { obj[$0]?.stringValue?.lowercased() }.filter { !$0.isEmpty }
-        let handoffSource = (obj["handoff_platform"]?.stringValue ?? "").lowercased()
+        // A handoff names where the chat went only once it completed: Hermes
+        // keeps the platform on a pending or failed one, and that chat is
+        // still where it started. A host that reports no state files by the
+        // platform, as before.
+        let handoffState = (obj["handoff_state"]?.stringValue ?? "").lowercased()
+        let handoffSource = handoffState.isEmpty || handoffState == "completed"
+            ? (obj["handoff_platform"]?.stringValue ?? "").lowercased()
+            : ""
 
         // Check for cron metadata
         let hasCronMeta = ["cron_job_id", "cron_run_id", "scheduled_job_id", "schedule_id"].contains { obj[$0] != nil && obj[$0] != .null }
@@ -4232,8 +4233,31 @@ enum MessageNormalizer {
             switch source {
             case "discord": return .discord
             case "telegram": return .telegram
-            case "webhook": return .webhook
+            case "whatsapp", "whatsapp_cloud": return .whatsapp
+            case "bluebubbles", "photon", "imessage": return .imessage
+            case "wecom", "wecom_callback": return .wecom
+            case "webhook", "msgraph_webhook": return .webhook
             case "api", "api-server", "api_server", "server": return .api
+            case "slack": return .slack
+            case "signal": return .signal
+            case "matrix": return .matrix
+            case "mattermost": return .mattermost
+            case "teams": return .teams
+            case "google_chat": return .googleChat
+            case "email": return .email
+            case "sms": return .sms
+            case "irc": return .irc
+            case "line": return .line
+            case "simplex": return .simplex
+            case "weixin": return .wechat
+            case "feishu": return .feishu
+            case "dingtalk": return .dingtalk
+            case "qqbot": return .qq
+            case "yuanbao": return .yuanbao
+            case "buzz": return .buzz
+            case "raft": return .raft
+            case "ntfy": return .ntfy
+            case "a2a": return .a2a
             default: return nil
             }
         }

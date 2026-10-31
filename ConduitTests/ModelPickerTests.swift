@@ -15,6 +15,40 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertEqual(ModelCatalogState.of(providers: [row], failed: true), .ready)
     }
 
+    /// A picker opens on the models kept from Hermes' last answer (#1533):
+    /// a read that fails keeps them up and says so, Hermes' answer replaces
+    /// them, and with nothing kept it loads, fails and empties as before.
+    func testAPickerOpensOnTheKeptModels() {
+        let kept = ProviderInfo(name: "openai", models: [ModelInfo(id: "gpt-5", label: nil, reasoningCapable: false)])
+        let answer = ProviderInfo(name: "anthropic", models: [ModelInfo(id: "opus", label: nil, reasoningCapable: true)])
+        var catalog = KeptModelCatalog()
+        catalog.showKept([kept])
+        XCTAssertEqual(catalog.state, .ready)
+        XCTAssertFalse(catalog.answered, "The kept models can't be picked until Hermes answers")
+        catalog.readStarted()
+        catalog.readFailed()
+        XCTAssertEqual(catalog.providers, [kept])
+        XCTAssertTrue(catalog.keptRowsFailed, "The kept models stay, saying the read failed")
+        XCTAssertFalse(catalog.answered, "A list that didn't load is never picked from")
+        catalog.readStarted()
+        XCTAssertFalse(catalog.keptRowsFailed, "Try Again asks again")
+        catalog.hermesAnswered([answer])
+        XCTAssertEqual(catalog.providers, [answer])
+        XCTAssertTrue(catalog.answered)
+        catalog.showKept([kept])
+        XCTAssertEqual(catalog.providers, [answer], "Kept models never replace Hermes' answer")
+
+        var fresh = KeptModelCatalog()
+        fresh.showKept([])
+        XCTAssertEqual(fresh.state, .loading, "Nothing kept")
+        fresh.readFailed()
+        XCTAssertEqual(fresh.state, .failed)
+        XCTAssertFalse(fresh.keptRowsFailed, "The failed state says it, with no rows")
+        fresh.readStarted()
+        fresh.hermesAnswered([])
+        XCTAssertEqual(fresh.state, .empty)
+    }
+
     // MARK: - Model switch
 
     func testTapOnlySwitchesModelWhenTheSelectionDiffers() {

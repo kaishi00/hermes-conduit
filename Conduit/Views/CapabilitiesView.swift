@@ -4,6 +4,8 @@ import SwiftUI
 /// and Plugins, each its own tab. Scoped to the active Hermes profile. Skills
 /// and toolsets still load through AppState (the Board's skill picker reads
 /// them too); connectors, plugins and the catalogs live in `CapabilitiesStore`.
+/// Every tab opens on what it showed last time, kept on the phone, while it
+/// asks Hermes again (#1533).
 struct CapabilitiesView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
@@ -22,17 +24,23 @@ struct CapabilitiesView: View {
     @State private var capabilityRequestID = UUID()
     /// The profile and dashboard the store was last pointed at. The tabs show
     /// only once it matches, so their first load never runs against the
-    /// store's previous (or empty) scope.
+    /// store's previous (or empty) scope. It's pointed before the first
+    /// frame, and on a switch before the next one, so the kept lists show
+    /// with no loader first.
     @State private var configuredScope: Scope?
 
     private struct Scope: Hashable {
         let profile: String
+        /// The dashboard open, so a switch made offline, with no bridge
+        /// either side, points the store at the new one's kept lists.
+        let dashboardID: UUID?
         let dashboard: ObjectIdentifier?
     }
 
     private var scope: Scope {
         Scope(
             profile: appState.activeProfile,
+            dashboardID: appState.activeDashboardID,
             dashboard: appState.dashboardTicketBridge.map { ObjectIdentifier($0) }
         )
     }
@@ -67,15 +75,30 @@ struct CapabilitiesView: View {
         .navigationTitle("Capabilities")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .onAppear(perform: configure)
+        .onChange(of: scope) { _, _ in configure() }
         .task(id: scope) {
-            let scope = self.scope
-            store.configure(requester: appState.dashboardTicketBridge, profile: scope.profile)
-            configuredScope = scope
+            configure()
             await loadCapabilities()
         }
         .task(id: SearchLoad(scope: configuredScope, searching: !query.isEmpty)) {
             await loadForSearch()
         }
+    }
+
+    /// Points the store at the active dashboard and profile, and shows
+    /// what the tabs showed last time there.
+    private func configure() {
+        let scope = self.scope
+        guard configuredScope != scope else { return }
+        store.configure(
+            requester: appState.dashboardTicketBridge,
+            profile: scope.profile,
+            answers: appState.screenAnswers(profile: scope.profile),
+            dashboardAnswers: appState.screenAnswers(profile: AppState.KeptRoute.everyProfile)
+        )
+        appState.showKeptCapabilities()
+        configuredScope = scope
     }
 
     // MARK: Search
@@ -207,13 +230,16 @@ struct CapabilitiesView: View {
               searchLoadedScope != scope else { return }
         let store = self.store
         await withTaskGroup(of: Void.self) { group in
-            if store.officialSkills.isEmpty { group.addTask { await store.loadOfficialSkills() } }
+            if store.officialSkills.isEmpty || store.showsKept.contains(.officialSkills) {
+                group.addTask { await store.loadOfficialSkills() }
+            }
             if !store.connectorsLoaded || store.connectorsError != nil { group.addTask { await store.loadConnectors() } }
             if !store.pluginsLoaded || store.pluginsError != nil { group.addTask { await store.loadPlugins() } }
         }
-        // Only a full read counts: one cleared mid-read or failed is tried
-        // again on the next search.
+        // Only a full read counts: one cleared mid-read or failed, or a
+        // kept list Hermes hasn't answered, is tried again on the next search.
         if !Task.isCancelled, configuredScope == scope, !store.officialSkills.isEmpty,
+           !store.showsKept.contains(.officialSkills),
            store.connectorsLoaded, store.connectorsError == nil,
            store.pluginsLoaded, store.pluginsError == nil {
             searchLoadedScope = scope

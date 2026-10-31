@@ -203,7 +203,7 @@ extension SidebarLayoutTests {
     func testCronFilterJoinsASavedOrderBeforeOther() {
         XCTAssertEqual(
             AppState.normalizedSessionFilterOrder(["telegram", "chat", "voice", "voice_job", "discord", "api", "webhook", "other"]),
-            [.telegram, .chat, .voice, .voiceJob, .discord, .api, .webhook, .cron, .other]
+            [.telegram] + SessionSource.gatewayPlatforms + [.chat, .voice, .voiceJob, .discord, .api, .webhook, .cron, .other]
         )
         // A moved Cron filter keeps its place.
         XCTAssertEqual(

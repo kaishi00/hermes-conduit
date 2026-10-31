@@ -1083,6 +1083,88 @@
         }
       }
     },
+    "%@ changed on your host while you were editing. Close this and edit it again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ wurde auf deinem Host geändert, während du ihn bearbeitet hast. Schließe dies und bearbeite es erneut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ cambió en tu host mientras lo editabas. Cierra esto y vuelve a editarlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ a changé sur votre hôte pendant la modification. Fermez ceci et modifiez-le à nouveau."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ berubah di host Anda saat Anda mengedit. Tutup ini lalu edit lagi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ è cambiato sul tuo host mentre lo modificavi. Chiudi e modificalo di nuovo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編集中にホスト上の%@が変更されました。閉じてもう一度編集してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "편집하는 동안 호스트에서 %@이(가) 변경되었습니다. 닫고 다시 편집하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ zmienił się na twoim hoście podczas edycji. Zamknij to i edytuj ponownie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ mudou no seu host enquanto você editava. Feche isto e edite de novo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ изменился на вашем хосте, пока вы редактировали. Закройте и отредактируйте снова."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@, siz düzenlerken ana makinenizde değişti. Bunu kapatıp yeniden düzenleyin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你编辑时，%@ 在主机上发生了更改。请关闭后重新编辑。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你編輯時，%@ 在主機上已變更。請關閉後重新編輯。"
+          }
+        }
+      }
+    },
     "%@ couldn't be read.": {
       "localizations": {
         "de": {
@@ -3189,6 +3271,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 正在處理"
+          }
+        }
+      }
+    },
+    "%@ isn't in this profile's config anymore.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ steht nicht mehr in der Konfiguration dieses Profils."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ya no está en la configuración de este perfil."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ n’est plus dans la configuration de ce profil."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ tidak ada lagi di konfigurasi profil ini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ non è più nella configurazione di questo profilo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ はこのプロファイルの設定にもうありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@이(가) 이 프로필의 설정에 더 이상 없습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ nie ma już w konfiguracji tego profilu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ não está mais na configuração deste perfil."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ больше нет в конфигурации этого профиля."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ artık bu profilin yapılandırmasında değil."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已不在此配置文件的设置中。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已不在此設定檔的設定中。"
           }
         }
       }
@@ -21163,6 +21327,88 @@
         }
       }
     },
+    "A new name signs it out. Sign in again after saving.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein neuer Name meldet ihn ab. Melde dich nach dem Sichern erneut an."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un nombre nuevo cierra su sesión. Vuelve a iniciar sesión después de guardar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un nouveau nom le déconnecte. Reconnectez-vous après l’enregistrement."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nama baru akan mengeluarkannya. Masuk lagi setelah menyimpan."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un nuovo nome lo disconnette. Accedi di nuovo dopo aver salvato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名前を変えるとサインアウトされます。保存後にもう一度サインインしてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이름을 바꾸면 로그아웃됩니다. 저장한 뒤 다시 로그인하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nowa nazwa go wyloguje. Zaloguj się ponownie po zapisaniu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um nome novo encerra a sessão dele. Entre de novo depois de salvar."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новое имя выполнит выход с этого сервера. После сохранения войдите снова."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni bir ad oturumunu kapatır. Kaydettikten sonra yeniden oturum açın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改名会让它退出登录。保存后请重新登录。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改名會讓它登出。儲存後請重新登入。"
+          }
+        }
+      }
+    },
     "A newer Conduit plugin is available for %@. Conduit can update it for you.": {
       "localizations": {
         "de": {
@@ -33333,6 +33579,88 @@
         }
       }
     },
+    "Another server is already called %@.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein anderer Server heißt bereits %@."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otro servidor ya se llama %@."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un autre serveur s’appelle déjà %@."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server lain sudah bernama %@."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un altro server si chiama già %@."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ という名前のサーバーがすでにあります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@(이)라는 서버가 이미 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inny serwer nazywa się już %@."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outro servidor já se chama %@."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Другой сервер уже называется %@."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başka bir sunucunun adı zaten %@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已有另一个服务器名为 %@。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已有另一個伺服器名為 %@。"
+          }
+        }
+      }
+    },
     "Answer in your own words.": {
       "localizations": {
         "de": {
@@ -38713,6 +39041,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "區域"
+          }
+        }
+      }
+    },
+    "Arguments": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Argumente"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Argumentos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arguments"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Argumen"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Argomenti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "引数"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "인수"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Argumenty"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Argumentos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Аргументы"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Argümanlar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "参数"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "引數"
           }
         }
       }
@@ -53561,6 +53971,170 @@
           "stringUnit": {
             "state": "translated",
             "value": "Hermes 來電使用 API 金鑰"
+          }
+        }
+      }
+    },
+    "Calls from your Apple Watch, and from Siri or the Action button when the shortcut names no profile, use the profile open on your iPhone.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anrufe von deiner Apple Watch sowie von Siri oder der Aktionstaste, wenn der Kurzbefehl kein Profil nennt, nutzen das auf deinem iPhone geöffnete Profil."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las llamadas desde tu Apple Watch, y desde Siri o el botón de acción cuando el atajo no indica un perfil, usan el perfil abierto en tu iPhone."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les appels depuis votre Apple Watch, et depuis Siri ou le bouton Action quand le raccourci ne nomme aucun profil, utilisent le profil ouvert sur votre iPhone."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panggilan dari Apple Watch, dan dari Siri atau tombol Tindakan saat pintasan tidak menyebut profil, memakai profil yang terbuka di iPhone kamu."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le chiamate dal tuo Apple Watch, e da Siri o dal tasto Azione quando l’abbreviazione non indica un profilo, usano il profilo aperto sul tuo iPhone."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Watchからの通話と、ショートカットがプロファイルを指定していないときのSiriやアクションボタンからの通話は、iPhoneで開いているプロファイルを使います。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Watch에서 건 통화와, 단축어에 프로필이 지정되지 않았을 때 Siri나 동작 버튼으로 건 통화는 iPhone에서 열린 프로필을 사용해요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Połączenia z Apple Watch oraz z Siri lub przycisku czynności, gdy skrót nie wskazuje profilu, używają profilu otwartego na iPhonie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As chamadas do seu Apple Watch, e da Siri ou do botão de Ação quando o atalho não indica um perfil, usam o perfil aberto no seu iPhone."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Звонки с Apple Watch, а также из Siri или кнопки действия, если быстрая команда не указывает профиль, используют профиль, открытый на iPhone."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Watch’tan yapılan aramalar ile kestirme bir profil belirtmediğinde Siri’den veya Eylem düğmesinden yapılan aramalar, iPhone’unda açık olan profili kullanır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自 Apple Watch 的通话，以及快捷指令未指定档案时来自 Siri 或操作按钮的通话，使用 iPhone 上打开的档案。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "來自 Apple Watch 的通話，以及捷徑未指定設定檔時來自 Siri 或動作按鈕的通話，會使用 iPhone 上開啟的設定檔。"
+          }
+        }
+      }
+    },
+    "Calls from your Apple Watch, and from Siri or the Action button when the shortcut names no profile, use %@. A Watch call doesn't switch your iPhone's profile; a Siri call does. Answering a call from Hermes keeps that call's profile.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anrufe von deiner Apple Watch sowie von Siri oder der Aktionstaste, wenn der Kurzbefehl kein Profil nennt, nutzen %@. Ein Watch-Anruf wechselt das Profil deines iPhone nicht; ein Siri-Anruf schon. Wenn du einen Anruf von Hermes annimmst, behält er sein eigenes Profil."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las llamadas desde tu Apple Watch, y desde Siri o el botón de acción cuando el atajo no indica un perfil, usan %@. Una llamada del Watch no cambia el perfil de tu iPhone; una llamada de Siri sí. Al contestar una llamada de Hermes, se mantiene el perfil de esa llamada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les appels depuis votre Apple Watch, et depuis Siri ou le bouton Action quand le raccourci ne nomme aucun profil, utilisent %@. Un appel depuis l’Apple Watch ne change pas le profil de votre iPhone ; un appel Siri, si. Répondre à un appel de Hermes garde le profil de cet appel."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panggilan dari Apple Watch, dan dari Siri atau tombol Tindakan saat pintasan tidak menyebut profil, memakai %@. Panggilan Watch tidak mengganti profil iPhone kamu; panggilan Siri menggantinya. Menjawab panggilan dari Hermes tetap memakai profil panggilan itu."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le chiamate dal tuo Apple Watch, e da Siri o dal tasto Azione quando l’abbreviazione non indica un profilo, usano %@. Una chiamata dal Watch non cambia il profilo dell’iPhone; una chiamata Siri sì. Rispondendo a una chiamata di Hermes resta il profilo di quella chiamata."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Watchからの通話と、ショートカットがプロファイルを指定していないときのSiriやアクションボタンからの通話は、%@を使います。Watchからの通話ではiPhoneのプロファイルはそのままで、Siriからの通話では切り替わります。Hermesからの通話に応答すると、その通話のプロファイルのままになります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Watch에서 건 통화와, 단축어에 프로필이 지정되지 않았을 때 Siri나 동작 버튼으로 건 통화는 %@ 프로필을 사용해요. Watch 통화는 iPhone의 프로필을 그대로 두고, Siri 통화는 프로필을 전환해요. Hermes에서 온 전화를 받으면 그 통화의 프로필을 유지해요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Połączenia z Apple Watch oraz z Siri lub przycisku czynności, gdy skrót nie wskazuje profilu, używają profilu %@. Połączenie z Watcha nie przełącza profilu iPhone’a; połączenie z Siri go przełącza. Odebrane połączenie od Hermesa zachowuje swój profil."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As chamadas do seu Apple Watch, e da Siri ou do botão de Ação quando o atalho não indica um perfil, usam %@. Uma chamada do Watch não troca o perfil do iPhone; uma chamada da Siri troca. Ao atender uma chamada do Hermes, o perfil dessa chamada é mantido."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Звонки с Apple Watch, а также из Siri или кнопки действия, если быстрая команда не указывает профиль, используют профиль %@. Звонок с Watch не переключает профиль iPhone; звонок через Siri переключает. Принятый звонок от Hermes сохраняет профиль этого звонка."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Watch’tan yapılan aramalar ile kestirme bir profil belirtmediğinde Siri’den veya Eylem düğmesinden yapılan aramalar %@ profilini kullanır. Watch araması iPhone’unun profilini değiştirmez; Siri araması değiştirir. Hermes’ten gelen bir aramayı yanıtladığında o aramanın profili korunur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自 Apple Watch 的通话，以及快捷指令未指定档案时来自 Siri 或操作按钮的通话，使用 %@。Watch 通话不会切换 iPhone 的档案；Siri 通话会切换。接听 Hermes 打来的电话时，保留该通话的档案。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "來自 Apple Watch 的通話，以及捷徑未指定設定檔時來自 Siri 或動作按鈕的通話，會使用 %@。Watch 通話不會切換 iPhone 的設定檔；Siri 通話會切換。接聽 Hermes 打來的電話時，會保留該通話的設定檔。"
           }
         }
       }
@@ -73960,6 +74534,88 @@
         }
       }
     },
+    "Conduit switched to another profile, so nothing was saved.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit hat zu einem anderen Profil gewechselt, daher wurde nichts gesichert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit cambió a otro perfil, así que no se guardó nada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit est passé à un autre profil, donc rien n’a été enregistré."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit beralih ke profil lain, jadi tidak ada yang disimpan."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit è passato a un altro profilo, quindi non è stato salvato nulla."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduitが別のプロファイルに切り替わったため、何も保存されませんでした。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit가 다른 프로필로 전환되어 아무것도 저장되지 않았습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit przełączył się na inny profil, więc nic nie zapisano."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Conduit mudou para outro perfil, então nada foi salvo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit переключился на другой профиль, поэтому ничего не сохранено."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit başka bir profile geçti, bu yüzden hiçbir şey kaydedilmedi."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 已切换到另一个配置文件，因此没有保存任何内容。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 已切換到另一個設定檔，因此沒有儲存任何內容。"
+          }
+        }
+      }
+    },
     "Conduit voice is ready for this profile.": {
       "localizations": {
         "de": {
@@ -92630,6 +93286,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "無法聯絡此代理程式。"
+          }
+        }
+      }
+    },
+    "Couldn't reach this dashboard's notifier.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Notifier dieses Dashboards war nicht erreichbar."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo contactar con el notificador de este panel."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de joindre le plugin de notification de ce tableau de bord."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidak dapat menghubungi notifier dasbor ini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile raggiungere il plugin di notifica di questa dashboard."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このダッシュボードの通知プラグインに接続できませんでした。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 대시보드의 알림 플러그인에 연결할 수 없어요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nie udało się połączyć z wtyczką powiadomień tego panelu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível acessar o notificador deste painel."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось связаться с плагином уведомлений этого дашборда."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu panelin bildirim eklentisine ulaşılamadı."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法连接此仪表板的通知插件。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法連線到此儀表板的通知外掛程式。"
           }
         }
       }
@@ -113422,6 +114160,88 @@
         }
       }
     },
+    "Edit Server": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server bearbeiten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editar servidor"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifier le serveur"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit Server"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifica server"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバーを編集"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버 편집"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edytuj serwer"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editar servidor"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменить сервер"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucuyu Düzenle"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑服务器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編輯伺服器"
+          }
+        }
+      }
+    },
     "Edit and resend": {
       "localizations": {
         "de": {
@@ -113582,6 +114402,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "要編輯並重新傳送這則訊息嗎？"
+          }
+        }
+      }
+    },
+    "Edit as": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bearbeiten als"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editar como"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifier en"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit sebagai"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifica come"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編集方法"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "편집 방식"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edytuj jako"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editar como"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Редактировать как"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Şu şekilde düzenle"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑方式"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編輯方式"
           }
         }
       }
@@ -128765,6 +129667,88 @@
         }
       }
     },
+    "Format": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Formatieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Formatear"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Formater"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Format"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Formatta"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "整形"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "포맷"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Formatuj"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Formatar"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Форматировать"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Biçimlendir"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "格式化"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "格式化"
+          }
+        }
+      }
+    },
     "Formula": {
       "localizations": {
         "de": {
@@ -134101,6 +135085,170 @@
         }
       }
     },
+    "Give the server a name.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gib dem Server einen Namen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ponle un nombre al servidor."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Donnez un nom au serveur."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beri nama server."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dai un nome al server."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバーに名前を付けてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버 이름을 입력하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nadaj serwerowi nazwę."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dê um nome ao servidor."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дайте серверу имя."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucuya bir ad verin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请为服务器命名。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請為伺服器命名。"
+          }
+        }
+      }
+    },
+    "Give the server an address or a command.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gib dem Server eine Adresse oder einen Befehl."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dale al servidor una dirección o un comando."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Donnez au serveur une adresse ou une commande."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beri server alamat atau perintah."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dai al server un indirizzo o un comando."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバーにアドレスかコマンドを指定してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버 주소나 명령을 입력하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Podaj adres lub polecenie serwera."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dê ao servidor um endereço ou um comando."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Укажите адрес или команду сервера."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucuya bir adres veya komut verin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请为服务器填写地址或命令。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請為伺服器填寫位址或指令。"
+          }
+        }
+      }
+    },
     "Go to the approval": {
       "localizations": {
         "de": {
@@ -137705,6 +138853,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "標頭的值不能包含換行。"
+          }
+        }
+      }
+    },
+    "Headers, keys and the rest stay as they are. Change them in JSON.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Header, Schlüssel und alles andere bleiben, wie sie sind. Ändere sie im JSON."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los encabezados, las claves y lo demás se quedan como están. Cámbialos en el JSON."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les en-têtes, les clés et le reste ne changent pas. Modifiez-les dans le JSON."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Header, kunci, dan lainnya tetap seperti semula. Ubah di JSON."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Intestazioni, chiavi e il resto restano come sono. Modificali nel JSON."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ヘッダー、キーなどはそのまま残ります。変更はJSONで行ってください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "헤더, 키 등은 그대로 유지됩니다. JSON에서 변경하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nagłówki, klucze i reszta zostają bez zmian. Zmień je w JSON."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cabeçalhos, chaves e o resto ficam como estão. Altere-os no JSON."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Заголовки, ключи и остальное не меняются. Меняйте их в JSON."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başlıklar, anahtarlar ve gerisi olduğu gibi kalır. Onları JSON'da değiştirin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标头、密钥等其他内容保持不变。请在 JSON 中修改。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "標頭、金鑰等其他內容保持不變。請在 JSON 中修改。"
           }
         }
       }
@@ -171022,6 +172252,88 @@
         }
       }
     },
+    "Keys Hermes saved for this server stay in .env on your host. The JSON shows only their names.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schlüssel, die Hermes für diesen Server gesichert hat, bleiben in .env auf deinem Host. Das JSON zeigt nur ihre Namen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las claves que Hermes guardó para este servidor siguen en .env en tu host. El JSON solo muestra sus nombres."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les clés que Hermes a enregistrées pour ce serveur restent dans .env sur votre hôte. Le JSON n’affiche que leurs noms."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunci yang disimpan Hermes untuk server ini tetap di .env di host Anda. JSON hanya menampilkan namanya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le chiavi che Hermes ha salvato per questo server restano in .env sul tuo host. Il JSON mostra solo i loro nomi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesがこのサーバー用に保存したキーはホストの.envに残ります。JSONには名前だけが表示されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes가 이 서버용으로 저장한 키는 호스트의 .env에 남아 있습니다. JSON에는 이름만 표시됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klucze zapisane przez Hermes dla tego serwera zostają w .env na twoim hoście. JSON pokazuje tylko ich nazwy."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As chaves que o Hermes salvou para este servidor ficam no .env do seu host. O JSON mostra só os nomes delas."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключи, которые Hermes сохранил для этого сервера, остаются в .env на вашем хосте. В JSON видны только их имена."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes'in bu sunucu için kaydettiği anahtarlar ana makinenizdeki .env dosyasında kalır. JSON yalnızca adlarını gösterir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes 为此服务器保存的密钥仍在你主机上的 .env 中。JSON 只显示它们的名称。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes 為此伺服器儲存的金鑰仍在你主機上的 .env 中。JSON 只顯示它們的名稱。"
+          }
+        }
+      }
+    },
     "Keys stay on your Hermes host. Conduit only shows the masked key Hermes reports, never the whole key.": {
       "localizations": {
         "de": {
@@ -177357,6 +178669,170 @@
           "stringUnit": {
             "state": "translated",
             "value": "持續聆聽，直到你再次點兩下傳送"
+          }
+        }
+      }
+    },
+    "Lists every chat of this profile.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zeigt alle Chats dieses Profils."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muestra todos los chats de este perfil."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affiche toutes les discussions de ce profil."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menampilkan semua chat profil ini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra tutte le chat di questo profilo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このプロファイルのすべてのチャットを表示します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 프로필의 모든 채팅을 표시합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pokazuje wszystkie czaty tego profilu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra todas as conversas deste perfil."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывает все чаты этого профиля."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu profilin tüm sohbetlerini gösterir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示此配置的所有聊天。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "顯示此設定檔的所有聊天。"
+          }
+        }
+      }
+    },
+    "Lists only this profile's newest chats.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zeigt nur die neuesten Chats dieses Profils."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muestra solo los chats más recientes de este perfil."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affiche uniquement les discussions les plus récentes de ce profil."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hanya menampilkan chat terbaru profil ini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra solo le chat più recenti di questo profilo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このプロファイルの最新のチャットだけを表示します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 프로필의 최신 채팅만 표시합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pokazuje tylko najnowsze czaty tego profilu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra só as conversas mais recentes deste perfil."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывает только последние чаты этого профиля."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yalnızca bu profilin en yeni sohbetlerini gösterir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅显示此配置最新的聊天。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "僅顯示此設定檔最新的聊天。"
           }
         }
       }
@@ -210956,6 +212432,88 @@
         }
       }
     },
+    "Not tested yet. Test Connection reads its tools.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noch nicht getestet. „Verbindung testen“ liest seine Tools."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún sin probar. Probar conexión lee sus herramientas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pas encore testé. Tester la connexion lit ses outils."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Belum diuji. Uji Koneksi membaca alatnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non ancora testato. Prova connessione legge i suoi strumenti."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まだテストしていません。「接続をテスト」でツールを読み込みます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아직 테스트하지 않았습니다. 연결 테스트로 도구를 읽어옵니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeszcze nie przetestowano. Testuj połączenie odczyta jego narzędzia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não testado. Testar conexão lê as ferramentas dele."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ещё не проверен. «Проверить подключение» прочитает его инструменты."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Henüz test edilmedi. Bağlantıyı Test Et araçlarını okur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未测试。“测试连接”会读取它的工具。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未測試。「測試連線」會讀取它的工具。"
+          }
+        }
+      }
+    },
     "Not used while push to talk is on: each turn starts when you hold the button.": {
       "localizations": {
         "de": {
@@ -217267,6 +218825,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "一段包含位址、密鑰和參數的完整說明，寫給負責設定伺服器的人，例如你的 Hermes 代理程式。"
+          }
+        }
+      }
+    },
+    "One per line. Keys, env and the rest stay as they are. Change them in JSON.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eins pro Zeile. Schlüssel, env und alles andere bleiben, wie sie sind. Ändere sie im JSON."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uno por línea. Las claves, env y lo demás se quedan como están. Cámbialos en el JSON."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un par ligne. Les clés, env et le reste ne changent pas. Modifiez-les dans le JSON."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Satu per baris. Kunci, env, dan lainnya tetap seperti semula. Ubah di JSON."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uno per riga. Chiavi, env e il resto restano come sono. Modificali nel JSON."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1行に1つ。キー、envなどはそのまま残ります。変更はJSONで行ってください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "한 줄에 하나씩. 키, env 등은 그대로 유지됩니다. JSON에서 변경하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeden w wierszu. Klucze, env i reszta zostają bez zmian. Zmień je w JSON."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um por linha. Chaves, env e o resto ficam como estão. Altere-os no JSON."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "По одному в строке. Ключи, env и остальное не меняются. Меняйте их в JSON."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her satıra bir tane. Anahtarlar, env ve gerisi olduğu gibi kalır. Onları JSON'da değiştirin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每行一个。密钥、env 等其他内容保持不变。请在 JSON 中修改。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每行一個。金鑰、env 等其他內容保持不變。請在 JSON 中修改。"
           }
         }
       }
@@ -236341,6 +237981,88 @@
         }
       }
     },
+    "Profile open on iPhone": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf dem iPhone geöffnetes Profil"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perfil abierto en el iPhone"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profil ouvert sur l’iPhone"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profil yang terbuka di iPhone"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profilo aperto su iPhone"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhoneで開いているプロファイル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone에서 열린 프로필"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profil otwarty na iPhonie"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perfil aberto no iPhone"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Профиль, открытый на iPhone"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone’da açık profil"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone 上打开的档案"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone 上開啟的設定檔"
+          }
+        }
+      }
+    },
     "Profile-specific preferences": {
       "localizations": {
         "de": {
@@ -248039,6 +249761,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在讀取 %@ 至 %@ 的聊天。"
+          }
+        }
+      }
+    },
+    "Reading the server's settings…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Servereinstellungen werden gelesen…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leyendo los ajustes del servidor…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lecture des réglages du serveur…"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Membaca pengaturan server…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lettura delle impostazioni del server…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバーの設定を読み込み中…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버 설정을 읽는 중…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odczytywanie ustawień serwera…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lendo as configurações do servidor…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Чтение настроек сервера…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucu ayarları okunuyor…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取服务器设置…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在讀取伺服器設定…"
           }
         }
       }
@@ -267285,6 +269089,88 @@
         }
       }
     },
+    "Saved to %@'s config on your host. Changes apply to new sessions.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In der Konfiguration von %@ auf deinem Host gesichert. Änderungen gelten für neue Sitzungen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardado en la configuración de %@ en tu host. Los cambios se aplican a las sesiones nuevas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistré dans la configuration de %@ sur votre hôte. Les changements s’appliquent aux nouvelles sessions."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disimpan ke konfigurasi %@ di host Anda. Perubahan berlaku untuk sesi baru."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvato nella configurazione di %@ sul tuo host. Le modifiche valgono per le nuove sessioni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ホスト上の%@の設定に保存しました。変更は新しいセッションから適用されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "호스트의 %@ 설정에 저장했습니다. 변경 사항은 새 세션부터 적용됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapisano w konfiguracji %@ na twoim hoście. Zmiany obowiązują w nowych sesjach."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvo na configuração de %@ no seu host. As alterações valem para novas sessões."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранено в конфигурации %@ на вашем хосте. Изменения действуют в новых сеансах."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ana makinenizde %@ yapılandırmasına kaydedildi. Değişiklikler yeni oturumlarda geçerli olur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保存到你主机上 %@ 的配置。更改将用于新会话。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已儲存到你主機上 %@ 的設定。變更將用於新工作階段。"
+          }
+        }
+      }
+    },
     "Saved to this profile on your host. Conduit never reads it back.": {
       "localizations": {
         "de": {
@@ -267527,6 +269413,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "已儲存的語音通話"
+          }
+        }
+      }
+    },
+    "Saved. Changes apply to new sessions.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gesichert. Änderungen gelten für neue Sitzungen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardado. Los cambios se aplican a las sesiones nuevas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistré. Les changements s’appliquent aux nouvelles sessions."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tersimpan. Perubahan berlaku untuk sesi baru."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvato. Le modifiche valgono per le nuove sessioni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存しました。変更は新しいセッションから適用されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "저장했습니다. 변경 사항은 새 세션부터 적용됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapisano. Zmiany obowiązują w nowych sesjach."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvo. As alterações valem para novas sessões."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранено. Изменения действуют в новых сеансах."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaydedildi. Değişiklikler yeni oturumlarda geçerli olur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保存。更改将用于新会话。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已儲存。變更將用於新工作階段。"
           }
         }
       }
@@ -311896,6 +313864,88 @@
         }
       }
     },
+    "That isn't valid JSON.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das ist kein gültiges JSON."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eso no es un JSON válido."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce n’est pas un JSON valide."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Itu bukan JSON yang valid."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è un JSON valido."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有効なJSONではありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "유효한 JSON이 아닙니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To nie jest prawidłowy JSON."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isso não é um JSON válido."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Это недопустимый JSON."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu geçerli bir JSON değil."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这不是有效的 JSON。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這不是有效的 JSON。"
+          }
+        }
+      }
+    },
     "That item isn't on this iPhone any more.": {
       "localizations": {
         "de": {
@@ -327114,6 +329164,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "這台 Hermes 已有來自其他裝置的設定"
+          }
+        }
+      }
+    },
+    "This Hermes can't change servers yet. Update Hermes and try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Hermes kann Server noch nicht ändern. Aktualisiere Hermes und versuche es erneut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este Hermes aún no puede cambiar servidores. Actualiza Hermes y vuelve a intentarlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce Hermes ne peut pas encore modifier les serveurs. Mettez Hermes à jour et réessayez."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes ini belum bisa mengubah server. Perbarui Hermes lalu coba lagi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo Hermes non può ancora modificare i server. Aggiorna Hermes e riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このHermesはまだサーバーを変更できません。Hermesをアップデートしてもう一度お試しください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 Hermes는 아직 서버를 변경할 수 없습니다. Hermes를 업데이트한 뒤 다시 시도하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten Hermes nie może jeszcze zmieniać serwerów. Zaktualizuj Hermes i spróbuj ponownie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este Hermes ainda não consegue alterar servidores. Atualize o Hermes e tente de novo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Этот Hermes пока не умеет изменять серверы. Обновите Hermes и попробуйте снова."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu Hermes henüz sunucuları değiştiremiyor. Hermes'i güncelleyip yeniden deneyin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 Hermes 尚不能更改服务器。请更新 Hermes 后重试。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 Hermes 尚不能變更伺服器。請更新 Hermes 後重試。"
           }
         }
       }
@@ -365324,6 +367456,88 @@
         }
       }
     },
+    "Watch and Siri calls": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch- und Siri-Anrufe"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llamadas del Watch y Siri"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appels depuis la Watch et Siri"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panggilan Watch dan Siri"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiamate da Watch e Siri"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WatchとSiriからの通話"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch 및 Siri 통화"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Połączenia z Watcha i Siri"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chamadas do Watch e da Siri"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Звонки с Watch и Siri"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch ve Siri aramaları"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch 和 Siri 通话"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch 與 Siri 通話"
+          }
+        }
+      }
+    },
     "Watching": {
       "localizations": {
         "de": {
@@ -374118,6 +376332,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "值得了解"
+          }
+        }
+      }
+    },
+    "Write the server as one JSON object, such as {\"url\": \"https://…\"}.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schreibe den Server als ein JSON-Objekt, etwa {\"url\": \"https://…\"}."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escribe el servidor como un objeto JSON, por ejemplo {\"url\": \"https://…\"}."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Écrivez le serveur sous la forme d’un objet JSON, par exemple {\"url\": \"https://…\"}."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tulis server sebagai satu objek JSON, misalnya {\"url\": \"https://…\"}."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scrivi il server come un oggetto JSON, ad esempio {\"url\": \"https://…\"}."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバーを1つのJSONオブジェクトとして書いてください（例: {\"url\": \"https://…\"}）。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버를 하나의 JSON 객체로 작성하세요. 예: {\"url\": \"https://…\"}."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapisz serwer jako jeden obiekt JSON, np. {\"url\": \"https://…\"}."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escreva o servidor como um objeto JSON, como {\"url\": \"https://…\"}."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запишите сервер одним объектом JSON, например {\"url\": \"https://…\"}."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucuyu tek bir JSON nesnesi olarak yazın, örneğin {\"url\": \"https://…\"}."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请将服务器写成一个 JSON 对象，例如 {\"url\": \"https://…\"}。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請將伺服器寫成一個 JSON 物件，例如 {\"url\": \"https://…\"}。"
           }
         }
       }

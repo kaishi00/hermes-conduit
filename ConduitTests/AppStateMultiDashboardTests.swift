@@ -9,6 +9,7 @@
 //  focus is AppState behavior.
 //
 
+import Combine
 import UIKit
 import UserNotifications
 import XCTest
@@ -1313,6 +1314,13 @@ extension AppStateMultiDashboardTests {
             messages: [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")],
             sessions: [macSession("mac-1")]
         )
+        let artifactsPage = try XCTUnwrap(ArtifactsClient.keptRoute(
+            ArtifactSource(profile: appState.activeProfile, sessionIDs: []), filter: .all, query: "", showMissing: true
+        ))
+        store.recordAnswer(
+            ["ok": true, "items": [["session_id": "mac-1", "message_id": 2], ["session_id": "mac-2", "message_id": 1]]],
+            route: artifactsPage, dashboardID: mac, profile: appState.activeProfile
+        )
         let delete = Task { await appState.deleteSession(self.macSession("mac-1")) }
         try await held.answer()
         try await held.waitForRequests(2)
@@ -1325,6 +1333,8 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.pinSyncNotice)
         XCTAssertNil(store.loadTranscript("mac-1", dashboardID: mac, profile: "default"), "the Mac's saved copy of the deleted chat still goes (#1040)")
         XCTAssertNil(store.load(dashboardID: mac, profile: "default")?.lastSessionID)
+        let rows = store.keptAnswer(artifactsPage, dashboardID: mac, profile: "default")?["items"] as? [[String: Any]]
+        XCTAssertEqual(rows?.compactMap { $0["session_id"] as? String }, ["mac-2"], "and its rows the Mac's kept Artifacts page (#1533)")
     }
 
     func testArchivedConversationsAnsweredAfterASwitchAreNotShownOnTheNewDashboard() async throws {
@@ -1461,6 +1471,64 @@ extension AppStateMultiDashboardTests {
 
         XCTAssertNil(explorer.error, "the Mac's failed listing isn't reported over the VPS")
         XCTAssertTrue(explorer.entries.isEmpty, "nor its listing")
+    }
+
+    /// A folder opens on its listing and recent files as the plugin gave
+    /// them last time, before Hermes answers, and a read that fails keeps
+    /// them up (#1533).
+    func testAFolderOpensOnItsListingKeptLastTime() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.122.0", capabilities: [WorkspaceFilesClient.capability]))
+        let first = WorkspaceExplorer()
+        first.attach(appState)
+        let open = Task { await first.open(root: "/w/app", profile: appState.activeProfile) }
+        try await held.waitForRequests(1)
+        try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]])
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": true, "entries": [["name": "notes.md", "path": "/w/app/notes.md"]]])
+        await open.value
+        XCTAssertEqual(held.sent.map(\.path), [
+            "/api/plugins/conduit_push/workspace/list", "/api/plugins/conduit_push/workspace/recent",
+        ])
+
+        let next = WorkspaceExplorer()
+        next.attach(appState)
+        let reopen = Task { await next.open(root: "/w/app", profile: appState.activeProfile) }
+        try await held.waitForRequests(3)
+        XCTAssertEqual(next.rows().map { $0.entry.name }, ["src"], "Shown before Hermes answers")
+        XCTAssertEqual(next.recent.map(\.name), ["notes.md"])
+        try await held.answer(["error": "boom"], status: 500)
+        try await held.waitForRequests(4)
+        try await held.answer(["error": "boom"], status: 500)
+        await reopen.value
+
+        XCTAssertEqual(next.rows().map { $0.entry.name }, ["src"], "A read that fails keeps them")
+        XCTAssertEqual(next.recent.map(\.name), ["notes.md"])
+
+        // Until the plugin says what it serves, the kept listing waits for
+        // it, rather than Hermes' own listing, without sizes or dates,
+        // taking its place.
+        appState.setNotifierPluginStateForTesting(.unknown)
+        let waiting = WorkspaceExplorer()
+        waiting.attach(appState)
+        let opening = Task { await waiting.open(root: "/w/app", profile: appState.activeProfile) }
+        for _ in 0..<500 where held.sent.count == 4 { await Task.yield() }
+        held.releaseAll()
+        await opening.value
+        XCTAssertEqual(held.sent.count, 4, "Nothing is asked until the plugin answers")
+        XCTAssertEqual(waiting.rows().map { $0.entry.name }, ["src"])
+
+        // Connected with no word from the plugin (its read failed as Conduit
+        // connected), the folder asks it again as it opens.
+        appState.isConnected = true
+        let asking = WorkspaceExplorer()
+        asking.attach(appState)
+        await asking.open(root: "/w/app", profile: appState.activeProfile)
+        for _ in 0..<1_000 where !held.sent.contains(where: { $0.path == NotifierPluginStatus.path }) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(held.sent.contains { $0.path == NotifierPluginStatus.path })
+        XCTAssertEqual(asking.rows().map { $0.entry.name }, ["src"], "The kept listing stays while it asks")
     }
 
     func testADisplayPreferenceSaveFailingAfterASwitchSaysNothingOnTheNewDashboard() async throws {
@@ -1898,6 +1966,27 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.keptProfileSettings(keys: ["memory.provider"]), "Asked before a save that landed after a dashboard switch")
     }
 
+    /// Capabilities' kept answers are those of the dashboard they were
+    /// made for: a change that lands after a switch to another one changes
+    /// that dashboard's copy, which its tabs open on when it's back, and the
+    /// dashboard open by then keeps nothing of it (#1533).
+    func testACapabilitiesChangeLandingAfterASwitchChangesItsDashboardsCopy() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let route = CapabilitiesStore.KeptRoute.servers
+        let answers = appState.screenAnswers(profile: "default")
+        _ = try await answers.keep(route, false) { ["servers": [["name": "github", "enabled": true]]] }
+
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.screenAnswers(profile: "default").kept(route), "The VPS keeps none")
+        let rows = answers.kept(route)?["servers"] as? [[String: Any]]
+        XCTAssertEqual(rows?.first?["enabled"] as? Bool, true, "The Mac's copy, for a change landing now to change")
+        _ = try await answers.keep(route, true) { ["servers": [["name": "github", "enabled": false]]] }
+        let kept = appState.offlineChatCacheForTesting.keptAnswer(route, dashboardID: mac, profile: "default")
+        XCTAssertEqual((kept?["servers"] as? [[String: Any]])?.first?["enabled"] as? Bool, false)
+        XCTAssertNil(appState.screenAnswers(profile: "default").kept(route))
+    }
+
     /// A Voice replies model save outranks a read of the slots asked
     /// before it, which keeps nothing when it answers after the save; the
     /// read the save asks for keeps the slot saved.
@@ -2144,5 +2233,552 @@ extension AppStateMultiDashboardTests {
         appState.setActiveProfileForTesting("work")
         XCTAssertNil(appState.keptUsageReport(days: 30), "Another profile")
         XCTAssertNil(appState.keptProviderQuotas())
+    }
+}
+
+// MARK: - The Bots list opens on its last answer (#1533)
+
+extension AppStateMultiDashboardTests {
+    private func rosterAppState(
+        _ registry: SavedDashboardRegistry,
+        roster: @escaping @MainActor () throws -> BotRosterSnapshot = { BotRosterSnapshot(bots: [], supportsBotProtocol: true) },
+        groups: GroupChatLifecycleOperations = .live,
+        cache: OfflineChatCacheStore? = nil
+    ) -> AppState {
+        AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: registry,
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: ChatResumeLifecycleOperations(botRoster: { _ in try roster() }),
+            groupChatOperations: groups,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+            offlineChatCache: cache,
+            profileAppearanceStore: makeAppearanceStore()
+        )
+    }
+
+    /// Connected to the dashboard, its requests held for the test.
+    @discardableResult
+    private func connectRoster(_ appState: AppState, to dashboard: SavedDashboard) -> HeldDashboardRequests {
+        let held = HeldDashboardRequests(baseURL: dashboard.normalizedURL, dashboardID: dashboard.id)
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+        addTeardownBlock { @MainActor in held.releaseAll() }
+        appState.client = HermesClient(connection: HermesConnection(baseUrl: dashboard.normalizedURL, ticket: "ticket"), profile: "default")
+        appState.isConnected = true
+        return held
+    }
+
+    private func rosterBot(_ name: String, title: String? = nil, hasAvatar: Bool = false) -> BotProfile {
+        var bot = BotProfile(
+            name: name, botTitle: title, displayName: name, profileDescription: "", model: nil, provider: nil,
+            hasAvatar: hasAvatar, isPinned: false, isHiddenByMeta: false, appearanceColor: "#3366ff",
+            canonicalSession: BotCanonicalSession(id: "stored-\(name)", resolvedID: nil, lastActive: 1_800_000_000, preview: "Done"),
+            lastActive: nil, lastPreview: nil
+        )
+        bot.botMeta = ["title": .string(title ?? name), "sections": .array([.object(["key": .string("work")])])]
+        bot.botMetaRevision = 7
+        return bot
+    }
+
+    private func hostedRoom(_ id: String, _ name: String) -> GroupRoom {
+        GroupRoom(
+            roomID: id, name: name,
+            members: [GroupMember(memberID: "atlas", profile: "atlas", handle: "atlas", displayName: "Atlas", target: nil, extra: [:])],
+            authorityGatewayID: "gw-a", authorityEpoch: 1, revision: 1,
+            createdAt: 1_800_000_000, updatedAt: 1_800_000_000, disbandedAt: nil, latestSeq: 4
+        )
+    }
+
+    /// The Bots list opens on the bots and Desktop's groups Hermes listed
+    /// last time on this dashboard, with the bots' pictures the phone keeps
+    /// and without their ui_meta, until Hermes answers. Nothing writes a
+    /// kept bot, a read that fails keeps them up, and Hermes' answer takes
+    /// their place; another dashboard opens on nothing.
+    func testTheBotsListOpensOnTheRosterHermesGaveLastTime() async throws {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let vps = dashboard("VPS", "https://vps-\(UUID().uuidString.lowercased()).invalid")
+        let registry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps])
+        let desk = DesktopGroupChat(key: "id:room-9", name: "Desk", members: [.init(name: "Atlas", handle: "atlas")], messages: [], omitted: 0)
+        var answer: () throws -> BotRosterSnapshot = {
+            BotRosterSnapshot(
+                bots: [self.rosterBot("default"), self.rosterBot("atlas", title: "Atlas", hasAvatar: true)],
+                supportsBotProtocol: true, desktopGroups: [desk]
+            )
+        }
+        let first = rosterAppState(registry, roster: { try answer() })
+        XCTAssertTrue(first.shownBotRoster.isEmpty, "Nothing kept yet")
+        connectRoster(first, to: mac)
+        await first.refreshBotRoster()
+        XCTAssertEqual(first.shownBotRoster, first.botRoster, "Hermes' answer")
+        let kept = try XCTUnwrap(first.offlineChatCacheForTesting.keptAnswer(
+            AppState.KeptRoute.botRoster, dashboardID: mac.id, profile: AppState.KeptRoute.everyProfile
+        ))
+        let keptBots = try XCTUnwrap(kept["bots"] as? [[String: Any]])
+        XCTAssertEqual(keptBots.count, 2)
+        XCTAssertTrue(keptBots.allSatisfy { $0["botMeta"] == nil && $0["botMetaRevision"] == nil }, "A write takes Hermes' own ui_meta")
+        XCTAssertEqual((kept["desktopGroups"] as? [[String: Any]])?.first?["identity"] as? String, "id:room-9", "Not left out as a key")
+
+        // The next launch opens on them.
+        let next = rosterAppState(registry, roster: { try answer() }, cache: first.offlineChatCacheForTesting)
+        // A chat's teammate note names its bot from what this sends: the
+        // kept bots on subscribing, before Hermes answers, and Hermes' own
+        // once its answer has landed.
+        var named: [[String]] = []
+        let keptNamed = expectation(description: "the kept bots")
+        let hermesNamed = expectation(description: "Hermes' bots")
+        hermesNamed.assertForOverFulfill = false
+        let rosterChanges = next.shownBotRosterChanged.sink { _ in
+            named.append(next.shownBotRoster.map(\.displayLabel))
+            if named.count == 1 { keptNamed.fulfill() }
+            if named.last == ["Atlas Prime"] { hermesNamed.fulfill() }
+        }
+        defer { rosterChanges.cancel() }
+        await fulfillment(of: [keptNamed], timeout: 5)
+        XCTAssertEqual(named.first?.first, "Atlas", "Not the empty roster Hermes hasn't answered yet")
+        XCTAssertEqual(next.shownBotRoster.map(\.name), ["atlas", "default"])
+        XCTAssertTrue(next.shownBotRoster.allSatisfy(\.isKeptCopy))
+        XCTAssertTrue(next.botRoster.isEmpty, "Hermes hasn't answered")
+        XCTAssertEqual(next.shownBotRoster.first { $0.name == "default" }?.displayLabel, next.profileDisplayName("default"))
+        XCTAssertEqual(next.shownDesktopGroupChats, [desk])
+        let atlas = try XCTUnwrap(next.shownBotRoster.first { $0.name == "atlas" })
+        XCTAssertEqual(atlas.canonicalSessionID, "stored-atlas", "Its row opens its Bot Chat")
+        XCTAssertNil(next.botAvatarImage(for: atlas))
+        try next.saveProfileAvatarOnDevice(photoData(), for: "atlas")
+        XCTAssertNotNil(next.botAvatarImage(for: atlas), "The picture the phone keeps for its profile")
+        XCTAssertFalse(next.canDeleteBot(atlas), "Nothing writes a kept bot")
+
+        // Its Bot Chat, its tag and its spoken name work before Hermes
+        // answers.
+        next.noteBotChatSessionForTesting("stored-atlas", profile: "atlas")
+        next.activeSessionId = "stored-atlas"
+        XCTAssertEqual(next.conversationAgentIdentity.botFace?.name, "atlas", "Its Bot Chat opens with its face")
+        XCTAssertNotNil(next.conversationAgentIdentity.botFace?.image)
+        XCTAssertNotNil(next.profileGlowTint("atlas"), "and its color")
+        next.activeSessionId = nil
+        XCTAssertEqual(next.composerMentionCandidates.map(\.title), ["Atlas"], "The @ list and Mention a Bot")
+        XCTAssertEqual(next.voiceJobProfileTarget(named: "Atlas"), .other("atlas"), "A spoken job reaches it")
+        XCTAssertTrue(next.watchJobProfileNames().contains { $0.profile == "atlas" }, "and a Watch call's")
+
+        connectRoster(next, to: mac)
+        let refused = await next.setBotPinned(atlas, pinned: true)
+        XCTAssertEqual(refused, AppLocalization.string("Connect to Hermes to manage bots."), "A kept bot has no ui_meta to send back")
+        answer = { throw RpcError(code: 5000, message: "state.db is locked") }
+        await next.refreshBotRoster()
+        XCTAssertEqual(next.botModePhase, .failed(message: AppLocalization.string("Could not refresh bots.")))
+        XCTAssertEqual(next.shownBotRoster.map(\.name), ["atlas", "default"], "A read that fails keeps them up")
+
+        answer = { BotRosterSnapshot(bots: [self.rosterBot("atlas", title: "Atlas Prime")], supportsBotProtocol: true) }
+        await next.refreshBotRoster()
+        XCTAssertEqual(next.shownBotRoster.map(\.displayLabel), ["Atlas Prime"], "Hermes' answer takes their place")
+        XCTAssertFalse(next.shownBotRoster.contains(where: \.isKeptCopy))
+        XCTAssertTrue(next.shownDesktopGroupChats.isEmpty)
+        await fulfillment(of: [hermesNamed], timeout: 5)
+
+        let elsewhere = rosterAppState(
+            SavedDashboardRegistry(activeDashboardID: vps.id, dashboards: [mac, vps]),
+            cache: first.offlineChatCacheForTesting
+        )
+        XCTAssertTrue(elsewhere.shownBotRoster.isEmpty, "Another dashboard's list")
+    }
+
+    /// Desktop's group pictures ride in the kept roster up to the rooms'
+    /// picture budget, so large ones never cost the bots their kept copy.
+    func testTheKeptRosterCapsDesktopGroupPictures() {
+        let picture = Data(count: GroupRoomPictures.keptBytes - 10)
+        let groups = ["a", "b"].map {
+            DesktopGroupChat(key: "id:\($0)", name: $0, members: [], messages: [], omitted: 0, roomID: $0, imageData: picture)
+        }
+        let kept = KeptBotRoster(bots: [rosterBot("atlas")], desktopGroups: groups).cappingPictures()
+        XCTAssertEqual(kept.desktopGroups.map(\.name), ["a", "b"], "Every group stays")
+        XCTAssertEqual(kept.desktopGroups.map { $0.imageData != nil }, [true, false], "The picture over the budget doesn't")
+        XCTAssertEqual(kept.bots.map(\.name), ["atlas"])
+    }
+
+    /// Edit Bot opens on the bot's details as Hermes gave them last time,
+    /// New Bot on its Start From profile's lists and the MCP page on its
+    /// catalog and sign-ins, each kept in that profile's answers. A read
+    /// that fails keeps them, and a write Hermes took is what they open on
+    /// next, never the answer of a read asked before it.
+    func testTheBotEditorOpensOnWhatHermesGaveLastTime() async throws {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let registry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac])
+        let atlas = rosterBot("atlas", title: "Atlas")
+        let details = BotProfileDetails(
+            description: "Research", soul: "You are Atlas.", provider: "openrouter", model: "kimi-k2",
+            capabilities: BotCapabilities(
+                skills: [BotCapability(name: "1password", description: "Vault", enabled: true)],
+                toolsets: [BotCapability(name: "web", label: "Web", toolCount: 3, enabled: true)],
+                mcpServers: [BotCapability(name: "github_token", enabled: false)]
+            )
+        )
+        let setup = BotMcpSetupSnapshot(
+            catalog: [BotMcpCatalogEntry(name: "linear", description: "Issues", requires: ["LINEAR_API_KEY"], installed: false)],
+            servers: ["github_token": BotMcpServerSummary(name: "github_token", auth: "oauth", oauthTokensPresent: false)]
+        )
+        let hermes = BotEditorHermes(details: details, setup: setup)
+        var operations = ChatResumeLifecycleOperations()
+        operations.describeBotProfile = { _, profile in try await hermes.describe(profile) }
+        operations.botMcpCatalog = { _, _ in try hermes.mcpCatalog() }
+        operations.botMcpServers = { _, _ in try hermes.mcpServers() }
+        operations.configureBotSections = { _, _, sections in hermes.configure(sections) }
+        func editorAppState(cache: OfflineChatCacheStore? = nil) -> AppState {
+            AppState(
+                defaults: defaults,
+                loadSavedConnection: false,
+                dashboardRegistry: registry,
+                clearSessionPresentationCache: {},
+                chatResumeLifecycleOperations: operations,
+                groupChatOperations: .live,
+                sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+                offlineChatCache: cache,
+                profileAppearanceStore: makeAppearanceStore()
+            )
+        }
+
+        let first = editorAppState()
+        connectRoster(first, to: mac)
+        XCTAssertNil(first.keptBotDetails(atlas), "Nothing kept yet")
+        let loaded = await first.loadBotDetails(atlas)
+        XCTAssertEqual(loaded, details)
+        _ = await first.loadBotCapabilities(startingFrom: BotCreateRequest.mainProfile)
+        _ = await first.loadBotMcpSetup(profile: "atlas")
+        XCTAssertEqual(hermes.asked, ["atlas", "default"])
+        let keptSetup = try XCTUnwrap(first.offlineChatCacheForTesting.keptAnswer(
+            AppState.KeptRoute.botMcpSetup, dashboardID: mac.id, profile: "atlas"
+        ))
+        let keptServers = try XCTUnwrap(keptSetup["servers"] as? [[String: Any]], "A list, not keyed by a name shaped like a credential's")
+        XCTAssertEqual(keptServers.first?["sign_in"] as? String, "oauth", "How it signs in, which `auth` would have lost")
+
+        // The next launch opens on them before Hermes is asked.
+        let next = editorAppState(cache: first.offlineChatCacheForTesting)
+        XCTAssertEqual(next.keptBotDetails(atlas), details, "A skill's and a server's names that look like credentials' stay")
+        XCTAssertEqual(next.keptBotCapabilities(startingFrom: BotCreateRequest.mainProfile), details.capabilities)
+        XCTAssertNil(next.keptBotCapabilities(startingFrom: "nova"), "Each profile keeps its own")
+        XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas"), setup)
+        XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas")?.servers["github_token"]?.needsSignIn, true)
+        XCTAssertEqual(hermes.asked.count, 2)
+
+        // A read that fails keeps them.
+        connectRoster(next, to: mac)
+        hermes.fails = true
+        let failedDetails = await next.loadBotDetails(atlas)
+        let failedSetup = await next.loadBotMcpSetup(profile: "atlas")
+        XCTAssertNil(failedDetails)
+        XCTAssertNil(failedSetup)
+        XCTAssertEqual(next.keptBotDetails(atlas), details)
+        XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas"), setup)
+
+        // So does a servers list that fails alone: the page gets Hermes'
+        // catalog with the sign-ins kept last time, and nothing is kept.
+        hermes.fails = false
+        hermes.serversFail = true
+        hermes.catalog = [BotMcpCatalogEntry(name: "notion", description: "Docs", requires: [], installed: false)]
+        let partly = await next.loadBotMcpSetup(profile: "atlas")
+        XCTAssertEqual(partly?.catalog, hermes.catalog)
+        XCTAssertEqual(partly?.servers, setup.servers, "The sign-ins kept last time, not none")
+        XCTAssertEqual(next.keptBotMcpSetup(profile: "atlas"), setup, "Nothing kept from a read whose servers failed")
+        hermes.serversFail = false
+        hermes.catalog = setup.catalog
+
+        // A write Hermes took is kept over a read asked before it: here a
+        // SOUL and the MCP section of a save whose other sections failed.
+        hermes.fails = false
+        hermes.holds = true
+        let older = Task { await next.loadBotDetails(atlas) }
+        let deadline = Date().addingTimeInterval(10)
+        while !hermes.isHolding, Date() < deadline { await Task.yield() }
+        XCTAssertTrue(hermes.isHolding, "The read is out")
+        let owner = try XCTUnwrap(next.currentDashboardRuntimeOwner())
+        let edited = BotCapabilities(
+            toolsets: [BotCapability(name: "web", label: "Web", toolCount: 3, enabled: false)],
+            mcpServers: [BotCapability(name: "github_token", enabled: true)]
+        )
+        next.keepWrittenChange(BotProfileDetails.self, AppState.KeptRoute.botDetails, profile: "atlas", on: owner) {
+            $0.soul = "You are Atlas Prime."
+            $0.capabilities = $0.capabilities.taking(["mcp_servers"], from: edited)
+        }
+        hermes.release()
+        _ = await older.value
+        let written = try XCTUnwrap(next.keptBotDetails(atlas))
+        XCTAssertEqual(written.soul, "You are Atlas Prime.", "Not the answer of the read asked before it")
+        XCTAssertEqual(written.capabilities.mcpServers, edited.mcpServers)
+        XCTAssertEqual(written.capabilities.toolsets, details.capabilities.toolsets, "A section Hermes didn't take stays")
+        XCTAssertEqual(written.capabilities.skills, details.capabilities.skills)
+
+        // With nothing kept, a write makes nothing up.
+        next.keepWrittenChange(BotMcpSetupSnapshot.self, AppState.KeptRoute.botMcpSetup, profile: "nova", on: owner) {
+            $0.catalog = []
+        }
+        XCTAssertNil(next.keptBotMcpSetup(profile: "nova"))
+
+        // A save whose tools section Hermes turned down keeps the MCP
+        // section it took, and the tools as they were.
+        hermes.applied = ["toolsets": false, "mcp_servers": true]
+        var draft = BotEditorDraft(name: "Atlas", description: written.description, soul: written.soul, color: atlas.appearanceColor)
+        draft.capabilities = BotCapabilities(
+            skills: written.capabilities.skills,
+            toolsets: [BotCapability(name: "web", label: "Web", toolCount: 3, enabled: false)],
+            mcpServers: [BotCapability(name: "github_token", enabled: false)]
+        )
+        _ = await next.updateBot(atlas, draft: draft, loadedDetails: written)
+        XCTAssertEqual(hermes.configured, [["enabled_mcp_servers", "enabled_toolsets"]], "One write, both sections in it")
+        let saved = try XCTUnwrap(next.keptBotDetails(atlas))
+        XCTAssertEqual(saved.capabilities.mcpServers, draft.capabilities?.mcpServers)
+        XCTAssertEqual(saved.capabilities.toolsets, written.capabilities.toolsets, "The section Hermes turned down stays")
+        XCTAssertEqual(saved.soul, written.soul)
+    }
+
+    /// Hosted rooms and their pictures open as Hermes and the host listed
+    /// them last time on this dashboard, until `groups.list` answers; the
+    /// kept pictures then carry over, so only one whose revision moved is
+    /// fetched again, and the list takes the kept one's place. A kept room
+    /// tapped first asks Hermes, and one it no longer lists doesn't open.
+    func testTheBotsListOpensOnTheHostedRoomsListedLastTime() async throws {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let registry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac])
+        let picture = photoData()
+        var listed = [hostedRoom("room-1", "Planning"), hostedRoom("room-2", "Launch")]
+        let groups = GroupChatLifecycleOperations(
+            capabilities: { _ in
+                GroupCapabilities(
+                    protocolVersion: 2, driverReady: true, authorityGatewayID: "gw-a", features: [],
+                    methods: ["groups.list", "groups.create", "groups.state", "groups.send", "groups.log", "groups.disband", "groups.stop"],
+                    maxLogLimit: 500
+                )
+            },
+            list: { _ in (listed, nil) }
+        )
+        let plugin = NotifierPluginStatus.State.reported(version: "0.122.2", capabilities: [GroupRoomPictures.capability])
+        let first = rosterAppState(registry, groups: groups)
+        first.setNotifierPluginStateForTesting(plugin)
+        XCTAssertTrue(first.shownGroupRooms.isEmpty, "Nothing kept yet")
+        let held = connectRoster(first, to: mac)
+        let refresh = Task { await first.refreshGroupChatSupport() }
+        try await held.waitForRequests(1)       // the pictures' revisions
+        try await held.answer(["ok": true, "revisions": ["room-1": "r1"]])
+        try await held.waitForRequests(2)       // room-1's picture
+        try await held.answer(["ok": true, "rev": "r1", "data_base64": picture.base64EncodedString()])
+        await refresh.value
+        XCTAssertEqual(first.shownGroupRooms.map(\.roomID), ["room-1", "room-2"])
+
+        // The next launch opens on them, picture and all.
+        let next = rosterAppState(registry, groups: groups, cache: first.offlineChatCacheForTesting)
+        next.setNotifierPluginStateForTesting(plugin)
+        XCTAssertEqual(next.shownGroupRooms.map(\.name), ["Planning", "Launch"])
+        XCTAssertNotNil(next.groupRoomPicture(roomID: "room-1"))
+        XCTAssertNil(next.groupRoomPicture(roomID: "room-2"))
+
+        listed = [hostedRoom("room-1", "Planning")]
+        let nextHeld = connectRoster(next, to: mac)
+        let launch = try XCTUnwrap(next.shownGroupRooms.first { $0.roomID == "room-2" })
+        let tap = Task { await next.openGroupRoom(launch) }
+        try await nextHeld.waitForRequests(1)
+        try await nextHeld.answer(["ok": true, "revisions": ["room-1": "r1"]])
+        await tap.value
+        XCTAssertEqual(next.errorMessage, AppLocalization.string("That chat is no longer available."), "Hermes no longer lists it")
+        XCTAssertNil(next.activeRoomSurface)
+        XCTAssertEqual(nextHeld.sent.map(\.path), [GroupRoomPictures.listPath], "An unchanged picture isn't fetched again")
+        XCTAssertEqual(next.groupRoomPictureData["room-1"], picture)
+        XCTAssertEqual(next.shownGroupRooms.map(\.roomID), ["room-1"], "The list takes the kept one's place")
+
+        // A Hermes that no longer hosts rooms: trying again wouldn't open it.
+        let roomless = GroupChatLifecycleOperations(
+            capabilities: { _ in
+                GroupCapabilities(
+                    protocolVersion: 2, driverReady: true, authorityGatewayID: "gw-a", features: [],
+                    methods: [], maxLogLimit: 500
+                )
+            },
+            list: { _ in (listed, nil) }
+        )
+        let later = rosterAppState(registry, groups: roomless, cache: next.offlineChatCacheForTesting)
+        later.setNotifierPluginStateForTesting(plugin)
+        connectRoster(later, to: mac)
+        let planning = try XCTUnwrap(later.shownGroupRooms.first { $0.roomID == "room-1" })
+        await later.openGroupRoom(planning)
+        XCTAssertEqual(later.errorMessage, AppLocalization.string("That chat is no longer available."), "Not \"Try again\"")
+        XCTAssertNil(later.activeRoomSurface)
+
+        // A list that fails: the room may still be there, so try again.
+        let failing = GroupChatLifecycleOperations(
+            capabilities: { _ in
+                GroupCapabilities(
+                    protocolVersion: 2, driverReady: true, authorityGatewayID: "gw-a", features: [],
+                    methods: ["groups.list", "groups.create", "groups.state", "groups.send", "groups.log", "groups.disband", "groups.stop"],
+                    maxLogLimit: 500
+                )
+            },
+            list: { _ in throw URLError(.timedOut) }
+        )
+        let unlisted = rosterAppState(registry, groups: failing, cache: next.offlineChatCacheForTesting)
+        connectRoster(unlisted, to: mac)
+        let kept = try XCTUnwrap(unlisted.shownGroupRooms.first { $0.roomID == "room-1" })
+        await unlisted.openGroupRoom(kept)
+        XCTAssertEqual(unlisted.errorMessage, AppLocalization.string("Couldn't open that chat. Try again."))
+        XCTAssertNil(unlisted.activeRoomSurface)
+        XCTAssertEqual(unlisted.shownGroupRooms.map(\.roomID), ["room-1"], "The kept rooms stay up")
+    }
+}
+
+// MARK: - Capabilities opens on its last answer (#1533)
+
+extension AppStateMultiDashboardTests {
+    /// Capabilities' installed skills and toolsets open as Hermes gave them
+    /// last time on this dashboard and profile, until it answers. A read
+    /// asked before a switch was flipped neither shows nor stays kept over
+    /// it; a switch flipped on Hermes' rows is kept in them with no read
+    /// again, and one flipped on kept rows reads them again, since the read
+    /// on its way no longer commits. Another dashboard opens on nothing.
+    func testCapabilitiesOpenOnTheSkillsAndToolsetsHermesGaveLastTime() async throws {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let vps = dashboard("VPS", "https://vps-\(UUID().uuidString.lowercased()).invalid")
+        let registry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps])
+        let skills: [[String: Any]] = [
+            ["name": "pdf", "category": "docs", "enabled": true],
+            ["name": "sql", "category": "data", "enabled": false],
+        ]
+        let sqlOn: [[String: Any]] = [
+            ["name": "pdf", "category": "docs", "enabled": true],
+            ["name": "sql", "category": "data", "enabled": true],
+        ]
+        let toolsets: [[String: Any]] = [["name": "web", "label": "Web", "enabled": true]]
+        let first = rosterAppState(registry)
+        first.showKeptCapabilities()
+        XCTAssertNil(first.capabilitiesOwner, "Nothing kept yet")
+        let held = connectRoster(first, to: mac)
+        let load = Task { await first.loadCapabilities() }
+        try await answerCapabilityLists(held, after: 0, skills: skills, toolsets: toolsets)
+        _ = await load.value
+        XCTAssertEqual(first.skills.map(\.name), ["sql", "pdf"])
+        XCTAssertFalse(first.capabilitiesAreKept)
+        let cache = first.offlineChatCacheForTesting
+        XCTAssertNotNil(cache.keptAnswer(AppState.KeptRoute.toolsets, dashboardID: mac.id, profile: "default"))
+
+        let older = Task { await first.loadCapabilities() }
+        try await held.waitForRequests(4)
+        let flip = Task { await first.toggleSkill(name: "sql", enabled: true) }
+        try await held.waitForRequests(5)
+        try await held.answer(["ok": true], at: 2)
+        await flip.value
+        try await answerCapabilityLists(held, after: 2, skills: skills, toolsets: toolsets)
+        _ = await older.value
+        XCTAssertEqual(held.sent.count, 5, "Hermes' rows aren't read again for a switch")
+        XCTAssertEqual(first.skills.first { $0.name == "sql" }?.enabled, true, "Asked before the switch")
+        let keptSkills = cache.keptAnswer(AppState.KeptRoute.skills, dashboardID: mac.id, profile: "default")?["_array"] as? [[String: Any]]
+        XCTAssertEqual(keptSkills?.first { $0["name"] as? String == "sql" }?["enabled"] as? Bool, true, "and not kept over it")
+
+        // The next launch opens on them, the switch included.
+        let next = rosterAppState(registry, cache: cache)
+        let nextHeld = connectRoster(next, to: mac)
+        next.showKeptCapabilities()
+        XCTAssertTrue(next.capabilitiesAreKept)
+        XCTAssertTrue(next.capabilitiesAreCurrent)
+        XCTAssertEqual(next.skills.map(\.name), ["sql", "pdf"])
+        XCTAssertEqual(next.skills.first?.enabled, true)
+        XCTAssertEqual(next.toolsets.map(\.label), ["Web"])
+        XCTAssertTrue(nextHeld.sent.isEmpty)
+
+        let reload = Task { await next.loadCapabilities() }
+        try await nextHeld.waitForRequests(2)
+        let flipKept = Task { await next.toggleToolset(name: "web", enabled: false) }
+        try await nextHeld.waitForRequests(3)
+        XCTAssertEqual(nextHeld.sent.last?.method, "PUT")
+        try await nextHeld.answer(["ok": true], at: 2)
+        try await nextHeld.waitForRequests(5)   // the lists, read again
+        try await answerCapabilityLists(nextHeld, after: 0, skills: skills, toolsets: toolsets)
+        _ = await reload.value
+        XCTAssertTrue(next.capabilitiesAreKept, "Asked before the switch")
+        try await answerCapabilityLists(nextHeld, after: 3, skills: sqlOn, toolsets: [["name": "web", "label": "Web", "enabled": false]])
+        await flipKept.value
+        XCTAssertFalse(next.capabilitiesAreKept, "Hermes' answer")
+        XCTAssertEqual(next.toolsets.first?.enabled, false)
+
+        // No toolsets is a Hermes still loading its plugins: shown as Hermes
+        // gave it, but not kept over the toolsets kept before.
+        let loading = Task { await next.loadCapabilities() }
+        try await answerCapabilityLists(nextHeld, after: 5, skills: sqlOn, toolsets: [])
+        _ = await loading.value
+        XCTAssertTrue(next.toolsets.isEmpty)
+        let keptToolsets = cache.keptAnswer(AppState.KeptRoute.toolsets, dashboardID: mac.id, profile: "default")?["_array"] as? [[String: Any]]
+        XCTAssertEqual(keptToolsets?.compactMap { $0["name"] as? String }, ["web"])
+
+        let elsewhere = rosterAppState(SavedDashboardRegistry(activeDashboardID: vps.id, dashboards: [mac, vps]), cache: cache)
+        elsewhere.showKeptCapabilities()
+        XCTAssertTrue(elsewhere.skills.isEmpty, "Another dashboard's lists")
+        XCTAssertFalse(elsewhere.capabilitiesAreKept)
+    }
+
+    /// Answers Capabilities' two list reads, which go out together, each by
+    /// its path: the `after`th request sent and the next, the oldest waiting.
+    private func answerCapabilityLists(
+        _ held: HeldDashboardRequests,
+        after earlier: Int,
+        skills: [[String: Any]],
+        toolsets: [[String: Any]]
+    ) async throws {
+        try await held.waitForRequests(earlier + 2)
+        for request in held.sent[earlier..<earlier + 2] {
+            try await held.answer(request.path == AppState.KeptRoute.skills ? skills : toolsets)
+        }
+    }
+}
+
+/// Hermes' answers to the bot editor's reads; with `holds` set, a describe
+/// waits until `release`.
+@MainActor
+private final class BotEditorHermes {
+    let details: BotProfileDetails
+    var catalog: [BotMcpCatalogEntry]
+    let servers: [BotMcpServerSummary]
+    var fails = false
+    /// `mcp.servers.list` fails while `mcp.catalog` answers.
+    var serversFail = false
+    var holds = false
+    /// What `profiles.configure` says it applied, by section.
+    var applied: [String: Bool] = [:]
+    private(set) var asked: [String] = []
+    /// The section keys of each `profiles.configure`, sorted.
+    private(set) var configured: [[String]] = []
+    private var held: CheckedContinuation<Void, Never>?
+
+    init(details: BotProfileDetails, setup: BotMcpSetupSnapshot) {
+        self.details = details
+        catalog = setup.catalog
+        servers = setup.servers.values.sorted { $0.name < $1.name }
+    }
+
+    var isHolding: Bool { held != nil }
+
+    func describe(_ profile: String) async throws -> BotProfileDetails {
+        asked.append(profile)
+        if holds {
+            await withCheckedContinuation { continuation in
+                held = continuation
+            }
+        }
+        if fails { throw URLError(.notConnectedToInternet) }
+        return details
+    }
+
+    func mcpCatalog() throws -> [BotMcpCatalogEntry] {
+        if fails { throw URLError(.notConnectedToInternet) }
+        return catalog
+    }
+
+    func mcpServers() throws -> [BotMcpServerSummary] {
+        if fails || serversFail { throw URLError(.notConnectedToInternet) }
+        return servers
+    }
+
+    func configure(_ sections: [String: Any]) -> AnyCodable {
+        configured.append(sections.keys.sorted())
+        return .object(["applied": .object(applied.mapValues { .bool($0) })])
+    }
+
+    func release() {
+        holds = false
+        held?.resume()
+        held = nil
     }
 }

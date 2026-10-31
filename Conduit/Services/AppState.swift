@@ -166,6 +166,15 @@ struct ChatResumeLifecycleOperations {
     /// cwd in, the created ids out. Not an init parameter: tests set it on
     /// the value.
     var createSession: (@MainActor (HermesClient, String?) async throws -> BranchResult)?
+    /// Test seams for the bot editor, client and profile in: its
+    /// `profiles.describe`, its MCP page's `mcp.catalog` and
+    /// `mcp.servers.list`, and a save's skills, tools and MCP sections
+    /// (`profiles.configure`, the sections in, Hermes' answer out). Not init
+    /// parameters either.
+    var describeBotProfile: (@MainActor (HermesClient, String) async throws -> BotProfileDetails)?
+    var botMcpCatalog: (@MainActor (HermesClient, String) async throws -> [BotMcpCatalogEntry])?
+    var botMcpServers: (@MainActor (HermesClient, String) async throws -> [BotMcpServerSummary])?
+    var configureBotSections: (@MainActor (HermesClient, String, [String: Any]) async throws -> AnyCodable)?
 
     init(
         connectClient: (@MainActor (HermesClient) async throws -> Void)? = nil,
@@ -641,7 +650,8 @@ final class AppState: ObservableObject {
     /// Which read `allProfilesCatalogTask` is, so only it clears the handle.
     var allProfilesCatalogRead: UUID?
     @Published private(set) var sessionFilterOrder: [SessionSource] = AppState.defaultSessionFilterOrder
-    static let defaultSessionFilterOrder: [SessionSource] = [.chat, .voice, .voiceJob, .discord, .telegram, .api, .webhook, .cron, .other]
+    static let defaultSessionFilterOrder: [SessionSource] =
+        [.chat, .voice, .voiceJob, .discord, .telegram] + SessionSource.gatewayPlatforms + [.api, .webhook, .cron, .other]
     /// Stable per-profile gateway-media resolver for settled row content.
     /// Created lazily on first read and reused while the active profile is
     /// unchanged, so ChatView's first body pass already has a resolver
@@ -1611,8 +1621,10 @@ final class AppState: ObservableObject {
         // Device names count only until the gateway shows bot looks.
         didSet { if oldValue != botModePhase { persistSiriProfileNames() } }
     }
-    /// The read-only roster. Hermes remains authoritative; nothing bot-related
-    /// is durably persisted client-side.
+    /// The read-only roster, as Hermes last answered on this dashboard.
+    /// Hermes remains authoritative: the copy the Bots list keeps to open on
+    /// (`shownBotRoster`) only stands in until it answers, and nothing
+    /// writes from that copy.
     @Published private(set) var botRoster: [BotProfile] = [] {
         didSet {
             stampMainBotConduitName()
@@ -2613,6 +2625,12 @@ final class AppState: ObservableObject {
     /// while this equals `currentCapabilitiesOwner`: two dashboards can have
     /// a profile of the same name.
     @Published private(set) var capabilitiesOwner: CapabilitySnapshotOwner?
+    /// The installed skills and toolsets shown are the ones kept from
+    /// Hermes' last answer (#1533), drawn until it answers again.
+    @Published private(set) var capabilitiesAreKept = false
+    /// Switches write through the dashboard: offline, with only the kept
+    /// lists to show, they wait for it instead of flipping back unsaid.
+    var canChangeCapabilities: Bool { dashboardTicketBridge != nil }
     /// Monotonic request token for capability loads; older requests can never
     /// commit over newer ones (protects the A -> B -> A race).
     private var capabilityLoadGeneration: UInt64 = 0
@@ -2669,14 +2687,15 @@ final class AppState: ObservableObject {
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
     }
 
-    /// The models Hermes offers, for the model pickers in Voice and Pulse
-    /// settings: the gateway's `model.options`, kept on the phone as the
-    /// same answer Usage keeps (#1533). Nil when Hermes didn't answer, so a
-    /// picker keeps the models it shows.
-    func loadModelProviders() async -> [ProviderInfo]? {
+    /// The models Hermes offers, for the model pickers (the model sheet,
+    /// the bot editor's, Voice and Pulse settings'): the gateway's
+    /// `model.options`, kept on the phone as the same answer Usage keeps
+    /// (#1533). The model sheet asks for its chat's session. Nil when
+    /// Hermes didn't answer, so a picker keeps the models it shows.
+    func loadModelProviders(sessionId: String? = nil) async -> [ProviderInfo]? {
         let profile = activeProfile
         guard let client else { return nil }
-        let read = { try await client.providerQuotaAnswer() }
+        let read = { try await client.modelOptionsAnswer(sessionId: sessionId) }
         let answer: [String: Any]?
         if let owner = currentDashboardRuntimeOwner() {
             answer = try? await keepingAnswer(profile: profile, owner: owner, keptAs: { _ in KeptRoute.providerQuotas }, read)
@@ -3021,19 +3040,23 @@ final class AppState: ObservableObject {
 
     /// Hermes-hosted Gemini Live credentials (the conduit_push plugin), read
     /// through whichever dashboard bridge is current at call time.
-    lazy var geminiLiveTokenClient = GeminiLiveTokenClient(profile: { [weak self] in
+    lazy var geminiLiveTokenClient = makeLiveTokenClient(provider: .gemini) { [weak self] in
         self?.activeProfile ?? "default"
-    }, request: { [weak self] path, method, body, timeout in
-        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
-    })
+    }
 
-    lazy var qwenLiveTokenClient = GeminiLiveTokenClient(profile: { [weak self] in
+    lazy var qwenLiveTokenClient = makeLiveTokenClient(provider: .qwen) { [weak self] in
         self?.activeProfile ?? "default"
-    }, provider: { .qwen }, request: { [weak self] path, method, body, timeout in
-        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
-    })
+    }
+
+    /// Gemini or Qwen Live's host routes for `profile`: the active
+    /// profile's for the phone's calls, a Watch call's own profile for the
+    /// Watch's, which may not be the one the iPhone is on (#1564).
+    func makeLiveTokenClient(provider: DirectLiveProvider, profile: @escaping @MainActor () -> String) -> GeminiLiveTokenClient {
+        GeminiLiveTokenClient(profile: profile, provider: { provider }, request: { [weak self] path, method, body, timeout in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+        })
+    }
 
     /// Built on first use only: boundaries that merely check whether Gemini
     /// Live is running must not construct its audio engines.
@@ -3559,15 +3582,20 @@ final class AppState: ObservableObject {
 
     /// GPT-Live calls start on the Hermes host (the conduit_push plugin),
     /// through whichever dashboard bridge is current at call time.
-    lazy var gptLiveClient = GPTLiveClient(profile: { [weak self] in
+    lazy var gptLiveClient = makeGPTLiveClient { [weak self] in
         self?.activeProfile ?? "default"
-    }, billing: { [weak self] in
-        // Never the API key without an AppState to say the user chose it.
-        self?.gptLiveCallBilling ?? .subscription
-    }, request: { [weak self] path, method, body, timeout in
-        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
-    })
+    }
+
+    /// GPT-Live's host routes for `profile` (see makeLiveTokenClient).
+    func makeGPTLiveClient(profile: @escaping @MainActor () -> String) -> GPTLiveClient {
+        GPTLiveClient(profile: profile, billing: { [weak self] in
+            // Never the API key without an AppState to say the user chose it.
+            self?.gptLiveCallBilling ?? .subscription
+        }, request: { [weak self] path, method, body, timeout in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+        })
+    }
 
     /// Built on first use only, like Gemini Live's.
     private var gptLiveControllerCreated = false
@@ -3844,27 +3872,32 @@ final class AppState: ObservableObject {
     /// Grok Live's relay socket and status on the Hermes host (the
     /// conduit_push plugin), through whichever dashboard bridge is current
     /// at call time.
-    lazy var grokLiveClient = GrokLiveClient(profile: { [weak self] in
+    lazy var grokLiveClient = makeGrokLiveClient { [weak self] in
         self?.activeProfile ?? "default"
-    }, profileParameter: { [weak self] in
-        self?.notifierPlugin.dashboardProfileParameter ?? "profile"
-    }, request: { [weak self] path, method, body, timeout in
-        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
-    }, mintTicket: { [weak self] in
-        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.mintTicket()
-    }, socketRequest: { [weak self] path, queryItems in
-        guard let bridge = self?.dashboardTicketBridge, let connection = self?.connection else {
-            throw DashboardTicketBridgeError.notReady
-        }
-        let url = try ConnectionURLPolicy.webSocketURL(baseURL: connection.baseUrl, path: path, queryItems: queryItems)
-        // Behind Cloudflare Access the upgrade needs the service-token
-        // headers, like the speech stream's. The authorizer then adds the
-        // dashboard's own session cookies (cookie mode).
-        let request = URLRequest(url: url).applyingProxyHeaders(cloudflare: bridge.cloudflareAccess)
-        return try await bridge.requestAuthorizer.authorizeUpgrade(request)
-    })
+    }
+
+    /// Grok Live's host routes for `profile` (see makeLiveTokenClient).
+    func makeGrokLiveClient(profile: @escaping @MainActor () -> String) -> GrokLiveClient {
+        GrokLiveClient(profile: profile, profileParameter: { [weak self] in
+            self?.notifierPlugin.dashboardProfileParameter ?? "profile"
+        }, request: { [weak self] path, method, body, timeout in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+        }, mintTicket: { [weak self] in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.mintTicket()
+        }, socketRequest: { [weak self] path, queryItems in
+            guard let bridge = self?.dashboardTicketBridge, let connection = self?.connection else {
+                throw DashboardTicketBridgeError.notReady
+            }
+            let url = try ConnectionURLPolicy.webSocketURL(baseURL: connection.baseUrl, path: path, queryItems: queryItems)
+            // Behind Cloudflare Access the upgrade needs the service-token
+            // headers, like the speech stream's. The authorizer then adds the
+            // dashboard's own session cookies (cookie mode).
+            let request = URLRequest(url: url).applyingProxyHeaders(cloudflare: bridge.cloudflareAccess)
+            return try await bridge.requestAuthorizer.authorizeUpgrade(request)
+        })
+    }
 
     /// Built on first use only, like Gemini Live's.
     private var grokLiveControllerCreated = false
@@ -4179,29 +4212,34 @@ final class AppState: ObservableObject {
     /// Local Live's relay socket and status on the Hermes host (the
     /// conduit_push plugin), through whichever dashboard bridge is current
     /// at call time.
-    lazy var localLiveClient = LocalLiveClient(profile: { [weak self] in
+    lazy var localLiveClient = makeLocalLiveClient { [weak self] in
         self?.activeProfile ?? "default"
-    }, profileParameter: { [weak self] in
-        self?.notifierPlugin.dashboardProfileParameter ?? "profile"
-    }, dashboardBaseURL: { [weak self] in
-        self?.connection?.baseUrl
-    }, request: { [weak self] path, method, body, timeout in
-        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
-    }, mintTicket: { [weak self] in
-        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
-        return try await bridge.mintTicket()
-    }, socketRequest: { [weak self] path, queryItems in
-        guard let bridge = self?.dashboardTicketBridge, let connection = self?.connection else {
-            throw DashboardTicketBridgeError.notReady
-        }
-        let url = try ConnectionURLPolicy.webSocketURL(baseURL: connection.baseUrl, path: path, queryItems: queryItems)
-        // Behind Cloudflare Access the upgrade needs the service-token
-        // headers, like the speech stream's. The authorizer then adds the
-        // dashboard's own session cookies (cookie mode), as for Grok's relay.
-        let request = URLRequest(url: url).applyingProxyHeaders(cloudflare: bridge.cloudflareAccess)
-        return try await bridge.requestAuthorizer.authorizeUpgrade(request)
-    })
+    }
+
+    /// Local Live's host routes for `profile` (see makeLiveTokenClient).
+    func makeLocalLiveClient(profile: @escaping @MainActor () -> String) -> LocalLiveClient {
+        LocalLiveClient(profile: profile, profileParameter: { [weak self] in
+            self?.notifierPlugin.dashboardProfileParameter ?? "profile"
+        }, dashboardBaseURL: { [weak self] in
+            self?.connection?.baseUrl
+        }, request: { [weak self] path, method, body, timeout in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+        }, mintTicket: { [weak self] in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.mintTicket()
+        }, socketRequest: { [weak self] path, queryItems in
+            guard let bridge = self?.dashboardTicketBridge, let connection = self?.connection else {
+                throw DashboardTicketBridgeError.notReady
+            }
+            let url = try ConnectionURLPolicy.webSocketURL(baseURL: connection.baseUrl, path: path, queryItems: queryItems)
+            // Behind Cloudflare Access the upgrade needs the service-token
+            // headers, like the speech stream's. The authorizer then adds the
+            // dashboard's own session cookies (cookie mode), as for Grok's relay.
+            let request = URLRequest(url: url).applyingProxyHeaders(cloudflare: bridge.cloudflareAccess)
+            return try await bridge.requestAuthorizer.authorizeUpgrade(request)
+        })
+    }
 
     /// Built on first use only, like the other live modes'.
     private var localLiveControllerCreated = false
@@ -4529,13 +4567,24 @@ final class AppState: ObservableObject {
     /// finished result is handed back to the Voice conversation.
     lazy var voiceBackgroundJobSupervisor: VoiceBackgroundJobSupervisor = {
         let supervisor = VoiceBackgroundJobSupervisor(backend: VoiceBackgroundJobBackend(
-            createSession: { [weak self] targetProfile in
+            createSession: { [weak self] targetProfile, callsModel in
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
                 if let targetProfile {
                     // A job on another profile or bot runs on that profile's
                     // own model: this profile's voice-job model is not its.
-                    let created = try await client.createSession(inProfile: targetProfile)
+                    // A Watch call's own job on that profile uses its voice-job
+                    // model, as the call's relay jobs do (#1564).
+                    var options: (model: String?, provider: String?, reasoningEffort: String?) = (nil, nil, nil)
+                    if callsModel {
+                        options = self.watchCallJobSession(self.loadVoiceProfilePreferences(profile: targetProfile), profile: targetProfile)
+                    }
+                    let created = try await client.createSession(
+                        model: options.model,
+                        provider: options.provider,
+                        reasoningEffort: options.reasoningEffort,
+                        inProfile: targetProfile
+                    )
                     if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, targetProfile) {
                         throw HermesError.invalidResponse
                     }
@@ -4613,13 +4662,13 @@ final class AppState: ObservableObject {
                       let message = Self.liveVoiceUnansweredPrompt(in: self.messages) else { return nil }
                 return Self.liveVoiceTypedPrompt(message)
             },
-            searchChats: { [weak self] query in
+            searchChats: { [weak self] query, profile in
                 guard let self else { throw HermesError.notConnected }
-                return try await self.searchChatsForVoice(query)
+                return try await self.searchChatsForVoice(query, profile: profile)
             },
-            readChat: { [weak self] sessionID in
+            readChat: { [weak self] sessionID, profile in
                 guard let self else { throw HermesError.notConnected }
-                return try await self.readChatForVoice(sessionID)
+                return try await self.readChatForVoice(sessionID, profile: profile)
             },
             respondToApproval: { [weak self] approval, choice, profile in
                 guard let self else { throw HermesError.notConnected }
@@ -5932,6 +5981,8 @@ final class AppState: ObservableObject {
             transcripts: Self.prefetchedSavedCopies,
             answers: true
         )
+        // The answers about the whole Hermes (the Bots list's).
+        offlineChatCache.prefetch(dashboardID: dashboardID, profile: KeptRoute.everyProfile, transcripts: 0, answers: true)
         for profile in profiles.filter({ $0 != activeProfile }).prefix(Self.prefetchedSwitchProfiles) {
             offlineChatCache.prefetch(dashboardID: dashboardID, profile: profile, transcripts: 1)
         }
@@ -7352,7 +7403,7 @@ final class AppState: ObservableObject {
         } else if let profile = profiles.first(where: { profilesMatch(profileDisplayName($0), name) }) {
             // The name Conduit shows, a device-kept one included.
             match = profile
-        } else if let bot = botRoster.first(where: { bot in
+        } else if let bot = shownBotRoster.first(where: { bot in
             profilesMatch(bot.displayLabel, name) || profilesMatch(bot.name, name)
                 || bot.previousNames.contains { profilesMatch($0, name) }
         }) {
@@ -7380,7 +7431,7 @@ final class AppState: ObservableObject {
         let entries = profiles.map { entry($0, [$0]) }
             + [entry("default", [defaultProfileName])]
             + profiles.map { entry($0, [profileDisplayName($0)]) }
-            + botRoster.map { entry($0.name, [$0.displayLabel, $0.name] + $0.previousNames) }
+            + shownBotRoster.map { entry($0.name, [$0.displayLabel, $0.name] + $0.previousNames) }
         var result: [WatchVoiceWire.JobProfileName] = []
         var bytes = 0
         for entry in entries where !entry.names.isEmpty {
@@ -8858,23 +8909,35 @@ final class AppState: ObservableObject {
     /// for a call asked to find one: Hermes' own search over ids, message
     /// text and titles. A Hermes without that route is asked by the titles
     /// of the chats Conduit lists.
-    func searchChatsForVoice(_ query: String) async throws -> [VoiceChatMatch] {
+    /// `callProfile`: a Watch call's own profile when it isn't the one in
+    /// use (#1564), so it finds that profile's chats.
+    func searchChatsForVoice(_ query: String, profile callProfile: String? = nil) async throws -> [VoiceChatMatch] {
         guard isConnected, let dashboardTicketBridge else { throw HermesError.notConnected }
-        let profile = activeProfile
+        let profile = callProfile ?? activeProfile
         do {
             let response = try await dashboardTicketBridge.requestJSON(path: VoiceChatFinder.path(query: query, profile: profile))
             return VoiceChatFinder.matches(from: response)
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
-            return VoiceChatFinder.titleMatches(in: activeProfileSessions, query: query)
+            // A Watch call on another profile is asked by that profile's
+            // chats Conduit has listed (All profiles lists them).
+            let botOwned = botOwnedSessionIDs
+            let listed = callProfile.map { profile in
+                sessions.filter {
+                    sessionBelongsToProfile($0, profile: profile)
+                        && !BotChatHygiene.isCanonicalBotChatRow($0, roster: botRoster)
+                        && !BotChatHygiene.isBotOwnedRow($0, botOwnedSessionIDs: botOwned)
+                }
+            } ?? activeProfileSessions
+            return VoiceChatFinder.titleMatches(in: listed, query: query)
         }
     }
 
     /// A chat a call found, read for the call to talk about: the same text
     /// turns a resumed call gets, with a long chat's older part summarized
     /// once and the summary kept on the host.
-    func readChatForVoice(_ sessionID: String) async throws -> VoiceResumeContext {
+    func readChatForVoice(_ sessionID: String, profile callProfile: String? = nil) async throws -> VoiceResumeContext {
         guard isConnected, dashboardTicketBridge != nil else { throw HermesError.notConnected }
-        guard let context = await voiceResumeContext(sessionID: sessionID, profile: activeProfile) else {
+        guard let context = await voiceResumeContext(sessionID: sessionID, profile: callProfile ?? activeProfile) else {
             // Said to the model, not shown: not localized.
             throw VoiceAudioError.unavailable("Conduit couldn't read that chat.")
         }
@@ -8922,7 +8985,7 @@ final class AppState: ObservableObject {
         if let link = widgetLaunchCoordinator.pendingLink, link.action == .talk {
             guard let workspace = link.workspace, workspace.dashboardID == activeDashboardID else { return }
             presentWaitingCall(owner: .widget, profile: workspace.profile)
-        } else if let intent = PendingVoiceIntentStore.shared.peekClaim()?.intent,
+        } else if let intent = PendingVoiceIntentStore.shared.peekClaim().map({ applyingHandsFreeProfile(to: $0.intent) }),
                   intent.source == .siri, intent.startsFreshConversation {
             let profile = intent.profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             presentWaitingCall(owner: .siri, profile: profile.isEmpty ? activeProfile : profile)
@@ -11493,16 +11556,17 @@ final class AppState: ObservableObject {
         // `middlewareAnnotation`. The whole text is sent.
         BotMentions.middlewareAnnotation(
             text: text,
-            roster: botRoster,
+            roster: shownBotRoster,
             activeProfileName: activeConversationProfileScope
         ) ?? text
     }
 
-    /// What the composer's @ picker offers: the Bot Mode roster minus the
-    /// bot this conversation already talks to, tagged exactly as the
-    /// middleware above resolves them. Empty without Bot Mode.
+    /// What the composer's @ picker offers: the Bot Mode roster (the kept
+    /// one until Hermes answers) minus the bot this conversation already
+    /// talks to, tagged exactly as the middleware above resolves them.
+    /// Empty without Bot Mode.
     var composerMentionCandidates: [MentionAutocomplete.Candidate] {
-        MentionAutocomplete.botCandidates(botRoster, activeProfileName: activeConversationProfileScope)
+        MentionAutocomplete.botCandidates(shownBotRoster, activeProfileName: activeConversationProfileScope)
     }
 
     /// Presentation state for one open hosted room. A room is NOT a session:
@@ -11534,6 +11598,11 @@ final class AppState: ObservableObject {
     @Published private(set) var groupChatPhase: GroupChatPhase = .idle
     @Published private(set) var groupCapabilities: GroupCapabilities?
     @Published private(set) var groupRooms: [GroupRoom] = []
+    /// `groups.list` has answered since the group state was last cleared:
+    /// until then the Bots list shows the rooms kept from its last answer on
+    /// this dashboard (`shownGroupRooms`, #1533).
+    private(set) var groupRoomsListed = false
+    private var keptGroupRoomsMemo: (key: String, rooms: KeptGroupRooms?)?
     /// Hermes Desktop's group chats, read from its ui_meta projection on the
     /// `default` profile (refreshed with the bot roster). Read-only here:
     /// Desktop drives their rounds, and `groups.*` cannot address them.
@@ -11692,6 +11761,7 @@ final class AppState: ObservableObject {
         groupCapabilities = nil
         // Whether the gateway can make pictures is the outgoing one's answer.
         canGeneratePictures = false
+        groupRoomsListed = false
         groupRooms = []
         desktopGroupChats = []
         groupRoomPictureData = [:]
@@ -11839,7 +11909,7 @@ final class AppState: ObservableObject {
     /// The roster bot a room member is: by profile, else (a Desktop group's
     /// member, which has none) by name.
     func groupMemberBot(_ member: GroupMember?, name: String) -> BotProfile? {
-        let roster = botRoster
+        let roster = shownBotRoster
         if let profile = member?.profile?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty,
            let bot = roster.first(where: { $0.name == profile }) {
             return bot
@@ -12016,21 +12086,57 @@ final class AppState: ObservableObject {
         guard groupChatPhase == .available, let client, isConnected else { return }
         let epoch = groupRoomEpoch
         do {
-            let (rooms, nextOffset) = try await groupsList(client)
-            guard groupRoomEpoch == epoch else { return }
-            groupRooms = rooms.filter { !$0.isDisbanded }
-            // Only a complete list proves a room is gone: a partial page
-            // (next_offset set) must not drop another room's retry key.
-            if nextOffset == nil {
-                pruneRoomStores(liveRoomIDs: Set(groupRooms.map(\.roomID)))
+            // Kept for the Bots list to open on, with the pictures (#1533).
+            _ = try await keepingRead(as: KeptRoute.groupRooms, profile: KeptRoute.everyProfile, owner: currentDashboardRuntimeOwner()) {
+                let (rooms, nextOffset) = try await self.groupsList(client)
+                guard self.groupRoomEpoch == epoch else { throw CancellationError() }
+                if !self.groupRoomsListed {
+                    self.adoptKeptGroupRoomPictures()
+                    self.groupRoomsListed = true
+                }
+                self.groupRooms = rooms.filter { !$0.isDisbanded }
+                // Only a complete list proves a room is gone: a partial page
+                // (next_offset set) must not drop another room's retry key.
+                if nextOffset == nil {
+                    self.pruneRoomStores(liveRoomIDs: Set(self.groupRooms.map(\.roomID)))
+                }
+                await self.refreshGroupRoomPictures()
+                guard self.groupRoomEpoch == epoch else { throw CancellationError() }
+                return self.keptGroupRoomsNow()
             }
-            await refreshGroupRoomPictures()
         } catch is CancellationError {
             return
         } catch {
             // Keep the last known room list; the roster surfaces the probe
             // failure path, and a stale room row is safer than an empty one.
         }
+    }
+
+    /// Keeps the listed rooms and their pictures as they are now, as a
+    /// write: a picture set or removed here is what the Bots list opens on
+    /// next.
+    func keepGroupRoomPictures() {
+        guard groupRoomsListed, let owner = currentDashboardRuntimeOwner(),
+              let data = try? JSONEncoder().encode(keptGroupRoomsNow()),
+              let answer = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+        keepWrittenAnswer(answer, for: KeptRoute.groupRooms, profile: KeptRoute.everyProfile, owner: owner, removals: offlineChatCache.removals)
+    }
+
+    /// The Bots list's hosted rooms: `groups.list`'s, else the kept ones
+    /// until it answers, none once Hermes says it has no hosted rooms.
+    var shownGroupRooms: [GroupRoom] {
+        if groupRoomsListed || groupChatPhase == .gatewayUnsupported { return groupRooms }
+        return keptGroupRooms()?.rooms ?? []
+    }
+
+    /// The rooms kept on this dashboard, decoded once per answer kept.
+    func keptGroupRooms() -> KeptGroupRooms? {
+        let turn = keptAnswerTurn(KeptRoute.groupRooms, profile: KeptRoute.everyProfile)
+        let key = "\(activeDashboardID?.uuidString ?? "-")|\(offlineChatCache.removals)|\(turn)"
+        if let memo = keptGroupRoomsMemo, memo.key == key { return memo.rooms }
+        let rooms = keptRead(KeptGroupRooms.self, KeptRoute.groupRooms, profile: KeptRoute.everyProfile)
+        keptGroupRoomsMemo = (key, rooms)
+        return rooms
     }
 
     /// Open a hosted room. Loads the room's authoritative state, replays a
@@ -12043,6 +12149,29 @@ final class AppState: ObservableObject {
             return
         }
         guard let dashboardID = activeDashboardID else { return }
+        // A kept room asks Hermes first, and opens as Hermes lists it.
+        var room = room
+        if !groupRoomsListed {
+            if groupCapabilities == nil {
+                await refreshGroupChatSupport()
+            } else {
+                await refreshGroupRooms()
+            }
+            guard self.client === client, isConnected, activeDashboardID == dashboardID else { return }
+            let roomID = room.roomID
+            guard groupRoomsListed else {
+                // A Hermes that hosts no rooms any more won't open it on a retry.
+                errorMessage = groupChatPhase == .gatewayUnsupported
+                    ? AppLocalization.string("That chat is no longer available.")
+                    : AppLocalization.string("Couldn't open that chat. Try again.")
+                return
+            }
+            guard let listed = groupRooms.first(where: { $0.roomID == roomID }) else {
+                errorMessage = AppLocalization.string("That chat is no longer available.")
+                return
+            }
+            room = listed
+        }
         guard groupCapabilities?.foundationSupported == true else { return }
         guard room.isDisbanded == false else { return }
         // A newer destination than a New Chat or widget action on its way.
@@ -16546,7 +16675,7 @@ final class AppState: ObservableObject {
             return
         }
         // This id is derived from the adopted transcript and can briefly lag
-        // during a session handoff; ChatScrollEngine revalidates it against
+        // during a session handoff; TranscriptScroller revalidates it against
         // rendered targets and falls back if it belongs to the prior session.
         guard let request = chatResumeCoordinator.reconciliationSettled(
             sessionKey: sessionKey,
@@ -21779,7 +21908,7 @@ final class AppState: ObservableObject {
             // screen has since moved to another dashboard or profile, or a
             // later visit there would open to it (#1040).
             if let dashboardID {
-                offlineChatCache.removeTranscripts(sessionIDs: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
+                removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
             // Its pinned replies go too, under the profile it was deleted in.
             dropPinnedReplies(forDeleted: session, profile: profile)
@@ -21804,7 +21933,7 @@ final class AppState: ObservableObject {
             // Hermes deleted it after the screen moved to another dashboard:
             // only the old dashboard's saved copy follows (#1040).
             if let dashboardID {
-                offlineChatCache.removeTranscripts(sessionIDs: Set(session.nestingIDs), dashboardID: dashboardID, profile: profile)
+                removeSavedCopies(ofDeleted: Set(session.nestingIDs), dashboardID: dashboardID, profile: profile)
             }
             return false
         } catch {
@@ -22124,7 +22253,8 @@ final class AppState: ObservableObject {
         let dashboardID = activeDashboardID
         let avatarWriteSerial = profileAvatarWriteSerial
         guard let client, isConnected else {
-            if botRoster.isEmpty, botModePhase != .gatewayUnsupported {
+            // Bots on screen, Hermes' or the kept ones, stay without a word.
+            if shownBotRoster.isEmpty, botModePhase != .gatewayUnsupported {
                 botModePhase = .failed(
                     message: AppLocalization.string("Connect to Hermes to see your bots.")
                 )
@@ -22149,13 +22279,19 @@ final class AppState: ObservableObject {
             botModePhase = .loading
         }
         do {
-            let snapshot: BotRosterSnapshot
-            if let botRoster = chatResumeLifecycleOperations.botRoster {
-                snapshot = try await botRoster(client)
-            } else {
-                snapshot = try await client.botRoster()
+            var snapshot: BotRosterSnapshot?
+            // Kept for the Bots list to open on (#1533).
+            _ = try await keepingRead(as: KeptRoute.botRoster, profile: KeptRoute.everyProfile, owner: currentDashboardRuntimeOwner()) {
+                let read: BotRosterSnapshot
+                if let botRoster = self.chatResumeLifecycleOperations.botRoster {
+                    read = try await botRoster(client)
+                } else {
+                    read = try await client.botRoster()
+                }
+                snapshot = read
+                return KeptBotRoster(bots: BotProfile.displayOrder(read.bots), desktopGroups: read.desktopGroups).cappingPictures()
             }
-            guard botModeStateIsCurrent(epoch: epoch, dashboardID: dashboardID) else { return }
+            guard let snapshot, botModeStateIsCurrent(epoch: epoch, dashboardID: dashboardID) else { return }
             // The FULL roster is kept: sessions-list hygiene must know every
             // bot's canonical registry (including meta-hidden bots), while
             // the roster VIEW hides meta-hidden rows for display only.
@@ -22174,13 +22310,13 @@ final class AppState: ObservableObject {
                   !Task.isCancelled else { return }
             if HermesClient.isMissingRPCMethod(error) {
                 botModePhase = .gatewayUnsupported
-            } else if botRoster.isEmpty {
+            } else if shownBotRoster.isEmpty {
                 botModePhase = .failed(
                     message: AppLocalization.string("Could not load bots.")
                 )
             } else {
-                // An established roster stays on screen; the failure renders
-                // as a non-blocking notice above it.
+                // An established roster, or the kept one, stays on screen;
+                // the failure renders as a non-blocking notice above it.
                 botModePhase = .failed(
                     message: AppLocalization.string("Could not refresh bots.")
                 )
@@ -22207,8 +22343,65 @@ final class AppState: ObservableObject {
         await refreshBotRoster()
     }
 
+    /// The bot's picture: the one fetched from its profile, else the copy
+    /// of Hermes' picture the profile pictures keep on the phone, so a row
+    /// shows it before the fetch, or offline (#1533).
     func botAvatarImage(for bot: BotProfile) -> UIImage? {
-        bot.hasAvatar ? botAvatarImages[bot.name] : nil
+        guard bot.hasAvatar else { return nil }
+        return botAvatarImages[bot.name] ?? profileAvatarURLs[bot.name].flatMap { ProfileAvatarImageCache.image(at: $0) }
+    }
+
+    /// The roster has answered on this dashboard: Hermes' bots, or that it
+    /// has no Bot Mode.
+    private var botRosterAnswered: Bool {
+        botModePhase == .available || botModePhase == .gatewayUnsupported
+    }
+
+    /// The bots as the Bots list and chats name them: Hermes' roster, else,
+    /// until it answers on this dashboard, the bots it gave last time
+    /// (#1533). A kept bot's row opens its Bot Chat; nothing writes it
+    /// (`BotProfile.isKeptCopy`).
+    var shownBotRoster: [BotProfile] {
+        guard botRoster.isEmpty, !botRosterAnswered else { return botRoster }
+        return keptBotRoster()?.bots ?? []
+    }
+
+    /// Desktop's group chats, from the roster or its kept copy, as the bots.
+    var shownDesktopGroupChats: [DesktopGroupChat] {
+        guard botRoster.isEmpty, !botRosterAnswered else { return desktopGroupChats }
+        return keptBotRoster()?.desktopGroups ?? []
+    }
+
+    /// Fires when the bots `shownBotRoster` names may have changed: Hermes'
+    /// roster, or its answer ending the kept copy's stand-in. @Published
+    /// fires before the change lands, so it's read on the next turn; on
+    /// subscribing too, with the bots shown then.
+    var shownBotRosterChanged: AnyPublisher<Void, Never> {
+        Publishers.Merge($botRoster.map { _ in () }, $botModePhase.map { _ in () })
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
+    }
+
+    private var keptBotRosterMemo: (key: String, roster: KeptBotRoster?)?
+
+    /// The roster kept on this dashboard, decoded once per answer kept, its
+    /// main bot going by its Conduit name.
+    private func keptBotRoster() -> KeptBotRoster? {
+        let mainName = profileDisplayName("default")
+        let turn = keptAnswerTurn(KeptRoute.botRoster, profile: KeptRoute.everyProfile)
+        let key = "\(activeDashboardID?.uuidString ?? "-")|\(offlineChatCache.removals)|\(turn)|\(mainName)"
+        if let memo = keptBotRosterMemo, memo.key == key { return memo.roster }
+        var roster = keptRead(KeptBotRoster.self, KeptRoute.botRoster, profile: KeptRoute.everyProfile)
+        if let bots = roster?.bots {
+            roster?.bots = bots.map { bot in
+                var bot = bot
+                bot.isKeptCopy = true
+                if BotManagement.isDefaultProfile(bot.name) { bot.conduitName = mainName }
+                return bot
+            }
+        }
+        keptBotRosterMemo = (key, roster)
+        return roster
     }
 
     /// Loads the bot's picture, retrying a failed fetch a few times with
@@ -22278,21 +22471,86 @@ final class AppState: ObservableObject {
     /// The skills, toolsets and MCP servers a new bot starting from
     /// `profile` would have (`profiles.describe` of that profile).
     func loadBotCapabilities(startingFrom profile: String) async -> BotCapabilities? {
-        guard let client, isConnected else { return nil }
-        return try? await client.describeBotProfile(name: profile).capabilities
+        await readBotDetails(profile: profile)?.capabilities
+    }
+
+    /// What `loadBotCapabilities` kept for the profile on this dashboard.
+    func keptBotCapabilities(startingFrom profile: String) -> BotCapabilities? {
+        keptRead(BotProfileDetails.self, KeptRoute.botDetails, profile: profile)?.capabilities
     }
 
     /// The MCP catalog and the bot's servers' sign-in state, for Edit Bot's
-    /// MCP page. Nil when Hermes doesn't offer them (an older gateway), so
-    /// the page keeps its plain on/off list.
+    /// MCP page, kept for it to open on (#1533). Nil when Hermes doesn't
+    /// offer them (an older gateway), so the page keeps its plain on/off
+    /// list.
     func loadBotMcpSetup(profile: String) async -> BotMcpSetupSnapshot? {
-        guard let client, isConnected,
-              let catalog = try? await client.botMcpCatalog(profile: profile) else { return nil }
-        let servers = (try? await client.botMcpServers(profile: profile)) ?? []
-        return BotMcpSetupSnapshot(
-            catalog: catalog,
-            servers: Dictionary(servers.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
-        )
+        guard let client, isConnected else { return nil }
+        let operations = chatResumeLifecycleOperations
+        // A servers list that failed isn't the bot's servers: the read then
+        // keeps nothing, and the page shows Hermes' catalog with the
+        // sign-ins kept last time, as a read that failed whole keeps them.
+        var serversRead = true
+        let answer = try? await keepingRead(
+            as: KeptRoute.botMcpSetup,
+            profile: profile,
+            owner: currentDashboardRuntimeOwner(),
+            keeps: { _ in serversRead }
+        ) {
+            let catalog: [BotMcpCatalogEntry]
+            if let read = operations.botMcpCatalog {
+                catalog = try await read(client, profile)
+            } else {
+                catalog = try await client.botMcpCatalog(profile: profile)
+            }
+            var servers: [BotMcpServerSummary] = []
+            do {
+                if let read = operations.botMcpServers {
+                    servers = try await read(client, profile)
+                } else {
+                    servers = try await client.botMcpServers(profile: profile)
+                }
+            } catch {
+                serversRead = false
+            }
+            return BotMcpSetupSnapshot(
+                catalog: catalog,
+                servers: Dictionary(servers.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+            )
+        }
+        guard var setup = answer else { return nil }
+        if !serversRead {
+            setup.servers = keptBotMcpSetup(profile: profile)?.servers ?? [:]
+        }
+        return setup
+    }
+
+    /// What `loadBotMcpSetup` kept for the bot on this dashboard.
+    func keptBotMcpSetup(profile: String) -> BotMcpSetupSnapshot? {
+        keptRead(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile)
+    }
+
+    /// A catalog server Hermes added to a bot's profile, kept as Hermes now
+    /// holds it (#1533): on in the bot's lists, installed in its catalog,
+    /// and, signing in with OAuth, waiting for a sign-in.
+    private func keepBotMcpServerAdded(
+        _ entry: BotMcpCatalogEntry,
+        oauth: Bool,
+        profile: String,
+        on owner: DashboardRuntimeOwner?
+    ) {
+        keepWrittenChange(BotProfileDetails.self, KeptRoute.botDetails, profile: profile, on: owner) { details in
+            guard !details.capabilities.mcpServers.contains(where: { $0.name == entry.name }) else { return }
+            details.capabilities.mcpServers.append(BotCapability(name: entry.name, description: entry.description, enabled: true))
+        }
+        keepWrittenChange(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile, on: owner) { setup in
+            setup.catalog = setup.catalog.map { listed in
+                guard listed.name == entry.name else { return listed }
+                return BotMcpCatalogEntry(name: listed.name, description: listed.description, requires: listed.requires, installed: true)
+            }
+            if oauth {
+                setup.servers[entry.name] = BotMcpServerSummary(name: entry.name, auth: "oauth", oauthTokensPresent: false)
+            }
+        }
     }
 
     /// Adds a catalog server to the bot's profile with the keys typed for
@@ -22309,12 +22567,14 @@ final class AppState: ObservableObject {
         // Every step is checked against the Hermes it started on: after a
         // switch, keys and tests must not go to the other one.
         let epoch = botRosterEpoch
+        let owner = currentDashboardRuntimeOwner()
         let moved = BotMcpInstallOutcome.failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
         var oauth = false
         if !entry.installed {
             do {
                 let added = try await client.addBotMcpServer(profile: profile, name: entry.name, preset: entry.name)
                 oauth = BotMcpSetup.addedServer(from: added, name: entry.name)?.auth?.lowercased() == "oauth"
+                keepBotMcpServerAdded(entry, oauth: oauth, profile: profile, on: owner)
             } catch {
                 return .failed(AppLocalization.string("Could not add \(entry.name): \(UserFacingError.message(for: error))"))
             }
@@ -22356,6 +22616,7 @@ final class AppState: ObservableObject {
             return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
         }
         let epoch = botRosterEpoch
+        let owner = currentDashboardRuntimeOwner()
         let moved = BotMcpSignInOutcome.failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
         let loopback = NativeOAuthLoopbackServer(expectedState: nil, relaysCallback: true)
         defer { loopback.stop() }
@@ -22414,6 +22675,10 @@ final class AppState: ObservableObject {
                 switch BotMcpSetup.pollStatus(polled) {
                 case "approved":
                     approved = true
+                    // The MCP page opens on it signed in (#1533).
+                    keepWrittenChange(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile, on: owner) {
+                        $0.servers[name] = BotMcpServerSummary(name: name, auth: "oauth", oauthTokensPresent: true)
+                    }
                     return .signedIn
                 case "error":
                     return .failed(BotMcpSetup.pollError(polled))
@@ -22431,15 +22696,33 @@ final class AppState: ObservableObject {
 
     /// `profiles.describe` for the edit sheet: the description and SOUL.md.
     func loadBotDetails(_ bot: BotProfile) async -> BotProfileDetails? {
-        guard let client, isConnected else { return nil }
-        return try? await client.describeBotProfile(name: bot.name)
+        await readBotDetails(profile: bot.name)
     }
 
-    /// The gateway's provider and model inventory for the bot editor's
-    /// Model page. Nil when it could not be read.
-    func loadBotModelProviders() async -> [ProviderInfo]? {
+    /// What `loadBotDetails` kept for the bot on this dashboard: what the
+    /// editor shows until Hermes answers.
+    func keptBotDetails(_ bot: BotProfile) -> BotProfileDetails? {
+        keptRead(BotProfileDetails.self, KeptRoute.botDetails, profile: bot.name)
+    }
+
+    /// `profiles.describe` of a profile, kept in that profile's answers for
+    /// the bot editor to open on (#1533), so a deleted bot takes its own.
+    private func readBotDetails(profile: String) async -> BotProfileDetails? {
         guard let client, isConnected else { return nil }
-        return try? await client.modelOptions().providers
+        return try? await keepingRead(as: KeptRoute.botDetails, profile: profile, owner: currentDashboardRuntimeOwner()) {
+            if let read = self.chatResumeLifecycleOperations.describeBotProfile { return try await read(client, profile) }
+            return try await client.describeBotProfile(name: profile)
+        }
+    }
+
+    /// A bot's details as Hermes took a write to them, kept for the editor
+    /// to open on next time, even if the read after it fails.
+    private func keepBotDetailsWritten(
+        _ profile: String,
+        on owner: DashboardRuntimeOwner?,
+        _ change: (inout BotProfileDetails) -> Void
+    ) {
+        keepWrittenChange(BotProfileDetails.self, KeptRoute.botDetails, profile: profile, on: owner, change)
     }
 
     /// Whether Hermes can generate pictures, as last asked
@@ -22646,6 +22929,7 @@ final class AppState: ObservableObject {
         guard let client, isConnected else {
             return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
         }
+        let owner = currentDashboardRuntimeOwner()
         do {
             let result = try await client.configureBotModel(
                 name: bot.name,
@@ -22654,10 +22938,16 @@ final class AppState: ObservableObject {
                 confirmed: confirmed
             )
             if let message = BotModelConfirmation.message(in: result) { return .confirmModel(message) }
-            if refreshesRoster { await refreshBotRosterAfterWrite() }
-            if !BotConfigureSections.failed(in: result, among: ["model"]).isEmpty {
-                return .saved(warning: AppLocalization.string("The model was not saved."))
+            let saved = BotConfigureSections.failed(in: result, among: ["model"]).isEmpty
+            // The editor opens on the model Hermes took (#1533).
+            if saved {
+                keepBotDetailsWritten(bot.name, on: owner) { details in
+                    details.provider = provider
+                    details.model = model
+                }
             }
+            if refreshesRoster { await refreshBotRosterAfterWrite() }
+            guard saved else { return .saved(warning: AppLocalization.string("The model was not saved.")) }
             return .saved(warning: nil)
         } catch {
             return .saved(warning: AppLocalization.string("The model was not saved."))
@@ -22672,7 +22962,7 @@ final class AppState: ObservableObject {
         draft: BotEditorDraft,
         loadedDetails: BotProfileDetails?
     ) async -> BotSaveResult {
-        guard let client, isConnected else {
+        guard let client, isConnected, !bot.isKeptCopy else {
             return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
         }
         let epoch = botRosterEpoch
@@ -22711,6 +23001,7 @@ final class AppState: ObservableObject {
         // SOUL is only editable once `profiles.describe` answered, so an
         // unloaded editor can never blank a bot's personality.
         let soulChanged = loadedDetails.map { draft.soul != $0.soul } ?? false
+        let owner = currentDashboardRuntimeOwner()
         let capabilitySections = loadedDetails.flatMap { details in
             draft.capabilities.map { BotCapabilities.configureParams(original: details.capabilities, edited: $0) }
         } ?? [:]
@@ -22762,8 +23053,16 @@ final class AppState: ObservableObject {
                 var sections: [String] = []
                 if descriptionChanged { sections.append("description") }
                 if soulChanged { sections.append("soul") }
-                if !BotConfigureSections.failed(in: result, among: sections).isEmpty {
+                let failed = BotConfigureSections.failed(in: result, among: sections)
+                if !failed.isEmpty {
                     problems.append(AppLocalization.string("The description or personality was not saved."))
+                }
+                // What Hermes took is what the editor opens on next (#1533).
+                if failed.count < sections.count {
+                    keepBotDetailsWritten(bot.name, on: owner) { details in
+                        if descriptionChanged, !failed.contains("description") { details.description = description }
+                        if soulChanged, !failed.contains("soul") { details.soul = draft.soul }
+                    }
                 }
                 if !patch.isEmpty {
                     var outcome = BotMetaWriteOutcome(configureResult: result)
@@ -22827,12 +23126,21 @@ final class AppState: ObservableObject {
         // only once the editor loaded them from the bot itself.
         if !capabilitySections.isEmpty {
             do {
-                let result = try await client.configureBotProfile(name: bot.name, sections: capabilitySections)
-                if !BotConfigureSections.failed(
-                    in: result,
-                    among: BotCapabilities.appliedSections(for: capabilitySections)
-                ).isEmpty {
+                let result: AnyCodable
+                if let configure = chatResumeLifecycleOperations.configureBotSections {
+                    result = try await configure(client, bot.name, capabilitySections)
+                } else {
+                    result = try await client.configureBotProfile(name: bot.name, sections: capabilitySections)
+                }
+                let sections = BotCapabilities.appliedSections(for: capabilitySections)
+                let failed = BotConfigureSections.failed(in: result, among: sections)
+                if !failed.isEmpty {
                     problems.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
+                }
+                if let edited = draft.capabilities, failed.count < sections.count {
+                    keepBotDetailsWritten(bot.name, on: owner) { details in
+                        details.capabilities = details.capabilities.taking(sections.filter { !failed.contains($0) }, from: edited)
+                    }
                 }
             } catch {
                 problems.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
@@ -22873,7 +23181,7 @@ final class AppState: ObservableObject {
 
     /// Pins or unpins a bot (ui_meta `pinned`, shared with Desktop).
     func setBotPinned(_ bot: BotProfile, pinned: Bool) async -> String? {
-        guard let client, isConnected else {
+        guard let client, isConnected, !bot.isKeptCopy else {
             return AppLocalization.string("Connect to Hermes to manage bots.")
         }
         let epoch = botRosterEpoch
@@ -22902,7 +23210,7 @@ final class AppState: ObservableObject {
     /// group rooms; it just isn't offered for a new group, whose picker
     /// lists visible bots only.
     func setBotHidden(_ bot: BotProfile, hidden: Bool) async -> String? {
-        guard let client, isConnected else {
+        guard let client, isConnected, !bot.isKeptCopy else {
             return AppLocalization.string("Connect to Hermes to manage bots.")
         }
         let epoch = botRosterEpoch
@@ -22930,7 +23238,7 @@ final class AppState: ObservableObject {
     /// as `<name>-2`, with its look and a "(copy)" title. Returns the notice
     /// to show: what was made, or why not.
     func duplicateBot(_ bot: BotProfile) async -> String {
-        guard let client, isConnected else {
+        guard let client, isConnected, !bot.isKeptCopy else {
             return AppLocalization.string("Connect to Hermes to manage bots.")
         }
         guard let name = BotDuplicate.name(for: bot.name, taken: botRoster.map(\.name) + profiles) else {
@@ -22975,7 +23283,7 @@ final class AppState: ObservableObject {
     /// Whether Conduit lets this bot be deleted: never the gateway's primary
     /// profile, and never the profile this dashboard is working in.
     func canDeleteBot(_ bot: BotProfile) -> Bool {
-        bot.isDeletable && bot.name.caseInsensitiveCompare(activeProfile) != .orderedSame
+        !bot.isKeptCopy && bot.isDeletable && bot.name.caseInsensitiveCompare(activeProfile) != .orderedSame
     }
 
     /// Permanently deletes the bot's Hermes profile through the dashboard
@@ -22992,6 +23300,7 @@ final class AppState: ObservableObject {
         allowed.insert(charactersIn: "-_.~")
         let encodedName = bot.name.addingPercentEncoding(withAllowedCharacters: allowed) ?? bot.name
         let dashboardID = activeDashboardID
+        let rosterOwner = currentDashboardRuntimeOwner()
         do {
             // The gateway waits up to 10 s for a running profile gateway to
             // stop before removing the directory.
@@ -23015,6 +23324,8 @@ final class AppState: ObservableObject {
             offlineChatCache.removeHeldRows(dashboardID: dashboardID, profile: bot.name)
             offlineChatCache.removeKeptAnswers(dashboardID: dashboardID, profile: bot.name)
         }
+        // And it leaves the roster kept there, its bridge rebuilt or not.
+        forgetKeptBot(bot.name, on: rosterOwner)
         guard dashboardTicketBridge === bridge else { return nil }
         sessionStars.forget(profile: bot.name)
         sessionStars.save(to: defaults)
@@ -23027,6 +23338,20 @@ final class AppState: ObservableObject {
         await refreshBotRosterAfterWrite()
         await loadProfiles()
         return nil
+    }
+
+    /// Drops a deleted bot from the roster kept on the dashboard it was
+    /// deleted from, as a write, so the Bots list doesn't open on it if the
+    /// read after the delete fails, nor keeps a read asked before it.
+    private func forgetKeptBot(_ name: String, on owner: DashboardRuntimeOwner?) {
+        guard let owner else { return }
+        guard var kept = keptAnswer(KeptRoute.botRoster, profile: KeptRoute.everyProfile, on: owner),
+              let bots = kept["bots"] as? [Any] else {
+            noteKeptAnswerWrite(for: KeptRoute.botRoster, profile: KeptRoute.everyProfile, owner: owner)
+            return
+        }
+        kept["bots"] = bots.filter { ($0 as? [String: Any])?["name"] as? String != name }
+        keepWrittenAnswer(kept, for: KeptRoute.botRoster, profile: KeptRoute.everyProfile, owner: owner, removals: offlineChatCache.removals)
     }
 
     /// A Bot Chat's pins are kept under the profile in use, not the bot's,
@@ -23234,9 +23559,11 @@ final class AppState: ObservableObject {
             return outcome == .opened ? .handled : .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
         }
 
+        // A kept bot opens as its Bots list row does: Hermes' lookup below
+        // confirms the chat.
         guard let botName = reference.botName,
               botName == reference.scopeProfile,
-              let bot = botRoster.first(where: { $0.name == botName && !$0.isHiddenByMeta }) else {
+              let bot = shownBotRoster.first(where: { $0.name == botName && !$0.isHiddenByMeta }) else {
             return .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
         }
         do {
@@ -23759,7 +24086,9 @@ final class AppState: ObservableObject {
         // linkedBot, not a bare name match: a bot renamed on the desktop
         // carries its old name in previousNames and must keep its picture
         // and color in an already-open chat.
-        let bot = Self.linkedBot(named: botProfile, in: botRoster)
+        // The kept bots until Hermes answers, so a kept row's chat opens
+        // with its face (#1533).
+        let bot = Self.linkedBot(named: botProfile, in: shownBotRoster)
         return ConversationAgentIdentity(
             name: botChatDisplayLabel(profile: botProfile, rosterBot: bot),
             photoURL: nil,
@@ -32369,9 +32698,10 @@ final class AppState: ObservableObject {
         let generation = capabilityLoadGeneration
         let profile = activeProfile
         let owner = currentCapabilitiesOwner
-        guard let dashboardTicketBridge else { return .unavailable(profile: profile) }
-        async let skillsResult = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/skills", profile: profile))
-        async let toolsetsResult = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/tools/toolsets", profile: profile))
+        guard let runtime = currentDashboardRuntimeOwner() else { return .unavailable(profile: profile) }
+        // Kept for Capabilities to open on next time (#1533).
+        async let skillsResult = readKeepingAnswer(KeptRoute.skills, profile: profile, owner: runtime)
+        async let toolsetsResult = readKeepingToolsets(profile: profile, owner: runtime)
         // Commit gate: this exact request must still be the newest one AND
         // target the still-active dashboard and profile (A -> B -> A stale
         // commits rejected).
@@ -32386,19 +32716,11 @@ final class AppState: ObservableObject {
         do {
             let (skillsResponse, toolsetsResponse) = try await (skillsResult, toolsetsResult)
             guard ownsRequest() else { return .superseded(requested: owner, active: currentCapabilitiesOwner) }
-            let skillsValues = skillsResponse["_array"] as? [Any] ?? []
-            self.skills = skillsValues.compactMap(decodeCapabilitySkill)
-                .sorted { lhs, rhs in
-                    let lhsCat = lhs.category ?? ""
-                    let rhsCat = rhs.category ?? ""
-                    if lhsCat != rhsCat { return lhsCat < rhsCat }
-                    return lhs.name < rhs.name
-                }
-            let toolsetsValues = toolsetsResponse["_array"] as? [Any] ?? []
-            self.toolsets = toolsetsValues.compactMap(decodeCapabilityToolset)
-                .sorted { ($0.label ?? $0.name) < ($1.label ?? $1.name) }
+            self.skills = capabilitySkills(from: skillsResponse)
+            self.toolsets = capabilityToolsets(from: toolsetsResponse)
             adoptToolCatalog(ToolCatalog(toolsets: self.toolsets), key: toolCatalogKey)
             capabilitiesOwner = owner
+            capabilitiesAreKept = false
             return .success(profile: profile)
         } catch {
             guard ownsRequest() else { return .superseded(requested: owner, active: currentCapabilitiesOwner) }
@@ -32407,12 +32729,60 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Draws the installed skills and toolsets Hermes gave last time on
+    /// this dashboard and profile, kept on the phone (#1533), unless this
+    /// profile's are already showing; only once both lists are kept.
+    func showKeptCapabilities() {
+        guard !capabilitiesAreCurrent,
+              let skillsAnswer = keptAnswer(KeptRoute.skills),
+              let toolsetsAnswer = keptAnswer(KeptRoute.toolsets) else { return }
+        skills = capabilitySkills(from: skillsAnswer)
+        toolsets = capabilityToolsets(from: toolsetsAnswer)
+        capabilitiesOwner = currentCapabilitiesOwner
+        capabilitiesAreKept = true
+    }
+
+    private func capabilitySkills(from answer: [String: Any]) -> [CapabilitySkill] {
+        (answer["_array"] as? [Any] ?? []).compactMap(decodeCapabilitySkill)
+            .sorted { lhs, rhs in
+                let lhsCat = lhs.category ?? ""
+                let rhsCat = rhs.category ?? ""
+                if lhsCat != rhsCat { return lhsCat < rhsCat }
+                return lhs.name < rhs.name
+            }
+    }
+
+    private func capabilityToolsets(from answer: [String: Any]) -> [CapabilityToolset] {
+        (answer["_array"] as? [Any] ?? []).compactMap(decodeCapabilityToolset)
+            .sorted { ($0.label ?? $0.name) < ($1.label ?? $1.name) }
+    }
+
+    /// Keeps a switch Hermes took in the list it's kept in, so Capabilities
+    /// opens on it next time, the dashboard switched away from included.
+    /// A flip drops the read on its way (it was asked before it): rows
+    /// still kept ask again, as they'd otherwise stay up.
+    private func keepFlip(_ route: String, name: String, enabled: Bool, profile: String, owner: DashboardRuntimeOwner, removals: Int) async {
+        if let kept = keptAnswer(route, profile: profile, on: owner), let rows = kept["_array"] as? [Any] {
+            let flipped = rows.map { row -> Any in
+                guard var row = row as? [String: Any], row["name"] as? String == name else { return row }
+                row["enabled"] = enabled
+                return row
+            }
+            keepWrittenAnswer(["_array": flipped], for: route, profile: profile, owner: owner, removals: removals)
+        } else {
+            noteKeptAnswerWrite(for: route, profile: profile, owner: owner)
+        }
+        guard capabilitiesAreKept, ownsDashboardRuntime(owner), profile == activeProfile else { return }
+        await loadCapabilities()
+    }
+
     /// `rows` is the snapshot the switch was flipped in (a bulk change's
     /// first one); nothing is sent once it is no longer the one showing.
     func toggleSkill(name: String, enabled: Bool, rows: CapabilitySnapshotOwner? = nil) async {
         let profile = activeProfile
         guard capabilityRowsAreCurrent(rows), let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
+        let removals = offlineChatCache.removals
         let current = skills.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update. A list read still on its way was read before
         // this flip: it no longer commits (as CapabilitiesStore, #867).
@@ -32433,11 +32803,18 @@ final class AppState: ObservableObject {
                 )
             }
         }
+        // Kept only once Hermes took it: a refused flip a newer one
+        // replaced says nothing failed, but was never saved.
+        if outcome.taken {
+            await keepFlip(KeptRoute.skills, name: name, enabled: enabled, profile: profile, owner: owner, removals: removals)
+        }
         guard ownsDashboardRuntime(owner), let error = outcome.error, profile == activeProfile else { return }
         if let restore = outcome.restore, let index = skills.firstIndex(where: { $0.name == name }) {
             skills[index].enabled = restore
         }
         errorMessage = AppLocalization.string("Could not update skill: \(UserFacingError.message(for: error))")
+        // The flip dropped the read on its way: a list still kept asks again.
+        if capabilitiesAreKept { await loadCapabilities() }
     }
 
     /// `rows` is the snapshot the switch was flipped in (a bulk change's
@@ -32446,6 +32823,7 @@ final class AppState: ObservableObject {
         let profile = activeProfile
         guard capabilityRowsAreCurrent(rows), let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
+        let removals = offlineChatCache.removals
         let current = toolsets.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update. A list read still on its way was read before
         // this flip: it no longer commits (as CapabilitiesStore, #867).
@@ -32466,11 +32844,18 @@ final class AppState: ObservableObject {
                 )
             }
         }
+        // Kept only once Hermes took it: a refused flip a newer one
+        // replaced says nothing failed, but was never saved.
+        if outcome.taken {
+            await keepFlip(KeptRoute.toolsets, name: name, enabled: enabled, profile: profile, owner: owner, removals: removals)
+        }
         guard ownsDashboardRuntime(owner), let error = outcome.error, profile == activeProfile else { return }
         if let restore = outcome.restore, let index = toolsets.firstIndex(where: { $0.name == name }) {
             toolsets[index].enabled = restore
         }
         errorMessage = AppLocalization.string("Could not update toolset: \(UserFacingError.message(for: error))")
+        // The flip dropped the read on its way: a list still kept asks again.
+        if capabilitiesAreKept { await loadCapabilities() }
     }
 
     /// The dashboard, bridge and profile a capability read made now would
@@ -32503,6 +32888,7 @@ final class AppState: ObservableObject {
     private func retireCapabilitySnapshot() {
         capabilityLoadGeneration &+= 1
         capabilitiesOwner = nil
+        capabilitiesAreKept = false
         skills = []
         toolsets = []
     }
@@ -32537,12 +32923,12 @@ final class AppState: ObservableObject {
             toolCatalog = ToolCatalog.saved(key: key, defaults: defaults)
         }
         guard !toolCatalogFetched.contains(key), !toolCatalogLoading.contains(key),
-              let dashboardTicketBridge else { return }
+              let owner = currentDashboardRuntimeOwner() else { return }
         // Two chats opened in a row ask once.
         toolCatalogLoading.insert(key)
         defer { toolCatalogLoading.remove(key) }
-        let path = dashboardPath("/api/tools/toolsets", profile: activeProfile)
-        guard let response = try? await dashboardTicketBridge.requestJSON(path: path) else { return }
+        // The answer Capabilities' Tools tab opens on, kept for it too.
+        guard let response = try? await readKeepingToolsets(profile: activeProfile, owner: owner) else { return }
         let toolsets = (response["_array"] as? [Any] ?? []).compactMap(decodeCapabilityToolset)
         adoptToolCatalog(ToolCatalog(toolsets: toolsets), key: key)
     }
@@ -33375,8 +33761,9 @@ final class AppState: ObservableObject {
 
     /// The reads whose answers the settings pages keep (#1533): dashboard
     /// routes, and gateway calls kept beside them. Usage's periods
-    /// (UsageReport.route), Pulse's routes (PulseClient.keptRoute) and Voice
-    /// settings' (HermesVoiceConfigurationService.KeptRead) are kept under
+    /// (UsageReport.route), Pulse's routes (PulseClient.keptRoute), Voice
+    /// settings' (HermesVoiceConfigurationService.KeptRead) and the
+    /// Capabilities tabs' (CapabilitiesStore.KeptRoute) are kept under
     /// their own.
     enum KeptRoute {
         static let config = "/api/config"
@@ -33386,6 +33773,9 @@ final class AppState: ObservableObject {
         /// Hermes' auxiliary model slots, for Voice settings' voice reply model.
         static let modelAuxiliary = "/api/model/auxiliary"
         static let pluginsHub = "/api/dashboard/plugins/hub"
+        /// Capabilities' installed skills and toolsets.
+        static let skills = "/api/skills"
+        static let toolsets = "/api/tools/toolsets"
         static let delegationStatus = "rpc:delegation.status"
         /// Settings > Usage's quota: the gateway's `model.options`, whose
         /// models the Voice and Pulse model pickers list too.
@@ -33393,6 +33783,21 @@ final class AppState: ObservableObject {
         /// A live voice mode's status line on Voice settings, by the mode's
         /// name: not a read's answer but what its check said.
         static let liveVoiceStatus = "conduit:live-voice-status/"
+        /// The Bots list's bots and Desktop's groups, as Conduit read them
+        /// (`KeptBotRoster`): `profiles.list` lists the whole Hermes, so
+        /// it's kept once per dashboard.
+        static let botRoster = "rpc:profiles.list"
+        /// The Bots list's hosted rooms and their pictures
+        /// (`KeptGroupRooms`), once per dashboard too.
+        static let groupRooms = "rpc:groups.list"
+        /// The bot editor's details of a profile (`BotProfileDetails`: its
+        /// description, SOUL, model, skills, tools and MCP servers, as
+        /// `profiles.describe` gave them), kept in that profile's answers:
+        /// Edit Bot's bot, or New Bot's Start From profile.
+        static let botDetails = "rpc:profiles.describe"
+        /// Edit Bot's MCP catalog and its servers' sign-in states
+        /// (`BotMcpSetupSnapshot`, with `mcp.servers.list`), in the bot's.
+        static let botMcpSetup = "rpc:mcp.catalog"
         /// The scope of an answer about all of a Hermes' profiles at once
         /// (delegation's pause), kept once per dashboard: no profile is
         /// named with nothing.
@@ -33405,6 +33810,20 @@ final class AppState: ObservableObject {
     func readKeepingAnswer(_ route: String, profile: String, owner: DashboardRuntimeOwner) async throws -> [String: Any] {
         try await keepingAnswer(profile: profile, owner: owner, keptAs: { _ in route }) {
             try await owner.bridge.requestJSON(path: dashboardPath(route, profile: profile))
+        }
+    }
+
+    /// The toolsets, read and kept as `readKeepingAnswer` does unless
+    /// Hermes lists none: a Hermes still loading its plugins answers an
+    /// empty list, which the chat's tool catalog refuses too
+    /// (adoptToolCatalog), and the Tools tab would open on nothing.
+    private func readKeepingToolsets(profile: String, owner: DashboardRuntimeOwner) async throws -> [String: Any] {
+        try await keepingAnswer(
+            profile: profile,
+            owner: owner,
+            keptAs: { ($0["_array"] as? [Any])?.isEmpty == false ? KeptRoute.toolsets : nil }
+        ) {
+            try await owner.bridge.requestJSON(path: dashboardPath(KeptRoute.toolsets, profile: profile))
         }
     }
 
@@ -33431,6 +33850,71 @@ final class AppState: ObservableObject {
             keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals, turn: turn, writes: writes)
         }
         return answer
+    }
+
+    /// Runs `read` and keeps what it decoded, as Conduit's own JSON, the
+    /// way `keepingAnswer` keeps an answer: for a list Conduit reads through
+    /// its decoders (the Bots list's), whose answer can't be kept as Hermes
+    /// gave it. Without an owner it only reads.
+    func keepingRead<Kept: Encodable>(
+        as route: String,
+        profile: String,
+        owner: DashboardRuntimeOwner?,
+        keeps: (Kept) -> Bool = { _ in true },
+        _ read: () async throws -> Kept
+    ) async throws -> Kept {
+        guard let owner else { return try await read() }
+        var kept: Kept?
+        _ = try await keepingAnswer(profile: profile, owner: owner, keptAs: { $0.isEmpty ? nil : route }) {
+            let value = try await read()
+            kept = value
+            // A read only partly Hermes' answer (`keeps` says) keeps nothing.
+            return keeps(value) ? Self.keptJSON(value) ?? [:] : [:]
+        }
+        guard let kept else { throw CancellationError() }
+        return kept
+    }
+
+    /// What `keepingRead` kept for the route on the open dashboard, or nil.
+    func keptRead<Kept: Decodable>(_ type: Kept.Type, _ route: String, profile: String) -> Kept? {
+        keptAnswer(route, profile: profile).flatMap { Self.decodeKept(type, from: $0) }
+    }
+
+    /// Changes what `keepingRead` kept for the route on the owner's
+    /// dashboard, the one open or not, as Hermes took a write there, and
+    /// keeps it over the answer to any read asked before it (#1533). With
+    /// nothing kept to change, the write counts all the same.
+    func keepWrittenChange<Kept: Codable>(
+        _ type: Kept.Type,
+        _ route: String,
+        profile: String,
+        on owner: DashboardRuntimeOwner?,
+        _ change: (inout Kept) -> Void
+    ) {
+        guard let owner else { return }
+        guard var kept = keptAnswer(route, profile: profile, on: owner).flatMap({ Self.decodeKept(type, from: $0) }) else {
+            noteKeptAnswerWrite(for: route, profile: profile, owner: owner)
+            return
+        }
+        change(&kept)
+        guard let answer = Self.keptJSON(kept) else { return }
+        keepWrittenAnswer(answer, for: route, profile: profile, owner: owner, removals: offlineChatCache.removals)
+    }
+
+    private static func keptJSON<Kept: Encodable>(_ value: Kept) -> [String: Any]? {
+        (try? JSONEncoder().encode(value)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+    }
+
+    private static func decodeKept<Kept: Decodable>(_ type: Kept.Type, from answer: [String: Any]) -> Kept? {
+        guard let data = try? JSONSerialization.data(withJSONObject: answer) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
+    }
+
+    /// The number the answer kept for the route on the open dashboard
+    /// was kept under, so a screen decodes it once per answer.
+    func keptAnswerTurn(_ route: String, profile: String) -> Int {
+        guard let dashboardID = activeDashboardID else { return 0 }
+        return keptAnswerTurnsKept[Self.keptAnswerScope(dashboardID, profile, route)] ?? 0
     }
 
     /// Keeps what the phone just wrote, over the answer to any read asked
@@ -33512,9 +33996,9 @@ final class AppState: ObservableObject {
     /// Where Voice settings keep their answers for the profile, beside the
     /// other settings pages': on this dashboard, which they read only while
     /// it's the one open. Nil without a bridge.
-    func voiceSettingsAnswers(profile: String) -> VoiceKeptAnswers? {
+    func voiceSettingsAnswers(profile: String) -> KeptAnswers? {
         guard let owner = currentDashboardRuntimeOwner() else { return nil }
-        return VoiceKeptAnswers(
+        return KeptAnswers(
             kept: { [weak self] route in
                 guard let self, self.ownsDashboardRuntime(owner) else { return nil }
                 return self.keptAnswer(route, profile: profile)
@@ -33522,6 +34006,31 @@ final class AppState: ObservableObject {
             keep: { [weak self] route, writes, read in
                 guard let self else { return try await read() }
                 return try await self.keepingAnswer(profile: profile, owner: owner, keptAs: { _ in route }, writes: writes, read)
+            }
+        )
+    }
+
+    /// Where a screen that reads through its own service (Capabilities'
+    /// tabs, the Tasks board) keeps its answers for the profile (or the
+    /// dashboard's own, as `KeptRoute.everyProfile`), beside the settings
+    /// pages': on the dashboard open when they're asked for, offline too,
+    /// whose kept answers a change that lands after a switch still changes.
+    /// A read keeps its answer only with a bridge to read through.
+    func screenAnswers(profile: String) -> KeptAnswers {
+        let dashboardID = activeDashboardID
+        let owner = currentDashboardRuntimeOwner()
+        return KeptAnswers(
+            kept: { [weak self] route in
+                guard let self, let dashboardID else { return nil }
+                return self.offlineChatCache.keptAnswer(route, dashboardID: dashboardID, profile: profile)
+            },
+            keep: { [weak self] route, writes, read in
+                guard let self, let owner else { return try await read() }
+                return try await self.keepingAnswer(profile: profile, owner: owner, keptAs: { _ in route }, writes: writes, read)
+            },
+            noteWrite: { [weak self] route in
+                guard let self, let owner else { return }
+                self.noteKeptAnswerWrite(for: route, profile: profile, owner: owner)
             }
         )
     }
@@ -36493,6 +37002,8 @@ final class AppState: ObservableObject {
         initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil
     ) async -> Bool {
         guard isConnected else { return false }
+        // Siri or the Action button naming no profile: the hands-free one.
+        let intent = applyingHandsFreeProfile(to: intent)
         guard widgetLease?.isCurrent != false else { return false }
         if widgetLease != nil, isVoiceCallInProgress {
             errorMessage = AppLocalization.string("End the call before starting another voice conversation.")
@@ -37009,20 +37520,23 @@ final class AppState: ObservableObject {
         }
         // The phone's microphone and the Watch's would both feed Hermes.
         guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
-        // Every lookup below goes to the connection active now.
-        let connection = watchDirectConnection
+        // Every lookup below goes to the call's own profile, which may not
+        // be the one open on the iPhone (#1564).
+        let connection = watchDirectConnection(answering: target)
+        let profile = connection.profile
+        let preferences = loadVoiceProfilePreferences(profile: profile)
         let qwen = provider == .qwen
-        let tokens = qwen ? qwenLiveTokenClient : geminiLiveTokenClient
-        let wantsMemory = qwen ? qwenLiveMemoryEnabled : geminiLiveMemoryEnabled
-        let wantsPersonality = qwen ? qwenLivePersonalityEnabled : geminiLivePersonalityEnabled
-        async let searchLookup = qwen ? resolveQwenLiveSearchSource() : resolveGeminiLiveSearchSource()
+        let tokens = makeLiveTokenClient(provider: provider) { profile }
+        let wantsMemory = (qwen ? preferences.qwenLiveMemory : preferences.geminiLiveMemory) ?? false
+        let wantsPersonality = (qwen ? preferences.qwenLivePersonality : preferences.geminiLivePersonality) ?? false
+        async let searchLookup = Self.watchCallSearchSource(qwen: qwen, preferences: preferences, tokens: tokens)
         async let memoryLookup = wantsMemory ? tokens.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? tokens.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         async let waitingLookup = watchHermesCallWaiting(for: target, approvals: WatchJobSettings.voiceApprovals)
-        async let hostToolsLookup = watchCallHostTools(for: qwen ? .qwenLive : .geminiLive)
+        async let hostToolsLookup = watchCallHostTools(for: qwen ? .qwenLive : .geminiLive, profile: profile)
         let status = try await tokens.availability()
-        noteWatchCallVoice(qwen ? .qwenLive : .geminiLive, ready: status.isAvailable)
+        noteWatchCallVoice(qwen ? .qwenLive : .geminiLive, ready: status.isAvailable, profile: profile)
         guard status.isAvailable else {
             throw WatchDirectPrepareError(status.userFacingReason(for: provider) ?? GeminiLiveAvailability.notAvailable(for: provider))
         }
@@ -37034,12 +37548,8 @@ final class AppState: ObservableObject {
         let waiting = await waitingLookup
         let hostTools = await hostToolsLookup
         let token = try await tokens.freshToken()
-        let style = liveVoiceStyle
-        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        let jobSession = preferences.voiceJobSessionOptions(
-            runtimeModel: runtime.model,
-            runtimeProvider: runtime.provider
-        )
+        let style = preferences.liveVoiceStyle
+        let jobSession = watchCallJobSession(preferences, profile: profile)
         var jobOptions: [String: String] = [:]
         if let model = jobSession.model {
             jobOptions["model"] = model
@@ -37047,7 +37557,7 @@ final class AppState: ObservableObject {
         }
         if let effort = jobSession.reasoningEffort { jobOptions["reasoning_effort"] = effort }
         // A switch while the lookups ran would mix two connections' setup.
-        guard watchDirectConnection == connection else {
+        guard watchConnectionIsCurrent(connection) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
         }
         return WatchDirectPlan(
@@ -37066,16 +37576,16 @@ final class AppState: ObservableObject {
                 answers: waiting?.waiting.kind
             ),
             googleSearch: search == .google,
-            voice: qwen ? qwenLiveVoice : geminiLiveVoice,
+            voice: qwen ? preferences.qwenLiveVoice : preferences.geminiLiveVoice,
             openingPrompt: hermesCall?.watchOpeningTurn(canAnswer: waiting != nil) ?? style.openingPrompt,
             token: token,
             connection: connection,
-            saveCalls: voiceCallSavingEnabled,
+            saveCalls: preferences.saveVoiceCalls ?? true,
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
             endPhrases: preferences.resolvedSpokenEndConversationPhrases,
-            jobProfiles: watchJobProfileNames(),
+            jobProfiles: watchJobProfileNames(callProfile: profile),
             hostTools: hostTools.tools,
             hostToolsBriefing: hostTools.briefing,
             answerSessions: waiting?.sessionIDs ?? []
@@ -37116,17 +37626,19 @@ final class AppState: ObservableObject {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
         }
         guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
-        let connection = watchDirectConnection
-        let hostContext = geminiLiveTokenClient
-        let wantsMemory = gptLiveMemoryEnabled
-        let wantsPersonality = gptLivePersonalityEnabled
+        let connection = watchDirectConnection(answering: target)
+        let profile = connection.profile
+        let preferences = loadVoiceProfilePreferences(profile: profile)
+        let hostContext = makeLiveTokenClient(provider: .gemini) { profile }
+        let wantsMemory = preferences.gptLiveMemory ?? false
+        let wantsPersonality = preferences.gptLivePersonality ?? false
         async let memoryLookup = wantsMemory ? hostContext.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         async let waitingLookup = watchHermesCallWaiting(for: target, approvals: false)
         // The host's Watch bridge only starts GPT-Live on the subscription.
-        let status = try await gptLiveClient.availability(billing: .subscription)
-        noteWatchCallVoice(.gptLive, ready: status.isAvailable)
+        let status = try await makeGPTLiveClient { profile }.availability(billing: .subscription)
+        noteWatchCallVoice(.gptLive, ready: status.isAvailable, profile: profile)
         guard status.isAvailable else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("GPT-Live is not available on this Hermes server."))
         }
@@ -37135,19 +37647,15 @@ final class AppState: ObservableObject {
         let hermesCall = await hermesCallLookup
         // "Answer:", "Approve:" and "Deny:" go to the host (WatchCallAnswer).
         let waiting = await waitingLookup
-        let style = liveVoiceStyle
-        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        let jobSession = preferences.voiceJobSessionOptions(
-            runtimeModel: runtime.model,
-            runtimeProvider: runtime.provider
-        )
+        let style = preferences.liveVoiceStyle
+        let jobSession = watchCallJobSession(preferences, profile: profile)
         var jobOptions: [String: String] = [:]
         if let model = jobSession.model {
             jobOptions["model"] = model
             if let provider = jobSession.provider { jobOptions["provider"] = provider }
         }
         if let effort = jobSession.reasoningEffort { jobOptions["reasoning_effort"] = effort }
-        guard watchDirectConnection == connection else {
+        guard watchConnectionIsCurrent(connection) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
         }
         return WatchBridgePlan(
@@ -37165,14 +37673,14 @@ final class AppState: ObservableObject {
             // A call Hermes made opens with its brief instead (#449).
             greeting: hermesCall == nil ? style.greeting : nil,
             openingTurn: hermesCall?.watchOpeningTurn(canAnswer: waiting != nil),
-            voice: gptLiveVoice,
+            voice: preferences.gptLiveVoice,
             connection: connection,
-            saveCalls: voiceCallSavingEnabled,
+            saveCalls: preferences.saveVoiceCalls ?? true,
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
             endPhrases: preferences.resolvedSpokenEndConversationPhrases,
-            jobProfiles: watchJobProfileNames(),
+            jobProfiles: watchJobProfileNames(callProfile: profile),
             answerSessions: waiting?.sessionIDs ?? []
         )
     }
@@ -37214,17 +37722,19 @@ final class AppState: ObservableObject {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
         }
         guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
-        let connection = watchDirectConnection
-        let hostContext = geminiLiveTokenClient
-        let wantsMemory = grokLiveMemoryEnabled
-        let wantsPersonality = grokLivePersonalityEnabled
+        let connection = watchDirectConnection(answering: target)
+        let profile = connection.profile
+        let preferences = loadVoiceProfilePreferences(profile: profile)
+        let hostContext = makeLiveTokenClient(provider: .gemini) { profile }
+        let wantsMemory = preferences.grokLiveMemory ?? false
+        let wantsPersonality = preferences.grokLivePersonality ?? false
         async let memoryLookup = wantsMemory ? hostContext.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         async let waitingLookup = watchHermesCallWaiting(for: target, approvals: WatchJobSettings.voiceApprovals)
-        async let hostToolsLookup = watchCallHostTools(for: .grokLive)
-        let status = try await grokLiveClient.availability()
-        noteWatchCallVoice(.grokLive, ready: status.isAvailable)
+        async let hostToolsLookup = watchCallHostTools(for: .grokLive, profile: profile)
+        let status = try await makeGrokLiveClient { profile }.availability()
+        noteWatchCallVoice(.grokLive, ready: status.isAvailable, profile: profile)
         guard case .available(_, let voice, _) = status else {
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Grok Live is not available on this Hermes server."))
         }
@@ -37235,19 +37745,15 @@ final class AppState: ObservableObject {
         let hermesCall = await hermesCallLookup
         let waiting = await waitingLookup
         let hostTools = await hostToolsLookup
-        let style = liveVoiceStyle
-        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        let jobSession = preferences.voiceJobSessionOptions(
-            runtimeModel: runtime.model,
-            runtimeProvider: runtime.provider
-        )
+        let style = preferences.liveVoiceStyle
+        let jobSession = watchCallJobSession(preferences, profile: profile)
         var jobOptions: [String: String] = [:]
         if let model = jobSession.model {
             jobOptions["model"] = model
             if let provider = jobSession.provider { jobOptions["provider"] = provider }
         }
         if let effort = jobSession.reasoningEffort { jobOptions["reasoning_effort"] = effort }
-        guard watchDirectConnection == connection else {
+        guard watchConnectionIsCurrent(connection) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
         }
         return WatchGrokPlan(
@@ -37270,12 +37776,12 @@ final class AppState: ObservableObject {
             voice: voice,
             openingPrompt: hermesCall?.watchOpeningTurn(canAnswer: waiting != nil) ?? style.openingPrompt,
             connection: connection,
-            saveCalls: voiceCallSavingEnabled,
+            saveCalls: preferences.saveVoiceCalls ?? true,
             memoryIncluded: memory != nil,
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
             endPhrases: preferences.resolvedSpokenEndConversationPhrases,
-            jobProfiles: watchJobProfileNames(),
+            jobProfiles: watchJobProfileNames(callProfile: profile),
             hostTools: hostTools.tools,
             hostToolsBriefing: hostTools.briefing,
             answerSessions: waiting?.sessionIDs ?? []
@@ -37287,10 +37793,10 @@ final class AppState: ObservableObject {
     /// location and maps, each as the user lets `mode` use it), and their
     /// briefing. Not the on-screen confirmations: nobody is looking at the
     /// phone. Run here, wrist up; the wrist-down relay doesn't carry them.
-    func watchCallHostTools(for mode: LiveVoiceModeName) async -> (tools: [VoiceHostTool], briefing: String) {
-        let fetched = await voiceHostTools(for: mode)
+    func watchCallHostTools(for mode: LiveVoiceModeName, profile: String) async -> (tools: [VoiceHostTool], briefing: String) {
+        let fetched = await voiceHostTools(for: mode, profile: profile)
         let tools = ((fetched.host ?? []) + fetched.local).filter { $0.key != PresentVoiceTool.key }
-        return (tools, phoneVoiceSettingHint(for: mode) + VoiceHostTool.functionToolsFirst(tools))
+        return (tools, phoneVoiceSettingHint(for: mode, profile: profile) + VoiceHostTool.functionToolsFirst(tools))
     }
 
     /// What a Watch call to Local Live starts with. The host relays the
@@ -37320,18 +37826,20 @@ final class AppState: ObservableObject {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
         }
         guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
-        let connection = watchDirectConnection
+        let connection = watchDirectConnection(answering: target)
+        let profile = connection.profile
+        let preferences = loadVoiceProfilePreferences(profile: profile)
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         async let waitingLookup = watchHermesCallWaiting(for: target, approvals: WatchJobSettings.voiceApprovals)
-        let status = try await localLiveClient.status()
-        noteWatchCallVoice(.localLive, ready: status.available)
+        let status = try await makeLocalLiveClient { profile }.status()
+        noteWatchCallVoice(.localLive, ready: status.available, profile: profile)
         if let reason = LocalLiveClient.unavailableReason(status) {
             throw WatchDirectPrepareError(reason)
         }
-        guard watchDirectConnection == connection else {
+        guard watchConnectionIsCurrent(connection) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
         }
-        var greeting = liveVoiceStyle.greeting.map { $0.isEmpty ? AppLocalization.string("Hi, I'm listening.") : $0 }
+        var greeting = preferences.liveVoiceStyle.greeting.map { $0.isEmpty ? AppLocalization.string("Hi, I'm listening.") : $0 }
         let hermesCall = await hermesCallLookup
         let waiting = await waitingLookup
         if let hermesCall {
@@ -37345,8 +37853,8 @@ final class AppState: ObservableObject {
         return WatchLocalLivePlan(
             greeting: greeting,
             connection: connection,
-            saveCalls: voiceCallSavingEnabled,
-            endPhrases: loadVoiceProfilePreferences(profile: activeProfile).resolvedSpokenEndConversationPhrases,
+            saveCalls: preferences.saveVoiceCalls ?? true,
+            endPhrases: preferences.resolvedSpokenEndConversationPhrases,
             answerSessions: hermesCall == nil ? [] : waiting?.sessionIDs ?? []
         )
     }
@@ -37366,23 +37874,68 @@ final class AppState: ObservableObject {
                 runtimeSessionID: target.sessionId,
                 storedSessionID: target.durableSessionID,
                 title: call.title ?? "",
-                profile: target.profile == activeProfile ? nil : target.profile
+                profile: target.profile.map { profilesMatch($0, activeProfile) } == true ? nil : target.profile
             ))
         }
         return HermesCallOpening(kind: call.kind, title: call.title, result: result, reason: call.reason, sessionIDs: call.sessionIDs)
     }
 
-    /// The connection a Watch call started now would belong to.
-    var watchDirectConnection: WatchDirectConnection {
-        WatchDirectConnection(profile: activeProfile, dashboard: activeDashboardID?.uuidString ?? "-")
+    /// The connection a Watch call started now would belong to: the
+    /// hands-free profile, or the profile of the call from Hermes it
+    /// answers (#1564), with the profile the iPhone is on.
+    func watchDirectConnection(answering target: ConduitNotificationTarget? = nil) -> WatchDirectConnection {
+        WatchDirectConnection(
+            profile: watchCallProfile(answering: target),
+            dashboard: activeDashboardID?.uuidString ?? "-",
+            phoneProfile: activeProfile
+        )
     }
 
-    /// A single-use token for the Watch call's next connection.
-    func watchDirectToken(provider: DirectLiveProvider = .gemini) async throws -> GeminiLiveToken {
+    /// The connection a Watch call started now would belong to.
+    var watchDirectConnection: WatchDirectConnection { watchDirectConnection() }
+
+    /// Whether a Watch call that began on `connection` still may run: the
+    /// iPhone is on the dashboard and profile it was on then. A switch on
+    /// the iPhone resets the jobs it runs for the call, so the call ends,
+    /// as it always has; the call's own profile needn't be the iPhone's.
+    func watchConnectionIsCurrent(_ connection: WatchDirectConnection) -> Bool {
+        Self.watchConnection(connection, isCurrentOn: activeDashboardID?.uuidString ?? "-", phoneProfile: activeProfile)
+    }
+
+    nonisolated static func watchConnection(_ connection: WatchDirectConnection, isCurrentOn dashboard: String, phoneProfile: String) -> Bool {
+        connection.dashboard == dashboard && profilesMatch(connection.phoneProfile ?? connection.profile, phoneProfile)
+    }
+
+    /// A single-use token for the Watch call's next connection, on the
+    /// call's own profile.
+    func watchDirectToken(provider: DirectLiveProvider = .gemini, profile: String) async throws -> GeminiLiveToken {
         guard await connectForWatchDirectCall(timeout: WatchDirectBroker.connectWait) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
         }
-        return try await (provider == .qwen ? qwenLiveTokenClient : geminiLiveTokenClient).freshToken()
+        return try await makeLiveTokenClient(provider: provider) { profile }.freshToken()
+    }
+
+    /// The model a Watch call's jobs run on, as `createSession` sends a
+    /// phone job's: the profile's voice-job model, else the model the
+    /// iPhone runs, which is only the call's when it's on that profile.
+    func watchCallJobSession(_ preferences: VoiceProfilePreferences, profile: String) -> (model: String?, provider: String?, reasoningEffort: String?) {
+        let onPhonesProfile = profilesMatch(profile, activeProfile)
+        return preferences.voiceJobSessionOptions(
+            runtimeModel: onPhonesProfile ? runtime.model : "",
+            runtimeProvider: onPhonesProfile ? runtime.provider : ""
+        )
+    }
+
+    /// Where a Watch call's quick lookups search, as the phone's Gemini or
+    /// Qwen Live call resolves it, for the call's profile.
+    static func watchCallSearchSource(qwen: Bool, preferences: VoiceProfilePreferences, tokens: GeminiLiveTokenClient) async -> GeminiLiveSearchSource {
+        if qwen {
+            guard (preferences.qwenLiveSearch ?? .automatic) != .off else { return .none }
+            return await tokens.webSearchAvailable() ? .hermes : .none
+        }
+        let mode = preferences.geminiLiveSearch ?? .automatic
+        let hermesAvailable = mode == .automatic ? await tokens.webSearchAvailable() : false
+        return mode.resolved(hermesAvailable: hermesAvailable)
     }
 
     /// Reconnects to Hermes if the phone's suspension dropped the
@@ -38911,7 +39464,7 @@ extension AppState {
             // Hermes deleted it: its saved copy and pinned replies go too,
             // whatever the screen shows now (#1040).
             if let dashboardID {
-                offlineChatCache.removeTranscripts(sessionIDs: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
+                removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
             dropPinnedReplies(forDeleted: session, profile: profile)
             guard ownsDashboardRuntime(owner) else { return false }
@@ -38924,13 +39477,27 @@ extension AppState {
             return true
         } catch DashboardTicketBridgeError.answeredAfterSwitch {
             if let dashboardID {
-                offlineChatCache.removeTranscripts(sessionIDs: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
+                removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
             return false
         } catch {
             guard ownsDashboardRuntime(owner) else { return false }
             showSessionMutationNotice(AppLocalization.string("Could not delete this conversation: \(UserFacingError.message(for: error))"))
             return false
+        }
+    }
+
+    /// Hermes deleted the chats `sessionIDs` name: their saved copies leave
+    /// the phone (#1040), and their rows the profile's kept Artifacts page,
+    /// as their own kept lists do (#1533).
+    private func removeSavedCopies(ofDeleted sessionIDs: Set<String>, dashboardID: UUID, profile: String) {
+        offlineChatCache.removeTranscripts(sessionIDs: sessionIDs, dashboardID: dashboardID, profile: profile)
+        for showMissing in [true, false] {
+            guard let route = ArtifactsClient.keptRoute(ArtifactSource(profile: profile, sessionIDs: []), filter: .all,
+                                                        query: "", showMissing: showMissing),
+                  let kept = offlineChatCache.keptAnswer(route, dashboardID: dashboardID, profile: profile),
+                  let left = ArtifactsClient.answer(kept, withoutRowsOf: sessionIDs) else { continue }
+            offlineChatCache.recordAnswer(left, route: route, dashboardID: dashboardID, profile: profile)
         }
     }
 

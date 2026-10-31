@@ -146,7 +146,6 @@ extension ChatScrollStateTests {
         typealias Live = TranscriptModel.LiveTurn
         func kinds(_ live: Live) -> [TranscriptRow.Kind] { live.rows.map(\.kind) }
         XCTAssertTrue(Live().rows.isEmpty)
-        XCTAssertFalse(Live().hasRows)
 
         XCTAssertEqual(kinds(Live(isBusy: true)), [.working(TranscriptWorkingLine())])
         XCTAssertEqual(
@@ -172,7 +171,6 @@ extension ChatScrollStateTests {
 
         let hidden = Live(shape: LiveTurnShape(thinkingID: "seg", streams: true), isBusy: true, isShown: false)
         XCTAssertTrue(hidden.rows.isEmpty, "not under a saved copy of another chat: the turn is the live chat's")
-        XCTAssertFalse(hidden.hasRows)
     }
 
     @MainActor

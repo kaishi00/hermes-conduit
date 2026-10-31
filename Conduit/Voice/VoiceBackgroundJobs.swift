@@ -288,8 +288,10 @@ enum VoiceBackgroundJobNotice: Equatable {
 /// AppState can bind them to whichever client is current at call time and
 /// tests can script them.
 struct VoiceBackgroundJobBackend {
-    /// `profile` nil creates the job in the active profile.
-    var createSession: @MainActor (_ profile: String?) async throws -> (runtimeID: String, storedID: String?)
+    /// `profile` nil creates the job in the active profile. `callsModel`:
+    /// the job is a Watch call's own on that profile, so it runs on that
+    /// profile's voice-job model rather than its chat model (#1564).
+    var createSession: @MainActor (_ profile: String?, _ callsModel: Bool) async throws -> (runtimeID: String, storedID: String?)
     var setTitle: @MainActor (_ sessionID: String, _ title: String) async -> Void
     var submit: @MainActor (_ sessionID: String, _ text: String) async throws -> Void
     var cancel: @MainActor (_ sessionID: String) async throws -> Void
@@ -327,15 +329,16 @@ struct VoiceBackgroundJobBackend {
     /// The message the user typed for the chat's latest turn, when Conduit
     /// can see it (the chat is open). Nil otherwise.
     var latestThreadPrompt: @MainActor (_ thread: VoiceThreadTarget) -> String? = { _ in nil }
-    /// The user's earlier chats on the profile in use that match `query`,
-    /// best first, for a call asked to find one.
-    var searchChats: @MainActor (_ query: String) async throws -> [VoiceChatMatch] = { _ in
+    /// The user's earlier chats that match `query`, best first, for a call
+    /// asked to find one: on `profile`, or the one in use when nil.
+    var searchChats: @MainActor (_ query: String, _ profile: String?) async throws -> [VoiceChatMatch] = { _, _ in
         // Said to the model, not shown: not localized.
         throw VoiceAudioError.unavailable("Searching chats isn't available on this call.")
     }
     /// A chat's text for a call to talk about: word for word when short,
-    /// else a summary of the older part plus the latest turns.
-    var readChat: @MainActor (_ sessionID: String) async throws -> VoiceResumeContext = { _ in
+    /// else a summary of the older part plus the latest turns. `profile`
+    /// nil: the one in use.
+    var readChat: @MainActor (_ sessionID: String, _ profile: String?) async throws -> VoiceResumeContext = { _, _ in
         // Said to the model, not shown: not localized.
         throw VoiceAudioError.unavailable("Reading chats isn't available on this call.")
     }
@@ -1170,7 +1173,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// matches nothing as a whole is tried again a word at a time.
     /// `retryingWords` false asks once: a call whose tool calls hold its
     /// turn (Grok) shouldn't wait on three searches.
-    func findChats(query rawQuery: String, retryingWords: Bool = true) async -> VoiceChatSearchOutcome {
+    func findChats(query: String, retryingWords: Bool = true) async -> VoiceChatSearchOutcome {
+        await findChats(query: query, retryingWords: retryingWords, profile: nil)
+    }
+
+    /// `profile`: the profile whose chats to search (nil: the one in use),
+    /// a Watch call's own (#1564).
+    func findChats(query rawQuery: String, retryingWords: Bool, profile: String?) async -> VoiceChatSearchOutcome {
         // Numbers only ever name the newest search's list, so a failed or
         // superseded search leaves nothing to open, and an older one still
         // running can't bring its list back.
@@ -1183,10 +1192,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let call = liveCallID
         var matches: [VoiceChatMatch]
         do {
-            matches = try await backend.searchChats(query)
+            matches = try await backend.searchChats(query, profile)
             // A word that fails costs only its own matches.
             for word in matches.isEmpty && retryingWords ? VoiceChatFinder.fallbackWords(query) : [] {
-                for match in (try? await backend.searchChats(word)) ?? [] where !matches.contains(where: { $0.sessionID == match.sessionID }) {
+                for match in (try? await backend.searchChats(word, profile)) ?? [] where !matches.contains(where: { $0.sessionID == match.sessionID }) {
                     matches.append(match)
                 }
             }
@@ -1210,12 +1219,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Reads one of the last search's chats into the call, so the user can
     /// talk about it. Reading doesn't open it.
     func readFoundChat(_ reference: String) async -> VoiceChatReadOutcome {
+        await readFoundChat(reference, profile: nil)
+    }
+
+    func readFoundChat(_ reference: String, profile: String?) async -> VoiceChatReadOutcome {
         guard let match = foundChat(reference) else { return .unknownChat }
         let started = generation
         let call = liveCallID
         let context: VoiceResumeContext
         do {
-            context = try await backend.readChat(match.sessionID)
+            context = try await backend.readChat(match.sessionID, profile)
         } catch {
             return .failed(error.localizedDescription)
         }
@@ -1333,9 +1346,21 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// first such job's chat becomes the call's, so later requests are its
     /// next turns (#1250).
     func startJob(
-        instructions requested: String,
-        profile spokenProfile: String? = nil,
+        instructions: String,
+        profile: String? = nil,
         joinsCall: Bool = false,
+        onJobCreated: (@MainActor (UUID) -> Void)? = nil
+    ) async -> String {
+        await startJob(instructions: instructions, profile: profile, joinsCall: joinsCall, callsModel: false, onJobCreated: onJobCreated)
+    }
+
+    /// `callsModel`: a Watch call's own job on its profile, which runs on
+    /// that profile's voice-job model (#1564).
+    func startJob(
+        instructions requested: String,
+        profile spokenProfile: String?,
+        joinsCall: Bool = false,
+        callsModel: Bool,
         onJobCreated: (@MainActor (UUID) -> Void)? = nil
     ) async -> String {
         if joinsCall, liveThread == nil {
@@ -1390,7 +1415,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let generation = generation
         var createdSessionID: String?
         do {
-            let ids = try await backend.createSession(profile)
+            let ids = try await backend.createSession(profile, callsModel && profile != nil)
             createdSessionID = ids.runtimeID.isEmpty ? nil : ids.runtimeID
             guard startIsCurrent(job.id, generation: generation) else {
                 return await abandonStart(job, sessionID: createdSessionID, generation: generation)
@@ -1475,6 +1500,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             id: UUID(),
             title: Self.title(for: instructions),
             instructions: instructions,
+            // A Watch call on a profile the iPhone isn't on (#1564) keeps
+            // its chat there.
+            profile: chat.profile,
             runtimeSessionID: chat.runtimeSessionID,
             storedSessionID: chat.storedSessionID,
             status: .starting,
