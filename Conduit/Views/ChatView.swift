@@ -188,6 +188,7 @@ struct ChatView: View {
             pendingSend: livePendingComposerSend,
             loadsEarlier: transcriptBackfillAvailable,
             isLoadingEarlier: transcriptBackfillIsLoading,
+            rowsOnTheirWay: scrollEngine.targets.isEmpty && !appState.chatRowsOnScreen.isEmpty,
             showsSavedCopy: showsOfflineCopy,
             hasSavedCopy: appState.offlineChatPresentation != nil,
             savedCopyIsOpening: appState.offlineChatPresentation?.isPickedChat == true && !showsOfflineBanner

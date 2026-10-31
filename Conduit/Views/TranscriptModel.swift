@@ -83,8 +83,11 @@ struct TranscriptWorkingLine: Equatable {
 
 /// What an update changed, by row id: rows that came, rows that went,
 /// rows still there that draw differently (TranscriptRow.drawsSame), and
-/// rows still there in another order. Text streaming into a live row isn't
-/// a change here: that row reads it from the live projection.
+/// rows still there in another order. A row can be both changed and moved:
+/// it draws differently in its new place (a diffable snapshot takes the
+/// move from the ids and redraws the changed rows). Text streaming into a
+/// live row isn't a change here: that row reads it from the live
+/// projection.
 struct TranscriptChangeSet: Equatable {
     var inserted: [String] = []
     var removed: [String] = []
@@ -132,12 +135,18 @@ struct TranscriptChangeSet: Equatable {
     /// The recorder's line: counts, then the first ids of each kind. Row
     /// ids name no message text.
     func traceLine(rowCount: Int) -> String {
-        func ids(_ mark: String, _ list: [String]) -> String {
-            list.isEmpty ? "" : " \(mark)[\(list.prefix(3).joined(separator: ","))\(list.count > 3 ? ",..." : "")]"
-        }
-        return "rows n=\(rowCount) +\(inserted.count) -\(removed.count) ~\(changed.count)"
+        "rows n=\(rowCount) +\(inserted.count) -\(removed.count) ~\(changed.count)"
             + (moved.isEmpty ? "" : " >\(moved.count)")
-            + ids("+", inserted) + ids("-", removed) + ids("~", changed) + ids(">", moved)
+            + Self.ids("+", inserted) + Self.ids("-", removed) + Self.ids("~", changed) + Self.ids(">", moved)
+    }
+
+    /// The recorder's line for the chat's rows left out for a repeated id.
+    static func repeatedLine(_ repeatedIDs: [String]) -> String {
+        "rows repeated n=\(repeatedIDs.count)" + ids("", repeatedIDs)
+    }
+
+    private static func ids(_ mark: String, _ list: [String]) -> String {
+        list.isEmpty ? "" : " \(mark)[\(list.prefix(3).joined(separator: ","))\(list.count > 3 ? ",..." : "")]"
     }
 }
 
@@ -205,6 +214,10 @@ struct TranscriptModel {
         /// "Load earlier messages" is offered, and whether a page is loading.
         var loadsEarlier = false
         var isLoadingEarlier = false
+        /// The chat on screen has rows (AppState.chatRowsOnScreen) the
+        /// engine hasn't been given yet, as on a new view's first pass:
+        /// it isn't an empty chat, or a saved copy without rows.
+        var rowsOnTheirWay = false
         /// The saved copy is the chat on screen.
         var showsSavedCopy = false
         /// A saved copy is up at all, over the live chat's rows or not.
@@ -216,6 +229,9 @@ struct TranscriptModel {
 
     private(set) var rows: [TranscriptRow] = []
     private(set) var facts = ChatRowFacts()
+    /// The chat's rows left out because an earlier row has their id. Ids
+    /// are unique in practice; the trace names any that aren't.
+    private(set) var repeatedIDs: [String] = []
     private var input: Input?
 
     /// Brings the rows up to `input`, `targets` being the ones its revision
@@ -233,7 +249,7 @@ struct TranscriptModel {
         if previous?.targetsRevision != input.targetsRevision || previous?.isBusy != input.isBusy {
             facts = ChatRowFacts(rows: targets.map(\.message), isBusy: input.isBusy)
         }
-        let next = Self.rows(for: input, targets: targets, disclosure: disclosure)
+        let next = Self.rows(for: input, targets: targets, disclosure: disclosure, repeatedIDs: &repeatedIDs)
         let changes = TranscriptChangeSet.between(rows, next)
         rows = next
         return changes
@@ -251,6 +267,20 @@ struct TranscriptModel {
         targets: [ChatMessageScrollTarget],
         disclosure: ChatRowDisclosure
     ) -> [TranscriptRow] {
+        var repeatedIDs: [String] = []
+        return rows(for: input, targets: targets, disclosure: disclosure, repeatedIDs: &repeatedIDs)
+    }
+
+    /// The rows, with `repeatedIDs` set to the chat's rows left out for an
+    /// id an earlier one has.
+    @MainActor
+    static func rows(
+        for input: Input,
+        targets: [ChatMessageScrollTarget],
+        disclosure: ChatRowDisclosure,
+        repeatedIDs: inout [String]
+    ) -> [TranscriptRow] {
+        repeatedIDs = []
         var messages: [TranscriptRow] = []
         messages.reserveCapacity(targets.count)
         var ids = Set<String>(minimumCapacity: targets.count)
@@ -259,7 +289,10 @@ struct TranscriptModel {
             isBusy: input.isBusy,
             disclosure: disclosure
         ) {
-            guard ids.insert(target.id).inserted else { continue }
+            guard ids.insert(target.id).inserted else {
+                repeatedIDs.append(target.id)
+                continue
+            }
             messages.append(TranscriptRow(id: target.id, kind: .message(target)))
         }
 
@@ -272,7 +305,7 @@ struct TranscriptModel {
         if input.loadsEarlier {
             add(TranscriptRow(id: TranscriptRow.loadEarlierID, kind: .loadEarlier(isLoading: input.isLoadingEarlier)))
         }
-        if targets.isEmpty {
+        if targets.isEmpty, !input.rowsOnTheirWay {
             if input.showsSavedCopy {
                 if input.savedCopyIsOpening {
                     add(TranscriptRow(id: TranscriptRow.savedCopyStatusID, kind: .savedCopyStatus(isOpening: true)))
@@ -303,8 +336,14 @@ final class TranscriptModelBox {
         targets: [ChatMessageScrollTarget],
         disclosure: ChatRowDisclosure
     ) -> TranscriptModel {
-        if let changes = model.update(input, targets: targets, disclosure: disclosure), !changes.isEmpty {
-            ChatViewportTrace.shared.log(changes.traceLine(rowCount: model.rows.count))
+        let repeated = model.repeatedIDs
+        if let changes = model.update(input, targets: targets, disclosure: disclosure) {
+            if !changes.isEmpty {
+                ChatViewportTrace.shared.log(changes.traceLine(rowCount: model.rows.count))
+            }
+            if model.repeatedIDs != repeated, !model.repeatedIDs.isEmpty {
+                ChatViewportTrace.shared.log(TranscriptChangeSet.repeatedLine(model.repeatedIDs))
+            }
         }
         return model
     }

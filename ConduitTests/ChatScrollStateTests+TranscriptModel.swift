@@ -107,6 +107,11 @@ extension ChatScrollStateTests {
         let chat = targets([message("u1", .user)])
         XCTAssertEqual(rows(TranscriptModel.Input(), chat).map(\.id), ["u1"], "rows of its own: no welcome")
         XCTAssertEqual(rows(copy, chat).map(\.id), ["u1"], "nor the copy's status")
+
+        // A new view's first pass, before the engine has the chat's rows.
+        XCTAssertTrue(rows(TranscriptModel.Input(rowsOnTheirWay: true)).isEmpty, "rows on their way: no welcome")
+        copy.rowsOnTheirWay = true
+        XCTAssertTrue(rows(copy).isEmpty, "nor the copy's status")
     }
 
     @MainActor
@@ -249,6 +254,13 @@ extension ChatScrollStateTests {
 
         let landed = TranscriptChangeSet.between(three, [three[0], TranscriptRow(id: "x", kind: .empty), three[1], three[2]])
         XCTAssertEqual(landed, TranscriptChangeSet(inserted: ["x"]), "a row landing between others moves none of them")
+
+        let redrawn = TranscriptRow(id: "a", kind: .loadEarlier(isLoading: false))
+        XCTAssertEqual(
+            TranscriptChangeSet.between(three, [three[1], redrawn, three[2]]),
+            TranscriptChangeSet(changed: ["a"], moved: ["b", "a"]),
+            "a row that draws differently in another place is both"
+        )
     }
 
     @MainActor
@@ -261,6 +273,15 @@ extension ChatScrollStateTests {
         let drawn = rows(input, chat)
         XCTAssertEqual(drawn.map(\.id), ["u1", "seg", TranscriptRow.workingID])
         XCTAssertEqual(drawn[1].kind, .message(chat[1]), "the settled row, the first of its id")
+
+        // A chat row left out for its id is named, for the trace.
+        var model = TranscriptModel()
+        _ = model.update(input, targets: chat, disclosure: ChatRowDisclosure())
+        XCTAssertEqual(model.repeatedIDs, ["seg"])
+        XCTAssertEqual(TranscriptChangeSet.repeatedLine(model.repeatedIDs), "rows repeated n=1 [seg]")
+        input.targetsRevision = 2
+        _ = model.update(input, targets: Array(chat.prefix(2)), disclosure: ChatRowDisclosure())
+        XCTAssertEqual(model.repeatedIDs, [], "the live card's id isn't a chat row's repeat")
     }
 
     @MainActor
