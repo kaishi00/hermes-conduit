@@ -12,8 +12,11 @@ struct BotModelPicker: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var appLanguage = AppLanguageStore.shared
-    @State private var providers: [ProviderInfo]?
-    @State private var loadFailed = false
+    /// The models, kept from Hermes' last answer until it answers again
+    /// (#1533). Kept ones wait for that answer before they can be picked:
+    /// a bot's save pins its pick without Hermes checking it, and a kept
+    /// model may be gone.
+    @State private var catalog = KeptModelCatalog()
     @State private var query = ""
 
     var body: some View {
@@ -29,7 +32,8 @@ struct BotModelPicker: View {
                     }
                 }
             }
-            if let providers {
+            if catalog.loaded {
+                let providers = catalog.providers
                 if providers.isEmpty {
                     Text(AppLocalization.string("Hermes has no models set up yet."))
                         .foregroundStyle(.secondary)
@@ -47,14 +51,17 @@ struct BotModelPicker: View {
                                 provider = option.name
                                 model = item.id
                             }
+                            .disabled(!catalog.answered)
                         }
                     } header: {
                         Text(verbatim: option.title)
                     }
                 }
-            } else if loadFailed {
-                Text(AppLocalization.string("Could not load models."))
-                    .foregroundStyle(.secondary)
+                if catalog.failed {
+                    loadFailedRows
+                }
+            } else if catalog.failed {
+                loadFailedRows
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity)
@@ -63,14 +70,35 @@ struct BotModelPicker: View {
         .searchable(text: $query, prompt: Text(AppLocalization.string("Search providers or models")))
         .navigationTitle(AppLocalization.string("Model"))
         .navigationBarTitleDisplayMode(.inline)
+        // What Hermes listed last time, before the first frame; its answer
+        // follows.
+        .onAppear { catalog.showKept(Self.pickable(appState.keptModelProviders())) }
         .task {
-            guard providers == nil else { return }
-            if let loaded = await appState.loadBotModelProviders() {
-                providers = loaded.filter { !$0.models.isEmpty }
-            } else {
-                loadFailed = true
-            }
+            guard !catalog.answered else { return }
+            await load()
         }
+    }
+
+    private func load() async {
+        catalog.readStarted()
+        if let loaded = await appState.loadModelProviders() {
+            catalog.hermesAnswered(Self.pickable(loaded))
+        } else {
+            catalog.readFailed()
+        }
+    }
+
+    /// A provider with no models has nothing to pick.
+    private static func pickable(_ providers: [ProviderInfo]) -> [ProviderInfo] {
+        providers.filter { !$0.models.isEmpty }
+    }
+
+    /// A read that failed, under the models kept or alone.
+    @ViewBuilder
+    private var loadFailedRows: some View {
+        Text(AppLocalization.string("Could not load models."))
+            .foregroundStyle(.secondary)
+        Button(AppLocalization.string("Try Again")) { Task { await load() } }
     }
 
     /// Matches across providers, each naming its provider: several often
@@ -92,6 +120,7 @@ struct BotModelPicker: View {
                 provider = match.provider.name
                 model = match.model.id
             }
+            .disabled(!catalog.answered)
         }
     }
 

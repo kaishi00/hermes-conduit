@@ -28,14 +28,16 @@ enum ComposerLayout {
     }
 
     /// Whether the field keeps focus after a send, so the next message can
-    /// be typed straight away as in a desktop client: on a Mac, or with a
-    /// hardware keyboard. With only the on-screen keyboard it goes down, so
-    /// the reply has the screen.
+    /// be typed straight away as in a desktop client: on a Mac, or on an
+    /// iPad with a hardware keyboard. An iPhone always lets it go, keyboard
+    /// or not, so the reply has the screen.
     static func keepsFocusAfterSend(
+        idiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom,
         onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac,
         hardwareKeyboard: Bool = GCKeyboard.coalesced != nil
     ) -> Bool {
-        onMac || hardwareKeyboard
+        if onMac { return true }
+        return idiom != .phone && hardwareKeyboard
     }
 }
 

@@ -101,12 +101,15 @@ extension ComposerFullEditorTests {
         XCTAssertTrue(ComposerLayout.staysExpanded(width: 400, idiom: .pad, onMac: true))
     }
 
-    func testComposerKeepsFocusAfterSendOnMacAndWithAHardwareKeyboard() {
+    func testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard() {
         // Typing carries on into the next message, as in a desktop client.
-        XCTAssertTrue(ComposerLayout.keepsFocusAfterSend(onMac: true, hardwareKeyboard: false))
-        XCTAssertTrue(ComposerLayout.keepsFocusAfterSend(onMac: false, hardwareKeyboard: true))
+        XCTAssertTrue(ComposerLayout.keepsFocusAfterSend(idiom: .pad, onMac: true, hardwareKeyboard: false))
+        XCTAssertTrue(ComposerLayout.keepsFocusAfterSend(idiom: .pad, onMac: false, hardwareKeyboard: true))
         // The on-screen keyboard goes, so the reply has the screen.
-        XCTAssertFalse(ComposerLayout.keepsFocusAfterSend(onMac: false, hardwareKeyboard: false))
+        XCTAssertFalse(ComposerLayout.keepsFocusAfterSend(idiom: .pad, onMac: false, hardwareKeyboard: false))
+        // An iPhone always lets go, keyboard or not: the reply needs the height.
+        XCTAssertFalse(ComposerLayout.keepsFocusAfterSend(idiom: .phone, onMac: false, hardwareKeyboard: true))
+        XCTAssertFalse(ComposerLayout.keepsFocusAfterSend(idiom: .phone, onMac: false, hardwareKeyboard: false))
     }
 
     func testExpandedComposerBesideTheBigButtonLeavesVoiceAndItsMicToIt() {

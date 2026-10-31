@@ -1411,7 +1411,7 @@ and README.md's bots line)
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
 - The group picture switch guard has no test: it needs a ready DashboardTicketBridge double and a room switch mid-request (#1191).
 
-**Checked:** 2026-10-28, #1457 (the main bot goes by its Conduit name, see Profile names); 2026-10-28, #1448 (an unnamed bot shows its id capitalized); 2026-10-28, #1413 (a rename here names the profile everywhere, see Profile names); 2026-10-27, at #1395 (the editor's Model page gained search with each match's provider; saving unchanged); 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
+**Checked:** 2026-10-31, #1567 (the editor's Model page opens on the models kept from Hermes' last answer, picked once Hermes answers, with Try Again after a read that fails; see Model lists that fail to load); 2026-10-28, #1457 (the main bot goes by its Conduit name, see Profile names); 2026-10-28, #1448 (an unnamed bot shows its id capitalized); 2026-10-28, #1413 (a rename here names the profile everywhere, see Profile names); 2026-10-27, at #1395 (the editor's Model page gained search with each match's provider; saving unchanged); 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
 
 ## Opening a Bot Chat
 
@@ -1682,14 +1682,14 @@ limits, Fallback models), Chat, Workspace, Memory & delegation (Delegate
 model, Pause delegation) and Advanced · Settings > Pulse and What Pulse
 remembers · Settings > Usage · Voice settings (the setup steps, the provider
 sections, the API keys, Speech to text's speech server, Local's fast model
-and the Voice replies model) · the models the Voice replies, Voice jobs and
-Settings > Pulse model pickers list (the `model.options` answer Usage keeps)
-· the saved chats, whose wipes take the kept answers (Delete Saved
+and the Voice replies model) · the models the model sheet, the bot
+editor's Model page and the Voice replies, Voice jobs and Settings > Pulse
+model pickers list (the `model.options` answer Usage keeps; the model sheet
+asks for its chat's session) · the saved chats, whose wipes take the kept answers (Delete Saved
 Chats, a sign-out, a removed dashboard; a deleted bot takes its own) ·
 Settings' Data handling caption and the Delete Saved Chats confirmation ·
-the screens still waiting for Hermes (Open gaps): the Model sheet's catalog,
-Capabilities' tabs, the Bots roster, Tasks boards, the Artifacts and
-Workspace listings · Assistant speech on the speech server (opens on no
+the screens still waiting for Hermes (Open gaps): Capabilities' tabs, the
+Bots roster, Tasks boards, the Artifacts and Workspace listings · Assistant speech on the speech server (opens on no
 kept answer: the notifier's status answers with the server's key, which is
 never kept, and the server's address and steps hang on it; done: a read
 that fails keeps the status shown, and the section reopened on the page
@@ -1711,9 +1711,10 @@ README and docs (not needed: neither describes these pages' loading)
 - Reads and saves: `Conduit/Services/AppState.swift` (KeptRoute, readKeepingAnswer, keepingAnswer and its writes, keepWrittenAnswer, noteKeptAnswerWrite, keepAnswer and keptAnswerTurns, keptAnswer(on:) for a write's dashboard, keptProfileSettings, keptProfileConfigOptions, keptProfileModelDefaults, keptProfileConfigSchema, keptProfileFallbackModels, loadDelegationPaused, setDelegationPaused and keptDelegationPaused, loadModelProviders, keptModelProviders and modelProviders, loadVoiceReplyModel and keptVoiceReplyModel, keptLiveVoiceStatus, liveVoiceStatusKeeper and gptLiveStatusKeeper; updateProfileConfig and setProfileSetting keep what they saved, setProfileMainModel reads the catalog and the model's info again, and setVoiceReplyModel the slots, saying why when Hermes doesn't take one; prefetchSavedChats; deleteBot; deleteSavedChats)
 - Pages: `Conduit/Views/AuxiliaryViews.swift` (KeptAnswerGate, ProfileConfigSettingsPage's showKept, reload and answerChanges, ProfileModelSettingsDetail, DelegationModelSettings, DelegationPauseSettings, FallbackModelsSettings, ChatSettingsDetail, MemorySettingsDetail; AboutSettingsDetail's caption and confirmation), `Conduit/Views/V2/V2SettingsTab.swift` (a profile or dashboard switch starts the Settings stack over, so no page outlives its own)
 - Pulse: `Conduit/Services/AppState+Pulse.swift` (pulseClient and quietPulseForToday keep what PulseClient.keptRoute names, keptPulseState, keptPulseMemory, forgetKeptPulseMemoryItem), `Conduit/Services/PulseSettings.swift` (PulseClient.keptRoute, memoryItems), `Conduit/Views/PulseSettingsViews.swift` (PulseSettingsPage's showKept, its models included, answered and waiting, and reload, which offers Try again before Pulse ever answered; PulseMemoryList's showKept and forget)
-- Usage: `Conduit/Services/AppState+Usage.swift` (loadUsageReport, keptUsageReport, loadProviderQuotas, keptProviderQuotas), `Conduit/Models/UsageReport.swift` (route), `Conduit/Services/HermesClient.swift` (providerQuotaAnswer), `Conduit/Views/UsageSettingsViews.swift` (showKept, also from the period picker, the line over kept numbers offline)
+- Usage: `Conduit/Services/AppState+Usage.swift` (loadUsageReport, keptUsageReport, loadProviderQuotas, keptProviderQuotas), `Conduit/Models/UsageReport.swift` (route), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer), `Conduit/Views/UsageSettingsViews.swift` (showKept, also from the period picker, the line over kept numbers offline)
 - Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (VoiceKeptAnswers, KeptRead, keptSnapshot, answered, isChecking, awaitsKeys, keeping, putConfig, reload's kept toolsets and schema and its reason with nothing shown (isRouteMissing), lastEnvironment, speechServerStatus, speechServerVoiceStatus, rotateSpeechServerVoiceKey and lastFrontModel), `Conduit/Views/SpeechServerVoiceSettingsView.swift` (load, read, show, readError, rotate), `Conduit/Voice/SpeechServerTranscription.swift` and `Conduit/Voice/SpeechServerSpeech.swift` (the statuses' readFailed), `Conduit/Views/VoiceSettingsView.swift` (hermesStep, the speech steps, advancedSection, classicSpeechNeedsAttention, answeredValues, privateVoiceRow's picks and usePrivateProvider, VoiceProviderFieldEditor's ready and its choice saved when picked), `Conduit/Views/VoiceAPIKeyRow.swift` (its field waits on awaitsKeys), `Conduit/Views/SpeechServerSettingsView.swift` (showKept, answered, read and readFailed), `Conduit/Views/LocalLiveViews.swift` (LocalLiveFrontModelSettingsView's showKept, loaded, read and readFailed), `Conduit/Views/GeminiLiveViews.swift` (VoiceJobModelSettingsSection's kept models, VoiceReplyModelPicks, VoiceReplyModelSettingsSection's showKept, read, save and pageIsChecking, LiveVoiceStatusLine, GeminiLiveSettingsSection's status line), `Conduit/Views/GrokLiveViews.swift` and `Conduit/Views/GPTLiveViews.swift` (the status line's keptStatus and keepStatus), `Conduit/Services/AppState.swift` (voiceSettingsAnswers), `Conduit/Views/AuxiliaryViews.swift` (VoiceSettingsRoute's answers, kept models and kept status lines)
-- Tests: `ConduitTests/OfflineChatCacheTests.swift` (Kept answers, testAKeptSchemaKeepsItsFieldNames), `ConduitTests/AppStateMultiDashboardTests.swift` (Kept settings answers, Pulse's, Usage's, Voice's and the live voice modes' status lines among them, testAReadAskedBeforeAWriteNeverPutsItsAnswerBack; testAModelSaveLandedBeforeAProfileSwitchStillWritesItsProfileConfig), `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift`, `ConduitTests/ProfileModelDefaultsTests+ConfigSchema.swift` (testAnAnswerChangesOnlyWhatHermesChanged, testASaveOfAKeptPageWaitsForHermesAnswer)
+- Model pickers: `Conduit/Views/ModelPickerView.swift` (KeptModelCatalog, the model sheet's onAppear and loadModels), `Conduit/Views/BotModelPicker.swift` (load, its rows waiting for the answer), `Conduit/Services/AppState.swift` (loadModelProviders(sessionId:))
+- Tests: `ConduitTests/OfflineChatCacheTests.swift` (Kept answers, testAKeptSchemaKeepsItsFieldNames), `ConduitTests/AppStateMultiDashboardTests.swift` (Kept settings answers, Pulse's, Usage's, Voice's and the live voice modes' status lines among them, testAReadAskedBeforeAWriteNeverPutsItsAnswerBack; testAModelSaveLandedBeforeAProfileSwitchStillWritesItsProfileConfig), `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift`, `ConduitTests/ProfileModelDefaultsTests+ConfigSchema.swift` (testAnAnswerChangesOnlyWhatHermesChanged, testASaveOfAKeptPageWaitsForHermesAnswer), `ConduitTests/ModelPickerTests.swift` (testAPickerOpensOnTheKeptModels)
 
 **Rulings**
 - Every screen shows its last saved state at once, and an update never redraws the whole screen (Eric, 2026-10-30, issue #1533).
@@ -1722,14 +1723,15 @@ README and docs (not needed: neither describes these pages' loading)
 - A page draws its kept answer before its first frame, with its kept schema when it reads one, so no row comes or goes when Hermes answers; with nothing kept it shows its loader as before. A config Conduit saves is what the pages open on next, and a Default model save reads the catalog and the model's info again so their kept copies follow it. Pulse's state is kept from every step that answers with it (a change, a step reading older chats, Quiet for today on the Pulse screen or from a Pulse notification), so Settings > Pulse opens on the last state Pulse gave. A kept Pulse state is only drawn: one with Where you are or Walking past off doesn't stop this iPhone watching shops until Pulse's own answer says so.
 - Hermes' answer changes only the fields it changed: a field changed on the page since it asked (a save still in flight included), and the one being typed in, stay as they are. A read that fails keeps what's shown.
 - A save that writes several values or a whole list (Save model defaults, Save delegate defaults, Save fallbacks) waits for Hermes' answer, and the kept fallback list can't be edited until then: it may be stale and has no credentials to write back. A single setting saves at once, since its write reads Hermes' config first. On Settings > Pulse, a step that writes back what the page shows besides what was picked (report times, quiet days, the night's start and end, the note, the model, whose refusal puts the shown one back) or acts on it (Set up Pulse, Pin it, reading older chats) waits for Pulse's answer; a setting picked outright saves at once. Forgetting a kept item in What Pulse remembers doesn't wait: it's named by its id, and it leaves the kept list too.
-- Voice settings open on Hermes' config and speech toolsets as last read, the config being the one the agent pages keep, and only once both toolsets are kept, so no voice reads not ready for want of one. Which keys are set comes from `/api/env`, which is never kept: a key the kept toolsets don't list as set reads Checking…, with no field, until Hermes answers (after a read that fails it says Hermes didn't say, still with no field), and a read of it that fails keeps which keys the page showed set, from Hermes' last answer held in memory (a key saved since included). Meanwhile the setup steps show the kept settings and the Hermes step says Checking…; if Hermes doesn't answer, it says to connect and the settings stay. With no settings shown it says to connect too; only a Hermes that answers without the voice routes is told to update. Speech to text's speech server opens on the notifier's status as last read, and Local's fast model on the one Assistant speech's status gave, kept without the server's key; Assistant speech's own steps wait for the host, since they hang on that key; reopened on the page, they open on its status read earlier, held in memory with its key (a new key included), while the host is asked again. A read of the speech server, Assistant speech's status or the fast model that fails keeps what's shown, the setup steps included, and says why; their fields wait until the page's next check (Check again included) gets an answer, and Assistant speech's section, showing why its read failed, reads again then too. A new key that fails keeps the one shown. A speech toolset or schema read that fails while the config answers keeps the one shown, so a ready voice doesn't flip to not ready. The provider pickers, Private voice's Use, the provider fields, Show words while you speak, the speech server's address and the fast model's fields, with their Save and Remove key, wait for the answer, as the pickers always waited for a read: a kept value may be stale, and a kept address has no user or password to write back. A choice saves when it's picked, never when Hermes' answer changes it. A voice config save is what the page opens on next. The Voice replies model opens on the slot Hermes gave last, and its pickers wait for Hermes, since a save writes the whole slot; a read that fails keeps it, and the page's next check asks again; a pick written while Hermes is asked stays over that answer; an answer without the slot hides it. The Voice replies, Voice jobs and Settings > Pulse model pickers open on the models of the `model.options` answer Usage keeps, and a read that fails keeps the models listed.
+- Voice settings open on Hermes' config and speech toolsets as last read, the config being the one the agent pages keep, and only once both toolsets are kept, so no voice reads not ready for want of one. Which keys are set comes from `/api/env`, which is never kept: a key the kept toolsets don't list as set reads Checking…, with no field, until Hermes answers (after a read that fails it says Hermes didn't say, still with no field), and a read of it that fails keeps which keys the page showed set, from Hermes' last answer held in memory (a key saved since included). Meanwhile the setup steps show the kept settings and the Hermes step says Checking…; if Hermes doesn't answer, it says to connect and the settings stay. With no settings shown it says to connect too; only a Hermes that answers without the voice routes is told to update. Speech to text's speech server opens on the notifier's status as last read, and Local's fast model on the one Assistant speech's status gave, kept without the server's key; Assistant speech's own steps wait for the host, since they hang on that key; reopened on the page, they open on its status read earlier, held in memory with its key (a new key included), while the host is asked again. A read of the speech server, Assistant speech's status or the fast model that fails keeps what's shown, the setup steps included, and says why; their fields wait until the page's next check (Check again included) gets an answer, and Assistant speech's section, showing why its read failed, reads again then too. A new key that fails keeps the one shown. A speech toolset or schema read that fails while the config answers keeps the one shown, so a ready voice doesn't flip to not ready. The provider pickers, Private voice's Use, the provider fields, Show words while you speak, the speech server's address and the fast model's fields, with their Save and Remove key, wait for the answer, as the pickers always waited for a read: a kept value may be stale, and a kept address has no user or password to write back. A choice saves when it's picked, never when Hermes' answer changes it. A voice config save is what the page opens on next. The Voice replies model opens on the slot Hermes gave last, and its pickers wait for Hermes, since a save writes the whole slot; a read that fails keeps it, and the page's next check asks again; a pick written while Hermes is asked stays over that answer; an answer without the slot hides it. The Voice replies, Voice jobs and Settings > Pulse model pickers open on the models of the `model.options` answer Usage keeps, picked from once Hermes answers, and a read that fails keeps the models listed.
+- The model sheet and the bot editor's Model page open on the models of that `model.options` answer too; a read that fails leaves them up with "Could not load models." and Try Again under them. Their rows can be picked once Hermes answers, as a list that didn't load is never picked from (see Model lists that fail to load). The sheet's read names its chat's session, and every reader takes only the answer's providers (Usage their quota rows), so one kept answer serves them all; each asks again when it opens (#1567).
 - Offline, Settings > Usage shows the numbers it kept, the quota with them, under "Connect to Hermes to update these numbers." instead of clearing the page as it did since #813; a refresh that fails says so over them, and a quota that can't be read while connected still goes (Eric's ruling above, #1555). A per-model read that fails is kept as none, so the page opens on the usage route's own rows, as it showed them, never on an older split and its cost beside newer totals.
 
 **Open gaps**
-- The Model sheet's catalog, Capabilities' tabs, the Bots roster, Tasks boards, and the Artifacts and Workspace listings still wait for Hermes; the next PRs of issue #1533's plan move them onto kept answers.
+- Capabilities' tabs, the Bots roster, Tasks boards, and the Artifacts and Workspace listings still wait for Hermes; the next PRs of issue #1533's plan move them onto kept answers.
 - A page whose answers weren't read ahead (another profile's, delegation's pause, Pulse's and Usage's, or one opened before the live list landed), and a save or forget that lands after a dashboard switch, read their kept files on the main thread: a config or schema is usually tens of kilobytes, and a file can be up to 2 MB.
 
-**Checked:** 2026-10-31, #1563 (fixes that bring the code in line with the rulings above, from #1558's review and its own: an older read never replaces a write or a newer read among the kept answers (a forget, a config save, a Voice replies pick, Pulse's steps, delegation's pause), a write with nothing to keep and one that lands after a profile or dashboard switch included, and a write that lands after a dashboard switch is kept for the dashboard it was made on, so its pages open on the save or without the forgotten item when it's back; a key's field waits until Hermes says which keys are set, when only the config's read fails too, on a Hermes without the speech toolsets' routes included; the Voice replies model writes one pick at a time, and one Hermes doesn't take puts back what it holds, saying why, and a read asked before one that answered first leaves its models too; the live voice modes' status lines open on their last check, GPT-Live's under the billing its check asked about and, on a billing switch, the new billing's while it's checked again, a sibling now done under Eric's ruling; a dashboard switch starts Settings over as a profile switch does, so no page stays on the dashboard left; a URL's credentials leave text with a space in it too, which never goes to the URL parser (since iOS 17 it takes such text by escaping the space, and read an address in the prose after a URL as its host), a space in the password or in a query credential's value included, its query's names and the prose after it staying, and neither a port, a space after the host's colon nor a line's end read as a password); 2026-10-31, #1558 (Voice settings, Speech to text's speech server, Local's fast model and the Voice replies model open on their kept answers, and the Voice, Voice jobs and Pulse model pickers on the kept models; their provider settings wait for the answer, and a read that fails keeps what's shown, Assistant speech's status (its section reopening on the one in memory, a new key included), the Voice replies model (a pick made during a read staying) and which keys are set included, until the page's next check answers, and a key's field waits through it; with nothing shown, a Hermes that doesn't answer is one to connect to; the live voice modes' status lines not needed; voice config saves are what the page opens on next; from #1555's review, a count in a pair named like tokens, by `name` or `key`, is kept, a forgotten item leaves the kept list, a failed per-model read keeps no older split, and a new Usage period shows its kept numbers in the same frame); 2026-10-31, #1555 (Settings > Pulse, What Pulse remembers and Settings > Usage open on their kept answers, and a Pulse notification's Quiet for today keeps Pulse's answer; the filter's pairs, counts, schema names and a URL's query; a Default model save's catalog; the Save gate's test); 2026-10-31, #1552 (the agent settings pages open on their kept answers).
+**Checked:** 2026-10-31, #1567 (the model sheet and the bot editor's Model page open on the kept models, picked once Hermes answers, as are the Voice replies, Voice jobs and Pulse pickers' models, the sheet's read keeping its answer for them and the other pickers; a sibling done); 2026-10-31, #1563 (fixes that bring the code in line with the rulings above, from #1558's review and its own: an older read never replaces a write or a newer read among the kept answers (a forget, a config save, a Voice replies pick, Pulse's steps, delegation's pause), a write with nothing to keep and one that lands after a profile or dashboard switch included, and a write that lands after a dashboard switch is kept for the dashboard it was made on, so its pages open on the save or without the forgotten item when it's back; a key's field waits until Hermes says which keys are set, when only the config's read fails too, on a Hermes without the speech toolsets' routes included; the Voice replies model writes one pick at a time, and one Hermes doesn't take puts back what it holds, saying why, and a read asked before one that answered first leaves its models too; the live voice modes' status lines open on their last check, GPT-Live's under the billing its check asked about and, on a billing switch, the new billing's while it's checked again, a sibling now done under Eric's ruling; a dashboard switch starts Settings over as a profile switch does, so no page stays on the dashboard left; a URL's credentials leave text with a space in it too, which never goes to the URL parser (since iOS 17 it takes such text by escaping the space, and read an address in the prose after a URL as its host), a space in the password or in a query credential's value included, its query's names and the prose after it staying, and neither a port, a space after the host's colon nor a line's end read as a password); 2026-10-31, #1558 (Voice settings, Speech to text's speech server, Local's fast model and the Voice replies model open on their kept answers, and the Voice, Voice jobs and Pulse model pickers on the kept models; their provider settings wait for the answer, and a read that fails keeps what's shown, Assistant speech's status (its section reopening on the one in memory, a new key included), the Voice replies model (a pick made during a read staying) and which keys are set included, until the page's next check answers, and a key's field waits through it; with nothing shown, a Hermes that doesn't answer is one to connect to; the live voice modes' status lines not needed; voice config saves are what the page opens on next; from #1555's review, a count in a pair named like tokens, by `name` or `key`, is kept, a forgotten item leaves the kept list, a failed per-model read keeps no older split, and a new Usage period shows its kept numbers in the same frame); 2026-10-31, #1555 (Settings > Pulse, What Pulse remembers and Settings > Usage open on their kept answers, and a Pulse notification's Quiet for today keeps Pulse's answer; the filter's pairs, counts, schema names and a URL's query; a Default model save's catalog; the Save gate's test); 2026-10-31, #1552 (the agent settings pages open on their kept answers).
 
 ## Composer drafts
 
@@ -1915,10 +1917,12 @@ shells; done, #1541)
   taken off) and rests below that. Mac: it stays expanded at any width, with
   its controls always in reach. There is no setting (Eric, 2026-10-29,
   #1512, issue 1483). A Mac's composer never rests, so a send that keeps
-  the field focused changes nothing there. With a hardware keyboard on an
-  iPhone or a narrow iPad a send keeps focus too, so a composer that rests
-  stays expanded after it until a tap on the transcript (Eric, 2026-10-30,
-  #1527, see Composer focus after a send).
+  the field focused changes nothing there. With a hardware keyboard on a
+  narrow iPad a send keeps focus too, so a composer that rests stays
+  expanded after it until a tap on the transcript (Eric, 2026-10-30, #1527).
+  An iPhone never keeps focus after a send, keyboard or not, so its
+  composer rests again and the reply has the height (Eric, 2026-10-31,
+  #1556, see Composer focus after a send).
 - A composer that stays expanded keeps the big voice button beside it, as the
   resting bar does, rather than sliding it aside while typing; the controls
   row then leaves out its own voice button, and its mic when the big button
@@ -1942,7 +1946,7 @@ shells; done, #1541)
 - Not yet seen on a device: an iPhone at AX3 to AX5 in a running chat and
   in a group room (#1541, checked in code and a unit test only).
 
-**Checked:** 2026-10-30, #1541 (the resting bar and its placeholder at accessibility Text Sizes on a narrow iPhone); 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
+**Checked:** 2026-10-31, #1556 (an iPhone rests again after a send, keyboard or not); 2026-10-30, #1541 (the resting bar and its placeholder at accessibility Text Sizes on a narrow iPhone); 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
 
 ## Composer focus after a send
 
@@ -1954,14 +1958,12 @@ one can be typed straight away, or gives it up so the keyboard goes down.
 Interrupt), and a message that waits for its chat ("Sends when connected";
 done, #1527) · Stop in Send's place (done, #1527) · the full editor (done,
 #1527: a send from it gives the field focus back as the sheet goes) · group
-rooms' composer (gap: its send never takes focus from the field, on any
-device, so a Mac and a hardware keyboard already keep it; on a touch-only
-iPhone too, see Open gaps) · a prediction sent from the suggestion row (done, #1527:
+rooms' composer (done, #1556: it follows the same rule, its full editor included) · a prediction sent from the suggestion row (done, #1527:
 the same send, so it keeps whatever focus the field had) · the plan card, which opens whatever the focus on a Mac or with a hardware
 keyboard (not needed: its check is for the keyboard, not the focus; its
 ruling now says the focus stays, see Plan card) · the resting composer and
-the minimised call bar (done, #1527: with a hardware keyboard on an iPhone
-or a narrow iPad the composer stays expanded after a send while the field
+the minimised call bar (done, #1527, #1556: with a hardware keyboard on a
+narrow iPad the composer stays expanded after a send while the field
 keeps focus, until a tap on the transcript, see Composer at rest and
 expanded; the call bar, on those and on a Mac, comes back after a send and
 hides again only once words are typed) ·
@@ -1971,17 +1973,21 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.keepsFocusAfterSend)
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView, ImagePasteTextView.setFocusIntent and didMoveToWindow: a field rebuilt with focus takes it once it's in the window), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`, opened by ComposerBar's expand button (which takes focus from the field) and its sheet
-- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send)
-- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow)
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send; focusesAfterFullEditor, read in the full editor sheet's onDismiss)
+- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow)
 
 **Rulings**
-- On a Mac, or with a hardware keyboard on an iPad or iPhone, a send or
-  Stop leaves the field focused when the user was typing, as a desktop
-  client does; a click or tap on the transcript still takes focus away.
-  With only the on-screen keyboard it goes down, so the reply has the
-  screen (Eric asked for it on a Mac, and chose the same for an iPad or
-  iPhone with a hardware keyboard, 2026-10-30, #1527).
-  The check is for a connected keyboard, as the plan card's is.
+- On a Mac, or on an iPad with a hardware keyboard, a send or Stop
+  leaves the field focused when the user was typing, as a desktop client
+  does; a click or tap on the transcript still takes focus away. With only
+  the on-screen keyboard it goes down, so the reply has the screen (Eric,
+  2026-10-30, #1527). The iPad's check is for a connected keyboard, as the
+  plan card's is.
+- An iPhone never keeps focus after a send, keyboard or not: a kept
+  composer takes height the reply needs (Eric, 2026-10-31, #1556; #1527 had
+  kept it with a keyboard).
+- Group rooms follow the same rule as chats (2026-10-31, #1556; their
+  send had never let go of focus).
 - Where the field keeps focus, focus alone doesn't hide the minimised call
   bar: it shows after a send and hides only while words are typed, so a
   kept focus never hides a call (2026-10-30, #1527).
@@ -1997,11 +2003,8 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   transcript take focus from the field on a Mac. No test reaches
   `updateUIView` passing the binding's focus to the field (it needs a SwiftUI
   Context), so that link is checked on a device only.
-- Group rooms keep the field focused after a send on a touch-only iPhone
-  too, where a chat's keyboard goes down; the maintainer decides whether
-  rooms follow the chat there.
 
-**Checked:** 2026-10-30, #1527 (new entry).
+**Checked:** 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
 
 ## A chat's last reply
 
@@ -2296,23 +2299,23 @@ voice reply model pickers · Settings > Pulse's model picker · the Kanban task
 composer's catalog
 
 **Code**
-- The rule: `Conduit/Views/ModelPickerView.swift` (ModelCatalogState, and the model sheet's modelSection, loadModels)
+- The rule: `Conduit/Views/ModelPickerView.swift` (ModelCatalogState, KeptModelCatalog, and the model sheet's modelSection, searchResultsSection, catalogFailedRow, modelRowsLocked, loadModels), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer: an answer that isn't one is a failed read)
 - Model page: `Conduit/Views/AuxiliaryViews.swift` (ModelCatalogPlaceholder, ProfileModelSettingsDetail, DelegationModelSettings, FallbackModelsSettings)
-- Bots: `Conduit/Views/BotModelPicker.swift`
-- Voice and Pulse: `Conduit/Views/GeminiLiveViews.swift` (the voice job and voice reply model settings), `Conduit/Views/PulseSettingsViews.swift` (Settings > Pulse's model picker), `Conduit/Services/AppState.swift` (loadModelProviders, keptModelProviders)
+- Bots: `Conduit/Views/BotModelPicker.swift` (load, loadFailedRows)
+- Voice and Pulse: `Conduit/Views/GeminiLiveViews.swift` (the voice job and voice reply model settings: VoiceJobModelSettingsSection.loadProviders and modelsAnswered, VoiceReplyModelSettingsSection.read, tryAgain, reloadProviders and modelsAnswered, VoiceReplyModelPicks.readDidFail), `Conduit/Views/PulseSettingsViews.swift` (Settings > Pulse's model picker, loadModels and modelsAnswered), `Conduit/Views/AuxiliaryViews.swift` (ModelCatalogPlaceholder's failed row under them), `Conduit/Services/AppState.swift` (loadModelProviders, keptModelProviders)
 - Kanban: `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (catalogSection)
 
 **Rulings**
 - A failed fetch says "Could not load models." with Try Again; "No models are available from this gateway." is only for a catalog that loaded empty; neither shows while loading. A re-load that fails keeps the rows it had (2026-10-24, from #1016's review).
 - A list that didn't load is never edited or saved: Save stays off until the catalog is in.
 - The Model page's editors open on the catalog kept from Hermes' last answer (see Screens that open on their last answer); a read that fails leaves it up with "Could not load models." and Try Again under it, and Save stays off until Hermes answers (#1552). A Default model save reads the catalog again after, so the provider it marks in use, whose models an inherited delegate shows, follows the save (#1555).
+- The model sheet and a bot's model picker open on the models kept from Hermes' last `model.options` answer the same way, with "Could not load models." and Try Again under them (under the sheet's search matches too) after a read that fails; their kept models wait for Hermes' answer before they can be picked (#1567).
+- The voice job, voice reply and Settings > Pulse pickers keep the models they list (kept from Hermes' last answer, or none) when the read fails, and say "Could not load models." with Try Again under the Model menu, which waits for Hermes' answer before a model is picked, as the sheet's rows do. The voice reply section says it when the read of its setting fails too, with a setting kept (with none it stays hidden, as on a Hermes without the slot, until the page's next check asks again), its Try Again asks for both, and a failure older than the answer shown says nothing (#1567).
 
 **Open gaps**
-- The voice job, voice reply and Settings > Pulse pickers say nothing when the models read fails: they keep the models listed, kept from Usage's answer or none (loadModelProviders gives nil then, so failed and empty differ, but neither shows).
-- The bot model picker says "Could not load models." without Try Again.
 - The Kanban composer shows a failed catalog as "No curated model catalog available", whose manual entry still works.
 
-**Checked:** 2026-10-31, #1563 (the voice and Pulse pickers' loader, loadModelProviders since #1558, and its gap brought up to date; nothing else changed); 2026-10-31, #1555 (a Default model save reads the catalog again for its kept copy; the Save buttons' rule moved to KeptAnswerGate); 2026-10-31, #1552 (the Model page's editors open on a kept catalog, with Try Again under it when the read fails); 2026-10-27, at #1395 (search matches show only once the catalog is in; loading, failed and empty states unchanged, the Kanban composer's included); at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
+**Checked:** 2026-10-31, #1567 (the model sheet and a bot's model picker open on the kept models, picked once Hermes answers, and the bot picker's failed read offers Try Again, closing its gap; the voice and Pulse pickers say a failed read with Try Again, the voice reply section's setting read included, closing theirs, and their Model menus wait for Hermes' answer); 2026-10-31, #1563 (the voice and Pulse pickers' loader, loadModelProviders since #1558, and its gap brought up to date; nothing else changed); 2026-10-31, #1555 (a Default model save reads the catalog again for its kept copy; the Save buttons' rule moved to KeptAnswerGate); 2026-10-31, #1552 (the Model page's editors open on a kept catalog, with Try Again under it when the read fails); 2026-10-27, at #1395 (search matches show only once the catalog is in; loading, failed and empty states unchanged, the Kanban composer's included); at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
 
 ## The Model sheet's settings
 
@@ -2327,7 +2330,7 @@ Delegate and Fallback model editors (not siblings: they're saved with the bot
 or the profile, not live session settings)
 
 **Code**
-- Sheet: `Conduit/Views/ModelPickerView.swift` (switchModel, runModelPickerSwitch, modelPickerShouldSwitch, applySpeed, applyYolo, applyReasoning)
+- Sheet: `Conduit/Views/ModelPickerView.swift` (switchModel, runModelPickerSwitch, modelPickerShouldSwitch, modelRowsLocked, applySpeed, applyYolo, applyReasoning)
 - Chip and writes: `Conduit/Views/Components/ComposerBar.swift` (the reasoning chip), `Conduit/Services/AppState.swift` (setReasoningEffort, setYoloModeReportingFailure), `Conduit/Services/HermesClient.swift` (setModel, setSpeed, ModelSwitchOutcome)
 - Tests: `ConduitTests/ModelPickerTests.swift`
 
@@ -2341,7 +2344,7 @@ or the profile, not live session settings)
 **Open gaps**
 - The checked row doesn't follow a model changed elsewhere while the sheet is open.
 
-**Checked:** 2026-10-27, at #1395 (a search match switches like a tapped row, through the same pick); at #1334.
+**Checked:** 2026-10-31, #1567 (the sheet opens on the models kept from Hermes' last answer, whose rows switch once Hermes answers; a row being switched to keeps its check when an answer lands); 2026-10-27, at #1395 (a search match switches like a tapped row, through the same pick); at #1334.
 
 ## Searching for a model
 
@@ -2373,7 +2376,7 @@ README, docs or Settings caption describes the pickers)
 **Open gaps**
 - A hardware keyboard connected while the sheet is open doesn't turn on the highlight until the sheet opens again.
 
-**Checked:** 2026-10-27, at #1395.
+**Checked:** 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
 
 ## Files over the size limit
 
@@ -2824,6 +2827,43 @@ Recent menu) · the Archived sheet · README.md
 
 **Checked:** 2026-10-26, #1328.
 
+## All profiles in Chats
+
+The All chip in the Chats list's profile row: every included profile's chats
+in one list, newest first with each row's profile picture, or with Group by
+profile a section per profile listing its pinned chats and its five newest
+until Show more (issue 1560 asked for the list; Eric asked for the cap).
+
+**Siblings:** the chip and its Show in All sheet (which profiles, Group by
+profile) · Filter's Group by profile switch · the date sections and the
+mixed Pinned section · each profile's section (closing it, Show more,
+reordering its pins) · search and "In messages" across profiles · the
+status, Starred and source filters · opening, renaming, archiving and
+deleting another profile's chat · New chat (asks which profile) · the open
+chat's row on the iPad and Mac (same view) · unread dots (another profile's
+replies) · VoiceOver · README.md
+
+**Code**
+- Settings, merge and groups: `Conduit/Models/AllProfilesChats.swift` (AllProfilesChatsSettings, rows, groups, preview, groupPreviewCount, holdsOpen), `Conduit/Models/ChatListSections.swift` (latestActivity)
+- State and other profiles' rows: `Conduit/Services/AppState.swift` (rowProfile, isOtherProfileRow, isAllProfilesChatsOn, allProfilesIncluded, allProfilesGroupsByProfile, refreshAllProfilesCatalog, listAllProfilesCatalog, startNewChat(inProfile:))
+- Chip and sheet: `Conduit/Views/V2/V2TopBar.swift` (withAllProfilesChip), `Conduit/Views/V2/V2AllProfilesSheet.swift`
+- List: `Conduit/Views/V2/V2ChatsView.swift` (profileGroups, profileSection, profileShowMoreRow, profilesShowingAll, holdsOpenChat, collapsedProfiles, revealActiveSection, badgesRows, rowScope)
+- Row badge: `Conduit/Views/V2/V2SessionRow.swift` (V2ProfileBadge)
+- Search: `Conduit/Services/SessionContentSearch.swift` (otherProfiles)
+- Docs: `README.md` (Features)
+- Tests: `ConduitTests/SidebarLayoutTests+AllProfiles.swift`
+
+**Rulings**
+- All is offered with two or more profiles on the dashboard; the profiles left out are kept by name, so a profile added later is in, and leaving every one out lists them all (2026-10-22, #1128, Eric picked the chip and grouping).
+- Grouped by profile, a section lists its pinned chats, then the five chats with the newest activity (a nest by its newest row, as the date sections file it), in the list's order, until "Show 12 more"; "Show fewer" puts it back. The open chat stays listed past the five, so a wide window never highlights a hidden row. A search or a status or Starred filter lists every match; a source filter (Voice, Scheduled and the like) is still a browse and keeps the cap. The row shows only while the cap hides something, so a profile that shrinks to five loses its Show fewer. Show more is remembered per profile until the app closes, while a closed section stays closed across launches (2026-10-31, #1571, Eric: one busy profile filled the list and few found the section's close).
+- The ungrouped list stays one list, newest first, with no cap: it's ordered by last activity across profiles, as issue 1560 asked.
+- Projects belong to one profile, so All shows chats only (see Project chats in Chats).
+
+**Open gaps**
+- Live status (the live registry's Running and waits) and scheduled runs follow the profile in use only, as built in #1128.
+
+**Checked:** 2026-10-31, #1571.
+
 ## Unread dot on projects
 
 The gold dot on a project in the Projects list while any chat in it has a
@@ -2885,13 +2925,14 @@ widget's and the Share extension's) · README.md
 - The order is kept per profile under each chat's pin id (its lineage root), so a compacted chat keeps its place. Hermes keeps only whether a chat is pinned, so the order goes to other devices through Sync across devices (`chats.pinned_order`, the profile in use's), not through Hermes.
 - In All's mixed Pinned section a chat stays where it's dropped, among the other profiles' too: the section also keeps which profile holds each place, and each profile's chats fill its places in that profile's own order. A drag there saves the order of every profile it shows, so later activity doesn't move a chat dropped among another profile's. That mix stays on this device, like All's other settings, and applies to the mixed section only (All grouped by profile and a profile's own list follow each profile's order); a chat pinned since goes on top, and an unpinned one leaves it. This replaces "each profile's pinned rows keep the places they held among the others'", under which a drop past another profile's chats snapped back (Eric, 2026-10-29, issue 1486, #1490).
 - CarPlay's pinned chats follow the order. The widget's and Share extension's pickers don't: they pick a chat from every chat, pinned ones first by recent activity.
+- In All grouped by profile, a section's pinned chats are never held back by its Show more, and still move among themselves; the Show more row stays out of the drag (2026-10-31, #1571).
 
 **Open gaps**
 - Hermes Desktop keeps its own pin order, and Hermes has no field for one, so the two never match.
 - The classic drawer reorders only from the sheet: its nested rows are one block each, which a List drag can't move cleanly.
 - Not yet tried on a device: whether the system's lift from a held row and the touch-and-hold menu share the hold as planned.
 
-**Checked:** 2026-10-29, #1490.
+**Checked:** 2026-10-31, #1571 (a profile section's Show more, see All profiles in Chats); 2026-10-29, #1490.
 
 ## Deleting from a list row
 
@@ -2945,14 +2986,14 @@ keeps to itself there)
 - Docked at the bottom above the composer, a line that announces a new plan without opening over the chat; the artifact card was dropped (2026-10-23, #1135, Eric).
 - An announced plan is on screen: a new plan, even one that arrives finished after the last one went, clears the hidden state and gets its own 60 s (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
 - The line and the card cap Dynamic Type at accessibility1; the sheet, a scrolling list, takes every size (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
-- The plan keeps to its one line only while an on-screen keyboard can be up: a Mac has none and a hardware keyboard puts it away, and in both the composer keeps focus between messages (see Composer focus after a send), so there the line opens whatever the focus, and a tap on the line under the keyboard puts the keyboard away and opens the card (2026-10-29, #1511, issue #1510; focus kept after a send, #1527).
+- The plan keeps to its one line only while an on-screen keyboard can be up: a Mac has none and a hardware keyboard puts it away (a Mac and an iPad with one keep the composer's focus between messages, see Composer focus after a send), so there the line opens whatever the focus, and a tap on the line under the keyboard puts the keyboard away and opens the card (2026-10-29, #1511, issue #1510; focus kept after a send, #1527).
 
 **Open gaps**
 - The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
 - Two announcements within 450 ms race on the pulse (#1135 review).
 - With a hardware keyboard the line opens even if the on-screen keyboard is summoned; the check is for a connected keyboard, not a visible one (#1511 review).
 
-**Checked:** 2026-10-30, #1527 (the ruling's premise: a send keeps focus on a Mac and with a hardware keyboard; the check is unchanged); 2026-10-29, #1511.
+**Checked:** 2026-10-31, #1556 (an iPhone with a keyboard no longer keeps focus after a send; the check is unchanged); 2026-10-30, #1527 (the ruling's premise: a send keeps focus on a Mac and with a hardware keyboard; the check is unchanged); 2026-10-29, #1511.
 
 ## White text on the accent
 
