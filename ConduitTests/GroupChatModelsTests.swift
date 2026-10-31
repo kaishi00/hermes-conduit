@@ -583,14 +583,16 @@ final class GroupChatModelsTests: XCTestCase {
             memberMessage(seq: 3, member: "furina", round: 0, text: "Again"),
             memberMessage(seq: 4, member: "zhongli", round: 0, text: "Greetings"),
         ]
-        let pending = GroupRoomOutbox.Pending(text: "Plan the trip", eventID: "user:d2")
+        // The id the client mints, and the one the gateway files it under.
+        let pending = GroupRoomOutbox.Pending(text: "Plan the trip", eventID: "conduit-abc")
+        let landedID = GroupRoomOutbox.serverEventID(forClientEventID: "conduit-abc")
         let rows = GroupRoomTranscript.rows(
             events: log, roomID: "room-1", members: members,
             pending: pending, isSending: true, responder: members[1]
         )
         XCTAssertEqual(
             rows.map(\.id),
-            ["user:d1", "dmessage:2", "dmessage:3", "dmessage:4", "user:d2", GroupRoomTranscript.respondingID]
+            ["user:d1", "dmessage:2", "dmessage:3", "dmessage:4", landedID, GroupRoomTranscript.respondingID]
         )
         // A member's run shows its picture and name once.
         guard case .room(.event(_, _, let runContinues)) = rows[2].kind,
@@ -601,10 +603,10 @@ final class GroupChatModelsTests: XCTestCase {
 
         // The send landed while its row still shows: the event's row, once.
         let landed = GroupRoomTranscript.rows(
-            events: log + [userMessage(seq: 5, text: "Plan the trip", id: "user:d2")], roomID: "room-1",
+            events: log + [userMessage(seq: 5, text: "Plan the trip", id: landedID)], roomID: "room-1",
             members: members, pending: pending, isSending: false, responder: nil
         )
-        XCTAssertEqual(landed.map(\.id), ["user:d1", "dmessage:2", "dmessage:3", "dmessage:4", "user:d2"])
+        XCTAssertEqual(landed.map(\.id), ["user:d1", "dmessage:2", "dmessage:3", "dmessage:4", landedID])
         guard case .room(.event(_, _, _)) = landed[4].kind else { return XCTFail("the event's row, not the pending one") }
 
         // Nothing in the room yet: its welcome.

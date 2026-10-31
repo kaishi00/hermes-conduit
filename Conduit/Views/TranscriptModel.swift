@@ -400,9 +400,10 @@ enum GroupRoomTranscript {
     static let respondingID = "room-responding"
     static let emptyID = "room-empty"
 
-    /// The rows, in order. The message on its way takes its event's id, so
-    /// its row becomes the event's in place when the send lands, and isn't
-    /// drawn twice while both are there.
+    /// The rows, in order. The message on its way takes its event's id,
+    /// the one the gateway files it under (GroupRoomOutbox.serverEventID),
+    /// so its row becomes the event's in place when the send lands, and
+    /// isn't drawn twice while both are there.
     static func rows(
         events: [GroupEvent],
         roomID: String,
@@ -425,7 +426,10 @@ enum GroupRoomTranscript {
             add(event.id, .event(event, members: members, continuesRun: continuesRun))
         }
         if let pending {
-            add(pending.eventID, .pending(text: pending.text, members: members, isSending: isSending))
+            add(
+                GroupRoomOutbox.serverEventID(forClientEventID: pending.eventID),
+                .pending(text: pending.text, members: members, isSending: isSending)
+            )
         }
         if let responder {
             add(respondingID, .responding(responder))
