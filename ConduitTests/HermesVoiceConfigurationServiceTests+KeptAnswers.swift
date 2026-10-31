@@ -172,8 +172,8 @@ extension HermesVoiceConfigurationServiceTests {
 
     /// The Voice replies model shows Hermes' answer unless a pick's write
     /// was out when it was asked or went out since, or a read asked after
-    /// it answered first, writes one pick at a time, and a write Hermes
-    /// refuses puts back what it holds and says why.
+    /// it answered first (its models left too), writes one pick at a time,
+    /// and a write Hermes refuses puts back what it holds and says why.
     func testTheVoiceRepliesModelKeepsAPickOverAnOlderAnswer() throws {
         let chats = VoiceReplyModelSetting(provider: "auto", model: "", reasoningEffort: "none")
         let fast = VoiceReplyModelSetting(provider: "openrouter", model: "fast", reasoningEffort: "none")
@@ -217,8 +217,8 @@ extension HermesVoiceConfigurationServiceTests {
 
         let older = picks.readAsked()
         let newer = picks.readAsked()
-        picks.hermesAnswered(fast, to: newer)
-        picks.hermesAnswered(chats, to: older)
+        XCTAssertTrue(picks.hermesAnswered(fast, to: newer))
+        XCTAssertFalse(picks.hermesAnswered(chats, to: older), "Its models are older too")
         XCTAssertEqual(picks.saved, fast, "Asked before a read that answered first")
         XCTAssertEqual(picks.selection, fastTag)
     }

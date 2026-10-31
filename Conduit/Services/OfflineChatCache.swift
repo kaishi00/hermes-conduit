@@ -1194,11 +1194,14 @@ final class OfflineChatCacheStore {
     /// password may hold a space, as a URL typed with one does, and an `@`
     /// with no space after it before the next `@`: a host never holds a
     /// space, so prose after a URL (an address in it included) stays. A
-    /// password never runs past the line's end, nor starts with a port, a
-    /// number the host's colon leads to that ends before a word does
-    /// (`localhost:8080 and mail me@…`).
+    /// password never runs past the line's end, nor starts with a space
+    /// (`example.com: mail me@…`) or a port, a number the host's colon
+    /// leads to that ends before a word does (`localhost:8080 and mail
+    /// me@…`). So a password with a space in it that starts with a number
+    /// reads as a port and prose and stays: the two can't be told apart,
+    /// and a port is the likelier.
     private static let unparsedUserInfo = try! NSRegularExpression(
-        pattern: #"(?<=://)(?:[^/?#\s@:]*:(?!\d+(?:[^\w@]|$))[^/?#@\r\n]*|[^/?#\s@]*)(?:@[^/?#@\s]*)*@"#
+        pattern: #"(?<=://)(?:[^/?#\s@:]*:(?!\d+(?:[^\w@]|$))(?:[^/?#@\s][^/?#@\r\n]*)?|[^/?#\s@]*)(?:@[^/?#@\s]*)*@"#
     )
     /// A query's name, with its `=`.
     private static let unparsedQueryName = try! NSRegularExpression(pattern: #"(?<=[?&])([^=&#\s]+)="#)

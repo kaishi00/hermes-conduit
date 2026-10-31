@@ -3290,6 +3290,7 @@ extension OfflineChatCacheTests {
             "nearby": "https://me:pw-33@host.example and mail bob@corp.example",
             "reminder": "Check https://example.com and ask alice@corp.example",
             "dashboard": "Open http://localhost:9119 and mail me@corp.example\nor see http://wiki:home\nadmin@corp.example",
+            "access": "Docs at https://docs.example: ask bob@corp.example for access",
         ]
         let secrets = [
             "sk-live-1", "ghp-2", "Bearer three", "key-4", "sk-fallback-5", "sk-6", "k-7", "k-8",
@@ -3335,6 +3336,11 @@ extension OfflineChatCacheTests {
             kept["dashboard"] as? String,
             "Open http://localhost:9119 and mail me@corp.example\nor see http://wiki:home\nadmin@corp.example",
             "A port isn't a password, and none runs past the line's end"
+        )
+        XCTAssertEqual(
+            kept["access"] as? String,
+            "Docs at https://docs.example: ask bob@corp.example for access",
+            "nor starts with a space"
         )
         XCTAssertEqual(kept["extra_headers"] as? [[String: String]], [["name": "Authorization"], ["name": "Accept", "value": "json"]])
         XCTAssertEqual(

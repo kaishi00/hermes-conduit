@@ -667,13 +667,16 @@ struct VoiceReplyModelPicks {
 
     /// Hermes' answer to `read`, shown unless a pick's write was out when
     /// it was asked or went out since, as the pick stays then, or a read
-    /// asked after it answered first.
-    mutating func hermesAnswered(_ setting: VoiceReplyModelSetting?, to read: Read) {
-        guard read.number > newestAnsweredRead else { return }
+    /// asked after it answered first. False for the last: the models read
+    /// with it are older than the ones shown too.
+    @discardableResult
+    mutating func hermesAnswered(_ setting: VoiceReplyModelSetting?, to read: Read) -> Bool {
+        guard read.number > newestAnsweredRead else { return false }
         newestAnsweredRead = read.number
         readFailed = false
         if !read.duringWrite, read.writes == writes { show(setting) }
         answered = true
+        return true
     }
 
     /// A read that fails keeps what's shown.
@@ -794,8 +797,10 @@ struct VoiceReplyModelSettingsSection: View {
             picks.readDidFail()
             return
         }
-        if setting != nil, let loaded = await settings.loadProviders() { providers = loaded }
-        picks.hermesAnswered(setting, to: asked)
+        var loaded: [ProviderInfo]?
+        if setting != nil { loaded = await settings.loadProviders() }
+        guard picks.hermesAnswered(setting, to: asked) else { return }
+        if let loaded { providers = loaded }
     }
 
     private func showKept() {
