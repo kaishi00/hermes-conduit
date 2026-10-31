@@ -137,7 +137,8 @@ final class HermesWatchCalls: NSObject {
         // No token on watchOS 10, where calls get no network (#1346): the
         // iPhone rings alone.
         let token = WatchVoiceCall.callsWork ? self.token : nil
-        guard tokenKnown, !hasSentToken || sentToken != token || sentKey != handoffKey || sentEngine != engine else { return }
+        // On watchOS 10 the nil token is known without PushKit's answer.
+        guard tokenKnown || !WatchVoiceCall.callsWork, !hasSentToken || sentToken != token || sentKey != handoffKey || sentEngine != engine else { return }
         // Not linked yet: sent once the link is up.
         guard WatchLink.shared.queue(.callsToken(token: token, key: handoffKey.map(WatchToolSeal.base64URL), engine: engine.callVoice.rawValue, phoneHeadset: true)) else { return }
         sentToken = token

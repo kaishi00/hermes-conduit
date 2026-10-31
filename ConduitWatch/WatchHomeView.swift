@@ -52,7 +52,7 @@ struct WatchHomeView: View {
                 // start (WatchCallVoices).
                 if !WatchVoiceCall.callsWork {
                     // #1346: say so before a call, not after it fails.
-                    Text("Calls from the Watch don't work on watchOS 10. Talk to Hermes in Conduit on your iPhone, which rings for calls from Hermes too.")
+                    oldWatchOSNote
                         .font(.caption2)
                         .foregroundStyle(Color.watchAttention)
                         .multilineTextAlignment(.center)
@@ -77,6 +77,14 @@ struct WatchHomeView: View {
                 .accessibilityLabel(Text("Settings"))
             }
         }
+    }
+
+    /// The iPhone rings for calls from Hermes only where they ring at all.
+    private var oldWatchOSNote: Text {
+        if HermesWatchCalls.ringingBuilt, link.phoneContext?.callsRing == true {
+            return Text("Calls from the Watch don't work on watchOS 10. Talk to Hermes in Conduit on your iPhone, which rings for calls from Hermes too.")
+        }
+        return Text("Calls from the Watch don't work on watchOS 10. Talk to Hermes in Conduit on your iPhone.")
     }
 
     @ViewBuilder
