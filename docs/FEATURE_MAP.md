@@ -2846,14 +2846,14 @@ replies) · VoiceOver · README.md
 
 **Rulings**
 - All is offered with two or more profiles on the dashboard; the profiles left out are kept by name, so a profile added later is in, and leaving every one out lists them all (2026-10-22, #1128, Eric picked the chip and grouping).
-- Grouped by profile, a section lists its pinned chats, then its five newest until "Show 12 more"; "Show fewer" puts it back. The open chat stays listed past the five, so a wide window never highlights a hidden row. A search or a status filter lists every match, and Show more is remembered per profile until the app closes, while a closed section stays closed across launches (2026-10-31, #PRNUM, Eric: one busy profile filled the list and few found the section's close).
+- Grouped by profile, a section lists its pinned chats, then its five newest until "Show 12 more"; "Show fewer" puts it back. The open chat stays listed past the five, so a wide window never highlights a hidden row. A search or a status filter lists every match, and Show more is remembered per profile until the app closes, while a closed section stays closed across launches (2026-10-31, #1571, Eric: one busy profile filled the list and few found the section's close).
 - The ungrouped list stays one list, newest first, with no cap: it's ordered by last activity across profiles, as issue 1560 asked.
 - Projects belong to one profile, so All shows chats only (see Project chats in Chats).
 
 **Open gaps**
 - Live status (the live registry's Running and waits) and scheduled runs follow the profile in use only, as built in #1128.
 
-**Checked:** 2026-10-31, #PRNUM.
+**Checked:** 2026-10-31, #1571.
 
 ## Unread dot on projects
 
