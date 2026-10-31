@@ -172,6 +172,8 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         composerFloats: Bool,
         renderedScope: ChatRenderedScrollScope?
     ) {
+        // The rows need the data source viewDidLoad makes.
+        loadViewIfNeeded()
         // A presentation that closed since leaves nothing to keep aside for.
         dropParkedIfIdle()
         // Before the rows: a cell configured for them draws with these.
@@ -205,7 +207,14 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         // same, as on most of SwiftUI's updates: no row-by-row comparison.
         if hasAppliedRows, !redrawingAll, Self.sameStorage(rows, appliedRows) { return }
         let changes = TranscriptChangeSet.between(appliedRows, rows)
-        guard !changes.isEmpty || !hasAppliedRows || redrawingAll, let dataSource else { return }
+        guard let dataSource else { return }
+        guard !changes.isEmpty || !hasAppliedRows || redrawingAll else {
+            // Rows that draw the same (an input that changed none of them):
+            // nothing to draw, but the next update holding them skips the
+            // comparison.
+            appliedRows = rows
+            return
+        }
         let redrawn = redrawingAll ? rows.map(\.id).filter { rowsByID[$0] != nil } : changes.changed
         appliedRows = rows
         hasAppliedRows = true

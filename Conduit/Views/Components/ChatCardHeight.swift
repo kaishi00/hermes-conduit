@@ -8,9 +8,10 @@
 //  A card mounts at the room it reserves (the height it measured on this
 //  phone before, else a placeholder) and its page reports its real height a
 //  moment later, which the card takes at once. When the card is above what
-//  the reader is looking at, the transcript keeps the reader's row where it
-//  is as the card grows (TranscriptScroller, #1533), as it does for a
-//  picture arriving in its row.
+//  the reader is looking at, a chat's transcript keeps the reader's row
+//  where it is as the card grows (TranscriptScroller, #1533), as it does
+//  for a picture arriving in its row. A group room's card grows in place
+//  until rooms draw on that transcript too.
 //
 
 import SwiftUI
