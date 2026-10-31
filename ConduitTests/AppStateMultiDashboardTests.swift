@@ -1723,6 +1723,26 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]), "but a read the delete overtook keeps nothing")
     }
 
+    /// Delegation's pause holds every profile on a Hermes, so every
+    /// profile's page opens on the value any of them last read; another
+    /// dashboard's doesn't.
+    func testDelegationsKeptPauseIsTheDashboards() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        appState.offlineChatCacheForTesting.recordAnswer(
+            ["paused": true],
+            route: AppState.KeptRoute.delegationStatus,
+            dashboardID: mac,
+            profile: AppState.KeptRoute.everyProfile
+        )
+
+        XCTAssertEqual(appState.keptDelegationPaused(), true)
+        appState.setActiveProfileForTesting("work")
+        XCTAssertEqual(appState.keptDelegationPaused(), true, "Another profile's page opens on it")
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.keptDelegationPaused(), "Another dashboard's page doesn't")
+    }
+
     /// A config save is what the settings pages open on next, without
     /// another read.
     func testAConfigSaveIsWhatTheSettingsPagesOpenOnNext() async throws {

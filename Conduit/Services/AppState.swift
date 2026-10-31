@@ -33245,6 +33245,10 @@ final class AppState: ObservableObject {
         static let modelInfo = "/api/model/info"
         static let pluginsHub = "/api/dashboard/plugins/hub"
         static let delegationStatus = "rpc:delegation.status"
+        /// The scope of an answer about all of a Hermes' profiles at once
+        /// (delegation's pause), kept once per dashboard: no profile is
+        /// named with nothing.
+        static let everyProfile = ""
     }
 
     /// A read whose answer is kept for the screen that shows it, so that
@@ -33271,11 +33275,12 @@ final class AppState: ObservableObject {
         offlineChatCache.recordAnswer(answer, route: route, dashboardID: dashboardID, profile: profile)
     }
 
-    /// The answer the active profile's screen last read for the route, or
-    /// nil when none is kept.
-    private func keptAnswer(_ route: String) -> [String: Any]? {
+    /// The answer the active profile's screen last read for the route (or
+    /// the given scope's, as `KeptRoute.everyProfile`), or nil when none is
+    /// kept.
+    private func keptAnswer(_ route: String, profile: String? = nil) -> [String: Any]? {
         guard let dashboardID = activeDashboardID else { return nil }
-        return offlineChatCache.keptAnswer(route, dashboardID: dashboardID, profile: activeProfile)
+        return offlineChatCache.keptAnswer(route, dashboardID: dashboardID, profile: profile ?? activeProfile)
     }
 
     /// Hermes' value wins and is kept on the phone; a read that fails keeps
@@ -34406,19 +34411,20 @@ final class AppState: ObservableObject {
     func loadDelegationPaused() async -> Bool? {
         guard let client else { return nil }
         let owner = currentDashboardRuntimeOwner()
-        let profile = activeProfile
         let removals = offlineChatCache.removals
         guard let paused = try? await client.delegationPaused() else { return nil }
         if let owner {
-            keepAnswer(["paused": paused], for: KeptRoute.delegationStatus, profile: profile, owner: owner, removals: removals)
+            // The pause holds every profile, so every profile's page opens on it.
+            keepAnswer(["paused": paused], for: KeptRoute.delegationStatus, profile: KeptRoute.everyProfile, owner: owner, removals: removals)
         }
         return paused
     }
 
-    /// Whether delegation was paused when the page last read it, kept on
-    /// the phone, or nil when that isn't kept.
+    /// Whether delegation was paused when a page last read it on this
+    /// dashboard, under any profile, kept on the phone, or nil when that
+    /// isn't kept.
     func keptDelegationPaused() -> Bool? {
-        keptAnswer(KeptRoute.delegationStatus)?["paused"] as? Bool
+        keptAnswer(KeptRoute.delegationStatus, profile: KeptRoute.everyProfile)?["paused"] as? Bool
     }
 
     /// Holds or releases new delegate agents; returns the state Hermes
@@ -34426,11 +34432,10 @@ final class AppState: ObservableObject {
     func setDelegationPaused(_ paused: Bool) async -> Bool? {
         guard let client else { return nil }
         let owner = currentDashboardRuntimeOwner()
-        let profile = activeProfile
         let removals = offlineChatCache.removals
         guard let state = try? await client.setDelegationPaused(paused) else { return nil }
         if let owner {
-            keepAnswer(["paused": state], for: KeptRoute.delegationStatus, profile: profile, owner: owner, removals: removals)
+            keepAnswer(["paused": state], for: KeptRoute.delegationStatus, profile: KeptRoute.everyProfile, owner: owner, removals: removals)
         }
         return state
     }

@@ -3351,15 +3351,34 @@ struct ProfileConfigSettingsPage: View {
         let answeredSchema = await loadSchema?() ?? ProfileConfigSchema()
         let answered = await valuesRequest
         schema = answeredSchema
-        // Only what Hermes changed redraws: a field changed here keeps its
-        // choice, and the one being typed in keeps its text.
-        for field in fields where !changedKeys.contains(field.key) {
-            if values[field.key] != answered[field.key] { values[field.key] = answered[field.key] }
-            if focusedKey != field.key, drafts[field.key] != answered[field.key]?.textValue {
-                drafts[field.key] = answered[field.key]?.textValue
+        let changes = Self.answerChanges(
+            answered, keys: fields.map(\.key), changedHere: changedKeys, typingIn: focusedKey,
+            values: values, drafts: drafts
+        )
+        for (key, value) in changes.values { values[key] = value }
+        for (key, draft) in changes.drafts { drafts[key] = draft }
+        loading = false
+    }
+
+    /// What Hermes' answer changes on the page (#1533): only the fields it
+    /// changed redraw, a field changed here since it was asked keeps its
+    /// choice, and the one being typed in keeps its text.
+    nonisolated static func answerChanges(
+        _ answered: [String: ProfileSettingValue],
+        keys: [String],
+        changedHere: Set<String>,
+        typingIn focusedKey: String?,
+        values: [String: ProfileSettingValue],
+        drafts: [String: String]
+    ) -> (values: [String: ProfileSettingValue?], drafts: [String: String?]) {
+        var changes: (values: [String: ProfileSettingValue?], drafts: [String: String?]) = ([:], [:])
+        for key in keys where !changedHere.contains(key) {
+            if values[key] != answered[key] { changes.values[key] = .some(answered[key]) }
+            if focusedKey != key, drafts[key] != answered[key]?.textValue {
+                changes.drafts[key] = .some(answered[key]?.textValue)
             }
         }
-        loading = false
+        return changes
     }
 
     private func loadExtras() async -> [String: [String]] {

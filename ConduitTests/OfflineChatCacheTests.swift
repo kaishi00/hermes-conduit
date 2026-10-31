@@ -3210,13 +3210,37 @@ extension OfflineChatCacheTests {
         store.recordAnswer(["providers": [huge]], route: route, dashboardID: dashboard, profile: "default")
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        XCTAssertNil(store.keptAnswer(route, dashboardID: dashboard, profile: "default"), "Not from memory either")
         let next = OfflineChatCacheStore(directory: file.deletingLastPathComponent())
         XCTAssertNil(next.keptAnswer(route, dashboardID: dashboard, profile: "default"))
     }
 
-    /// The file leaves out credentials at any depth (a custom endpoint's
-    /// API key, an MCP server's token and Authorization header, a
-    /// fallback's key), and keeps settings that only mention them.
+    /// Memory holds kept answers within its bytes as well as its count: the
+    /// least recently used goes first.
+    func testMemoryKeepsTheKeptAnswersWithinItsBytes() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        // Five answers of about 1.9 MB pass memory's 8 MB.
+        let big = String(repeating: "x", count: 1_900_000)
+        let routes = (0..<5).map { "/route/\($0)" }
+        for route in routes {
+            store.recordAnswer(["text": big], route: route, dashboardID: dashboard, profile: "default")
+        }
+        for route in routes {
+            try FileManager.default.removeItem(at: store.keptAnswerFileURL(route, dashboardID: dashboard, profile: "default"))
+        }
+
+        XCTAssertNil(store.keptAnswer(routes[0], dashboardID: dashboard, profile: "default"), "Left memory, and its file is gone")
+        for route in routes.dropFirst() {
+            XCTAssertNotNil(store.keptAnswer(route, dashboardID: dashboard, profile: "default"), route)
+        }
+    }
+
+    /// Memory and the file leave out credentials at any depth (a custom
+    /// endpoint's API key, an MCP server's token and Authorization header,
+    /// a fallback's key, a provider's secret key, key list, credentials,
+    /// passphrase, bare auth or key, and a URL's user and password), and
+    /// keep settings that only mention them.
     func testAKeptAnswersFileLeavesOutCredentials() throws {
         let store = makeStore()
         let dashboard = UUID()
@@ -3227,15 +3251,34 @@ extension OfflineChatCacheTests {
                 "headers": ["Authorization": "Bearer three", "X-Api-Key": "key-4"],
             ]],
             "fallback_providers": [["provider": "custom", "model": "f", "api_key": "sk-fallback-5"]],
+            "providers": ["custom": [
+                "secret_key": "sk-6",
+                "api_keys": ["k-7", "k-8"],
+                "credentials": ["user": "u", "pass": "p-9"],
+                "passphrase": "pp-10",
+                "auth": "a-11",
+                "key": "k-12",
+                "clientSecret": "cs-13",
+                "base_url": "https://u:pw-14@llm.example/v1",
+                "password_required": false,
+                "max_tokens": 4096,
+            ]],
             "security": ["redact_secrets": true],
             "agent": ["max_turns": 90],
+        ]
+        let secrets = [
+            "sk-live-1", "ghp-2", "Bearer three", "key-4", "sk-fallback-5", "sk-6", "k-7", "k-8",
+            "p-9", "pp-10", "a-11", "k-12", "cs-13", "pw-14",
         ]
 
         store.recordAnswer(config, route: AppState.KeptRoute.config, dashboardID: dashboard, profile: "default")
 
+        let memory = try XCTUnwrap(store.keptAnswer(AppState.KeptRoute.config, dashboardID: dashboard, profile: "default"))
+        let memoryText = try XCTUnwrap(String(data: JSONSerialization.data(withJSONObject: memory), encoding: .utf8))
         let file = store.keptAnswerFileURL(AppState.KeptRoute.config, dashboardID: dashboard, profile: "default")
         let text = try XCTUnwrap(String(data: Data(contentsOf: file), encoding: .utf8))
-        for secret in ["sk-live-1", "ghp-2", "Bearer three", "key-4", "sk-fallback-5"] {
+        for secret in secrets {
+            XCTAssertFalse(memoryText.contains(secret), "memory: \(secret)")
             XCTAssertFalse(text.contains(secret), secret)
         }
         let next = OfflineChatCacheStore(directory: file.deletingLastPathComponent())
@@ -3247,5 +3290,11 @@ extension OfflineChatCacheTests {
         XCTAssertEqual((kept["fallback_providers"] as? [[String: String]])?.first, ["provider": "custom", "model": "f"])
         XCTAssertEqual((kept["security"] as? [String: Bool])?["redact_secrets"], true, "A setting about secrets stays")
         XCTAssertEqual((kept["agent"] as? [String: Int])?["max_turns"], 90)
+        let custom = try XCTUnwrap((kept["providers"] as? [String: Any])?["custom"] as? [String: Any])
+        XCTAssertEqual(
+            NSDictionary(dictionary: custom),
+            ["base_url": "https://llm.example/v1", "password_required": false, "max_tokens": 4096] as NSDictionary,
+            "The URL without its user, and true or false and numbers that only mention them"
+        )
     }
 }
