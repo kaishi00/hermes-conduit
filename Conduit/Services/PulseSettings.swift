@@ -736,6 +736,8 @@ enum PulseBackfillAction: String {
 struct PulseClient {
     static let capability = "pulse"
     static let path = "/api/plugins/conduit_push/pulse"
+    static let memoryPath = "\(path)/memory"
+    static let backfillPath = "\(path)/backfill"
 
     typealias Request = @MainActor (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
 
@@ -768,7 +770,7 @@ struct PulseClient {
     }
 
     func estimate(days: Int) async throws -> PulseBackfillEstimate {
-        let response = try await request("\(Self.path)/backfill", "POST", ["action": "estimate", "days": days])
+        let response = try await request(Self.backfillPath, "POST", ["action": "estimate", "days": days])
         guard let estimate = PulseBackfillEstimate(json: response["estimate"]) else { throw HermesError.invalidResponse }
         return estimate
     }
@@ -776,13 +778,16 @@ struct PulseClient {
     func backfill(_ action: PulseBackfillAction, days: Int? = nil) async throws -> PulseState {
         var body: [String: Any] = ["action": action.rawValue]
         if let days { body["days"] = days }
-        let response = try await request("\(Self.path)/backfill", "POST", body)
+        let response = try await request(Self.backfillPath, "POST", body)
         return try Self.state(from: response)
     }
 
     func memory() async throws -> [PulseMemoryItem] {
-        let response = try await request("\(Self.path)/memory", "GET", nil)
-        return (response["items"] as? [Any] ?? []).compactMap(PulseMemoryItem.init(json:))
+        Self.memoryItems(from: try await request(Self.memoryPath, "GET", nil))
+    }
+
+    static func memoryItems(from response: [String: Any]) -> [PulseMemoryItem] {
+        (response["items"] as? [Any] ?? []).compactMap(PulseMemoryItem.init(json:))
     }
 
     /// False when the item was no longer open.
@@ -794,5 +799,17 @@ struct PulseClient {
     static func state(from response: [String: Any]) throws -> PulseState {
         guard let state = PulseState(json: response) else { throw HermesError.invalidResponse }
         return state
+    }
+
+    /// The route an answer is kept under, so Settings > Pulse and What Pulse
+    /// remembers open on it next time (#1533): Pulse's state, from any step
+    /// that answers with it (a read, a change, a step reading older chats),
+    /// and the remembered list. Nil for the rest.
+    static func keptRoute(path: String, method: String, answer: [String: Any]) -> String? {
+        switch path {
+        case Self.path, Self.backfillPath: return PulseState(json: answer) == nil ? nil : Self.path
+        case Self.memoryPath: return method == "GET" ? Self.memoryPath : nil
+        default: return nil
+        }
     }
 }

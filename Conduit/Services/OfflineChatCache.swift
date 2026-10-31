@@ -1065,11 +1065,14 @@ final class OfflineChatCacheStore {
     /// Keeps a screen's answer for the route: memory has it at once, and
     /// the file is written on the store's queue, so a removal after this
     /// takes it too. Memory and the file both leave out credentials
-    /// (`withoutCredentials`), and one too big to keep leaves memory again
-    /// once the queue has measured it.
-    func recordAnswer(_ answer: [String: Any], route: String, dashboardID: UUID, profile: String) {
+    /// (`withoutCredentials`, keeping the keys of the objects under
+    /// `namesUnder`), and one too big to keep leaves memory again once the
+    /// queue has measured it.
+    func recordAnswer(
+        _ answer: [String: Any], route: String, dashboardID: UUID, profile: String, namesUnder names: Set<String> = []
+    ) {
         let url = keptAnswerFileURL(route, dashboardID: dashboardID, profile: profile)
-        let kept = Self.withoutCredentials(answer)
+        let kept = Self.withoutCredentials(answer, namesUnder: names)
         let generation = memoryLock.withLock { () -> UInt64 in
             keepAnswerLocked(kept, at: url, bytes: nil)
             keptAnswerGeneration &+= 1
@@ -1093,17 +1096,39 @@ final class OfflineChatCacheStore {
     /// An answer without its credential-shaped keys, at any depth: any key
     /// (`api_key`, `ssh_key`, `api_keys`), a token, a password, passphrase or
     /// secret, credentials, an Authorization header, auth or a cookie (a
-    /// config can hold them, as a custom endpoint's `api_key`), and without
-    /// the user and password a URL can carry. A key shaped like one whose
-    /// value is true or false stays: it's a setting about them
-    /// (`redact_secrets`). No screen shows a credential, and a key to an
-    /// account mustn't sit in a file; a name that only looks like one
-    /// (`sort_key`) comes back with Hermes' answer.
-    static func withoutCredentials(_ answer: [String: Any]) -> [String: Any] {
-        answer.reduce(into: [String: Any]()) { kept, entry in
-            guard !isCredentialKey(entry.key) || isFlag(entry.value) else { return }
-            kept[entry.key] = withoutCredentials(inValue: entry.value)
+    /// config can hold them, as a custom endpoint's `api_key`), a pair's
+    /// value when its name is one of those (`{"name": "Authorization",
+    /// "value": …}`), and without the user and password a URL can carry. A
+    /// key shaped like one whose value is true or false stays: it's a
+    /// setting about them (`redact_secrets`); so does a count under a name
+    /// ending in tokens (`max_tokens`), and a `key` beside `is_set`, which
+    /// names the variable whose presence that reports (Hermes' rows of
+    /// keys). No screen shows a credential, and a key to an account mustn't
+    /// sit in a file; a name that only looks like one (`sort_key`) comes
+    /// back with Hermes' answer. The objects under `namesUnder` are keyed by
+    /// names, not values (a schema's `fields`, by config path), so their
+    /// keys stay and what's under each is filtered.
+    static func withoutCredentials(_ answer: [String: Any], namesUnder names: Set<String> = []) -> [String: Any] {
+        let namedCredential = ["name", "key"].contains { (answer[$0] as? String).map(isCredentialKey) ?? false }
+        let reportsPresence = answer["is_set"].map(isFlag) ?? false
+        return answer.reduce(into: [String: Any]()) { kept, entry in
+            if names.contains(entry.key), let named = entry.value as? [String: Any] {
+                kept[entry.key] = named.mapValues { withoutCredentials(inValue: $0) }
+            } else if !holdsCredential(entry.key, entry.value, namedCredential: namedCredential, reportsPresence: reportsPresence) {
+                kept[entry.key] = withoutCredentials(inValue: entry.value)
+            }
         }
+    }
+
+    /// Whether an object's entry is a credential, in an object whose `name`
+    /// or `key` is a credential's (`namedCredential`) or that reports a
+    /// variable's presence (`is_set`).
+    private static func holdsCredential(_ key: String, _ value: Any, namedCredential: Bool, reportsPresence: Bool) -> Bool {
+        if isFlag(value) { return false }
+        if key == "value" { return namedCredential }
+        guard isCredentialKey(key) else { return false }
+        let count = value is NSNumber && key.lowercased().hasSuffix("tokens")
+        return !count && !(key == "key" && reportsPresence)
     }
 
     private static func withoutCredentials(inValue value: Any) -> Any {
@@ -1114,11 +1139,10 @@ final class OfflineChatCacheStore {
     }
 
     /// Names that end like a credential's, with or without the underscore:
-    /// `signing_key`, `apikeys`, `GITHUB_TOKEN`, `clientSecret`,
-    /// `session_cookie`, `proxy_authorization`, `basic_auth`. Not `tokens`:
-    /// `max_tokens` is a number.
+    /// `signing_key`, `apikeys`, `GITHUB_TOKEN`, `access_tokens`,
+    /// `clientSecret`, `session_cookie`, `proxy_authorization`, `basic_auth`.
     private static let credentialKeySuffixes = [
-        "key", "keys", "token", "secret", "secrets", "cookie", "cookies", "auth", "authorization",
+        "key", "keys", "token", "tokens", "secret", "secrets", "cookie", "cookies", "auth", "authorization",
     ]
     /// Words that make any name a credential's.
     private static let credentialKeyWords = ["password", "passwd", "passphrase", "credential"]

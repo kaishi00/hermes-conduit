@@ -126,6 +126,15 @@ extension ProfileModelDefaultsTests {
         XCTAssertEqual(changes.drafts["gone"], .some(nil))
     }
 
+    /// A page showing what it kept saves several values or a whole list
+    /// only once Hermes has answered, one save at a time (#1533).
+    func testASaveOfAKeptPageWaitsForHermesAnswer() {
+        XCTAssertFalse(KeptAnswerGate.canSave(answered: false, saving: false), "The kept answer may be stale")
+        XCTAssertFalse(KeptAnswerGate.canSave(answered: true, saving: true), "A save is already on its way")
+        XCTAssertFalse(KeptAnswerGate.canSave(answered: true, saving: false, ready: false), "What it writes isn't complete")
+        XCTAssertTrue(KeptAnswerGate.canSave(answered: true, saving: false))
+    }
+
     func testListEditorDropsBlankLines() {
         XCTAssertEqual(ProfileConfigSettingsPage.listEntries("  git status \n\n ls -la\n"), ["git status", "ls -la"])
         XCTAssertEqual(ProfileConfigSettingsPage.listEntries(""), [])
