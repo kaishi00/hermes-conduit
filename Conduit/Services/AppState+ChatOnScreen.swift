@@ -37,6 +37,11 @@ extension AppState {
     /// device's Notification Center, and the Watch's with the iPhone's
     /// (#1579). Other devices keep theirs.
     func clearShownChatNotifications() {
+        // A sheet over the chat (Settings, a voice sheet, the chat's own
+        // Artifacts or Rename) hides it: what arrives meanwhile hasn't been
+        // read. Closing it clears (V2Shell, V2ConversationScreen).
+        guard !isModalSheetPresented, !chatCoveredBySheet,
+              let sessionID = chatShownOnScreen else { return }
         // A launch in the background counts the scene active until its
         // first phase change: nobody has read anything then.
         #if canImport(UIKit) && !os(watchOS)
@@ -59,10 +64,6 @@ extension AppState {
             return
         }
         #endif
-        // A sheet over the chat (Settings, a voice sheet) hides it: what
-        // arrives meanwhile hasn't been read. The chat's next edge clears it.
-        guard !isModalSheetPresented else { return }
-        guard let sessionID = chatShownOnScreen else { return }
         let sessionIDs = chatOwnSessionIDs(for: sessionID)
         let activeDashboardID = activeDashboardID
         let savedDashboardIDs = savedDashboardRegistry.dashboards.map(\.id)
