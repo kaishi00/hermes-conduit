@@ -8890,12 +8890,14 @@ final class AppState: ObservableObject {
     /// of the chats Conduit lists.
     func searchChatsForVoice(_ query: String) async throws -> [VoiceChatMatch] {
         guard isConnected, let dashboardTicketBridge else { throw HermesError.notConnected }
-        let profile = activeProfile
+        // A Watch call on another profile finds that profile's chats (#1564).
+        let profile = watchCallJobProfile ?? activeProfile
         do {
             let response = try await dashboardTicketBridge.requestJSON(path: VoiceChatFinder.path(query: query, profile: profile))
             return VoiceChatFinder.matches(from: response)
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
-            return VoiceChatFinder.titleMatches(in: activeProfileSessions, query: query)
+            // Only the iPhone's own profile's chats are loaded here.
+            return watchCallJobProfile == nil ? VoiceChatFinder.titleMatches(in: activeProfileSessions, query: query) : []
         }
     }
 
@@ -8904,7 +8906,7 @@ final class AppState: ObservableObject {
     /// once and the summary kept on the host.
     func readChatForVoice(_ sessionID: String) async throws -> VoiceResumeContext {
         guard isConnected, dashboardTicketBridge != nil else { throw HermesError.notConnected }
-        guard let context = await voiceResumeContext(sessionID: sessionID, profile: activeProfile) else {
+        guard let context = await voiceResumeContext(sessionID: sessionID, profile: watchCallJobProfile ?? activeProfile) else {
             // Said to the model, not shown: not localized.
             throw VoiceAudioError.unavailable("Conduit couldn't read that chat.")
         }
@@ -37400,7 +37402,7 @@ final class AppState: ObservableObject {
                 runtimeSessionID: target.sessionId,
                 storedSessionID: target.durableSessionID,
                 title: call.title ?? "",
-                profile: target.profile == activeProfile ? nil : target.profile
+                profile: target.profile.map { profilesMatch($0, activeProfile) } == true ? nil : target.profile
             ))
         }
         return HermesCallOpening(kind: call.kind, title: call.title, result: result, reason: call.reason, sessionIDs: call.sessionIDs)
