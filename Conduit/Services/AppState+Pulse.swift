@@ -172,10 +172,16 @@ extension AppState {
         case .failClosed:
             return false
         }
-        guard let active = activeDashboardID, let bridge = dashboardTicketBridge else { return false }
+        guard let active = activeDashboardID, let owner = currentDashboardRuntimeOwner() else { return false }
         do {
-            let response = try await bridge.requestJSON(path: PulseClient.path, method: "PUT",
-                                                        body: ["quiet_until": "today"], timeoutMilliseconds: timeoutMilliseconds)
+            // Kept as Pulse's own steps are, so Settings > Pulse opens on the quiet it set.
+            let response = try await keepingAnswer(
+                profile: KeptRoute.everyProfile, owner: owner,
+                keptAs: { PulseClient.keptRoute(path: PulseClient.path, method: "PUT", answer: $0) }
+            ) {
+                try await owner.bridge.requestJSON(path: PulseClient.path, method: "PUT",
+                                                   body: ["quiet_until": "today"], timeoutMilliseconds: timeoutMilliseconds)
+            }
             guard activeDashboardID == active else { return false }
             // A plugin from before quiet times answers without them: nothing went quiet.
             return (try? PulseClient.state(from: response))?.quietUntil != nil

@@ -3239,8 +3239,8 @@ extension OfflineChatCacheTests {
     /// Memory and the file leave out credentials at any depth (a custom
     /// endpoint's API key, an MCP server's token and Authorization header,
     /// a fallback's key, a provider's secret key, key list, credentials,
-    /// passphrase, bare auth or key, and a URL's user and password), and
-    /// keep settings that only mention them.
+    /// passphrase, bare auth or key, and a URL's user and password or a
+    /// credential in its query), and keep settings that only mention them.
     func testAKeptAnswersFileLeavesOutCredentials() throws {
         let store = makeStore()
         let dashboard = UUID()
@@ -3269,6 +3269,8 @@ extension OfflineChatCacheTests {
                 "max_tokens": 4096,
                 "author": "ann",
                 "access_tokens": ["t-20", "t-21"],
+                "stream_url": "wss://relay.example/ws?region=eu&api_key=sk-25&access_token=t-26",
+                "hook_url": "https://hooks.example/in?token=t-27",
             ]],
             "security": ["redact_secrets": true],
             "agent": ["max_turns": 90],
@@ -3281,7 +3283,7 @@ extension OfflineChatCacheTests {
         let secrets = [
             "sk-live-1", "ghp-2", "Bearer three", "key-4", "sk-fallback-5", "sk-6", "k-7", "k-8",
             "p-9", "pp-10", "a-11", "k-12", "cs-13", "pw-14", "sk-15", "ssh-16", "Basic 17", "c-18", "h-19",
-            "t-20", "t-21", "Bearer 22", "sk-23", "sk-24",
+            "t-20", "t-21", "Bearer 22", "sk-23", "sk-24", "sk-25", "t-26", "t-27",
         ]
 
         store.recordAnswer(config, route: AppState.KeptRoute.config, dashboardID: dashboard, profile: "default")
@@ -3306,8 +3308,11 @@ extension OfflineChatCacheTests {
         let custom = try XCTUnwrap((kept["providers"] as? [String: Any])?["custom"] as? [String: Any])
         XCTAssertEqual(
             NSDictionary(dictionary: custom),
-            ["base_url": "https://llm.example/v1", "password_required": false, "max_tokens": 4096, "author": "ann"] as NSDictionary,
-            "The URL without its user, true or false and numbers that only mention them, and a name that only starts like auth"
+            [
+                "base_url": "https://llm.example/v1", "stream_url": "wss://relay.example/ws?region=eu",
+                "hook_url": "https://hooks.example/in", "password_required": false, "max_tokens": 4096, "author": "ann",
+            ] as NSDictionary,
+            "URLs without their user or a key in their query, true or false and numbers that only mention them, and a name that only starts like auth"
         )
         XCTAssertEqual(kept["extra_headers"] as? [[String: String]], [["name": "Authorization"], ["name": "Accept", "value": "json"]])
         XCTAssertEqual(

@@ -991,10 +991,18 @@ struct PulseSettingsPage: View {
         }
     }
 
+    /// After a step; one that fails before Pulse ever answered offers to
+    /// try again, as the first read does (that read gave way to the step).
     private func reload() async {
         let client = self.client
-        guard let next = try? await client.state(), isShown(client) else { return }
-        apply(next)
+        do {
+            let next = try await client.state()
+            guard isShown(client) else { return }
+            apply(next)
+        } catch {
+            guard isShown(client), !Task.isCancelled, !answered else { return }
+            loadError = PulseRefusal.message(for: error)
+        }
     }
 
     private func apply(_ next: PulseState) {
@@ -1117,6 +1125,7 @@ struct PulseSettingsPage: View {
             guard !Task.isCancelled, appState.activeDashboardID == dashboard else { return }
             let id = UUID()
             workingID = id
+            stepsStarted += 1
             defer { if workingID == id { workingID = nil } }
             errorMessage = nil
             do {

@@ -1098,14 +1098,15 @@ final class OfflineChatCacheStore {
     /// secret, credentials, an Authorization header, auth or a cookie (a
     /// config can hold them, as a custom endpoint's `api_key`), a pair's
     /// value when its name is one of those (`{"name": "Authorization",
-    /// "value": …}`), and without the user and password a URL can carry. A
-    /// key shaped like one whose value is true or false stays: it's a
-    /// setting about them (`redact_secrets`); so does a count under a name
-    /// ending in tokens (`max_tokens`), and a `key` beside `is_set`, which
-    /// names the variable whose presence that reports (Hermes' rows of
-    /// keys). No screen shows a credential, and a key to an account mustn't
-    /// sit in a file; a name that only looks like one (`sort_key`) comes
-    /// back with Hermes' answer. The objects under `namesUnder` are keyed by
+    /// "value": …}`), and without the user and password a URL can carry or
+    /// a credential in its query (`?api_key=…`). A key shaped like one
+    /// whose value is true or false stays: it's a setting about them
+    /// (`redact_secrets`); so does a count under a name ending in tokens
+    /// (`max_tokens`), and a `key` beside `is_set`, which names the
+    /// variable whose presence that reports (Hermes' rows of keys). No
+    /// screen shows a credential, and a key to an account mustn't sit in a
+    /// file; a name that only looks like one (`sort_key`) comes back with
+    /// Hermes' answer. The objects under `namesUnder` are keyed by
     /// names, not values (a schema's `fields`, by config path), so their
     /// keys stay and what's under each is filtered.
     static func withoutCredentials(_ answer: [String: Any], namesUnder names: Set<String> = []) -> [String: Any] {
@@ -1134,7 +1135,7 @@ final class OfflineChatCacheStore {
     private static func withoutCredentials(inValue value: Any) -> Any {
         if let object = value as? [String: Any] { return withoutCredentials(object) }
         if let list = value as? [Any] { return list.map { withoutCredentials(inValue: $0) } }
-        if let text = value as? String { return withoutURLUser(text) }
+        if let text = value as? String { return withoutURLCredentials(text) }
         return value
     }
 
@@ -1161,14 +1162,17 @@ final class OfflineChatCacheStore {
         return CFGetTypeID(number) == CFBooleanGetTypeID()
     }
 
-    /// The URL without its user and password (`https://user:key@host`), or
-    /// the text as it was.
-    private static func withoutURLUser(_ text: String) -> String {
-        guard text.contains("@"), text.contains("://"),
-              var components = URLComponents(string: text),
-              components.user != nil || components.password != nil else { return text }
+    /// The URL without its user and password (`https://user:key@host`) and
+    /// a credential in its query (`?api_key=…`), or the text as it was.
+    private static func withoutURLCredentials(_ text: String) -> String {
+        guard text.contains("://"), text.contains("@") || text.contains("?"),
+              var components = URLComponents(string: text) else { return text }
+        let query = components.queryItems ?? []
+        let keptQuery = query.filter { !isCredentialKey($0.name) }
+        guard components.user != nil || components.password != nil || keptQuery.count < query.count else { return text }
         components.user = nil
         components.password = nil
+        if keptQuery.count < query.count { components.queryItems = keptQuery.isEmpty ? nil : keptQuery }
         return components.string ?? ""
     }
 

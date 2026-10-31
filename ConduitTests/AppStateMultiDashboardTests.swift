@@ -1768,9 +1768,10 @@ extension AppStateMultiDashboardTests {
     }
 
     /// Pulse is one per host: its state is kept once per dashboard, from a
-    /// read or a change that answers with it, and What Pulse remembers'
-    /// list beside it; an estimate isn't a state. Settings > Pulse opens on
-    /// them in any profile, and another dashboard's opens on nothing.
+    /// read or a change that answers with it (a notification's Quiet for
+    /// today too), and What Pulse remembers' list beside it; an estimate
+    /// isn't a state. Settings > Pulse opens on them in any profile, and
+    /// another dashboard's opens on nothing.
     func testPulsesStateAndMemoryAreKeptOncePerDashboard() async throws {
         let (appState, held, vps) = heldSwitchFixture()
         let client = appState.pulseClient
@@ -1800,6 +1801,15 @@ extension AppStateMultiDashboardTests {
         try await held.answer(["items": [["id": 1, "text": "Call Ann", "kind": "commitment"]]])
         _ = try await memory.value
         XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Call Ann"])
+
+        // Quiet for today from a Pulse notification is kept as the page's own steps are.
+        let here = PulseQuietTarget(dashboardID: appState.activeDashboardID?.uuidString, gatewayID: nil)
+        let quiet = Task { await appState.quietPulseForToday(here, switching: false, wait: .zero) }
+        try await held.waitForRequests(5)
+        try await held.answer(["enabled": false, "quiet_until": 1800000000])
+        let quieted = await quiet.value
+        XCTAssertTrue(quieted)
+        XCTAssertEqual(appState.keptPulseState()?.quietUntil, Date(timeIntervalSince1970: 1800000000))
 
         appState.setActiveProfileForTesting("work")
         XCTAssertEqual(appState.keptPulseState()?.enabled, false, "Another profile's page opens on it")
