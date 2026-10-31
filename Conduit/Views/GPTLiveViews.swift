@@ -302,7 +302,7 @@ struct GPTLiveSettingsSection: View {
         defer { isChecking = false }
         switch await model.checkAvailability() {
         case .success(let availability):
-            let line: String
+            let line: String?
             switch availability {
             // The host reports its own voice; a voice chosen here overrides it.
             case .available(let modelName, let hostVoice?) where (billing == .api ? apiVoice : voice).isEmpty:
@@ -314,7 +314,7 @@ struct GPTLiveSettingsSection: View {
             }
             status = line
             isAvailable = availability.isAvailable
-            model.keepStatus(LiveVoiceStatusLine(text: line, isAvailable: availability.isAvailable))
+            if let line { model.keepStatus(LiveVoiceStatusLine(text: line, isAvailable: availability.isAvailable)) }
         case .failure(let error):
             isAvailable = false
             status = UserFacingError.message(for: error)

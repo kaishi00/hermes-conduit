@@ -230,7 +230,7 @@ struct GeminiLiveSettingsSection: View {
         defer { isChecking = false }
         switch await model.checkAvailability() {
         case .success(let availability):
-            let line: String
+            let line: String?
             if case .available(let modelName) = availability {
                 line = AppLocalization.string("Available (\(modelName))")
             } else {
@@ -238,7 +238,7 @@ struct GeminiLiveSettingsSection: View {
             }
             status = line
             isAvailable = availability.isAvailable
-            model.keepStatus(LiveVoiceStatusLine(text: line, isAvailable: availability.isAvailable))
+            if let line { model.keepStatus(LiveVoiceStatusLine(text: line, isAvailable: availability.isAvailable)) }
         case .failure(let error):
             isAvailable = false
             status = UserFacingError.message(for: error)

@@ -153,7 +153,7 @@ struct GrokLiveSettingsSection: View {
         defer { isChecking = false }
         switch await model.checkAvailability() {
         case .success(let availability):
-            let line: String
+            let line: String?
             switch availability {
             case .available(let modelName, let voice, let auth):
                 // Credential names, not prose: never translated.
@@ -168,7 +168,7 @@ struct GrokLiveSettingsSection: View {
             }
             status = line
             isAvailable = availability.isAvailable
-            model.keepStatus(LiveVoiceStatusLine(text: line, isAvailable: availability.isAvailable))
+            if let line { model.keepStatus(LiveVoiceStatusLine(text: line, isAvailable: availability.isAvailable)) }
         case .failure(let error):
             isAvailable = false
             status = UserFacingError.message(for: error)
