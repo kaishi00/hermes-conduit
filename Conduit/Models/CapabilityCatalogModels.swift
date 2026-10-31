@@ -341,7 +341,12 @@ struct ConnectorServer: Equatable, Identifiable {
                 transport: row["transport"] as? String ?? "unknown",
                 url: (row["url"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 command: (row["command"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-                args: (row["args"] as? [Any])?.compactMap { $0 as? String } ?? [],
+                // A number argument shows as written (--port 8080), not dropped.
+                args: (row["args"] as? [Any])?.compactMap { value -> String? in
+                    if let text = value as? String { return text }
+                    guard let number = value as? NSNumber else { return nil }
+                    return CFGetTypeID(number) == CFBooleanGetTypeID() ? (number.boolValue ? "true" : "false") : number.stringValue
+                } ?? [],
                 auth: (row["auth"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 enabled: row["enabled"] as? Bool ?? true,
                 plugin: plugin
@@ -350,8 +355,9 @@ struct ConnectorServer: Equatable, Identifiable {
     }
 
     /// A row for a server just saved, made from its entry when the list
-    /// couldn't be read again; what the entry doesn't say comes from the row
-    /// it replaces.
+    /// couldn't be read again. The PUT replaced the whole entry, so what it
+    /// leaves out is the default (no sign-in, on); only a transport the entry
+    /// can't show comes from the row it replaces.
     static func saved(name: String, entry: [String: Any], replacing before: ConnectorServer?) -> ConnectorServer {
         let url = (entry["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         let command = (entry["command"] as? String).flatMap { $0.isEmpty ? nil : $0 }
@@ -361,8 +367,9 @@ struct ConnectorServer: Equatable, Identifiable {
             url: url,
             command: command,
             args: (entry["args"] as? [Any])?.map { "\($0)" } ?? [],
-            auth: (entry["auth"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? before?.auth,
-            enabled: entry["enabled"] as? Bool ?? before?.enabled ?? true,
+            auth: (entry["auth"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                ?? ((entry["headers"] as? [String: Any])?.keys.contains { $0.lowercased() == "authorization" } == true ? "header" : nil),
+            enabled: entry["enabled"] as? Bool ?? true,
             plugin: nil
         )
     }
@@ -409,7 +416,12 @@ struct ConnectorCatalogEntry: Equatable, Identifiable {
                 requiredEnv: env,
                 url: (row["url"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 command: (row["command"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-                args: (row["args"] as? [Any])?.compactMap { $0 as? String } ?? [],
+                // A number argument shows as written (--port 8080), not dropped.
+                args: (row["args"] as? [Any])?.compactMap { value -> String? in
+                    if let text = value as? String { return text }
+                    guard let number = value as? NSNumber else { return nil }
+                    return CFGetTypeID(number) == CFBooleanGetTypeID() ? (number.boolValue ? "true" : "false") : number.stringValue
+                } ?? [],
                 needsInstall: row["needs_install"] as? Bool ?? false,
                 installed: row["installed"] as? Bool ?? false
             )
@@ -807,36 +819,56 @@ struct ConnectorServerEdit {
             guard !program.isEmpty else { throw Problem.noTarget }
             next["command"] = program
             guard arguments != shownArguments else { return next }
-            // A line left exactly as it was keeps its own value (a number
-            // stays a number, an empty or spaced argument stays as it is),
-            // each original used once; a changed or new line is the text
-            // typed, trimmed, and a blank new line is dropped.
-            var unused = entry["args"] as? [Any] ?? []
-            var args: [Any] = []
-            for line in arguments.components(separatedBy: .newlines) {
-                if let match = unused.firstIndex(where: { "\($0)" == line }) {
-                    args.append(unused.remove(at: match))
-                    continue
-                }
-                let typed = line.trimmingCharacters(in: .whitespaces)
-                guard !typed.isEmpty else { continue }
-                // A whole number typed in place of a number left unused keeps
-                // the type (8080 to 9090), however the lines moved.
-                if let whole = Self.wholeNumber(typed),
-                   let replaced = unused.firstIndex(where: Self.isNumber) {
-                    unused.remove(at: replaced)
-                    args.append(whole)
-                } else {
-                    args.append(typed)
-                }
-            }
-            if args.isEmpty && entry["args"] == nil {
+            next["args"] = Self.editedArguments(arguments, original: entry["args"] as? [Any] ?? [])
+            if (next["args"] as? [Any])?.isEmpty == true && entry["args"] == nil {
                 next.removeValue(forKey: "args")
-            } else {
-                next["args"] = args
             }
         }
         return next
+    }
+
+    /// The arguments typed, one per line, walked against the original ones
+    /// in order. A line left exactly as it was keeps its own value (a number
+    /// stays a number, an empty or spaced argument stays as it is), each
+    /// original used once, also when lines moved. A line typed over an
+    /// original keeps a number a number when it's a whole number written
+    /// plainly (8080 to 9090; "007" or "1.10" stay text). An added line is
+    /// the text typed, trimmed, and a blank one is dropped.
+    private static func editedArguments(_ text: String, original: [Any]) -> [Any] {
+        let lines = text.components(separatedBy: .newlines)
+        let shown = original.map { "\($0)" }
+        var used = Set<Int>()
+        var next = 0
+        var args: [Any] = []
+        func skipUsed() { while used.contains(next) { next += 1 } }
+        for (row, line) in lines.enumerated() {
+            skipUsed()
+            // Left as it was, here or further on (the lines between deleted),
+            // or moved from earlier.
+            if let at = shown.indices.first(where: { $0 >= next && !used.contains($0) && shown[$0] == line })
+                ?? shown.indices.first(where: { !used.contains($0) && shown[$0] == line }) {
+                used.insert(at)
+                args.append(original[at])
+                if at >= next { next = at + 1 }
+                continue
+            }
+            let typed = line.trimmingCharacters(in: .whitespaces)
+            guard !typed.isEmpty else { continue }
+            // Typed over the next original, unless that one still comes later
+            // as it was (then this line was added).
+            let later = lines[(row + 1)...]
+            if next < original.count, !later.contains(shown[next]) {
+                let replaced = original[next]
+                used.insert(next)
+                next += 1
+                if isNumber(replaced), let whole = wholeNumber(typed) {
+                    args.append(whole)
+                    continue
+                }
+            }
+            args.append(typed)
+        }
+        return args
     }
 
     /// The JSON as an entry: one object with an address or a command.

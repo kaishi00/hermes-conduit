@@ -695,6 +695,14 @@ extension KanbanTests {
         let shifted = try XCTUnwrap(try edit.formEntry()["args"] as? [Any])
         XCTAssertEqual(shifted.count, 2)
         XCTAssertEqual(shifted[1] as? Int, 9090, "the number is found however the lines moved")
+        // A number typed on a new line, after the number was changed into
+        // words, is text: it replaced nothing.
+        edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["--port", 8080]])
+        edit.arguments = "--port\n--debug\n3000"
+        let added = try XCTUnwrap(try edit.formEntry()["args"] as? [Any])
+        XCTAssertEqual(added[1] as? String, "--debug")
+        XCTAssertEqual(added[2] as? String, "3000")
+        edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["--verbose", "--port", 8080]])
         // Only text that reads back as typed becomes a number.
         for typed in ["007", "1.10", "1e3", "9090.0"] {
             edit.arguments = "--port\n\(typed)"
@@ -737,8 +745,13 @@ extension KanbanTests {
         let row = try XCTUnwrap(store.servers.first)
         XCTAssertEqual(store.servers.map(\.name), ["Griply"], "the page follows the rename instead of saying it's gone")
         XCTAssertEqual(row.url, "https://new")
-        XCTAssertEqual(row.auth, "oauth", "what the entry doesn't say comes from the old row")
+        XCTAssertNil(row.auth, "the saved entry has no sign-in, whatever the old row had")
         XCTAssertTrue(row.enabled)
+    }
+
+    func testAListRowShowsNumberArguments() {
+        let rows = ConnectorServer.list(from: ["servers": [["name": "files", "transport": "stdio", "command": "npx", "args": ["--port", 9090, "-y"]]]])
+        XCTAssertEqual(rows.first?.args, ["--port", "9090", "-y"])
     }
 
     func testAServerSaveSendsNothingAfterAProfileSwitch() async throws {
