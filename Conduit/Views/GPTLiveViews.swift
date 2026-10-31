@@ -11,8 +11,8 @@ import SwiftUI
 struct GPTLiveSettingsModel {
     var enabled: Bool
     var setEnabled: (Bool) -> Void
-    /// Asks the Hermes host whether it can start GPT-Live.
-    var checkAvailability: () async -> Result<GPTLiveAvailability, Error>
+    /// Asks the Hermes host whether it can start GPT-Live on a billing.
+    var checkAvailability: (GPTLiveBilling) async -> Result<GPTLiveAvailability, Error>
     /// Voice name; nil is the voice set on the Hermes server.
     var voice: String? = nil
     var setVoice: (String?) -> Void = { _ in }
@@ -38,7 +38,8 @@ struct GPTLiveSettingsModel {
     /// The status line as its last check of this billing said, kept on the
     /// phone (#1533).
     var keptStatus: LiveVoiceStatusLine? = nil
-    var keepStatus: (LiveVoiceStatusLine) -> Void = { _ in }
+    /// Keeps a check's line under the billing it checked.
+    var keepStatus: (LiveVoiceStatusLine, GPTLiveBilling) -> Void = { _, _ in }
 }
 
 struct GPTLiveSettingsSection: View {
@@ -299,23 +300,30 @@ struct GPTLiveSettingsSection: View {
     private func check() async {
         guard !isChecking else { return }
         isChecking = true
-        defer { isChecking = false }
-        switch await model.checkAvailability() {
+        // The billing the picker shows, even while a call Hermes placed
+        // would start on the subscription: the line is its, kept under it.
+        let asked = billing
+        let result = await model.checkAvailability(asked)
+        isChecking = false
+        switch result {
         case .success(let availability):
             let line: String?
             switch availability {
             // The host reports its own voice; a voice chosen here overrides it.
-            case .available(let modelName, let hostVoice?) where (billing == .api ? apiVoice : voice).isEmpty:
+            case .available(let modelName, let hostVoice?) where (asked == .api ? apiVoice : voice).isEmpty:
                 line = AppLocalization.string("Available (\(modelName), voice \(hostVoice))")
             case .available(let modelName, _):
                 line = AppLocalization.string("Available (\(modelName))")
             default:
                 line = availability.userFacingReason
             }
+            if let line { model.keepStatus(LiveVoiceStatusLine(text: line, isAvailable: availability.isAvailable), asked) }
+            // A switch while it was out asked for a check this one held off.
+            guard billing == asked else { return await check() }
             status = line
             isAvailable = availability.isAvailable
-            if let line { model.keepStatus(LiveVoiceStatusLine(text: line, isAvailable: availability.isAvailable)) }
         case .failure(let error):
+            guard billing == asked else { return await check() }
             isAvailable = false
             status = UserFacingError.message(for: error)
         }

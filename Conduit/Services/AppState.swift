@@ -2715,27 +2715,41 @@ final class AppState: ObservableObject {
     }
 
     /// A live voice mode's status line on Voice settings as its last check
-    /// said, kept on the phone so the line opens on it (#1533).
+    /// said (GPT-Live's, the billing's on screen), kept on the phone so the
+    /// line opens on it (#1533).
     func keptLiveVoiceStatus(_ mode: LiveVoiceModeName) -> LiveVoiceStatusLine? {
-        keptAnswer(liveVoiceStatusRoute(mode)).flatMap(LiveVoiceStatusLine.init(answer:))
+        keptAnswer(Self.liveVoiceStatusRoute(mode, billing: gptLiveBilling)).flatMap(LiveVoiceStatusLine.init(answer:))
     }
 
     /// Keeps what a check of `mode` said, for the dashboard and profile
     /// Voice settings showed when this was made; nothing once another
-    /// dashboard took over, or after a wipe.
+    /// dashboard took over, or after a wipe. GPT-Live's checks keep through
+    /// gptLiveStatusKeeper.
     func liveVoiceStatusKeeper(_ mode: LiveVoiceModeName) -> (LiveVoiceStatusLine) -> Void {
+        let keep = statusLineKeeper()
+        let route = Self.liveVoiceStatusRoute(mode, billing: gptLiveBilling)
+        return { keep($0, route) }
+    }
+
+    /// GPT-Live's, under the billing its check asked about: the billing can
+    /// change while a check is out.
+    func gptLiveStatusKeeper() -> (LiveVoiceStatusLine, GPTLiveBilling) -> Void {
+        let keep = statusLineKeeper()
+        return { keep($0, Self.liveVoiceStatusRoute(.gptLive, billing: $1)) }
+    }
+
+    private func statusLineKeeper() -> (LiveVoiceStatusLine, String) -> Void {
         let profile = activeProfile
-        guard let owner = currentDashboardRuntimeOwner() else { return { _ in } }
+        guard let owner = currentDashboardRuntimeOwner() else { return { _, _ in } }
         let removals = offlineChatCache.removals
-        return { [weak self] line in
-            guard let self else { return }
-            self.keepWrittenAnswer(line.answer, for: self.liveVoiceStatusRoute(mode), profile: profile, owner: owner, removals: removals)
+        return { [weak self] line, route in
+            self?.keepWrittenAnswer(line.answer, for: route, profile: profile, owner: owner, removals: removals)
         }
     }
 
     /// GPT-Live's per billing, as each checks another sign-in.
-    private func liveVoiceStatusRoute(_ mode: LiveVoiceModeName) -> String {
-        KeptRoute.liveVoiceStatus + (mode == .gptLive ? "\(mode.storageID)/\(gptLiveBilling.rawValue)" : mode.storageID)
+    private static func liveVoiceStatusRoute(_ mode: LiveVoiceModeName, billing: GPTLiveBilling) -> String {
+        KeptRoute.liveVoiceStatus + (mode == .gptLive ? "\(mode.storageID)/\(billing.rawValue)" : mode.storageID)
     }
 
     /// Nil when Hermes took the setting; otherwise why not, for the
@@ -33197,6 +33211,8 @@ final class AppState: ObservableObject {
                 if var config = keptAnswer(KeptRoute.config) {
                     setProfileSettingValue(value, in: &config, key: key)
                     keepWrittenAnswer(config, for: KeptRoute.config, profile: profile, owner: owner, removals: removals)
+                } else {
+                    noteKeptAnswerWrite(for: KeptRoute.config, profile: profile, owner: owner)
                 }
                 return true
             }
@@ -33432,6 +33448,17 @@ final class AppState: ObservableObject {
         return keptAnswerTurns
     }
 
+    /// A write that leaves nothing to keep counts all the same: the answer
+    /// to a read asked before it isn't kept after it.
+    func noteKeptAnswerWrite(for route: String, profile: String, owner: DashboardRuntimeOwner) {
+        guard let dashboardID = owner.dashboardID else { return }
+        keptAnswerTurnsKept[Self.keptAnswerScope(dashboardID, profile, route)] = nextKeptAnswerTurn()
+    }
+
+    private static func keptAnswerScope(_ dashboardID: UUID, _ profile: String, _ route: String) -> String {
+        [dashboardID.uuidString, profile, route].joined(separator: "\u{1F}")
+    }
+
     /// Kept only while the read still belongs to the dashboard it asked,
     /// with nothing wiped since it was asked (a sign-out, Delete Saved
     /// Chats, a deleted bot), and nothing newer kept since.
@@ -33444,7 +33471,7 @@ final class AppState: ObservableObject {
         turn: Int
     ) {
         guard let dashboardID = owner.dashboardID, ownsDashboardRuntime(owner), offlineChatCache.removals == removals else { return }
-        let scope = [dashboardID.uuidString, profile, route].joined(separator: "\u{1F}")
+        let scope = Self.keptAnswerScope(dashboardID, profile, route)
         guard turn > keptAnswerTurnsKept[scope, default: 0] else { return }
         keptAnswerTurnsKept[scope] = turn
         // A schema's fields are keyed by config path, not by what they hold.

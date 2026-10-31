@@ -1810,6 +1810,30 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(appState.keptProfileSettings(keys: ["display.skin"])?["display.skin"], .text("mono"), "Asked after the save")
     }
 
+    /// A write that leaves nothing to keep, a forget with no list kept or a
+    /// memory provider's save with no config kept, still outranks a read
+    /// asked before it: that read's answer isn't kept after it.
+    func testAWriteWithNothingKeptStillOutranksAnOlderRead() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let older = Task { try await appState.pulseClient.memory() }
+        try await held.waitForRequests(1)
+        await appState.forgetKeptPulseMemoryItem(id: 1)
+        try await held.answer(["items": [["id": 1, "text": "Call Ann", "kind": "commitment"]]])
+        _ = try await older.value
+        XCTAssertNil(appState.keptPulseMemory(), "Asked before the forget")
+
+        let load = Task { await appState.loadProfileSettings(keys: ["memory.provider"]) }
+        try await held.waitForRequests(2)
+        let save = Task { await appState.setProfileSetting("memory.provider", value: .text("honcho")) }
+        try await held.waitForRequests(3)       // the plugin providers' write
+        try await held.answer(at: 1)
+        let saved = await save.value
+        XCTAssertTrue(saved)
+        try await held.answer(["memory": ["provider": "builtin"]])
+        _ = await load.value
+        XCTAssertNil(appState.keptProfileSettings(keys: ["memory.provider"]), "Asked before the save")
+    }
+
     /// Pulse is one per host: its state is kept once per dashboard, from a
     /// read or a change that answers with it (a notification's Quiet for
     /// today too), and What Pulse remembers' list beside it, without what
@@ -1950,8 +1974,9 @@ extension AppStateMultiDashboardTests {
     }
 
     /// A live voice mode's status line on Voice settings opens on what its
-    /// last check said, GPT-Live's per billing, for the dashboard and
-    /// profile that checked; a check from a dashboard left keeps nothing.
+    /// last check said, GPT-Live's per billing (the one its check asked
+    /// about), for the dashboard and profile that checked; a check from a
+    /// dashboard left keeps nothing.
     func testTheLiveVoiceStatusLinesOpenOnTheirLastCheck() async throws {
         let (appState, _, vps) = heldSwitchFixture()
         let grok = LiveVoiceStatusLine(text: "Available (grok-4, via SuperGrok)", isAvailable: true)
@@ -1960,11 +1985,13 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(appState.keptLiveVoiceStatus(.grokLive), grok)
         XCTAssertNil(appState.keptLiveVoiceStatus(.geminiLive), "Another mode's")
 
-        appState.liveVoiceStatusKeeper(.gptLive)(LiveVoiceStatusLine(text: "Available (gpt-realtime)", isAvailable: true))
-        XCTAssertEqual(appState.keptLiveVoiceStatus(.gptLive)?.text, "Available (gpt-realtime)")
+        // The billing switched to API while a subscription check was out.
+        let keepGPT = appState.gptLiveStatusKeeper()
         appState.setGPTLiveBilling(.api)
+        keepGPT(LiveVoiceStatusLine(text: "Available (gpt-realtime)", isAvailable: true), .subscription)
         XCTAssertNil(appState.keptLiveVoiceStatus(.gptLive), "The other billing's")
         appState.setGPTLiveBilling(.subscription)
+        XCTAssertEqual(appState.keptLiveVoiceStatus(.gptLive)?.text, "Available (gpt-realtime)")
 
         appState.setActiveProfileForTesting("work")
         XCTAssertNil(appState.keptLiveVoiceStatus(.grokLive), "Another profile's")

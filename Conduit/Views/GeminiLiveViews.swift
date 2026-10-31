@@ -226,6 +226,7 @@ struct GeminiLiveSettingsSection: View {
     }
 
     private func check() async {
+        guard !isChecking else { return }
         isChecking = true
         defer { isChecking = false }
         switch await model.checkAvailability() {

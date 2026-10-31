@@ -56,8 +56,11 @@ extension AppState {
     /// never opens on it, even when reading it again fails, or when a read
     /// asked before the forget answers after it.
     func forgetKeptPulseMemoryItem(id: Int) async {
-        guard var kept = keptAnswer(PulseClient.memoryPath, profile: KeptRoute.everyProfile),
-              let owner = currentDashboardRuntimeOwner() else { return }
+        guard let owner = currentDashboardRuntimeOwner() else { return }
+        guard var kept = keptAnswer(PulseClient.memoryPath, profile: KeptRoute.everyProfile) else {
+            noteKeptAnswerWrite(for: PulseClient.memoryPath, profile: KeptRoute.everyProfile, owner: owner)
+            return
+        }
         kept["items"] = (kept["items"] as? [Any] ?? []).filter { PulseMemoryItem(json: $0)?.id != id }
         _ = try? await keepingAnswer(
             profile: KeptRoute.everyProfile, owner: owner, keptAs: { _ in PulseClient.memoryPath }, writes: true

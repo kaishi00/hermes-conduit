@@ -231,13 +231,16 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// The page as Hermes last answered it, from the answers kept on the
     /// phone; nil unless the config and both speech toolsets are kept, so a
     /// voice never reads not ready for want of a kept answer. Which keys
-    /// are set isn't kept, so none reads as missing.
-    private static func keptSnapshot(profile: String, answers: VoiceKeptAnswers?) -> VoiceConfigurationSnapshot? {
+    /// are set isn't kept, so none reads as missing unless `environment`,
+    /// Hermes' answer this time, says.
+    private static func keptSnapshot(
+        profile: String, answers: VoiceKeptAnswers?, environment: [String: Any]? = nil
+    ) -> VoiceConfigurationSnapshot? {
         guard let answers, let config = answers.kept(KeptRead.config),
               let stt = answers.kept(KeptRead.sttToolset), let tts = answers.kept(KeptRead.ttsToolset) else { return nil }
         return VoiceConfigurationParser.parse(
             profile: profile, schema: answers.kept(KeptRead.schema), config: config,
-            sttReadiness: stt, ttsReadiness: tts, environment: nil, ttsToolsetConfigAvailable: true
+            sttReadiness: stt, ttsReadiness: tts, environment: environment, ttsToolsetConfigAvailable: true
         )
     }
 
@@ -264,8 +267,15 @@ final class HermesVoiceConfigurationService: ObservableObject {
             errorMessage = Self.message(from: config)
             answered = false
             // A read that fails keeps the settings shown, Hermes' answer
-            // from before or the one kept on the phone (#1533).
-            guard !snapshot.capability.isGatewayConnected else { return }
+            // from before or the one kept on the phone (#1533), with which
+            // keys are set if Hermes said this time.
+            guard !snapshot.capability.isGatewayConnected else {
+                if !snapshot.environmentLoaded, lastEnvironment != nil,
+                   let kept = Self.keptSnapshot(profile: profile, answers: answers, environment: lastEnvironment) {
+                    snapshot = kept
+                }
+                return
+            }
             // With nothing shown: a Hermes that answers without the voice
             // routes needs updating; one that doesn't answer, connecting.
             let reason = Self.isRouteMissing(config)

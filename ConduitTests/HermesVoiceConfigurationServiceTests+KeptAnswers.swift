@@ -123,7 +123,8 @@ extension HermesVoiceConfigurationServiceTests {
 
     /// Until Hermes says which keys are set, the key rows offer no field,
     /// the config read answered or not: a key Hermes holds would be
-    /// written over unseen.
+    /// written over unseen. Once it says, they know, the config's read
+    /// failing or not.
     func testTheKeyRowsWaitUntilHermesSaysWhichKeysAreSet() async {
         let requester = MockVoiceConfigurationRequester()
         requester.routes = Self.keptVoiceAnswers
@@ -139,6 +140,15 @@ extension HermesVoiceConfigurationServiceTests {
         requester.routes["/api/env"] = ["GEMINI_API_KEY": ["is_set": false]]
         await service.reload()
         XCTAssertFalse(service.awaitsKeys)
+
+        // Only the config's read failing: the kept page learns the keys.
+        let opened = HermesVoiceConfigurationService(
+            requester: requester, profile: "default", answers: KeptVoiceAnswers(Self.keptVoiceAnswers).answers
+        )
+        requester.failingGETPaths = ["/api/config"]
+        await opened.reload()
+        XCTAssertEqual(opened.answered, false)
+        XCTAssertFalse(opened.awaitsKeys, "Hermes said which keys are set")
     }
 
     /// The Voice replies model shows Hermes' answer unless a pick's write
