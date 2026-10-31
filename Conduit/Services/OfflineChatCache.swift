@@ -400,10 +400,10 @@ struct OfflineChatPresentation: Equatable {
 }
 
 /// Where a page that reads Hermes through its own service (Voice
-/// settings, Capabilities) keeps the answers on the phone, so it opens on
-/// what it showed last time while it asks again (#1533). AppState's
-/// `voiceSettingsAnswers` and `capabilityAnswers` keep them with the other
-/// settings pages', per dashboard and profile.
+/// settings, Capabilities, the Tasks board) keeps the answers on the
+/// phone, so it opens on what it showed last time while it asks again
+/// (#1533). AppState's `voiceSettingsAnswers` and `screenAnswers` keep
+/// them with the other settings pages', per dashboard and profile.
 struct KeptAnswers {
     /// The answer kept for a route, or nil.
     let kept: @MainActor (_ route: String) -> [String: Any]?

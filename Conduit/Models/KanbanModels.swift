@@ -346,25 +346,25 @@ struct KanbanColumn: Codable, Equatable, Identifiable {
     }
 }
 
+/// Hermes' board answer also carries its clock (`now`), new on every read
+/// and shown nowhere: it's left out, so a poll that brings back the same
+/// board doesn't redraw it.
 struct KanbanBoard: Codable, Equatable {
     var columns: [KanbanColumn]
     var tenants: [String]
     var assignees: [String]
     var latestEventID: Int?
-    var now: Int?
 
     enum CodingKeys: String, CodingKey {
         case columns, tenants, assignees
         case latestEventID = "latest_event_id"
-        case now
     }
 
-    init(columns: [KanbanColumn], tenants: [String] = [], assignees: [String] = [], latestEventID: Int? = nil, now: Int? = nil) {
+    init(columns: [KanbanColumn], tenants: [String] = [], assignees: [String] = [], latestEventID: Int? = nil) {
         self.columns = columns
         self.tenants = tenants
         self.assignees = assignees
         self.latestEventID = latestEventID
-        self.now = now
     }
 
     init(from decoder: Decoder) throws {
@@ -373,7 +373,6 @@ struct KanbanBoard: Codable, Equatable {
         tenants = container.decodeLossyArray(String.self, forKey: .tenants)
         assignees = container.decodeLossyArray(String.self, forKey: .assignees)
         latestEventID = container.decodeLossyInt(forKey: .latestEventID)
-        now = container.decodeLossyInt(forKey: .now)
     }
 }
 
