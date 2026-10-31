@@ -121,7 +121,7 @@ struct GroupChatView: View {
 
     /// Named as the bots are now, not as they were when they joined.
     private var members: [GroupMember] {
-        GroupRoomTurns.members(surface?.room.members ?? [], namedBy: appState.botRoster)
+        GroupRoomTurns.members(surface?.room.members ?? [], namedBy: appState.shownBotRoster)
     }
 
     /// Log events that earn a row: a member turn that posted settles
@@ -132,7 +132,7 @@ struct GroupChatView: View {
 
     /// The member whose turn is running (memoized by AppState).
     private var respondingMember: GroupMember? {
-        appState.activeRoomResponder.flatMap { GroupRoomTurns.members([$0], namedBy: appState.botRoster).first }
+        appState.activeRoomResponder.flatMap { GroupRoomTurns.members([$0], namedBy: appState.shownBotRoster).first }
     }
 
     // MARK: - Transcript
@@ -1000,7 +1000,8 @@ struct GroupMemberAvatar: View {
                 image: appState.botAvatarImage(for: bot),
                 size: size
             )
-            .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.botAvatarGeneration)") {
+            // Connecting fetches again: a kept bot's fetch fails offline.
+            .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.botAvatarGeneration)|\(appState.isConnected)") {
                 await appState.loadBotAvatarRetrying(bot)
             }
             .accessibilityHidden(true)

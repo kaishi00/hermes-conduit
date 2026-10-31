@@ -84,7 +84,7 @@ struct ChatRowState: Equatable {
         canPinReplies = appState.canPinReplies
         pinnedMessageIDs = appState.openChatPinnedMessageIDs
         teammateReplies = facts.teammateReplies
-        botLabels = appState.botRoster.map { "\($0.name)=\($0.displayLabel)" }
+        botLabels = appState.shownBotRoster.map { "\($0.name)=\($0.displayLabel)" }
         toolCatalog = appState.toolCatalog
         let scope = appState.toolCatalogKey
         stepSummaries = appState.stepSummaries[scope] ?? [:]

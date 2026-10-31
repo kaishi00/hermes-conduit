@@ -228,7 +228,7 @@ struct ChatView: View {
     private var runningToolTitle: String? {
         guard appState.isBusy, let tool = Self.runningTool(in: appState.messages),
               let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) else { return nil }
-        let name = BotTeammateMessages.displayName(for: key, in: appState.botRoster)
+        let name = BotTeammateMessages.displayName(for: key, in: appState.shownBotRoster)
         return AppLocalization.string("Messaging \(name)…")
     }
 
@@ -1425,7 +1425,7 @@ struct MessageBubble: View, Equatable {
                 VStack(spacing: 4) {
                     TeammateMessageNote(
                         inbound: inbound,
-                        roster: appState.botRoster,
+                        roster: appState.shownBotRoster,
                         appState: appState,
                         disclosureID: message.id
                     )
@@ -1457,7 +1457,7 @@ struct MessageBubble: View, Equatable {
                 // The bot answering a teammate, not the user: folded, as on
                 // Desktop ("Replied to Atlas", the reply a tap away).
                 TeammateReplyNote(
-                    name: BotTeammateMessages.displayName(for: sender, in: appState.botRoster),
+                    name: BotTeammateMessages.displayName(for: sender, in: appState.shownBotRoster),
                     disclosureID: message.id
                 ) {
                     AssistantBubble(
@@ -3593,7 +3593,7 @@ private struct SettledToolCardContent: View, Equatable {
 
     private func teammateName(_ key: String) -> String {
         let _ = rowState.botLabels
-        return BotTeammateMessages.displayName(for: key, in: rowActions?.appState.botRoster ?? [])
+        return BotTeammateMessages.displayName(for: key, in: rowActions?.appState.shownBotRoster ?? [])
     }
 
     /// "Messaged Atlas" for a delivery to a teammate bot, as Desktop shows
@@ -3735,7 +3735,7 @@ private struct SettledToolCardContent: View, Equatable {
                             handle: delivery.target,
                             body: reply
                         ),
-                        roster: appState.botRoster,
+                        roster: appState.shownBotRoster,
                         appState: appState,
                         disclosureID: message.id + "#teammate-reply"
                     )
