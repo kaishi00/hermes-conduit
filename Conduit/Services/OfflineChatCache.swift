@@ -1102,33 +1102,37 @@ final class OfflineChatCacheStore {
     /// a credential in its query (`?api_key=…`). A key shaped like one
     /// whose value is true or false stays: it's a setting about them
     /// (`redact_secrets`); so does a count under a name ending in tokens
-    /// (`max_tokens`), or in a pair so named, and a `key` beside `is_set`,
-    /// which names the variable whose presence that reports (Hermes' rows
-    /// of keys). No screen shows a credential, and a key to an account
+    /// (`max_tokens`), or in a pair so named, a `key` naming that count
+    /// (`{"key": "max_tokens", "value": 4096}`), and a `key` beside
+    /// `is_set`, which names the variable whose presence that reports
+    /// (Hermes' rows of keys). No screen shows a credential, and a key to an account
     /// mustn't sit in a file; a name that only looks like one (`sort_key`)
     /// comes back with Hermes' answer. The objects under `namesUnder` are
     /// keyed by names, not values (a schema's `fields`, by config path), so
     /// their keys stay and what's under each is filtered.
     static func withoutCredentials(_ answer: [String: Any], namesUnder names: Set<String> = []) -> [String: Any] {
         let credentialName = ["name", "key"].lazy.compactMap { answer[$0] as? String }.first(where: isCredentialKey)
-        let reportsPresence = answer["is_set"].map(isFlag) ?? false
+        // Its `key` names what it reports: a variable's presence (`is_set`),
+        // or the count it holds.
+        let keyNamesNoCredential = (answer["is_set"].map(isFlag) ?? false)
+            || (credentialName.flatMap { name in answer["value"].map { isCount($0, named: name) } } ?? false)
         return answer.reduce(into: [String: Any]()) { kept, entry in
             if names.contains(entry.key), let named = entry.value as? [String: Any] {
                 kept[entry.key] = named.mapValues { withoutCredentials(inValue: $0) }
-            } else if !holdsCredential(entry.key, entry.value, credentialName: credentialName, reportsPresence: reportsPresence) {
+            } else if !holdsCredential(entry.key, entry.value, credentialName: credentialName, keyNamesNoCredential: keyNamesNoCredential) {
                 kept[entry.key] = withoutCredentials(inValue: entry.value)
             }
         }
     }
 
     /// Whether an object's entry is a credential, in an object whose `name`
-    /// or `key` is a credential's (`credentialName`) or that reports a
-    /// variable's presence (`is_set`).
-    private static func holdsCredential(_ key: String, _ value: Any, credentialName: String?, reportsPresence: Bool) -> Bool {
+    /// or `key` is a credential's (`credentialName`), or whose `key` names
+    /// a variable's presence (`is_set`) or a count it holds.
+    private static func holdsCredential(_ key: String, _ value: Any, credentialName: String?, keyNamesNoCredential: Bool) -> Bool {
         if isFlag(value) { return false }
         if key == "value" { return credentialName.map { !isCount(value, named: $0) } ?? false }
         guard isCredentialKey(key) else { return false }
-        return !isCount(value, named: key) && !(key == "key" && reportsPresence)
+        return !isCount(value, named: key) && !(key == "key" && keyNamesNoCredential)
     }
 
     /// A number under a name ending in tokens (`max_tokens`): a count.

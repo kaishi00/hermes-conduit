@@ -164,6 +164,10 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// Local's fast model as the host last gave it, kept on the phone, for
     /// its settings to open on; a read that fails keeps it (#1533).
     private(set) var lastFrontModel: LocalLiveFrontModelStatus?
+    /// Hermes' last `/api/env` answer, in memory only, never on the phone's
+    /// disk: a read of it that fails keeps which keys the page showed set
+    /// (#1533).
+    private var lastEnvironment: [String: Any]?
 
     /// A read is out, or none has ended: Hermes is still to say.
     var isChecking: Bool { isLoading || answered == nil }
@@ -246,13 +250,19 @@ final class HermesVoiceConfigurationService: ObservableObject {
         let tts = await ttsResult
         let environment = await environmentResult
 
+        if case .success(let answer) = environment { lastEnvironment = answer }
+
         guard case .success(let configObject) = config else {
             errorMessage = Self.message(from: config)
             answered = false
             // A read that fails keeps the settings shown, Hermes' answer
             // from before or the one kept on the phone (#1533).
             guard !snapshot.capability.isGatewayConnected else { return }
-            let reason = AppLocalization.string("This Hermes server doesn't offer voice settings. Update Hermes to use Voice. Text chat still works.")
+            // With nothing shown: a Hermes that answers without the voice
+            // routes needs updating; one that doesn't answer, connecting.
+            let reason = Self.isRouteMissing(config)
+                ? AppLocalization.string("This Hermes server doesn't offer voice settings. Update Hermes to use Voice. Text chat still works.")
+                : AppLocalization.string("Connect to Hermes before starting voice.")
             snapshot = .unavailable(profile: profile, reason: reason)
             return
         }
@@ -267,7 +277,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
             config: configObject,
             sttReadiness: sttReadiness,
             ttsReadiness: ttsReadiness,
-            environment: try? environment.get(),
+            environment: lastEnvironment,
             // STT toolset readiness is intentionally NOT passed to the
             // parser: it cannot influence transcription capability, only the
             // picker population and diagnostics built from its rows.
@@ -618,6 +628,11 @@ final class HermesVoiceConfigurationService: ObservableObject {
             snapshot.credentials.sort { $0.key < $1.key }
         }
         snapshot.environment[credential.key] = credential
+        // So does the answer a failed read falls back on.
+        if lastEnvironment != nil {
+            let row: [String: Any] = ["is_set": credential.isSet, "description": credential.description]
+            lastEnvironment?[credential.key] = row
+        }
     }
 
     private func credentialDescription(_ key: String) -> String {
@@ -627,6 +642,13 @@ final class HermesVoiceConfigurationService: ObservableObject {
     private static func message(from result: Result<[String: Any], Error>) -> String? {
         if case .failure(let error) = result { return UserFacingError.message(for: error) }
         return nil
+    }
+
+    /// Hermes answered that it has no such route: an older Hermes.
+    private static func isRouteMissing(_ result: Result<[String: Any], Error>) -> Bool {
+        guard case .failure(let error) = result,
+              case DashboardTicketBridgeError.http(let status, _) = error else { return false }
+        return status == 404 || status == 405 || status == 410
     }
 
     private static func setNested(_ value: String, in object: inout [String: Any], dottedKey: String) {

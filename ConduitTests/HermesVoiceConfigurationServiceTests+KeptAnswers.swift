@@ -75,11 +75,50 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(service.answered, false)
         XCTAssertEqual(service.snapshot.selectedTTSProvider, "openai", "So does Hermes' answer from before")
 
-        let unkept = HermesVoiceConfigurationService(requester: MockVoiceConfigurationRequester(), profile: "default")
+        // Nothing shown: a Hermes that doesn't answer is one to connect to,
+        // and only one that answers without the routes needs updating.
+        let unkeptRequester = MockVoiceConfigurationRequester()
+        let unkept = HermesVoiceConfigurationService(requester: unkeptRequester, profile: "default")
         await unkept.reload()
         XCTAssertEqual(unkept.answered, false)
         XCTAssertFalse(unkept.snapshot.capability.isGatewayConnected)
-        XCTAssertNotNil(unkept.snapshot.capability.unavailableReason)
+        XCTAssertEqual(unkept.snapshot.capability.unavailableReason, "Connect to Hermes before starting voice.")
+        unkeptRequester.missingRoutes = ["/api/config"]
+        await unkept.reload()
+        XCTAssertEqual(
+            unkept.snapshot.capability.unavailableReason,
+            "This Hermes server doesn't offer voice settings. Update Hermes to use Voice. Text chat still works."
+        )
+    }
+
+    /// Which keys are set is never kept on the phone, but a read of it
+    /// that fails keeps what the page showed, a key saved since included.
+    func testAKeyReadThatFailsKeepsWhichKeysAreSet() async {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = Self.keptVoiceAnswers.merging([
+            "/api/env": [
+                "ELEVENLABS_API_KEY": ["is_set": true, "redacted_value": "sk-e...abcd"],
+                "GEMINI_API_KEY": ["is_set": false],
+            ],
+        ]) { $1 }
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+        await service.reload()
+        XCTAssertEqual(service.credential("ELEVENLABS_API_KEY")?.isSet, true)
+
+        requester.routes["/api/env"] = nil
+        await service.reload()
+        XCTAssertEqual(service.answered, true)
+        XCTAssertTrue(service.snapshot.environmentLoaded)
+        XCTAssertEqual(service.credential("ELEVENLABS_API_KEY")?.isSet, true, "Still set, as shown")
+        XCTAssertEqual(service.credential("GEMINI_API_KEY")?.isSet, false)
+
+        // A save, then a read of the keys that fails.
+        requester.routes["/api/env"] = [:]
+        requester.failingGETPaths = ["/api/env"]
+        let saved = await service.saveCredential("gm-key", key: "GEMINI_API_KEY")
+        XCTAssertTrue(saved)
+        XCTAssertEqual(service.credential("GEMINI_API_KEY")?.isSet, true, "The save since")
+        XCTAssertEqual(service.credential("ELEVENLABS_API_KEY")?.isSet, true)
     }
 
     /// What a save wrote is what the page opens on next, as the other

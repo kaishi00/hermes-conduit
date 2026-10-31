@@ -3278,7 +3278,7 @@ extension OfflineChatCacheTests {
             "extra_headers": [["name": "Authorization", "value": "Bearer 22"], ["name": "Accept", "value": "json"]],
             "env_pairs": [["key": "OPENAI_API_KEY", "value": "sk-23"]],
             // A count in a pair named like tokens is no credential.
-            "limits": [["name": "max_tokens", "value": 4096], ["name": "API_TOKEN", "value": "t-28"]],
+            "limits": [["name": "max_tokens", "value": 4096], ["key": "max_tokens", "value": 4096], ["name": "API_TOKEN", "value": "t-28"]],
             // Hermes' row for a variable says only whether it's set, by its name.
             "env_vars": [["key": "ELEVENLABS_API_KEY", "is_set": true, "prompt": "ElevenLabs", "value": "sk-24"]],
         ]
@@ -3319,7 +3319,12 @@ extension OfflineChatCacheTests {
         XCTAssertEqual(kept["extra_headers"] as? [[String: String]], [["name": "Authorization"], ["name": "Accept", "value": "json"]])
         XCTAssertEqual(
             (kept["limits"] as? [[String: Any]])?.map { NSDictionary(dictionary: $0) },
-            [["name": "max_tokens", "value": 4096] as NSDictionary, ["name": "API_TOKEN"] as NSDictionary]
+            [
+                ["name": "max_tokens", "value": 4096] as NSDictionary,
+                ["key": "max_tokens", "value": 4096] as NSDictionary,
+                ["name": "API_TOKEN"] as NSDictionary,
+            ],
+            "A count keeps its name, by `name` or by `key`"
         )
         XCTAssertEqual(
             (kept["env_vars"] as? [[String: Any]])?.map { NSDictionary(dictionary: $0) },
