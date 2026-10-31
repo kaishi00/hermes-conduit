@@ -1061,6 +1061,15 @@ final class OfflineChatCacheStore {
     static let maxKeptAnswersInMemory = 32
     static let maxKeptAnswerMemoryBytes = 8 * 1024 * 1024
     static let keptAnswerInfix = ".answer-"
+    /// A route under this prefix is about one chat or folder of many (a
+    /// chat's own Artifacts list, a folder's listing): the scope keeps the
+    /// `maxTranscripts` such answers written last, within
+    /// `maxLastOpenedAnswerBytes`, as it keeps the saved copies, and never
+    /// reads them ahead, so they don't take the room a settings page's
+    /// answer would.
+    static let lastOpenedRoutePrefix = "last-opened:"
+    static let lastOpenedAnswerInfix = ".opened-answer-"
+    static let maxLastOpenedAnswerBytes = 16 * 1024 * 1024
 
     /// The answer last kept for the route in the scope, or nil: memory's
     /// when it has it (the open profile's are read ahead), else its file's.
@@ -1246,12 +1255,14 @@ final class OfflineChatCacheStore {
     func removeKeptAnswers(dashboardID: UUID, profile: String) {
         performAndWait {
             noteRemoval()
-            let prefix = Self.scopeFileStem(dashboardID: dashboardID, profile: profile) + Self.keptAnswerInfix
-            forgetMemory { $0.lastPathComponent.hasPrefix(prefix) }
+            let stem = Self.scopeFileStem(dashboardID: dashboardID, profile: profile)
+            let prefixes = [Self.keptAnswerInfix, Self.lastOpenedAnswerInfix].map { stem + $0 }
+            let isKept = { (file: URL) in prefixes.contains { file.lastPathComponent.hasPrefix($0) } }
+            forgetMemory(where: isKept)
             guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
                 return
             }
-            for file in files where file.lastPathComponent.hasPrefix(prefix) {
+            for file in files where isKept(file) {
                 try? fileManager.removeItem(at: file)
             }
         }
@@ -1269,6 +1280,12 @@ final class OfflineChatCacheStore {
             // Not kept: an older answer mustn't open the screen next time.
             try? fileManager.removeItem(at: url)
             return nil
+        }
+        if let infix = url.lastPathComponent.range(of: Self.lastOpenedAnswerInfix) {
+            Self.removeOldestFiles(
+                prefix: String(url.lastPathComponent[..<infix.upperBound]), in: directory,
+                beyond: Self.maxTranscripts, bytes: Self.maxLastOpenedAnswerBytes, fileManager: fileManager
+            )
         }
         return data.count
     }
@@ -1353,7 +1370,8 @@ final class OfflineChatCacheStore {
     /// any text.
     func keptAnswerFileURL(_ route: String, dashboardID: UUID, profile: String) -> URL {
         let name = SHA256.hash(data: Data(route.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
-        return directory.appendingPathComponent("\(Self.scopeFileStem(dashboardID: dashboardID, profile: profile))\(Self.keptAnswerInfix)\(name).json")
+        let infix = route.hasPrefix(Self.lastOpenedRoutePrefix) ? Self.lastOpenedAnswerInfix : Self.keptAnswerInfix
+        return directory.appendingPathComponent("\(Self.scopeFileStem(dashboardID: dashboardID, profile: profile))\(infix)\(name).json")
     }
 
     // MARK: Reading ahead
@@ -1566,22 +1584,33 @@ final class OfflineChatCacheStore {
             return
         }
         guard let infix = url.lastPathComponent.range(of: heldRowsInfix) else { return }
-        let prefix = String(url.lastPathComponent[..<infix.upperBound])
+        removeOldestFiles(
+            prefix: String(url.lastPathComponent[..<infix.upperBound]), in: directory,
+            beyond: maxTranscripts, bytes: maxHeldRowsBytes, fileManager: fileManager
+        )
+    }
+
+    /// Lets go of the oldest files named with `prefix` beyond `count` of
+    /// them or `bytes` in all, by when they were written; the newest
+    /// always stays.
+    private static func removeOldestFiles(
+        prefix: String, in directory: URL, beyond count: Int, bytes limit: Int, fileManager: FileManager
+    ) {
         guard let files = try? fileManager.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey]
         ) else { return }
-        let held = files
+        let named = files
             .filter { $0.lastPathComponent.hasPrefix(prefix) }
             .map { file in
                 (file, (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
             }
             .sorted { $0.1 > $1.1 }
         var total = 0
-        for (index, (file, _)) in held.enumerated() {
+        for (index, (file, _)) in named.enumerated() {
             let bytes = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             total += bytes
-            if index >= maxTranscripts || (index > 0 && total > maxHeldRowsBytes) {
+            if index >= count || (index > 0 && total > limit) {
                 try? fileManager.removeItem(at: file)
             }
         }

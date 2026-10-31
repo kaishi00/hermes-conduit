@@ -75,8 +75,8 @@ struct WorkspaceFolderView: View {
     /// The latest open; one that lands after another, or after the folder,
     /// profile or server changed, is dropped.
     @State private var openToken: UUID?
-    /// The tool count this tab last refreshed for.
-    @State private var seenChanges: Int?
+    /// The tool count and plugin routes this tab last refreshed for.
+    @State private var seenChanges: Changes?
 
     private struct OpenPage: Identifiable {
         let id = UUID()
@@ -104,6 +104,16 @@ struct WorkspaceFolderView: View {
         let dashboard: UUID?
         let profile: String
         let root: String?
+    }
+
+    /// What reads the open folders again: Hermes finishing a tool that may
+    /// have changed files, and the plugin saying whether it serves the
+    /// workspace routes, so a folder read before it said so (through
+    /// Hermes' own listing, without sizes, dates or recent files, over the
+    /// listing kept from the plugin) reads through them once it does.
+    private struct Changes: Equatable {
+        let tools: Int
+        let routes: Bool
     }
 
     private var key: Key {
@@ -155,10 +165,10 @@ struct WorkspaceFolderView: View {
             await explorer.runSearch(query)
         }
         // Tied to the view: a refresh ends with it.
-        .task(id: appState.workspaceChanges) {
+        .task(id: Changes(tools: appState.workspaceChanges, routes: appState.supportsWorkspaceFiles)) {
             // Marked seen only once its refresh ran: a refresh cut short by
             // the next change leaves that change to the next task.
-            let target = appState.workspaceChanges
+            let target = Changes(tools: appState.workspaceChanges, routes: appState.supportsWorkspaceFiles)
             guard let seen = seenChanges else {
                 seenChanges = target
                 return
@@ -358,7 +368,8 @@ struct WorkspaceFolderView: View {
         } else if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, explorer.canChange {
             searchResults
         } else {
-            if !explorer.canChange {
+            // Not while the plugin hasn't said (offline, just connected).
+            if !explorer.canChange, !appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
                 Label {
                     Text("Update the Conduit plugin on your Hermes host to search this folder and make, move or delete files here. Settings › Conduit plugin can update it.")
                 } icon: {
@@ -368,11 +379,13 @@ struct WorkspaceFolderView: View {
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 8)
             }
-            if !explorer.recent.isEmpty {
+            // Kept ones show until the plugin says it doesn't serve them.
+            if !explorer.recent.isEmpty, appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
                 recentSection
             }
             let rows = explorer.rows()
-            if rows.isEmpty, let root, explorer.loading.contains(root.path) {
+            // A folder kept empty says so at once.
+            if rows.isEmpty, let root, explorer.loading.contains(root.path), explorer.entries[root.path] == nil {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 160)
             } else if rows.isEmpty {

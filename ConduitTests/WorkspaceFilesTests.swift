@@ -50,6 +50,50 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(asked[0].contains("profile=work"), asked[0])
     }
 
+    /// A folder's listing and recent files are kept as the plugin gave
+    /// them, so the folder opens on them next time (#1533), as one
+    /// folder's of many; an answer without ok isn't kept over them.
+    func testWorkspaceListingAndRecentFilesAreKeptForNextTime() async throws {
+        var saved: [String: [String: Any]] = [:]
+        let answers = KeptAnswers(
+            kept: { saved[$0] },
+            keep: { route, _, read in
+                let answer = try await read()
+                saved[route] = answer
+                return answer
+            }
+        )
+        var ok = true
+        let client = workspaceClient(answer: { path, _, _ in
+            path.contains("/recent")
+                ? ["ok": ok, "entries": [["name": "notes.md", "path": "/w/app/notes.md", "mtime": 1_700_000_200]]]
+                : ["ok": ok, "truncated": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]]
+        })
+
+        let listing = try await client.list(root: "/w/app", path: "/w/app", keptIn: answers)
+        let recent = try await client.recent(root: "/w/app", keptIn: answers)
+        _ = try await client.list(root: "/w/app", path: "/w/app/src")
+
+        XCTAssertEqual(saved.count, 2, "a folder opened in the tree isn't kept unless asked")
+        XCTAssertTrue(saved.keys.allSatisfy { $0.hasPrefix(OfflineChatCacheStore.lastOpenedRoutePrefix) })
+        XCTAssertEqual(client.keptListing(root: "/w/app", path: "/w/app", in: answers), listing)
+        XCTAssertEqual(client.keptListing(root: "/w/app", path: "/w/app", in: answers)?.truncated, true)
+        XCTAssertEqual(client.keptRecent(root: "/w/app", in: answers), recent)
+        XCTAssertNil(client.keptListing(root: "/w/other", path: "/w/other", in: answers), "another folder")
+
+        ok = false
+        _ = try? await client.list(root: "/w/app", path: "/w/app", keptIn: answers)
+        XCTAssertEqual(client.keptListing(root: "/w/app", path: "/w/app", in: answers), listing)
+
+        // What's kept from the plugin's routes shows until it says what it
+        // serves, and only while that includes them.
+        let capability = WorkspaceFilesClient.capability
+        XCTAssertTrue(NotifierPluginStatus(state: .unknown).mayServe(capability))
+        XCTAssertTrue(NotifierPluginStatus(state: .reported(version: "0.122.0", capabilities: [capability])).mayServe(capability))
+        XCTAssertFalse(NotifierPluginStatus(state: .reported(version: "0.108.0", capabilities: ["artifacts"])).mayServe(capability))
+        XCTAssertFalse(NotifierPluginStatus(state: .predatesCapabilities).mayServe(capability), "no plugin, or one older than 0.4")
+    }
+
     func testWorkspaceSearchReadsNamesAndMatchedLines() async throws {
         let client = workspaceClient(answer: { _, _, _ in
             [

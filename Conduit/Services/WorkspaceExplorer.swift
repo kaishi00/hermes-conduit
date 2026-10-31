@@ -4,7 +4,9 @@ import Foundation
 /// expanded in its tree, search, recent files and the file being viewed.
 /// Every answer is for the dashboard, profile and folder it was asked
 /// under: one that lands after any of them changed is dropped, its failure
-/// too, so another server's or folder's files never show here.
+/// too, so another server's or folder's files never show here. A folder
+/// opens on its listing and recent files as the plugin gave them last time
+/// (#1533), kept on the phone, while it asks again.
 @MainActor
 final class WorkspaceExplorer: ObservableObject {
     struct Scope: Equatable {
@@ -35,6 +37,9 @@ final class WorkspaceExplorer: ObservableObject {
     @Published private(set) var previewLoading = false
 
     private weak var appState: AppState?
+    /// Where the open folder's listing and recent files are kept: on the
+    /// dashboard it opened on, for its profile.
+    private var answers: KeptAnswers?
     /// Bumped by every change of scope: an answer asked before it is stale.
     private var generation = 0
     private var previewRequest: UUID?
@@ -67,6 +72,15 @@ final class WorkspaceExplorer: ObservableObject {
         searchError = nil
         searching = false
         closeFile()
+        let answers = appState.screenAnswers(profile: profile)
+        self.answers = answers
+        // Before Hermes answers, so nothing comes or goes when it does.
+        let client = appState.workspaceFilesClient(profile: profile)
+        if let kept = client.keptListing(root: root, path: root, in: answers) {
+            entries[root] = kept.entries
+            if kept.truncated { truncated.insert(root) }
+        }
+        recent = client.keptRecent(root: root, in: answers) ?? []
         await load(root)
         await loadRecent()
     }
@@ -76,6 +90,7 @@ final class WorkspaceExplorer: ObservableObject {
     func close() {
         generation &+= 1
         scope = nil
+        answers = nil
         entries = [:]
         expanded = []
         loading = []
@@ -159,6 +174,9 @@ final class WorkspaceExplorer: ObservableObject {
         guard let appState, let scope else { return false }
         let ticket = generation
         let owner = appState.currentDashboardRuntimeOwner()
+        // The folder's own listing is what it opens on next time; Hermes'
+        // own listing (an older plugin) has no sizes or dates to keep.
+        let answers = folder == scope.root ? self.answers : nil
         loading.insert(folder)
         defer { if ticket == generation { loading.remove(folder) } }
         do {
@@ -166,7 +184,7 @@ final class WorkspaceExplorer: ObservableObject {
             var cut = false
             if appState.supportsWorkspaceFiles {
                 let listing = try await appState.workspaceFilesClient(profile: scope.profile)
-                    .list(root: scope.root, path: folder)
+                    .list(root: scope.root, path: folder, keptIn: answers)
                 listed = listing.entries
                 cut = listing.truncated
             } else {
@@ -198,7 +216,8 @@ final class WorkspaceExplorer: ObservableObject {
         guard let appState, let scope, appState.supportsWorkspaceFiles else { return }
         let ticket = generation
         let owner = appState.currentDashboardRuntimeOwner()
-        guard let found = try? await appState.workspaceFilesClient(profile: scope.profile).recent(root: scope.root),
+        guard let found = try? await appState.workspaceFilesClient(profile: scope.profile)
+                .recent(root: scope.root, keptIn: answers),
               isCurrent(ticket, owner, scope.profile) else { return }
         recent = found
     }

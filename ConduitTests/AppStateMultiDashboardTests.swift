@@ -1464,6 +1464,39 @@ extension AppStateMultiDashboardTests {
         XCTAssertTrue(explorer.entries.isEmpty, "nor its listing")
     }
 
+    /// A folder opens on its listing and recent files as the plugin gave
+    /// them last time, before Hermes answers, and a read that fails keeps
+    /// them up (#1533).
+    func testAFolderOpensOnItsListingKeptLastTime() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.122.0", capabilities: [WorkspaceFilesClient.capability]))
+        let first = WorkspaceExplorer()
+        first.attach(appState)
+        let open = Task { await first.open(root: "/w/app", profile: appState.activeProfile) }
+        try await held.waitForRequests(1)
+        try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]])
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": true, "entries": [["name": "notes.md", "path": "/w/app/notes.md"]]])
+        await open.value
+        XCTAssertEqual(held.sent.map(\.path), [
+            "/api/plugins/conduit_push/workspace/list", "/api/plugins/conduit_push/workspace/recent",
+        ])
+
+        let next = WorkspaceExplorer()
+        next.attach(appState)
+        let reopen = Task { await next.open(root: "/w/app", profile: appState.activeProfile) }
+        try await held.waitForRequests(3)
+        XCTAssertEqual(next.rows().map { $0.entry.name }, ["src"], "Shown before Hermes answers")
+        XCTAssertEqual(next.recent.map(\.name), ["notes.md"])
+        try await held.answer(["error": "boom"], status: 500)
+        try await held.waitForRequests(4)
+        try await held.answer(["error": "boom"], status: 500)
+        await reopen.value
+
+        XCTAssertEqual(next.rows().map { $0.entry.name }, ["src"], "A read that fails keeps them")
+        XCTAssertEqual(next.recent.map(\.name), ["notes.md"])
+    }
+
     func testADisplayPreferenceSaveFailingAfterASwitchSaysNothingOnTheNewDashboard() async throws {
         let (appState, held, vps) = heldSwitchFixture()
         let save = Task { await appState.setDisplayPreference(.expandTools, enabled: true) }
