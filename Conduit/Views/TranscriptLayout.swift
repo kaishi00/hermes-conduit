@@ -41,6 +41,9 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// The rows the next snapshot brings, taken up by the pass that has
     /// their count: until then the attributes and frames are the old rows'.
     private var pendingRows: [TranscriptRow]?
+    /// Those of them that draw something else than before, or came in:
+    /// guessed again once they're taken up.
+    private var pendingChanges: Set<String> = []
     private var indexByID: [String: Int] = [:]
     /// Each item's top and height (the gap above its row included).
     private var itemTop: [CGFloat] = []
@@ -60,9 +63,9 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// Heights measured for the conversation, width and text size drawn.
     private var heights = TranscriptHeightTable()
     /// The rows not measured yet, as tall as their text guesses, worked out
-    /// once per width and scope: a pass from a row that measured lays out
-    /// every row under it, and a long chat's would be guessed again in
-    /// each.
+    /// once per width and scope, and again for a row that draws something
+    /// else: a pass from a row that measured lays out every row under it,
+    /// and a long chat's would be guessed again in each.
     private var estimates: [String: CGFloat] = [:]
     /// What decides a height besides the width: the conversation (row ids
     /// repeat across them) and the text's size and face.
@@ -83,9 +86,11 @@ final class TranscriptLayout: UICollectionViewLayout {
 
     // MARK: - Inputs
 
-    /// The rows the snapshot about to be applied draws.
-    func setRows(_ newRows: [TranscriptRow]) {
+    /// The rows the snapshot about to be applied draws, and the ids of
+    /// those that draw something else than the rows set last, or came in.
+    func setRows(_ newRows: [TranscriptRow], changed: [String]) {
         pendingRows = newRows
+        pendingChanges.formUnion(changed)
     }
 
     /// The conversation and text size the heights belong to; a new one
@@ -224,14 +229,15 @@ final class TranscriptLayout: UICollectionViewLayout {
         let count = collectionView.numberOfSections > 0 ? collectionView.numberOfItems(inSection: 0) : 0
         if let pending = pendingRows, pending.count == count {
             pendingRows = nil
-            adopt(pending)
+            adopt(pending, changed: pendingChanges)
+            pendingChanges = []
         } else if rows.count != count {
             // Never expected: the rows come in with the snapshot. Draw as
             // many as the collection view has rather than answer for items
             // it doesn't.
             adopt(Array(rows.prefix(count)) + (rows.count..<max(count, rows.count)).map {
                 TranscriptRow(id: "transcript-unknown-\($0)", kind: .empty)
-            })
+            }, changed: [])
         }
         let width = collectionView.bounds.width
         if abs(width - preparedWidth) > 0.5 {
@@ -348,7 +354,7 @@ final class TranscriptLayout: UICollectionViewLayout {
 
     // MARK: - Private
 
-    private func adopt(_ newRows: [TranscriptRow]) {
+    private func adopt(_ newRows: [TranscriptRow], changed: Set<String>) {
         // Rows kept from before keep their frames until the pass sets
         // them, so the first one that changed is where the pass starts.
         var start = 0
@@ -357,11 +363,19 @@ final class TranscriptLayout: UICollectionViewLayout {
         }
         let sameIDs = start == rows.count && start == newRows.count
         rows = newRows
-        if sameIDs { return }
-        indexByID = Dictionary(newRows.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
-        itemTop = Array(itemTop.prefix(start)) + Array(repeating: 0, count: newRows.count - start)
-        itemHeight = Array(itemHeight.prefix(start)) + Array(repeating: 0, count: newRows.count - start)
-        markDirty(from: start)
+        if !sameIDs {
+            indexByID = Dictionary(newRows.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+            itemTop = Array(itemTop.prefix(start)) + Array(repeating: 0, count: newRows.count - start)
+            itemHeight = Array(itemHeight.prefix(start)) + Array(repeating: 0, count: newRows.count - start)
+            markDirty(from: start)
+        }
+        // A row not measured yet that draws something else (an edit off
+        // screen, the next message sent through the pending row) is
+        // guessed from what it draws now, in this pass.
+        for id in changed {
+            estimates[id] = nil
+            if let index = indexByID[id] { markDirty(from: index) }
+        }
     }
 
     private func markDirty(from index: Int) {
@@ -412,21 +426,22 @@ final class TranscriptLayout: UICollectionViewLayout {
         }
     }
 
-    /// Its lines at a byte per character: enough for a guess, and with no
-    /// characters to count or paragraphs to split off.
+    /// Its lines at a scalar per character, counted from the bytes that
+    /// start one: enough for a guess, in one pass with no paragraphs to
+    /// split off, and no taller for a script of several bytes a character.
     private static func textHeight(_ text: String, width: CGFloat) -> CGFloat {
-        let bytesPerLine = max(20, width / 8)
+        let charactersPerLine = max(20, width / 8)
         var lines: CGFloat = 0
-        var paragraphBytes = 0
+        var paragraphCharacters = 0
         for byte in text.utf8 {
             if byte == UInt8(ascii: "\n") {
-                lines += max(1, (CGFloat(paragraphBytes) / bytesPerLine).rounded(.up))
-                paragraphBytes = 0
-            } else {
-                paragraphBytes += 1
+                lines += max(1, (CGFloat(paragraphCharacters) / charactersPerLine).rounded(.up))
+                paragraphCharacters = 0
+            } else if (byte & 0xC0) != 0x80 {
+                paragraphCharacters += 1
             }
         }
-        lines += max(1, (CGFloat(paragraphBytes) / bytesPerLine).rounded(.up))
+        lines += max(1, (CGFloat(paragraphCharacters) / charactersPerLine).rounded(.up))
         return min(6_000, max(44, lines * 22 + 24))
     }
 }

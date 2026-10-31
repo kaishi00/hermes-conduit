@@ -55,7 +55,7 @@ final class TranscriptLayoutTests: XCTestCase {
     }
 
     private func show(_ ids: [String]) {
-        layout.setRows(ids.map { TranscriptRow(id: $0, kind: .empty) })
+        layout.setRows(ids.map { TranscriptRow(id: $0, kind: .empty) }, changed: [])
         rows.count = ids.count
         view.reloadData()
         view.layoutIfNeeded()
@@ -68,6 +68,13 @@ final class TranscriptLayoutTests: XCTestCase {
             layout.rowResized(id, to: CGSize(width: layout.itemWidth, height: height))
         }
         view.layoutIfNeeded()
+    }
+
+    /// An assistant's reply saying `text`, as the chat's rows draw it.
+    private func reply(_ id: String, _ text: String) -> TranscriptRow {
+        var cache = ChatMessageScrollTargetCache()
+        cache.update(for: [ChatMessage(id: id, role: .assistant, content: text, timestamp: "2026-10-31T09:00:00Z")])
+        return TranscriptRow(id: id, kind: .message(cache.targets[0]))
     }
 
     /// A row's item: its frame and the gap above it.
@@ -234,5 +241,43 @@ final class TranscriptLayoutTests: XCTestCase {
         layout.setSideInsets(leading: 44, trailing: 0)
         view.layoutIfNeeded()
         XCTAssertEqual(TranscriptPerf.rowHeightEstimates, 2 * ids.count)
+    }
+
+    /// A row not measured yet that draws something else (an edit landing
+    /// off screen) is guessed again from what it draws now, moving the
+    /// rows under it in the snapshot's own pass.
+    func testARowNotMeasuredIsGuessedAgainWhenItChanges() throws {
+        // Rows above keep the reply off screen, where no cell measures it.
+        let above = (0..<4).map { TranscriptRow(id: "e\($0)", kind: .empty) }
+        let below = TranscriptRow(id: "b", kind: .empty)
+        let short = reply("a", "Hi")
+        layout.setRows(above + [short, below], changed: [])
+        rows.count = above.count + 2
+        view.reloadData()
+        view.layoutIfNeeded()
+        let shortGuess = TranscriptLayout.estimatedHeight(of: short, width: layout.itemWidth)
+        XCTAssertEqual(try itemHeight("a"), shortGuess)
+        let belowTop = try XCTUnwrap(layout.rowFrame("b")).minY
+
+        let long = reply("a", String(repeating: "word ", count: 300))
+        layout.setRows(above + [long, below], changed: ["a"])
+        // The same rows by id: the pass lays none out again on its own.
+        layout.invalidateLayout(with: UICollectionViewLayoutInvalidationContext())
+        view.layoutIfNeeded()
+
+        let longGuess = TranscriptLayout.estimatedHeight(of: long, width: layout.itemWidth)
+        XCTAssertGreaterThan(longGuess, shortGuess)
+        XCTAssertEqual(try itemHeight("a"), longGuess)
+        XCTAssertEqual(layout.rowFrame("b")?.minY, belowTop + longGuess - shortGuess)
+    }
+
+    /// A guess counts characters, so text in a script of several bytes a
+    /// character isn't guessed taller than as many in ASCII.
+    func testAGuessCountsCharactersNotBytes() {
+        let width: CGFloat = 300
+        let ascii = TranscriptLayout.estimatedHeight(of: reply("a", String(repeating: "a", count: 400)), width: width)
+        XCTAssertEqual(TranscriptLayout.estimatedHeight(of: reply("a", String(repeating: "字", count: 400)), width: width), ascii)
+        XCTAssertEqual(TranscriptLayout.estimatedHeight(of: reply("a", String(repeating: "👋", count: 400)), width: width), ascii)
+        XCTAssertGreaterThan(ascii, TranscriptLayout.estimatedHeight(of: reply("a", "a"), width: width))
     }
 }

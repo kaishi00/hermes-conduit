@@ -11,15 +11,15 @@ default in the rows, with nothing to say so.
 So every key Conduit declares (a `var` in an `extension EnvironmentValues`)
 is copied there, set in its init (`key = values.key`, or the chat's own
 value, as for the disclosure) and applied to the rows
-(`.environment(\\.key, values.key)`), or listed in its `setInsideRows`, for a key
-the rows set themselves, where they read it. A listed key must be one Conduit
-declares, and one something in Conduit sets (`.environment(\\.key, ...)`), or
-its default would reach the rows with nothing to say so. Being text-level,
-the check can't tell whether that setter is inside a row or above the
-transcript, so a key set above the transcript is copied, never listed. A key
-set or applied from another key's value (`key = values.other`) fails too. SwiftUI's own
-keys are left to the struct: the traits carry most of them, and it copies
-the rest.
+(`.environment(\\.key, values.key)`), or listed in its `setInsideRows`, for
+a key the rows set themselves, where they read it. A listed key must be one
+Conduit declares, and one something in Conduit sets
+(`.environment(\\.key, ...)`), or its default would reach the rows with
+nothing to say so. Being text-level, the check can't tell whether that
+setter is inside a row or above the transcript, so a key set above the
+transcript is copied, never listed. A key set or applied from another key's
+value (`key = values.other`) fails too. SwiftUI's own keys are left to the
+struct: the traits carry most of them, and it copies the rest.
 
 Text-level, like check-sheet-environment.py, whose Swift reader it uses.
 

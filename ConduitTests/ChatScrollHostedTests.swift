@@ -787,13 +787,26 @@ final class ChatScrollHostedTests: XCTestCase {
     func testAChangeToTheChatsTextSizeReachesTheRowsDrawn() throws {
         let messages = Self.transcript(0..<12)
         let mounted = try mount(messages)
+        let collectionView = try XCTUnwrap(mounted.scrollView as? UICollectionView)
         let id = try XCTUnwrap(messages.last?.id)
         let before = try XCTUnwrap(mounted.layout.rowFrame(id))
 
         mounted.setTextSize(.largest)
         settle(mounted.host.view)
 
+        // Its frame is what its cell measures now, not the guess every row
+        // starts on at a new text size, which doesn't read the size.
+        let index = try XCTUnwrap(mounted.layout.rows.firstIndex { $0.id == id })
+        let cell = try XCTUnwrap(collectionView.cellForItem(at: IndexPath(item: index, section: 0)) as? TranscriptCell)
+        let hosting = try XCTUnwrap(cell.hosting)
+        let measured = hosting.sizeThatFits(in: CGSize(width: cell.bounds.width, height: .greatestFiniteMagnitude)).height
         let after = try XCTUnwrap(mounted.layout.rowFrame(id))
+        XCTAssertEqual(
+            after.maxY - after.minY + TranscriptLayout.rowGap,
+            measured,
+            accuracy: 1,
+            "the latest row's frame must be its cell's measurement"
+        )
         XCTAssertGreaterThan(
             after.maxY - after.minY,
             before.maxY - before.minY + 4,
