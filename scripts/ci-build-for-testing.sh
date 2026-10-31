@@ -257,7 +257,9 @@ annotate_source_errors() {
         file="${line%%:*}"; rest="${line#*:}"
         row="${rest%%:*}"; rest="${rest#*:}"
         col="${rest%%:*}"; rest="${rest#*: error: }"
-        echo "::error file=${file#"$PWD/"},line=$row,col=$col::${rest//%/%25}"
+        # A workflow command's message escapes % and a carriage return.
+        message="${rest//%/%25}"; message="${message//$'\r'/%0D}"
+        echo "::error file=${file#"$PWD/"},line=$row,col=$col::$message"
       done
 }
 

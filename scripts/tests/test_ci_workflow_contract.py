@@ -332,7 +332,9 @@ class WorkflowContractTests(unittest.TestCase):
         """A failed build posts its first source errors as annotations, which
         the API serves when the job log can't be read."""
         build = _read(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"))
-        self.assertIn('echo "::error file=${file#"$PWD/"},line=$row,col=$col::', build)
+        self.assertIn('echo "::error file=${file#"$PWD/"},line=$row,col=$col::$message"', build)
+        # A message escapes % and a carriage return, as workflow commands need.
+        self.assertIn('message="${rest//%/%25}"; message="${message//$\'\\r\'/%0D}"', build)
         self.assertLess(
             build.index("  annotate_source_errors\n"),
             build.index('echo "::error::build-for-testing failed'),
