@@ -1859,6 +1859,53 @@ on" (a Bot Chat's `/new` opens no chat, so nothing waits on one)
 
 **Checked:** 2026-10-26, #1310.
 
+## Bot workstreams
+
+A bot's Bot Chat as its coordinator: it hands work that needs tools to
+workstreams, hidden sessions of its own on the bot's profile, follows them by
+ref (W1, W2), and hears back when one finishes, fails or waits on the user.
+Each bot turns it on for itself (`hermes -p <bot> conduit-push work on`). It's
+being built on the notifier's `bot-workstreams` branch (M0, notifier #484), so
+none of it is on either main yet, and the app has no screen for it until M2.
+
+**Siblings:** the Bot Chat (the eight work tools, offered only there and only
+with workstreams on; its policy, strict or lookups, holding its tools and a
+fork's; the note on its turns listing open work; the work updates that come
+in as hidden turns, which the transcript leaves out as it does every hidden
+user turn) · a workstream's session (hidden, titled, on the bot's own
+profile, its steps journaled; a reply in it sends no push, the Bot Chat's
+reply to the update is the one push, and its turns start no Live Activity) · the `conduit://session/` link a work
+tool's answer carries, with the bot's profile (see Links in messages) · an
+approval in a workstream (marks it waiting on you and tells the Bot Chat) ·
+Bot mentions and teammate messages (`message_agent` refused in a coordinator,
+asks between bots come in M1) · Opening a Bot Chat (the "Bot Chat" title is
+how the plugin knows the coordinator) · Hermes Desktop's Bot Chat (the same
+plugin, the same tools) · the `hermes conduit-push work` commands · the tool
+descriptions, the worker's and the update's prompts, and the notifier's
+README section · M2's Work panel and Bots and Tasks screens (not built)
+
+**Code**
+- Notifier, on its `bot-workstreams` branch (plain text until it reaches main): work_store.py (the registry, conduit/workstreams.db in the bot's home), work_broker.py (Hermes' session API in the dashboard's process), work_tool.py (the tools, the policy, the hooks' work, the note and the updates), __init__.py (the hook calls), cli.py (`work`), tests/test_work.py, upstream/test_bot_work.py
+- App: `Conduit/Services/HermesClient.swift` (normalizeMessages, which drops hidden rows from the transcript), `Conduit/Services/ConduitAppLink.swift` and `Conduit/Services/AppState.swift` (openAppLink, the link's profile)
+- Design: designs/bot-mode-coordinator (project files)
+
+**Rulings**
+- Built on the `bot-workstreams` branches, tested apart from public TestFlight, and never merged to main until Eric says so (2026-10-31, notifier #484, Eric).
+- Each bot's Bot Chat coordinates its own work; bots ask each other rather than one coordinator for all (2026-10-31, Eric).
+- The model names work by ref only: a session id appears only inside the link, and a ref from another bot's registry names nothing (2026-10-31, notifier #484).
+- Off unless the bot turns it on; once on, a registry that can't be read holds the Bot Chat to strict rather than freeing it (2026-10-31, notifier #484's review).
+- Once on, a chat whose title can't be read is held to the policy for that call, since it might be the coordinator (2026-10-31, notifier #484's review).
+- Under `plugins.isolation: host` the tools answer with the reason rather than starting anything, since the session API is only in the dashboard's process (2026-10-31, notifier #484).
+
+**Open gaps**
+- No screen in the app: workstreams show only as the Bot Chat's answers and their links until M2's Work panel. M2 builds on the cache-first screens and the transcript rewrite (see Screens that open on their last answer), checked with that work first.
+- The app's handling of an approval in a hidden workstream session is unchecked: the request goes to the user from that session, and nothing in the app opens it from the Bot Chat yet.
+- The Notifications entry gains a line for workstream turns' quiet pushes once this reaches main.
+- The first session Hermes builds on a secondary profile after the dashboard starts can come up without the work tools; the upstream test takes it with a warm-up session (2026-10-31 canary).
+- The plugin's version is bumped when the branch merges to main.
+
+**Checked:** 2026-10-31, #1580 (the entry, for notifier #484's M0).
+
 ## Composer Return key
 
 The optional hardware-keyboard shortcut in Settings > Keyboard: with it on,
