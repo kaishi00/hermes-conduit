@@ -267,6 +267,92 @@ struct ToolsetConfig: Equatable {
         }
     }
 
+    /// A config answer as Hermes holds it once `provider` is the toolset's
+    /// backend (for the web toolset, the backend of `capability`): what a
+    /// kept page shows until Hermes answers again.
+    static func choosing(_ provider: String, capability: String?, in answer: [String: Any]) -> [String: Any] {
+        guard let rows = answer["providers"] as? [Any] else { return answer }
+        var answer = answer
+        if let capability {
+            let row = rows.lazy.compactMap { $0 as? [String: Any] }.first { $0["name"] as? String == provider }
+            guard let row, let backend = row["web_backend"] as? String else { return answer }
+            // As `serves` tells managed Nous from an own key.
+            let viaNous = row["managed_nous_feature"] is String
+            switch capability {
+            case "search":
+                answer["active_search_backend"] = backend
+                answer["search_via_nous"] = viaNous
+            case "extract":
+                answer["active_extract_backend"] = backend
+                answer["extract_via_nous"] = viaNous
+            default:
+                break
+            }
+        } else {
+            answer["active_provider"] = provider
+            answer["providers"] = rows.map { value -> Any in
+                guard var row = value as? [String: Any] else { return value }
+                row["is_active"] = row["name"] as? String == provider
+                return row
+            }
+        }
+        return answer
+    }
+
+    /// A config answer as Hermes holds it once `key` is saved: set wherever
+    /// a backend asks for it.
+    static func settingKey(_ key: String, in answer: [String: Any]) -> [String: Any] {
+        guard let rows = answer["providers"] as? [Any] else { return answer }
+        var answer = answer
+        answer["providers"] = rows.map { value -> Any in
+            guard var row = value as? [String: Any], let envVars = row["env_vars"] as? [Any] else { return value }
+            row["env_vars"] = envVars.map { value -> Any in
+                guard var env = value as? [String: Any], env["key"] as? String == key else { return value }
+                env["is_set"] = true
+                return env
+            }
+            return row
+        }
+        return answer
+    }
+
+    /// The config as `choosing(_:capability:in:)` makes its answer: what
+    /// the page shows once Hermes took the change, kept or not.
+    func choosing(_ provider: String, capability: String?) -> ToolsetConfig {
+        var config = self
+        if let capability {
+            guard let row = providers.first(where: { $0.name == provider }), let backend = row.webBackend else { return self }
+            let viaNous = row.managedNousFeature != nil
+            switch capability {
+            case "search":
+                config.activeSearchBackend = backend
+                config.searchViaNous = viaNous
+            case "extract":
+                config.activeExtractBackend = backend
+                config.extractViaNous = viaNous
+            default:
+                break
+            }
+        } else {
+            config.activeProvider = provider
+            for index in config.providers.indices {
+                config.providers[index].isActive = config.providers[index].name == provider
+            }
+        }
+        return config
+    }
+
+    /// The config as `settingKey(_:in:)` makes its answer.
+    func settingKey(_ key: String) -> ToolsetConfig {
+        var config = self
+        for provider in config.providers.indices {
+            for env in config.providers[provider].envVars.indices where config.providers[provider].envVars[env].key == key {
+                config.providers[provider].envVars[env].isSet = true
+            }
+        }
+        return config
+    }
+
     /// Whether `provider` is the one a web search (or extract) call uses
     /// now. Managed Nous and own-key Firecrawl share a backend name, so the
     /// Nous flag tells them apart.
@@ -294,6 +380,28 @@ struct TerminalBackendOption: Equatable, Identifiable {
     var status: String
     var detail: String?
 
+    /// A backends answer as Hermes holds it once the terminal runs on
+    /// `backend`: what a kept page shows until Hermes answers again.
+    static func choosing(_ backend: String, in answer: [String: Any]) -> [String: Any] {
+        guard let rows = answer["backends"] as? [Any] else { return answer }
+        var answer = answer
+        answer["backends"] = rows.map { value -> Any in
+            guard var row = value as? [String: Any] else { return value }
+            row["active"] = row["name"] as? String == backend
+            return row
+        }
+        return answer
+    }
+
+    /// The backends as `choosing(_:in:)` makes their answer.
+    static func choosing(_ backend: String, in options: [TerminalBackendOption]) -> [TerminalBackendOption] {
+        options.map { option in
+            var option = option
+            option.active = option.name == backend
+            return option
+        }
+    }
+
     static func list(from response: [String: Any]) -> [TerminalBackendOption] {
         (response["backends"] as? [Any] ?? []).compactMap { value in
             guard let row = value as? [String: Any], let name = row["name"] as? String else { return nil }
@@ -312,21 +420,49 @@ struct TerminalBackendOption: Equatable, Identifiable {
 // MARK: - Connectors (MCP servers)
 
 /// An MCP server in the profile's config (`GET /api/mcp/servers`).
-struct ConnectorServer: Equatable, Identifiable {
+struct ConnectorServer: Equatable, Identifiable, Codable {
     var id: String { name }
     let name: String
     /// http, stdio or unknown.
     var transport: String
     var url: String?
     var command: String?
-    var args: [String]
+    var args: [String] = []
     /// oauth, header, or nil.
     var auth: String?
     var enabled: Bool
     /// A plugin's server: shown, never changed from here (Hermes answers 409).
     var plugin: String?
 
+    /// The copy kept on the phone (#1533) leaves out the command's
+    /// arguments, which can hold a key, and keeps how the server signs in
+    /// under a name the kept answers' filter doesn't take for a
+    /// credential's.
+    private enum CodingKeys: String, CodingKey {
+        case name, transport, url, command, enabled, plugin
+        case auth = "sign_in"
+    }
+
     var isFromPlugin: Bool { plugin != nil }
+
+    /// The copy kept on the phone: its address cut to scheme, host and
+    /// port, as its path or query can hold a key (`/sse/<token>`), as its
+    /// command's arguments can. Hermes' answer brings the rest.
+    var keptCopy: ConnectorServer {
+        var copy = self
+        copy.url = url.flatMap(Self.origin)
+        return copy
+    }
+
+    static func origin(of address: String) -> String? {
+        guard var parts = URLComponents(string: address), parts.host != nil else { return nil }
+        parts.user = nil
+        parts.password = nil
+        parts.path = ""
+        parts.query = nil
+        parts.fragment = nil
+        return parts.string
+    }
 
     /// OAuth sign-in applies to a URL server that doesn't send its own
     /// Authorization header, as Hermes' `/auth` route requires.
@@ -382,9 +518,14 @@ struct ConnectorServer: Equatable, Identifiable {
     }
 }
 
-/// An entry of Hermes' MCP catalog (`GET /api/mcp/catalog`).
-struct ConnectorCatalogEntry: Equatable, Identifiable {
-    struct EnvField: Equatable, Identifiable {
+/// An entry of Hermes' MCP catalog (`GET /api/mcp/catalog`). Kept on the
+/// phone as Conduit's own JSON (#1533), whose `authType` the kept answers'
+/// filter keeps, as it wouldn't Hermes' `auth_type`. Its command and
+/// arguments are kept too: they're the catalog's template, the same on
+/// every Hermes, and the keys an install asks for (`requiredEnv`) go to
+/// Hermes in the install's body, never into them.
+struct ConnectorCatalogEntry: Equatable, Identifiable, Codable {
+    struct EnvField: Equatable, Identifiable, Codable {
         var id: String { name }
         let name: String
         var prompt: String
@@ -626,7 +767,13 @@ struct PluginCatalogEntry: Equatable, Identifiable {
     /// folder (the catalog name is often the repository's, not the
     /// manifest's).
     static func entry(for plugin: AgentPluginRow, in catalog: [PluginCatalogEntry]) -> PluginCatalogEntry? {
-        catalog.first { $0.installed && ($0.name == plugin.name || $0.name == plugin.folderName) }
+        catalog.first { isSource(named: $0.name, installed: $0.installed, of: plugin) }
+    }
+
+    /// Whether an entry, by its name and installed flag, is the one an
+    /// installed plugin came from (`entry(for:in:)`'s rule).
+    static func isSource(named name: String, installed: Bool, of plugin: AgentPluginRow) -> Bool {
+        installed && (name == plugin.name || name == plugin.folderName)
     }
 }
 

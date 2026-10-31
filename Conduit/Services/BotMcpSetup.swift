@@ -2,7 +2,7 @@ import Foundation
 
 /// One of Hermes' bundled MCP servers (`mcp.catalog`), as the bot editor
 /// offers it.
-struct BotMcpCatalogEntry: Equatable, Identifiable {
+struct BotMcpCatalogEntry: Equatable, Identifiable, Codable {
     let name: String
     let description: String
     /// The keys it needs, by env var name ("GITHUB_TOKEN").
@@ -14,10 +14,16 @@ struct BotMcpCatalogEntry: Equatable, Identifiable {
 }
 
 /// A configured server's auth (`mcp.servers.list`), without secrets.
-struct BotMcpServerSummary: Equatable {
+struct BotMcpServerSummary: Equatable, Codable {
     let name: String
     let auth: String?
     let oauthTokensPresent: Bool?
+
+    /// How it signs in is kept as `sign_in`, which the kept answers'
+    /// filter doesn't take for a credential's name, as `auth` would be.
+    private enum CodingKeys: String, CodingKey {
+        case name, auth = "sign_in", oauthTokensPresent = "oauth_tokens_present"
+    }
 
     /// An OAuth server with no token on Hermes: it can't connect until
     /// someone signs in.
@@ -30,6 +36,28 @@ struct BotMcpServerSummary: Equatable {
 struct BotMcpSetupSnapshot: Equatable {
     var catalog: [BotMcpCatalogEntry]
     var servers: [String: BotMcpServerSummary]
+}
+
+/// The copy the MCP page opens on (AppState's KeptRoute.botMcpSetup). The
+/// servers go as a list: a server's name as a key could look like a
+/// credential's to the kept answers' filter (`github_token`).
+extension BotMcpSetupSnapshot: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case catalog, servers
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        catalog = try container.decode([BotMcpCatalogEntry].self, forKey: .catalog)
+        let servers = try container.decode([BotMcpServerSummary].self, forKey: .servers)
+        self.servers = Dictionary(servers.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(catalog, forKey: .catalog)
+        try container.encode(servers.values.sorted { $0.name < $1.name }, forKey: .servers)
+    }
 }
 
 /// How adding a catalog server went.

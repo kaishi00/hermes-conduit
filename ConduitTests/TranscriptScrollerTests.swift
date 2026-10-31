@@ -133,10 +133,11 @@ private final class FakeTranscriptSurface: TranscriptScrollSurface {
     }
 }
 
-/// TranscriptScroller's rules, ported from ChatScrollEngineTests rule by
-/// rule (#1533, the transcript rewrite). The rules that existed only for
-/// the lazy stack (rows without frames, SwiftUI's own offset writes, cards
-/// announcing their height) have no port: every row has a frame here.
+/// TranscriptScroller's rules, ported rule by rule from the tests of the
+/// lazy stack's scroll engine it replaced (#1533, the transcript rewrite).
+/// The rules that existed only for the lazy stack (rows without frames,
+/// SwiftUI's own offset writes, cards announcing their height) have no
+/// port: every row has a frame here.
 @MainActor
 final class TranscriptScrollerTests: XCTestCase {
     private var clock: TimeInterval = 100
@@ -752,6 +753,23 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertTrue(scroller.isFollowingLatest)
     }
 
+    /// 60 pt above the end, a row above grows 10 pt as the last one shrinks
+    /// 30: keeping the reader's row puts them 30 pt short of the end, near
+    /// enough to follow again, and the pass ends at the end.
+    func testAKeepThatLeavesTheReaderFollowingEndsThePassAtTheEnd() {
+        let (scroller, surface) = makeScroller()
+        surface.userScroll(to: 3140)
+        XCTAssertEqual(scroller.mode, .browsing, "60 pt from the end")
+        surface.sets = []
+        surface.setHeight("m2", 410)
+        surface.setHeight("m9", 370)
+        surface.layOut()
+        XCTAssertTrue(scroller.isFollowingLatest)
+        XCTAssertEqual(surface.sets.map(\.y), [3150, 3180], "the row kept, then the end")
+        XCTAssertEqual(surface.sets.map(\.animated), [false, false])
+        XCTAssertEqual(surface.distanceFromBottom, 0)
+    }
+
     func testARowGrowingAboveTheReaderWhileRowsBelowShrinkStillMovesThem() {
         let (_, surface) = browsingReader()
         surface.setHeight("m2", 627)
@@ -842,6 +860,27 @@ final class TranscriptScrollerTests: XCTestCase {
             viewportTransitionGeneration: 1
         )
         XCTAssertEqual(surface.contentOffsetY, 1100)
+    }
+
+    /// A reader at the top, the Load earlier row above their message: the
+    /// page lands between the two, and the reader stays on their message,
+    /// not on the row they tapped, which stays first.
+    func testEarlierMessagesUnderTheLoadEarlierRowKeepTheReaderOnTheirMessage() {
+        let surface = FakeTranscriptSurface(ids: [TranscriptRow.loadEarlierID] + Self.ids(0..<10))
+        surface.setHeight(TranscriptRow.loadEarlierID, 44)
+        surface.layOut()
+        let (scroller, _) = makeScroller(surface: surface)
+        surface.userScroll(to: 0)
+        XCTAssertEqual(scroller.mode, .browsing)
+        scroller.transcriptChanged(
+            messages: Self.messages(-5..<10),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        surface.insert(Self.ids(-5..<0), height: 120, at: 1)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 600, "the offset grows by exactly the page's height")
+        XCTAssertEqual(surface.top(of: "m0"), 44)
     }
 
     func testEarlierMessagesWhileFollowingStayAtTheEnd() {

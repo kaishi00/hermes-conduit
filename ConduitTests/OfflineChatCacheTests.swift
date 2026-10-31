@@ -3135,20 +3135,91 @@ extension OfflineChatCacheTests {
     func testADeletedProfileTakesOnlyItsKeptAnswers() {
         let store = makeStore()
         let dashboard = UUID()
+        // A Bot Chat's own Artifacts list too, kept as one chat's of many.
+        let chat = OfflineChatCacheStore.lastOpenedRoutePrefix + "/api/plugins/conduit_push/artifacts?session_id=s1"
         for profile in ["bot", "bot2", "default"] {
-            store.recordAnswer(["profile": profile], route: "/api/config", dashboardID: dashboard, profile: profile)
+            for route in ["/api/config", chat] {
+                store.recordAnswer(["profile": profile], route: route, dashboardID: dashboard, profile: profile)
+            }
         }
         let removals = store.removals
 
         store.removeKeptAnswers(dashboardID: dashboard, profile: "bot")
 
-        XCTAssertNil(store.keptAnswer("/api/config", dashboardID: dashboard, profile: "bot"))
-        let file = store.keptAnswerFileURL("/api/config", dashboardID: dashboard, profile: "bot")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
-        for profile in ["bot2", "default"] {
-            XCTAssertEqual(store.keptAnswer("/api/config", dashboardID: dashboard, profile: profile)?["profile"] as? String, profile)
+        for route in ["/api/config", chat] {
+            XCTAssertNil(store.keptAnswer(route, dashboardID: dashboard, profile: "bot"), route)
+            let file = store.keptAnswerFileURL(route, dashboardID: dashboard, profile: "bot")
+            XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), route)
+            for profile in ["bot2", "default"] {
+                XCTAssertEqual(store.keptAnswer(route, dashboardID: dashboard, profile: profile)?["profile"] as? String, profile)
+            }
         }
         XCTAssertNotEqual(store.removals, removals, "A read in flight across the delete keeps nothing")
+    }
+
+    /// An answer about one chat or folder of many (a chat's own Artifacts
+    /// list, a folder's listing) is kept for the newest ones only, as the
+    /// saved copies are, beside the settings pages' answers, and never read
+    /// ahead, so it doesn't take the room theirs would.
+    func testAnswersAboutOneChatOrFolderOfManyKeepTheNewest() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let file = { (route: String) in store.keptAnswerFileURL(route, dashboardID: dashboard, profile: "default") }
+        store.recordAnswer(["model": "m"], route: "/api/config", dashboardID: dashboard, profile: "default")
+        let routes = (0...OfflineChatCacheStore.maxLastOpenedAnswers).map {
+            OfflineChatCacheStore.lastOpenedRoutePrefix + "/api/plugins/conduit_push/workspace/list?root=%2Fw\($0)"
+        }
+        for (index, route) in routes.enumerated() {
+            store.recordAnswer(["entries": [String]()], route: route, dashboardID: dashboard, profile: "default")
+            // Older than the next one written, which lets go of the oldest
+            // beyond the cap.
+            try FileManager.default.setAttributes(
+                [.modificationDate: Date(timeIntervalSince1970: TimeInterval(1_000 + index))], ofItemAtPath: file(route).path
+            )
+        }
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file(routes[0]).path), "The oldest goes")
+        XCTAssertNil(store.keptAnswer(routes[0], dashboardID: dashboard, profile: "default"))
+        for route in routes.dropFirst() {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: file(route).path), route)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file("/api/config").path), "A settings page's answer stays")
+
+        let next = OfflineChatCacheStore(directory: file("/api/config").deletingLastPathComponent(), writesAsynchronously: true)
+        addTeardownBlock { next.waitForPendingWrites() }
+        next.prefetch(dashboardID: dashboard, profile: "default", transcripts: 0, answers: true)
+        next.waitForPendingWrites()
+        for route in ["/api/config", routes[1]] {
+            try FileManager.default.removeItem(at: file(route))
+        }
+        XCTAssertEqual(next.keptAnswer("/api/config", dashboardID: dashboard, profile: "default")?["model"] as? String, "m")
+        XCTAssertNil(next.keptAnswer(routes[1], dashboardID: dashboard, profile: "default"), "Not read ahead")
+    }
+
+    /// A deleted chat takes its own Artifacts list with it, by any id it's
+    /// known by, and leaves the other chats' and the folders' answers.
+    func testADeletedChatTakesItsKeptArtifactsList() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let route = { (query: String) in
+            OfflineChatCacheStore.lastOpenedRoutePrefix + "/api/plugins/conduit_push/artifacts?limit=60&" + query
+        }
+        let deleted = route("session_id=old-id&session_id=s%201")
+        let other = route("session_id=s2")
+        let folder = OfflineChatCacheStore.lastOpenedRoutePrefix + "/api/plugins/conduit_push/workspace/list?root=%2Fw"
+        for kept in [deleted, other, folder] {
+            store.recordAnswer(["items": [String]()], route: kept, dashboardID: dashboard, profile: "default")
+        }
+        XCTAssertEqual(OfflineChatCacheStore.sessionIDs(namedIn: deleted), ["old-id", "s 1"])
+
+        store.removeTranscripts(sessionIDs: ["s 1"], dashboardID: dashboard, profile: "default")
+
+        XCTAssertNil(store.keptAnswer(deleted, dashboardID: dashboard, profile: "default"))
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: store.keptAnswerFileURL(deleted, dashboardID: dashboard, profile: "default").path
+        ))
+        XCTAssertNotNil(store.keptAnswer(other, dashboardID: dashboard, profile: "default"))
+        XCTAssertNotNil(store.keptAnswer(folder, dashboardID: dashboard, profile: "default"))
     }
 
     /// The open profile's kept answers are read ahead with its chats, so

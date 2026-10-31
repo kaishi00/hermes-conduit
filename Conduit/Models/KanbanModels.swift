@@ -346,25 +346,25 @@ struct KanbanColumn: Codable, Equatable, Identifiable {
     }
 }
 
+/// Hermes' board answer also carries its clock (`now`), new on every read
+/// and shown nowhere: it's left out, so a poll that brings back the same
+/// board doesn't redraw it.
 struct KanbanBoard: Codable, Equatable {
     var columns: [KanbanColumn]
     var tenants: [String]
     var assignees: [String]
     var latestEventID: Int?
-    var now: Int?
 
     enum CodingKeys: String, CodingKey {
         case columns, tenants, assignees
         case latestEventID = "latest_event_id"
-        case now
     }
 
-    init(columns: [KanbanColumn], tenants: [String] = [], assignees: [String] = [], latestEventID: Int? = nil, now: Int? = nil) {
+    init(columns: [KanbanColumn], tenants: [String] = [], assignees: [String] = [], latestEventID: Int? = nil) {
         self.columns = columns
         self.tenants = tenants
         self.assignees = assignees
         self.latestEventID = latestEventID
-        self.now = now
     }
 
     init(from decoder: Decoder) throws {
@@ -373,7 +373,6 @@ struct KanbanBoard: Codable, Equatable {
         tenants = container.decodeLossyArray(String.self, forKey: .tenants)
         assignees = container.decodeLossyArray(String.self, forKey: .assignees)
         latestEventID = container.decodeLossyInt(forKey: .latestEventID)
-        now = container.decodeLossyInt(forKey: .now)
     }
 }
 
@@ -932,7 +931,7 @@ struct KanbanProjectsResponse: Codable, Equatable { var projects: [KanbanProject
 /// `model_options`). Curated server-side so the picker can never offer a
 /// provider:model pair a Hermes worker would refuse. Decoded tolerantly:
 /// an unavailable inventory degrades to an empty list and the UI falls back
-/// to free-text entry.
+/// to free-text entry, and a provider row that isn't one drops alone.
 struct KanbanModelOptionsResponse: Codable, Equatable {
     var providers: [KanbanModelProviderOption]
 
@@ -940,7 +939,7 @@ struct KanbanModelOptionsResponse: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        providers = (try? container.decodeIfPresent([KanbanModelProviderOption].self, forKey: .providers)) ?? []
+        providers = container.decodeLossyArray(KanbanModelProviderOption.self, forKey: .providers)
     }
 
     enum CodingKeys: String, CodingKey { case providers }

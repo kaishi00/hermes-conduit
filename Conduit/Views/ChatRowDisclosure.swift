@@ -10,8 +10,8 @@ import SwiftUI
 /// to fold an open card shut under the reader, which moved everything below
 /// it.
 ///
-/// And it tells the scroll engine first, so the row the reader tapped stays
-/// where it is (ChatScrollEngine.userWillToggleRow).
+/// And it tells the scroller first, so the row the reader tapped stays
+/// where it is (TranscriptScroller.userWillToggleRow).
 ///
 /// Not observable: a row reads it when it is built and writes it when
 /// tapped, so a toggle re-renders only that row. One instance per chat view,
@@ -21,10 +21,10 @@ import SwiftUI
 /// conversation starts from the defaults. Another spelling of the same
 /// conversation (a new chat getting its id) keeps them. Rows without a
 /// message id ("Show all" in a long reply, the review summary) only tell
-/// the engine and keep their own state as before.
+/// the scroller and keep their own state as before.
 @MainActor
 final class ChatRowDisclosure {
-    weak var engine: ChatScrollEngine?
+    weak var scroller: TranscriptScroller?
     /// The conversation on screen; ChatView reads it from AppState.
     var currentConversation: @MainActor () -> ChatScrollSessionIdentity = { .none }
     private var conversation = ChatScrollSessionIdentity.none
@@ -39,7 +39,7 @@ final class ChatRowDisclosure {
 
     /// Call before changing the row's height, inside the same tap.
     func willToggle(_ id: String?, to expanded: Bool) {
-        engine?.userWillToggleRow()
+        scroller?.userWillToggleRow(id)
         guard let id else { return }
         followConversation()
         states[id] = expanded
@@ -56,7 +56,7 @@ final class ChatRowDisclosure {
     }
 
     func willToggleGroup(_ id: String, to expanded: Bool) {
-        engine?.userWillToggleRow()
+        scroller?.userWillToggleRow(id)
         followConversation()
         states[Self.groupKey(id)] = expanded
         groupToggles.revision &+= 1
@@ -73,7 +73,7 @@ final class ChatRowDisclosure {
     /// the thinking itself, not one more folded line; hiding it puts them
     /// back as they were.
     func willShowThinking(in group: ChatStepGroup, _ shown: Bool) {
-        engine?.userWillToggleRow()
+        scroller?.userWillToggleRow(group.id)
         followConversation()
         let flag = Self.thinkingKey(group.id)
         if shown {

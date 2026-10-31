@@ -326,6 +326,9 @@ extension KanbanTests {
         var outcomes: [Bool: CapabilityToggleWrites.Outcome] = [:]
         /// Outcomes that would show "Could not update" to the user.
         var failuresReported = 0
+        /// The values kept for Capabilities to open on, in turn: AppState
+        /// keeps a flip once Hermes took it.
+        var kept: [Bool] = []
         private var running = 0
 
         init(row: Bool) { self.row = row }
@@ -345,6 +348,7 @@ extension KanbanTests {
                 }
                 if let restore = outcome.restore { row = restore }
                 if outcome.error != nil { failuresReported += 1 }
+                if outcome.taken { kept.append(enabled) }
                 running -= 1
             }
             for _ in 0..<10 { await Task.yield() }
@@ -370,6 +374,7 @@ extension KanbanTests {
         XCTAssertFalse(harness.overlapped, "one switch reaches Hermes at a time")
         XCTAssertEqual(harness.sent, [true, false, true], "in the order flipped")
         XCTAssertTrue(harness.row, "the first flip's failure came last but a newer flip replaced it")
+        XCTAssertEqual(harness.kept, [false, true], "the refused flip is never kept, though a newer one replaced it")
     }
 
     func testAFailedCapabilitySwitchGoesBackToWhatHermesLastConfirmed() async {
@@ -380,6 +385,7 @@ extension KanbanTests {
         await harness.answerAll()
 
         XCTAssertFalse(harness.row)
+        XCTAssertEqual(harness.kept, [], "nothing Hermes refused is kept")
 
         // On succeeds, off fails: Hermes has it on.
         let confirmed = SwitchHarness(row: false)
@@ -388,6 +394,7 @@ extension KanbanTests {
         await confirmed.answerAll()
 
         XCTAssertTrue(confirmed.row)
+        XCTAssertEqual(confirmed.kept, [true])
     }
 
     func testAFailedCapabilitySwitchANewerFlipReplacedSaysNothingFailed() async {
@@ -939,6 +946,507 @@ extension KanbanTests {
         await store.loadToolCalls()
         XCTAssertEqual(store.toolCalls, ["terminal": 4])
     }
+
+    /// Each tab opens on the lists it showed last time, kept on the phone,
+    /// until Hermes answers (#1533): a read that fails keeps them up, and
+    /// Hermes' answer takes their place. A server's command arguments are
+    /// never kept. A change made here is kept, and one made to a kept list
+    /// reads it again.
+    func testEachCapabilitiesTabOpensOnWhatItShowedLastTime() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/skills/hub/official": ["skills": [["name": "pdf", "identifier": "official/pdf"]]],
+            "/api/analytics/usage": ["tools": [["tool": "terminal", "count": 4]], "daily": [["day": "2026-10-30", "sessions": 3]]],
+            "/api/mcp/servers": ["servers": [[
+                "name": "linear", "transport": "stdio", "command": "npx", "args": ["linear-mcp", "--token", "lin_api_x"],
+                "auth": "header", "enabled": true, "env": ["LINEAR_WORKSPACE": "x"],
+            ]]],
+            "/api/mcp/catalog": ["entries": [["name": "notion", "auth_type": "oauth"]]],
+            "/api/dashboard/plugins/hub": ["plugins": [["name": "Weather", "source": "git", "runtime_status": "disabled"]]],
+            "/api/dashboard/plugins/catalog": ["entries": [["name": "maps", "tier": "official"]]],
+        ])
+        let kept = KeptCapabilityAnswers()
+        let dashboardKept = KeptCapabilityAnswers()
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertTrue(store.showsKept.isEmpty, "Nothing kept yet")
+        await store.loadOfficialSkills()
+        await store.loadToolCalls()
+        await store.loadConnectors()
+        await store.loadPlugins()
+
+        XCTAssertEqual(kept.saved[CapabilitiesStore.KeptRoute.toolCalls]?.keys.sorted(), ["tools"], "The year's counts alone")
+        let keptServer = try XCTUnwrap((kept.saved[CapabilitiesStore.KeptRoute.servers]?["servers"] as? [[String: Any]])?.first)
+        XCTAssertNil(keptServer["args"], "A command's arguments can hold a key")
+        XCTAssertNil(keptServer["env"])
+        let zap = ConnectorServer(name: "zap", transport: "http", url: "https://actions.example:8443/mcp/secret-1/sse?key=x", command: nil, auth: nil, enabled: true, plugin: nil)
+        XCTAssertEqual(zap.keptCopy.url, "https://actions.example:8443", "So can an address's path and query")
+        XCTAssertEqual(keptServer["sign_in"] as? String, "header", "Not under a name the kept answers take for a credential's")
+        XCTAssertNotNil(dashboardKept.saved[CapabilitiesStore.KeptRoute.pluginCatalog], "The same for every profile")
+        XCTAssertNil(kept.saved[CapabilitiesStore.KeptRoute.pluginCatalog])
+
+        // The next visit opens on them before Hermes answers.
+        let hermes = CapabilityMockRequester(responses: [:])
+        let next = CapabilitiesStore()
+        next.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertEqual(next.showsKept, [.officialSkills, .toolCalls, .connectors, .connectorCatalog, .plugins, .pluginCatalog])
+        XCTAssertEqual(next.officialSkills.map(\.identifier), ["official/pdf"])
+        XCTAssertEqual(next.toolCalls, ["terminal": 4])
+        XCTAssertEqual(next.servers.map(\.name), ["linear"])
+        XCTAssertEqual(next.servers.first?.auth, "header")
+        XCTAssertEqual(next.servers.first?.args, [], "Hermes' answer brings them")
+        XCTAssertEqual(next.connectorCatalog.first?.authType, "oauth")
+        XCTAssertEqual(next.plugins.map(\.name), ["Weather"])
+        XCTAssertEqual(next.pluginCatalog.map(\.name), ["maps"])
+        XCTAssertTrue(hermes.calls.isEmpty)
+
+        // Offline too, with no bridge, on the default profile.
+        let offline = CapabilitiesStore()
+        offline.configure(requester: nil, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertEqual(offline.showsKept, [.officialSkills, .toolCalls, .connectors, .connectorCatalog, .plugins, .pluginCatalog])
+        XCTAssertEqual(offline.servers.map(\.name), ["linear"])
+
+        await next.loadConnectors()
+        XCTAssertNotNil(next.connectorsError)
+        XCTAssertEqual(next.servers.map(\.name), ["linear"], "A read that fails keeps them up")
+        XCTAssertTrue(next.showsKept.contains(.connectors))
+        await next.probeServers()
+        XCTAssertFalse(hermes.calls.contains { $0.path.contains("/test") }, "Kept servers are tested only once Hermes lists them")
+
+        hermes.responses = requester.responses
+        hermes.responses["/api/mcp/servers"] = ["servers": [["name": "github", "transport": "http", "url": "https://g", "enabled": true]]]
+        await next.loadConnectors()
+        XCTAssertEqual(next.servers.map(\.name), ["github"], "Hermes' answer takes their place")
+        XCTAssertFalse(next.showsKept.contains(.connectors))
+
+        // A switch flipped on a kept list is kept, and the list read again.
+        let third = CapabilitiesStore()
+        third.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        hermes.responses["/api/mcp/servers"] = ["servers": [["name": "github", "transport": "http", "url": "https://g", "enabled": false]]]
+        hermes.responses["/api/mcp/servers/github/enabled"] = ["ok": true]
+        hermes.calls.removeAll()
+        try await third.setServerEnabled("github", enabled: false)
+        XCTAssertEqual(kept.written, [CapabilitiesStore.KeptRoute.servers])
+        XCTAssertTrue(hermes.calls.contains { $0.path == "/api/mcp/servers" && $0.method == "GET" }, "The kept list asks again")
+        XCTAssertEqual(third.servers.first?.enabled, false)
+        XCTAssertFalse(third.showsKept.contains(.connectors))
+
+        // A plugin's switch on the rows Hermes gave is kept as Hermes took
+        // it, with no read again.
+        await third.loadPlugins()
+        hermes.responses["/api/dashboard/agent-plugins/Weather/enable"] = ["ok": true]
+        hermes.calls.removeAll()
+        try await third.setPluginEnabled(third.plugins[0], enabled: true)
+        let keptPlugins = kept.saved[CapabilitiesStore.KeptRoute.plugins]?["plugins"] as? [[String: Any]]
+        XCTAssertEqual(keptPlugins?.first?["runtime_status"] as? String, "enabled")
+        XCTAssertEqual(kept.written.last, CapabilitiesStore.KeptRoute.plugins)
+        XCTAssertEqual(hermes.calls.map(\.method), ["POST"])
+
+        // With nothing kept to change, the switch still counts as a write,
+        // so a read asked before it isn't kept after it.
+        kept.forget(CapabilitiesStore.KeptRoute.plugins)
+        hermes.responses["/api/dashboard/agent-plugins/Weather/disable"] = ["ok": true]
+        try await third.setPluginEnabled(third.plugins[0], enabled: false)
+        XCTAssertNil(kept.saved[CapabilitiesStore.KeptRoute.plugins])
+        XCTAssertEqual(kept.noted, [CapabilitiesStore.KeptRoute.plugins])
+
+        // A removal Hermes took is kept, so a read after it that fails
+        // doesn't bring the plugin back.
+        await third.loadPlugins()
+        XCTAssertEqual((kept.saved[CapabilitiesStore.KeptRoute.plugins]?["plugins"] as? [Any])?.count, 1)
+        hermes.responses["/api/dashboard/plugins/hub"] = nil
+        hermes.responses["/api/dashboard/agent-plugins/Weather"] = ["ok": true]
+        try await third.removePlugin(third.plugins[0])
+        XCTAssertEqual((kept.saved[CapabilitiesStore.KeptRoute.plugins]?["plugins"] as? [Any])?.count, 0)
+
+        // A connector install counts as a write to the servers, so a read
+        // asked before it isn't kept after it, and marks the kept catalog's
+        // entry installed, so when the reads after it fail, the catalog
+        // doesn't offer it again next time.
+        let notion = try XCTUnwrap(third.connectorCatalog.first { $0.name == "notion" })
+        hermes.responses["/api/mcp/catalog/install"] = ["ok": true]
+        hermes.responses["/api/mcp/servers"] = nil
+        hermes.responses["/api/mcp/catalog"] = nil
+        let installed = await third.installConnector(notion, env: [:])
+        XCTAssertTrue(installed)
+        XCTAssertEqual(kept.noted.last, CapabilitiesStore.KeptRoute.servers)
+        XCTAssertEqual(kept.written.last, CapabilitiesStore.KeptRoute.connectorCatalog)
+        let reopened = CapabilitiesStore()
+        reopened.configure(requester: nil, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertEqual(reopened.connectorCatalog.first { $0.name == "notion" }?.installed, true)
+    }
+
+    /// A kept list reads again after a switch Hermes refused, and its
+    /// servers are tested once Hermes lists them, after a connector install
+    /// or a server's edit too; a plugin update counts as a write, as an
+    /// install does.
+    func testChangesOnKeptListsReadThemAgain() async throws {
+        let github: [String: Any] = ["name": "github", "transport": "http", "url": "https://g", "enabled": true]
+        let hermes = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [github]],
+            "/api/mcp/catalog": ["entries": [["name": "notion", "auth_type": "oauth"]]],
+            "/api/dashboard/plugins/hub": ["plugins": [["name": "Weather", "source": "git", "runtime_status": "disabled"]]],
+        ])
+        let kept = KeptCapabilityAnswers()
+        let dashboardKept = KeptCapabilityAnswers()
+        let first = CapabilitiesStore()
+        first.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        await first.loadConnectors()
+        await first.loadPlugins()
+
+        let store = CapabilitiesStore()
+        store.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertEqual(store.showsKept, [.connectors, .connectorCatalog, .plugins], "No plugin catalog was kept")
+        hermes.calls.removeAll()
+        do {
+            try await store.setPluginEnabled(store.plugins[0], enabled: true)
+            XCTFail("Hermes refused the switch")
+        } catch {}
+        XCTAssertTrue(hermes.calls.contains { $0.path == "/api/dashboard/plugins/hub" && $0.method == "GET" }, "The kept plugins ask again")
+        XCTAssertFalse(store.showsKept.contains(.plugins))
+
+        hermes.calls.removeAll()
+        do {
+            try await store.setServerEnabled("github", enabled: false)
+            XCTFail("Hermes refused the switch")
+        } catch {}
+        XCTAssertTrue(hermes.calls.contains { $0.path == "/api/mcp/servers" && $0.method == "GET" }, "The kept servers ask again")
+        XCTAssertTrue(hermes.calls.contains { $0.path == "/api/mcp/servers/github/test" && $0.method == "POST" }, "and are tested once Hermes lists them")
+        XCTAssertEqual(store.servers.first?.enabled, true)
+
+        let other = CapabilitiesStore()
+        other.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertTrue(other.showsKept.contains(.connectors))
+        let notion = try XCTUnwrap(other.connectorCatalog.first { $0.name == "notion" })
+        hermes.responses["/api/mcp/catalog/install"] = ["ok": true]
+        hermes.responses["/api/mcp/servers"] = ["servers": [github, ["name": "notion", "transport": "http", "url": "https://n", "enabled": true]]]
+        hermes.calls.removeAll()
+        let installed = await other.installConnector(notion, env: [:])
+        XCTAssertTrue(installed)
+        XCTAssertEqual(
+            hermes.calls.filter { $0.path.hasSuffix("/test") }.map(\.path).sorted(),
+            ["/api/mcp/servers/github/test", "/api/mcp/servers/notion/test"],
+            "Every server Hermes listed is tested, once"
+        )
+
+        hermes.responses["/api/dashboard/plugins/hub"] = nil
+        hermes.responses["/api/dashboard/agent-plugins/Weather/update"] = ["ok": true]
+        let outcome = try await store.updatePlugin(store.plugins[0])
+        XCTAssertEqual(outcome, .updated(restartRequired: true))
+        XCTAssertEqual(kept.noted.last, CapabilitiesStore.KeptRoute.plugins, "A read asked before the update isn't kept after it")
+
+        let edited = CapabilitiesStore()
+        edited.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertTrue(edited.showsKept.contains(.connectors))
+        hermes.responses["/api/config"] = ["mcp_servers": ["github": ["url": "https://g"], "notion": ["url": "https://n"]]]
+        hermes.calls.removeAll()
+        try await edited.saveServer(original: "github", loaded: ["url": "https://g"], name: "github", entry: ["url": "https://g2"], openedOn: edited.generation)
+        let tests = { hermes.calls.filter { $0.path.hasSuffix("/test") }.map(\.path).sorted() }
+        let deadline = ContinuousClock.now + .seconds(10)
+        while tests().count < 2, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(tests(), ["/api/mcp/servers/github/test", "/api/mcp/servers/notion/test"], "After an edit too, in the background")
+    }
+
+    /// A plugin's removal, update or install Hermes took is kept in the
+    /// plugin catalog too (#1533): the catalog hides an installed entry, so
+    /// a removal whose read fails offers the plugin again, now and next time.
+    func testPluginChangesKeepTheCatalogsFlags() async throws {
+        let hermes = CapabilityMockRequester(responses: [
+            "/api/dashboard/plugins/hub": ["plugins": [
+                ["name": "Weather", "source": "git", "runtime_status": "enabled"],
+                ["name": "Maps", "source": "git", "runtime_status": "enabled"],
+            ]],
+            "/api/dashboard/plugins/catalog": ["entries": [
+                ["name": "Weather", "installed": true],
+                ["name": "Maps", "installed": true, "update_available": true],
+                ["name": "Notes", "installed": false],
+            ]],
+        ])
+        let kept = KeptCapabilityAnswers()
+        let dashboardKept = KeptCapabilityAnswers()
+        let store = CapabilitiesStore()
+        store.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        await store.loadPlugins()
+        let weather = try XCTUnwrap(store.plugins.first { $0.name == "Weather" })
+        let maps = try XCTUnwrap(store.plugins.first { $0.name == "Maps" })
+        let notes = try XCTUnwrap(store.pluginCatalog.first { $0.name == "Notes" })
+
+        // Hermes takes each change, and every read after it fails.
+        hermes.responses["/api/dashboard/plugins/hub"] = nil
+        hermes.responses["/api/dashboard/plugins/catalog"] = nil
+        hermes.responses["/api/dashboard/agent-plugins/Weather"] = ["ok": true]
+        try await store.removePlugin(weather)
+        XCTAssertEqual(
+            CapabilityPluginFilter.catalog(store.pluginCatalog, query: "").map(\.name), ["Notes", "Weather"],
+            "The removed plugin is offered again at once"
+        )
+        hermes.responses["/api/dashboard/agent-plugins/Maps/update"] = ["ok": true]
+        _ = try await store.updatePlugin(maps)
+        XCTAssertEqual(store.pluginCatalog.first { $0.name == "Maps" }?.updateAvailable, false)
+        hermes.responses["/api/dashboard/agent-plugins/install"] = ["plugin_name": "Notes"]
+        _ = try await store.installPlugin(notes)
+        XCTAssertEqual(
+            store.pluginCatalog.first { $0.name == "Notes" }?.installed, false,
+            "The catalog shown keeps an installed entry until Hermes' answer brings its row"
+        )
+        XCTAssertEqual(dashboardKept.written.filter { $0 == CapabilitiesStore.KeptRoute.pluginCatalog }.count, 3)
+
+        let next = CapabilitiesStore()
+        next.configure(requester: nil, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertEqual(next.plugins.map(\.name), ["Maps"])
+        XCTAssertEqual(
+            CapabilityPluginFilter.catalog(next.pluginCatalog, query: "").map(\.name), ["Weather"],
+            "Next time the removed plugin is offered and the installed one isn't"
+        )
+        XCTAssertEqual(next.pluginCatalog.first { $0.name == "Maps" }?.updateAvailable, false)
+    }
+
+    /// A catalog shown from its kept copy asks again when its tab next
+    /// shows if its read fails while the list's answers, until a read of it
+    /// answers (#1533).
+    func testAKeptCatalogWhoseReadFailsAsksAgain() async {
+        let hermes = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [["name": "github", "transport": "http", "url": "https://g", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [["name": "notion", "auth_type": "oauth"]]],
+            "/api/dashboard/plugins/hub": ["plugins": [["name": "Weather", "source": "git", "runtime_status": "enabled"]]],
+            "/api/dashboard/plugins/catalog": ["entries": [["name": "Maps", "installed": false]]],
+        ])
+        let kept = KeptCapabilityAnswers()
+        let dashboardKept = KeptCapabilityAnswers()
+        let first = CapabilitiesStore()
+        first.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        await first.loadConnectors()
+        await first.loadPlugins()
+
+        hermes.failures["/api/mcp/catalog"] = URLError(.timedOut)
+        hermes.failures["/api/dashboard/plugins/catalog"] = URLError(.timedOut)
+        let store = CapabilitiesStore()
+        store.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        await store.loadConnectors()
+        await store.loadPlugins()
+        XCTAssertEqual(store.showsKept, [.connectorCatalog, .pluginCatalog], "The lists are Hermes' now, the catalogs still the kept ones")
+        XCTAssertEqual(store.connectorCatalog.map(\.name), ["notion"])
+        XCTAssertEqual(store.pluginCatalog.map(\.name), ["Maps"])
+
+        hermes.failures = [:]
+        await store.loadConnectors()
+        await store.loadPlugins()
+        XCTAssertTrue(store.showsKept.isEmpty, "Hermes' catalogs take the kept ones' place")
+    }
+
+    /// A change Hermes took while the profile or dashboard switched is kept
+    /// for the one it was made on, never the one switched to, so that
+    /// profile opens on it next time, offline too (#1533).
+    func testAChangeLandingAfterASwitchIsKeptForItsOwnProfile() async throws {
+        let hermes = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [
+                ["name": "github", "transport": "http", "url": "https://g", "enabled": true],
+                ["name": "linear", "transport": "http", "url": "https://l", "enabled": true],
+            ]],
+            "/api/mcp/catalog": ["entries": [["name": "github", "installed": true]]],
+            "/api/dashboard/plugins/hub": ["plugins": [["name": "Weather", "source": "git", "runtime_status": "disabled"]]],
+            "/api/dashboard/plugins/catalog": ["entries": [["name": "Weather", "installed": true]]],
+            "/api/mcp/servers/github": ["ok": true],
+            "/api/mcp/servers/linear/enabled": ["ok": true],
+            "/api/dashboard/agent-plugins/Weather": ["ok": true],
+        ])
+        let kept = KeptCapabilityAnswers()
+        let dashboardKept = KeptCapabilityAnswers()
+        let work = CapabilityMockRequester(responses: [:])
+        let elsewhere = KeptCapabilityAnswers()
+        let store = CapabilitiesStore()
+        func open(_ requester: CapabilityMockRequester?) {
+            store.configure(requester: requester, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        }
+        // Hermes answers the change once the store has switched away.
+        func switching(at route: String) {
+            open(hermes)
+            hermes.beforeAnswering = { path in
+                guard path == route else { return }
+                store.configure(requester: work, profile: "work", answers: elsewhere.answers, dashboardAnswers: elsewhere.answers)
+            }
+        }
+        open(hermes)
+        await store.loadConnectors()
+        await store.loadPlugins()
+
+        switching(at: "/api/mcp/servers/github")
+        try await store.removeServer("github")
+        switching(at: "/api/mcp/servers/linear/enabled")
+        try await store.setServerEnabled("linear", enabled: false)
+        switching(at: "/api/dashboard/agent-plugins/Weather")
+        try await store.removePlugin(store.plugins[0])
+        XCTAssertEqual(store.profile, "work")
+        XCTAssertTrue(store.servers.isEmpty && store.plugins.isEmpty, "The profile switched to shows none of it")
+        XCTAssertTrue(elsewhere.saved.isEmpty && elsewhere.written.isEmpty && elsewhere.noted.isEmpty, "nor keeps any")
+        XCTAssertTrue(work.calls.isEmpty)
+
+        hermes.beforeAnswering = nil
+        open(nil)
+        XCTAssertEqual(store.servers.map(\.name), ["linear"])
+        XCTAssertEqual(store.servers.first?.enabled, false)
+        XCTAssertEqual(store.connectorCatalog.first?.installed, false)
+        XCTAssertTrue(store.plugins.isEmpty)
+        XCTAssertEqual(store.pluginCatalog.first?.installed, false)
+    }
+
+    /// A skill's page, a catalog skill's and a toolset's open on what they
+    /// showed last time on the dashboard and profile, each page's of many,
+    /// and a read that fails leaves it kept (#1533).
+    func testEachCapabilityPageOpensOnWhatItShowedLastTime() async throws {
+        let hermes = CapabilityMockRequester(responses: [
+            "/api/skills/content": ["content": "---\nname: pdf\n---\nRead PDFs."],
+            "/api/skills/hub/preview": ["skill_md": "---\nname: maps\n---\nDraw maps."],
+            "/api/tools/toolsets/web/config": ["has_category": true, "providers": [[
+                "name": "Firecrawl", "is_active": true, "status": "needs_keys",
+                "env_vars": [["key": "FIRECRAWL_API_KEY", "prompt": "Firecrawl key", "is_set": false]],
+            ]]],
+            "/api/tools/terminal/backends": ["backends": [["name": "docker", "label": "Docker", "active": true, "status": "ready"]]],
+        ])
+        let kept = KeptCapabilityAnswers()
+        let store = CapabilitiesStore()
+        store.configure(requester: hermes, profile: "default", answers: kept.answers)
+        _ = try await store.skillContent(name: "pdf")
+        _ = try await store.skillPreview(identifier: "official/maps")
+        _ = try await store.toolsetConfig(name: "web")
+        _ = try await store.terminalBackends()
+
+        XCTAssertEqual(Set(kept.saved.keys), [
+            CapabilitiesStore.KeptRoute.page("/api/skills/content?name=pdf"),
+            CapabilitiesStore.KeptRoute.page("/api/skills/hub/preview?identifier=official%2Fmaps"),
+            CapabilitiesStore.KeptRoute.page("/api/tools/toolsets/web/config"),
+            CapabilitiesStore.KeptRoute.terminalBackends,
+        ])
+
+        // The next visit opens on them before Hermes answers.
+        let offline = CapabilityMockRequester(responses: [:])
+        offline.failures = [
+            "/api/skills/content": URLError(.notConnectedToInternet),
+            "/api/tools/toolsets/web/config": URLError(.notConnectedToInternet),
+        ]
+        let next = CapabilitiesStore()
+        next.configure(requester: offline, profile: "default", answers: kept.answers)
+        XCTAssertEqual(next.keptSkillContent(name: "pdf").map(SkillFrontmatter.parse)?.body, "Read PDFs.")
+        XCTAssertNil(next.keptSkillContent(name: "docx"), "Another skill's page")
+        XCTAssertEqual(next.keptSkillPreview(identifier: "official/maps").map(SkillFrontmatter.parse)?.body, "Draw maps.")
+        let config = try XCTUnwrap(next.keptToolsetConfig(name: "web"))
+        XCTAssertEqual(config.providers.map(\.name), ["Firecrawl"])
+        XCTAssertEqual(config.providers.first?.envVars.map(\.key), ["FIRECRAWL_API_KEY"])
+        XCTAssertEqual(next.keptTerminalBackends()?.map(\.name), ["docker"])
+        XCTAssertTrue(offline.calls.isEmpty)
+
+        _ = try? await next.skillContent(name: "pdf")
+        _ = try? await next.toolsetConfig(name: "web")
+        XCTAssertNotNil(next.keptSkillContent(name: "pdf"), "A read that fails leaves it kept")
+        XCTAssertNotNil(next.keptToolsetConfig(name: "web"))
+    }
+
+    /// A backend, terminal or key change Hermes took changes the page's
+    /// kept answer as Hermes now holds it, so the page shows the change
+    /// next time and should the read after it fail. A change that fails,
+    /// or one on a page with nothing kept, makes nothing up (#1533).
+    func testAPageChangeHermesTookIsKeptAsHermesHoldsIt() async throws {
+        let hermes = CapabilityMockRequester(responses: [
+            "/api/tools/toolsets/web/config": [
+                "has_category": true,
+                "active_search_backend": "firecrawl",
+                "active_extract_backend": "firecrawl",
+                "search_via_nous": true,
+                "extract_via_nous": true,
+                "providers": [
+                    ["name": "Nous Subscription", "managed_nous_feature": "web", "web_backend": "firecrawl", "status": "ready"],
+                    [
+                        "name": "Firecrawl", "web_backend": "firecrawl", "status": "needs_keys",
+                        "env_vars": [["key": "FIRECRAWL_API_KEY", "prompt": "", "is_set": false]],
+                    ],
+                    [
+                        "name": "Tavily", "web_backend": "tavily", "status": "needs_keys",
+                        "env_vars": [["key": "TAVILY_API_KEY", "prompt": "", "is_set": false]],
+                    ],
+                ],
+            ],
+            "/api/tools/toolsets/image_gen/config": ["has_category": true, "active_provider": "FAL", "providers": [
+                ["name": "FAL", "is_active": true, "status": "ready"],
+                ["name": "OpenAI", "is_active": false, "status": "ready"],
+            ]],
+            "/api/tools/terminal/backends": ["backends": [
+                ["name": "local", "label": "Local", "active": true, "status": "ready"],
+                ["name": "docker", "label": "Docker", "active": false, "status": "ready"],
+            ]],
+            "/api/tools/toolsets/web/provider": ["needs_nous_auth": false],
+            "/api/tools/toolsets/image_gen/provider": [:],
+            "/api/tools/toolsets/tts/provider": [:],
+            "/api/tools/terminal/backend": [:],
+            "/api/env": [:],
+        ])
+        let kept = KeptCapabilityAnswers()
+        let store = CapabilitiesStore()
+        store.configure(requester: hermes, profile: "default", answers: kept.answers)
+        let shownWeb = try await store.toolsetConfig(name: "web")
+        let shownImage = try await store.toolsetConfig(name: "image_gen")
+        let shownBackends = try await store.terminalBackends()
+
+        _ = try await store.selectProvider(toolset: "image_gen", provider: "OpenAI")
+        _ = try await store.selectProvider(toolset: "web", provider: "Tavily", capability: "search")
+        _ = try await store.selectProvider(toolset: "web", provider: "Firecrawl", capability: "extract")
+        try await store.selectTerminalBackend("docker")
+        try await store.saveKey("FIRECRAWL_API_KEY", value: "typed-key", toolset: "web")
+
+        let image = try XCTUnwrap(store.keptToolsetConfig(name: "image_gen"))
+        XCTAssertEqual(image.activeProvider, "OpenAI")
+        XCTAssertEqual(image.providers.filter(\.isActive).map(\.name), ["OpenAI"])
+        let web = try XCTUnwrap(store.keptToolsetConfig(name: "web"))
+        let nous = try XCTUnwrap(web.providers.first { $0.name == "Nous Subscription" })
+        let firecrawl = try XCTUnwrap(web.providers.first { $0.name == "Firecrawl" })
+        let tavily = try XCTUnwrap(web.providers.first { $0.name == "Tavily" })
+        XCTAssertTrue(web.serves("search", provider: tavily))
+        XCTAssertFalse(web.serves("search", provider: nous))
+        XCTAssertTrue(web.serves("extract", provider: firecrawl), "Its own key, not managed Nous on the same backend")
+        XCTAssertFalse(web.serves("extract", provider: nous))
+        XCTAssertEqual(firecrawl.envVars.map(\.isSet), [true])
+        XCTAssertEqual(tavily.envVars.map(\.isSet), [false])
+        XCTAssertEqual(store.keptTerminalBackends()?.filter(\.active).map(\.name), ["docker"])
+        XCTAssertEqual(Set(kept.written), [
+            CapabilitiesStore.KeptRoute.page("/api/tools/toolsets/image_gen/config"),
+            CapabilitiesStore.KeptRoute.page("/api/tools/toolsets/web/config"),
+            CapabilitiesStore.KeptRoute.terminalBackends,
+        ])
+        XCTAssertFalse(String(describing: kept.saved).contains("typed-key"), "Never the key itself")
+        // The page shows each change itself, as the kept answer holds it,
+        // so it shows on a page with nothing kept too.
+        XCTAssertEqual(shownImage.choosing("OpenAI", capability: nil), image)
+        XCTAssertEqual(
+            shownWeb.choosing("Tavily", capability: "search").choosing("Firecrawl", capability: "extract")
+                .settingKey("FIRECRAWL_API_KEY"),
+            web
+        )
+        XCTAssertEqual(TerminalBackendOption.choosing("docker", in: shownBackends), store.keptTerminalBackends())
+
+        // A change that fails keeps nothing.
+        hermes.failures["PUT /api/tools/terminal/backend"] = URLError(.notConnectedToInternet)
+        try? await store.selectTerminalBackend("local")
+        XCTAssertEqual(store.keptTerminalBackends()?.filter(\.active).map(\.name), ["docker"])
+
+        // A page with nothing kept isn't made up, only noted for its next read.
+        _ = try await store.selectProvider(toolset: "tts", provider: "Edge")
+        XCTAssertNil(store.keptToolsetConfig(name: "tts"))
+        XCTAssertEqual(kept.noted, [CapabilitiesStore.KeptRoute.page("/api/tools/toolsets/tts/config")])
+    }
+
+    /// A plugins read cut off by leaving the tab says nothing failed, and
+    /// the tab asks again when it next shows.
+    func testACancelledPluginsReadIsNoFailure() async {
+        let hermes = CapabilityMockRequester(responses: ["/api/dashboard/plugins/catalog": ["entries": [[String: Any]]()]])
+        hermes.failures["/api/dashboard/plugins/hub"] = CancellationError()
+        let store = CapabilitiesStore()
+        store.configure(requester: hermes, profile: "default")
+
+        await store.loadPlugins()
+
+        XCTAssertNil(store.pluginsError)
+        XCTAssertFalse(store.pluginsLoaded)
+    }
 }
 
 @MainActor
@@ -980,5 +1488,32 @@ private final class CapabilityMockRequester: DashboardJSONRequester {
             throw URLError(.fileDoesNotExist)
         }
         return response
+    }
+}
+
+/// A page's answers kept on the phone, as AppState keeps them, and the
+/// routes a change made there kept.
+@MainActor
+private final class KeptCapabilityAnswers {
+    private(set) var saved: [String: [String: Any]] = [:]
+    private(set) var written: [String] = []
+    /// Routes a change wrote to with nothing kept for them.
+    private(set) var noted: [String] = []
+
+    var answers: KeptAnswers {
+        KeptAnswers(
+            kept: { route in self.saved[route] },
+            keep: { route, writes, read in
+                let answer = try await read()
+                self.saved[route] = answer
+                if writes { self.written.append(route) }
+                return answer
+            },
+            noteWrite: { route in self.noted.append(route) }
+        )
+    }
+
+    func forget(_ route: String) {
+        saved[route] = nil
     }
 }

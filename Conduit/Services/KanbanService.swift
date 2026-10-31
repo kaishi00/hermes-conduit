@@ -74,6 +74,27 @@ final class KanbanService {
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     private static let namespace = "/api/plugins/kanban"
+
+    /// Where the reads the board opens on keep their answers, once per
+    /// dashboard, so the Tasks tab opens on them next time (#1533). Nil:
+    /// they're only read.
+    var answers: KeptAnswers?
+
+    /// The answers kept: the boards, each board as it shows without
+    /// archived tasks (by its slug: a read that names none isn't kept),
+    /// the profiles, the projects, the orchestration settings and the model
+    /// override's catalog, as Hermes gave them, when Conduit can read them.
+    enum KeptRoute {
+        static let boards = "/api/plugins/kanban/boards"
+        static let profiles = "/api/plugins/kanban/profiles"
+        static let projects = "/api/plugins/kanban/projects"
+        static let orchestration = "/api/plugins/kanban/orchestration"
+        static let modelOptions = "/api/plugins/kanban/model-options"
+
+        static func board(_ slug: String) -> String {
+            "/api/plugins/kanban/board?board=" + slug
+        }
+    }
     /// Mirrors upstream's 400 ms dispatcher-nudge debounce (api.ts autoNudge).
     static let dispatcherNudgeDebounceNanoseconds: UInt64 = 400_000_000
     private let nudgeDebounceIntervalNanoseconds: UInt64
@@ -90,15 +111,18 @@ final class KanbanService {
     }
 
     func fetchBoards() async throws -> KanbanBoardsResponse {
-        try await decode(KanbanBoardsResponse.self, path: scoped(Self.namespace + "/boards"))
+        try await decode(KanbanBoardsResponse.self, path: scoped(Self.namespace + "/boards"), keptAs: KeptRoute.boards)
     }
 
     func fetchBoard(slug: String?, includeArchived: Bool) async throws -> KanbanBoard {
         var params: [String: String] = [:]
         if includeArchived { params["include_archived"] = "true" }
+        // Kept as the tab opens, without archived tasks.
+        let kept = includeArchived ? nil : slug.map(KeptRoute.board)
         return try await decode(
             KanbanBoard.self,
-            path: try withBoard(Self.namespace + "/board", slug: slug, params: params)
+            path: try withBoard(Self.namespace + "/board", slug: slug, params: params),
+            keptAs: kept
         )
     }
 
@@ -119,26 +143,35 @@ final class KanbanService {
     }
 
     func fetchProfiles() async throws -> [KanbanProfile] {
-        let response = try await decode(KanbanProfilesResponse.self, path: scoped(Self.namespace + "/profiles"))
+        let response = try await decode(KanbanProfilesResponse.self, path: scoped(Self.namespace + "/profiles"), keptAs: KeptRoute.profiles)
         return response.profiles
     }
 
     func fetchProjects() async throws -> [KanbanProject] {
-        let response = try await decode(KanbanProjectsResponse.self, path: scoped(Self.namespace + "/projects"))
+        let response = try await decode(KanbanProjectsResponse.self, path: scoped(Self.namespace + "/projects"), keptAs: KeptRoute.projects)
         return response.projects
     }
 
     func fetchOrchestration() async throws -> KanbanOrchestrationSettings {
-        try await decode(KanbanOrchestrationSettings.self, path: scoped(Self.namespace + "/orchestration"))
+        try await decode(KanbanOrchestrationSettings.self, path: scoped(Self.namespace + "/orchestration"), keptAs: KeptRoute.orchestration)
     }
 
     /// Backend-curated provider/model roster for per-task overrides
     /// (`GET /model-options`). Board-independent, so no board query is sent.
     /// Unusable rows (empty slug or no models — e.g. a degraded inventory
-    /// payload) are dropped here so every caller sees an offerable catalog.
+    /// payload) are dropped here so every caller sees an offerable catalog,
+    /// and a roster with none isn't kept over the last one that had some.
     func fetchModelOptions() async throws -> [KanbanModelProviderOption] {
-        let response = try await decode(KanbanModelOptionsResponse.self, path: scoped(Self.namespace + "/model-options"))
-        return response.providers.filter { !$0.slug.isEmpty && !$0.models.isEmpty }
+        Self.offerable(try await decode(
+            KanbanModelOptionsResponse.self,
+            path: scoped(Self.namespace + "/model-options"),
+            keptAs: KeptRoute.modelOptions,
+            keepsIf: { !Self.offerable($0).isEmpty }
+        ))
+    }
+
+    static func offerable(_ response: KanbanModelOptionsResponse) -> [KanbanModelProviderOption] {
+        response.providers.filter { !$0.slug.isEmpty && !$0.models.isEmpty }
     }
 
     func createTask(_ requestBody: KanbanCreateTaskRequest, board: String?) async throws -> KanbanCreateTaskResponse {
@@ -419,9 +452,44 @@ final class KanbanService {
 
     // MARK: - Transport helpers
 
-    private func decode<T: Decodable>(_ type: T.Type, path: String) async throws -> T {
-        let response = try await request(path: path, method: "GET", body: nil)
-        return try decodeResponse(type, from: response)
+    /// Read and decoded, the answer kept under `route` when it's named and
+    /// there are answers to keep it in: only one that decodes and that
+    /// `keeps`, so an answer Conduit can't read, or one with nothing to
+    /// offer, never takes the last one's place.
+    private func decode<T: Decodable>(
+        _ type: T.Type,
+        path: String,
+        keptAs route: String? = nil,
+        keepsIf keeps: (T) -> Bool = { _ in true }
+    ) async throws -> T {
+        guard let route, let answers else {
+            return try decodeResponse(type, from: try await request(path: path, method: "GET", body: nil))
+        }
+        var decoded: T?
+        do {
+            let response = try await answers.keep(route, false, {
+                let response = try await self.request(path: path, method: "GET", body: nil)
+                let value = try self.decodeResponse(type, from: response)
+                decoded = value
+                guard keeps(value) else { throw NotKept() }
+                return response
+            })
+            return try decoded ?? decodeResponse(type, from: response)
+        } catch is NotKept {
+            // Answered all the same.
+            guard let decoded else { throw HermesError.invalidResponse }
+            return decoded
+        }
+    }
+
+    /// Ends a read whose answer isn't kept (`decode`'s `keeps`).
+    private struct NotKept: Error {}
+
+    /// An answer kept under one of `KeptRoute`'s routes, decoded as Hermes'
+    /// would be, or nil.
+    static func kept<T: Decodable>(_ type: T.Type, from answer: [String: Any]?) -> T? {
+        guard let answer, let data = try? JSONSerialization.data(withJSONObject: answer) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
     }
 
     private func request(path: String, method: String, body: [String: Any]?) async throws -> [String: Any] {

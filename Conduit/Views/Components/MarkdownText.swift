@@ -2251,11 +2251,9 @@ private struct RemoteMarkdownImage: View {
     /// Scopes where a `MEDIA:` picture is kept on the phone; without one
     /// (a surface that sets no resolver) it is fetched each time.
     @Environment(\.gatewayMediaFiles) private var gatewayMediaFiles
-    /// The chat's scroll engine, which says when a picture that will grow
-    /// its row shows (#1238).
+    /// Set in the chat's transcript alone: elsewhere (a job sheet, a group
+    /// room) a fresh web picture fades in.
     @Environment(\.chatRowDisclosure) private var disclosure
-    /// The row's frame, and the picture waiting to show in it.
-    @StateObject private var arrival = ChatRowArrival()
     @State private var gatewayImage: UIImage?
     /// The cache key `gatewayImage` was loaded for, so a row kept across a
     /// dashboard or profile switch never shows the picture it held before.
@@ -2291,26 +2289,17 @@ private struct RemoteMarkdownImage: View {
 
     /// A picture still in memory shows on the row's first frame, so a row
     /// scrolled back into view doesn't grow from its loading line (#1238).
-    /// A row laid out with its loading line (another row of the same
-    /// picture showed it since) takes it through the task, which asks the
-    /// scroll engine.
     private var shownGatewayImage: UIImage? {
         let key = gatewayCacheKey
         if let gatewayImage, gatewayImageKey == key { return gatewayImage }
-        guard let kept = key.flatMap(TranscriptPictureMemory.image(for:)),
-              arrival.holds(rowHeight(showing: kept.size)) else { return nil }
-        return kept
+        return key.flatMap(TranscriptPictureMemory.image(for:))
     }
 
     private var shownRemoteOutcome: BoundedRemoteImage.Outcome? {
         if let remoteOutcome, remoteOutcomeURL == url { return remoteOutcome }
-        // A picture decoded already shows on the row's first frame, or where
-        // the row has its height already (its size was remembered). One that
-        // would grow the row waits for the task, which asks the scroll
-        // engine (#1238).
+        // A picture decoded already shows on the row's first frame (#1238).
         guard !isGatewayMedia, let remoteURL = URL(string: url),
-              let cached = BoundedRemoteImage.cachedImage(remoteURL, maxPixelSize: Self.remoteMaxPixelSize),
-              arrival.holds(rowHeight(showing: cached.size)) else { return nil }
+              let cached = BoundedRemoteImage.cachedImage(remoteURL, maxPixelSize: Self.remoteMaxPixelSize) else { return nil }
         return .image(cached)
     }
 
@@ -2349,23 +2338,15 @@ private struct RemoteMarkdownImage: View {
                     .opensMediaPreview { openImage(showing: image) }
                     .accessibilityLabel(alt.isEmpty ? Text("Image") : Text(verbatim: alt))
             case .unavailable:
-                WebFallbackImage(url: url, alt: alt, arrival: arrival, engine: disclosure?.engine)
+                WebFallbackImage(url: url, alt: alt)
             case .tooLarge:
-                WebFallbackImage(url: url, alt: alt, loadsInPage: false, arrival: arrival, engine: disclosure?.engine)
+                WebFallbackImage(url: url, alt: alt, loadsInPage: false)
             case nil:
                 loadingLabel
             }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .chatRowFrame(arrival)
-        .onDisappear {
-            // A picture still waiting to show is dropped with the row; the
-            // task loads it again when the row is back.
-            arrival.rowDisappeared()
-        }
-        // Handed another picture: whatever still waits was the last one's.
-        .onChange(of: loadIdentity) { arrival.rowDisappeared() }
         .task(id: loadIdentity) {
             guard isGatewayMedia else {
                 // An outcome for another address goes; this one's stays
@@ -2450,69 +2431,46 @@ private struct RemoteMarkdownImage: View {
         }
     }
 
-    /// Puts a picture from Hermes in the row once the reader's scrolling
-    /// allows (ChatRowArrival), remembering it then: remembered first,
-    /// its size would resize the loading line on its own. After a sign-out
-    /// it shows, but isn't remembered.
+    /// Puts a picture from Hermes in the row, remembering it. After a
+    /// sign-out it shows, but isn't remembered.
     private func placeGatewayImage(_ image: UIImage, for cacheKey: String?, generation: Int) {
-        arrival.arrive(rowHeight: rowHeight(showing: image.size), engine: disclosure?.engine) {
-            if let cacheKey, generation == TranscriptImageCache.generation {
-                TranscriptPictureMemory.remember(image, for: cacheKey)
-            }
-            gatewayImage = image
-            gatewayImageKey = cacheKey
+        if let cacheKey, generation == TranscriptImageCache.generation {
+            TranscriptPictureMemory.remember(image, for: cacheKey)
         }
+        gatewayImage = image
+        gatewayImageKey = cacheKey
     }
 
-    /// Puts a web picture in the row the same way, its size remembered as
-    /// it shows. Outside a chat a fresh load fades in; in a chat it lands
-    /// in one pass, which the engine makes good above the reader.
+    /// Puts a web picture in the row, its size remembered as it shows.
+    /// Outside a chat a fresh load fades in; in a chat it lands in one
+    /// pass, and the transcript keeps the reader's row where it is.
     private func placeRemoteImage(_ image: UIImage, generation: Int, fades: Bool) {
-        let engine = disclosure?.engine
-        let sizeKey = remoteSizeKey
-        let placedURL = url
-        arrival.arrive(rowHeight: rowHeight(showing: image.size), engine: engine) {
-            // The row moved on to another address while this one waited.
-            guard remoteOutcomeURL == placedURL else { return }
-            if generation == TranscriptImageCache.generation {
-                TranscriptPictureMemory.rememberSize(image.size, for: sizeKey)
-            }
-            if fades, engine == nil {
-                withAnimation(.easeInOut(duration: 0.2)) { remoteOutcome = .image(image) }
-            } else {
-                remoteOutcome = .image(image)
-            }
+        if generation == TranscriptImageCache.generation {
+            TranscriptPictureMemory.rememberSize(image.size, for: remoteSizeKey)
+        }
+        if fades, disclosure == nil {
+            withAnimation(.easeInOut(duration: 0.2)) { remoteOutcome = .image(image) }
+        } else {
+            remoteOutcome = .image(image)
         }
     }
 
-    /// A picture from Hermes that won't load gives its place to its label
-    /// the same way, a height only the label's layout tells.
+    /// A picture from Hermes that won't load gives its place to its label.
     private func placeGatewayFailure() {
         let failedLoad = loadIdentity
         // Its label shows already (the task restarting as the row comes back).
         guard gatewayFailedLoad != failedLoad else { return }
-        arrival.arrive(rowHeight: nil, engine: disclosure?.engine) {
-            gatewayFailedLoad = failedLoad
-        }
+        gatewayFailedLoad = failedLoad
     }
 
-    /// A web picture that won't show here gives its place to its fallback
-    /// the same way: the page that tries it, at its starting height, or the
-    /// link, which only its layout measures. Outside a chat it fades in.
+    /// A web picture that won't show here gives its place to its fallback:
+    /// the page that tries it, or the link. Outside a chat it fades in.
     private func placeRemoteFailure(_ outcome: BoundedRemoteImage.Outcome) {
         guard !showsFallback(for: outcome) else { return }
-        let engine = disclosure?.engine
-        let placedURL = url
-        var rowHeight: CGFloat?
-        if case .unavailable = outcome { rowHeight = WebFallbackImage.startingHeight }
-        arrival.arrive(rowHeight: rowHeight, engine: engine) {
-            // The row moved on to another address while this one waited.
-            guard remoteOutcomeURL == placedURL else { return }
-            if engine == nil {
-                withAnimation(.easeInOut(duration: 0.2)) { remoteOutcome = outcome }
-            } else {
-                remoteOutcome = outcome
-            }
+        if disclosure == nil {
+            withAnimation(.easeInOut(duration: 0.2)) { remoteOutcome = outcome }
+        } else {
+            remoteOutcome = outcome
         }
     }
 
@@ -2524,15 +2482,6 @@ private struct RemoteMarkdownImage: View {
         case (.unavailable?, .unavailable), (.tooLarge?, .tooLarge): return true
         default: return false
         }
-    }
-
-    /// The height the row takes with a picture of `size` in it: scaled to
-    /// the row's width, up to the ceiling, which a placeholder at the
-    /// remembered size already has. The arrival compares it with the row's
-    /// frame, since a row laid out before a cold launch's kept sizes loaded
-    /// still draws its loading line.
-    private func rowHeight(showing size: CGSize) -> CGFloat {
-        ChatRowArrival.fittedHeight(of: size, inWidth: arrival.stackFrame?.width ?? 0, maxHeight: Self.maxHeight)
     }
 
     @ViewBuilder
@@ -2557,9 +2506,7 @@ private struct RemoteMarkdownImage: View {
     }
 
     /// At the picture's own size when that's known, so the row doesn't
-    /// change height when it arrives: known as the row was first laid out,
-    /// since a size remembered after (another row of the same picture, or
-    /// a cold launch's kept sizes loading) would resize the line on its own.
+    /// change height when it arrives.
     @ViewBuilder
     private var loadingLabel: some View {
         let label = HStack(spacing: 8) {
@@ -2568,7 +2515,7 @@ private struct RemoteMarkdownImage: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
-        if let size = reservedSize, arrival.holds(rowHeight(showing: size)) {
+        if let size = reservedSize {
             Color.primary.opacity(0.05)
                 .aspectRatio(size, contentMode: .fit)
                 .frame(maxHeight: Self.maxHeight)
@@ -2920,24 +2867,10 @@ private struct WebFallbackImage: View {
     let alt: String
     /// False for a picture too large to load here: just the link.
     var loadsInPage = true
-    /// The row's arrival, which what the page reports goes through, as the
-    /// picture would have (#1238).
-    let arrival: ChatRowArrival
-    /// The chat's scroll engine, nil outside a chat.
-    let engine: ChatScrollEngine?
     /// The page's height before it has measured the picture.
     static let startingHeight: CGFloat = 220
     @State private var height: CGFloat = WebFallbackImage.startingHeight
     @State private var failed = false
-    /// What the page last reported, kept until the row takes it: a row
-    /// that left the screen first takes it when it's back, since the page
-    /// doesn't report again.
-    @State private var reported: PageReport? = nil
-
-    enum PageReport {
-        case height(CGFloat)
-        case failed
-    }
 
     var body: some View {
         Group {
@@ -2955,9 +2888,6 @@ private struct WebFallbackImage: View {
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
         }
-        .onAppear {
-            if let reported { take(reported) }
-        }
     }
 
     private static func shownHeight(_ height: CGFloat) -> CGFloat {
@@ -2969,32 +2899,19 @@ private struct WebFallbackImage: View {
         Binding(get: { height }, set: { measured in
             // Web view callbacks arrive on the main thread; said so,
             // whatever isolation the SDK gives this closure.
-            MainActor.assumeIsolated { take(.height(measured)) }
-        })
-    }
-
-    /// The page couldn't show it either.
-    private var pageFailed: Binding<Bool> {
-        Binding(get: { failed }, set: { didFail in
             MainActor.assumeIsolated {
-                if didFail { take(.failed) }
+                if !failed, measured != height { height = measured }
             }
         })
     }
 
-    /// The row takes what the page reported once the reader's scrolling
-    /// allows: the picture's height, or the link, a height only its layout
-    /// tells.
-    private func take(_ report: PageReport) {
-        reported = report
-        guard !failed else { return }
-        switch report {
-        case .height(let measured):
-            guard measured != height else { return }
-            arrival.arrive(rowHeight: Self.shownHeight(measured), engine: engine) { height = measured }
-        case .failed:
-            arrival.arrive(rowHeight: nil, engine: engine) { failed = true }
-        }
+    /// The page couldn't show it either: the link instead.
+    private var pageFailed: Binding<Bool> {
+        Binding(get: { failed }, set: { didFail in
+            MainActor.assumeIsolated {
+                if didFail, !failed { failed = true }
+            }
+        })
     }
 
     @ViewBuilder
