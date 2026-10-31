@@ -257,7 +257,11 @@ final class ChatScrollEngine: ObservableObject {
     let replyRoom = ChatReplyRoom()
     private var renderInputsPublishScheduled = false
 
-    private(set) var mode: Mode = .following
+    private(set) var mode: Mode = .following {
+        didSet {
+            if mode != oldValue { ChatViewportTrace.shared.log("mode \(oldValue) -> \(mode)") }
+        }
+    }
     private(set) var identity: ChatScrollSessionIdentity = .none
     private(set) var renderedSessionKey: ChatScrollSessionKey?
     private(set) var activeSessionKey: ChatScrollSessionKey?
@@ -541,7 +545,7 @@ final class ChatScrollEngine: ObservableObject {
         guard lastBottomBarInset == surface.insetBottom, mode == .browsing,
               surface.distanceFromBottom < -0.5 else { return }
         closingBarGap = true
-        surface.setContentOffsetY(surface.maxOffsetY, animated: false)
+        write(surface.maxOffsetY, animated: false, on: surface, by: "close bar gap")
         closingBarGap = false
     }
 
@@ -612,6 +616,7 @@ final class ChatScrollEngine: ObservableObject {
 
     func rowFramesChanged(_ frames: [String: ChatScrollRowFrame]) {
         ChatViewportTrace.shared.log("rowFrames n=\(frames.count)")
+        ChatViewportWatch.shared.layoutPass()
         surfaceCallbackDepth += 1
         defer { surfaceCallbackDepth -= 1 }
         rowFrames = frames
@@ -633,6 +638,7 @@ final class ChatScrollEngine: ObservableObject {
 
     func liveRowFramesChanged(_ frames: [String: ChatScrollRowFrame]) {
         ChatViewportTrace.shared.log("liveRowFrames n=\(frames.count)")
+        ChatViewportWatch.shared.layoutPass()
         let lostARow = liveRowFrames.keys.contains { frames[$0] == nil }
         liveRowFrames = frames
         // A stack that dropped its rows may change no size at all.
@@ -908,7 +914,7 @@ final class ChatScrollEngine: ObservableObject {
             landed, surface.contentOffsetY, written, cardShiftOwed
         ))
         landingCardShift = true
-        surface.setContentOffsetY(written, animated: false)
+        write(written, animated: false, on: surface, by: "card growth")
         landingCardShift = false
     }
 
@@ -1050,6 +1056,7 @@ final class ChatScrollEngine: ObservableObject {
         activeSessionKey: ChatScrollSessionKey? = nil
     ) {
         ChatViewportTrace.shared.log("transcript n=\(messages.count) revision \(transcriptRevision)")
+        ChatViewportWatch.shared.transcriptChanged()
         TranscriptPerf.note(.transcriptChanged)
         if let activeSessionKey {
             self.activeSessionKey = activeSessionKey
@@ -1148,7 +1155,7 @@ final class ChatScrollEngine: ObservableObject {
         let distance = surface.distanceFromBottom
         if animated, !prefersReducedMotion(), distance > 0.5, distance <= surface.viewportHeight * 3 {
             latestAnimationUntil = now() + Self.latestAnimationDuration
-            surface.setContentOffsetY(surface.maxOffsetY, animated: true)
+            write(surface.maxOffsetY, animated: true, on: surface, by: "latest")
         } else {
             latestAnimationUntil = nil
             // A send's hold is for the message being sent. Its row may reach
@@ -1212,7 +1219,7 @@ final class ChatScrollEngine: ObservableObject {
         }
         if abs(surface.contentOffsetY - surface.minOffsetY) > 0.5 {
             // The offset change reports back through surfaceScrolled().
-            surface.setContentOffsetY(surface.minOffsetY, animated: false)
+            write(surface.minOffsetY, animated: false, on: surface, by: "top")
         } else {
             // Already there (a short chat): no offset change will report,
             // so re-evaluate following here.
@@ -1277,7 +1284,7 @@ final class ChatScrollEngine: ObservableObject {
                 emit(.persistSnapshot(renderedSessionKey))
             }
             if abs(surface.contentOffsetY - target) > 0.5 {
-                surface.setContentOffsetY(target, animated: false)
+                write(target, animated: false, on: surface, by: "reply start")
             }
         } else {
             // Not laid out: the reply's start is more than a screen up.
@@ -1373,7 +1380,7 @@ final class ChatScrollEngine: ObservableObject {
             }
             state.placed = true
             restoration = state
-            surface.setContentOffsetY(target, animated: false)
+            write(target, animated: false, on: surface, by: "restore")
             refreshTrackedMessageVisibility()
             return true
         }
@@ -1423,6 +1430,18 @@ final class ChatScrollEngine: ObservableObject {
 
     var latestAnimationInFlight: Bool {
         latestAnimationUntil.map { now() < $0 } ?? false
+    }
+
+    /// Every offset the engine writes: the trace names the rule that asked,
+    /// and ChatViewportWatch takes the move it makes as asked for.
+    private func write(_ y: CGFloat, animated: Bool, on surface: ChatScrollSurface, by rule: String) {
+        ChatViewportTrace.shared.log(String(
+            format: "write %@: %.1f -> %.1f%@ (content %.1f, viewport %.1f)",
+            rule, surface.contentOffsetY, y, animated ? " animated" : "", surface.contentHeight, surface.viewportHeight
+        ))
+        ChatViewportWatch.shared.engineWrites(animated: animated) {
+            surface.setContentOffsetY(y, animated: animated)
+        }
     }
 
     private func setMode(_ newMode: Mode) {
@@ -1574,6 +1593,7 @@ final class ChatScrollEngine: ObservableObject {
             rebuildsLeft > 0 ? "rebuilding the scroll view" : "still blank after a rebuild"
         ))
         guard rebuildsLeft > 0 else { return }
+        ChatViewportWatch.shared.blankViewportRebuilt()
         // The old layout's frames would answer the follow-up check.
         rowFrames = [:]
         liveRowFrames = [:]
@@ -1648,13 +1668,13 @@ final class ChatScrollEngine: ObservableObject {
         guard abs(surface.contentOffsetY - target) > 0.5 else { return }
         if animates {
             latestAnimationUntil = now() + Self.latestAnimationDuration
-            surface.setContentOffsetY(target, animated: true)
+            write(target, animated: true, on: surface, by: "pin")
             schedule(Self.latestAnimationDuration) { [weak self] in
                 self?.latestAnimationFinished()
             }
             return
         }
-        surface.setContentOffsetY(target, animated: false)
+        write(target, animated: false, on: surface, by: "pin")
     }
 
     /// Where following stops for the reply the hold is armed for: the
@@ -1806,11 +1826,7 @@ final class ChatScrollEngine: ObservableObject {
         }
         prependAnchor = anchor
         guard moves else { return }
-        ChatViewportTrace.shared.log(String(
-            format: "prepend hold content %.1f offset %.1f -> %.1f (%@)",
-            surface.contentHeight, surface.contentOffsetY, target, rowTarget == nil ? "estimate" : "row"
-        ))
-        surface.setContentOffsetY(target, animated: false)
+        write(target, animated: false, on: surface, by: rowTarget == nil ? "prepend hold, estimate" : "prepend hold, row")
     }
 
     /// A landed page of earlier messages still holding the reader's rows.

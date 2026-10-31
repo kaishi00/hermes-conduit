@@ -389297,6 +389297,416 @@
           }
         }
       }
+    },
+    "Chat traces": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat-Protokolle"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registros del chat"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Traces du chat"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jejak chat"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tracce della chat"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チャットのトレース"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "채팅 추적 기록"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ślady czatu"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registros do chat"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Трассировка чата"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sohbet izleri"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天轨迹"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天軌跡"
+          }
+        }
+      }
+    },
+    "Conduit notes how the open chat scrolls and lays out: row counts, sizes and timings, never what the messages say. When a chat jumps, freezes or stops scrolling, it saves the last few minutes on this device.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit hält fest, wie der offene Chat scrollt und sich aufbaut: Zeilenzahlen, Größen und Zeiten, nie was in den Nachrichten steht. Wenn ein Chat springt, einfriert oder nicht mehr scrollt, speichert es die letzten Minuten auf diesem Gerät."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit anota cómo se desplaza y se dibuja el chat abierto: número de filas, tamaños y tiempos, nunca lo que dicen los mensajes. Cuando un chat salta, se congela o deja de desplazarse, guarda los últimos minutos en este dispositivo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit note comment le chat ouvert défile et se met en page : nombre de lignes, tailles et durées, jamais ce que disent les messages. Quand un chat saute, se fige ou ne défile plus, il enregistre les dernières minutes sur cet appareil."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit mencatat cara chat yang terbuka bergulir dan ditata: jumlah baris, ukuran, dan waktu, tidak pernah isi pesannya. Saat chat melompat, macet, atau berhenti bergulir, Conduit menyimpan beberapa menit terakhir di perangkat ini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit annota come la chat aperta scorre e si dispone: numero di righe, dimensioni e tempi, mai cosa dicono i messaggi. Quando una chat salta, si blocca o smette di scorrere, salva gli ultimi minuti su questo dispositivo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit は、開いているチャットのスクロールとレイアウトの様子（行数、サイズ、タイミング）を記録します。メッセージの内容は記録しません。チャットが飛んだり、フリーズしたり、スクロールしなくなったりすると、直前の数分間をこのデバイスに保存します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit는 열린 채팅이 스크롤되고 배치되는 방식(행 수, 크기, 시간)을 기록하며, 메시지 내용은 절대 기록하지 않습니다. 채팅이 튀거나 멈추거나 스크롤되지 않으면 마지막 몇 분을 이 기기에 저장합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit zapisuje, jak otwarty czat się przewija i układa: liczbę wierszy, rozmiary i czasy, nigdy treść wiadomości. Gdy czat przeskoczy, zawiesi się lub przestanie się przewijać, zapisuje ostatnie minuty na tym urządzeniu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Conduit anota como o chat aberto rola e se organiza: número de linhas, tamanhos e tempos, nunca o que as mensagens dizem. Quando um chat pula, trava ou para de rolar, ele salva os últimos minutos neste dispositivo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit отмечает, как открытый чат прокручивается и раскладывается: число строк, размеры и время, но никогда не содержимое сообщений. Когда чат прыгает, зависает или перестаёт прокручиваться, Conduit сохраняет последние минуты на этом устройстве."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit, açık sohbetin nasıl kaydığını ve yerleştiğini kaydeder: satır sayıları, boyutlar ve süreler; mesajların içeriğini asla kaydetmez. Bir sohbet sıçradığında, donduğunda ya da kaymayı bıraktığında son birkaç dakikayı bu cihaza kaydeder."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 会记录打开的聊天如何滚动和排版：行数、尺寸和时间，绝不记录消息内容。当聊天跳动、卡住或无法滚动时，它会把最近几分钟保存在这台设备上。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 會記錄開啟的聊天如何捲動和排版：列數、尺寸和時間，絕不記錄訊息內容。當聊天跳動、卡住或無法捲動時，它會把最近幾分鐘保存在這部裝置上。"
+          }
+        }
+      }
+    },
+    "If a chat jumped or got stuck, send its traces right after, while they still hold that moment.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn ein Chat gesprungen oder hängen geblieben ist, sende seine Protokolle gleich danach, solange sie diesen Moment noch enthalten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si un chat saltó o se quedó atascado, envía sus registros justo después, mientras aún guardan ese momento."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si un chat a sauté ou s’est bloqué, envoyez ses traces juste après, tant qu’elles contiennent encore ce moment."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jika chat melompat atau tersangkut, segera kirim jejaknya setelah itu, selagi masih memuat momen tersebut."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se una chat è saltata o si è bloccata, invia le sue tracce subito dopo, finché contengono ancora quel momento."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チャットが飛んだり固まったりしたら、その場面が残っているうちに、すぐにトレースを送信してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "채팅이 튀거나 멈췄다면 그 순간이 남아 있을 때 바로 추적 기록을 보내세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeśli czat przeskoczył lub się zaciął, wyślij jego ślady od razu, póki jeszcze obejmują ten moment."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se um chat pulou ou travou, envie os registros logo depois, enquanto eles ainda guardam esse momento."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Если чат прыгнул или застрял, отправьте его трассировку сразу после этого, пока в ней ещё есть этот момент."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir sohbet sıçradıysa ya da takıldıysa, izlerini hemen ardından, o anı hâlâ içerirken gönderin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果聊天跳动或卡住，请在之后立即发送它的轨迹，趁其中还保留着那一刻。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果聊天跳動或卡住，請在之後立即傳送它的軌跡，趁其中還保留著那一刻。"
+          }
+        }
+      }
+    },
+    "Send to Conduit's developer": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An den Entwickler von Conduit senden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar al desarrollador de Conduit"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyer au développeur de Conduit"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kirim ke pengembang Conduit"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invia allo sviluppatore di Conduit"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit の開発者に送信"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 개발자에게 보내기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wyślij twórcy Conduit"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar ao desenvolvedor do Conduit"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отправить разработчику Conduit"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit'in geliştiricisine gönder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送给 Conduit 的开发者"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "傳送給 Conduit 的開發者"
+          }
+        }
+      }
+    },
+    "Share chat traces": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat-Protokolle teilen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compartir registros del chat"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Partager les traces du chat"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bagikan jejak chat"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Condividi tracce della chat"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チャットのトレースを共有"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "채팅 추적 기록 공유"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Udostępnij ślady czatu"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compartilhar registros do chat"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Поделиться трассировкой чата"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sohbet izlerini paylaş"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分享聊天轨迹"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分享聊天軌跡"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -34,6 +34,7 @@ struct GatewayDiagnosticsSheet: View {
                     summary
                     lastConnection
                     DeviceReportsSection()
+                    ChatTracesSection()
                     connectors
                     logs
                 }
@@ -546,5 +547,72 @@ private struct DeviceReportsSection: View {
         loading = true
         loaded = await MetricKitReports.shared.load()
         loading = false
+    }
+}
+
+/// Chat traces (#1533): what the chat recorder saved when a chat jumped,
+/// stalled or stopped scrolling, and what it holds now, to send to
+/// Conduit's developer or share.
+private struct ChatTracesSection: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @State private var exportURL: URL?
+    @State private var canSend = false
+    @State private var sending = false
+    @State private var result: ChatTraceUpload.Result?
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Chat traces"), symbol: "waveform.path.ecg", tint: .conduitAccent) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Conduit notes how the open chat scrolls and lays out: row counts, sizes and timings, never what the messages say. When a chat jumps, freezes or stops scrolling, it saves the last few minutes on this device.")
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                Text("If a chat jumped or got stuck, send its traces right after, while they still hold that moment.")
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                if sending {
+                    ProgressView().controlSize(.small)
+                } else if let result, result != .nothing {
+                    Text(verbatim: result == .sent ? AppLocalization.string("Report sent. Thank you!") : AppLocalization.string("Couldn't send the report"))
+                        .scaledFont(.footnote)
+                        .foregroundStyle(result == .sent ? Color.secondary : Color.red)
+                }
+                Button { Task { await send() } } label: {
+                    Label("Send to Conduit's developer", systemImage: "paperplane")
+                }
+                .buttonStyle(.settings)
+                .disabled(!canSend || sending)
+                .accessibilityLabel(AppLocalization.string("Send to Conduit's developer"))
+                .accessibilityIdentifier("diagnostics.sendChatTraces")
+                if let exportURL {
+                    ShareLink(item: exportURL) {
+                        Label("Share chat traces", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.settings)
+                    .accessibilityLabel(AppLocalization.string("Share chat traces"))
+                    .accessibilityIdentifier("diagnostics.shareChatTraces")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .task { await load() }
+    }
+
+    /// The share file and whether there's anything to send, off the main
+    /// thread: up to five traces of a few hundred kilobytes.
+    private func load() async {
+        let current = ChatViewportTrace.shared.lines(last: ChatTraceStore.maxRingLines)
+        let (url, saved) = await Task.detached(priority: .utility) { () -> (URL?, Int) in
+            let store = ChatTraceStore()
+            return (store.writeExport(current: current), store.traces().count)
+        }.value
+        exportURL = url
+        canSend = !current.isEmpty || saved > 0
+    }
+
+    private func send() async {
+        sending = true
+        result = await ChatTraceUpload.sendAll()
+        sending = false
+        await load()
     }
 }

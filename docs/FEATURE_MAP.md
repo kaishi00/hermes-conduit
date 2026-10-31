@@ -2048,7 +2048,7 @@ devices)
 - A browsing reader (a chat or a room) is never rebuilt under, so a blank screen there waits until they reach the bottom or reopen the chat.
 - A group room that opens empty scrolls its first events to the end: that batch is usually the room's history arriving, which should open at its newest row, so only events after a row already seen land at a member message's start.
 
-**Checked:** 2026-10-30, #1550 (an unread chat left mid-turn lands at its reply start from its saved rows, a landing the open's own switch keeps; Hermes' first rows after saved ones don't arm the hold, and saved rows that matched them still leave the engine's provisional state); 2026-10-29, #1509 (issue 1436: the stop puts the sent message at the top and the reply streams into room under it; group rooms not needed: their events arrive whole and already land at a member message's top, and the caption names chats for the send's move; Code, Rulings, Tests, Settings caption); 2026-10-28, #1455 (carrying #1431; following pins when the composer bar's height changes; Code, Rulings, gap); 2026-10-27, #1367 (the blank viewport check counts live rows and runs during a turn, and group rooms have it too; Code, Rulings, gaps); 2026-10-26, #1313 (the stop stays armed, so a reader a shrinking row estimate clamps back to the bottom stops again instead of following the reply to its end; ChatScrollHostedTests in Tests); 2026-10-26, #1290 (the check for another device's message goes by row id; Code); 2026-10-25, at #1270.
+**Checked:** 2026-10-31, #1554 (the chat recorder: every offset the engine writes goes through one write that names the rule in the trace, and the engine, the chat's scroll view and group rooms' locator feed ChatViewportWatch; nothing moves differently; see Crash and freeze reports); 2026-10-30, #1550 (an unread chat left mid-turn lands at its reply start from its saved rows, a landing the open's own switch keeps; Hermes' first rows after saved ones don't arm the hold, and saved rows that matched them still leave the engine's provisional state); 2026-10-29, #1509 (issue 1436: the stop puts the sent message at the top and the reply streams into room under it; group rooms not needed: their events arrive whole and already land at a member message's top, and the caption names chats for the send's move; Code, Rulings, Tests, Settings caption); 2026-10-28, #1455 (carrying #1431; following pins when the composer bar's height changes; Code, Rulings, gap); 2026-10-27, #1367 (the blank viewport check counts live rows and runs during a turn, and group rooms have it too; Code, Rulings, gaps); 2026-10-26, #1313 (the stop stays armed, so a reader a shrinking row estimate clamps back to the bottom stops again instead of following the reply to its end; ChatScrollHostedTests in Tests); 2026-10-26, #1290 (the check for another device's message goes by row id; Code); 2026-10-25, at #1270.
 
 ## Reconnecting to Hermes
 
@@ -4210,27 +4210,37 @@ iPad (swipes unchanged) · text: no Settings caption or doc describes it
 
 After Conduit crashes or freezes, iOS hands it a MetricKit diagnostic on the
 next launch; Conduit asks once, on a card over the main screen, whether to
-send it to its developer, and Send posts it to Conduit's relay.
+send it to its developer, and Send posts it to Conduit's relay. The chat
+recorder keeps what the transcript did, in every build; a watcher saves it
+as a chat trace when a chat jumps, stops scrolling or freezes, and the trace
+rides with the freeze's report or goes from Diagnostics & logs.
 
 **Siblings:** the card over the main screen (both shells; the iPad app on a
 Mac too) · Settings > Connection > Diagnostics & logs (its Device reports
-caption, and the shared reports file's `about` line) · the relay's route and
-store (notifier relay) · the privacy policy and the relay README (notifier) ·
-this README's Privacy section · the app's privacy manifest
-(`Conduit/PrivacyInfo.xcprivacy`, crash and performance data, not linked, and
-its test) and App Store Connect's privacy label (the maintainer's) ·
-not needed: the Apple Watch (watchOS has no MetricKit), CarPlay (the phone's
-card shows when the app is next opened), the widgets and the share extension
-(they don't keep MetricKit reports)
+caption, the shared reports file's `about` line, and Chat traces: its
+captions, Send and Share) · the chat recorder's watchers in chats, project
+chats, Bot Chat and Kanban workers' transcripts (one ChatView) and in group
+rooms · the relay's route and store (notifier relay) · the privacy policy and
+the relay README (notifier) · this README's Privacy section · the app's
+privacy manifest (`Conduit/PrivacyInfo.xcprivacy`, crash, performance and
+other diagnostic data, not linked, and its test) and App Store Connect's
+privacy label (the maintainer's) · not needed: the Apple Watch (watchOS has
+no MetricKit), CarPlay (the phone's card shows when the app is next opened,
+and it draws no transcript), the widgets and the share extension (they don't
+keep MetricKit reports or draw a transcript), a delegate agent's tail sheet
+and a call's transcript sheet (short logs with lists of their own), Desktop's
+read-only legacy groups (no scroll locator to watch)
 
 **Code**
 - Offer and upload: `Conduit/Services/CrashReportOffer.swift` (CrashReportUpload: what a report sends; CrashReportQueue; CrashReportOffer)
 - Which diagnostics are offered: `Conduit/Services/MetricKitReports.swift` (queueCrashReport; MetricKitReportStore.save, normalized and shallowed, which keep a stack overflow's payload readable)
 - Card: `Conduit/Views/CrashReportBanner.swift`, shown by `Conduit/Views/RootView.swift` (MainView's top overlay)
-- Settings caption: `Conduit/Views/ChatSupportSheets.swift` (DeviceReportsSection)
+- Settings: `Conduit/Views/ChatSupportSheets.swift` (DeviceReportsSection, ChatTracesSection)
+- Chat recorder: `Conduit/Services/ChatViewportTrace.swift` (the ring, a line in the relay's characters), `Conduit/Services/ChatViewportWatch.swift` (jump, layout storm, blank-screen rebuild), `Conduit/Services/MainThreadHangWatchdog.swift` (stall; started in `Conduit/ConduitApp.swift`), `Conduit/Services/ChatTraceStore.swift` (ChatTraceStore, ChatTraceUpload.sendAll); the trace riding with a report: CrashReportOffer's pendingReports and send, CrashReportUpload.body(chatTrace:) and post
+- What feeds it: `Conduit/Services/ChatScrollEngine.swift` (write, the mode's log, rowFramesChanged, transcriptChanged, checkForBlankViewport), `Conduit/Views/ChatScrollSurfaceLocator.swift` (UIScrollViewChatSurface's observations), `Conduit/Views/ChatView.swift` (ChatViewportWatch.command), `Conduit/Views/GroupRoomScrollFollow.swift` (GroupRoomScrollLocatorView's observations and checkForBlankViewport), `Conduit/Views/GroupChatView.swift` (the room's commands, events and row frames)
 - Relay: `notifier/relay/src/crash-reports.mjs`, `notifier/relay/test/crash-reports.test.mjs`; privacy: `notifier/docs/privacy/index.html`
 - Privacy manifest: `Conduit/PrivacyInfo.xcprivacy`, `ConduitTests/PrivacyManifestTests.swift`
-- Tests: `ConduitTests/ConnectionFailureTests+CrashReports.swift`, `ConduitTests/ConnectionFailureTests+MetricKit.swift` (testMetricKitSaveKeepsAStackThatOverflowed)
+- Tests: `ConduitTests/ConnectionFailureTests+CrashReports.swift`, `ConduitTests/ConnectionFailureTests+MetricKit.swift` (testMetricKitSaveKeepsAStackThatOverflowed), `ConduitTests/ConnectionFailureTests+ChatTraces.swift`
 
 **Rulings**
 - Ask once, upload to the relay: Not now drops the report from the offer (it stays in Diagnostics & logs), and nothing is sent without Send (2026-10-29, Eric chose it in the TestFlight crashes thread; #1477, notifier #459).
@@ -4238,12 +4248,17 @@ card shows when the app is next opened), the widgets and the share extension
 - Only a crash or hang from the last 7 days is offered, checked again when the card would show, the newest 5 at most, and one too big to send even trimmed to its first crash and hang is not. Those an earlier build kept are queued once per device, on the first launch with the card. Send sends only the reports the card asked about. A relay that answers 404 (no `CRASH_REPORTS_TOKEN`) stops the offers from that build on that device; what's still queued waits for the next build, so a build that ships before the relay route is deployed loses nothing, and a report declined or sent isn't asked about again. The look at reports earlier builds kept waits for a launch that can list the folder and finds none or reads at least one of them (locked files before first unlock fail together); a single file that can't be read is skipped (part of the ask-once design Eric delegated in the TestFlight crashes thread, 2026-10-29; #1477).
 - A report is built from named keys only (the diagnostic's metadata, exception and stack frames); a key MetricKit adds later stays on the phone until it's named (#1477). A stack keeps its first 240 levels (one that overflowed can nest thousands, which would overflow the walk too, and JSONSerialization reads and writes nothing nested past 512, which a sent level-L frame is at 7 + 2L), and the relay keeps at most 512 frame levels. The stored payload has every container 500 deep emptied, so a stack overflow's crash is kept and offered rather than refused as unreadable (MetricKit's root frame is the one that was running and its subFrames lead out toward the thread's entry, so the crash site is what's kept: a real crash payload posted on Apple's developer forums, attachment 18fdc26d-396d-4950-950f-e4d2dffa25cc, nests libsystem_kernel, CoreFoundation, GraphicsServices, UIKitCore, the app, then dyld, root first). Both numbers are Claude's pick, under the ask-once design Eric delegated in the TestFlight crashes thread, after the 0.24.0 deploy, 2026-10-29; Eric hasn't ruled on them (#1505, notifier #469).
 
+- Chat traces are recorded in every build, TestFlight and App Store included. A line names counts, sizes, offsets, timings and what moved the chat (a command, the engine's rule, a finger, momentum), never message text, titles or file names; it keeps only the relay's characters, at most 160, and a trace is at most 2,000 lines. Traces are kept in Application Support/ChatTraces, the five newest, not backed up, and go only on a Send: the report card's, which carries the newest stall trace saved within the diagnostic's span, or Chat traces' in Diagnostics & logs, which saves what the recorder holds and sends it with every saved trace. A trace leaves the device once the relay says it kept it. A relay that refuses a report for its trace (413 before relay 0.25, 400 for a line it won't take) is sent the report again without it, and the trace stays (the transcript rewrite's design, after Eric asked for a chat that's easier to diagnose, 2026-10-30; #1554, notifier #481).
+- What saves a trace, each at most once a minute. A jump: the offset moves more than a screen at once with no finger or momentum on it, and no command, resize or new scroll view in the second before (an animated write of the engine's, 0.6 s). A layout storm: more than 30 content-size or row-frame reports a second for 3 seconds with no row changing and nobody scrolling. The blank-screen recovery rebuilding the scroll view. A stall: the main thread away 2 s; the watchdog stops in the background and starts over after a suspension, and the trace says how long the stall lasted once it ends. The numbers are Claude's pick under the rewrite's design; Eric hasn't ruled on them (#1554).
+
 **Open gaps**
 - A kill for memory (jetsam) leaves no MetricKit diagnostic, so a freeze that ends that way is never offered.
 - MetricKit may hold diagnostics back on a device that doesn't share analytics with developers.
-- App Store Connect's privacy label doesn't yet list Crash Data and Performance Data (not linked, not tracked), which the privacy manifest now declares; the maintainer updates it before the next App Store submission.
+- App Store Connect's privacy label doesn't yet list Crash Data, Performance Data and Other Diagnostic Data (not linked, not tracked), which the privacy manifest now declares (the last for chat traces); the maintainer updates it before the next App Store submission.
+- A crash with no stall before it carries no trace: the recorder's lines are in memory until a watcher saves them.
+- Until relay 0.25 is deployed, Send in Chat traces fails (the relay refuses kind chat) and a report's trace is dropped by the relay and kept on the phone.
 
-**Checked:** 2026-10-29, #1505.
+**Checked:** 2026-10-31, #1554 (chat traces: the recorder in every build, its watchers in chats and group rooms, the stall trace riding with a freeze's report, Diagnostics & logs' Chat traces, the privacy manifest's Other Diagnostic Data; notifier #481, relay 0.25.0); 2026-10-29, #1505.
 
 ## Feature map rules
 

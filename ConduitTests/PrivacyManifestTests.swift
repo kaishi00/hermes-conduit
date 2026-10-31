@@ -34,10 +34,14 @@ final class PrivacyManifestTests: XCTestCase {
     ]
 
     /// Target folder -> the data it sends its developer, none linked to the
-    /// user or used to track: the app's crash and freeze reports, sent only
-    /// when the user taps Send (CrashReportOffer).
+    /// user or used to track: the app's crash and freeze reports and chat
+    /// traces, sent only when the user taps Send (CrashReportOffer,
+    /// Diagnostics & logs' Chat traces).
     private static let collected: [String: Set<String>] = [
-        "Conduit": ["NSPrivacyCollectedDataTypeCrashData", "NSPrivacyCollectedDataTypePerformanceData"],
+        "Conduit": [
+            "NSPrivacyCollectedDataTypeCrashData", "NSPrivacyCollectedDataTypePerformanceData",
+            "NSPrivacyCollectedDataTypeOtherDiagnosticData",
+        ],
     ]
 
     private static func collectedTypes(_ manifest: [String: Any]) throws -> Set<String> {
