@@ -1862,6 +1862,50 @@ extension AppStateMultiDashboardTests {
         XCTAssertFalse(vpsPage.snapshot.capability.isGatewayConnected, "Another dashboard's page")
     }
 
+    /// Voice settings' voice reply model opens on the slot Hermes gave
+    /// last, and the Voice and Pulse model pickers on the models Usage's
+    /// read keeps too; a read that fails keeps the slot, and an answer
+    /// without it says this Hermes has none (#1533).
+    func testTheVoiceModelSectionsOpenOnTheirKeptAnswers() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        XCTAssertNil(appState.keptVoiceReplyModel(), "Nothing kept yet")
+        let setting = VoiceReplyModelSetting(provider: "openrouter", model: "fast/model", reasoningEffort: "none")
+
+        let load = Task { try await appState.loadVoiceReplyModel() }
+        try await held.waitForRequests(1)
+        try await held.answer(["tasks": [["task": "voice_chat", "provider": "openrouter", "model": "fast/model", "reasoning_effort": "none"]]])
+        let answered = try await load.value
+        XCTAssertEqual(answered, setting)
+        XCTAssertEqual(appState.keptVoiceReplyModel(), setting)
+
+        let failing = Task { try await appState.loadVoiceReplyModel() }
+        try await held.waitForRequests(2)
+        try await held.answer(["error": "boom"], status: 500)
+        do {
+            _ = try await failing.value
+            XCTFail("A read Hermes didn't answer throws")
+        } catch {}
+        XCTAssertEqual(appState.keptVoiceReplyModel(), setting, "A read that fails keeps it")
+
+        let withoutSlot = Task { try await appState.loadVoiceReplyModel() }
+        try await held.waitForRequests(3)
+        try await held.answer(["tasks": [["task": "vision"]]])
+        let none = try await withoutSlot.value
+        XCTAssertNil(none)
+        XCTAssertNil(appState.keptVoiceReplyModel(), "This Hermes has no voice reply slot")
+        XCTAssertEqual(held.sent.map(\.path), Array(repeating: AppState.KeptRoute.modelAuxiliary, count: 3))
+
+        appState.offlineChatCacheForTesting.recordAnswer(
+            ["providers": [["slug": "openrouter", "name": "OpenRouter", "models": [["id": "fast/model"]]]]],
+            route: AppState.KeptRoute.providerQuotas, dashboardID: mac, profile: "default"
+        )
+        XCTAssertEqual(appState.keptModelProviders().map(\.name), ["openrouter"])
+        XCTAssertEqual(appState.keptModelProviders().first?.models.map(\.id), ["fast/model"])
+        appState.setActiveProfileForTesting("work")
+        XCTAssertTrue(appState.keptModelProviders().isEmpty, "Another profile's models")
+    }
+
     /// A models read that fails keeps no split beside the period's new
     /// numbers: Usage opens on the usage route's own rows, as it showed
     /// them, never on an older split and its cost.

@@ -423,6 +423,9 @@ struct SpeechServerStatus: Equatable {
     var hasKey: Bool
     var reason: String?
     var pluginMissing: Bool
+    /// Hermes didn't answer; `reason` says why. Not what's set: what was
+    /// shown stays (#1533).
+    var readFailed = false
 
     static var pluginMissingReason: String {
         AppLocalization.string("Update the Conduit plugin on your Hermes host to use your own speech server.")
@@ -431,6 +434,13 @@ struct SpeechServerStatus: Equatable {
     static var pluginMissing: SpeechServerStatus {
         SpeechServerStatus(configured: false, available: false, url: nil, hasKey: false,
                            reason: pluginMissingReason, pluginMissing: true)
+    }
+
+    static func failed(_ reason: String) -> SpeechServerStatus {
+        var status = SpeechServerStatus(configured: false, available: false, url: nil, hasKey: false,
+                                        reason: reason, pluginMissing: false)
+        status.readFailed = true
+        return status
     }
 
     init(configured: Bool, available: Bool, url: String?, hasKey: Bool, reason: String?, pluginMissing: Bool) {

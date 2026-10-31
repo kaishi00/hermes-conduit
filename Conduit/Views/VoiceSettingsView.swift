@@ -1044,7 +1044,8 @@ struct VoiceSettingsView: View {
     ) -> some View {
         // Once picked, the button leads to the rest of setup (for the voice
         // server, its Base URL) rather than offering to pick it again.
-        let buttonTitle = chosen || inUse ? AppLocalization.string("Set up") : AppLocalization.string("Use")
+        let picks = !(chosen || inUse)
+        let buttonTitle = picks ? AppLocalization.string("Use") : AppLocalization.string("Set up")
         // At accessibility text sizes the button goes under the text so
         // neither is squeezed.
         let layout = dynamicTypeSize.isAccessibilitySize
@@ -1066,7 +1067,9 @@ struct VoiceSettingsView: View {
             if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
             Button(action: action) { Text(verbatim: buttonTitle) }
                 .buttonStyle(.bordered)
-                .disabled(service.isLoading || savingField != nil || !available)
+                // Picking waits for Hermes' answer, as the pickers do: what
+                // it compares with may be the kept answer (#1533).
+                .disabled(service.isLoading || savingField != nil || !available || (picks && service.answered != true))
                 .accessibilityLabel(Text(verbatim: "\(buttonTitle), \(title)"))
                 .accessibilityIdentifier(identifier)
         }
@@ -1083,6 +1086,7 @@ struct VoiceSettingsView: View {
         let selectable = provider == Self.speechServerProviderID || provider == Self.speechServerVoiceProviderID
             || providers.contains { $0.descriptor.id == provider }
         if selectable, provider != selectedProviderChoice(kind) {
+            guard service.answered == true else { return }
             savingField = "\(kind.rawValue).provider"
             Task { @MainActor in
                 await applyProvider(provider, kind: kind)

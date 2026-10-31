@@ -138,11 +138,46 @@ extension HermesVoiceConfigurationServiceTests {
         let keptVoice = kept.saved[SpeechServerSpeechStream.statusPath]
         XCTAssertEqual((keptVoice?["front_model"] as? [String: Any])?["model"] as? String, "qwen3-8b")
 
-        // A read that fails keeps the fast model shown.
+        // A read that fails keeps the fast model and the speech server's
+        // status shown, and says it failed.
         requester.routes[SpeechServerSpeechStream.statusPath] = nil
-        _ = await service.speechServerVoiceStatus()
+        let failedVoice = await service.speechServerVoiceStatus()
+        XCTAssertTrue(failedVoice.readFailed)
+        XCTAssertNotNil(failedVoice.reason)
         XCTAssertEqual(service.lastFrontModel?.model, "qwen3-8b")
         XCTAssertNil(service.speechServerVoice?.frontModel)
+        requester.routes[SpeechServerTranscription.statusPath] = nil
+        let failed = await service.speechServerStatus()
+        XCTAssertTrue(failed.readFailed)
+        XCTAssertNotNil(failed.reason)
+        XCTAssertEqual(service.speechServer?.url, "ws://box:9000/v1/realtime")
+        XCTAssertEqual(kept.saved[SpeechServerTranscription.statusPath]?["url"] as? String, "ws://box:9000/v1/realtime")
+
+        // With nothing shown, the failure is what the step shows, so the
+        // page's next check reads it again.
+        let unkept = HermesVoiceConfigurationService(requester: MockVoiceConfigurationRequester(), profile: "default")
+        _ = await unkept.speechServerStatus()
+        XCTAssertEqual(unkept.speechServer?.readFailed, true)
+    }
+
+    /// A speech toolset whose read fails while the config answers keeps the
+    /// readiness shown, so a ready voice doesn't flip to not ready.
+    func testAToolsetReadThatFailsKeepsItsReadiness() async {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": Self.keptVoiceAnswers["/api/config"] ?? [:],
+            "/api/tools/toolsets/stt/config": Self.keptVoiceAnswers["/api/tools/toolsets/stt/config"] ?? [:],
+        ]
+        let service = HermesVoiceConfigurationService(
+            requester: requester, profile: "default", answers: KeptVoiceAnswers(Self.keptVoiceAnswers).answers
+        )
+
+        await service.reload()
+
+        XCTAssertEqual(service.answered, true)
+        XCTAssertTrue(service.snapshot.capability.supportsSpeech, "The Edge voice stays ready")
+        XCTAssertEqual(service.snapshot.selectedTTSProvider, "edge")
+        XCTAssertNil(service.errorMessage, "Not the message for a Hermes without toolset readiness")
     }
 
     /// Hermes' answer changes only the fields it changed: one changed on

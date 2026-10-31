@@ -257,17 +257,21 @@ final class HermesVoiceConfigurationService: ObservableObject {
             return
         }
 
+        // A read that fails among the others keeps what it showed, Hermes'
+        // answer from before, kept on the phone (#1533).
+        let sttReadiness = (try? stt.get()) ?? answers?.kept(KeptRead.sttToolset)
+        let ttsReadiness = (try? tts.get()) ?? answers?.kept(KeptRead.ttsToolset)
         let parsed = VoiceConfigurationParser.parse(
             profile: profile,
-            schema: try? schema.get(),
+            schema: (try? schema.get()) ?? answers?.kept(KeptRead.schema),
             config: configObject,
-            sttReadiness: try? stt.get(),
-            ttsReadiness: try? tts.get(),
+            sttReadiness: sttReadiness,
+            ttsReadiness: ttsReadiness,
             environment: try? environment.get(),
             // STT toolset readiness is intentionally NOT passed to the
             // parser: it cannot influence transcription capability, only the
             // picker population and diagnostics built from its rows.
-            ttsToolsetConfigAvailable: (try? tts.get()) != nil
+            ttsToolsetConfigAvailable: ttsReadiness != nil
         )
         snapshot = parsed
         answered = true
@@ -276,7 +280,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
         if speechServerVoice != nil { _ = await speechServerVoiceStatus() }
         // Toolset config was added after some public gateways. Its absence is
         // a capability limitation, not a failed text-chat connection.
-        if (try? stt.get()) == nil && (try? tts.get()) == nil {
+        if sttReadiness == nil && ttsReadiness == nil {
             errorMessage = AppLocalization.string("Update Hermes to use Voice. This version can't tell Conduit whether voice is ready.")
         }
     }
@@ -467,20 +471,19 @@ final class HermesVoiceConfigurationService: ObservableObject {
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
             status = .pluginMissing
         } catch {
-            status = SpeechServerStatus(configured: false, available: false, url: nil, hasKey: false,
-                                        reason: UserFacingError.message(for: error), pluginMissing: false)
+            status = .failed(UserFacingError.message(for: error))
         }
         // A profile switch cancels the older read; it must not overwrite the
-        // newer profile's status.
-        if !Task.isCancelled { speechServer = status }
+        // newer profile's status. One that fails keeps the status shown, the
+        // kept one included (#1533).
+        if !Task.isCancelled, !status.readFailed || speechServer == nil { speechServer = status }
         return status
     }
 
     /// What the speech server needs to speak Classic's replies: the model
     /// address and key the notifier's Local Live route takes.
     func speechServerVoiceStatus() async -> SpeechServerVoiceStatus {
-        let status: SpeechServerVoiceStatus
-        var failed = false
+        var status: SpeechServerVoiceStatus
         do {
             let response = try await keeping(KeptRead.speechServerVoice) {
                 try await requester.requestJSON(
@@ -491,11 +494,11 @@ final class HermesVoiceConfigurationService: ObservableObject {
             status = .pluginMissing
         } catch {
             status = SpeechServerVoiceStatus(unavailable: UserFacingError.message(for: error))
-            failed = true
+            status.readFailed = true
         }
         if !Task.isCancelled {
             speechServerVoice = status
-            if !failed { lastFrontModel = status.frontModel }
+            if !status.readFailed { lastFrontModel = status.frontModel }
         }
         return status
     }

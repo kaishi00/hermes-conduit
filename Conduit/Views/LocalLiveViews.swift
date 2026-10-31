@@ -71,6 +71,10 @@ struct LocalLiveFrontModelSettingsView: View {
     @State private var isSaving = false
     /// A save's error, or a read's that kept what's shown.
     @State private var errorMessage: String?
+    /// The last read failed: the page's next check (Check again) reads again.
+    @State private var readFailed = false
+    /// The profile the fields are for.
+    @State private var shownProfile: String?
 
     static let baseURLKey = "voice.local_live.front_model.base_url"
     static let modelKey = "voice.local_live.front_model.model"
@@ -124,6 +128,12 @@ struct LocalLiveFrontModelSettingsView: View {
         .disabled(isSaving || !loaded)
         .onAppear(perform: showKept)
         .task(id: service.profile) { await load() }
+        // After a read that failed, the page's next check (its Check again
+        // too) asks the host again.
+        .onChange(of: service.isLoading) { _, loading in
+            guard !loading, readFailed else { return }
+            Task { await read() }
+        }
     }
 
     @ViewBuilder
@@ -173,15 +183,22 @@ struct LocalLiveFrontModelSettingsView: View {
     /// A profile switch starts from that profile's saved values, as the
     /// host gave them last until it answers.
     private func load() async {
+        shownProfile = service.profile
         loaded = false
-        errorMessage = nil
         keyDraft = ""
         showKept()
+        await read()
+    }
+
+    /// A read that fails keeps what's shown (the service keeps the fast
+    /// model the host gave last), says why, and the fields still wait.
+    private func read() async {
+        let profile = shownProfile
+        errorMessage = nil
         let voice = await service.speechServerVoiceStatus()
-        guard !Task.isCancelled else { return }
-        // A read that fails keeps what's shown (the service keeps the fast
-        // model the host gave last), and the fields still wait.
-        if voice.frontModel == nil, service.lastFrontModel != nil {
+        guard !Task.isCancelled, shownProfile == profile else { return }
+        readFailed = voice.readFailed
+        guard !voice.readFailed else {
             errorMessage = voice.reason
             return
         }
