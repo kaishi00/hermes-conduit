@@ -662,12 +662,23 @@ extension KanbanTests {
         XCTAssertEqual(edited.count, 3)
         XCTAssertEqual(edited[1] as? String, "--port")
         XCTAssertEqual(edited[2] as? Int, 3)
+        // An original is reused once: a second "3" is the text typed.
+        edit.arguments = "-y\n3\n3"
+        let twice = try XCTUnwrap(try edit.formEntry()["args"] as? [Any])
+        XCTAssertEqual(twice[1] as? Int, 3)
+        XCTAssertEqual(twice[2] as? String, "3")
         edit.arguments = "-y\n3"
         try edit.showJSON()
         edit.json = #"{"url": "https://files.example/mcp"}"#
         try edit.showForm()
         XCTAssertTrue(edit.isRemote)
         XCTAssertEqual(try edit.saved(fromJSON: false).entry["url"] as? String, "https://files.example/mcp")
+    }
+
+    func testEditingOneArgumentKeepsEmptyAndSpacedOnes() throws {
+        var edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["--name", "", " x", "old"]])
+        edit.arguments = "--name\n\n x\nnew"
+        XCTAssertEqual(try edit.formEntry()["args"] as? [String], ["--name", "", " x", "new"])
     }
 
     func testAServerSaveSendsNothingAfterAProfileSwitch() async throws {
