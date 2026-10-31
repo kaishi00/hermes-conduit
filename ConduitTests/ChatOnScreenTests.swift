@@ -47,6 +47,43 @@ final class ChatOnScreenTests: XCTestCase {
         XCTAssertTrue(ChatOnScreen.isTaken(by: plugin))
     }
 
+    // MARK: - A chat on screen clears its notifications (#1579)
+
+    func testReadingAChatClearsItsNotificationsFromItsDashboardOnly() {
+        let here = UUID()
+        let there = UUID()
+        func target(_ session: String, durable: String? = nil, dashboard: UUID?, malformed: Bool = false) -> ConduitNotificationTarget {
+            ConduitNotificationTarget(profile: "default", sessionId: session, durableSessionID: durable,
+                                      dashboardID: dashboard, hasMalformedDashboardID: malformed, type: "response.ready")
+        }
+        let delivered: [(identifier: String, target: ConduitNotificationTarget?)] = [
+            ("reply", target("rt-1", dashboard: here)),
+            ("by-durable-id", target("rt-old", durable: "stored-1", dashboard: here)),
+            ("old-relay", target("rt-1", dashboard: nil)),
+            ("other-dashboard", target("rt-1", dashboard: there)),
+            ("malformed", target("rt-1", dashboard: nil, malformed: true)),
+            ("other-chat", target("rt-2", dashboard: here)),
+            ("unreadable", nil),
+        ]
+        XCTAssertEqual(ReadChatNotifications.identifiers(of: delivered, sessionIDs: ["rt-1", "stored-1"], dashboardID: here),
+                       ["reply", "by-durable-id", "old-relay"])
+        XCTAssertEqual(ReadChatNotifications.identifiers(of: delivered, sessionIDs: [], dashboardID: here), [])
+    }
+
+    func testTheExtensionsNoteFindsASealedPushsChatAfterItStopsVerifying() {
+        let dashboard = UUID()
+        let note = ReadChatHint.note(["session_id": "rt-1", "stored_session_id": "stored-1", "dashboard_id": dashboard.uuidString,
+                                      "type": "response.ready", "gateway_id": "gw", "decision": ["kind": "approval"]])
+        XCTAssertEqual(note, ["session_id": "rt-1", "stored_session_id": "stored-1", "dashboard_id": dashboard.uuidString],
+                       "only the chat and its dashboard")
+        let userInfo: [AnyHashable: Any] = [ReadChatHint.userInfoKey: note, "conduit_e2e": ["v": 1]]
+        let target = PushNotificationService.readChatTarget(from: userInfo)
+        XCTAssertEqual(target?.sessionId, "rt-1")
+        XCTAssertEqual(target?.durableSessionID, "stored-1")
+        XCTAssertEqual(target?.dashboardID, dashboard)
+        XCTAssertNil(ReadChatHint.read([ReadChatHint.userInfoKey: ["dashboard_id": dashboard.uuidString]]), "no chat, no note")
+    }
+
     func testARunningTurnDoesNotCountAsSomeoneLooking() {
         let clock = UptimeBox()
         let idle = InteractionIdleState(idleAfter: 120, now: { clock.now }, schedule: { _, _ in {} },

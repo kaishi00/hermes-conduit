@@ -129,3 +129,24 @@ extension ChatOnScreen {
         }
     }
 }
+
+/// The notifications a chat on screen has made read (#1579): every one this
+/// device holds for the chat, under any of its ids, from its dashboard. A
+/// push from a dashboard Conduit can't place (a relay before #148) counts
+/// when its chat matches; one it can't read (a sealed push that doesn't
+/// verify) never does.
+enum ReadChatNotifications {
+    static func identifiers(
+        of delivered: [(identifier: String, target: ConduitNotificationTarget?)],
+        sessionIDs: Set<String>,
+        dashboardID: UUID?
+    ) -> [String] {
+        delivered.compactMap { identifier, target in
+            guard let target, !target.hasMalformedDashboardID,
+                  target.dashboardID == nil || target.dashboardID == dashboardID,
+                  sessionIDs.contains(target.sessionId)
+                    || target.durableSessionID.map({ sessionIDs.contains($0) }) == true else { return nil }
+            return identifier
+        }
+    }
+}

@@ -3,10 +3,12 @@
 //  Conduit
 //
 //  Holds the open chat as on screen on the host while its reply runs, so
-//  that reply sends no push (ChatOnScreen.swift).
+//  that reply sends no push (ChatOnScreen.swift), and clears the chat's
+//  notifications from this device once it's on screen (#1579).
 //
 
 import Foundation
+import UserNotifications
 
 @MainActor
 extension AppState {
@@ -15,10 +17,37 @@ extension AppState {
     /// doesn't take reports.
     var chatOnScreenClaim: ChatOnScreen.Claim? {
         guard chatOnScreenSender != nil || ChatOnScreen.isTaken(by: notifierPlugin),
-              isSceneActive, !showSidebar, activeRoomSurface == nil,
+              let sessionID = chatShownOnScreen else { return nil }
+        return ChatOnScreen.Claim(profile: activeProfile, sessionIDs: chatOwnSessionIDs(for: sessionID))
+    }
+
+    /// The open chat's id while it's on screen: Conduit active, the chat
+    /// live, and neither the list nor a group room covering it.
+    var chatShownOnScreen: String? {
+        guard isSceneActive, !showSidebar, activeRoomSurface == nil,
               let sessionID = activeSessionId, !sessionID.isEmpty,
               composerChatOnScreen == .live(sessionID) else { return nil }
-        return ChatOnScreen.Claim(profile: activeProfile, sessionIDs: chatOwnSessionIDs(for: sessionID))
+        return sessionID
+    }
+
+    /// A chat on screen has been read: its notifications leave this
+    /// device's Notification Center, and the Watch's with the iPhone's
+    /// (#1579). Other devices keep theirs.
+    func clearShownChatNotifications() {
+        guard let sessionID = chatShownOnScreen else { return }
+        let sessionIDs = chatOwnSessionIDs(for: sessionID)
+        let dashboardID = activeDashboardID
+        let center = UNUserNotificationCenter.current()
+        Task { @MainActor in
+            let delivered = await center.deliveredNotifications()
+            guard !delivered.isEmpty else { return }
+            let read = ReadChatNotifications.identifiers(
+                of: delivered.map { (identifier: $0.request.identifier, target: PushNotificationService.readChatTarget(from: $0.request.content.userInfo)) },
+                sessionIDs: sessionIDs,
+                dashboardID: dashboardID
+            )
+            if !read.isEmpty { center.removeDeliveredNotifications(withIdentifiers: read) }
+        }
     }
 
     /// Brings the host's hold in line with what is on screen. Called on each
@@ -27,6 +56,8 @@ extension AppState {
     func updateChatOnScreen() {
         // The suggestion row follows the same edges (AppState+Predictive.swift).
         updatePredictiveScreen()
+        // So does clearing what the chat on screen already shows.
+        clearShownChatNotifications()
         for action in chatOnScreenTracker.update(wanted: chatOnScreenClaim, turnRunning: turnState.isRunning) {
             switch action {
             case .startRenewing(let claim):

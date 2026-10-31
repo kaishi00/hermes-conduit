@@ -68,6 +68,8 @@ final class NotificationService: UNNotificationServiceExtension {
                 if let subtitle = names.subtitle { content.subtitle = subtitle }
             }
             // Quiet for today on a Pulse push, where its plugin takes it.
+            // Which chat this is, for Conduit to clear it once that chat is read.
+            content.userInfo[ReadChatHint.userInfoKey] = ReadChatHint.note(verified.routingPayload)
             if PulseNotifications.offersQuietToday(
                 titleLabel: verified.content["title_label"] as? String,
                 gatewayID: verified.record.gatewayID,
