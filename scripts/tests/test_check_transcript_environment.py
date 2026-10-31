@@ -93,6 +93,15 @@ extension EnvironmentValues {
         self.assertEqual(len(found), 1, found)
         self.assertIn("\\.derived reaches no transcript row", found[0])
 
+    def test_a_list_in_a_comment_is_not_the_one_read(self):
+        source = cell(set_inside=()).replace(
+            "    static let setInsideRows = []",
+            '    // static let setInsideRows = ["markdownReferences"]\n    static let setInsideRows = []',
+        )
+        found = check.find_problems({"Conduit/Keys.swift": KEYS, "Conduit/Rows.swift": ROWS, CELL: source})
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("\\.markdownReferences reaches no transcript row", found[0])
+
     def test_a_missing_cell_environment_fails(self):
         self.assertEqual(len(check.find_problems({"Conduit/Keys.swift": KEYS})), 1)
 

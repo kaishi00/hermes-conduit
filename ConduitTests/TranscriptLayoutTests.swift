@@ -117,6 +117,17 @@ final class TranscriptLayoutTests: XCTestCase {
         view.layoutIfNeeded()
 
         XCTAssertEqual(try itemHeight("a"), 100)
+
+        // Nor from a cell measured with its last width's attributes, as
+        // around a rotation; one at the width it was given is taken.
+        let original = try XCTUnwrap(layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 0)))
+        let preferred = try XCTUnwrap(original.copy() as? UICollectionViewLayoutAttributes)
+        preferred.size = CGSize(width: original.size.width + 40, height: 300)
+        XCTAssertFalse(layout.shouldInvalidateLayout(forPreferredLayoutAttributes: preferred, withOriginalAttributes: original))
+        view.layoutIfNeeded()
+        XCTAssertEqual(try itemHeight("a"), 100)
+        preferred.size = CGSize(width: original.size.width, height: 300)
+        XCTAssertTrue(layout.shouldInvalidateLayout(forPreferredLayoutAttributes: preferred, withOriginalAttributes: original))
     }
 
     func testRowsAddedAboveKeepTheHeightsOfTheRowsBelow() throws {

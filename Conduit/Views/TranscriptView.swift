@@ -172,6 +172,8 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         composerFloats: Bool,
         renderedScope: ChatRenderedScrollScope?
     ) {
+        // A presentation that closed since leaves nothing to keep aside for.
+        dropParkedIfIdle()
         // Before the rows: a cell configured for them draws with these.
         if environment != rowEnvironment {
             rowEnvironment = environment
@@ -199,6 +201,9 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     /// conversation, whose rows can share ids with the last one's: Load
     /// earlier, the live rows).
     private func applyRows(_ rows: [TranscriptRow], redrawingAll: Bool) {
+        // The model hands back the rows it holds while its input stays the
+        // same, as on most of SwiftUI's updates: no row-by-row comparison.
+        if hasAppliedRows, !redrawingAll, Self.sameStorage(rows, appliedRows) { return }
         let changes = TranscriptChangeSet.between(appliedRows, rows)
         guard !changes.isEmpty || !hasAppliedRows || redrawingAll, let dataSource else { return }
         let redrawn = redrawingAll ? rows.map(\.id).filter { rowsByID[$0] != nil } : changes.changed
@@ -213,6 +218,14 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
             snapshot.reconfigureItems(redrawn)
         }
         dataSource.apply(snapshot, animatingDifferences: false)
+    }
+
+    /// The same array, not only equal rows: an array shares its storage
+    /// until it's changed.
+    private static func sameStorage(_ rows: [TranscriptRow], _ other: [TranscriptRow]) -> Bool {
+        rows.count == other.count && rows.withUnsafeBufferPointer { new in
+            other.withUnsafeBufferPointer { new.baseAddress == $0.baseAddress }
+        }
     }
 
     /// The insets, in `animation` when SwiftUI animates their change: the

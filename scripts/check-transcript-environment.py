@@ -81,9 +81,10 @@ def find_problems(sources):
         return [f"{CELL_ENVIRONMENT}: no init(_ values: EnvironmentValues, ...) copying the chat's values"]
     copied = set(SET_IN_INIT.findall(text[init.end():swift.block_end(text, init.end() - 1)]))
     applied = set(APPLIED.findall(text))
-    # The list holds strings, which the reader blanks: read it as written.
-    listed = SET_INSIDE.search(raw)
-    set_inside = set(re.findall(r'"(\w+)"', listed.group(1))) if listed else set()
+    # The list holds strings, which the reader blanks: found in the read
+    # text, so no copy in a comment stands for it, and read as written.
+    listed = SET_INSIDE.search(text)
+    set_inside = set(re.findall(r'"(\w+)"', raw[listed.start(1):listed.end(1)])) if listed else set()
 
     keys = declared_keys(sources)
     set_elsewhere = set()

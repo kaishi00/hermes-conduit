@@ -108,7 +108,14 @@ final class TranscriptLayout: UICollectionViewLayout {
         guard heights[id].map({ abs($0 - height) > 0.5 }) ?? true else { return }
         heights[id] = height
         guard let index = indexByID[id] else { return }
-        ChatViewportTrace.shared.log(String(format: "row %@ resized to %.1f", id, height))
+        switch rows[index].kind {
+        case .thinking, .streaming:
+            // The live turn's text arriving, a line at a time: logged, it
+            // would push out of the recorder the moves the trace is for.
+            break
+        default:
+            ChatViewportTrace.shared.log(String(format: "row %@ resized to %.1f", id, height))
+        }
         ChatViewportWatch.shared.rowResized()
         markDirty(from: index)
         let context = UICollectionViewLayoutInvalidationContext()
@@ -266,6 +273,10 @@ final class TranscriptLayout: UICollectionViewLayout {
     ) -> Bool {
         let index = originalAttributes.indexPath.item
         guard originalAttributes.indexPath.section == 0, index < rows.count else { return false }
+        // Taken only for the width the rows are laid out at, as in
+        // rowResized: a cell measured at the last width (a rotation, a
+        // split window) is measured again at the new one.
+        guard abs(preferredAttributes.size.width - itemWidth) <= 0.5 else { return false }
         let height = pixelRounded(preferredAttributes.size.height)
         let id = rows[index].id
         // Kept even when the frame already has it: an estimate that
