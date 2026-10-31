@@ -1518,7 +1518,7 @@ reply's elements) · long-press Open Link · file paths, linked to the Folder
 - Drawn until touched, mounted on touch: `Conduit/Views/Components/SelectableTextView.swift` (drawsUntilTouched, SelectableTextViewHostView.hitTest and accessibilityElements, mountTextViewForTouch)
 - File paths: `Conduit/Views/Components/SelectableTextView.swift` (bridge), `Conduit/Services/WorkspaceFiles.swift` (WorkspacePathLinks), `Conduit/Services/ConduitAppLink.swift` (file), `Conduit/Services/AppState+Workspace.swift` (absoluteWorkspacePath, revealWorkspaceFile)
 - Test: `ConduitTests/DrawnTextLinkTapTests.swift`
-- Surfaces that draw until touched: `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift` (selectableTextDrawsUntilTouched)
+- Surfaces that draw until touched: `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift` (selectableTextDrawsUntilTouched); table cells with a link, `Conduit/Views/Components/MarkdownText.swift` (MarkdownTableRowView.cellDrawsAsText)
 
 **Rulings**
 - The touch that mounts a reply's text view is routed to it laid out, so it finds the link under the finger; a link never needs a second tap (2026-10-26, #1303, carried in #1311).
@@ -1583,18 +1583,20 @@ iPad · selection across the reply · Copy response · links in cells (a cell wi
 - Selection: `Conduit/Views/Components/MarkdownSelectionCoordinator.swift` (deferRegistration, which mounts a waiting table when a selection begins)
 - Selectable cells, drawn until touched in the chat: `Conduit/Views/Components/SelectableTextView.swift`
 - Which cells draw as text: `Conduit/Views/Components/MarkdownText.swift` (MarkdownTableRowView.cellDrawsAsText)
-- Tests: `ConduitTests/MarkdownTableLayoutTests.swift` (plain cells, link cells), `ConduitUITests/SelectionObserverUITests.swift` (testTapOnLinkInChatTableCellOpensIt, on `Conduit/Views/SelectionFixtureView.swift`'s chat table)
+- Tests: `ConduitTests/MarkdownTableLayoutTests.swift` (plain cells, link cells), `ConduitTests/MarkdownLargeDocumentTests.swift` (testLargeChatTableDrawsOnlyLinkCellsAsText), `ConduitUITests/SelectionObserverUITests.swift` (testTapOnLinkInChatTableCellOpensIt, on `Conduit/Views/SelectionFixtureView.swift`'s chat table)
 
 **Rulings**
-- The chat draws table cells as plain text, the cheapest to build as rows scroll in (#693). A long press offers Copy Table and Select Text; Select Text draws the cells as selectable text until the row is taken down.
+- The chat draws table cells without a link as plain text, the cheapest to build as rows scroll in (#693). A long press offers Copy Table and Select Text; Select Text draws the cells as selectable text until the row is taken down.
 - Selection on a table turns on as it does for the reply's drawn text: a selection that starts elsewhere in the message mounts the cells, so a drag from the text above or below carries into the table, and a pointer over the table (a Mac, an iPad's trackpad or mouse) turns it on, so a click and drag selects in a cell and Cmd+C and the context menu's Copy work (2026-10-30, issue 1531, #1535; Eric: most selections start in the text around the table).
 - A pointer over a table (a Mac, an iPad's trackpad or mouse) shows a Copy Table button at the table's top right, on every Markdown surface, since the cells' own right-click menu replaces the table's (2026-10-30, Eric, #1540).
 - VoiceOver's Copy Table is on every table, whether or not selection is on, group rooms' included: a VoiceOver user selecting cell by cell has no other way to take the whole table (#1535).
-- A cell with a link is never plain text: it draws as a selectable cell (drawn until touched in the chat), so a click or tap opens the link as the reply's other links do. A plain cell's SwiftUI link lost the click to the row's tap that puts the keyboard away (2026-10-31, issue 1585, #1596). Cells without links stay plain.
+- A cell with a link is never plain text: it draws as a selectable cell (drawn until touched in the chat), so a click or tap opens the link as the reply's other links do. A plain cell's SwiftUI link lost the click to the row's tap that puts the keyboard away (2026-10-31, issue 1585, #1596: a bug fix that keeps #693's plain cells for every cell without a link).
 
 **Open gaps**
 - On a touch screen, once selection is on (Select Text, or a selection elsewhere in the message), the long-press menu is the text's own, so Copy Table is gone for that table until its row is taken down; selecting across the table copies its cells, and Copy response copies the reply.
 - No Copy cell or Copy row (asked for as optional in issue 1531).
+- On a touch screen, a long press on a cell with a link is the text's own menu (the link's, or selection), so Copy Table and Select Text are reached from the table's other cells; on a table whose every cell has a link, only through VoiceOver's actions or Copy response (#1596).
+- A cell with a link costs a drawn text host as its row scrolls in, which plain cells don't; a table of mostly links pays it on most cells (#1596, not measured).
 - The pointer's Copy Table button covers the corner of the last header cell while the pointer is over the table.
 - A big table mounts its rows in batches (`LargeMarkdownTable`), and a selection copies only mounted cells, so a selection across a table past its first batch leaves the rest out until Show more; Copy Table copies every row.
 

@@ -44,7 +44,7 @@ final class SelectionObserverUITests: XCTestCase {
         let opened = app.staticTexts.matching(identifier: "fixture.openedURL").firstMatch
         XCTAssertTrue(opened.waitForExistence(timeout: 5))
         XCTAssertEqual(opened.label, "opened:none")
-        let link = app.descendants(matching: .any)
+        let link = app.textViews
             .matching(NSPredicate(format: "label CONTAINS %@", "skills link")).firstMatch
         XCTAssertTrue(link.waitForExistence(timeout: 5), "Link cell not found. Tree:\n\(app.debugDescription)")
 
