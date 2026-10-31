@@ -1260,7 +1260,9 @@ extension AppStateMultiDashboardTests {
 
     /// A model save whose /api/model/set landed before a profile switch on
     /// the same dashboard still writes that profile's config: Hermes already
-    /// uses the new model there, and the defaults must say so.
+    /// uses the new model there, and the defaults must say so. The catalog
+    /// and the model's info are read again after, so the copies kept for the
+    /// Model page follow the save (#1533).
     func testAModelSaveLandedBeforeAProfileSwitchStillWritesItsProfileConfig() async throws {
         let (appState, held, _) = heldSwitchFixture()
         let save = Task { await appState.setProfileMainModel(provider: "p", model: "m", reasoning: "low") }
@@ -1272,9 +1274,14 @@ extension AppStateMultiDashboardTests {
         try await held.waitForRequests(3)       // ... and its write
         try await held.answer()
         let saved = await save.value
+        try await held.waitForRequests(4)       // the catalog
+        try await held.answer()
+        try await held.waitForRequests(5)       // the model's info
+        try await held.answer()
 
         XCTAssertTrue(saved)
-        XCTAssertEqual(held.sent.last?.method, "PUT")
+        XCTAssertEqual(held.sent.map(\.method), ["POST", "GET", "PUT", "GET", "GET"])
+        XCTAssertEqual(held.sent.suffix(2).map(\.path), ["/api/model/options", "/api/model/info"])
         XCTAssertTrue(held.sent.allSatisfy { !$0.path.contains("work") }, "every request is the captured profile's")
         XCTAssertNil(appState.errorMessage)
     }
@@ -1758,5 +1765,86 @@ extension AppStateMultiDashboardTests {
         let kept = try XCTUnwrap(appState.keptProfileSettings(keys: ["display.skin", "agent.max_turns"]))
         XCTAssertEqual(kept["display.skin"], .text("slate"))
         XCTAssertEqual(kept["agent.max_turns"], .number(90))
+    }
+
+    /// Pulse is one per host: its state is kept once per dashboard, from a
+    /// read or a change that answers with it (a notification's Quiet for
+    /// today too), and What Pulse remembers' list beside it; an estimate
+    /// isn't a state. Settings > Pulse opens on them in any profile, and
+    /// another dashboard's opens on nothing.
+    func testPulsesStateAndMemoryAreKeptOncePerDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let client = appState.pulseClient
+        XCTAssertNil(appState.keptPulseState(), "Nothing kept yet")
+
+        let read = Task { try await client.state() }
+        try await held.waitForRequests(1)
+        try await held.answer(["enabled": true, "memory": true, "memory_tokens": 1200])
+        _ = try await read.value
+        XCTAssertEqual(appState.keptPulseState()?.enabled, true)
+        XCTAssertEqual(appState.keptPulseState()?.memoryTokens, 1200, "A count of tokens is no credential")
+
+        let change = Task { try await client.update(["enabled": false]) }
+        try await held.waitForRequests(2)
+        try await held.answer(["enabled": false])
+        _ = try await change.value
+        XCTAssertEqual(appState.keptPulseState()?.enabled, false, "A change answers with the state it made")
+
+        let estimate = Task { try? await client.estimate(days: 30) }
+        try await held.waitForRequests(3)
+        try await held.answer(["estimate": ["days": 30, "chats": 4, "tokens": 900, "days_needed": 1]])
+        _ = await estimate.value
+        XCTAssertEqual(appState.keptPulseState()?.enabled, false, "An estimate isn't a state")
+
+        let memory = Task { try await client.memory() }
+        try await held.waitForRequests(4)
+        try await held.answer(["items": [["id": 1, "text": "Call Ann", "kind": "commitment"]]])
+        _ = try await memory.value
+        XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Call Ann"])
+
+        // Quiet for today from a Pulse notification is kept as the page's own steps are.
+        let here = PulseQuietTarget(dashboardID: appState.activeDashboardID?.uuidString, gatewayID: nil)
+        let quiet = Task { await appState.quietPulseForToday(here, switching: false, wait: .zero) }
+        try await held.waitForRequests(5)
+        try await held.answer(["enabled": false, "quiet_until": 1800000000])
+        let quieted = await quiet.value
+        XCTAssertTrue(quieted)
+        XCTAssertEqual(appState.keptPulseState()?.quietUntil, Date(timeIntervalSince1970: 1800000000))
+
+        appState.setActiveProfileForTesting("work")
+        XCTAssertEqual(appState.keptPulseState()?.enabled, false, "Another profile's page opens on it")
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.keptPulseState(), "Another dashboard's page doesn't")
+        XCTAssertNil(appState.keptPulseMemory())
+    }
+
+    /// Usage opens on each period's numbers as the active profile last read
+    /// them, and the quota beside them; another period or profile opens on
+    /// its own, or on nothing.
+    func testUsageOpensOnThePeriodsKeptNumbers() throws {
+        let (appState, _, _) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let store = appState.offlineChatCacheForTesting
+        store.recordAnswer(
+            [
+                "totals": ["total_input": 1200, "total_output": 300, "total_sessions": 2],
+                "daily": [["day": "2026-10-30", "input_tokens": 1000, "output_tokens": 200]],
+                "period_days": 30,
+            ],
+            route: UsageReport.route(UsageReport.usagePath, days: 30), dashboardID: mac, profile: "default"
+        )
+        store.recordAnswer(
+            ["providers": [["slug": "openai", "name": "OpenAI", "usage": ["windows": [["label": "5h", "used_percent": 40]]]]]],
+            route: AppState.KeptRoute.providerQuotas, dashboardID: mac, profile: "default"
+        )
+
+        let report = try XCTUnwrap(appState.keptUsageReport(days: 30))
+        XCTAssertEqual(report.totals.input, 1200)
+        XCTAssertEqual(report.daily.first?.usage.input, 1000, "A day's token counts are numbers, kept")
+        XCTAssertNil(appState.keptUsageReport(days: 7), "Another period")
+        XCTAssertEqual(appState.keptProviderQuotas()?.map(\.slug), ["openai"])
+        appState.setActiveProfileForTesting("work")
+        XCTAssertNil(appState.keptUsageReport(days: 30), "Another profile")
+        XCTAssertNil(appState.keptProviderQuotas())
     }
 }

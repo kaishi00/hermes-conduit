@@ -97,8 +97,11 @@ struct UsageReport: Equatable {
     static let usagePath = "/api/analytics/usage"
     static let modelsPath = "/api/analytics/models"
 
-    static func path(_ route: String, days: Int, profile: String) -> String {
-        DashboardPath.withProfile("\(route)?days=\(days)", profile: profile)
+    /// A route for the period, without its profile, which the request
+    /// adds (`DashboardPath.withProfile`): the page's answers are kept
+    /// under it.
+    static func route(_ path: String, days: Int) -> String {
+        "\(path)?days=\(days)"
     }
 
     /// `usage` is `/api/analytics/usage`'s answer; `models`, when the host

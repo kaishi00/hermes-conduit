@@ -2348,6 +2348,16 @@ private struct ModelCatalogPlaceholder: View {
     }
 }
 
+/// When a page that opens on a kept answer (#1533) can save: a single
+/// setting saves at once, but a save that writes several values or a
+/// whole list waits for Hermes' answer, since the kept one may be stale,
+/// and for a save already on its way. `ready`: what it writes is complete.
+enum KeptAnswerGate {
+    static func canSave(answered: Bool, saving: Bool, ready: Bool = true) -> Bool {
+        answered && !saving && ready
+    }
+}
+
 private struct ProfileModelSettingsDetail: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     /// The catalog and defaults Hermes gave last time, kept on the phone:
@@ -2435,7 +2445,8 @@ private struct ProfileModelSettingsDetail: View {
                 }
             }
             Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save model defaults"), systemImage: "checkmark").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 46) }
-                .disabled(saving || !answered || provider.isEmpty || model.isEmpty).conduitGlassControl(cornerRadius: 17, tint: .conduitAccent.opacity(0.18))
+                .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving, ready: !provider.isEmpty && !model.isEmpty))
+                .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent.opacity(0.18))
             if let error { Label(error, systemImage: "exclamationmark.triangle.fill").scaledFont(.footnote).foregroundStyle(.red) }
         }
         // What it showed last time, before the first frame; Hermes'
@@ -2584,7 +2595,8 @@ private struct DelegationModelSettings: View {
                 ModelCatalogPlaceholder(state: catalog) { Task { await reload() } }
             }
             Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save delegate defaults"), systemImage: "checkmark").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 42) }
-                .disabled(saving || !answered || defaults == nil).conduitGlassControl(cornerRadius: 15, tint: .conduitAccent.opacity(0.18))
+                .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving, ready: defaults != nil))
+                .conduitGlassControl(cornerRadius: 15, tint: .conduitAccent.opacity(0.18))
             if let error { Text(error).scaledFont(.caption).foregroundStyle(.red) }
         }
         // What it showed last time, before the first frame; Hermes'
@@ -2776,10 +2788,11 @@ private struct FallbackModelsSettings: View {
                 AdaptiveStack(spacing: 8) {
                     Button { addEntry() } label: { Label(AppLocalization.string("Add fallback"), systemImage: "plus") }
                         .buttonStyle(.settings)
-                        .disabled(saving || !answered || providers.isEmpty)
+                        .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving, ready: !providers.isEmpty))
                     Button(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save fallbacks")) { persist() }
                         .buttonStyle(.settingsPrimary)
-                        .disabled(saving || !answered || entries == saved || entries.contains { !$0.isComplete })
+                        .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving,
+                                                          ready: entries != saved && entries.allSatisfy(\.isComplete)))
                 }
                 if entries.contains(where: { !$0.isComplete }) {
                     Text("Pick a provider and model for every fallback to save.")

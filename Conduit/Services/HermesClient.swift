@@ -3217,9 +3217,11 @@ final class HermesClient: ObservableObject {
     /// Settings > Usage's quota (#813): `model.options` rows carry each
     /// signed-in provider's subscription windows and rate limit from Hermes'
     /// cache, and asking starts Hermes' background refresh of that cache.
-    func providerQuotas() async throws -> [ProviderQuota] {
+    /// The answer as it came, which the page keeps (ProviderQuota.list
+    /// reads it).
+    func providerQuotaAnswer() async throws -> [String: Any] {
         let result = try await rpc("model.options", params: ["explicit_only": true])
-        return ProviderQuota.list(from: result.anyValue as? [String: Any] ?? [:])
+        return result.anyValue as? [String: Any] ?? [:]
     }
 
     /// The gateway can answer without switching: a guarded pick (expensive

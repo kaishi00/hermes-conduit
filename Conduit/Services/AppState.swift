@@ -32992,6 +32992,14 @@ final class AppState: ObservableObject {
                 config["agent"] = agentConfig
                 config["reasoning"] = nil
             }
+            // The kept config has the new model now; the catalog, which
+            // marks the provider in use (a delegate inherits its models),
+            // and the model's info follow it, so the Model page opens on
+            // the save next time (#1533).
+            Task { [weak self] in
+                _ = try? await self?.readKeepingAnswer(KeptRoute.modelOptions, profile: profile, owner: owner)
+                _ = try? await self?.readKeepingAnswer(KeptRoute.modelInfo, profile: profile, owner: owner)
+            }
             return true
         } catch is CancellationError {
             return false
@@ -33284,7 +33292,9 @@ final class AppState: ObservableObject {
     }
 
     /// The reads whose answers the settings pages keep (#1533): dashboard
-    /// routes, and a gateway call kept beside them.
+    /// routes, and gateway calls kept beside them. Usage's periods
+    /// (UsageReport.route) and Pulse's routes (PulseClient.keptRoute) are
+    /// kept under their own.
     enum KeptRoute {
         static let config = "/api/config"
         static let configSchema = "/api/config/schema"
@@ -33292,6 +33302,8 @@ final class AppState: ObservableObject {
         static let modelInfo = "/api/model/info"
         static let pluginsHub = "/api/dashboard/plugins/hub"
         static let delegationStatus = "rpc:delegation.status"
+        /// Settings > Usage's quota: the gateway's `model.options`.
+        static let providerQuotas = "rpc:model.options"
         /// The scope of an answer about all of a Hermes' profiles at once
         /// (delegation's pause), kept once per dashboard: no profile is
         /// named with nothing.
@@ -33301,10 +33313,25 @@ final class AppState: ObservableObject {
     /// A read whose answer is kept for the screen that shows it, so that
     /// screen opens on it next time (#1533): per dashboard, profile and
     /// route, in the saved chats' store, which wipes it with them.
-    private func readKeepingAnswer(_ route: String, profile: String, owner: DashboardRuntimeOwner) async throws -> [String: Any] {
+    func readKeepingAnswer(_ route: String, profile: String, owner: DashboardRuntimeOwner) async throws -> [String: Any] {
+        try await keepingAnswer(profile: profile, owner: owner, keptAs: { _ in route }) {
+            try await owner.bridge.requestJSON(path: dashboardPath(route, profile: profile))
+        }
+    }
+
+    /// Runs `read` and keeps its answer as `readKeepingAnswer` does, under
+    /// the route `keptAs` names for it (nil: not kept): for an answer read
+    /// another way (a gateway call), or a step that answers with a screen's
+    /// state (Pulse's), which is then what the screen opens on next.
+    func keepingAnswer(
+        profile: String,
+        owner: DashboardRuntimeOwner,
+        keptAs route: ([String: Any]) -> String?,
+        _ read: () async throws -> [String: Any]
+    ) async throws -> [String: Any] {
         let removals = offlineChatCache.removals
-        let answer = try await owner.bridge.requestJSON(path: dashboardPath(route, profile: profile))
-        keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals)
+        let answer = try await read()
+        if let route = route(answer) { keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals) }
         return answer
     }
 
@@ -33319,13 +33346,15 @@ final class AppState: ObservableObject {
         removals: Int
     ) {
         guard let dashboardID = owner.dashboardID, ownsDashboardRuntime(owner), offlineChatCache.removals == removals else { return }
-        offlineChatCache.recordAnswer(answer, route: route, dashboardID: dashboardID, profile: profile)
+        // A schema's fields are keyed by config path, not by what they hold.
+        let names: Set<String> = route == KeptRoute.configSchema ? ["fields"] : []
+        offlineChatCache.recordAnswer(answer, route: route, dashboardID: dashboardID, profile: profile, namesUnder: names)
     }
 
     /// The answer the active profile's screen last read for the route (or
     /// the given scope's, as `KeptRoute.everyProfile`), or nil when none is
     /// kept.
-    private func keptAnswer(_ route: String, profile: String? = nil) -> [String: Any]? {
+    func keptAnswer(_ route: String, profile: String? = nil) -> [String: Any]? {
         guard let dashboardID = activeDashboardID else { return nil }
         return offlineChatCache.keptAnswer(route, dashboardID: dashboardID, profile: profile ?? activeProfile)
     }

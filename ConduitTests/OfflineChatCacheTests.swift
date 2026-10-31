@@ -3239,8 +3239,8 @@ extension OfflineChatCacheTests {
     /// Memory and the file leave out credentials at any depth (a custom
     /// endpoint's API key, an MCP server's token and Authorization header,
     /// a fallback's key, a provider's secret key, key list, credentials,
-    /// passphrase, bare auth or key, and a URL's user and password), and
-    /// keep settings that only mention them.
+    /// passphrase, bare auth or key, and a URL's user and password or a
+    /// credential in its query), and keep settings that only mention them.
     func testAKeptAnswersFileLeavesOutCredentials() throws {
         let store = makeStore()
         let dashboard = UUID()
@@ -3268,13 +3268,22 @@ extension OfflineChatCacheTests {
                 "password_required": false,
                 "max_tokens": 4096,
                 "author": "ann",
+                "access_tokens": ["t-20", "t-21"],
+                "stream_url": "wss://relay.example/ws?region=eu&api_key=sk-25&access_token=t-26",
+                "hook_url": "https://hooks.example/in?token=t-27",
             ]],
             "security": ["redact_secrets": true],
             "agent": ["max_turns": 90],
+            // A header or variable as a pair: its value goes when its name is a credential's.
+            "extra_headers": [["name": "Authorization", "value": "Bearer 22"], ["name": "Accept", "value": "json"]],
+            "env_pairs": [["key": "OPENAI_API_KEY", "value": "sk-23"]],
+            // Hermes' row for a variable says only whether it's set, by its name.
+            "env_vars": [["key": "ELEVENLABS_API_KEY", "is_set": true, "prompt": "ElevenLabs", "value": "sk-24"]],
         ]
         let secrets = [
             "sk-live-1", "ghp-2", "Bearer three", "key-4", "sk-fallback-5", "sk-6", "k-7", "k-8",
             "p-9", "pp-10", "a-11", "k-12", "cs-13", "pw-14", "sk-15", "ssh-16", "Basic 17", "c-18", "h-19",
+            "t-20", "t-21", "Bearer 22", "sk-23", "sk-24", "sk-25", "t-26", "t-27",
         ]
 
         store.recordAnswer(config, route: AppState.KeptRoute.config, dashboardID: dashboard, profile: "default")
@@ -3299,8 +3308,43 @@ extension OfflineChatCacheTests {
         let custom = try XCTUnwrap((kept["providers"] as? [String: Any])?["custom"] as? [String: Any])
         XCTAssertEqual(
             NSDictionary(dictionary: custom),
-            ["base_url": "https://llm.example/v1", "password_required": false, "max_tokens": 4096, "author": "ann"] as NSDictionary,
-            "The URL without its user, true or false and numbers that only mention them, and a name that only starts like auth"
+            [
+                "base_url": "https://llm.example/v1", "stream_url": "wss://relay.example/ws?region=eu",
+                "hook_url": "https://hooks.example/in", "password_required": false, "max_tokens": 4096, "author": "ann",
+            ] as NSDictionary,
+            "URLs without their user or a key in their query, true or false and numbers that only mention them, and a name that only starts like auth"
         )
+        XCTAssertEqual(kept["extra_headers"] as? [[String: String]], [["name": "Authorization"], ["name": "Accept", "value": "json"]])
+        XCTAssertEqual(
+            (kept["env_vars"] as? [[String: Any]])?.map { NSDictionary(dictionary: $0) },
+            [["key": "ELEVENLABS_API_KEY", "is_set": true, "prompt": "ElevenLabs"] as NSDictionary],
+            "A row saying whether a variable is set keeps its name"
+        )
+    }
+
+    /// A schema's fields are named by config path, so a field about a key
+    /// keeps its name; what each holds still goes through the filter, and
+    /// only the names under `fields` are spared (#1533).
+    func testAKeptSchemaKeepsItsFieldNames() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let schema: [String: Any] = [
+            "fields": [
+                "providers.custom.api_key": ["type": "string", "secret": true, "description": "The provider's key"],
+                "model.default": ["type": "string", "options": ["a", "b"], "api_key": "sk-25"],
+            ],
+            "category_order": ["model", "providers"],
+            "api_key": "sk-26",
+        ]
+
+        store.recordAnswer(schema, route: AppState.KeptRoute.configSchema, dashboardID: dashboard, profile: "default", namesUnder: ["fields"])
+
+        let kept = try XCTUnwrap(store.keptAnswer(AppState.KeptRoute.configSchema, dashboardID: dashboard, profile: "default"))
+        let fields = try XCTUnwrap(kept["fields"] as? [String: Any])
+        XCTAssertEqual(Set(fields.keys), ["providers.custom.api_key", "model.default"], "Config paths, not credentials")
+        XCTAssertEqual((fields["providers.custom.api_key"] as? [String: Any])?["secret"] as? Bool, true)
+        XCTAssertNil((fields["model.default"] as? [String: Any])?["api_key"], "What a field holds is filtered")
+        XCTAssertNil(kept["api_key"], "Only the names under fields are spared")
+        XCTAssertEqual(kept["category_order"] as? [String], ["model", "providers"])
     }
 }

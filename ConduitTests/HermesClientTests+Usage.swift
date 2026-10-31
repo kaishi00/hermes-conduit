@@ -78,8 +78,10 @@ extension HermesClientTests {
     }
 
     func testUsageReportPathCarriesPeriodAndProfile() {
-        XCTAssertEqual(UsageReport.path(UsageReport.usagePath, days: 30, profile: "default"), "/api/analytics/usage?days=30")
-        XCTAssertEqual(UsageReport.path(UsageReport.modelsPath, days: 7, profile: "work"), "/api/analytics/models?days=7&profile=work")
+        // The route the page keeps its answers under, and the profile the request adds.
+        XCTAssertEqual(UsageReport.route(UsageReport.usagePath, days: 30), "/api/analytics/usage?days=30")
+        XCTAssertEqual(DashboardPath.withProfile(UsageReport.route(UsageReport.usagePath, days: 30), profile: "default"), "/api/analytics/usage?days=30")
+        XCTAssertEqual(DashboardPath.withProfile(UsageReport.route(UsageReport.modelsPath, days: 7), profile: "work"), "/api/analytics/models?days=7&profile=work")
     }
 
     func testProviderQuotaReadsWindowsAccountsAndLimits() {
