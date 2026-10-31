@@ -600,6 +600,9 @@ struct VoiceReplyModelSettingsSection: View {
     /// which may be stale (#1533).
     @State private var answered = false
     @State private var readFailed = false
+    /// Counts the writes, so a read asked before a pick's write doesn't
+    /// put the old setting back over it (#1533).
+    @State private var writes = 0
 
     private static let sameAsChats = ""
     private static let inheritReasoning = "inherit"
@@ -648,6 +651,7 @@ struct VoiceReplyModelSettingsSection: View {
 
     /// A read that fails keeps what's shown, and the pickers wait.
     private func read() async {
+        let writesBefore = writes
         let setting: VoiceReplyModelSetting?
         do {
             setting = try await settings.load()
@@ -657,7 +661,9 @@ struct VoiceReplyModelSettingsSection: View {
         }
         readFailed = false
         if setting != nil, let loaded = await settings.loadProviders() { providers = loaded }
-        apply(setting)
+        // A pick written while Hermes was asked stays: this answer
+        // predates it.
+        if writes == writesBefore { apply(setting) }
         answered = true
     }
 
@@ -702,6 +708,7 @@ struct VoiceReplyModelSettingsSection: View {
         // change is written, and only to what Hermes answered.
         guard answered, let saved, chosen != saved else { return }
         let next = chosen
+        writes += 1
         Task {
             if await settings.save(next) { self.saved = next }
         }
