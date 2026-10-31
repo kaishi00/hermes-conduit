@@ -29,6 +29,8 @@ final class NotificationService: UNNotificationServiceExtension {
         let userInfo = content.userInfo
         let type = (NotificationE2E.routingStub(userInfo)?["type"] as? String)
         // Prepared up front so a timeout can only ever deliver generic text.
+        // It carries no chat note, so once its envelope expires reading the
+        // chat can't clear it; its slot's next push still replaces it.
         let prepared = Self.generic(content.mutableCopy() as? UNMutableNotificationContent ?? content, type: type)
         lock.withLock { fallback = prepared }
 

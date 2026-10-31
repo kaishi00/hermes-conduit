@@ -67,6 +67,7 @@ final class ChatOnScreenTests: XCTestCase {
             ("approval", target("rt-1", dashboard: here, type: "approval.needed")),
             ("question", target("rt-1", dashboard: here, type: "input.needed")),
             ("call", target("rt-1", dashboard: here, type: "call.requested")),
+            ("calendar", target("rt-1", dashboard: here, type: "phone.changes")),
             ("other-chat", target("rt-2", dashboard: here)),
             ("unreadable", nil),
         ]
