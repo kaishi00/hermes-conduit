@@ -35,8 +35,9 @@ struct BotRosterView: View {
             // whose bots are all meta-hidden must stay reachable, and so
             // must the group probe's failure notice.
             // Hidden bots still list (under Hidden), so only an empty
-            // roster is empty.
-            if appState.botRoster.isEmpty && !hasGroupRows && groupProbeFailure == nil {
+            // roster is empty. Until Hermes answers, the list is the one it
+            // gave last time (#1533).
+            if appState.shownBotRoster.isEmpty && !hasGroupRows && groupProbeFailure == nil {
                 emptyState
                     .safeAreaInset(edge: .top) {
                         if let notice = managementNotice {
@@ -132,11 +133,16 @@ struct BotRosterView: View {
     /// `botRoster` keeps EVERY bot (sessions-list hygiene reads the full
     /// canonical registry); meta-hidden rows are hidden from THIS view only.
     private var visibleBots: [BotProfile] {
-        appState.botRoster.filter { !$0.isHiddenByMeta }
+        appState.shownBotRoster.filter { !$0.isHiddenByMeta }
     }
 
     private var hiddenBots: [BotProfile] {
-        appState.botRoster.filter(\.isHiddenByMeta)
+        appState.shownBotRoster.filter(\.isHiddenByMeta)
+    }
+
+    /// A new group picks from Hermes' bots, never the kept copy's.
+    private var canStartGroups: Bool {
+        hostedGroupsAvailable && appState.botRoster.lazy.filter { !$0.isHiddenByMeta }.count >= 2
     }
 
     /// `profiles.list` is gateway-wide and deliberately sent UNSCOPED: the
@@ -155,8 +161,7 @@ struct BotRosterView: View {
     }
 
     private var hasGroupRows: Bool {
-        (hostedGroupsAvailable && !appState.groupRooms.isEmpty)
-            || !appState.desktopGroupChats.isEmpty
+        !appState.shownGroupRooms.isEmpty || !appState.shownDesktopGroupChats.isEmpty
     }
 
     private var groupProbeFailure: String? {
@@ -211,7 +216,7 @@ struct BotRosterView: View {
             canManage: canManageBots,
             canDelete: appState.canDeleteBot(bot),
             rooms: botRooms(bot),
-            canStartGroup: hostedGroupsAvailable && !bot.isHiddenByMeta && visibleBots.count >= 2,
+            canStartGroup: canStartGroups && !bot.isHiddenByMeta,
             actions: BotRosterRow.Actions(
                 edit: { editorMode = .edit(bot) },
                 togglePin: {
@@ -243,8 +248,7 @@ struct BotRosterView: View {
 
     /// The hosted group rooms this bot is a member of.
     private func botRooms(_ bot: BotProfile) -> [GroupRoom] {
-        guard hostedGroupsAvailable else { return [] }
-        return appState.groupRooms.filter { room in
+        appState.shownGroupRooms.filter { room in
             !room.isDisbanded && room.members.contains {
                 $0.profile?.caseInsensitiveCompare(bot.name) == .orderedSame
             }
@@ -276,7 +280,7 @@ struct BotRosterView: View {
                     .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
                 }
             }
-            if !appState.botRoster.isEmpty && createRequest != nil {
+            if !appState.shownBotRoster.isEmpty && createRequest != nil {
                 // V2's Bots tab: the page title names the list; a line under
                 // the bots says what a bot is. A row, not a footer: a plain
                 // List paints footers as an opaque band across the backdrop.
@@ -290,7 +294,7 @@ struct BotRosterView: View {
                         .rosterListRow(divider: false)
                 }
                 .listSectionSeparator(.hidden)
-            } else if !appState.botRoster.isEmpty {
+            } else if !appState.shownBotRoster.isEmpty {
                 Section(AppLocalization.string("Bots")) {
                     botRows
                     if canManageBots {
@@ -320,15 +324,16 @@ struct BotRosterView: View {
         }
     }
 
-    /// Group Chat rows, below the Bots section: hosted rooms (only when the
-    /// gateway advertised the foundation `groups.*` methods — an unsupported
-    /// gateway never shows a dead control) plus the group chats Hermes
-    /// Desktop mirrored to the gateway, which need no `groups.*` support.
+    /// Group Chat rows, below the Bots section: hosted rooms (once the
+    /// gateway advertised the foundation `groups.*` methods, or the ones it
+    /// listed last time until it answers — an unsupported gateway never
+    /// shows a dead control) plus the group chats Hermes Desktop mirrored to
+    /// the gateway, which need no `groups.*` support.
     @State private var showingGroupCreateSheet = false
 
     @ViewBuilder
     private var groupSection: some View {
-        if hostedGroupsAvailable || !appState.desktopGroupChats.isEmpty || groupProbeFailure != nil {
+        if hostedGroupsAvailable || hasGroupRows || groupProbeFailure != nil {
             Section {
                 if let message = groupProbeFailure {
                     // A probe failure must explain itself — an absent section
@@ -345,17 +350,15 @@ struct BotRosterView: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
                 }
-                if hostedGroupsAvailable {
-                    ForEach(appState.groupRooms) { room in
-                        GroupRosterRow(room: room)
-                    }
+                ForEach(appState.shownGroupRooms) { room in
+                    GroupRosterRow(room: room)
                 }
-                ForEach(appState.desktopGroupChats) { group in
+                ForEach(appState.shownDesktopGroupChats) { group in
                     DesktopGroupRosterRow(group: group) {
                         presentedDesktopGroup = group
                     }
                 }
-                if hostedGroupsAvailable && visibleBots.count >= 2 {
+                if canStartGroups {
                     Button {
                         Haptics.light()
                         // The sheet renders the shared error; start clean.
@@ -435,7 +438,7 @@ struct BotRosterView: View {
                 }
             }
         case .failed(let message):
-            if appState.botRoster.isEmpty {
+            if appState.shownBotRoster.isEmpty {
                 ContentUnavailableView {
                     Label(
                         AppLocalization.string("Could not load bots."),
@@ -731,7 +734,8 @@ struct BotMonogramView: View {
             image: appState.botAvatarImage(for: bot),
             size: avatarSize
         )
-        .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.botAvatarGeneration)") {
+        // Connecting fetches again: a kept row's fetch fails offline.
+        .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.botAvatarGeneration)|\(appState.isConnected)") {
             await appState.loadBotAvatarRetrying(bot)
         }
     }

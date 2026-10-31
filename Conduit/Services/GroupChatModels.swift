@@ -64,7 +64,7 @@ enum GroupCapabilitiesDecoder {
 /// One room member. `RoomMember` is an OPEN set upstream (legacy rooms may
 /// carry pre-normalization rows), so unknown fields are preserved in
 /// `extra` — never dropped, never used for identity.
-struct GroupMember: Equatable {
+struct GroupMember: Equatable, Codable {
     let memberID: String?
     let profile: String?
     let handle: String?
@@ -146,8 +146,9 @@ struct GroupEvent: Equatable, Identifiable {
     var threadID: String? { payload["thread_id"]?.stringValue }
 }
 
-/// A hosted room, as `groups.list`/`groups.state` return it.
-struct GroupRoom: Equatable, Identifiable {
+/// A hosted room, as `groups.list`/`groups.state` return it. Codable for
+/// the copy the Bots list keeps to open on.
+struct GroupRoom: Equatable, Identifiable, Codable {
     let roomID: String
     let name: String
     let members: [GroupMember]
@@ -163,6 +164,19 @@ struct GroupRoom: Equatable, Identifiable {
 
     var id: String { roomID }
     var isDisbanded: Bool { disbandedAt != nil }
+}
+
+/// What the Bots list keeps of its hosted rooms to open on (#1533): the
+/// rooms `groups.list` gave, and the pictures the host keeps for them.
+struct KeptGroupRooms: Codable {
+    struct Picture: Codable {
+        let roomID: String
+        let revision: String
+        let data: Data
+    }
+
+    var rooms: [GroupRoom]
+    var pictures: [Picture]
 }
 
 /// `HostedRoomService.status(room_id)` — the live driver view. Unknown
@@ -1194,13 +1208,13 @@ enum MentionAutocomplete {
 /// `groupChatSyncSnapshot`). The projection carries the room identity,
 /// members, and the latest compacted messages — enough to list and read the
 /// room, not to drive its rounds, so this client presents it read-only.
-struct DesktopGroupChat: Equatable, Identifiable {
-    struct Member: Equatable {
+struct DesktopGroupChat: Equatable, Identifiable, Codable {
+    struct Member: Equatable, Codable {
         let name: String
         let handle: String?
     }
 
-    struct Message: Equatable, Identifiable {
+    struct Message: Equatable, Identifiable, Codable {
         let id: String
         /// `from.kind == "member"`; everything else is the human.
         let isMember: Bool
@@ -1227,6 +1241,12 @@ struct DesktopGroupChat: Equatable, Identifiable {
     var imageData: Data? = nil
 
     var id: String { key }
+
+    /// The copy the Bots list keeps names the room key `identity`: the
+    /// kept answers leave out any field named like a key.
+    private enum CodingKeys: String, CodingKey {
+        case key = "identity", name, members, messages, omitted, roomID, imageData
+    }
 
     /// The members as room members, for the shared avatar and mention views:
     /// a display name and, on current Desktop builds, the room handle.

@@ -9,6 +9,7 @@
 //  focus is AppState behavior.
 //
 
+import Combine
 import UIKit
 import UserNotifications
 import XCTest
@@ -2144,5 +2145,256 @@ extension AppStateMultiDashboardTests {
         appState.setActiveProfileForTesting("work")
         XCTAssertNil(appState.keptUsageReport(days: 30), "Another profile")
         XCTAssertNil(appState.keptProviderQuotas())
+    }
+}
+
+// MARK: - The Bots list opens on its last answer (#1533)
+
+extension AppStateMultiDashboardTests {
+    private func rosterAppState(
+        _ registry: SavedDashboardRegistry,
+        roster: @escaping @MainActor () throws -> BotRosterSnapshot = { BotRosterSnapshot(bots: [], supportsBotProtocol: true) },
+        groups: GroupChatLifecycleOperations = .live,
+        cache: OfflineChatCacheStore? = nil
+    ) -> AppState {
+        AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: registry,
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: ChatResumeLifecycleOperations(botRoster: { _ in try roster() }),
+            groupChatOperations: groups,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+            offlineChatCache: cache,
+            profileAppearanceStore: makeAppearanceStore()
+        )
+    }
+
+    /// Connected to the dashboard, its requests held for the test.
+    @discardableResult
+    private func connectRoster(_ appState: AppState, to dashboard: SavedDashboard) -> HeldDashboardRequests {
+        let held = HeldDashboardRequests(baseURL: dashboard.normalizedURL, dashboardID: dashboard.id)
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+        addTeardownBlock { @MainActor in held.releaseAll() }
+        appState.client = HermesClient(connection: HermesConnection(baseUrl: dashboard.normalizedURL, ticket: "ticket"), profile: "default")
+        appState.isConnected = true
+        return held
+    }
+
+    private func rosterBot(_ name: String, title: String? = nil, hasAvatar: Bool = false) -> BotProfile {
+        var bot = BotProfile(
+            name: name, botTitle: title, displayName: name, profileDescription: "", model: nil, provider: nil,
+            hasAvatar: hasAvatar, isPinned: false, isHiddenByMeta: false, appearanceColor: "#3366ff",
+            canonicalSession: BotCanonicalSession(id: "stored-\(name)", resolvedID: nil, lastActive: 1_800_000_000, preview: "Done"),
+            lastActive: nil, lastPreview: nil
+        )
+        bot.botMeta = ["title": .string(title ?? name), "sections": .array([.object(["key": .string("work")])])]
+        bot.botMetaRevision = 7
+        return bot
+    }
+
+    private func hostedRoom(_ id: String, _ name: String) -> GroupRoom {
+        GroupRoom(
+            roomID: id, name: name,
+            members: [GroupMember(memberID: "atlas", profile: "atlas", handle: "atlas", displayName: "Atlas", target: nil, extra: [:])],
+            authorityGatewayID: "gw-a", authorityEpoch: 1, revision: 1,
+            createdAt: 1_800_000_000, updatedAt: 1_800_000_000, disbandedAt: nil, latestSeq: 4
+        )
+    }
+
+    /// The Bots list opens on the bots and Desktop's groups Hermes listed
+    /// last time on this dashboard, with the bots' pictures the phone keeps
+    /// and without their ui_meta, until Hermes answers. Nothing writes a
+    /// kept bot, a read that fails keeps them up, and Hermes' answer takes
+    /// their place; another dashboard opens on nothing.
+    func testTheBotsListOpensOnTheRosterHermesGaveLastTime() async throws {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let vps = dashboard("VPS", "https://vps-\(UUID().uuidString.lowercased()).invalid")
+        let registry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps])
+        let desk = DesktopGroupChat(key: "id:room-9", name: "Desk", members: [.init(name: "Atlas", handle: "atlas")], messages: [], omitted: 0)
+        var answer: () throws -> BotRosterSnapshot = {
+            BotRosterSnapshot(
+                bots: [self.rosterBot("default"), self.rosterBot("atlas", title: "Atlas", hasAvatar: true)],
+                supportsBotProtocol: true, desktopGroups: [desk]
+            )
+        }
+        let first = rosterAppState(registry, roster: { try answer() })
+        XCTAssertTrue(first.shownBotRoster.isEmpty, "Nothing kept yet")
+        connectRoster(first, to: mac)
+        await first.refreshBotRoster()
+        XCTAssertEqual(first.shownBotRoster, first.botRoster, "Hermes' answer")
+        let kept = try XCTUnwrap(first.offlineChatCacheForTesting.keptAnswer(
+            AppState.KeptRoute.botRoster, dashboardID: mac.id, profile: AppState.KeptRoute.everyProfile
+        ))
+        let keptBots = try XCTUnwrap(kept["bots"] as? [[String: Any]])
+        XCTAssertEqual(keptBots.count, 2)
+        XCTAssertTrue(keptBots.allSatisfy { $0["botMeta"] == nil && $0["botMetaRevision"] == nil }, "A write takes Hermes' own ui_meta")
+        XCTAssertEqual((kept["desktopGroups"] as? [[String: Any]])?.first?["identity"] as? String, "id:room-9", "Not left out as a key")
+
+        // The next launch opens on them.
+        let next = rosterAppState(registry, roster: { try answer() }, cache: first.offlineChatCacheForTesting)
+        // A chat's teammate note names its bot from what this sends: the
+        // kept bots on subscribing, before Hermes answers, and Hermes' own
+        // once its answer has landed.
+        var named: [[String]] = []
+        let keptNamed = expectation(description: "the kept bots")
+        let hermesNamed = expectation(description: "Hermes' bots")
+        hermesNamed.assertForOverFulfill = false
+        let rosterChanges = next.shownBotRosterChanged.sink { _ in
+            named.append(next.shownBotRoster.map(\.displayLabel))
+            if named.count == 1 { keptNamed.fulfill() }
+            if named.last == ["Atlas Prime"] { hermesNamed.fulfill() }
+        }
+        defer { rosterChanges.cancel() }
+        await fulfillment(of: [keptNamed], timeout: 5)
+        XCTAssertEqual(named.first?.first, "Atlas", "Not the empty roster Hermes hasn't answered yet")
+        XCTAssertEqual(next.shownBotRoster.map(\.name), ["atlas", "default"])
+        XCTAssertTrue(next.shownBotRoster.allSatisfy(\.isKeptCopy))
+        XCTAssertTrue(next.botRoster.isEmpty, "Hermes hasn't answered")
+        XCTAssertEqual(next.shownBotRoster.first { $0.name == "default" }?.displayLabel, next.profileDisplayName("default"))
+        XCTAssertEqual(next.shownDesktopGroupChats, [desk])
+        let atlas = try XCTUnwrap(next.shownBotRoster.first { $0.name == "atlas" })
+        XCTAssertEqual(atlas.canonicalSessionID, "stored-atlas", "Its row opens its Bot Chat")
+        XCTAssertNil(next.botAvatarImage(for: atlas))
+        try next.saveProfileAvatarOnDevice(photoData(), for: "atlas")
+        XCTAssertNotNil(next.botAvatarImage(for: atlas), "The picture the phone keeps for its profile")
+        XCTAssertFalse(next.canDeleteBot(atlas), "Nothing writes a kept bot")
+
+        // Its Bot Chat, its tag and its spoken name work before Hermes
+        // answers.
+        next.noteBotChatSessionForTesting("stored-atlas", profile: "atlas")
+        next.activeSessionId = "stored-atlas"
+        XCTAssertEqual(next.conversationAgentIdentity.botFace?.name, "atlas", "Its Bot Chat opens with its face")
+        XCTAssertNotNil(next.conversationAgentIdentity.botFace?.image)
+        XCTAssertNotNil(next.profileGlowTint("atlas"), "and its color")
+        next.activeSessionId = nil
+        XCTAssertEqual(next.composerMentionCandidates.map(\.title), ["Atlas"], "The @ list and Mention a Bot")
+        XCTAssertEqual(next.voiceJobProfileTarget(named: "Atlas"), .other("atlas"), "A spoken job reaches it")
+        XCTAssertTrue(next.watchJobProfileNames().contains { $0.profile == "atlas" }, "and a Watch call's")
+
+        connectRoster(next, to: mac)
+        let refused = await next.setBotPinned(atlas, pinned: true)
+        XCTAssertEqual(refused, AppLocalization.string("Connect to Hermes to manage bots."), "A kept bot has no ui_meta to send back")
+        answer = { throw RpcError(code: 5000, message: "state.db is locked") }
+        await next.refreshBotRoster()
+        XCTAssertEqual(next.botModePhase, .failed(message: AppLocalization.string("Could not refresh bots.")))
+        XCTAssertEqual(next.shownBotRoster.map(\.name), ["atlas", "default"], "A read that fails keeps them up")
+
+        answer = { BotRosterSnapshot(bots: [self.rosterBot("atlas", title: "Atlas Prime")], supportsBotProtocol: true) }
+        await next.refreshBotRoster()
+        XCTAssertEqual(next.shownBotRoster.map(\.displayLabel), ["Atlas Prime"], "Hermes' answer takes their place")
+        XCTAssertFalse(next.shownBotRoster.contains(where: \.isKeptCopy))
+        XCTAssertTrue(next.shownDesktopGroupChats.isEmpty)
+        await fulfillment(of: [hermesNamed], timeout: 5)
+
+        let elsewhere = rosterAppState(
+            SavedDashboardRegistry(activeDashboardID: vps.id, dashboards: [mac, vps]),
+            cache: first.offlineChatCacheForTesting
+        )
+        XCTAssertTrue(elsewhere.shownBotRoster.isEmpty, "Another dashboard's list")
+    }
+
+    /// Desktop's group pictures ride in the kept roster up to the rooms'
+    /// picture budget, so large ones never cost the bots their kept copy.
+    func testTheKeptRosterCapsDesktopGroupPictures() {
+        let picture = Data(count: GroupRoomPictures.keptBytes - 10)
+        let groups = ["a", "b"].map {
+            DesktopGroupChat(key: "id:\($0)", name: $0, members: [], messages: [], omitted: 0, roomID: $0, imageData: picture)
+        }
+        let kept = KeptBotRoster(bots: [rosterBot("atlas")], desktopGroups: groups).cappingPictures()
+        XCTAssertEqual(kept.desktopGroups.map(\.name), ["a", "b"], "Every group stays")
+        XCTAssertEqual(kept.desktopGroups.map { $0.imageData != nil }, [true, false], "The picture over the budget doesn't")
+        XCTAssertEqual(kept.bots.map(\.name), ["atlas"])
+    }
+
+    /// Hosted rooms and their pictures open as Hermes and the host listed
+    /// them last time on this dashboard, until `groups.list` answers; the
+    /// kept pictures then carry over, so only one whose revision moved is
+    /// fetched again, and the list takes the kept one's place. A kept room
+    /// tapped first asks Hermes, and one it no longer lists doesn't open.
+    func testTheBotsListOpensOnTheHostedRoomsListedLastTime() async throws {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let registry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac])
+        let picture = photoData()
+        var listed = [hostedRoom("room-1", "Planning"), hostedRoom("room-2", "Launch")]
+        let groups = GroupChatLifecycleOperations(
+            capabilities: { _ in
+                GroupCapabilities(
+                    protocolVersion: 2, driverReady: true, authorityGatewayID: "gw-a", features: [],
+                    methods: ["groups.list", "groups.create", "groups.state", "groups.send", "groups.log", "groups.disband", "groups.stop"],
+                    maxLogLimit: 500
+                )
+            },
+            list: { _ in (listed, nil) }
+        )
+        let plugin = NotifierPluginStatus.State.reported(version: "0.122.2", capabilities: [GroupRoomPictures.capability])
+        let first = rosterAppState(registry, groups: groups)
+        first.setNotifierPluginStateForTesting(plugin)
+        XCTAssertTrue(first.shownGroupRooms.isEmpty, "Nothing kept yet")
+        let held = connectRoster(first, to: mac)
+        let refresh = Task { await first.refreshGroupChatSupport() }
+        try await held.waitForRequests(1)       // the pictures' revisions
+        try await held.answer(["ok": true, "revisions": ["room-1": "r1"]])
+        try await held.waitForRequests(2)       // room-1's picture
+        try await held.answer(["ok": true, "rev": "r1", "data_base64": picture.base64EncodedString()])
+        await refresh.value
+        XCTAssertEqual(first.shownGroupRooms.map(\.roomID), ["room-1", "room-2"])
+
+        // The next launch opens on them, picture and all.
+        let next = rosterAppState(registry, groups: groups, cache: first.offlineChatCacheForTesting)
+        next.setNotifierPluginStateForTesting(plugin)
+        XCTAssertEqual(next.shownGroupRooms.map(\.name), ["Planning", "Launch"])
+        XCTAssertNotNil(next.groupRoomPicture(roomID: "room-1"))
+        XCTAssertNil(next.groupRoomPicture(roomID: "room-2"))
+
+        listed = [hostedRoom("room-1", "Planning")]
+        let nextHeld = connectRoster(next, to: mac)
+        let launch = try XCTUnwrap(next.shownGroupRooms.first { $0.roomID == "room-2" })
+        let tap = Task { await next.openGroupRoom(launch) }
+        try await nextHeld.waitForRequests(1)
+        try await nextHeld.answer(["ok": true, "revisions": ["room-1": "r1"]])
+        await tap.value
+        XCTAssertEqual(next.errorMessage, AppLocalization.string("That chat is no longer available."), "Hermes no longer lists it")
+        XCTAssertNil(next.activeRoomSurface)
+        XCTAssertEqual(nextHeld.sent.map(\.path), [GroupRoomPictures.listPath], "An unchanged picture isn't fetched again")
+        XCTAssertEqual(next.groupRoomPictureData["room-1"], picture)
+        XCTAssertEqual(next.shownGroupRooms.map(\.roomID), ["room-1"], "The list takes the kept one's place")
+
+        // A Hermes that no longer hosts rooms: trying again wouldn't open it.
+        let roomless = GroupChatLifecycleOperations(
+            capabilities: { _ in
+                GroupCapabilities(
+                    protocolVersion: 2, driverReady: true, authorityGatewayID: "gw-a", features: [],
+                    methods: [], maxLogLimit: 500
+                )
+            },
+            list: { _ in (listed, nil) }
+        )
+        let later = rosterAppState(registry, groups: roomless, cache: next.offlineChatCacheForTesting)
+        later.setNotifierPluginStateForTesting(plugin)
+        connectRoster(later, to: mac)
+        let planning = try XCTUnwrap(later.shownGroupRooms.first { $0.roomID == "room-1" })
+        await later.openGroupRoom(planning)
+        XCTAssertEqual(later.errorMessage, AppLocalization.string("That chat is no longer available."), "Not \"Try again\"")
+        XCTAssertNil(later.activeRoomSurface)
+
+        // A list that fails: the room may still be there, so try again.
+        let failing = GroupChatLifecycleOperations(
+            capabilities: { _ in
+                GroupCapabilities(
+                    protocolVersion: 2, driverReady: true, authorityGatewayID: "gw-a", features: [],
+                    methods: ["groups.list", "groups.create", "groups.state", "groups.send", "groups.log", "groups.disband", "groups.stop"],
+                    maxLogLimit: 500
+                )
+            },
+            list: { _ in throw URLError(.timedOut) }
+        )
+        let unlisted = rosterAppState(registry, groups: failing, cache: next.offlineChatCacheForTesting)
+        connectRoster(unlisted, to: mac)
+        let kept = try XCTUnwrap(unlisted.shownGroupRooms.first { $0.roomID == "room-1" })
+        await unlisted.openGroupRoom(kept)
+        XCTAssertEqual(unlisted.errorMessage, AppLocalization.string("Couldn't open that chat. Try again."))
+        XCTAssertNil(unlisted.activeRoomSurface)
+        XCTAssertEqual(unlisted.shownGroupRooms.map(\.roomID), ["room-1"], "The kept rooms stay up")
     }
 }
