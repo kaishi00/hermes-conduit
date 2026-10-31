@@ -726,6 +726,8 @@ extension KanbanTests {
         XCTAssertEqual(store.servers.first?.url, "https://new", "not the address from before the save")
         XCTAssertEqual(store.servers.first?.enabled, false, "a server saved off isn't started by a re-test")
         XCTAssertEqual(store.servers.first?.args, [], "a remote entry has no arguments")
+        try await store.saveServer(original: "griply", loaded: try await store.serverConfig("griply"), name: "griply", entry: ["command": "npx", "args": ["--port", 9090]], openedOn: store.generation)
+        XCTAssertEqual(store.servers.first?.args, ["--port", "9090"], "the saved row's arguments as written")
         XCTAssertFalse(requester.calls.contains { $0.method == "POST" && $0.path.contains("/test") })
     }
 
@@ -760,6 +762,9 @@ extension KanbanTests {
         let entry: [String: Any] = ["command": "npx", "args": decoded ?? []]
         XCTAssertEqual(ConnectorServer.saved(name: "files", entry: entry, replacing: nil).args, ["--watch", "true", "8080"])
         XCTAssertEqual(ConnectorServerEdit(name: "files", entry: entry).arguments, "--watch\ntrue\n8080")
+        // The catalog's install sheet shows them the same way.
+        let catalog = ConnectorCatalogEntry.list(from: ["entries": [["name": "files", "transport": "stdio", "command": "npx", "args": decoded ?? []]]])
+        XCTAssertEqual(catalog.first?.args, ["--watch", "true", "8080"])
     }
 
     func testAServerSaveSendsNothingAfterAProfileSwitch() async throws {

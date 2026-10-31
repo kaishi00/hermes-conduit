@@ -94,6 +94,8 @@ final class CapabilitiesStore {
     /// switch just flipped.
     @ObservationIgnored private var skillsEpoch = 0
     @ObservationIgnored private var connectorsEpoch = 0
+    /// The read whose list is showing.
+    @ObservationIgnored private var connectorsShownEpoch = 0
     /// Bumped when a server's entry is saved: a test that started before
     /// tested the old entry.
     @ObservationIgnored private var probeEpochs: [String: Int] = [:]
@@ -339,6 +341,7 @@ final class CapabilitiesStore {
             let catalog = await catalogResponse.map(ConnectorCatalogEntry.list) ?? connectorCatalog
             guard token == generation, epoch == connectorsEpoch else { return false }
             self.servers = servers
+            connectorsShownEpoch = epoch
             connectorCatalog = catalog
             connectorsError = nil
             let names = Set(servers.map(\.name))
@@ -532,12 +535,15 @@ final class CapabilitiesStore {
         probeEpochs[original, default: 0] &+= 1
         probeEpochs[name, default: 0] &+= 1
         let before = servers.first { $0.name == original }
+        let mine = connectorsEpoch &+ 1
         let reloaded = await loadConnectors()
         guard token == generation else { return }
-        // A reload that failed, was cut off or was overtaken leaves the list
-        // from before the save: show the saved server there, so a renamed
-        // page doesn't read as removed and the re-test goes by the saved entry.
-        if !reloaded || !servers.contains(where: { $0.name == name }) {
+        // A reload that failed, was cut off or was overtaken before a newer
+        // one landed leaves the list from before the save: show the saved
+        // server there, so a renamed page doesn't read as removed and the
+        // re-test goes by the saved entry. A newer read that landed is fresh.
+        let fresh = reloaded || connectorsShownEpoch > mine
+        if !fresh || !servers.contains(where: { $0.name == name }) {
             let saved = ConnectorServer.saved(name: name, entry: entry, replacing: before)
             // One row for it: the old name's place, any row already under
             // the saved name dropped.
