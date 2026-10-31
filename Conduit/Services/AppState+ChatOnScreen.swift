@@ -42,16 +42,26 @@ extension AppState {
         #if canImport(UIKit) && !os(watchOS)
         guard UIApplication.shared.applicationState == .active else {
             // The scene can report active before UIKit does: try once more
-            // when it does.
-            Task { @MainActor [weak self] in
-                for await _ in NotificationCenter.default.notifications(named: UIApplication.didBecomeActiveNotification) {
+            // when it does. One observer at a time, registered before this
+            // returns so the notice can't slip past it.
+            guard ReadChatClearRetry.observer == nil else { return }
+            ReadChatClearRetry.observer = NotificationCenter.default.addObserver(
+                forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    if let observer = ReadChatClearRetry.observer {
+                        NotificationCenter.default.removeObserver(observer)
+                        ReadChatClearRetry.observer = nil
+                    }
                     self?.clearShownChatNotifications()
-                    break
                 }
             }
             return
         }
         #endif
+        // A sheet over the chat (Settings, a voice sheet) hides it: what
+        // arrives meanwhile hasn't been read. The chat's next edge clears it.
+        guard !isModalSheetPresented else { return }
         guard let sessionID = chatShownOnScreen else { return }
         let sessionIDs = chatOwnSessionIDs(for: sessionID)
         let activeDashboardID = activeDashboardID
@@ -165,3 +175,12 @@ extension AppState {
         }
     }
 }
+
+#if canImport(UIKit) && !os(watchOS)
+/// The one pending "clear once UIKit says active" observer
+/// (`clearShownChatNotifications`).
+@MainActor
+private enum ReadChatClearRetry {
+    static var observer: NSObjectProtocol?
+}
+#endif
