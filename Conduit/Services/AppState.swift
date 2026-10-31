@@ -5353,6 +5353,12 @@ final class AppState: ObservableObject {
         ISO8601DateFormatter().string(from: Date())
     }
 
+    private static let reviewTimestampFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
     /// Durable-owned presentation persistence: once the conversation's
     /// durable identity is positively established (a catalog-confirmed or
     /// admission-established canonical), the durable key is the only key
@@ -6375,7 +6381,7 @@ final class AppState: ObservableObject {
             $0.profile == activeProfile && reviewRecordBelongs($0, toOwnIDs: ownIDs)
         }
         guard !records.isEmpty else { return history }
-        var merged = history
+        var reviews: [ChatMessage] = []
         // Dedup by record id, not by activity: with Hermes' default
         // `display.memory_notifications: on` every review reads the same
         // generic "Memory updated", and each one is its own event. A review
@@ -6386,12 +6392,12 @@ final class AppState: ObservableObject {
         var transcriptReviews = history.compactMap { message in
             message.id.hasPrefix("review-summary-") ? nil : message.review
         }
-        for record in records where !merged.contains(where: { $0.id == record.id }) {
+        for record in records where !history.contains(where: { $0.id == record.id }) {
             if let match = transcriptReviews.firstIndex(of: record.activity) {
                 transcriptReviews.remove(at: match)
                 continue
             }
-            merged.append(ChatMessage(
+            reviews.append(ChatMessage(
                 id: record.id,
                 role: .system,
                 content: record.activity.summary,
@@ -6399,14 +6405,52 @@ final class AppState: ObservableObject {
                 review: record.activity
             ))
         }
-        // Parse each timestamp once with one formatter. The comparator used
-        // to build two ISO8601DateFormatters per comparison, which made every
-        // resume of a long chat with a cached review slow.
-        let formatter = ISO8601DateFormatter()
+        return Self.placingReviews(reviews, into: history)
+    }
+
+    /// Saved review rows put among Hermes' rows by time, leaving Hermes'
+    /// order as it is: each review goes before the first row timed after it.
+    /// Hermes times its rows in epoch seconds and Conduit its reviews as ISO
+    /// dates, so both are read the way the chat reads a row's time. Sorting
+    /// the whole transcript by an ISO-only read used to put every saved
+    /// review after the newest message (issue #1549). A row with no time it
+    /// can read never decides a review's place. A review's time is the
+    /// phone's clock and a row's the host's, so a host clock that is off
+    /// moves a review by as much (an open gap in the feature map: Hermes'
+    /// review event carries no time of its own).
+    static func placingReviews(_ reviews: [ChatMessage], into history: [ChatMessage]) -> [ChatMessage] {
+        guard !reviews.isEmpty else { return history }
+        // Parse each timestamp once: a long chat resumes with every row.
+        let historyDates = history.map { MessageTimestampFormatter.date(from: $0.timestamp) }
+        // Reviews saved in the same second keep the order they were saved in.
+        let placed = reviews.enumerated()
+            .map { (message: $1, date: MessageTimestampFormatter.date(from: $1.timestamp) ?? .distantFuture, order: $0) }
+            .sorted { ($0.date, $0.order) < ($1.date, $1.order) }
+        var merged: [ChatMessage] = []
+        merged.reserveCapacity(history.count + reviews.count)
+        var next = 0
+        for (index, message) in history.enumerated() {
+            if let date = historyDates[index] {
+                while next < placed.count, placed[next].date < date {
+                    merged.append(placed[next].message)
+                    next += 1
+                }
+            }
+            merged.append(message)
+        }
+        merged.append(contentsOf: placed[next...].map(\.message))
         return merged
-            .map { (message: $0, date: formatter.date(from: $0.timestamp) ?? .distantPast) }
-            .sorted { $0.date < $1.date }
-            .map(\.message)
+    }
+
+    /// The chat with its saved review rows placed again, after Load earlier
+    /// put older rows above a review that sat at the start of the newest
+    /// page. Nil when no review moves.
+    static func replacingSavedReviews(in messages: [ChatMessage]) -> [ChatMessage]? {
+        let isSaved = { (message: ChatMessage) in message.id.hasPrefix("review-summary-") }
+        let reviews = messages.filter(isSaved)
+        guard !reviews.isEmpty else { return nil }
+        let placed = placingReviews(reviews, into: messages.filter { !isSaved($0) })
+        return placed.map(\.id) == messages.map(\.id) ? nil : placed
     }
 
     /// The chat's "Voice call" markers for calls started from it.
@@ -30618,6 +30662,9 @@ final class AppState: ObservableObject {
                 }
             }
             if didPrepend {
+                if let replaced = Self.replacingSavedReviews(in: messages) {
+                    messages = replaced
+                }
                 // The visible transcript now starts with backfilled rows.
                 // The reconcile graft relies on this explicit fact to keep
                 // preserving the prefix across repeated reconciles — the
@@ -34236,18 +34283,21 @@ final class AppState: ObservableObject {
             // eventual commit — settle first so chronology matches the
             // pre-projection transcript.
             settleReasoningSegmentIntoTranscript()
+            // To the millisecond: a review placed among Hermes' rows on a
+            // reload must not land before a row from the same second.
+            let reviewTimestamp = Self.reviewTimestampFormatter.string(from: Date())
             messages.append(ChatMessage(
                 id: id,
                 role: .system,
                 content: activity.summary,
-                timestamp: Self.localTimestamp(),
+                timestamp: reviewTimestamp,
                 review: activity
             ))
             persistReview(ReviewSummaryRecord(
                 id: id,
                 profile: activeProfile,
                 sessionId: reviewRecordSessionID(eventSessionId: sessionId),
-                timestamp: Self.localTimestamp(),
+                timestamp: reviewTimestamp,
                 activity: activity
             ))
 
