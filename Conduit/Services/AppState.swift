@@ -8899,8 +8899,13 @@ final class AppState: ObservableObject {
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
             // A Watch call on another profile is asked by that profile's
             // chats Conduit has listed (All profiles lists them).
+            let botOwned = botOwnedSessionIDs
             let listed = callProfile.map { profile in
-                sessions.filter { sessionBelongsToProfile($0, profile: profile) && !BotChatHygiene.isCanonicalBotChatRow($0, roster: botRoster) }
+                sessions.filter {
+                    sessionBelongsToProfile($0, profile: profile)
+                        && !BotChatHygiene.isCanonicalBotChatRow($0, roster: botRoster)
+                        && !BotChatHygiene.isBotOwnedRow($0, botOwnedSessionIDs: botOwned)
+                }
             } ?? activeProfileSessions
             return VoiceChatFinder.titleMatches(in: listed, query: query)
         }
