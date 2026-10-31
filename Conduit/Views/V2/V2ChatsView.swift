@@ -1545,7 +1545,7 @@ struct V2ChatsView: View, Equatable {
     /// The open chat, or one nested under it, stays listed past the
     /// preview, so a wide window never highlights a hidden row.
     private func holdsOpenChat(_ node: SessionNesting.Node) -> Bool {
-        appState.isOpenChatRow(node.session) || node.children.contains(where: holdsOpenChat)
+        AllProfilesChats.holdsOpen(node, isOpen: { appState.isOpenChatRow($0) })
     }
 
     /// "Show 12 more" under a profile's newest chats, "Show fewer" once

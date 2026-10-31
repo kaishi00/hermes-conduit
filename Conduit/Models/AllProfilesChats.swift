@@ -191,6 +191,12 @@ enum AllProfilesChats {
         return (shown, hidden)
     }
 
+    /// Whether `node`, or a chat nested under it, is open: such a nest
+    /// stays listed past the preview.
+    static func holdsOpen(_ node: SessionNesting.Node, isOpen: (SessionSummary) -> Bool) -> Bool {
+        isOpen(node.session) || node.children.contains { holdsOpen($0, isOpen: isOpen) }
+    }
+
     private static func identity(_ session: SessionSummary, fallback: String) -> String {
         (session.profile?.lowercased() ?? fallback.lowercased()) + "\u{1F}" + session.id
     }

@@ -2835,7 +2835,7 @@ chat's row on the iPad and Mac (same view) · unread dots (another profile's
 replies) · VoiceOver · README.md
 
 **Code**
-- Settings, merge and groups: `Conduit/Models/AllProfilesChats.swift` (AllProfilesChatsSettings, rows, groups, preview, groupPreviewCount)
+- Settings, merge and groups: `Conduit/Models/AllProfilesChats.swift` (AllProfilesChatsSettings, rows, groups, preview, groupPreviewCount, holdsOpen)
 - State and other profiles' rows: `Conduit/Services/AppState.swift` (rowProfile, isOtherProfileRow, isAllProfilesChatsOn, allProfilesIncluded, allProfilesGroupsByProfile, refreshAllProfilesCatalog, listAllProfilesCatalog, startNewChat(inProfile:))
 - Chip and sheet: `Conduit/Views/V2/V2TopBar.swift` (withAllProfilesChip), `Conduit/Views/V2/V2AllProfilesSheet.swift`
 - List: `Conduit/Views/V2/V2ChatsView.swift` (profileGroups, profileSection, profileShowMoreRow, profilesShowingAll, holdsOpenChat, collapsedProfiles, revealActiveSection, badgesRows, rowScope)
