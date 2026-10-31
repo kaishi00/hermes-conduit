@@ -1734,6 +1734,28 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 3580, "the reply is followed")
     }
 
+    /// Sent with Long replies off, then scrolled away from: switching it on
+    /// brings no room back under a reader who has left it.
+    func testARoomScrolledAwayFromWithLongRepliesOffDoesntComeBack() {
+        let (scroller, surface) = makeScroller()
+        scroller.holdsRepliesAtStart = { false }
+        scroller.transcriptChanged(
+            messages: Self.messages(0..<11),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        scroller.explicitLatestRequested(animated: false, armsReplyHold: true)
+        surface.append("m10", height: 80)
+        surface.layOut()
+        streamReply(surface, 100)
+        XCTAssertEqual(surface.contentOffsetY, 3380)
+        surface.userScroll(to: 2000)
+        scroller.holdsRepliesAtStart = { true }
+        scroller.replyStartPreferenceChanged()
+        XCTAssertEqual(scroller.replyRoomHeight, 0)
+        XCTAssertEqual(surface.askedReserve, 0)
+    }
+
     /// A reader who scrolls only a little, with part of the room still on
     /// screen, keeps it.
     func testScrollingWhileTheRoomShowsKeepsIt() {

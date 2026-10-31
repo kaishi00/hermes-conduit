@@ -1306,8 +1306,10 @@ final class TranscriptScroller: ObservableObject {
     /// outgrows the screen. Long replies switched off and on again
     /// afterwards doesn't bring it back: the reader has left it.
     private func dropReplyRoomOutOfSight(on surface: TranscriptScrollSurface) {
-        guard replyRoomArmed, surface.reservedContentHeight > surface.rowsHeight + 0.5,
-              surface.visibleBand.upperBound <= surface.rowsHeight + 0.5 else { return }
+        // Armed with Long replies off there is no room laid out, but it
+        // goes too: switched on later, it would come back under a reader
+        // who has left it.
+        guard replyRoomArmed, surface.visibleBand.upperBound <= surface.rowsHeight + 0.5 else { return }
         ChatViewportTrace.shared.log("replyRoom out of sight")
         replyRoomArmed = false
         replyRoomDropPending = true
