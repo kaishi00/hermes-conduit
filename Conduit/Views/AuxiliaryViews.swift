@@ -673,23 +673,31 @@ struct SettingsView: View {
                 subtitle: "",
                 fields: Self.modelFields,
                 load: loadProfileSettings,
+                keptValues: { appState.keptProfileSettings(keys: $0) },
                 save: persistProfileSetting,
                 fieldsHeader: AppLocalization.string("Speed & limits"),
-                leadingSection: AnyView(ProfileModelSettingsDetail(load: loadProfileModelDefaults, save: { provider, model, reasoning in
-                    let saved = await persistProfileMainModel(provider, model, reasoning)
-                    if saved { await MainActor.run { mainModelSaves += 1 } }
-                    return saved
-                })),
+                leadingSection: AnyView(ProfileModelSettingsDetail(
+                    kept: { appState.keptProfileModelDefaults() },
+                    load: loadProfileModelDefaults,
+                    save: { provider, model, reasoning in
+                        let saved = await persistProfileMainModel(provider, model, reasoning)
+                        if saved { await MainActor.run { mainModelSaves += 1 } }
+                        return saved
+                    }
+                )),
                 trailingSection: AnyView(FallbackModelsSettings(
+                    keptModels: { appState.keptProfileModelDefaults() },
+                    kept: { appState.keptProfileFallbackModels() },
                     loadModels: loadProfileModelDefaults,
                     load: { await appState.loadProfileFallbackModels() },
                     save: { await appState.setProfileFallbackModels($0) }
                 )),
                 loadSchema: { await appState.loadProfileConfigSchema() },
+                keptSchema: { appState.keptProfileConfigSchema() },
                 loadExtraOptions: {
-                    await loadProfileModelDefaults()?.mainModelOffersUltrafast == true
-                        ? ["agent.service_tier": ["ultrafast"]] : [:]
+                    Self.modelExtraOptions(await loadProfileModelDefaults() ?? appState.keptProfileModelDefaults())
                 },
+                keptExtraOptions: { appState.keptProfileModelDefaults().map { Self.modelExtraOptions($0) } },
                 extraOptionsRefresh: mainModelSaves
             )
         case .chat:
@@ -701,9 +709,12 @@ struct SettingsView: View {
                 chatReturnSurface: snapshot.chatReturnSurface,
                 persistChatReturnSurface: persistChatReturnSurface,
                 load: loadProfileSettings,
+                keptValues: { appState.keptProfileSettings(keys: $0) },
                 save: persistProfileSetting,
                 loadOptions: loadProfileConfigOptions,
-                loadSchema: { await appState.loadProfileConfigSchema() }
+                keptOptions: { appState.keptProfileConfigOptions() },
+                loadSchema: { await appState.loadProfileConfigSchema() },
+                keptSchema: { appState.keptProfileConfigSchema() }
             )
         case .voice:
             if let bridge = appState.dashboardTicketBridge {
@@ -941,19 +952,26 @@ struct SettingsView: View {
                 subtitle: AppLocalization.string("Working defaults and safeguards for this profile."),
                 fields: [],
                 load: loadProfileSettings,
+                keptValues: { appState.keptProfileSettings(keys: $0) },
                 save: persistProfileSetting,
                 sections: Self.workspaceSections,
-                loadSchema: { await appState.loadProfileConfigSchema() }
+                loadSchema: { await appState.loadProfileConfigSchema() },
+                keptSchema: { appState.keptProfileConfigSchema() }
             )
         case .memory:
             MemorySettingsDetail(
                 load: loadProfileSettings,
+                keptValues: { appState.keptProfileSettings(keys: $0) },
                 save: persistProfileSetting,
                 loadOptions: loadProfileConfigOptions,
+                keptOptions: { appState.keptProfileConfigOptions() },
                 loadModels: loadProfileModelDefaults,
+                keptModels: { appState.keptProfileModelDefaults() },
                 loadSchema: { await appState.loadProfileConfigSchema() },
+                keptSchema: { appState.keptProfileConfigSchema() },
                 sections: Self.memorySections,
                 loadDelegationPaused: { await appState.loadDelegationPaused() },
+                keptDelegationPaused: { appState.keptDelegationPaused() },
                 setDelegationPaused: { await appState.setDelegationPaused($0) }
             )
         case .advanced:
@@ -962,9 +980,11 @@ struct SettingsView: View {
                 subtitle: AppLocalization.string("Limits and runtime defaults for this profile. Most profiles never need to change these."),
                 fields: [],
                 load: loadProfileSettings,
+                keptValues: { appState.keptProfileSettings(keys: $0) },
                 save: persistProfileSetting,
                 sections: Self.advancedSections,
-                loadSchema: { await appState.loadProfileConfigSchema() }
+                loadSchema: { await appState.loadProfileConfigSchema() },
+                keptSchema: { appState.keptProfileConfigSchema() }
             )
         case .usage:
             UsageSettingsDetail()
@@ -1082,6 +1102,12 @@ struct SettingsView: View {
             .init(key: "delegation.child_timeout_seconds", label: AppLocalization.string("Delegate timeout"), help: AppLocalization.string("Seconds before a delegate agent is stopped. 0 means no limit."), control: .number(defaultValue: 0), requiresSchema: true),
         ]),
     ]
+    }
+
+    /// Choices the Model page's fields gain from its main model: Ultrafast,
+    /// when the model offers it.
+    nonisolated static func modelExtraOptions(_ defaults: ProfileModelDefaults?) -> [String: [String]] {
+        defaults?.mainModelOffersUltrafast == true ? ["agent.service_tier": ["ultrafast"]] : [:]
     }
 
     static var modelFields: [ProfileSettingField] { [
@@ -1698,10 +1724,13 @@ struct ChatSettingsDetail: View {
     let chatReturnSurface: ChatReturnSurface
     let persistChatReturnSurface: (ChatReturnSurface) -> Void
     let load: ([String]) async -> [String: ProfileSettingValue]
+    var keptValues: (([String]) -> [String: ProfileSettingValue]?)? = nil
     let save: (String, ProfileSettingValue) async -> Bool
     let loadOptions: () async -> ProfileConfigOptions
+    var keptOptions: () -> ProfileConfigOptions? = { nil }
     var loadSchema: (() async -> ProfileConfigSchema)? = nil
-    @State private var options = ProfileConfigOptions()
+    var keptSchema: (() -> ProfileConfigSchema?)? = nil
+    @State private var options: ProfileConfigOptions?
 
     var body: some View {
         ProfileConfigSettingsPage(
@@ -1709,9 +1738,10 @@ struct ChatSettingsDetail: View {
             subtitle: "",
             fields: Self.fields,
             load: load,
+            keptValues: keptValues,
             save: save,
             showsNavigationTitle: false,
-            optionOverrides: ["display.personality": ["", "helpful", "concise", "technical", "creative", "teacher", "kawaii", "catgirl", "pirate", "shakespeare", "surfer", "noir", "uwu", "philosopher", "hype"] + options.personalities],
+            optionOverrides: ["display.personality": ["", "helpful", "concise", "technical", "creative", "teacher", "kawaii", "catgirl", "pirate", "shakespeare", "surfer", "noir", "uwu", "philosopher", "hype"] + shownOptions.personalities],
             fieldsHeader: AppLocalization.string("Hermes"),
             leadingSection: AnyView(
                 VStack(spacing: 24) {
@@ -1737,11 +1767,15 @@ struct ChatSettingsDetail: View {
                     DeviceHapticsSettings()
                 }
             ),
-            loadSchema: loadSchema
+            loadSchema: loadSchema,
+            keptSchema: keptSchema
         )
         .navigationTitle("Chat")
         .task { options = await loadOptions() }
     }
+
+    /// Hermes' choices, else the ones it gave last time, kept on the phone.
+    private var shownOptions: ProfileConfigOptions { options ?? keptOptions() ?? ProfileConfigOptions() }
 
     static var fields: [ProfileSettingField] { [
         .init(key: "display.personality", label: AppLocalization.string("Personality"), help: AppLocalization.string("Default response style for new conversations."), control: .options([], defaultValue: "")),
@@ -2316,6 +2350,9 @@ private struct ModelCatalogPlaceholder: View {
 
 private struct ProfileModelSettingsDetail: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    /// The catalog and defaults Hermes gave last time, kept on the phone:
+    /// the page opens on them while it asks again (#1533).
+    let kept: () -> ProfileModelDefaults?
     let load: () async -> ProfileModelDefaults?
     let save: (String, String, String) async -> Bool
     @State private var defaults: ProfileModelDefaults?
@@ -2325,6 +2362,12 @@ private struct ProfileModelSettingsDetail: View {
     @State private var saving = false
     @State private var error: String?
     @State private var loadFailed = false
+    /// Hermes has answered. Until then the page shows what it kept, and
+    /// Save waits: it writes all three, and a kept one may be stale.
+    @State private var answered = false
+    /// A pick was changed here: Hermes' answer then updates the catalog
+    /// under the picks, not the picks.
+    @State private var edited = false
 
     private var models: [ModelInfo] { defaults?.providers.first(where: { $0.name == provider })?.models ?? [] }
     /// Keeps a saved model the catalog no longer lists visible instead of
@@ -2361,11 +2404,19 @@ private struct ProfileModelSettingsDetail: View {
                     ConduitMenuPicker(
                         value: model,
                         choices: modelChoices,
-                        onSelect: { model = $0 }
+                        onSelect: { next in
+                            guard next != model else { return }
+                            model = next
+                            edited = true
+                        }
                     ) {
                         Text("Model").foregroundStyle(.secondary)
                     }
                     .disabled(modelChoices.isEmpty)
+                    if loadFailed && !answered {
+                        // The kept catalog stays up; Save waits for Hermes.
+                        ModelCatalogPlaceholder(state: .failed) { Task { await reload() } }
+                    }
                 } else {
                     ModelCatalogPlaceholder(state: catalog) { Task { await reload() } }
                 }
@@ -2374,14 +2425,24 @@ private struct ProfileModelSettingsDetail: View {
                 ConduitMenuPicker(
                     value: reasoning,
                     choices: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].map { (id: $0, title: $0.capitalized) },
-                    onSelect: { reasoning = $0 }
+                    onSelect: { next in
+                        guard next != reasoning else { return }
+                        reasoning = next
+                        edited = true
+                    }
                 ) {
                     Text("Default reasoning").foregroundStyle(.secondary)
                 }
             }
             Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save model defaults"), systemImage: "checkmark").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 46) }
-                .disabled(saving || provider.isEmpty || model.isEmpty).conduitGlassControl(cornerRadius: 17, tint: .conduitAccent.opacity(0.18))
+                .disabled(saving || !answered || provider.isEmpty || model.isEmpty).conduitGlassControl(cornerRadius: 17, tint: .conduitAccent.opacity(0.18))
             if let error { Label(error, systemImage: "exclamationmark.triangle.fill").scaledFont(.footnote).foregroundStyle(.red) }
+        }
+        // What it showed last time, before the first frame; Hermes'
+        // answer follows.
+        .onAppear {
+            guard defaults == nil, let keptDefaults = kept() else { return }
+            show(keptDefaults)
         }
         .task { await reload() }
     }
@@ -2392,14 +2453,23 @@ private struct ProfileModelSettingsDetail: View {
             loadFailed = true
             return
         }
+        show(loaded)
+        answered = true
+    }
+
+    /// The catalog, and the picks unless they were changed here.
+    private func show(_ loaded: ProfileModelDefaults) {
         defaults = loaded
+        guard !edited else { return }
         (provider, model) = loaded.selection
         reasoning = loaded.reasoning
     }
+
     /// Menus fire on the current item too; re-picking it must not swap out
     /// a saved model.
     private func chooseProvider(_ next: String) {
         guard next != provider else { return }
+        edited = true
         provider = next
         // The unlisted saved entry has no model list, so keep the model.
         // Otherwise keep a model the new provider also lists (e.g. one saved
@@ -2414,7 +2484,10 @@ private struct ProfileModelSettingsDetail: View {
             guard defaults != nil else { return }
             saving = true
             error = nil
-            if !(await save(provider, model, reasoning)) {
+            if await save(provider, model, reasoning) {
+                // Hermes holds the picks now; its next answer shows them.
+                edited = false
+            } else {
                 error = AppLocalization.string("Could not save model defaults.")
             }
             saving = false
@@ -2424,6 +2497,10 @@ private struct ProfileModelSettingsDetail: View {
 
 private struct DelegationModelSettings: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    /// The catalog and settings Hermes gave last time, kept on the phone:
+    /// the card opens on them while it asks again (#1533).
+    let keptModels: () -> ProfileModelDefaults?
+    let keptSettings: ([String]) -> [String: ProfileSettingValue]?
     let loadModels: () async -> ProfileModelDefaults?
     let loadSettings: ([String]) async -> [String: ProfileSettingValue]
     let save: (String, ProfileSettingValue) async -> Bool
@@ -2434,6 +2511,13 @@ private struct DelegationModelSettings: View {
     @State private var saving = false
     @State private var error: String?
     @State private var loadFailed = false
+    /// Hermes' catalog is in. Until then Save waits: it writes all three,
+    /// and a kept one may be stale.
+    @State private var answered = false
+    /// A pick was changed here: Hermes' answer leaves the picks alone.
+    @State private var edited = false
+
+    private static let settingKeys = ["delegation.provider", "delegation.model", "delegation.reasoning_effort"]
     /// An inherited provider offers the chat row's models, since that is the
     /// provider the delegate will run on.
     private var models: [ModelInfo] {
@@ -2472,7 +2556,11 @@ private struct DelegationModelSettings: View {
                     ConduitMenuPicker(
                         value: model,
                         choices: modelChoices,
-                        onSelect: { model = $0 }
+                        onSelect: { next in
+                            guard next != model else { return }
+                            model = next
+                            edited = true
+                        }
                     ) {
                         Text("Delegate model").foregroundStyle(.secondary)
                     }
@@ -2480,16 +2568,30 @@ private struct DelegationModelSettings: View {
                 ConduitMenuPicker(
                     value: reasoning,
                     choices: [(id: "", title: AppLocalization.string("Inherit chat reasoning"))] + ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"].map { (id: $0, title: $0.capitalized) },
-                    onSelect: { reasoning = $0 }
+                    onSelect: { next in
+                        guard next != reasoning else { return }
+                        reasoning = next
+                        edited = true
+                    }
                 ) {
                     Text("Delegate reasoning").foregroundStyle(.secondary)
+                }
+                if loadFailed && !answered {
+                    // The kept catalog stays up; Save waits for Hermes.
+                    ModelCatalogPlaceholder(state: .failed) { Task { await reload() } }
                 }
             } else {
                 ModelCatalogPlaceholder(state: catalog) { Task { await reload() } }
             }
             Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save delegate defaults"), systemImage: "checkmark").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 42) }
-                .disabled(saving || defaults == nil).conduitGlassControl(cornerRadius: 15, tint: .conduitAccent.opacity(0.18))
+                .disabled(saving || !answered || defaults == nil).conduitGlassControl(cornerRadius: 15, tint: .conduitAccent.opacity(0.18))
             if let error { Text(error).scaledFont(.caption).foregroundStyle(.red) }
+        }
+        // What it showed last time, before the first frame; Hermes'
+        // answer follows.
+        .onAppear {
+            guard defaults == nil, let models = keptModels(), let settings = keptSettings(Self.settingKeys) else { return }
+            show(models, settings: settings)
         }
         .task { await reload() }
     }
@@ -2497,19 +2599,30 @@ private struct DelegationModelSettings: View {
     private func reload() async {
         loadFailed = false
         async let modelRequest = loadModels()
-        async let settingRequest = loadSettings(["delegation.provider", "delegation.model", "delegation.reasoning_effort"])
+        async let settingRequest = loadSettings(Self.settingKeys)
         let (loaded, settings) = await (modelRequest, settingRequest)
         // A catalog that didn't load says so, with Try Again, instead of
         // loading forever; a re-load that fails keeps the one it had.
-        if let loaded { defaults = loaded } else { loadFailed = true }
+        if loaded == nil { loadFailed = true }
+        show(loaded, settings: settings)
+        if loaded != nil { answered = true }
+    }
+
+    /// The catalog when there is one, and the picks unless they were
+    /// changed here.
+    private func show(_ loaded: ProfileModelDefaults?, settings: [String: ProfileSettingValue]) {
+        if let loaded { defaults = loaded }
+        guard !edited else { return }
         let configuredProvider = settings["delegation.provider"]?.textValue ?? ""
         let configuredModel = settings["delegation.model"]?.textValue ?? ""
-        (provider, model) = loaded?.delegateSelection(provider: configuredProvider, model: configuredModel)
+        (provider, model) = defaults?.delegateSelection(provider: configuredProvider, model: configuredModel)
             ?? (configuredProvider, configuredModel)
         reasoning = settings["delegation.reasoning_effort"]?.textValue ?? ""
     }
+
     private func chooseProvider(_ next: String) {
         guard next != provider else { return }
+        edited = true
         provider = next
         guard !next.isEmpty else {
             model = ""
@@ -2527,7 +2640,11 @@ private struct DelegationModelSettings: View {
             let providerSaved = await save("delegation.provider", .text(provider))
             let modelSaved = providerSaved ? await save("delegation.model", .text(model)) : false
             let reasoningSaved = modelSaved ? await save("delegation.reasoning_effort", .text(reasoning)) : false
-            if !reasoningSaved { error = AppLocalization.string("Could not save delegate defaults.") }
+            if reasoningSaved {
+                edited = false
+            } else {
+                error = AppLocalization.string("Could not save delegate defaults.")
+            }
             saving = false
         }
     }
@@ -2537,12 +2654,18 @@ private struct DelegationModelSettings: View {
 /// #820). Agents already working carry on.
 private struct DelegationPauseSettings: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    /// What Hermes said last time, kept on the phone: the card opens on it
+    /// while it asks again (#1533).
+    let kept: () -> Bool?
     let load: () async -> Bool?
     let save: (Bool) async -> Bool?
     @State private var paused: Bool?
     @State private var loaded = false
     @State private var saving = false
     @State private var error: String?
+    /// Changed here since Hermes was asked: its answer, read before the
+    /// change, leaves the toggle as it is.
+    @State private var changed = false
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Pause delegation"), symbol: "pause.circle", tint: .orange) {
@@ -2570,18 +2693,28 @@ private struct DelegationPauseSettings: View {
             }
             if let error { Text(error).scaledFont(.caption).foregroundStyle(.red) }
         }
+        .onAppear {
+            guard paused == nil, !loaded, let keptState = kept() else { return }
+            paused = keptState
+        }
         .task { await reload() }
     }
 
     private func reload() async {
-        loaded = false
-        paused = await load()
+        changed = false
+        // Try again shows it's asking; a toggle on screen stays up.
+        if paused == nil { loaded = false }
+        let state = await load()
+        // A change made meanwhile keeps its choice, and a read that fails
+        // keeps a state already shown (kept, or read before).
+        if !changed, let state { paused = state }
         loaded = true
     }
 
     private func change(to next: Bool) {
         guard !saving else { return }
         saving = true
+        changed = true
         Task {
             error = nil
             if let state = await save(next) {
@@ -2598,6 +2731,10 @@ private struct DelegationPauseSettings: View {
 /// order, when the default model fails.
 private struct FallbackModelsSettings: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    /// The catalog and list Hermes gave last time, kept on the phone: the
+    /// editor opens on them while it asks again (#1533).
+    let keptModels: () -> ProfileModelDefaults?
+    let kept: () -> [ProfileFallbackModel]?
     let loadModels: () async -> ProfileModelDefaults?
     let load: () async -> [ProfileFallbackModel]?
     let save: ([ProfileFallbackModel]) async -> Bool
@@ -2605,6 +2742,10 @@ private struct FallbackModelsSettings: View {
     @State private var entries: [ProfileFallbackModel] = []
     @State private var saved: [ProfileFallbackModel] = []
     @State private var loaded = false
+    /// Hermes' list is in. Until then the kept list can't be edited or
+    /// saved: a save replaces the whole list, and the kept one may be
+    /// stale and has no credentials (an entry's `api_key`) to write back.
+    @State private var answered = false
     @State private var saving = false
     @State private var error: String?
 
@@ -2630,21 +2771,36 @@ private struct FallbackModelsSettings: View {
                 }
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                     entryRow(index: index, entry: entry)
+                        .disabled(!answered)
                 }
                 AdaptiveStack(spacing: 8) {
                     Button { addEntry() } label: { Label(AppLocalization.string("Add fallback"), systemImage: "plus") }
                         .buttonStyle(.settings)
-                        .disabled(saving || providers.isEmpty)
+                        .disabled(saving || !answered || providers.isEmpty)
                     Button(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save fallbacks")) { persist() }
                         .buttonStyle(.settingsPrimary)
-                        .disabled(saving || entries == saved || entries.contains { !$0.isComplete })
+                        .disabled(saving || !answered || entries == saved || entries.contains { !$0.isComplete })
                 }
                 if entries.contains(where: { !$0.isComplete }) {
                     Text("Pick a provider and model for every fallback to save.")
                         .scaledFont(.caption).foregroundStyle(.secondary)
                 }
+                if !answered && error != nil {
+                    // The kept list stays up; editing waits for Hermes.
+                    Button(AppLocalization.string("Try Again")) { Task { await reload() } }
+                        .buttonStyle(.settings)
+                }
             }
             if let error { Text(error).scaledFont(.caption).foregroundStyle(.red) }
+        }
+        // What it showed last time, before the first frame; Hermes'
+        // answer follows.
+        .onAppear {
+            guard !loaded, let models = keptModels(), let keptEntries = kept() else { return }
+            defaults = models
+            entries = keptEntries
+            saved = keptEntries
+            loaded = true
         }
         .task { await reload() }
     }
@@ -2744,11 +2900,13 @@ private struct FallbackModelsSettings: View {
         // A re-load keeps fallbacks the user is still editing, but what
         // they compare against is what the host holds now: an edit changed
         // back to the old list still differs from another client's save.
-        if !loaded || entries == saved {
+        // Rows the answer didn't change stay as drawn.
+        if !loaded || (entries == saved && entries != loadedEntries) {
             entries = loadedEntries
         }
         saved = loadedEntries
         loaded = true
+        answered = true
     }
 
     private func persist() {
@@ -2769,31 +2927,45 @@ private struct FallbackModelsSettings: View {
 private struct MemorySettingsDetail: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let load: ([String]) async -> [String: ProfileSettingValue]
+    let keptValues: ([String]) -> [String: ProfileSettingValue]?
     let save: (String, ProfileSettingValue) async -> Bool
     let loadOptions: () async -> ProfileConfigOptions
+    let keptOptions: () -> ProfileConfigOptions?
     let loadModels: () async -> ProfileModelDefaults?
+    let keptModels: () -> ProfileModelDefaults?
     let loadSchema: () async -> ProfileConfigSchema
+    let keptSchema: () -> ProfileConfigSchema?
     let sections: [ProfileSettingSection]
     let loadDelegationPaused: () async -> Bool?
+    let keptDelegationPaused: () -> Bool?
     let setDelegationPaused: (Bool) async -> Bool?
-    @State private var options = ProfileConfigOptions()
+    @State private var options: ProfileConfigOptions?
 
     var body: some View {
+        let shownOptions = options ?? keptOptions() ?? ProfileConfigOptions()
         ProfileConfigSettingsPage(
             title: AppLocalization.string("Memory & delegation"),
             subtitle: AppLocalization.string("Long-term context and delegate-agent defaults."),
             fields: [],
             load: load,
+            keptValues: keptValues,
             save: save,
-            optionOverrides: ["memory.provider": options.memoryProviders, "context.engine": options.contextEngines],
+            optionOverrides: ["memory.provider": shownOptions.memoryProviders, "context.engine": shownOptions.contextEngines],
             trailingSection: AnyView(
                 VStack(spacing: 24) {
-                    DelegationModelSettings(loadModels: loadModels, loadSettings: load, save: save)
-                    DelegationPauseSettings(load: loadDelegationPaused, save: setDelegationPaused)
+                    DelegationModelSettings(
+                        keptModels: keptModels,
+                        keptSettings: keptValues,
+                        loadModels: loadModels,
+                        loadSettings: load,
+                        save: save
+                    )
+                    DelegationPauseSettings(kept: keptDelegationPaused, load: loadDelegationPaused, save: setDelegationPaused)
                 }
             ),
             sections: sections,
-            loadSchema: loadSchema
+            loadSchema: loadSchema,
+            keptSchema: keptSchema
         )
         .task { options = await loadOptions() }
     }
@@ -2830,6 +3002,9 @@ struct ProfileConfigSettingsPage: View {
     let subtitle: String
     let fields: [ProfileSettingField]
     let load: ([String]) async -> [String: ProfileSettingValue]
+    /// The values Hermes gave last time, kept on the phone: the page opens
+    /// on them while it asks again (#1533). Nil when none are kept.
+    var keptValues: (([String]) -> [String: ProfileSettingValue]?)? = nil
     let save: (String, ProfileSettingValue) async -> Bool
     var showsNavigationTitle = true
     var optionOverrides: [String: [String]] = [:]
@@ -2842,8 +3017,13 @@ struct ProfileConfigSettingsPage: View {
     /// The gateway's config schema, which hides settings this Hermes lacks
     /// and fills in runtime choices.
     var loadSchema: (() async -> ProfileConfigSchema)? = nil
+    /// The schema last read, kept on the phone; a page with a schema opens
+    /// on its kept values only with it, so no row comes or goes when
+    /// Hermes answers.
+    var keptSchema: (() -> ProfileConfigSchema?)? = nil
     /// Choices a field gains beyond its schema's, loaded with the page.
     var loadExtraOptions: (() async -> [String: [String]])? = nil
+    var keptExtraOptions: (() -> [String: [String]]?)? = nil
     /// Changing it reloads the extra choices.
     var extraOptionsRefresh = 0
 
@@ -2858,6 +3038,9 @@ struct ProfileConfigSettingsPage: View {
     /// The field whose save just landed, for a brief "Saved".
     @State private var savedKey: String?
     @State private var savedToken = UUID()
+    /// Fields changed here since Hermes was last asked (saved, or typed
+    /// in): its answer, read before the change, leaves them as they are.
+    @State private var changedKeys: Set<String> = []
     @FocusState private var focusedKey: String?
 
     /// How long "Saved" stays up after a save lands.
@@ -2879,6 +3062,9 @@ struct ProfileConfigSettingsPage: View {
             if let trailingSection { trailingSection }
         }
         .navigationTitle(showsNavigationTitle ? title : "")
+        // What it showed last time, before the first frame; Hermes'
+        // answer follows.
+        .onAppear(perform: showKept)
         .task { await reload() }
         // Also the first load. A newer refresh cancels an older one, so a
         // slow read for the previous model can't land last.
@@ -3036,6 +3222,7 @@ struct ProfileConfigSettingsPage: View {
                 get: { drafts[field.key] ?? textValue(field.key, defaultValue: defaultValue) },
                 set: {
                     drafts[field.key] = $0
+                    changedKeys.insert(field.key)
                     fieldErrors[field.key] = nil
                 }
             ))
@@ -3055,7 +3242,13 @@ struct ProfileConfigSettingsPage: View {
     /// One entry per line; blank lines are dropped on save.
     private func listEditor(_ field: ProfileSettingField) -> some View {
         VStack(alignment: .trailing, spacing: 8) {
-            TextField(field.label, text: Binding(get: { drafts[field.key] ?? textValue(field.key, defaultValue: "") }, set: { drafts[field.key] = $0 }), axis: .vertical)
+            TextField(field.label, text: Binding(
+                get: { drafts[field.key] ?? textValue(field.key, defaultValue: "") },
+                set: {
+                    drafts[field.key] = $0
+                    changedKeys.insert(field.key)
+                }
+            ), axis: .vertical)
                 .lineLimit(3...8)
                 .scaledFont(.subheadline.monospaced())
                 .textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -3136,14 +3329,56 @@ struct ProfileConfigSettingsPage: View {
         save(field, value: .text(value))
     }
 
+    /// Once: a page that comes back keeps what it shows while it asks again.
+    private func showKept() {
+        guard loading, let kept = keptValues?(allFields.map(\.key)) else { return }
+        if loadSchema != nil {
+            guard let schemaKept = keptSchema?() else { return }
+            schema = schemaKept
+        }
+        if let options = keptExtraOptions?() { extraOptions = options }
+        values = kept
+        for field in allFields { drafts[field.key] = kept[field.key]?.textValue }
+        loading = false
+    }
+
     private func reload() async {
-        loading = true
+        // A save still in flight keeps its field: the answer may be read
+        // before it lands.
+        changedKeys = savingKey.map { [$0] } ?? []
         let fields = allFields
         async let valuesRequest = load(fields.map(\.key))
-        schema = await loadSchema?() ?? ProfileConfigSchema()
-        values = await valuesRequest
-        for field in fields { drafts[field.key] = values[field.key]?.textValue }
+        let answeredSchema = await loadSchema?() ?? ProfileConfigSchema()
+        let answered = await valuesRequest
+        schema = answeredSchema
+        let changes = Self.answerChanges(
+            answered, keys: fields.map(\.key), changedHere: changedKeys, typingIn: focusedKey,
+            values: values, drafts: drafts
+        )
+        for (key, value) in changes.values { values[key] = value }
+        for (key, draft) in changes.drafts { drafts[key] = draft }
         loading = false
+    }
+
+    /// What Hermes' answer changes on the page (#1533): only the fields it
+    /// changed redraw, a field changed here since it was asked keeps its
+    /// choice, and the one being typed in keeps its text.
+    nonisolated static func answerChanges(
+        _ answered: [String: ProfileSettingValue],
+        keys: [String],
+        changedHere: Set<String>,
+        typingIn focusedKey: String?,
+        values: [String: ProfileSettingValue],
+        drafts: [String: String]
+    ) -> (values: [String: ProfileSettingValue?], drafts: [String: String?]) {
+        var changes: (values: [String: ProfileSettingValue?], drafts: [String: String?]) = ([:], [:])
+        for key in keys where !changedHere.contains(key) {
+            if values[key] != answered[key] { changes.values[key] = .some(answered[key]) }
+            if focusedKey != key, drafts[key] != answered[key]?.textValue {
+                changes.drafts[key] = .some(answered[key]?.textValue)
+            }
+        }
+        return changes
     }
 
     private func loadExtras() async -> [String: [String]] {
@@ -3156,6 +3391,7 @@ struct ProfileConfigSettingsPage: View {
         guard savingKey == nil else { return }
         let previous = values[field.key]
         values[field.key] = value
+        changedKeys.insert(field.key)
         fieldErrors[field.key] = nil
         if savedKey == field.key { savedKey = nil }
         savingKey = field.key
@@ -4366,7 +4602,7 @@ private struct AboutSettingsDetail: View {
             ConduitSettingsSection(title: AppLocalization.string("Data handling"), symbol: "hand.raised", tint: .conduitAura) {
                 Text("Conduit connects to the dashboard and gateway you configure. Conversations and attachments are handled by that Hermes installation.")
                     .scaledFont(.footnote).foregroundStyle(.secondary)
-                Text("Conduit keeps your Chats lists and recent conversations on this device, so it opens straight to them while it connects. Each dashboard keeps its own until you sign out of it or remove it.")
+                Text("Conduit keeps your Chats lists, recent conversations and what each screen last showed on this device, so it opens straight to them while it connects. Each dashboard keeps its own until you sign out of it or remove it.")
                     .scaledFont(.footnote).foregroundStyle(.secondary)
                 deleteSavedChatsButton
             }
@@ -4424,7 +4660,7 @@ private struct AboutSettingsDetail: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This deletes the saved Chats lists, conversation copies and pictures for every dashboard. Nothing changes on Hermes, and Conduit saves them again as you use it.")
+            Text("This deletes the saved Chats lists, conversation copies, pictures and what each screen last showed, for every dashboard. Nothing changes on Hermes, and Conduit saves them again as you use it.")
         }
     }
 }

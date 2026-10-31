@@ -1660,3 +1660,103 @@ extension AppStateMultiDashboardTests {
         XCTAssertTrue(VoiceTranscriptOutbox.load(from: defaults).entries.isEmpty)
     }
 }
+
+// MARK: - Kept settings answers (#1533)
+
+extension AppStateMultiDashboardTests {
+    /// A settings page's read is kept for the dashboard and profile that
+    /// answered, so the page opens on it next time; another profile's or
+    /// dashboard's pages don't.
+    func testSettingsAnswersAreKeptForTheDashboardAndProfileThatAnswered() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]), "Nothing kept yet")
+        let load = Task { await appState.loadProfileSettings(keys: ["display.skin"]) }
+        try await held.waitForRequests(1)
+        try await held.answer(["display": ["skin": "ares"]])
+        let settings = await load.value
+
+        XCTAssertEqual(settings["display.skin"], .text("ares"))
+        XCTAssertEqual(appState.keptProfileSettings(keys: ["display.skin"])?["display.skin"], .text("ares"))
+        appState.setActiveProfileForTesting("work")
+        XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]), "Another profile's pages")
+        appState.setActiveProfileForTesting("default")
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]), "Another dashboard's pages")
+    }
+
+    /// A read that lands after a switch is kept for neither dashboard.
+    func testASettingsReadLandingAfterASwitchIsNotKept() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let load = Task { await appState.loadProfileSettings(keys: ["display.skin"]) }
+        try await held.waitForRequests(1)
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer(["display": ["skin": "ares"]])
+        _ = await load.value
+
+        let store = appState.offlineChatCacheForTesting
+        XCTAssertNil(store.keptAnswer(AppState.KeptRoute.config, dashboardID: mac, profile: "default"))
+        XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]))
+    }
+
+    /// Delete Saved Chats takes the settings pages' kept answers, and a
+    /// read it overtook keeps nothing: the page shows Hermes' answer, and
+    /// nothing comes back on the phone.
+    func testDeleteSavedChatsTakesTheKeptSettingsAnswers() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let first = Task { await appState.loadProfileSettings(keys: ["display.skin"]) }
+        try await held.waitForRequests(1)
+        try await held.answer(["display": ["skin": "ares"]])
+        _ = await first.value
+        XCTAssertNotNil(appState.keptProfileSettings(keys: ["display.skin"]))
+
+        appState.deleteSavedChats()
+        XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]), "Deleted with the saved chats")
+
+        let second = Task { await appState.loadProfileSettings(keys: ["display.skin"]) }
+        try await held.waitForRequests(2)
+        appState.deleteSavedChats()
+        try await held.answer(["display": ["skin": "slate"]])
+        let settings = await second.value
+        XCTAssertEqual(settings["display.skin"], .text("slate"), "The page shows Hermes' answer")
+        XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]), "but a read the delete overtook keeps nothing")
+    }
+
+    /// Delegation's pause holds every profile on a Hermes, so every
+    /// profile's page opens on the value any of them last read; another
+    /// dashboard's doesn't.
+    func testDelegationsKeptPauseIsTheDashboards() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        appState.offlineChatCacheForTesting.recordAnswer(
+            ["paused": true],
+            route: AppState.KeptRoute.delegationStatus,
+            dashboardID: mac,
+            profile: AppState.KeptRoute.everyProfile
+        )
+
+        XCTAssertEqual(appState.keptDelegationPaused(), true)
+        appState.setActiveProfileForTesting("work")
+        XCTAssertEqual(appState.keptDelegationPaused(), true, "Another profile's page opens on it")
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.keptDelegationPaused(), "Another dashboard's page doesn't")
+    }
+
+    /// A config save is what the settings pages open on next, without
+    /// another read.
+    func testAConfigSaveIsWhatTheSettingsPagesOpenOnNext() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let save = Task { await appState.setProfileSetting("display.skin", value: .text("slate")) }
+        try await held.waitForRequests(1)       // the config read
+        try await held.answer(["display": ["skin": "ares"], "agent": ["max_turns": 90]])
+        try await held.waitForRequests(2)       // ... and its write
+        try await held.answer()
+        let saved = await save.value
+
+        XCTAssertTrue(saved)
+        let kept = try XCTUnwrap(appState.keptProfileSettings(keys: ["display.skin", "agent.max_turns"]))
+        XCTAssertEqual(kept["display.skin"], .text("slate"))
+        XCTAssertEqual(kept["agent.max_turns"], .number(90))
+    }
+}

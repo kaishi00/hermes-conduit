@@ -71822,84 +71822,84 @@
         }
       }
     },
-    "Conduit keeps your Chats lists and recent conversations on this device, so it opens straight to them while it connects. Each dashboard keeps its own until you sign out of it or remove it.": {
+    "Conduit keeps your Chats lists, recent conversations and what each screen last showed on this device, so it opens straight to them while it connects. Each dashboard keeps its own until you sign out of it or remove it.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit speichert deine Chat-Listen und letzten Unterhaltungen auf diesem Gerät, damit sie beim Verbinden sofort da sind. Jedes Dashboard behält seine eigenen, bis du dich davon abmeldest oder es entfernst."
+            "value": "Conduit speichert deine Chat-Listen, letzten Unterhaltungen und das, was jeder Bildschirm zuletzt gezeigt hat, auf diesem Gerät, damit sie beim Verbinden sofort da sind. Jedes Dashboard behält seine eigenen, bis du dich davon abmeldest oder es entfernst."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit guarda tus listas de chats y conversaciones recientes en este dispositivo para abrirlas al instante mientras se conecta. Cada panel conserva las suyas hasta que cierres sesión en él o lo quites."
+            "value": "Conduit guarda tus listas de chats, conversaciones recientes y lo que cada pantalla mostró por última vez en este dispositivo para abrirlos al instante mientras se conecta. Cada panel conserva los suyos hasta que cierres sesión en él o lo quites."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit conserve vos listes de discussions et vos conversations récentes sur cet appareil pour les afficher aussitôt pendant la connexion. Chaque tableau de bord garde les siennes jusqu'à ce que vous vous en déconnectiez ou le supprimiez."
+            "value": "Conduit conserve vos listes de discussions, vos conversations récentes et ce que chaque écran affichait en dernier sur cet appareil pour les afficher aussitôt pendant la connexion. Chaque tableau de bord garde les siens jusqu'à ce que vous vous en déconnectiez ou le supprimiez."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit menyimpan daftar obrolan dan percakapan terbaru Anda di perangkat ini agar langsung terbuka saat sedang menghubungkan. Setiap dasbor menyimpan miliknya sendiri sampai Anda keluar darinya atau menghapusnya."
+            "value": "Conduit menyimpan daftar obrolan, percakapan terbaru, dan apa yang terakhir ditampilkan setiap layar di perangkat ini agar langsung terbuka saat sedang menghubungkan. Setiap dasbor menyimpan miliknya sendiri sampai Anda keluar darinya atau menghapusnya."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit conserva gli elenchi delle chat e le conversazioni recenti su questo dispositivo, così le mostra subito mentre si connette. Ogni dashboard conserva i propri finché non esci o non la rimuovi."
+            "value": "Conduit conserva gli elenchi delle chat, le conversazioni recenti e ciò che ogni schermata mostrava per ultimo su questo dispositivo, così li mostra subito mentre si connette. Ogni dashboard conserva i propri finché non esci o non la rimuovi."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduitはチャット一覧と最近の会話をこのデバイスに保存し、接続中でもすぐに表示します。ダッシュボードごとに保存され、サインアウトするか削除するまで残ります。"
+            "value": "Conduitはチャット一覧、最近の会話、各画面に最後に表示された内容をこのデバイスに保存し、接続中でもすぐに表示します。ダッシュボードごとに保存され、サインアウトするか削除するまで残ります。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit은 연결하는 동안에도 바로 열 수 있도록 채팅 목록과 최근 대화를 이 기기에 저장해요. 대시보드마다 따로 저장되며, 로그아웃하거나 대시보드를 제거할 때까지 유지돼요."
+            "value": "Conduit은 연결하는 동안에도 바로 열 수 있도록 채팅 목록, 최근 대화, 각 화면에 마지막으로 표시된 내용을 이 기기에 저장해요. 대시보드마다 따로 저장되며, 로그아웃하거나 대시보드를 제거할 때까지 유지돼요."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit przechowuje listy czatów i ostatnie rozmowy na tym urządzeniu, aby od razu je pokazać podczas łączenia. Każdy panel ma własne, dopóki się z niego nie wylogujesz lub go nie usuniesz."
+            "value": "Conduit przechowuje listy czatów, ostatnie rozmowy i to, co każdy ekran pokazał ostatnio, na tym urządzeniu, aby od razu je pokazać podczas łączenia. Każdy panel ma własne, dopóki się z niego nie wylogujesz lub go nie usuniesz."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O Conduit guarda suas listas de chats e conversas recentes neste aparelho para abri-las na hora enquanto conecta. Cada painel mantém as suas até você sair dele ou removê-lo."
+            "value": "O Conduit guarda suas listas de chats, conversas recentes e o que cada tela mostrou por último neste aparelho para abri-los na hora enquanto conecta. Cada painel mantém os seus até você sair dele ou removê-lo."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit хранит списки чатов и недавние разговоры на этом устройстве, чтобы сразу показывать их, пока идёт подключение. У каждого дашборда они свои и хранятся, пока вы не выйдете из него или не удалите его."
+            "value": "Conduit хранит списки чатов, недавние разговоры и то, что последним показывал каждый экран, на этом устройстве, чтобы сразу показывать их, пока идёт подключение. У каждого дашборда они свои и хранятся, пока вы не выйдете из него или не удалите его."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit, bağlanırken hemen açılabilmesi için sohbet listelerinizi ve son konuşmalarınızı bu cihazda saklar. Her panel kendi kopyalarını, oturumu kapatana ya da paneli kaldırana kadar tutar."
+            "value": "Conduit, bağlanırken hemen açılabilmesi için sohbet listelerinizi, son konuşmalarınızı ve her ekranın en son gösterdiklerini bu cihazda saklar. Her panel kendi kopyalarını, oturumu kapatana ya da paneli kaldırana kadar tutar."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit 会在此设备上保存你的聊天列表和最近的对话，连接时即可直接打开。每个仪表板各自保存，直到你退出登录或移除该仪表板。"
+            "value": "Conduit 会在此设备上保存你的聊天列表、最近的对话以及每个界面上次显示的内容，连接时即可直接打开。每个仪表板各自保存，直到你退出登录或移除该仪表板。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conduit 會在此裝置上儲存你的聊天列表和最近的對話，連線時即可直接開啟。每個儀表板各自儲存，直到你登出或移除該儀表板。"
+            "value": "Conduit 會在此裝置上儲存你的聊天列表、最近的對話以及每個畫面上次顯示的內容，連線時即可直接開啟。每個儀表板各自儲存，直到你登出或移除該儀表板。"
           }
         }
       }
@@ -331716,84 +331716,84 @@
         }
       }
     },
-    "This deletes the saved Chats lists, conversation copies and pictures for every dashboard. Nothing changes on Hermes, and Conduit saves them again as you use it.": {
+    "This deletes the saved Chats lists, conversation copies, pictures and what each screen last showed, for every dashboard. Nothing changes on Hermes, and Conduit saves them again as you use it.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Damit werden die gespeicherten Chat-Listen, Kopien von Unterhaltungen und Bilder aller Dashboards gelöscht. Auf Hermes ändert sich nichts, und Conduit speichert sie bei der Nutzung erneut."
+            "value": "Damit werden die gespeicherten Chat-Listen, Kopien von Unterhaltungen, Bilder und das, was jeder Bildschirm zuletzt gezeigt hat, aller Dashboards gelöscht. Auf Hermes ändert sich nichts, und Conduit speichert sie bei der Nutzung erneut."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Se eliminan las listas de chats, las copias de conversaciones y las imágenes guardadas de todos los paneles. Nada cambia en Hermes, y Conduit las vuelve a guardar a medida que lo usas."
+            "value": "Se eliminan las listas de chats, las copias de conversaciones, las imágenes guardadas y lo que cada pantalla mostró por última vez, de todos los paneles. Nada cambia en Hermes, y Conduit los vuelve a guardar a medida que lo usas."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Les listes de discussions, copies de conversations et images enregistrées de tous les tableaux de bord sont supprimées. Rien ne change sur Hermes, et Conduit les enregistre à nouveau à mesure que vous l'utilisez."
+            "value": "Les listes de discussions, copies de conversations, images enregistrées et ce que chaque écran affichait en dernier sont supprimés pour tous les tableaux de bord. Rien ne change sur Hermes, et Conduit les enregistre à nouveau à mesure que vous l'utilisez."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ini menghapus daftar obrolan, salinan percakapan, dan gambar yang tersimpan untuk semua dasbor. Tidak ada yang berubah di Hermes, dan Conduit akan menyimpannya lagi saat Anda menggunakannya."
+            "value": "Ini menghapus daftar obrolan, salinan percakapan, gambar yang tersimpan, dan apa yang terakhir ditampilkan setiap layar untuk semua dasbor. Tidak ada yang berubah di Hermes, dan Conduit akan menyimpannya lagi saat Anda menggunakannya."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vengono eliminati gli elenchi delle chat, le copie delle conversazioni e le immagini salvate di ogni dashboard. Su Hermes non cambia nulla e Conduit li salva di nuovo man mano che lo usi."
+            "value": "Vengono eliminati gli elenchi delle chat, le copie delle conversazioni, le immagini salvate e ciò che ogni schermata mostrava per ultimo, per ogni dashboard. Su Hermes non cambia nulla e Conduit li salva di nuovo man mano che lo usi."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "すべてのダッシュボードの保存済みチャット一覧、会話のコピー、画像を削除します。Hermes側は何も変わらず、Conduitを使うと再び保存されます。"
+            "value": "すべてのダッシュボードの保存済みチャット一覧、会話のコピー、画像、各画面に最後に表示された内容を削除します。Hermes側は何も変わらず、Conduitを使うと再び保存されます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "모든 대시보드의 저장된 채팅 목록, 대화 사본, 사진이 삭제돼요. Hermes에는 아무 변화가 없고, Conduit을 사용하면 다시 저장돼요."
+            "value": "모든 대시보드의 저장된 채팅 목록, 대화 사본, 사진, 각 화면에 마지막으로 표시된 내용이 삭제돼요. Hermes에는 아무 변화가 없고, Conduit을 사용하면 다시 저장돼요."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Usuwa to zapisane listy czatów, kopie rozmów i obrazy wszystkich paneli. Na Hermes nic się nie zmienia, a Conduit zapisze je ponownie podczas używania."
+            "value": "Usuwa to zapisane listy czatów, kopie rozmów, obrazy i to, co każdy ekran pokazał ostatnio, we wszystkich panelach. Na Hermes nic się nie zmienia, a Conduit zapisze je ponownie podczas używania."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Isso apaga as listas de chats, cópias de conversas e imagens salvas de todos os painéis. Nada muda no Hermes, e o Conduit as salva de novo conforme você usa."
+            "value": "Isso apaga as listas de chats, cópias de conversas, imagens salvas e o que cada tela mostrou por último em todos os painéis. Nada muda no Hermes, e o Conduit os salva de novo conforme você usa."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Будут удалены сохранённые списки чатов, копии разговоров и изображения всех дашбордов. На Hermes ничего не изменится, а Conduit снова сохранит их по мере использования."
+            "value": "Будут удалены сохранённые списки чатов, копии разговоров, изображения и то, что последним показывал каждый экран, для всех дашбордов. На Hermes ничего не изменится, а Conduit снова сохранит их по мере использования."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bu işlem tüm panellerin kayıtlı sohbet listelerini, konuşma kopyalarını ve resimlerini siler. Hermes'te hiçbir şey değişmez ve Conduit bunları kullandıkça yeniden kaydeder."
+            "value": "Bu işlem tüm panellerin kayıtlı sohbet listelerini, konuşma kopyalarını, resimlerini ve her ekranın en son gösterdiklerini siler. Hermes'te hiçbir şey değişmez ve Conduit bunları kullandıkça yeniden kaydeder."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这会删除所有仪表板已保存的聊天列表、对话副本和图片。Hermes 上不会有任何变化，Conduit 会在你使用时重新保存。"
+            "value": "这会删除所有仪表板已保存的聊天列表、对话副本、图片以及每个界面上次显示的内容。Hermes 上不会有任何变化，Conduit 会在你使用时重新保存。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "這會刪除所有儀表板已儲存的聊天列表、對話副本和圖片。Hermes 上不會有任何變化，Conduit 會在你使用時重新儲存。"
+            "value": "這會刪除所有儀表板已儲存的聊天列表、對話副本、圖片以及每個畫面上次顯示的內容。Hermes 上不會有任何變化，Conduit 會在你使用時重新儲存。"
           }
         }
       }

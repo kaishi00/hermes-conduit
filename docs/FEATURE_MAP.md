@@ -1012,7 +1012,7 @@ chat's saved copy, whose rows stand in while it opens or offline
 **Open gaps**
 - Group rooms still show Copy, Quote and Read aloud as three icons, with no React and no ⋯ (#1156). Edit and resend and Retry are not needed there: a room is shared and has no rewind.
 
-**Checked:** 2026-10-30, #1550 (the saved copy's rows are drawn by the chat's own row view while they stand in; their cards still don't jump and Hermes' actions stay off); 2026-10-30, #1524 (Read Aloud says a Desktop card's note, and a quote chip names one); 2026-10-28, #1446 (your own message's ⋯ with Quote and Edit and resend, Retry in the newest reply's ⋯, the "Replying to" card's jump in chats and group rooms, ComposerDraft.restoring keeps a second chip as a quote for failed sends too, the saved copy's cards don't jump, /undo and /retry words kept when the chat changes; selection and long-press menus unchanged); 2026-10-27, #1402 (Branch opens the new chat by its stored id; the row, menus and pins needed no change); 2026-10-26, #1311 (a drawn reply's text view is laid out as it mounts; selection and long-press menus unchanged); #1282 (carrying the ⋯'s Show thinking from #1243); the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
+**Checked:** 2026-10-31, #1552 (a deleted bot's kept settings answers go with its pins and held rows; pins unchanged); 2026-10-30, #1550 (the saved copy's rows are drawn by the chat's own row view while they stand in; their cards still don't jump and Hermes' actions stay off); 2026-10-30, #1524 (Read Aloud says a Desktop card's note, and a quote chip names one); 2026-10-28, #1446 (your own message's ⋯ with Quote and Edit and resend, Retry in the newest reply's ⋯, the "Replying to" card's jump in chats and group rooms, ComposerDraft.restoring keeps a second chip as a quote for failed sends too, the saved copy's cards don't jump, /undo and /retry words kept when the chat changes; selection and long-press menus unchanged); 2026-10-27, #1402 (Branch opens the new chat by its stored id; the row, menus and pins needed no change); 2026-10-26, #1311 (a drawn reply's text view is laid out as it mounts; selection and long-press menus unchanged); #1282 (carrying the ⋯'s Show thinking from #1243); the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
 
 ## Conduit plugin update
 
@@ -1660,14 +1660,52 @@ Watch and CarPlay (not needed: neither shows a transcript)
 - While saved rows stand in they show no pins, and the pinned replies bar and the plan card wait for Hermes' rows: both are read from the live transcript. An open choice made on a chat picked in the saved list (a run of steps opened) closes when the chat opens, as the choices follow the live chat (#1550).
 - Bot Chat copies and group room events are memory only, so they don't outlive Conduit being stopped (a Bot Chat's held raw rows do, but only stand in for rows of a later read, never show on their own).
 - An error already on the chat when a room opens is cleared by the open (openGroupRoom) and doesn't come back when the room closes; only a sync error raised while the room is up waits (#1461 review). `errorMessage` holds non-chat errors too, so carrying it needs a rule for which ones are the chat's.
-- Settings' Data handling caption says recent conversations are kept so Conduit opens straight to them while it connects. It doesn't mention reopening, because what's kept on the device hasn't changed.
+- Settings' Data handling caption says recent conversations, and what each screen last showed, are kept so Conduit opens straight to them while it connects (#1552). It doesn't mention a chat reopening where it was, since that keeps nothing more on the device.
 - A chat opened that wasn't read ahead (past the 6 opened last in its profile, or opened before the live list landed) reads its file on the main thread the first time, up to 500 rows; a launch reads the chat it opens on and its saved list there too, as they're its first frame (#1404, #1536, #1545).
 - A removal waits on the main thread for the saves queued before it (reads ahead still queued skip themselves): at most a long chat's copy being written or one being read ahead, tens of milliseconds (#1545).
 - A 404 from the history page route isn't remembered, since Hermes' own "no such chat" comes through as one: a profile whose plugin is off while the dashboard still lists `history-page` reads Hermes' route after it on each open (#1536 review).
 - A deleted chat's held rows go with it under the ids the delete names and their saved aliases; under an id neither names they stay until the scope's held rows are pruned (#1536 review).
 - While saved rows stand in, VoiceOver reads them with no "opening" announcement; the header and composer say Conduit is connecting, as for a chat picked in the saved list (#1404, #1550).
 
-**Checked:** 2026-10-30, #1550 (saved rows drawn as the chat's own and replaced in place, Eric's ruling replacing #1404's; an unread chat left mid-turn lands from its saved rows); 2026-10-30, #1547 (the saved lists and lists of copies kept in memory, in Kept; the newest page's answer parsed off the main thread when it's big, in Code); 2026-10-30, #1545 (copies, held rows and saved lists saved on the store's queue; recent copies and other profiles' lists read ahead into memory); 2026-10-30, #1536 (the newest page read without the rows the phone holds, through notifier #477; copies keep up to 500 rows for 100 chats within 64 MB); 2026-10-28, #1461 (a chat's sync error stays out of a room on screen); 2026-10-28, #1447 (a profile switch shows the new profile's chat, not the outgoing transcript); 2026-10-28, #1432.
+**Checked:** 2026-10-31, #1552 (the open profile's kept settings answers are read ahead with its chats); 2026-10-30, #1550 (saved rows drawn as the chat's own and replaced in place, Eric's ruling replacing #1404's; an unread chat left mid-turn lands from its saved rows); 2026-10-30, #1547 (the saved lists and lists of copies kept in memory, in Kept; the newest page's answer parsed off the main thread when it's big, in Code); 2026-10-30, #1545 (copies, held rows and saved lists saved on the store's queue; recent copies and other profiles' lists read ahead into memory); 2026-10-30, #1536 (the newest page read without the rows the phone holds, through notifier #477; copies keep up to 500 rows for 100 chats within 64 MB); 2026-10-28, #1461 (a chat's sync error stays out of a room on screen); 2026-10-28, #1447 (a profile switch shows the new profile's chat, not the outgoing transcript); 2026-10-28, #1432.
+
+## Screens that open on their last answer
+
+A screen that reads Hermes draws what Hermes told it last time at once,
+kept on the phone, while it asks again, and the new answer changes only
+what changed.
+
+**Siblings:** the agent settings pages: Model (Default model, Fast mode and
+limits, Fallback models), Chat, Workspace, Memory & delegation (Delegate
+model, Pause delegation) and Advanced · the saved chats, whose wipes take the
+kept answers (Delete Saved Chats, a sign-out, a removed dashboard; a deleted
+bot takes its own) · Settings' Data handling caption and the Delete Saved
+Chats confirmation · the screens still waiting for Hermes (Open gaps): Pulse,
+Voice and Usage settings, the Model sheet's catalog, Capabilities' tabs, the
+Bots roster, Tasks boards, the Artifacts and Workspace listings · Watch and
+CarPlay (not needed: neither shows these screens) · the notifier (not needed:
+the pages read the same routes) · README and docs (not needed: neither
+describes these pages' loading)
+
+**Code**
+- Store: `Conduit/Services/OfflineChatCache.swift` (keptAnswer, recordAnswer, withoutCredentials, trimKeptAnswersLocked, removeKeptAnswers, readKeptAnswersAhead from prefetch's answers, forgetMemory)
+- Reads and saves: `Conduit/Services/AppState.swift` (KeptRoute, readKeepingAnswer, keepAnswer, keptProfileSettings, keptProfileConfigOptions, keptProfileModelDefaults, keptProfileConfigSchema, keptProfileFallbackModels, keptDelegationPaused; updateProfileConfig and setProfileSetting keep what they saved; prefetchSavedChats; deleteBot; deleteSavedChats)
+- Pages: `Conduit/Views/AuxiliaryViews.swift` (ProfileConfigSettingsPage's showKept, reload and answerChanges, ProfileModelSettingsDetail, DelegationModelSettings, DelegationPauseSettings, FallbackModelsSettings, ChatSettingsDetail, MemorySettingsDetail; AboutSettingsDetail's caption and confirmation)
+- Tests: `ConduitTests/OfflineChatCacheTests.swift` (Kept answers), `ConduitTests/AppStateMultiDashboardTests.swift` (Kept settings answers), `ConduitTests/ProfileModelDefaultsTests+ConfigSchema.swift` (testAnAnswerChangesOnlyWhatHermesChanged)
+
+**Rulings**
+- Every screen shows its last saved state at once, and an update never redraws the whole screen (Eric, 2026-10-30, issue #1533).
+- An answer is kept per dashboard, profile and route in the saved chats' store, so every wipe of the saved chats takes it, and a deleted bot's go with it. An answer about every profile at once (delegation's pause) is kept once per dashboard, so each profile's page opens on it. A read is kept only while its dashboard is still the one open and nothing was wiped since it was asked. The open profile's are read ahead with its chats; memory holds the answers used last, at most 32 and 8 MB, and an answer over 2 MB isn't kept, on disk or in memory.
+- Memory and the kept file leave out credential-shaped keys at any depth (any name ending in key or keys, token, secret or secrets, cookie or cookies, auth or authorization, one with an `auth` word, and one containing password, passwd, passphrase or credential) and a URL's user and password, since a config can hold a custom endpoint's key; such a key whose value is true or false stays, being a setting about them (`redact_secrets`), and `max_tokens` stays. A name that only looks like a credential's comes in with Hermes' answer; none of the pages' own fields does. `/api/env` is never kept.
+- A page draws its kept answer before its first frame, with its kept schema when it reads one, so no row comes or goes when Hermes answers; with nothing kept it shows its loader as before. A config Conduit saves is what the pages open on next.
+- Hermes' answer changes only the fields it changed: a field changed on the page since it asked (a save still in flight included), and the one being typed in, stay as they are. A read that fails keeps what's shown.
+- A save that writes several values or a whole list (Save model defaults, Save delegate defaults, Save fallbacks) waits for Hermes' answer, and the kept fallback list can't be edited until then: it may be stale and has no credentials to write back. A single setting saves at once, since its write reads Hermes' config first.
+
+**Open gaps**
+- Pulse, Voice and Usage settings, the Model sheet's catalog, Capabilities' tabs, the Bots roster, Tasks boards, and the Artifacts and Workspace listings still wait for Hermes; the next PRs of issue #1533's plan move them onto kept answers.
+- A page whose answers weren't read ahead (another profile's, delegation's pause, or one opened before the live list landed) reads its kept files on the main thread: a config or schema is usually tens of kilobytes, and a file can be up to 2 MB.
+
+**Checked:** 2026-10-31, #1552 (the agent settings pages open on their kept answers).
 
 ## Composer drafts
 
@@ -2236,13 +2274,14 @@ voice reply model pickers · the Kanban task composer's catalog
 **Rulings**
 - A failed fetch says "Could not load models." with Try Again; "No models are available from this gateway." is only for a catalog that loaded empty; neither shows while loading. A re-load that fails keeps the rows it had (2026-10-24, from #1016's review).
 - A list that didn't load is never edited or saved: Save stays off until the catalog is in.
+- The Model page's editors open on the catalog kept from Hermes' last answer (see Screens that open on their last answer); a read that fails leaves it up with "Could not load models." and Try Again under it, and Save stays off until Hermes answers (#1552).
 
 **Open gaps**
 - The voice job and voice reply pickers get `[]` for a failed fetch (loadVoiceJobModelProviders), so they can't tell failed from empty.
 - The bot model picker says "Could not load models." without Try Again.
 - The Kanban composer shows a failed catalog as "No curated model catalog available", whose manual entry still works.
 
-**Checked:** 2026-10-27, at #1395 (search matches show only once the catalog is in; loading, failed and empty states unchanged, the Kanban composer's included); at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
+**Checked:** 2026-10-31, #1552 (the Model page's editors open on a kept catalog, with Try Again under it when the read fails); 2026-10-27, at #1395 (search matches show only once the catalog is in; loading, failed and empty states unchanged, the Kanban composer's included); at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
 
 ## The Model sheet's settings
 
@@ -2549,7 +2588,7 @@ not the config.
 **Open gaps**
 - A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.
 
-**Checked:** 2026-10-26, #1282 (the Thinking choice writes `display.show_reasoning` and `display.conduit_thinking_on_request` in one save); 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
+**Checked:** 2026-10-31, #1552 (a config save, a single setting's included, is what the settings pages open on next, kept on the phone; what's written is unchanged); 2026-10-26, #1282 (the Thinking choice writes `display.show_reasoning` and `display.conduit_thinking_on_request` in one save); 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
 
 ## Wake phrase
 
@@ -3067,7 +3106,7 @@ Show thinking in the run's menu and in its reply's ⋯, and Settings > Chat's Th
 - An older Hermes' single-underscore MCP names (`mcp_server_tool`) can't be split into app and action; they read "Used a connector".
 - Show thinking has nothing to show for a model that returns no reasoning text (hidden or summarized only), and a thought in the middle of a turn, above an interim reply, is reached from that reply's ⋯, not the last one's.
 
-**Checked:** 2026-10-30, #1550 (a saved copy's steps are drawn by the chat's own rows, with its open choices); 2026-10-29, #1495, carrying #1489 (a summary's /btw sends no push, notifier #464); 2026-10-26, at #1282, carrying #1243 (Show thinking on request, the three-way Thinking choice as the only thinking control, Hide thinking restoring the run, the count while thinking shows), after #1233, carried in #1236.
+**Checked:** 2026-10-31, #1552 (Settings' Thinking choice opens on its kept answer; what it saves is unchanged); 2026-10-30, #1550 (a saved copy's steps are drawn by the chat's own rows, with its open choices); 2026-10-29, #1495, carrying #1489 (a summary's /btw sends no push, notifier #464); 2026-10-26, at #1282, carrying #1243 (Show thinking on request, the three-way Thinking choice as the only thinking control, Hide thinking restoring the run, the count while thinking shows), after #1233, carried in #1236.
 
 ## Code fences in messages
 
@@ -3541,7 +3580,7 @@ notifier's live read of the setting for chats already open
 - A saved review's place uses the phone's clock and Hermes' rows the host's (Hermes' review event carries no time), so a host clock that is off by more than the time between a review and the next row puts the review on the wrong side of that row when the chat reloads. Reviews are stamped to the millisecond, so a row from the same second doesn't (#1551).
 - An open run of reviews keeps its choice by its first review, so loading older history that holds reviews right above it closes it again; runs of steps do the same.
 
-**Checked:** 2026-10-30, #1551 (saved reviews placed by time, not after the newest message, #1549); 2026-10-30, #1550 (the offline copy's reviews are drawn and folded by the chat's own rows); 2026-10-30, #1519 (runs of reviews fold into one line, #1518); 2026-10-29, #1507 (caption and time on the row's top line, summary full width below, #1440); 2026-10-26, #1282 (display settings kept on the phone, so the offline copy follows Never show from launch); 2026-10-25, #1260.
+**Checked:** 2026-10-31, #1552 (its settings open on their kept answer; what they save is unchanged); 2026-10-30, #1551 (saved reviews placed by time, not after the newest message, #1549); 2026-10-30, #1550 (the offline copy's reviews are drawn and folded by the chat's own rows); 2026-10-30, #1519 (runs of reviews fold into one line, #1518); 2026-10-29, #1507 (caption and time on the row's top line, summary full width below, #1440); 2026-10-26, #1282 (display settings kept on the phone, so the offline copy follows Never show from launch); 2026-10-25, #1260.
 
 ## Profile glow color
 

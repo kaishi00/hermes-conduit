@@ -453,10 +453,22 @@ final class OfflineChatCacheStore {
     /// the disk.
     private var keptIndexes: [URL: OfflineChatSnapshot] = [:]
     private var keptChatLists: [URL: SavedChatList] = [:]
+    /// Screens' kept answers as last read, written or read ahead, by file
+    /// (`recordAnswer`), least recently used first in `keptAnswerOrder`,
+    /// with their files' sizes once known.
+    private var keptAnswers: [URL: [String: Any]] = [:]
+    private var keptAnswerOrder: [URL] = []
+    private var keptAnswerBytes: [URL: Int] = [:]
+    /// Which `recordAnswer` put each answer in memory, so the queue's size
+    /// check only drops the one it measured.
+    private var keptAnswerGenerations: [URL: UInt64] = [:]
+    private var keptAnswerGeneration: UInt64 = 0
     /// How many copies each scope has had read ahead since the last
     /// removal: a later ask for more (the profile switched to, after its
     /// last chat was read ahead for the switch) reads the rest.
     private var prefetchedLimits: [String: Int] = [:]
+    /// The scopes whose kept answers were read ahead since the last removal.
+    private var answersPrefetched: Set<String> = []
     /// Removals waiting for the queue: a read ahead still queued skips
     /// itself, so a removal waits for the writes queued before it and at
     /// most one read ahead in progress.
@@ -643,6 +655,7 @@ final class OfflineChatCacheStore {
         memoryLock.withLock {
             removalCount &+= 1
             prefetchedLimits.removeAll()
+            answersPrefetched.removeAll()
         }
     }
 
@@ -969,13 +982,15 @@ final class OfflineChatCacheStore {
         }
     }
 
-    /// Every memory copy of a file a wipe removes: the kept copies, and the
-    /// indexes and lists kept when the store writes asynchronously.
+    /// Every memory copy of a file a wipe removes: the kept copies and
+    /// answers, and the indexes and lists kept when the store writes
+    /// asynchronously.
     private func forgetMemory(where isGone: (URL) -> Bool) {
         forgetKeptTranscripts(where: isGone)
         memoryLock.withLock {
             keptIndexes = keptIndexes.filter { !isGone($0.key) }
             keptChatLists = keptChatLists.filter { !isGone($0.key) }
+            for url in keptAnswerOrder where isGone(url) { forgetAnswerLocked(url) }
         }
     }
 
@@ -1016,6 +1031,238 @@ final class OfflineChatCacheStore {
         }
     }
 
+    // MARK: Kept answers
+
+    /// What a screen last read from Hermes for one route (a Settings page's
+    /// config, the model catalog), kept beside the scope's saved chats so
+    /// every wipe that takes those takes these: the screen opens on it while
+    /// Hermes is asked again (#1533). An answer bigger than this isn't kept,
+    /// on disk or in memory.
+    static let maxKeptAnswerBytes = 2 * 1024 * 1024
+    /// Answers held in memory at most, by count and by their files' bytes;
+    /// the least recently used goes first.
+    static let maxKeptAnswersInMemory = 32
+    static let maxKeptAnswerMemoryBytes = 8 * 1024 * 1024
+    static let keptAnswerInfix = ".answer-"
+
+    /// The answer last kept for the route in the scope, or nil: memory's
+    /// when it has it (the open profile's are read ahead), else its file's.
+    func keptAnswer(_ route: String, dashboardID: UUID, profile: String) -> [String: Any]? {
+        let url = keptAnswerFileURL(route, dashboardID: dashboardID, profile: profile)
+        let (memory, removals) = memoryLock.withLock { (keptAnswerLocked(at: url), removalCount) }
+        if let memory { return memory }
+        guard let read = Self.readKeptAnswer(at: url), read.route == route else { return nil }
+        return memoryLock.withLock { () -> [String: Any]? in
+            // One kept while the file was read is the newer one, and one a
+            // removal took meanwhile is gone.
+            if let newer = keptAnswerLocked(at: url) { return newer }
+            guard removalCount == removals else { return nil }
+            keepAnswerLocked(read.answer, at: url, bytes: read.bytes)
+            return read.answer
+        }
+    }
+
+    /// Keeps a screen's answer for the route: memory has it at once, and
+    /// the file is written on the store's queue, so a removal after this
+    /// takes it too. Memory and the file both leave out credentials
+    /// (`withoutCredentials`), and one too big to keep leaves memory again
+    /// once the queue has measured it.
+    func recordAnswer(_ answer: [String: Any], route: String, dashboardID: UUID, profile: String) {
+        let url = keptAnswerFileURL(route, dashboardID: dashboardID, profile: profile)
+        let kept = Self.withoutCredentials(answer)
+        let generation = memoryLock.withLock { () -> UInt64 in
+            keepAnswerLocked(kept, at: url, bytes: nil)
+            keptAnswerGeneration &+= 1
+            keptAnswerGenerations[url] = keptAnswerGeneration
+            return keptAnswerGeneration
+        }
+        perform { [self] in
+            let bytes = writeKeptAnswer(kept, route: route, to: url)
+            memoryLock.withLock {
+                guard keptAnswerGenerations[url] == generation, keptAnswers[url] != nil else { return }
+                guard let bytes else {
+                    forgetAnswerLocked(url)
+                    return
+                }
+                keptAnswerBytes[url] = bytes
+                trimKeptAnswersLocked()
+            }
+        }
+    }
+
+    /// An answer without its credential-shaped keys, at any depth: any key
+    /// (`api_key`, `ssh_key`, `api_keys`), a token, a password, passphrase or
+    /// secret, credentials, an Authorization header, auth or a cookie (a
+    /// config can hold them, as a custom endpoint's `api_key`), and without
+    /// the user and password a URL can carry. A key shaped like one whose
+    /// value is true or false stays: it's a setting about them
+    /// (`redact_secrets`). No screen shows a credential, and a key to an
+    /// account mustn't sit in a file; a name that only looks like one
+    /// (`sort_key`) comes back with Hermes' answer.
+    static func withoutCredentials(_ answer: [String: Any]) -> [String: Any] {
+        answer.reduce(into: [String: Any]()) { kept, entry in
+            guard !isCredentialKey(entry.key) || isFlag(entry.value) else { return }
+            kept[entry.key] = withoutCredentials(inValue: entry.value)
+        }
+    }
+
+    private static func withoutCredentials(inValue value: Any) -> Any {
+        if let object = value as? [String: Any] { return withoutCredentials(object) }
+        if let list = value as? [Any] { return list.map { withoutCredentials(inValue: $0) } }
+        if let text = value as? String { return withoutURLUser(text) }
+        return value
+    }
+
+    /// Names that end like a credential's, with or without the underscore:
+    /// `signing_key`, `apikeys`, `GITHUB_TOKEN`, `clientSecret`,
+    /// `session_cookie`, `proxy_authorization`, `basic_auth`. Not `tokens`:
+    /// `max_tokens` is a number.
+    private static let credentialKeySuffixes = [
+        "key", "keys", "token", "secret", "secrets", "cookie", "cookies", "auth", "authorization",
+    ]
+    /// Words that make any name a credential's.
+    private static let credentialKeyWords = ["password", "passwd", "passphrase", "credential"]
+
+    static func isCredentialKey(_ key: String) -> Bool {
+        let name = key.lowercased().replacingOccurrences(of: "-", with: "_")
+        return credentialKeySuffixes.contains { name.hasSuffix($0) }
+            || credentialKeyWords.contains { name.contains($0) }
+            // `auth_header`, `proxy_auth_user`, but not `author`.
+            || name.split(separator: "_").contains("auth")
+    }
+
+    /// A JSON true or false, which never holds a credential.
+    private static func isFlag(_ value: Any) -> Bool {
+        guard let number = value as? NSNumber else { return false }
+        return CFGetTypeID(number) == CFBooleanGetTypeID()
+    }
+
+    /// The URL without its user and password (`https://user:key@host`), or
+    /// the text as it was.
+    private static func withoutURLUser(_ text: String) -> String {
+        guard text.contains("@"), text.contains("://"),
+              var components = URLComponents(string: text),
+              components.user != nil || components.password != nil else { return text }
+        components.user = nil
+        components.password = nil
+        return components.string ?? ""
+    }
+
+    /// Deletes a profile's kept answers on one dashboard, as its profile is
+    /// deleted (a bot), so a new one of the same name doesn't open on them.
+    func removeKeptAnswers(dashboardID: UUID, profile: String) {
+        performAndWait {
+            noteRemoval()
+            let prefix = Self.scopeFileStem(dashboardID: dashboardID, profile: profile) + Self.keptAnswerInfix
+            forgetMemory { $0.lastPathComponent.hasPrefix(prefix) }
+            guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
+                return
+            }
+            for file in files where file.lastPathComponent.hasPrefix(prefix) {
+                try? fileManager.removeItem(at: file)
+            }
+        }
+    }
+
+    /// Writes the answer's file and returns its size, or removes the file
+    /// and returns nil when the answer is too big to keep or the write
+    /// failed (a full disk).
+    private func writeKeptAnswer(_ answer: [String: Any], route: String, to url: URL) -> Int? {
+        let object: [String: Any] = ["route": route, "answer": answer]
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object),
+              data.count <= Self.maxKeptAnswerBytes,
+              write(data, to: url) else {
+            // Not kept: an older answer mustn't open the screen next time.
+            try? fileManager.removeItem(at: url)
+            return nil
+        }
+        return data.count
+    }
+
+    /// Reads the scope's kept answers into memory, on the store's queue,
+    /// into room memory has free: one read ahead never pushes out an answer
+    /// a screen used.
+    private func readKeptAnswersAhead(scope: String) {
+        let prefix = scope + Self.keptAnswerInfix
+        guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
+            return
+        }
+        for file in files where file.lastPathComponent.hasPrefix(prefix) {
+            // Named as `keptAnswerFileURL` names it, so a screen finds it.
+            let url = directory.appendingPathComponent(file.lastPathComponent)
+            guard memoryLock.withLock({ fitsAnswerAheadLocked(url, bytes: 0) }),
+                  let read = Self.readKeptAnswer(at: url) else { continue }
+            memoryLock.withLock {
+                guard fitsAnswerAheadLocked(url, bytes: read.bytes) else { return }
+                keptAnswers[url] = read.answer
+                keptAnswerBytes[url] = read.bytes
+                // Least recently used, so it goes before any answer used.
+                keptAnswerOrder.insert(url, at: 0)
+            }
+        }
+    }
+
+    /// Under `memoryLock`.
+    private func fitsAnswerAheadLocked(_ url: URL, bytes: Int) -> Bool {
+        waitingRemovals == 0
+            && keptAnswers[url] == nil
+            && keptAnswerOrder.count < Self.maxKeptAnswersInMemory
+            && keptAnswerBytes.values.reduce(0, +) + bytes <= Self.maxKeptAnswerMemoryBytes
+    }
+
+    private static func readKeptAnswer(at url: URL) -> (route: String, answer: [String: Any], bytes: Int)? {
+        guard let data = try? Data(contentsOf: url),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let route = object["route"] as? String,
+              let answer = object["answer"] as? [String: Any] else { return nil }
+        return (route, answer, data.count)
+    }
+
+    /// Memory's answer for the file, now the most recently used. Under
+    /// `memoryLock`.
+    private func keptAnswerLocked(at url: URL) -> [String: Any]? {
+        guard let answer = keptAnswers[url] else { return nil }
+        keptAnswerOrder.removeAll { $0 == url }
+        keptAnswerOrder.append(url)
+        return answer
+    }
+
+    /// Under `memoryLock`. `bytes` is the answer's file size, nil until the
+    /// queue has written it.
+    private func keepAnswerLocked(_ answer: [String: Any], at url: URL, bytes: Int?) {
+        keptAnswers[url] = answer
+        keptAnswerBytes[url] = bytes
+        keptAnswerOrder.removeAll { $0 == url }
+        keptAnswerOrder.append(url)
+        trimKeptAnswersLocked()
+    }
+
+    /// Under `memoryLock`: drops the least recently used answers until
+    /// memory is within its count and bytes, keeping the newest.
+    private func trimKeptAnswersLocked() {
+        while let oldest = keptAnswerOrder.first, keptAnswerOrder.count > 1,
+              keptAnswerOrder.count > Self.maxKeptAnswersInMemory
+                || keptAnswerBytes.values.reduce(0, +) > Self.maxKeptAnswerMemoryBytes {
+            forgetAnswerLocked(oldest)
+        }
+    }
+
+    /// Under `memoryLock`.
+    private func forgetAnswerLocked(_ url: URL) {
+        keptAnswers.removeValue(forKey: url)
+        keptAnswerBytes.removeValue(forKey: url)
+        keptAnswerGenerations.removeValue(forKey: url)
+        keptAnswerOrder.removeAll { $0 == url }
+    }
+
+    /// A route's kept answer, named by a hash of the route, which can be
+    /// any text.
+    func keptAnswerFileURL(_ route: String, dashboardID: UUID, profile: String) -> URL {
+        let name = SHA256.hash(data: Data(route.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
+        return directory.appendingPathComponent("\(Self.scopeFileStem(dashboardID: dashboardID, profile: profile))\(Self.keptAnswerInfix)\(name).json")
+    }
+
     // MARK: Reading ahead
 
     /// Reads ahead, on the store's queue, what opening something in a scope
@@ -1026,17 +1273,21 @@ final class OfflineChatCacheStore {
     /// before. A copy already in memory, or one whose file is larger than
     /// `maxPrefetchedTranscriptBytes`, isn't read, and a copy read ahead only
     /// takes room memory has free, never a place a chat opened since holds.
-    /// Asynchronous mode only.
-    func prefetch(dashboardID: UUID, profile: String, transcripts limit: Int) {
+    /// With `answers`, the scope's kept answers too, so its screens open on
+    /// them without reading a file. Asynchronous mode only.
+    func prefetch(dashboardID: UUID, profile: String, transcripts limit: Int, answers: Bool = false) {
         guard let ioQueue else { return }
         let scope = Self.scopeFileStem(dashboardID: dashboardID, profile: profile)
-        guard memoryLock.withLock({ () -> Bool in
-            guard limit > prefetchedLimits[scope, default: -1] else { return false }
-            prefetchedLimits[scope] = limit
-            return true
-        }) else { return }
+        let (readsCopies, readsAnswers) = memoryLock.withLock { () -> (Bool, Bool) in
+            let copies = limit > prefetchedLimits[scope, default: -1]
+            if copies { prefetchedLimits[scope] = limit }
+            return (copies, answers && answersPrefetched.insert(scope).inserted)
+        }
+        guard readsCopies || readsAnswers else { return }
         ioQueue.async { [self] in
             guard memoryLock.withLock({ waitingRemovals == 0 }) else { return }
+            if readsAnswers { readKeptAnswersAhead(scope: scope) }
+            guard readsCopies else { return }
             _ = loadChatList(dashboardID: dashboardID, profile: profile)
             guard limit > 0, let snapshot = load(dashboardID: dashboardID, profile: profile) else { return }
             for entry in snapshot.transcripts.prefix(limit)
