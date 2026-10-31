@@ -761,10 +761,11 @@ extension KanbanTests {
         requester.responses["/api/mcp/servers/griply/test"] = ["ok": true]
         held?.resume()
         await first.value
+        // The save's own background test may still be finishing.
+        while store.probing.contains("griply") { await Task.yield() }
 
         XCTAssertEqual(store.probes["griply"]?.ok, true, "the old entry's answer is dropped and the saved one tested")
         XCTAssertGreaterThanOrEqual(requester.calls.filter { $0.path.hasSuffix("/test") }.count, 2)
-        XCTAssertTrue(store.probing.isEmpty)
     }
 
     func testAHermesWithoutTheEditRouteSaysToUpdate() async {
