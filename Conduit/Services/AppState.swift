@@ -38030,7 +38030,7 @@ final class AppState: ObservableObject {
 /// second for as long as a turn streams), so they publish here and never on
 /// AppState. Every view that observes AppState, including the root view of
 /// each sheet, re-renders on any AppState publish; a publish here re-renders
-/// only the chat's live rows (`ChatLiveTurnRows`).
+/// only the chat's live rows (`ChatLiveThinkingRow`, `ChatLiveStreamingRow`).
 ///
 /// Its setters are file-private and AppState's `streamingText` and
 /// `liveReasoningSegment` setters are private, so only AppState's own
@@ -38038,8 +38038,29 @@ final class AppState: ObservableObject {
 /// `setStreamingTextForTesting`, in debug builds only).
 @MainActor
 final class LiveTurnProjection: ObservableObject {
-    @Published fileprivate(set) var streamingText = ""
-    @Published fileprivate(set) var reasoningSegment: AppState.LiveReasoningSegment?
+    @Published fileprivate(set) var streamingText = "" {
+        didSet { reshape() }
+    }
+    @Published fileprivate(set) var reasoningSegment: AppState.LiveReasoningSegment? {
+        didSet { reshape() }
+    }
+    /// Which live rows the turn shows, published only when one comes or
+    /// goes: the chat's transcript draws them (TranscriptModel), and their
+    /// text comes from the values above.
+    @Published private(set) var shape = LiveTurnShape()
+
+    private func reshape() {
+        let next = LiveTurnShape(thinkingID: reasoningSegment?.id, streams: !streamingText.isEmpty)
+        if next != shape { shape = next }
+    }
+}
+
+/// The live rows a running turn shows, apart from their text.
+struct LiveTurnShape: Equatable {
+    /// The open thinking card's id.
+    var thinkingID: String?
+    /// The reply has text streaming in.
+    var streams = false
 }
 
 // MARK: - Keychain Helper

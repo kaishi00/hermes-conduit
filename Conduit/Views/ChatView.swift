@@ -45,6 +45,11 @@ struct ChatView: View {
     @State private var rowDisclosure = ChatRowDisclosure()
     /// A run of steps opened or closed: its rows join or leave the stack.
     @State private var stepToggleRevision: UInt64 = 0
+    /// Decides the transcript's rows (TranscriptModel), updated in the body.
+    @State private var transcriptModel = TranscriptModelBox()
+    /// The live turn's rows coming or going re-run the body; it reads the
+    /// projection's own shape, which is right on the first frame too.
+    @State private var liveShape = LiveTurnShape()
     /// The transcript scroll view's identity; a new one builds it again
     /// (ChatScrollEngineEvent.rebuildTranscript).
     @State private var transcriptScrollID = 0
@@ -88,8 +93,27 @@ struct ChatView: View {
     /// A message sent while this chat was on its way, waiting below its
     /// rows, the saved copy's too. A New Chat shows its own.
     private var livePendingComposerSend: PendingComposerSend? {
+        Self.pendingSendOnScreen(in: appState)
+    }
+
+    @MainActor
+    static func pendingSendOnScreen(in appState: AppState) -> PendingComposerSend? {
         guard !appState.showsPendingNewChat else { return nil }
         return appState.pendingComposerSendOnScreen
+    }
+
+    /// The running turn as the transcript draws it, from AppState now. The
+    /// scroll engine's live tail asks the same, without the working line,
+    /// which never decides whether a row shows.
+    @MainActor
+    static func liveTurn(in appState: AppState, working: TranscriptWorkingLine = TranscriptWorkingLine()) -> TranscriptModel.LiveTurn {
+        TranscriptModel.LiveTurn(
+            shape: appState.liveTurn.shape,
+            isBusy: appState.isBusy,
+            repliesElsewhere: appState.activeChatRepliesElsewhere,
+            isShown: appState.savedCopyScrollSessionKey == nil,
+            working: working
+        )
     }
 
     /// The conversation the scroll view draws: a saved copy's that isn't
@@ -149,28 +173,36 @@ struct ChatView: View {
         ChatTitleScrollAnchor.id(for: drawnOrFallbackScrollSessionKey)
     }
 
-    /// Read from the engine; `viewportInputs.targetsRevision` is the cache's
-    /// rendering revision, so any target change re-runs the body (with or
-    /// without a rendered session).
-    private var chatMessageScrollTargets: [ChatMessageScrollTarget] {
-        _ = viewportInputs.targetsRevision
-        return scrollEngine.targets
+    /// What decides the transcript's rows now. The engine's targets are the
+    /// chat's rows; the cache's own revision stands for them (the engine
+    /// publishes it, so a change re-runs this body).
+    private var transcriptInput: TranscriptModel.Input {
+        _ = liveShape
+        return TranscriptModel.Input(
+            targetsRevision: scrollEngine.targetCache.renderingRevision,
+            conversation: appState.activeChatScrollSessionIdentity,
+            displayPreferences: appState.displayPreferences,
+            isBusy: appState.chatOnScreenIsBusy,
+            disclosureRevision: stepToggleRevision,
+            live: Self.liveTurn(in: appState, working: workingLine),
+            pendingSend: livePendingComposerSend,
+            loadsEarlier: transcriptBackfillAvailable,
+            isLoadingEarlier: transcriptBackfillIsLoading,
+            showsSavedCopy: showsOfflineCopy,
+            hasSavedCopy: appState.offlineChatPresentation != nil,
+            savedCopyIsOpening: appState.offlineChatPresentation?.isPickedChat == true && !showsOfflineBanner
+        )
     }
 
-    /// The rows the transcript lays out: a step that draws nothing (hidden,
-    /// or inside a collapsed run) is left out, or the stack would space it
-    /// like any row (ChatStepPlacement.drawsRow). Its scroll target stays.
-    /// Without such a step, the targets themselves, uncopied.
-    private var drawnMessageScrollTargets: [ChatMessageScrollTarget] {
-        let targets = chatMessageScrollTargets
-        _ = stepToggleRevision
-        let preferences = appState.displayPreferences
-        let isBusy = appState.chatOnScreenIsBusy
-        let draws: (ChatMessageScrollTarget) -> Bool = { target in
-            target.drawsRow(preferences: preferences, isBusy: isBusy, disclosure: rowDisclosure)
-        }
-        guard targets.contains(where: { !draws($0) }) else { return targets }
-        return targets.filter(draws)
+    /// What the working line says: the tool running in this turn and when
+    /// the turn began.
+    private var workingLine: TranscriptWorkingLine {
+        TranscriptWorkingLine(
+            toolName: runningToolName,
+            toolInput: runningToolInput,
+            toolTitle: runningToolTitle,
+            startedAt: turnStartedAt
+        )
     }
 
     private var bottomAnchor: String {
@@ -247,9 +279,9 @@ struct ChatView: View {
     /// the user's position. Label-exposed for accessibility — never
     /// icon-only — and the loading state is announced by the combined
     /// progress row.
-    private var transcriptTopBackfillControl: some View {
+    private func transcriptTopBackfillControl(isLoading: Bool) -> some View {
         Group {
-            if transcriptBackfillIsLoading {
+            if isLoading {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
@@ -363,6 +395,13 @@ struct ChatView: View {
 
     var body: some View {
         let _ = TranscriptPerf.note(.chatViewBody)
+        // Before anything reads them: the transcript draws these rows, and
+        // they read these facts, from the same update.
+        let transcript = transcriptModel.update(
+            transcriptInput,
+            targets: scrollEngine.targets,
+            disclosure: rowDisclosure
+        )
         VStack(spacing: 0) {
             // Message list
             ScrollViewReader { proxy in
@@ -372,7 +411,7 @@ struct ChatView: View {
                         proxy: proxy,
                         content: lifecycleObservers(
                             proxy: proxy,
-                            content: chatScrollView(proxy: proxy)
+                            content: chatScrollView(proxy: proxy, rows: transcript.rows)
                         )
                     )
                 )
@@ -457,7 +496,7 @@ struct ChatView: View {
         )
         .environment(\.quotedReplyJump, quotedReplyJump)
         // The rows show AppState through this, not by observing it.
-        .chatRows()
+        .chatRows(facts: transcript.facts)
         .sheet(isPresented: $showsPinnedReplies) {
             PinnedRepliesSheet(fromOpenChat: true)
                 .environmentObject(appState)
@@ -469,84 +508,18 @@ struct ChatView: View {
 
     // MARK: - Scroll construction (layered so the type-checker can cope)
 
-    private func chatScrollView(proxy: ScrollViewProxy) -> some View {
+    private func chatScrollView(proxy: ScrollViewProxy, rows: [TranscriptRow]) -> some View {
         ScrollView {
             LazyVStack(spacing: ChatStepStyle.transcriptRowSpacing) {
                 Color.clear
                     .frame(height: 1)
                     .id(topAnchor)
 
-                if transcriptBackfillAvailable {
-                    transcriptTopBackfillControl
-                }
-
-                if showsOfflineCopy {
-                    savedCopyWithoutRows
-                } else if appState.messages.isEmpty && appState.offlineChatPresentation == nil
-                    && livePendingComposerSend == nil {
-                    EmptyChatState().padding(.top, 60)
-                }
-
-                // Iterate the targets collection directly: wrapping it in
-                // Array(enumerated()) copied the entire transcript into a
-                // fresh tuple array on EVERY body evaluation — O(message
-                // count) allocation churn at streaming/reasoning cadence in
-                // deep sessions. Row identity (target.id) and the transcript
-                // order needed by row geometry (target.order, maintained by
-                // the scroll-target cache) are unchanged.
-                ForEach(drawnMessageScrollTargets) { target in
-                    MessageBubble(
-                        message: target.message,
-                        gatewayResolver: appState.gatewayMediaResolver,
-                        step: target.step,
-                        stepsAbove: target.stepsAbove,
-                        reviewRun: target.reviewRun
-                    )
-                        .equatable()
-                        .id(target.id)
-                        .background {
-                            // Measured in the stack's own coordinate space,
-                            // so the value changes only when layout does,
-                            // never on a scroll tick.
-                            GeometryReader { geometry in
-                                let frame = geometry.frame(
-                                    in: CoordinateSpace.named(ChatScrollEngine.coordinateSpaceName)
-                                )
-                                Color.clear.preference(
-                                    key: ChatScrollRowFramesPreferenceKey.self,
-                                    value: [
-                                        target.id: ChatScrollRowFrame(
-                                            minY: frame.minY,
-                                            maxY: frame.maxY,
-                                            order: target.order
-                                        ),
-                                    ]
-                                )
-                            }
-                        }
-                }
-
-                // The running turn's live tail observes only the live
-                // projection, so a streaming tick re-renders these rows and
-                // never this body, the composer, or an open sheet. Not under
-                // a saved copy of another chat (one picked in the saved
-                // list): the turn is the live chat's.
-                if appState.savedCopyScrollSessionKey == nil {
-                    ChatLiveTurnRows(
-                        projection: appState.liveTurn,
-                        isBusy: appState.isBusy,
-                        author: appState.activeProfile,
-                        currentToolName: runningToolName,
-                        currentToolInput: runningToolInput,
-                        currentToolTitle: runningToolTitle,
-                        turnStartedAt: turnStartedAt,
-                        repliesElsewhere: appState.activeChatRepliesElsewhere
-                    )
-                }
-
-                if let pending = livePendingComposerSend {
-                    PendingComposerSendBubble(pending: pending)
-                        .reportsLiveRowFrame(id: "pending-send")
+                // The rows TranscriptModel decided, in order. Iterated
+                // directly: wrapping them in Array(enumerated()) would copy
+                // the transcript on every body evaluation.
+                ForEach(rows) { row in
+                    transcriptRow(row)
                 }
 
                 // Fallback target for ScrollViewProxy before the engine has
@@ -562,6 +535,7 @@ struct ChatView: View {
             .coordinateSpace(.named(ChatScrollEngine.coordinateSpaceName))
             .environment(\.chatRowDisclosure, rowDisclosure)
             .onReceive(rowDisclosure.groupToggles.$revision) { stepToggleRevision = $0 }
+            .onReceive(appState.liveTurn.$shape) { liveShape = $0 }
             .background {
                 ChatScrollSurfaceLocator(engine: scrollEngine)
             }
@@ -610,6 +584,78 @@ struct ChatView: View {
                 }
             )
         }
+    }
+
+    /// One of the transcript's rows.
+    @ViewBuilder
+    private func transcriptRow(_ row: TranscriptRow) -> some View {
+        switch row.kind {
+        case .loadEarlier(let isLoading):
+            transcriptTopBackfillControl(isLoading: isLoading)
+        case .savedCopyStatus(let isOpening):
+            savedCopyStatus(isOpening: isOpening)
+        case .empty:
+            EmptyChatState().padding(.top, 60)
+        case .message(let target):
+            messageRow(target)
+        // The running turn's live rows observe only the live projection
+        // for their text, so a streaming tick re-renders that row and never
+        // this body, the composer, or an open sheet.
+        case .thinking:
+            ChatLiveThinkingRow(projection: appState.liveTurn, author: appState.activeProfile)
+                .id(row.id)
+                .reportsLiveRowFrame(id: row.id)
+        case .streaming(let isActive):
+            ChatLiveStreamingRow(projection: appState.liveTurn, isActive: isActive)
+                .id(row.id)
+                .reportsLiveRowFrame(id: row.id)
+        case .working(let line):
+            ChatWorkingLine(
+                currentToolName: line.toolName,
+                currentToolInput: line.toolInput,
+                currentToolTitle: line.toolTitle,
+                isThinking: line.isThinking,
+                startedAt: line.startedAt,
+                repliesElsewhere: line.repliesElsewhere
+            )
+            .id(row.id)
+            .reportsLiveRowFrame(id: row.id)
+        case .pendingSend(let pending):
+            PendingComposerSendBubble(pending: pending)
+                .reportsLiveRowFrame(id: row.id)
+        }
+    }
+
+    private func messageRow(_ target: ChatMessageScrollTarget) -> some View {
+        MessageBubble(
+            message: target.message,
+            gatewayResolver: appState.gatewayMediaResolver,
+            step: target.step,
+            stepsAbove: target.stepsAbove,
+            reviewRun: target.reviewRun
+        )
+            .equatable()
+            .id(target.id)
+            .background {
+                // Measured in the stack's own coordinate space, so the
+                // value changes only when layout does, never on a scroll
+                // tick.
+                GeometryReader { geometry in
+                    let frame = geometry.frame(
+                        in: CoordinateSpace.named(ChatScrollEngine.coordinateSpaceName)
+                    )
+                    Color.clear.preference(
+                        key: ChatScrollRowFramesPreferenceKey.self,
+                        value: [
+                            target.id: ChatScrollRowFrame(
+                                minY: frame.minY,
+                                maxY: frame.maxY,
+                                order: target.order
+                            ),
+                        ]
+                    )
+                }
+            }
     }
 
     /// The open chat's plan, docked above the composer (ChatCards.swift).
@@ -856,21 +902,20 @@ struct ChatView: View {
 
     /// The saved copy on screen with no rows of its own: a chat picked in
     /// the saved list says it's on its way while Conduit connects; offline,
-    /// or with nothing saved for it, it says there's no copy.
+    /// or with nothing saved for it, it says there's no copy
+    /// (TranscriptModel.rows).
     @ViewBuilder
-    private var savedCopyWithoutRows: some View {
-        if let offline = appState.offlineChatPresentation, offline.displayedMessages.isEmpty {
-            if offline.isPickedChat && !showsOfflineBanner {
-                ProgressView("Opening conversation…")
-                    .scaledFont(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 60)
-            } else if livePendingComposerSend == nil {
-                Text("No saved copy of this conversation")
-                    .scaledFont(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 60)
-            }
+    private func savedCopyStatus(isOpening: Bool) -> some View {
+        if isOpening {
+            ProgressView("Opening conversation…")
+                .scaledFont(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.top, 60)
+        } else {
+            Text("No saved copy of this conversation")
+                .scaledFont(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.top, 60)
         }
     }
 
@@ -1035,14 +1080,10 @@ struct ChatView: View {
         router.proxy = proxy
         router.rebuildTranscript = { transcriptScrollID &+= 1 }
         scrollEngine.holdsRepliesAtStart = { ChatReplyStartPreference.isOn }
+        // The rows TranscriptModel draws after the chat's, from AppState now.
         scrollEngine.liveTailShowing = { [weak appState = appState] in
             guard let appState else { return false }
-            let live = appState.liveTurn
-            let liveTurnShows = appState.savedCopyScrollSessionKey == nil
-                && (appState.isBusy || appState.activeChatRepliesElsewhere
-                    || !live.streamingText.isEmpty || live.reasoningSegment != nil)
-            return liveTurnShows
-                || (appState.pendingComposerSendOnScreen != nil && !appState.showsPendingNewChat)
+            return Self.liveTurn(in: appState).hasRows || Self.pendingSendOnScreen(in: appState) != nil
         }
         scrollEngine.onEvent = { [weak engine = scrollEngine, weak router] event in
             // Requests made while handling a UIKit callback can land in the
@@ -4979,32 +5020,16 @@ private extension View {
 
 // MARK: - Live Turn Rows
 
-/// The running turn's live tail at the end of the transcript: the open
-/// thinking card, the streaming reply, or the working indicator. It observes
-/// `LiveTurnProjection` directly, which publishes at streaming cadence, so
-/// those ticks stop here instead of re-running ChatView's body. The rows sit
-/// in the transcript's LazyVStack as its own children, as they did inline.
-struct ChatLiveTurnRows: View {
+/// The running turn's open thinking card, at the end of the transcript.
+/// TranscriptModel decides that it shows; its text comes from
+/// `LiveTurnProjection`, which publishes at streaming cadence, so those
+/// ticks re-render this row instead of ChatView's body. Chronology matches
+/// the settled transcript: thinking streams at the tail, before the answer.
+struct ChatLiveThinkingRow: View {
     @ObservedObject var projection: LiveTurnProjection
-    let isBusy: Bool
     let author: String
-    /// The tool running now, named on the working line.
-    var currentToolName: String?
-    /// Its input, for a batch's names.
-    var currentToolInput: String?
-    /// Its own words for it, when it has them ("Messaging Atlas…").
-    var currentToolTitle: String?
-    /// When the turn began, for the working line's timer.
-    var turnStartedAt: Date?
-    /// Another device is getting this chat's reply.
-    var repliesElsewhere = false
 
     var body: some View {
-        // Live reasoning renders from the projection, not the settled
-        // transcript: per-publish reasoning changes re-render only this
-        // card, never the ForEach data or the scroll-target cache.
-        // Chronology matches the pre-projection transcript — thinking
-        // streams at the tail, before the assistant answer.
         if let segment = projection.reasoningSegment {
             ThinkingCard(
                 message: ChatMessage(
@@ -5015,30 +5040,19 @@ struct ChatLiveTurnRows: View {
                     author: author
                 )
             )
-            .id(segment.id)
-            .reportsLiveRowFrame(id: segment.id)
         }
+    }
+}
 
+/// The reply streaming in, its text from the live projection likewise.
+struct ChatLiveStreamingRow: View {
+    @ObservedObject var projection: LiveTurnProjection
+    /// Still being written ("Responding", not "Finishing").
+    let isActive: Bool
+
+    var body: some View {
         if !projection.streamingText.isEmpty {
-            StreamingBubble(
-                text: projection.streamingText,
-                active: isBusy
-            )
-            .id("streaming")
-            .reportsLiveRowFrame(id: "streaming")
-        }
-
-        if (isBusy && projection.streamingText.isEmpty) || repliesElsewhere {
-            ChatWorkingLine(
-                currentToolName: currentToolName,
-                currentToolInput: currentToolInput,
-                currentToolTitle: currentToolTitle,
-                isThinking: projection.reasoningSegment != nil,
-                startedAt: turnStartedAt,
-                repliesElsewhere: repliesElsewhere
-            )
-            .id("typing")
-            .reportsLiveRowFrame(id: "typing")
+            StreamingBubble(text: projection.streamingText, active: isActive)
         }
     }
 }
