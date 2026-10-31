@@ -1297,9 +1297,9 @@ extension KanbanTests {
         let kept = KeptCapabilityAnswers()
         let store = CapabilitiesStore()
         store.configure(requester: hermes, profile: "default", answers: kept.answers)
-        _ = try await store.toolsetConfig(name: "web")
-        _ = try await store.toolsetConfig(name: "image_gen")
-        _ = try await store.terminalBackends()
+        let shownWeb = try await store.toolsetConfig(name: "web")
+        let shownImage = try await store.toolsetConfig(name: "image_gen")
+        let shownBackends = try await store.terminalBackends()
 
         _ = try await store.selectProvider(toolset: "image_gen", provider: "OpenAI")
         _ = try await store.selectProvider(toolset: "web", provider: "Tavily", capability: "search")
@@ -1327,6 +1327,15 @@ extension KanbanTests {
             CapabilitiesStore.KeptRoute.terminalBackends,
         ])
         XCTAssertFalse(String(describing: kept.saved).contains("typed-key"), "Never the key itself")
+        // The page shows each change itself, as the kept answer holds it,
+        // so it shows on a page with nothing kept too.
+        XCTAssertEqual(shownImage.choosing("OpenAI", capability: nil), image)
+        XCTAssertEqual(
+            shownWeb.choosing("Tavily", capability: "search").choosing("Firecrawl", capability: "extract")
+                .settingKey("FIRECRAWL_API_KEY"),
+            web
+        )
+        XCTAssertEqual(TerminalBackendOption.choosing("docker", in: shownBackends), store.keptTerminalBackends())
 
         // A change that fails keeps nothing.
         hermes.failures["PUT /api/tools/terminal/backend"] = URLError(.notConnectedToInternet)

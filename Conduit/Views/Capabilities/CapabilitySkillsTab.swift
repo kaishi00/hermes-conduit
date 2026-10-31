@@ -225,6 +225,7 @@ private struct CapabilitySkillRow: View {
 }
 
 private struct OfficialSkillRow: View {
+    @EnvironmentObject private var appState: AppState
     let skill: OfficialSkill
     let store: CapabilitiesStore
     let reload: () async -> Void
@@ -250,6 +251,7 @@ private struct OfficialSkillRow: View {
                 CapabilityRowButton(title: AppLocalization.string("Install"), busy: state == .running) {
                     install()
                 }
+                .disabled(!appState.canChangeCapabilities)
                 .accessibilityLabel(Text("Install \(skill.name)"))
             }
             if case .failed(let reason) = state {

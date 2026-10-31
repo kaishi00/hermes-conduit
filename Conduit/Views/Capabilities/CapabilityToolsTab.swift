@@ -567,9 +567,9 @@ struct CapabilityToolsetDetailPage: View {
                 if needsNous {
                     notice = AppLocalization.string("Sign in to Nous Portal on your host to use this backend.")
                 }
-                // The kept answer shows the change, so a failed read after
-                // it keeps the change on screen.
-                config = store.keptToolsetConfig(name: name) ?? config
+                // Shown as Hermes now holds it, as the kept answer is, so a
+                // failed read after it keeps the change on screen.
+                config = config?.choosing(provider.name, capability: capability)
                 let fresh = try? await store.toolsetConfig(name: name)
                 guard serves(owner) else { return }
                 if let fresh { config = fresh }
@@ -592,7 +592,7 @@ struct CapabilityToolsetDetailPage: View {
                 guard serves(owner) else { return }
                 try await store.selectTerminalBackend(backend.name)
                 guard serves(owner) else { return }
-                backends = store.keptTerminalBackends() ?? backends
+                backends = backends.map { TerminalBackendOption.choosing(backend.name, in: $0) }
                 let fresh = try? await store.terminalBackends()
                 guard serves(owner) else { return }
                 if let fresh { backends = fresh }
@@ -615,7 +615,7 @@ struct CapabilityToolsetDetailPage: View {
                 try await store.saveKey(env.key, value: trimmed, toolset: name)
                 Haptics.success()
                 guard serves(owner) else { return }
-                config = store.keptToolsetConfig(name: name) ?? config
+                config = config?.settingKey(env.key)
                 let fresh = try? await store.toolsetConfig(name: name)
                 guard serves(owner) else { return }
                 if let fresh { config = fresh }

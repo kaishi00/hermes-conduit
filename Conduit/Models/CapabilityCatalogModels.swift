@@ -316,6 +316,43 @@ struct ToolsetConfig: Equatable {
         return answer
     }
 
+    /// The config as `choosing(_:capability:in:)` makes its answer: what
+    /// the page shows once Hermes took the change, kept or not.
+    func choosing(_ provider: String, capability: String?) -> ToolsetConfig {
+        var config = self
+        if let capability {
+            guard let row = providers.first(where: { $0.name == provider }), let backend = row.webBackend else { return self }
+            let viaNous = row.managedNousFeature != nil
+            switch capability {
+            case "search":
+                config.activeSearchBackend = backend
+                config.searchViaNous = viaNous
+            case "extract":
+                config.activeExtractBackend = backend
+                config.extractViaNous = viaNous
+            default:
+                break
+            }
+        } else {
+            config.activeProvider = provider
+            for index in config.providers.indices {
+                config.providers[index].isActive = config.providers[index].name == provider
+            }
+        }
+        return config
+    }
+
+    /// The config as `settingKey(_:in:)` makes its answer.
+    func settingKey(_ key: String) -> ToolsetConfig {
+        var config = self
+        for provider in config.providers.indices {
+            for env in config.providers[provider].envVars.indices where config.providers[provider].envVars[env].key == key {
+                config.providers[provider].envVars[env].isSet = true
+            }
+        }
+        return config
+    }
+
     /// Whether `provider` is the one a web search (or extract) call uses
     /// now. Managed Nous and own-key Firecrawl share a backend name, so the
     /// Nous flag tells them apart.
@@ -354,6 +391,15 @@ struct TerminalBackendOption: Equatable, Identifiable {
             return row
         }
         return answer
+    }
+
+    /// The backends as `choosing(_:in:)` makes their answer.
+    static func choosing(_ backend: String, in options: [TerminalBackendOption]) -> [TerminalBackendOption] {
+        options.map { option in
+            var option = option
+            option.active = option.name == backend
+            return option
+        }
     }
 
     static func list(from response: [String: Any]) -> [TerminalBackendOption] {
