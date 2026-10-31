@@ -326,6 +326,9 @@ extension KanbanTests {
         var outcomes: [Bool: CapabilityToggleWrites.Outcome] = [:]
         /// Outcomes that would show "Could not update" to the user.
         var failuresReported = 0
+        /// The values kept for Capabilities to open on, in turn: AppState
+        /// keeps a flip once Hermes took it.
+        var kept: [Bool] = []
         private var running = 0
 
         init(row: Bool) { self.row = row }
@@ -345,6 +348,7 @@ extension KanbanTests {
                 }
                 if let restore = outcome.restore { row = restore }
                 if outcome.error != nil { failuresReported += 1 }
+                if outcome.taken { kept.append(enabled) }
                 running -= 1
             }
             for _ in 0..<10 { await Task.yield() }
@@ -370,6 +374,7 @@ extension KanbanTests {
         XCTAssertFalse(harness.overlapped, "one switch reaches Hermes at a time")
         XCTAssertEqual(harness.sent, [true, false, true], "in the order flipped")
         XCTAssertTrue(harness.row, "the first flip's failure came last but a newer flip replaced it")
+        XCTAssertEqual(harness.kept, [false, true], "the refused flip is never kept, though a newer one replaced it")
     }
 
     func testAFailedCapabilitySwitchGoesBackToWhatHermesLastConfirmed() async {
@@ -380,6 +385,7 @@ extension KanbanTests {
         await harness.answerAll()
 
         XCTAssertFalse(harness.row)
+        XCTAssertEqual(harness.kept, [], "nothing Hermes refused is kept")
 
         // On succeeds, off fails: Hermes has it on.
         let confirmed = SwitchHarness(row: false)
@@ -388,6 +394,7 @@ extension KanbanTests {
         await confirmed.answerAll()
 
         XCTAssertTrue(confirmed.row)
+        XCTAssertEqual(confirmed.kept, [true])
     }
 
     func testAFailedCapabilitySwitchANewerFlipReplacedSaysNothingFailed() async {
@@ -545,6 +552,128 @@ extension KanbanTests {
         await store.loadToolCalls()
         XCTAssertEqual(store.toolCalls, ["terminal": 4])
     }
+
+    /// Each tab opens on the lists it showed last time, kept on the phone,
+    /// until Hermes answers (#1533): a read that fails keeps them up, and
+    /// Hermes' answer takes their place. A server's command arguments are
+    /// never kept. A change made here is kept, and one made to a kept list
+    /// reads it again.
+    func testEachCapabilitiesTabOpensOnWhatItShowedLastTime() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/skills/hub/official": ["skills": [["name": "pdf", "identifier": "official/pdf"]]],
+            "/api/analytics/usage": ["tools": [["tool": "terminal", "count": 4]], "daily": [["day": "2026-10-30", "sessions": 3]]],
+            "/api/mcp/servers": ["servers": [[
+                "name": "linear", "transport": "stdio", "command": "npx", "args": ["linear-mcp", "--token", "lin_api_x"],
+                "auth": "header", "enabled": true, "env": ["LINEAR_WORKSPACE": "x"],
+            ]]],
+            "/api/mcp/catalog": ["entries": [["name": "notion", "auth_type": "oauth"]]],
+            "/api/dashboard/plugins/hub": ["plugins": [["name": "Weather", "source": "git", "runtime_status": "disabled"]]],
+            "/api/dashboard/plugins/catalog": ["entries": [["name": "maps", "tier": "official"]]],
+        ])
+        let kept = KeptCapabilityAnswers()
+        let dashboardKept = KeptCapabilityAnswers()
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertTrue(store.showsKept.isEmpty, "Nothing kept yet")
+        await store.loadOfficialSkills()
+        await store.loadToolCalls()
+        await store.loadConnectors()
+        await store.loadPlugins()
+
+        XCTAssertEqual(kept.saved[CapabilitiesStore.KeptRoute.toolCalls]?.keys.sorted(), ["tools"], "The year's counts alone")
+        let keptServer = try XCTUnwrap((kept.saved[CapabilitiesStore.KeptRoute.servers]?["servers"] as? [[String: Any]])?.first)
+        XCTAssertNil(keptServer["args"], "A command's arguments can hold a key")
+        XCTAssertNil(keptServer["env"])
+        let zap = ConnectorServer(name: "zap", transport: "http", url: "https://actions.example:8443/mcp/secret-1/sse?key=x", command: nil, auth: nil, enabled: true, plugin: nil)
+        XCTAssertEqual(zap.keptCopy.url, "https://actions.example:8443", "So can an address's path and query")
+        XCTAssertEqual(keptServer["sign_in"] as? String, "header", "Not under a name the kept answers take for a credential's")
+        XCTAssertNotNil(dashboardKept.saved[CapabilitiesStore.KeptRoute.pluginCatalog], "The same for every profile")
+        XCTAssertNil(kept.saved[CapabilitiesStore.KeptRoute.pluginCatalog])
+
+        // The next visit opens on them before Hermes answers.
+        let hermes = CapabilityMockRequester(responses: [:])
+        let next = CapabilitiesStore()
+        next.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertEqual(next.showsKept, [.officialSkills, .toolCalls, .connectors, .plugins])
+        XCTAssertEqual(next.officialSkills.map(\.identifier), ["official/pdf"])
+        XCTAssertEqual(next.toolCalls, ["terminal": 4])
+        XCTAssertEqual(next.servers.map(\.name), ["linear"])
+        XCTAssertEqual(next.servers.first?.auth, "header")
+        XCTAssertEqual(next.servers.first?.args, [], "Hermes' answer brings them")
+        XCTAssertEqual(next.connectorCatalog.first?.authType, "oauth")
+        XCTAssertEqual(next.plugins.map(\.name), ["Weather"])
+        XCTAssertEqual(next.pluginCatalog.map(\.name), ["maps"])
+        XCTAssertTrue(hermes.calls.isEmpty)
+
+        // Offline too, with no bridge, on the default profile.
+        let offline = CapabilitiesStore()
+        offline.configure(requester: nil, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertEqual(offline.showsKept, [.officialSkills, .toolCalls, .connectors, .plugins])
+        XCTAssertEqual(offline.servers.map(\.name), ["linear"])
+
+        await next.loadConnectors()
+        XCTAssertNotNil(next.connectorsError)
+        XCTAssertEqual(next.servers.map(\.name), ["linear"], "A read that fails keeps them up")
+        XCTAssertTrue(next.showsKept.contains(.connectors))
+        await next.probeServers()
+        XCTAssertFalse(hermes.calls.contains { $0.path.contains("/test") }, "Kept servers are tested only once Hermes lists them")
+
+        hermes.responses = requester.responses
+        hermes.responses["/api/mcp/servers"] = ["servers": [["name": "github", "transport": "http", "url": "https://g", "enabled": true]]]
+        await next.loadConnectors()
+        XCTAssertEqual(next.servers.map(\.name), ["github"], "Hermes' answer takes their place")
+        XCTAssertFalse(next.showsKept.contains(.connectors))
+
+        // A switch flipped on a kept list is kept, and the list read again.
+        let third = CapabilitiesStore()
+        third.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        hermes.responses["/api/mcp/servers"] = ["servers": [["name": "github", "transport": "http", "url": "https://g", "enabled": false]]]
+        hermes.responses["/api/mcp/servers/github/enabled"] = ["ok": true]
+        hermes.calls.removeAll()
+        try await third.setServerEnabled("github", enabled: false)
+        XCTAssertEqual(kept.written, [CapabilitiesStore.KeptRoute.servers, CapabilitiesStore.KeptRoute.connectorCatalog])
+        XCTAssertTrue(hermes.calls.contains { $0.path == "/api/mcp/servers" && $0.method == "GET" }, "The kept list asks again")
+        XCTAssertEqual(third.servers.first?.enabled, false)
+        XCTAssertFalse(third.showsKept.contains(.connectors))
+
+        // A plugin's switch on the rows Hermes gave is kept as Hermes took
+        // it, with no read again.
+        await third.loadPlugins()
+        hermes.responses["/api/dashboard/agent-plugins/Weather/enable"] = ["ok": true]
+        hermes.calls.removeAll()
+        try await third.setPluginEnabled(third.plugins[0], enabled: true)
+        let keptPlugins = kept.saved[CapabilitiesStore.KeptRoute.plugins]?["plugins"] as? [[String: Any]]
+        XCTAssertEqual(keptPlugins?.first?["runtime_status"] as? String, "enabled")
+        XCTAssertEqual(kept.written.last, CapabilitiesStore.KeptRoute.plugins)
+        XCTAssertEqual(hermes.calls.map(\.method), ["POST"])
+
+        // With nothing kept to change, the switch still counts as a write,
+        // so a read asked before it isn't kept after it.
+        kept.forget(CapabilitiesStore.KeptRoute.plugins)
+        hermes.responses["/api/dashboard/agent-plugins/Weather/disable"] = ["ok": true]
+        try await third.setPluginEnabled(third.plugins[0], enabled: false)
+        XCTAssertNil(kept.saved[CapabilitiesStore.KeptRoute.plugins])
+        XCTAssertEqual(kept.noted, [CapabilitiesStore.KeptRoute.plugins])
+
+        // A removal Hermes took is kept, so a read after it that fails
+        // doesn't bring the plugin back.
+        await third.loadPlugins()
+        XCTAssertEqual((kept.saved[CapabilitiesStore.KeptRoute.plugins]?["plugins"] as? [Any])?.count, 1)
+        hermes.responses["/api/dashboard/plugins/hub"] = nil
+        hermes.responses["/api/dashboard/agent-plugins/Weather"] = ["ok": true]
+        try await third.removePlugin(third.plugins[0])
+        XCTAssertEqual((kept.saved[CapabilitiesStore.KeptRoute.plugins]?["plugins"] as? [Any])?.count, 0)
+
+        // A connector install counts as a write to the servers and the
+        // catalog, so a read asked before it isn't kept after it, even when
+        // the read after it fails.
+        let notion = try XCTUnwrap(third.connectorCatalog.first { $0.name == "notion" })
+        hermes.responses["/api/mcp/catalog/install"] = ["ok": true]
+        hermes.responses["/api/mcp/servers"] = nil
+        let installed = await third.installConnector(notion, env: [:])
+        XCTAssertTrue(installed)
+        XCTAssertEqual(Array(kept.noted.suffix(2)), [CapabilitiesStore.KeptRoute.servers, CapabilitiesStore.KeptRoute.connectorCatalog])
+    }
 }
 
 @MainActor
@@ -579,5 +708,32 @@ private final class CapabilityMockRequester: DashboardJSONRequester {
             throw URLError(.fileDoesNotExist)
         }
         return response
+    }
+}
+
+/// A page's answers kept on the phone, as AppState keeps them, and the
+/// routes a change made there kept.
+@MainActor
+private final class KeptCapabilityAnswers {
+    private(set) var saved: [String: [String: Any]] = [:]
+    private(set) var written: [String] = []
+    /// Routes a change wrote to with nothing kept for them.
+    private(set) var noted: [String] = []
+
+    var answers: KeptAnswers {
+        KeptAnswers(
+            kept: { route in self.saved[route] },
+            keep: { route, writes, read in
+                let answer = try await read()
+                self.saved[route] = answer
+                if writes { self.written.append(route) }
+                return answer
+            },
+            noteWrite: { route in self.noted.append(route) }
+        )
+    }
+
+    func forget(_ route: String) {
+        saved[route] = nil
     }
 }

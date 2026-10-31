@@ -121,19 +121,6 @@ struct VoiceConfigurationSnapshot: Equatable {
     }
 }
 
-/// Where Voice settings keep Hermes' answers on the phone, so the page opens
-/// on what it showed last time while it asks again (#1533). AppState's
-/// `voiceSettingsAnswers` keeps them with the other settings pages',
-/// per dashboard and profile.
-struct VoiceKeptAnswers {
-    /// The answer kept for a route, or nil.
-    let kept: @MainActor (_ route: String) -> [String: Any]?
-    /// Runs a read, or a save answering with the config it wrote
-    /// (`writes`), and keeps its answer for the route, unless an answer
-    /// newer than it is kept by then.
-    let keep: @MainActor (_ route: String, _ writes: Bool, _ read: () async throws -> [String: Any]) async throws -> [String: Any]
-}
-
 /// A small adapter protocol makes the schema/config parser deterministic in
 /// tests without exposing WebKit or dashboard cookies to the view layer.
 @MainActor
@@ -181,7 +168,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
     var awaitsKeys: Bool { !snapshot.environmentLoaded }
 
     private let requester: VoiceConfigurationRequesting
-    private let answers: VoiceKeptAnswers?
+    private let answers: KeptAnswers?
     let profile: String
     /// The dashboard address this phone uses, which the speech server's
     /// model address starts with. Nil when the service has no bridge.
@@ -193,7 +180,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
 
     init(requester: VoiceConfigurationRequesting, profile: String, dashboardBaseURL: String? = nil,
          profileParameter: @escaping @MainActor () -> String = { "profile" },
-         answers: VoiceKeptAnswers? = nil) {
+         answers: KeptAnswers? = nil) {
         self.requester = requester
         self.answers = answers
         self.profile = profile
@@ -207,7 +194,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
     }
 
     convenience init(bridge: DashboardTicketBridge, profile: String, profileParameter: @escaping @MainActor () -> String = { "profile" },
-                     answers: VoiceKeptAnswers? = nil) {
+                     answers: KeptAnswers? = nil) {
         self.init(requester: bridge, profile: profile, dashboardBaseURL: bridge.baseURL, profileParameter: profileParameter, answers: answers)
     }
 
@@ -232,7 +219,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// phone; nil unless the config and both speech toolsets are kept, so a
     /// voice never reads not ready for want of a kept answer. Which keys
     /// are set isn't kept, so none reads as missing.
-    private static func keptSnapshot(profile: String, answers: VoiceKeptAnswers?) -> VoiceConfigurationSnapshot? {
+    private static func keptSnapshot(profile: String, answers: KeptAnswers?) -> VoiceConfigurationSnapshot? {
         guard let answers, answers.kept(KeptRead.sttToolset) != nil, answers.kept(KeptRead.ttsToolset) != nil else { return nil }
         return redrawn(profile: profile, answers: answers, environment: nil)
     }
@@ -242,7 +229,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// this Hermes doesn't offer stay out, as when it answered. Nil
     /// without a kept config.
     private static func redrawn(
-        profile: String, answers: VoiceKeptAnswers?, environment: [String: Any]?
+        profile: String, answers: KeptAnswers?, environment: [String: Any]?
     ) -> VoiceConfigurationSnapshot? {
         guard let answers, let config = answers.kept(KeptRead.config) else { return nil }
         let ttsReadiness = answers.kept(KeptRead.ttsToolset)

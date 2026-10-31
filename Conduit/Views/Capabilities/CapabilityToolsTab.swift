@@ -59,7 +59,7 @@ struct CapabilityToolsTab: View {
             }
         }
         .task(id: store.profile) {
-            if store.toolCalls == nil { await store.loadToolCalls() }
+            if store.toolCalls == nil || store.showsKept.contains(.toolCalls) { await store.loadToolCalls() }
         }
     }
 
@@ -72,16 +72,21 @@ struct CapabilityToolsTab: View {
                 Text("Sort")
             }
             Divider()
-            Button {
-                setAll(enabled: true)
-            } label: {
-                Label(AppLocalization.string("Turn All On"), systemImage: "checkmark.circle")
+            // They pick their toolsets from the list shown: a kept one waits
+            // for Hermes' answer.
+            Group {
+                Button {
+                    setAll(enabled: true)
+                } label: {
+                    Label(AppLocalization.string("Turn All On"), systemImage: "checkmark.circle")
+                }
+                Button {
+                    setAll(enabled: false)
+                } label: {
+                    Label(AppLocalization.string("Turn All Off"), systemImage: "circle")
+                }
             }
-            Button {
-                setAll(enabled: false)
-            } label: {
-                Label(AppLocalization.string("Turn All Off"), systemImage: "circle")
-            }
+            .disabled(appState.capabilitiesAreKept || !appState.canChangeCapabilities)
         } label: {
             if bulkRunning {
                 ProgressView().controlSize(.small)
@@ -98,7 +103,7 @@ struct CapabilityToolsTab: View {
     /// One switch at a time; a dashboard or profile switch midway stops it.
     private func setAll(enabled: Bool) {
         let targets = visible.filter { $0.enabled != enabled }.map(\.name)
-        guard !bulkRunning, !targets.isEmpty, let rows = appState.capabilitiesOwner else { return }
+        guard !bulkRunning, !appState.capabilitiesAreKept, !targets.isEmpty, let rows = appState.capabilitiesOwner else { return }
         Haptics.selection()
         bulkRunning = true
         Task {
@@ -181,6 +186,7 @@ private struct CapabilityToolsetRow: View {
                 Text(verbatim: CapabilityToolsetOrdering.label(toolset))
             }
             .labelsHidden()
+            .disabled(!appState.canChangeCapabilities)
             .tint(.conduitAccent)
         }
     }
@@ -327,6 +333,7 @@ struct CapabilityToolsetDetailPage: View {
                 Text("Turned on")
                     .scaledFont(.subheadline.weight(.semibold))
             }
+            .disabled(!appState.canChangeCapabilities)
             .tint(.conduitAccent)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

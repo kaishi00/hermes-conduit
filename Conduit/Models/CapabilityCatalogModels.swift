@@ -312,21 +312,49 @@ struct TerminalBackendOption: Equatable, Identifiable {
 // MARK: - Connectors (MCP servers)
 
 /// An MCP server in the profile's config (`GET /api/mcp/servers`).
-struct ConnectorServer: Equatable, Identifiable {
+struct ConnectorServer: Equatable, Identifiable, Codable {
     var id: String { name }
     let name: String
     /// http, stdio or unknown.
     var transport: String
     var url: String?
     var command: String?
-    var args: [String]
+    var args: [String] = []
     /// oauth, header, or nil.
     var auth: String?
     var enabled: Bool
     /// A plugin's server: shown, never changed from here (Hermes answers 409).
     var plugin: String?
 
+    /// The copy kept on the phone (#1533) leaves out the command's
+    /// arguments, which can hold a key, and keeps how the server signs in
+    /// under a name the kept answers' filter doesn't take for a
+    /// credential's.
+    private enum CodingKeys: String, CodingKey {
+        case name, transport, url, command, enabled, plugin
+        case auth = "sign_in"
+    }
+
     var isFromPlugin: Bool { plugin != nil }
+
+    /// The copy kept on the phone: its address cut to scheme, host and
+    /// port, as its path or query can hold a key (`/sse/<token>`), as its
+    /// command's arguments can. Hermes' answer brings the rest.
+    var keptCopy: ConnectorServer {
+        var copy = self
+        copy.url = url.flatMap(Self.origin)
+        return copy
+    }
+
+    static func origin(of address: String) -> String? {
+        guard var parts = URLComponents(string: address), parts.host != nil else { return nil }
+        parts.user = nil
+        parts.password = nil
+        parts.path = ""
+        parts.query = nil
+        parts.fragment = nil
+        return parts.string
+    }
 
     /// OAuth sign-in applies to a URL server that doesn't send its own
     /// Authorization header, as Hermes' `/auth` route requires.
@@ -350,9 +378,14 @@ struct ConnectorServer: Equatable, Identifiable {
     }
 }
 
-/// An entry of Hermes' MCP catalog (`GET /api/mcp/catalog`).
-struct ConnectorCatalogEntry: Equatable, Identifiable {
-    struct EnvField: Equatable, Identifiable {
+/// An entry of Hermes' MCP catalog (`GET /api/mcp/catalog`). Kept on the
+/// phone as Conduit's own JSON (#1533), whose `authType` the kept answers'
+/// filter keeps, as it wouldn't Hermes' `auth_type`. Its command and
+/// arguments are kept too: they're the catalog's template, the same on
+/// every Hermes, and the keys an install asks for (`requiredEnv`) go to
+/// Hermes in the install's body, never into them.
+struct ConnectorCatalogEntry: Equatable, Identifiable, Codable {
+    struct EnvField: Equatable, Identifiable, Codable {
         var id: String { name }
         let name: String
         var prompt: String

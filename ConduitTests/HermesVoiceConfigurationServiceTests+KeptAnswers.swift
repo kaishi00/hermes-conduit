@@ -383,8 +383,8 @@ private final class KeptVoiceAnswers {
         self.saved = saved
     }
 
-    var answers: VoiceKeptAnswers {
-        VoiceKeptAnswers(
+    var answers: KeptAnswers {
+        KeptAnswers(
             kept: { route in self.saved[route] },
             keep: { route, _, read in
                 let answer = try await read()

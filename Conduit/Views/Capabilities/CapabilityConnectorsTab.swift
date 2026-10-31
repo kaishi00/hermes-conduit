@@ -33,7 +33,7 @@ struct CapabilityConnectorsTab: View {
             query: query
         )
         CapabilityTabScroll(refresh: { await reload(force: true) }) {
-            if !store.connectorsLoaded {
+            if !store.connectorsLoaded && !store.showsKept.contains(.connectors) {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 40)
@@ -101,7 +101,7 @@ struct CapabilityConnectorsTab: View {
             }
         }
         .task(id: store.profile) {
-            if !store.connectorsLoaded { await store.loadConnectors() }
+            if !store.connectorsLoaded || store.showsKept.contains(.connectors) { await store.loadConnectors() }
             await store.probeServers()
         }
         .sheet(item: $installing) { entry in
@@ -346,8 +346,9 @@ struct ConnectorDetailPage: View {
         // it reveals animate on the value, page-wide.
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: server?.enabled)
         .navigationTitle(Text(verbatim: name))
-        .task(id: name) {
-            if let server, server.enabled, probe == nil, !store.probing.contains(name) {
+        // A kept server is tested once Hermes lists it, as on the tab.
+        .task(id: store.showsKept.contains(.connectors) ? nil : name) {
+            if let server, server.enabled, probe == nil, !store.probing.contains(name), !store.showsKept.contains(.connectors) {
                 await store.probe(name)
             }
         }
