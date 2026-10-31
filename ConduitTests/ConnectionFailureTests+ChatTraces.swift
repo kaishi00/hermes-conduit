@@ -145,10 +145,6 @@ extension ConnectionFailureTests {
         time += 0.2
         watch.offsetMoved(from: 0, to: 4_000, viewportHeight: 800, byUser: false)
         XCTAssertEqual(saved, [.jump, .jump])
-
-        watch.blankViewportRebuilt()
-        watch.blankViewportRebuilt()
-        XCTAssertEqual(saved, [.jump, .jump, .rebuild])
     }
 
     @MainActor

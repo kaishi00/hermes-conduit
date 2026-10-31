@@ -13,7 +13,8 @@ import UIKit
 /// laid out by TranscriptLayout, its offset TranscriptScroller's alone. The
 /// rows are TranscriptModel's, each drawn by ChatView's SwiftUI in a hosting
 /// controller of its own (TranscriptCell), with the chat's environment
-/// handed to it (TranscriptCellEnvironment).
+/// handed to it (TranscriptCellEnvironment). A group room's transcript is
+/// one too, its rows GroupRoomTranscript's, drawn by GroupChatView.
 ///
 /// It fills the area around it, under the bars at its edges and the
 /// keyboard, and keeps its rows clear of them with content insets: `insets`
@@ -25,9 +26,10 @@ struct TranscriptView: UIViewControllerRepresentable {
     let appState: AppState
     let scroller: TranscriptScroller
     let rows: [TranscriptRow]
-    /// Draws a row (ChatView's).
+    /// Draws a row (ChatView's, or a group room's GroupChatView's).
     let rowContent: @MainActor (TranscriptRow) -> AnyView
-    /// The rows' opened and closed runs (ChatRowDisclosure), one per chat.
+    /// The rows' opened and closed runs (ChatRowDisclosure), one per chat or
+    /// room.
     let disclosure: ChatRowDisclosure
     let insets: EdgeInsets
     /// The conversation drawn: measured heights are kept per conversation,
@@ -37,9 +39,10 @@ struct TranscriptView: UIViewControllerRepresentable {
     /// it and its header with the soft edge.
     let composerFloats: Bool
     /// The scope the rows drawn are (TranscriptScroller.renderedScrollScope),
-    /// told to `layoutSettled` once a pass has laid them out.
-    let renderedScope: ChatRenderedScrollScope?
-    let layoutSettled: @MainActor (ChatRenderedScrollScope) -> Void
+    /// told to `layoutSettled` once a pass has laid them out. A group room
+    /// has none.
+    var renderedScope: ChatRenderedScrollScope? = nil
+    var layoutSettled: @MainActor (ChatRenderedScrollScope) -> Void = { _ in }
 
     func makeUIViewController(context: Context) -> TranscriptViewController {
         TranscriptViewController(appState: appState, scroller: scroller)

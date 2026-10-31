@@ -555,6 +555,9 @@ struct ChatView: View {
             )
         case .pendingSend(let pending):
             PendingComposerSendBubble(pending: pending)
+        case .room:
+            // A group room's (GroupChatView); a chat has none.
+            EmptyView()
         }
     }
 
@@ -4997,9 +5000,10 @@ private struct ConduitBreathingTimeline<Content: View>: View {
 struct V2SoftTopScrollEdge: ViewModifier {
     let isOn: Bool
     var underChatHeader = false
-    /// A chat's transcript, a collection view that sets its iOS 26 soft
-    /// edge itself (TranscriptViewController's applyEdgeEffect): on it, only
-    /// the fade before iOS 26 is this modifier's.
+    /// A chat's or a group room's transcript, a collection view that sets
+    /// its iOS 26 soft edge itself (TranscriptViewController's
+    /// applyEdgeEffect): on it, only the fade before iOS 26 is this
+    /// modifier's.
     var setsOwnEdge = false
 
     @ViewBuilder

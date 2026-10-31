@@ -2110,4 +2110,188 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertTrue(scroller.isFollowingLatest)
         XCTAssertEqual(surface.contentOffsetY, 4080)
     }
+
+    // MARK: - Group rooms (#1533)
+
+    private static func eventIDs(_ range: Range<Int>) -> Set<String> {
+        Set(range.map { "e\($0)" })
+    }
+
+    /// A group room's scroller, as GroupChatView sets it up: no session,
+    /// ten events e0...e9 400 pt each on a surface 800 pt tall, told as the
+    /// room's rows box tells it, with long replies stopping at their start.
+    /// Attached, it's at the end, 3200.
+    private func makeRoomScroller() -> (TranscriptScroller, FakeTranscriptSurface) {
+        let surface = FakeTranscriptSurface(ids: (0..<10).map { "e\($0)" })
+        let scroller = TranscriptScroller(
+            now: { [unowned self] in self.clock },
+            prefersReducedMotion: { false },
+            schedule: { [unowned self] delay, body in self.scheduled.append((delay, body)) }
+        )
+        scrollers.append(scroller)
+        surface.scroller = scroller
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<10), replyStart: nil)
+        scroller.holdsRepliesAtStart = { true }
+        scroller.attach(surface)
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        return (scroller, surface)
+    }
+
+    /// A member's message longer than the screen stops at its start, 37 pt
+    /// under the top, and the reader is left browsing there: rows after it
+    /// don't move them.
+    func testARoomStopsAtTheStartOfALongNewMemberMessage() {
+        let (scroller, surface) = makeRoomScroller()
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<11), replyStart: "e10")
+        XCTAssertTrue(scroller.replyHoldArmed, "armed before the message is laid out")
+        surface.append("e10", height: 1600)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 3963)
+        XCTAssertEqual(scroller.mode, .browsing)
+        XCTAssertTrue(scroller.showsJumpToLatest)
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<12), replyStart: nil)
+        surface.append("e11", height: 400)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 3963)
+    }
+
+    /// One that fits is followed to its end; measured taller than its
+    /// guess, it stops at its start then.
+    func testAShortNewMemberMessageIsFollowedUntilItMeasuresLonger() {
+        let (scroller, surface) = makeRoomScroller()
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<11), replyStart: "e10")
+        surface.append("e10", height: 300)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 3500)
+        XCTAssertTrue(scroller.isFollowingLatest)
+        surface.setHeight("e10", 1600)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 3963)
+        XCTAssertEqual(scroller.mode, .browsing)
+    }
+
+    /// After a message that fit, a member starting its turn (or a caption)
+    /// is followed to the end, as the room did before: it isn't a message
+    /// running past the screen.
+    func testAMemberStartingItsTurnAfterAShortMessageIsFollowed() {
+        let (scroller, surface) = makeRoomScroller()
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<11), replyStart: "e10")
+        surface.append("e10", height: 750)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 3950)
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<11), replyStart: nil)
+        XCTAssertFalse(scroller.replyHoldArmed)
+        surface.append(GroupRoomTranscript.respondingID, height: 78)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 4028)
+        XCTAssertTrue(scroller.isFollowingLatest)
+    }
+
+    /// The next member's message stops at its own start.
+    func testALaterMemberMessageStopsAtItsOwnStart() {
+        let (scroller, surface) = makeRoomScroller()
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<11), replyStart: "e10")
+        surface.append("e10", height: 200)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 3400)
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<12), replyStart: "e11")
+        surface.append("e11", height: 1600)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 4163)
+        XCTAssertEqual(scroller.mode, .browsing)
+    }
+
+    /// A reader scrolled up stays where they are: the stop is armed, as a
+    /// chat's hold is, but a browsing reader isn't pinned. Back at the end,
+    /// below the message's start, they follow it.
+    func testABrowsingReaderIsNotMovedByANewMemberMessage() {
+        let (scroller, surface) = makeRoomScroller()
+        surface.userScroll(to: 1000)
+        XCTAssertEqual(scroller.mode, .browsing)
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<11), replyStart: "e10")
+        XCTAssertTrue(scroller.replyHoldArmed)
+        surface.append("e10", height: 1600)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 1000)
+        surface.userScroll(to: 4800)
+        XCTAssertTrue(scroller.isFollowingLatest)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 4800)
+        XCTAssertFalse(scroller.replyHoldArmed, "below the message's start, the stop is gone")
+    }
+
+    /// A member message that arrives while a fling still moves a following
+    /// room stops it at the message's start all the same, once the fling
+    /// rests, as a chat's hold does.
+    func testAMemberMessageDuringAFlingStopsAtItsStartOnceItRests() {
+        let (scroller, surface) = makeRoomScroller()
+        surface.fling(to: 3200)
+        XCTAssertTrue(scroller.isFollowingLatest)
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<11), replyStart: "e10")
+        XCTAssertTrue(scroller.replyHoldArmed, "armed while the fling moves")
+        surface.append("e10", height: 1600)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 3200, "the pin waits for the fling")
+        surface.flingRests()
+        XCTAssertEqual(surface.contentOffsetY, 3963)
+        XCTAssertEqual(scroller.mode, .browsing)
+    }
+
+    /// The jump button and a send go past the stop to the end, and the
+    /// user's own message is followed.
+    func testTheJumpAndASendGoPastARoomsStop() {
+        let (scroller, surface) = makeRoomScroller()
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<11), replyStart: "e10")
+        surface.append("e10", height: 1600)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 3963)
+        scroller.explicitLatestRequested(animated: false)
+        XCTAssertEqual(surface.contentOffsetY, 4800)
+        XCTAssertTrue(scroller.isFollowingLatest)
+        XCTAssertFalse(scroller.replyHoldArmed)
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<12), replyStart: nil)
+        surface.append("e11", height: 100)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 4900)
+    }
+
+    func testWithTheSettingOffARoomFollowsAMemberMessageToItsEnd() {
+        let (scroller, surface) = makeRoomScroller()
+        scroller.holdsRepliesAtStart = { false }
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<11), replyStart: "e10")
+        XCTAssertFalse(scroller.replyHoldArmed)
+        surface.append("e10", height: 1600)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 4800)
+        XCTAssertTrue(scroller.isFollowingLatest)
+    }
+
+    /// Long replies switched off (here or on another device) while a room
+    /// is at a member message's stop: it goes on to the end at once, not at
+    /// its next layout.
+    func testSwitchingLongRepliesOffTakesARoomsStopAway() {
+        let (scroller, surface) = makeRoomScroller()
+        scroller.roomTranscriptChanged(eventIDs: Self.eventIDs(0..<11), replyStart: "e10")
+        surface.append("e10", height: 790)
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 3963)
+        XCTAssertTrue(scroller.isFollowingLatest, "within the near-bottom distance it is still following")
+        scroller.holdsRepliesAtStart = { false }
+        scroller.replyStartPreferenceChanged()
+        XCTAssertEqual(surface.contentOffsetY, 3990)
+        XCTAssertTrue(scroller.isFollowingLatest)
+    }
+
+    /// A "Replying to" card's tap: the message it quoted at the top, the
+    /// room browsing there. Only the room's events are taken to.
+    func testARoomTakesTheReaderToAQuotedMessage() {
+        let (scroller, surface) = makeRoomScroller()
+        scroller.explicitMessageRequested(id: "e3")
+        XCTAssertEqual(surface.contentOffsetY, 1200)
+        XCTAssertEqual(scroller.mode, .browsing)
+        surface.append(GroupRoomTranscript.respondingID, height: 78)
+        surface.layOut()
+        scroller.explicitMessageRequested(id: GroupRoomTranscript.respondingID)
+        XCTAssertEqual(surface.contentOffsetY, 1200)
+    }
 }

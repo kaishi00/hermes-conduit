@@ -9,8 +9,8 @@
 //  chat). It's the one place that decides them; ChatView's body used to
 //  spread that over the transcript's stack. Each update says what it
 //  changed by row id (TranscriptChangeSet), and the recorder logs it, so a
-//  trace says which rows came, went or changed. The lazy stack draws the
-//  rows for now; the collection view that replaces it will draw the same.
+//  trace says which rows came, went or changed. A group room's rows are
+//  decided here too (GroupRoomTranscript).
 //
 
 import Foundation
@@ -37,6 +37,8 @@ struct TranscriptRow: Identifiable, Equatable {
         case working(TranscriptWorkingLine)
         /// A message sent while the chat was on its way.
         case pendingSend(PendingComposerSend)
+        /// A group room's row (GroupRoomTranscript).
+        case room(GroupRoomRow)
     }
 
     let id: String
@@ -371,5 +373,134 @@ final class TranscriptModelBox {
             }
         }
         return model
+    }
+}
+
+// MARK: - Group rooms
+
+/// What one of a group room's rows draws (GroupChatView). The room's members
+/// ride along: a change of name redraws the rows naming them.
+enum GroupRoomRow: Equatable {
+    /// A room event (GroupEventRow), and whether it continues the run of
+    /// the row above (the speaker's picture and name once).
+    case event(GroupEvent, members: [GroupMember], continuesRun: Bool)
+    /// The user's message on its way, under the id its event will have:
+    /// "Sending…" while its send is out, else Retry.
+    case pending(text: String, members: [GroupMember], isSending: Bool)
+    /// The member whose turn is running.
+    case responding(GroupMember)
+    /// A room with nothing in it yet.
+    case empty(roomID: String, members: [GroupMember])
+}
+
+/// A group room's transcript rows (#1533, the transcript rewrite): its
+/// visible events, the user's message on its way, the member responding,
+/// or the empty room's welcome.
+enum GroupRoomTranscript {
+    static let respondingID = "room-responding"
+    static let emptyID = "room-empty"
+
+    /// The rows, in order. The message on its way takes its event's id,
+    /// the one the gateway files it under (GroupRoomOutbox.serverEventID),
+    /// so its row becomes the event's in place when the send lands, and
+    /// isn't drawn twice while both are there.
+    static func rows(
+        events: [GroupEvent],
+        roomID: String,
+        members: [GroupMember],
+        pending: GroupRoomOutbox.Pending?,
+        isSending: Bool,
+        responder: GroupMember?
+    ) -> [TranscriptRow] {
+        var rows: [TranscriptRow] = []
+        rows.reserveCapacity(events.count + 2)
+        var ids = Set<String>(minimumCapacity: events.count + 2)
+        func add(_ id: String, _ row: GroupRoomRow) {
+            guard ids.insert(id).inserted else { return }
+            rows.append(TranscriptRow(id: id, kind: .room(row)))
+        }
+        for (index, event) in events.enumerated() {
+            // A member's run of replies shows its picture and name once,
+            // like a group thread in Messages.
+            let continuesRun = index > 0 && GroupEventRow.sameSpeaker(events[index - 1], event)
+            add(event.id, .event(event, members: members, continuesRun: continuesRun))
+        }
+        if let pending {
+            add(
+                GroupRoomOutbox.serverEventID(forClientEventID: pending.eventID),
+                .pending(text: pending.text, members: members, isSending: isSending)
+            )
+        }
+        if let responder {
+            add(respondingID, .responding(responder))
+        }
+        if rows.isEmpty {
+            add(emptyID, .empty(roomID: roomID, members: members))
+        }
+        return rows
+    }
+
+    /// The member message a following room stops at the start of when new
+    /// events arrive, as a long chat reply does (#365): the first one after
+    /// the row that was last before them. Nil follows to the end: nothing
+    /// new from a member, or no row from before (the room just opened, its
+    /// first events usually its history), or that row gone.
+    static func replyStart(in events: [GroupEvent], after previousLastID: String?) -> String? {
+        guard let previousLastID,
+              let index = events.lastIndex(where: { $0.id == previousLastID }) else { return nil }
+        return events[(index + 1)...].first(where: \.isMemberMessage)?.id
+    }
+}
+
+/// GroupChatView's rows, built again only when what they draw changes, so
+/// the transcript skips comparing them on the room's other updates. It
+/// tells the scroller of new events, and of a member starting or ending
+/// its turn, as it builds them, before the transcript lays them out: the
+/// stop at a new member message is set before the pass that would follow
+/// it to its end. What draws nothing new at the end (a turn's heartbeat,
+/// the oldest rows trimmed) leaves its stop alone. A plain class, so an
+/// update during a render asks for no other render.
+@MainActor
+final class GroupRoomTranscriptBox {
+    struct Input: Equatable {
+        var replay = GroupRoomReplay(roomID: "")
+        var members: [GroupMember] = []
+        var pending: GroupRoomOutbox.Pending?
+        var isSending = false
+        var responder: GroupMember?
+    }
+
+    private var input: Input?
+    private(set) var rows: [TranscriptRow] = []
+    /// The visible events' ids the rows had.
+    private var eventIDs: [String] = []
+
+    func update(_ input: Input, scroller: TranscriptScroller) -> [TranscriptRow] {
+        guard input != self.input else { return rows }
+        let responderChanged = input.responder != self.input?.responder
+        self.input = input
+        let events = input.replay.events.filter(GroupRoomTurns.isVisible)
+        rows = GroupRoomTranscript.rows(
+            events: events,
+            roomID: input.replay.roomID,
+            members: input.members,
+            pending: input.pending,
+            isSending: input.isSending,
+            responder: input.responder
+        )
+        let ids = events.map(\.id)
+        // Only an event at the end is new: the oldest rows trimmed, or a
+        // gap filled, change which rows there are and nothing else.
+        let arrived = ids.last != eventIDs.last
+        if arrived || responderChanged {
+            scroller.roomTranscriptChanged(
+                eventIDs: Set(ids),
+                replyStart: arrived ? GroupRoomTranscript.replyStart(in: events, after: eventIDs.last) : nil
+            )
+        } else if ids != eventIDs {
+            scroller.roomEventsChanged(Set(ids))
+        }
+        eventIDs = ids
+        return rows
     }
 }
