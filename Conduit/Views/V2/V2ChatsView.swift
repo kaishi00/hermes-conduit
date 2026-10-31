@@ -1515,16 +1515,22 @@ struct V2ChatsView: View, Equatable {
             if !isProfileCollapsed(profile) {
                 // Its pinned chats lead it, and move among themselves; then
                 // its newest few until "Show more", unless a search or a
-                // status filter is looking through all of them.
-                let showsAll = !sectionsCollapsible || profilesShowingAll.contains(profile)
+                // status filter is looking through all of them (a source
+                // filter is still a browse, so it keeps the cap).
                 let preview = AllProfilesChats.preview(
                     nodes,
-                    showsAll: showsAll,
+                    showsAll: !sectionsCollapsible,
                     isPinned: { appState.isSessionPinned($0.session) },
                     isOpen: holdsOpenChat
                 )
-                listRows(V2ChatsListItem.items(preview.shown, expanded: expanded, scope: rowScope), movesPinned: dragsPinned)
-                if sectionsCollapsible, preview.hidden > 0 || profilesShowingAll.contains(profile) {
+                let showsAll = profilesShowingAll.contains(profile)
+                listRows(
+                    V2ChatsListItem.items(showsAll ? nodes : preview.shown, expanded: expanded, scope: rowScope),
+                    movesPinned: dragsPinned
+                )
+                // Only while the cap hides something: a profile that shrank
+                // to five gets no "Show fewer" that changes nothing.
+                if preview.hidden > 0 {
                     profileShowMoreRow(profile, hiddenCount: preview.hidden)
                 }
             }
