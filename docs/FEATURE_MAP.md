@@ -1527,7 +1527,7 @@ reply's elements) · long-press Open Link · file paths, linked to the Folder
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-31, #PRNUM (table cells with a link are always on the drawn-until-touched path); 2026-10-30, #1535 (table cells join the drawn-until-touched path once selection is on); 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
+**Checked:** 2026-10-31, #1596 (table cells with a link are always on the drawn-until-touched path); 2026-10-30, #1535 (table cells join the drawn-until-touched path once selection is on); 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
 
 ## Markdown lists in messages
 
@@ -1590,7 +1590,7 @@ iPad · selection across the reply · Copy response · links in cells (a cell wi
 - Selection on a table turns on as it does for the reply's drawn text: a selection that starts elsewhere in the message mounts the cells, so a drag from the text above or below carries into the table, and a pointer over the table (a Mac, an iPad's trackpad or mouse) turns it on, so a click and drag selects in a cell and Cmd+C and the context menu's Copy work (2026-10-30, issue 1531, #1535; Eric: most selections start in the text around the table).
 - A pointer over a table (a Mac, an iPad's trackpad or mouse) shows a Copy Table button at the table's top right, on every Markdown surface, since the cells' own right-click menu replaces the table's (2026-10-30, Eric, #1540).
 - VoiceOver's Copy Table is on every table, whether or not selection is on, group rooms' included: a VoiceOver user selecting cell by cell has no other way to take the whole table (#1535).
-- A cell with a link is never plain text: it draws as a selectable cell (drawn until touched in the chat), so a click or tap opens the link as the reply's other links do. A plain cell's SwiftUI link lost the click to the row's tap that puts the keyboard away (2026-10-31, issue 1585, #PRNUM). Cells without links stay plain.
+- A cell with a link is never plain text: it draws as a selectable cell (drawn until touched in the chat), so a click or tap opens the link as the reply's other links do. A plain cell's SwiftUI link lost the click to the row's tap that puts the keyboard away (2026-10-31, issue 1585, #1596). Cells without links stay plain.
 
 **Open gaps**
 - On a touch screen, once selection is on (Select Text, or a selection elsewhere in the message), the long-press menu is the text's own, so Copy Table is gone for that table until its row is taken down; selecting across the table copies its cells, and Copy response copies the reply.
@@ -1598,7 +1598,7 @@ iPad · selection across the reply · Copy response · links in cells (a cell wi
 - The pointer's Copy Table button covers the corner of the last header cell while the pointer is over the table.
 - A big table mounts its rows in batches (`LargeMarkdownTable`), and a selection copies only mounted cells, so a selection across a table past its first batch leaves the rest out until Show more; Copy Table copies every row.
 
-**Checked:** 2026-10-31, #PRNUM (a cell with a link draws as a selectable cell, so its link opens; Links in messages' Siblings); 2026-10-30, #1540 (the pointer's Copy Table button); #1535 (a selection in the message mounts the cells; VoiceOver's Copy Table kept).
+**Checked:** 2026-10-31, #1596 (a cell with a link draws as a selectable cell, so its link opens; Links in messages' Siblings); 2026-10-30, #1540 (the pointer's Copy Table button); #1535 (a selection in the message mounts the cells; VoiceOver's Copy Table kept).
 
 ## Attaching files
 
