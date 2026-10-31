@@ -15,8 +15,11 @@ import SwiftUI
 /// scripts/check-transcript-environment.py fails when one of Conduit's
 /// environment keys is neither copied here nor listed in `setInsideRows`.
 struct TranscriptCellEnvironment: Equatable {
-    /// Keys the rows set for what they hold, so the chat's value never
-    /// reaches them (the checker reads this list).
+    /// Keys the rows set themselves, where they read them, for what they
+    /// hold: they aren't copied from the chat (the checker reads this
+    /// list). The checker sees only that something in Conduit sets each,
+    /// not where, so a key set above the transcript is copied, never
+    /// listed here.
     static let setInsideRows = [
         "richSourceActionsOnRow",
         "textSelectionTint",

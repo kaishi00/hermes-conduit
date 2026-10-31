@@ -215,4 +215,24 @@ final class TranscriptLayoutTests: XCTestCase {
         let cell = try XCTUnwrap(layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 0)))
         XCTAssertEqual(cell.frame.minX, 44 + TranscriptLayout.sideMargin)
     }
+
+    /// A row that measures lays out every row under it again, so a long
+    /// chat's rows not measured yet keep the guess made for them: one per
+    /// row, width and scope, not one per pass.
+    func testEachRowIsGuessedOncePerWidth() throws {
+        let ids = (0..<200).map { "row-\($0)" }
+        TranscriptPerf.reset()
+        show(ids)
+        XCTAssertEqual(TranscriptPerf.rowHeightEstimates, ids.count)
+
+        measure(["row-0": 100])
+        measure(["row-1": 150])
+        measure(["row-2": 60])
+        XCTAssertEqual(TranscriptPerf.rowHeightEstimates, ids.count, "The rows under a measurement aren't guessed again")
+
+        // Another width guesses them again, each once.
+        layout.setSideInsets(leading: 44, trailing: 0)
+        view.layoutIfNeeded()
+        XCTAssertEqual(TranscriptPerf.rowHeightEstimates, 2 * ids.count)
+    }
 }

@@ -57,6 +57,8 @@ final class ChatScrollHostedTests: XCTestCase {
         let scrollView: UIScrollView
         let layout: TranscriptLayout
         let scroller: TranscriptScroller
+        /// Draws the same chat at another text size.
+        let setTextSize: (ChatTextSize) -> Void
     }
 
     private static func transcript(_ range: Range<Int>) -> [ChatMessage] {
@@ -80,11 +82,7 @@ final class ChatScrollHostedTests: XCTestCase {
         appState.messages = messages
 
         let host = UIHostingController(
-            rootView: DormancyHarnessEnvironment.applying(
-                ChatView(chatTextSizeOverride: DormancyHarnessEnvironment.pinnedChatTextSize)
-                    .environment(\.v2ComposerRests, composerRests)
-                    .environmentObject(appState)
-            )
+            rootView: Self.chat(appState, composerRests: composerRests, textSize: DormancyHarnessEnvironment.pinnedChatTextSize)
         )
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = host
@@ -105,7 +103,16 @@ final class ChatScrollHostedTests: XCTestCase {
         let controller = try XCTUnwrap(found.delegate as? TranscriptViewController)
         settle(host.view)
         return Mounted(
-            appState: appState, host: host, scrollView: found, layout: controller.layout, scroller: controller.scroller
+            appState: appState, host: host, scrollView: found, layout: controller.layout, scroller: controller.scroller,
+            setTextSize: { size in host.rootView = ChatScrollHostedTests.chat(appState, composerRests: composerRests, textSize: size) }
+        )
+    }
+
+    private static func chat(_ appState: AppState, composerRests: Bool, textSize: ChatTextSize) -> some View {
+        DormancyHarnessEnvironment.applying(
+            ChatView(chatTextSizeOverride: textSize)
+                .environment(\.v2ComposerRests, composerRests)
+                .environmentObject(appState)
         )
     }
 
@@ -771,6 +778,27 @@ final class ChatScrollHostedTests: XCTestCase {
         let moves = recorder.offsetChanges(since: mark).filter { $0.distance > 1 }
         print("[ChatScrollHostedTests] idle trace:\n\(recorder.dump())")
         XCTAssertTrue(moves.isEmpty, "the transcript moved on its own:\n\(recorder.dump(since: mark))")
+    }
+
+    /// A row draws in a hosting controller of its own and inherits nothing
+    /// from the chat: a change to the chat's text size reaches the rows
+    /// already drawn (TranscriptView's update, TranscriptCell's
+    /// updateEnvironment), so they draw, and measure, at the new size.
+    func testAChangeToTheChatsTextSizeReachesTheRowsDrawn() throws {
+        let messages = Self.transcript(0..<12)
+        let mounted = try mount(messages)
+        let id = try XCTUnwrap(messages.last?.id)
+        let before = try XCTUnwrap(mounted.layout.rowFrame(id))
+
+        mounted.setTextSize(.largest)
+        settle(mounted.host.view)
+
+        let after = try XCTUnwrap(mounted.layout.rowFrame(id))
+        XCTAssertGreaterThan(
+            after.maxY - after.minY,
+            before.maxY - before.minY + 4,
+            "the latest row, drawn before the change, must draw at the larger text"
+        )
     }
 
     /// A row's sheet presents from the row's own hosting controller, so a

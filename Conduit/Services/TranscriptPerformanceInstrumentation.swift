@@ -45,6 +45,7 @@ enum TranscriptPerf {
         case .reasoningTranscriptMutation: storage.reasoningTranscriptMutation += 1
         case .scrollTargetPrefixSetBuild: storage.scrollTargetPrefixSetBuild += 1
         case .plainTableCellBody: storage.plainTableCellBody += 1
+        case .rowHeightEstimate: storage.rowHeightEstimate += 1
         }
         #endif
     }
@@ -219,6 +220,8 @@ enum TranscriptPerf {
         case scrollTargetPrefixSetBuild
         /// A table cell drawn as plain text (MarkdownPlainCell).
         case plainTableCellBody
+        /// A transcript row's height guessed from its text (TranscriptLayout).
+        case rowHeightEstimate
         case settledContentGateComparison
     }
 
@@ -315,6 +318,10 @@ enum TranscriptPerf {
 
     static var plainTableCellBodyEvaluations: Int {
         get { read(\.plainTableCellBody) }
+    }
+
+    static var rowHeightEstimates: Int {
+        get { read(\.rowHeightEstimate) }
     }
 
     static var composerBarBodyEvaluations: Int {
@@ -530,6 +537,7 @@ enum TranscriptPerf {
     private struct Storage {
         var settledBubbleBody = 0
         var plainTableCellBody = 0
+        var rowHeightEstimate = 0
         var settledMarkdownBody = 0
         var settledMarkdownPreWindowRepeatBody = 0
         var settledMarkdownWindowDuplicateBody = 0

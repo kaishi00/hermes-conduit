@@ -59,6 +59,11 @@ final class TranscriptLayout: UICollectionViewLayout {
     private var preferredAdjustment: CGFloat = 0
     /// Heights measured for the conversation, width and text size drawn.
     private var heights = TranscriptHeightTable()
+    /// The rows not measured yet, as tall as their text guesses, worked out
+    /// once per width and scope: a pass from a row that measured lays out
+    /// every row under it, and a long chat's would be guessed again in
+    /// each.
+    private var estimates: [String: CGFloat] = [:]
     /// What decides a height besides the width: the conversation (row ids
     /// repeat across them) and the text's size and face.
     private(set) var scope = ""
@@ -142,7 +147,7 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// count of rows, a pass invalidating everything) takes none.
     private func noteHeight(_ height: CGFloat, at index: Int) -> CGFloat {
         let row = rows[index]
-        let before = heights[row.id] ?? Self.estimatedHeight(of: row, width: itemWidth)
+        let before = self.height(of: row)
         heights[row.id] = height
         let contentBefore = max(pendingRowsBottom, requestedReserve)
         pendingRowsBottom += height - before
@@ -238,7 +243,7 @@ final class TranscriptLayout: UICollectionViewLayout {
             dirtyFrom = nil
             var top = start == 0 ? Self.topPadding : itemTop[start - 1] + itemHeight[start - 1]
             for index in start..<rows.count {
-                let height = heights[rows[index].id] ?? Self.estimatedHeight(of: rows[index], width: itemWidth)
+                let height = self.height(of: rows[index])
                 if abs(itemTop[index] - top) > 0.01 || abs(itemHeight[index] - height) > 0.01 { moved = true }
                 itemTop[index] = top
                 itemHeight[index] = height
@@ -363,10 +368,19 @@ final class TranscriptLayout: UICollectionViewLayout {
         dirtyFrom = min(dirtyFrom ?? index, index)
     }
 
+    /// The row's measured height, else its estimate.
+    private func height(of row: TranscriptRow) -> CGFloat {
+        if let height = heights[row.id] ?? estimates[row.id] { return height }
+        let estimate = Self.estimatedHeight(of: row, width: itemWidth)
+        estimates[row.id] = estimate
+        return estimate
+    }
+
     /// The heights for the scope and width now; the pass that follows
     /// lays every row out from them.
     private func loadHeightTable() {
         heights = TranscriptHeights.table(for: "\(scope)|\(Int(itemWidth.rounded()))")
+        estimates = [:]
         markDirty(from: 0)
     }
 
@@ -381,6 +395,7 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// start: it measures once it comes near the screen, and the scroller
     /// keeps the reader's row in place when it does.
     static func estimatedHeight(of row: TranscriptRow, width: CGFloat) -> CGFloat {
+        TranscriptPerf.note(.rowHeightEstimate)
         switch row.kind {
         case .loadEarlier, .savedCopyStatus, .thinking, .working, .streaming:
             return rowGap + 44
@@ -397,12 +412,21 @@ final class TranscriptLayout: UICollectionViewLayout {
         }
     }
 
+    /// Its lines at a byte per character: enough for a guess, and with no
+    /// characters to count or paragraphs to split off.
     private static func textHeight(_ text: String, width: CGFloat) -> CGFloat {
-        let charactersPerLine = max(20, width / 8)
+        let bytesPerLine = max(20, width / 8)
         var lines: CGFloat = 0
-        for paragraph in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            lines += max(1, (CGFloat(paragraph.count) / charactersPerLine).rounded(.up))
+        var paragraphBytes = 0
+        for byte in text.utf8 {
+            if byte == UInt8(ascii: "\n") {
+                lines += max(1, (CGFloat(paragraphBytes) / bytesPerLine).rounded(.up))
+                paragraphBytes = 0
+            } else {
+                paragraphBytes += 1
+            }
         }
+        lines += max(1, (CGFloat(paragraphBytes) / bytesPerLine).rounded(.up))
         return min(6_000, max(44, lines * 22 + 24))
     }
 }
