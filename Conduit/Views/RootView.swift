@@ -384,7 +384,17 @@ struct MainView: View {
         // swaps in sign-in), and SwiftUI doesn't promise the sheet's
         // onDismiss then. Its flag must not outlive it: it holds back the
         // return surface while it claims a sheet is up.
-        .onDisappear { appState.isSettingsSheetPresented = false }
+        .onDisappear {
+            appState.isSettingsSheetPresented = false
+            // Signed out: the next sign-in is a launch the user chose, not
+            // a return to the chat (#1559).
+            conversationOnLeave = ""
+        }
+        // The drawer shell doesn't keep the record current: drop it, so
+        // turning V2 back on later doesn't open an old chat.
+        .onChange(of: useV2Shell) { _, usesV2 in
+            if !usesV2 { conversationOnLeave = "" }
+        }
         .background(windowWidthReader)
         .onPreferenceChange(MainViewWindowWidthKey.self) { availableWindowWidth = $0 }
         .onChange(of: isPersistentSidebarActive) { _, persistentActive in

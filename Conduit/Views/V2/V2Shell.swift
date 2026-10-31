@@ -480,8 +480,8 @@ struct V2Shell: View {
 
     /// What the window keeps for a launch after iOS ends Conduit: where
     /// the showing chat or room is.
-    private var conversationToReopen: String {
-        V2ReopenedConversation.record(
+    private var conversationToReopen: V2ReopenedConversation? {
+        V2ReopenedConversation.kept(
             showing: conversationVisible ? selectedTab : nil,
             path: path(of: selectedTab),
             roomID: appState.activeRoomSurface?.room.roomID
@@ -562,7 +562,8 @@ struct V2Shell: View {
                     appState.showSidebar = !visible
                 }
             }
-            .onChange(of: conversationToReopen, initial: true) { _, value in
+            .onChange(of: conversationToReopen, initial: true) { _, kept in
+                let value = kept?.encoded ?? ""
                 if conversationOnLeave != value { conversationOnLeave = value }
             }
             .task(id: appState.isConnected) { await reopenRoomIfWaiting() }
@@ -1559,7 +1560,13 @@ struct V2ReopenedConversation: Codable, Equatable {
     /// What the window keeps: where the showing chat or room is, or
     /// nothing while no chat shows.
     static func record(showing tab: V2Tab?, path: [V2Route], roomID: String?) -> String {
-        guard let tab, tab == .chats || tab == .bots, path.last == .conversation else { return "" }
+        kept(showing: tab, path: path, roomID: roomID)?.encoded ?? ""
+    }
+
+    /// The record itself, compared on each render and only encoded when it
+    /// changes.
+    static func kept(showing tab: V2Tab?, path: [V2Route], roomID: String?) -> V2ReopenedConversation? {
+        guard let tab, tab == .chats || tab == .bots, path.last == .conversation else { return nil }
         let under = path.dropLast().compactMap { route -> String? in
             switch route {
             case .project(let project): return "project:" + project.id
@@ -1568,8 +1575,12 @@ struct V2ReopenedConversation: Codable, Equatable {
             case .conversation: return nil
             }
         }
-        let kept = V2ReopenedConversation(tab: tab.rawValue, under: Array(under), roomID: roomID)
-        guard let data = try? JSONEncoder().encode(kept) else { return "" }
+        return V2ReopenedConversation(tab: tab.rawValue, under: under, roomID: roomID)
+    }
+
+    /// What the window's SceneStorage holds.
+    var encoded: String {
+        guard let data = try? JSONEncoder().encode(self) else { return "" }
         return String(decoding: data, as: UTF8.self)
     }
 
