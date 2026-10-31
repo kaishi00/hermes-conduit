@@ -137,13 +137,15 @@ struct MainView: View {
         )
     }
 
-    /// The tab whose chat V2 opens on: read once, when the shell is made.
-    private var conversationToReopen: V2Tab? {
+    /// Where V2 opens: read once, when the shell is made.
+    private var conversationToReopen: V2ReopenedConversation.Launch? {
         guard !conversationOnLeave.isEmpty else { return nil }
-        return V2ReopenedConversation.tab(
+        return V2ReopenedConversation.launch(
             stored: conversationOnLeave,
             lastChat: appState.chatResumeLastSessionReference(for: appState.activeProfile)?.kind,
-            hasSavedCopy: appState.offlineChatPresentation?.displayedTranscript != nil
+            hasSavedCopy: appState.offlineChatPresentation?.displayedTranscript != nil,
+            projects: appState.projects,
+            showsPulse: appState.showsPulseScreen
         )
     }
 

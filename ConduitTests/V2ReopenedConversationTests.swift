@@ -2,7 +2,7 @@
 //  V2ReopenedConversationTests.swift
 //  Conduit
 //
-//  #1559: the chat a V2 launch opens on after iOS ended Conduit in the
+//  #1559: where a V2 launch opens after iOS ended Conduit in the
 //  background. In an extension of SidebarLayoutTests, so the test planner
 //  sees no new class.
 //
@@ -11,27 +11,54 @@ import XCTest
 @testable import Conduit
 
 extension SidebarLayoutTests {
-    func testV2KeepsOnlyAShowingChatOrBotChat() {
-        XCTAssertEqual(V2ReopenedConversation.storedValue(showing: .chats, inRoom: false), "chats")
-        XCTAssertEqual(V2ReopenedConversation.storedValue(showing: .bots, inRoom: false), "bots")
-        // The list, Tasks or Settings showing: the launch opens on Chats.
-        XCTAssertEqual(V2ReopenedConversation.storedValue(showing: nil, inRoom: false), "")
-        XCTAssertEqual(V2ReopenedConversation.storedValue(showing: .tasks, inRoom: false), "")
-        XCTAssertEqual(V2ReopenedConversation.storedValue(showing: .settings, inRoom: false), "")
-        // A group room opens again only from its row.
-        XCTAssertEqual(V2ReopenedConversation.storedValue(showing: .chats, inRoom: true), "")
+    private func reopenProject(_ id: String) -> ProjectSummary {
+        ProjectSummary(id: id, title: id, isHome: false, sessionCount: 0, previewSessions: [])
     }
 
-    func testV2ReopensTheChatOnlyWhenThereIsOneToShow() {
-        // Nothing kept (a first launch, or iOS dropped it after a swipe-quit).
-        XCTAssertNil(V2ReopenedConversation.tab(stored: "", lastChat: .dashboard, hasSavedCopy: true))
-        // A chat in Chats: the resumed chat, or its saved copy on screen.
-        XCTAssertEqual(V2ReopenedConversation.tab(stored: "chats", lastChat: .dashboard, hasSavedCopy: false), .chats)
-        XCTAssertEqual(V2ReopenedConversation.tab(stored: "chats", lastChat: nil, hasSavedCopy: true), .chats)
-        XCTAssertNil(V2ReopenedConversation.tab(stored: "chats", lastChat: nil, hasSavedCopy: false))
-        // A Bot Chat in Bots, only while the kept chat is a Bot Chat.
-        XCTAssertEqual(V2ReopenedConversation.tab(stored: "bots", lastChat: .bot, hasSavedCopy: false), .bots)
-        XCTAssertNil(V2ReopenedConversation.tab(stored: "bots", lastChat: .dashboard, hasSavedCopy: true))
-        XCTAssertNil(V2ReopenedConversation.tab(stored: "settings", lastChat: .dashboard, hasSavedCopy: true))
+    private func reopenLaunch(
+        _ stored: String,
+        lastChat: SessionReference.Kind? = .dashboard,
+        hasSavedCopy: Bool = false,
+        projects: [ProjectSummary] = [],
+        showsPulse: Bool = true
+    ) -> V2ReopenedConversation.Launch? {
+        V2ReopenedConversation.launch(stored: stored, lastChat: lastChat, hasSavedCopy: hasSavedCopy, projects: projects, showsPulse: showsPulse)
+    }
+
+    func testV2KeepsNothingWhileNoChatShows() {
+        // The list, a project's page, Tasks or Settings showing: the launch opens on Chats.
+        XCTAssertEqual(V2ReopenedConversation.record(showing: nil, path: [.conversation], roomID: nil), "")
+        XCTAssertEqual(V2ReopenedConversation.record(showing: .chats, path: [], roomID: nil), "")
+        XCTAssertEqual(V2ReopenedConversation.record(showing: .chats, path: [.project(reopenProject("p"))], roomID: nil), "")
+        XCTAssertEqual(V2ReopenedConversation.record(showing: .settings, path: [.conversation], roomID: nil), "")
+    }
+
+    func testV2ReopensTheChatWithThePagesUnderIt() {
+        let project = reopenProject("p1")
+        let stored = V2ReopenedConversation.record(showing: .chats, path: [.project(project), .pulse, .conversation], roomID: nil)
+        XCTAssertEqual(
+            reopenLaunch(stored, projects: [project]),
+            .init(tab: .chats, path: [.project(project), .pulse, .conversation])
+        )
+        // A project this profile no longer lists, or Pulse no longer showing, is left out.
+        XCTAssertEqual(reopenLaunch(stored, projects: [], showsPulse: false), .init(tab: .chats, path: [.conversation]))
+        // A chat in Chats needs a chat to resume or a saved copy on screen.
+        XCTAssertEqual(reopenLaunch(stored, lastChat: nil, hasSavedCopy: true, projects: [project])?.tab, .chats)
+        XCTAssertNil(reopenLaunch(stored, lastChat: nil, hasSavedCopy: false))
+        // Nothing kept (a first launch, or iOS dropped it after a swipe-quit), or garbage.
+        XCTAssertNil(reopenLaunch(""))
+        XCTAssertNil(reopenLaunch("chats"))
+    }
+
+    func testV2ReopensABotChatOnlyWhenTheKeptChatIsOne() {
+        let stored = V2ReopenedConversation.record(showing: .bots, path: [.conversation], roomID: nil)
+        XCTAssertEqual(reopenLaunch(stored, lastChat: .bot), .init(tab: .bots, path: [.conversation]))
+        XCTAssertNil(reopenLaunch(stored, lastChat: .dashboard, hasSavedCopy: true))
+    }
+
+    func testV2ReopensAGroupRoomOnceConnected() {
+        // The room's screen isn't in the path: it's pushed as the room opens.
+        let stored = V2ReopenedConversation.record(showing: .bots, path: [.conversation], roomID: "room-1")
+        XCTAssertEqual(reopenLaunch(stored, lastChat: nil), .init(tab: .bots, path: [], roomID: "room-1"))
     }
 }

@@ -431,6 +431,8 @@ struct V2Shell: View {
     /// The window's record of the chat showing, for the launch after iOS
     /// ends Conduit in the background (MainView's SceneStorage).
     @Binding private var conversationOnLeave: String
+    /// A launch whose group room opens again once Hermes is connected.
+    @State private var roomToReopen: V2ReopenedConversation.Launch?
     /// The floating bar's height as last laid out (the capsule and the
     /// voice button, with their bottom padding).
     @State private var tabBarHeight: CGFloat = 62
@@ -443,17 +445,18 @@ struct V2Shell: View {
     /// - Parameters:
     ///   - conversationOnLeave: the window's record of the chat showing,
     ///     kept current here.
-    ///   - reopening: the tab whose chat this launch opens on, from that
-    ///     record (`V2ReopenedConversation.tab`); nil opens on Chats.
-    init(conversationOnLeave: Binding<String> = .constant(""), reopening tab: V2Tab? = nil) {
+    ///   - reopening: where this launch opens, from that record
+    ///     (`V2ReopenedConversation.launch`); nil opens on Chats.
+    init(conversationOnLeave: Binding<String> = .constant(""), reopening launch: V2ReopenedConversation.Launch? = nil) {
         _conversationOnLeave = conversationOnLeave
-        switch tab {
+        _roomToReopen = State(initialValue: launch?.roomID == nil ? nil : launch)
+        switch launch?.tab {
         case .bots?:
             _selectedTab = State(initialValue: .bots)
-            _botsPath = State(initialValue: [.conversation])
+            _botsPath = State(initialValue: launch?.path ?? [])
             _visitedTabs = State(initialValue: [.chats, .bots])
         case .chats?:
-            _chatsPath = State(initialValue: [.conversation])
+            _chatsPath = State(initialValue: launch?.path ?? [])
         case .tasks?, .settings?, nil:
             break
         }
@@ -475,14 +478,29 @@ struct V2Shell: View {
         selectedTab == .chats && chatsPath.last == .pulse
     }
 
-    /// What the window keeps for a launch after iOS ends Conduit: the tab
-    /// whose chat is showing. A group room isn't kept (rooms open again
-    /// only from their row), so it reopens on the list.
+    /// What the window keeps for a launch after iOS ends Conduit: where
+    /// the showing chat or room is.
     private var conversationToReopen: String {
-        V2ReopenedConversation.storedValue(
+        V2ReopenedConversation.record(
             showing: conversationVisible ? selectedTab : nil,
-            inRoom: appState.activeRoomSurface != nil
+            path: path(of: selectedTab),
+            roomID: appState.activeRoomSurface?.room.roomID
         )
+    }
+
+    /// The room a launch reopens, once Hermes is connected and only while
+    /// the tab is still as the launch left it (no tap took the reader
+    /// elsewhere meanwhile).
+    @MainActor private func reopenRoomIfWaiting() async {
+        guard let launch = roomToReopen, let roomID = launch.roomID, appState.isConnected else { return }
+        roomToReopen = nil
+        let untouched = { selectedTab == launch.tab && path(of: launch.tab) == launch.path && appState.activeRoomSurface == nil }
+        guard untouched() else { return }
+        if !appState.shownGroupRooms.contains(where: { $0.roomID == roomID }) {
+            await appState.refreshGroupChatSupport()
+        }
+        guard untouched(), let room = appState.shownGroupRooms.first(where: { $0.roomID == roomID }) else { return }
+        await appState.openGroupRoom(room)
     }
 
     /// Whether either tab holds the conversation, shown or not.
@@ -547,6 +565,7 @@ struct V2Shell: View {
             .onChange(of: conversationToReopen, initial: true) { _, value in
                 if conversationOnLeave != value { conversationOnLeave = value }
             }
+            .task(id: appState.isConnected) { await reopenRoomIfWaiting() }
             .onChange(of: appState.showSidebar) { _, covered in
                 if !covered, !conversationVisible {
                     // A call's screen covers the chat on its own; the list
@@ -1510,33 +1529,87 @@ private struct V2CapsuleTabBar: View {
     }
 }
 
-/// The chat a launch opens on (#1559). A window keeps the tab whose chat
-/// it was showing as SceneStorage, which iOS restores when it ended
-/// Conduit in the background and drops when the user swiped Conduit away:
-/// so a return after iOS closed Conduit comes back to the chat, and a
-/// launch the user chose still opens on Chats (Eric, 2026-10-15). The chat
-/// is the one Conduit resumes, by "When returning to Conduit".
-enum V2ReopenedConversation {
+/// The chat a launch opens on (#1559). A window keeps where its chat was
+/// showing (the tab, the pages under the chat, a group room) as
+/// SceneStorage, which iOS restores when it ended Conduit in the background
+/// and drops when the user swiped Conduit away: so a return after iOS
+/// closed Conduit comes back to the chat, and a launch the user chose
+/// still opens on Chats (Eric, 2026-10-15 and 2026-10-31). The chat is the
+/// one Conduit resumes, by "When returning to Conduit"; a room opens again
+/// once Hermes is connected.
+struct V2ReopenedConversation: Codable, Equatable {
     static let sceneStorageKey = "conduit.v2.conversationOnLeave"
 
-    /// What the window keeps: the tab whose chat is showing, or nothing.
-    static func storedValue(showing tab: V2Tab?, inRoom: Bool) -> String {
-        guard !inRoom, let tab, tab == .chats || tab == .bots else { return "" }
-        return tab.rawValue
+    /// "chats" or "bots".
+    var tab: String
+    /// The pages under the chat in that tab, bottom first: "project:<id>",
+    /// "pulse", "artifacts".
+    var under: [String] = []
+    /// The group room showing, in place of the tab's chat.
+    var roomID: String?
+
+    /// Where a launch opens: the tab, its path, and a room to open once
+    /// Hermes is connected (its screen is pushed as it opens).
+    struct Launch: Equatable {
+        var tab: V2Tab
+        var path: [V2Route]
+        var roomID: String?
     }
 
-    /// The tab whose chat this launch opens on, when there's a chat to
-    /// open: Bots needs the kept chat to be a Bot Chat, Chats any kept chat
-    /// or a saved copy on screen.
-    static func tab(stored: String, lastChat: SessionReference.Kind?, hasSavedCopy: Bool) -> V2Tab? {
-        switch V2Tab(rawValue: stored) {
-        case .bots?:
-            return lastChat == .bot ? .bots : nil
-        case .chats?:
-            return lastChat != nil || hasSavedCopy ? .chats : nil
-        case .tasks?, .settings?, nil:
+    /// What the window keeps: where the showing chat or room is, or
+    /// nothing while no chat shows.
+    static func record(showing tab: V2Tab?, path: [V2Route], roomID: String?) -> String {
+        guard let tab, tab == .chats || tab == .bots, path.last == .conversation else { return "" }
+        let under = path.dropLast().compactMap { route -> String? in
+            switch route {
+            case .project(let project): return "project:" + project.id
+            case .pulse: return "pulse"
+            case .artifacts: return "artifacts"
+            case .conversation: return nil
+            }
+        }
+        let kept = V2ReopenedConversation(tab: tab.rawValue, under: Array(under), roomID: roomID)
+        guard let data = try? JSONEncoder().encode(kept) else { return "" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// Where this launch opens, when there's a chat to open: Bots needs the
+    /// kept chat to be a Bot Chat, Chats any kept chat or a saved copy on
+    /// screen, a room only its id. A page under the chat comes back while
+    /// it's still there (a project this profile lists, Pulse while it
+    /// shows); one that isn't is left out.
+    static func launch(
+        stored: String,
+        lastChat: SessionReference.Kind?,
+        hasSavedCopy: Bool,
+        projects: [ProjectSummary],
+        showsPulse: Bool
+    ) -> Launch? {
+        guard !stored.isEmpty,
+              let kept = try? JSONDecoder().decode(V2ReopenedConversation.self, from: Data(stored.utf8)),
+              let tab = V2Tab(rawValue: kept.tab) else { return nil }
+        let under: [V2Route] = kept.under.compactMap { token in
+            switch token {
+            case "pulse": return showsPulse ? .pulse : nil
+            case "artifacts": return .artifacts
+            default:
+                guard token.hasPrefix("project:") else { return nil }
+                let id = String(token.dropFirst("project:".count))
+                return projects.first { $0.id == id }.map(V2Route.project)
+            }
+        }
+        if let roomID = kept.roomID, !roomID.isEmpty {
+            return Launch(tab: tab, path: under, roomID: roomID)
+        }
+        switch tab {
+        case .bots:
+            guard lastChat == .bot else { return nil }
+        case .chats:
+            guard lastChat != nil || hasSavedCopy else { return nil }
+        case .tasks, .settings:
             return nil
         }
+        return Launch(tab: tab, path: under + [.conversation])
     }
 }
 
