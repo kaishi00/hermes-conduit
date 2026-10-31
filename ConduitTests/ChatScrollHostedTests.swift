@@ -772,4 +772,46 @@ final class ChatScrollHostedTests: XCTestCase {
         print("[ChatScrollHostedTests] idle trace:\n\(recorder.dump())")
         XCTAssertTrue(moves.isEmpty, "the transcript moved on its own:\n\(recorder.dump(since: mark))")
     }
+
+    /// A row's sheet presents from the row's own hosting controller, so a
+    /// cell given to another row while one is up keeps that controller
+    /// aside, still in the transcript and the window, until it closes.
+    func testACellGivenToAnotherRowWhileASheetIsUpKeepsTheRowUntilItCloses() throws {
+        let mounted = try mount(Self.transcript(0..<120))
+        let collectionView = try XCTUnwrap(mounted.scrollView as? UICollectionView)
+        let controller = try XCTUnwrap(collectionView.delegate as? TranscriptViewController)
+        // Every row's controller so far, the cells waiting for reuse included.
+        let rows = controller.children.compactMap { $0 as? UIHostingController<TranscriptCellRoot> }
+        let presenting = try XCTUnwrap(
+            collectionView.visibleCells.compactMap { ($0 as? TranscriptCell)?.hosting }.first,
+            "a row is on screen"
+        )
+        let sheet = UIViewController()
+        presenting.present(sheet, animated: false)
+        XCTAssertTrue(
+            PerformanceFixtureWait.eventually { sheet.view.window != nil && controller.presentedViewController === sheet },
+            "the row presents its sheet"
+        )
+
+        // The cells are given to the first rows.
+        browse(mounted, to: -collectionView.adjustedContentInset.top)
+        let parked = rows.filter { $0.view.superview?.superview as? TranscriptCell == nil }
+        XCTAssertFalse(parked.isEmpty, "cells were given to other rows while the sheet was up")
+        for hosting in parked {
+            XCTAssertTrue(hosting.parent === controller, "a row's controller stays in the transcript while the sheet is up")
+            XCTAssertNotNil(hosting.view.window, "and in the window")
+        }
+        for case let cell as TranscriptCell in collectionView.visibleCells {
+            XCTAssertTrue(cell.hosting?.parent === controller, "the rows given the cells draw in controllers of their own")
+        }
+        XCTAssertTrue(presenting.parent === controller)
+        XCTAssertNotNil(sheet.view.window, "the sheet stays up")
+
+        sheet.dismiss(animated: false)
+        XCTAssertTrue(
+            PerformanceFixtureWait.eventually(pumpingLayoutOf: collectionView) { parked.allSatisfy { $0.parent == nil } },
+            "the controllers kept aside go once the sheet closes"
+        )
+        XCTAssertTrue(parked.allSatisfy { $0.view.superview == nil })
+    }
 }
