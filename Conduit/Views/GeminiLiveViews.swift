@@ -767,9 +767,9 @@ struct VoiceReplyModelSettingsSection: View {
                     ) {
                         Text("Model").foregroundStyle(.secondary)
                     }
-                    if providersFailed {
-                        // The models listed stay up; Hermes didn't answer.
-                        ModelCatalogPlaceholder(state: .failed) { Task { await reloadProviders() } }
+                    if providersFailed || picks.readFailed {
+                        // What's listed stays up; Hermes didn't answer.
+                        ModelCatalogPlaceholder(state: .failed) { Task { await tryAgain() } }
                     }
                     ConduitMenuPicker(
                         value: picks.reasoning,
@@ -818,6 +818,16 @@ struct VoiceReplyModelSettingsSection: View {
         guard picks.hermesAnswered(setting, to: asked) else { return }
         if let loaded { providers = loaded }
         providersFailed = setting != nil && loaded == nil
+    }
+
+    /// Asks again for what didn't come: the setting with its models, or
+    /// the models alone.
+    private func tryAgain() async {
+        if picks.readFailed {
+            await read()
+        } else {
+            await reloadProviders()
+        }
     }
 
     private func reloadProviders() async {

@@ -198,7 +198,8 @@ struct KeptModelCatalog: Equatable {
     private(set) var providers: [ProviderInfo] = []
     /// There are rows to show, kept or Hermes'.
     private(set) var loaded = false
-    /// Hermes answered since the picker opened.
+    /// Hermes answered since the picker opened. Only then can a row be
+    /// picked: a list that didn't load is never picked from.
     private(set) var answered = false
     private(set) var failed = false
 
@@ -520,6 +521,9 @@ struct ModelPickerView: View {
                         .padding(.leading, 16)
                 }
             }
+            if catalog.keptRowsFailed {
+                catalogFailedRow
+            }
             modelStatusRows
         }
     }
@@ -710,9 +714,10 @@ struct ModelPickerView: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    /// One switch at a time, and not under another write.
+    /// Rows switch once Hermes answered, one at a time, and not under
+    /// another write.
     private var modelRowsLocked: Bool {
-        switchingRow != nil || isApplyingReasoning || writingSpeed != nil || writingYolo != nil
+        !catalog.answered || switchingRow != nil || isApplyingReasoning || writingSpeed != nil || writingYolo != nil
     }
 
     /// A tapped row, or the search match Return picked.
@@ -1056,8 +1061,7 @@ struct ModelPickerView: View {
             return
         }
         catalog.hermesAnswered(loaded)
-        // A row tapped on the kept models is being switched to: it keeps
-        // its checkmark.
+        // A row being switched to keeps its checkmark.
         guard switchingRow == nil else { return }
         selectedModel = appState.runtime.model
         selectedProvider = appState.runtime.provider

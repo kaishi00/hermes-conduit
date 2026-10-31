@@ -3213,7 +3213,9 @@ final class HermesClient: ObservableObject {
         var params: [String: Any] = ["explicit_only": true]
         if let sessionId { params["session_id"] = sessionId }
         let result = try await rpc("model.options", params: params)
-        return result.anyValue as? [String: Any] ?? [:]
+        // Anything but an answer is a failed read, never one with no models.
+        guard let answer = result.anyValue as? [String: Any] else { throw HermesError.invalidResponse }
+        return answer
     }
 
     /// The gateway can answer without switching: a guarded pick (expensive
