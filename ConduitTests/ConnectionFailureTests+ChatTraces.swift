@@ -119,10 +119,10 @@ extension ConnectionFailureTests {
         XCTAssertEqual(saved, [], "less than a screen")
         watch.offsetMoved(from: 0, to: 4_000, viewportHeight: 800, byUser: true)
         XCTAssertEqual(saved, [], "a finger or momentum")
-        watch.engineWrites(animated: false) {
+        watch.scrollerWrites(animated: false) {
             watch.offsetMoved(from: 4_000, to: 0, viewportHeight: 800, byUser: false)
         }
-        XCTAssertEqual(saved, [], "the engine's own write")
+        XCTAssertEqual(saved, [], "the scroller's own write")
         watch.offsetMoved(from: 4_000, to: 0, viewportHeight: 800, byUser: false)
         XCTAssertEqual(saved, [.jump], "a screen and more, nobody asking")
         time += 30
@@ -134,7 +134,7 @@ extension ConnectionFailureTests {
         time += 0.5
         watch.offsetMoved(from: 4_000, to: 0, viewportHeight: 800, byUser: false)
         XCTAssertEqual(saved, [.jump], "a command's move")
-        watch.engineWrites(animated: true) {}
+        watch.scrollerWrites(animated: true) {}
         time += 0.3
         watch.offsetMoved(from: 0, to: 4_000, viewportHeight: 800, byUser: false)
         XCTAssertEqual(saved, [.jump], "an animated write still moving")
@@ -180,15 +180,9 @@ extension ConnectionFailureTests {
         watch.layoutPass()
         XCTAssertEqual(saved, [], "the reader scrolling")
 
-        var height: CGFloat = 100
-        func replyGrows() {
-            let before = ["live": ChatScrollRowFrame(minY: 500, maxY: 500 + height, order: Int.max)]
-            height += 20
-            watch.liveRowsLaidOut(from: before, to: ["live": ChatScrollRowFrame(minY: 500, maxY: 500 + height, order: Int.max)])
-        }
-        second(1_020, passes: 40) { replyGrows() }
-        second(1_021, passes: 40) { replyGrows() }
-        second(1_022, passes: 40) { replyGrows() }
+        second(1_020, passes: 40) { watch.rowResized() }
+        second(1_021, passes: 40) { watch.rowResized() }
+        second(1_022, passes: 40) { watch.rowResized() }
         time = 1_023
         watch.layoutPass()
         XCTAssertEqual(saved, [], "a reply streaming in grows its row")
@@ -213,14 +207,6 @@ extension ConnectionFailureTests {
         time = 1_053
         watch.layoutPass()
         XCTAssertEqual(saved, [.storm], "three seconds of it, no row changing")
-
-        // A live row that came, went or changed height is content; one that
-        // only moved (rows above it relaid) is layout.
-        let row = ChatScrollRowFrame(minY: 0, maxY: 100, order: Int.max)
-        XCTAssertTrue(ChatViewportWatch.resized(from: ["live": row], to: ["live": ChatScrollRowFrame(minY: 0, maxY: 140, order: Int.max)]))
-        XCTAssertFalse(ChatViewportWatch.resized(from: ["live": row], to: ["live": ChatScrollRowFrame(minY: 40, maxY: 140, order: Int.max)]))
-        XCTAssertTrue(ChatViewportWatch.resized(from: ["live": row], to: [:]))
-        XCTAssertTrue(ChatViewportWatch.resized(from: ["live": row], to: ["step": row]))
     }
 
     @MainActor

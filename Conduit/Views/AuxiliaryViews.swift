@@ -1932,7 +1932,7 @@ private struct ComposerReturnKeySettings: View {
 }
 
 /// A reply longer than the screen stops at its start (#365), and an
-/// unread chat opens there (ChatReplyStartPreference, ChatScrollEngine).
+/// unread chat opens there (ChatReplyStartPreference, TranscriptScroller).
 private struct ReplyStartSettings: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @AppStorage(ChatReplyStartPreference.key) private var stopsAtStart = ChatReplyStartPreference.defaultOn

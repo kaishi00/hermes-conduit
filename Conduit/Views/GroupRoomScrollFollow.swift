@@ -2,12 +2,12 @@ import SwiftUI
 import UIKit
 
 /// Whether a group room's transcript follows the latest event, by the chat
-/// screen's rules (ChatScrollEngine): only the user's own scrolling leaves
+/// screen's rules (TranscriptScroller): only the user's own scrolling leaves
 /// following, and only bringing the transcript back near the bottom (or an
 /// explicit jump or send) returns to it. Events arriving below never change
 /// it, so reading history while a member works stays put.
 enum GroupRoomFollow {
-    /// The chat screen's tolerance (ChatScrollEngine.nearBottomTolerance).
+    /// The chat screen's tolerance (TranscriptScroller.nearBottomTolerance).
     static let nearBottomTolerance: CGFloat = 40
 
     /// The follow state after a scroll or layout change. Being near the
@@ -41,7 +41,8 @@ enum GroupRoomFollow {
     }
 
     /// How long after the content changes the transcript checks that rows
-    /// were laid out where the reader is, as a chat does (#887, #1358).
+    /// were laid out where the reader is, as chats did on the lazy stack
+    /// (#887, #1358).
     static let blankCheckDelay: TimeInterval = 0.35
     /// A rebuild is at most this often: one that didn't bring the rows back
     /// isn't redone on every change.
@@ -52,8 +53,9 @@ enum GroupRoomFollow {
 
     /// Whether the lazy stack laid out no row on screen, with the latest row
     /// unlaid or ending above the screen: SwiftUI can leave a following
-    /// transcript blank like that until it is built again (ChatScrollEngine's
-    /// checkForBlankViewport). An empty room isn't blank.
+    /// transcript blank like that until it is built again, as it could a
+    /// chat's before chats drew every row (#1533). An empty room isn't
+    /// blank.
     static func isBlank(
         frames: [String: ClosedRange<CGFloat>],
         visible: ClosedRange<CGFloat>,

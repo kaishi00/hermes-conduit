@@ -16665,7 +16665,7 @@ final class AppState: ObservableObject {
             return
         }
         // This id is derived from the adopted transcript and can briefly lag
-        // during a session handoff; ChatScrollEngine revalidates it against
+        // during a session handoff; TranscriptScroller revalidates it against
         // rendered targets and falls back if it belongs to the prior session.
         guard let request = chatResumeCoordinator.reconciliationSettled(
             sessionKey: sessionKey,
