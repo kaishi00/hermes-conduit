@@ -179,6 +179,14 @@ private struct ArtifactsList: View {
         let html: String
     }
 
+    /// What the list is read for: its key, and whether the plugin says it
+    /// serves artifacts, so a list opened before it said so (on its kept
+    /// rows, just connected or offline) reads once it does.
+    private struct Reading: Equatable {
+        let key: ArtifactsListKey
+        let served: Bool
+    }
+
     private var currentKey: ArtifactsListKey {
         ArtifactsListKey(dashboard: appState.activeDashboardID, profile: appState.activeProfile,
                          sources: appState.artifactSources(for: scope), filter: filter,
@@ -192,7 +200,9 @@ private struct ArtifactsList: View {
         list
         .modifier(ArtifactsListChrome(inPanel: inPanel, query: $query, showMissing: $showMissing,
                                       offersMissing: appState.supportsArtifacts))
-        .task(id: currentKey) {
+        // Before the first frame, so nothing comes or goes when Hermes answers.
+        .onAppear { showKept(currentKey) }
+        .task(id: Reading(key: currentKey, served: appState.supportsArtifacts)) {
             // Typing settles before the host is asked.
             if loadedKey != nil, currentKey.query != loadedKey?.query {
                 try? await Task.sleep(for: .milliseconds(350))
@@ -286,13 +296,25 @@ private struct ArtifactsList: View {
 
     @ViewBuilder
     private var content: some View {
-        if !appState.supportsArtifacts {
+        // Only once the plugin says it doesn't serve artifacts (or is too
+        // old to say), never while Conduit hasn't heard from it: kept rows
+        // show meanwhile, and with none kept, the loader, or offline, why
+        // nothing can load yet.
+        if !appState.notifierPlugin.mayServe(ArtifactsClient.capability) {
             unavailable(
                 title: Text("Update the Conduit plugin"),
                 detail: Text("Update the Conduit plugin on your Hermes host to see artifacts here. Settings › Conduit plugin can update it."),
                 symbol: "arrow.down.circle"
             )
-        } else if items.isEmpty, isLoading || loadedKey != currentKey {
+        } else if items.isEmpty, !appState.supportsArtifacts, !appState.isConnected, !appState.isRecoveringConnection {
+            unavailable(
+                title: Text("Artifacts couldn't load"),
+                detail: Text("Conduit isn't connected to Hermes right now. It reconnects on its own, so try again in a moment."),
+                symbol: "wifi.slash"
+            )
+        } else if items.isEmpty, loadedKey != currentKey || (isLoading && failure != nil) {
+            // A list kept or loaded empty says so at once, through a
+            // refresh too; Try Again after a failure shows the loader.
             ProgressView()
                 .frame(maxWidth: .infinity, minHeight: 200)
         } else if items.isEmpty, let failure {
@@ -677,10 +699,25 @@ private struct ArtifactsList: View {
             openingID = nil
             openToken = nil
         }
+        showKept(key)
         // Every reload, also one that loads nothing, outdates the request
         // before it: the previous dashboard's page can't land under this one.
         generation &+= 1
         let ticket = generation
+        // Connected, and the plugin never said what it serves (its read
+        // failed as Conduit connected): asked again here, as Settings ›
+        // Conduit plugin asks on every visit, so the list isn't left on
+        // its loader until the next connect.
+        if !appState.supportsArtifacts, appState.isConnected, appState.notifierPlugin.state == .unknown {
+            isLoading = true
+            await appState.refreshNotifierPluginStatus()
+            guard ticket == generation else { return }
+            if appState.notifierPlugin.state == .unknown, loadedKey != key {
+                failure = AppLocalization.string("Couldn't reach this dashboard's notifier.")
+                feed = nil
+                loadedKey = key
+            }
+        }
         guard appState.supportsArtifacts else {
             isLoading = false
             return
@@ -694,15 +731,17 @@ private struct ArtifactsList: View {
         for (index, source) in key.sources.enumerated() {
             do {
                 pages.append(try await appState.artifactsClient.page(
-                    source, filter: key.filter, query: key.query, showMissing: key.showMissing
+                    source, filter: key.filter, query: key.query, showMissing: key.showMissing,
+                    keptIn: answers(for: source)
                 ))
             } catch is CancellationError {
                 return
             } catch {
-                // A bot's chat that can't be read leaves the rest listed;
+                // A bot's chat that can't be read leaves the rest listed,
+                // with the rows it listed last time, which don't page on;
                 // the first store is the list itself.
                 if index > 0 {
-                    pages.append(nil)
+                    pages.append(keptPage(source, for: key).map { ArtifactPage(items: $0.items, nextBefore: nil) })
                 } else {
                     // A failed refresh keeps the list it was refreshing (and
                     // the end of it keeps paging).
@@ -721,6 +760,30 @@ private struct ArtifactsList: View {
             failure = nil
             loadedKey = key
         }
+    }
+
+    /// Shows the list as it opened last time while Hermes is asked again
+    /// (#1533), unless this key's rows are up already: kept only as it
+    /// opens, of every kind and unsearched, and only when the list's own
+    /// store (the first) kept its page.
+    private func showKept(_ key: ArtifactsListKey) {
+        guard loadedKey != key, appState.notifierPlugin.mayServe(ArtifactsClient.capability) else { return }
+        let pages = key.sources.map { keptPage($0, for: key) }
+        guard let first = pages.first, first != nil else { return }
+        feed = ArtifactFeed(sources: key.sources, pages: pages)
+        failure = nil
+        loadedKey = key
+    }
+
+    private func keptPage(_ source: ArtifactSource, for key: ArtifactsListKey) -> ArtifactPage? {
+        ArtifactsClient.keptPage(source, filter: key.filter, query: key.query, showMissing: key.showMissing,
+                                 in: answers(for: source))
+    }
+
+    /// Where a store's list is kept: on the dashboard open, for the
+    /// store's profile.
+    private func answers(for source: ArtifactSource) -> KeptAnswers {
+        appState.screenAnswers(profile: source.profile)
     }
 
     private func loadMore() async {
