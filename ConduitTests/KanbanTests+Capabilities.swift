@@ -689,6 +689,35 @@ extension KanbanTests {
         XCTAssertEqual(args[2] as? String, "false", "a flag isn't a number: the text typed")
         edit.arguments = "--port\nauto\ntrue"
         XCTAssertEqual((try edit.formEntry()["args"] as? [Any])?[1] as? String, "auto", "a number changed into words is the words")
+        // Lines moved: --verbose deleted above the port.
+        edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["--verbose", "--port", 8080]])
+        edit.arguments = "--port\n9090"
+        let shifted = try XCTUnwrap(try edit.formEntry()["args"] as? [Any])
+        XCTAssertEqual(shifted.count, 2)
+        XCTAssertEqual(shifted[1] as? Int, 9090, "the number is found however the lines moved")
+        // Only text that reads back as typed becomes a number.
+        for typed in ["007", "1.10", "1e3", "9090.0"] {
+            edit.arguments = "--port\n\(typed)"
+            XCTAssertEqual((try edit.formEntry()["args"] as? [Any])?[1] as? String, typed, "\(typed) stays as typed")
+        }
+    }
+
+    func testAnEditedServerShowsItsSavedEntryWhenTheListCantBeRead() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/config": ["mcp_servers": ["griply": ["url": "https://old"]]],
+            "/api/mcp/servers": ["ok": true, "servers": [["name": "griply", "transport": "http", "url": "https://old", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadConnectors()
+        let entry = try await store.serverConfig("griply")
+        requester.failures["GET /api/mcp/servers"] = DashboardTicketBridgeError.http(status: 502, detail: "Bad Gateway")
+        try await store.saveServer(original: "griply", loaded: entry, name: "griply", entry: ["url": "https://new", "enabled": false], openedOn: store.generation)
+        XCTAssertEqual(store.servers.map(\.name), ["griply"])
+        XCTAssertEqual(store.servers.first?.url, "https://new", "not the address from before the save")
+        XCTAssertEqual(store.servers.first?.enabled, false, "a server saved off isn't started by a re-test")
+        XCTAssertFalse(requester.calls.contains { $0.method == "POST" && $0.path.contains("/test") })
     }
 
     func testARenamedServerShowsWhenTheListCantBeReadAfterTheSave() async throws {

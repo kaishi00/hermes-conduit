@@ -776,14 +776,17 @@ struct ConnectorServerEdit {
         entry["url"] != nil || entry["command"] == nil
     }
 
-    /// The typed text as a number when the argument it replaces was one
-    /// (an integer stays an integer); nil for anything else, true/false
-    /// included.
-    private static func number(_ typed: String, like old: Any) -> Any? {
-        guard let old = old as? NSNumber, CFGetTypeID(old) != CFBooleanGetTypeID() else { return nil }
-        if let whole = Int(typed) { return whole }
-        if let fraction = Double(typed), fraction.isFinite { return fraction }
-        return nil
+    /// A number argument, not true/false.
+    private static func isNumber(_ value: Any) -> Bool {
+        guard let number = value as? NSNumber else { return false }
+        return CFGetTypeID(number) != CFBooleanGetTypeID()
+    }
+
+    /// The typed text as a whole number when it reads back exactly as typed
+    /// ("9090", not "007", "1.10" or "1e3", which stay text).
+    private static func wholeNumber(_ typed: String) -> Int? {
+        guard let whole = Int(typed), String(whole) == typed else { return nil }
+        return whole
     }
 
     private static func argumentLines(_ entry: [String: Any]) -> String {
@@ -807,20 +810,22 @@ struct ConnectorServerEdit {
             // A line left exactly as it was keeps its own value (a number
             // stays a number, an empty or spaced argument stays as it is),
             // each original used once; a changed or new line is the text
-            // typed, trimmed, and a blank new line is dropped. A number
-            // changed into another number stays a number (8080 to 9090).
-            let original = entry["args"] as? [Any] ?? []
-            var unused = original
+            // typed, trimmed, and a blank new line is dropped.
+            var unused = entry["args"] as? [Any] ?? []
             var args: [Any] = []
-            for (index, line) in arguments.components(separatedBy: .newlines).enumerated() {
+            for line in arguments.components(separatedBy: .newlines) {
                 if let match = unused.firstIndex(where: { "\($0)" == line }) {
                     args.append(unused.remove(at: match))
                     continue
                 }
                 let typed = line.trimmingCharacters(in: .whitespaces)
                 guard !typed.isEmpty else { continue }
-                if index < original.count, let number = Self.number(typed, like: original[index]) {
-                    args.append(number)
+                // A whole number typed in place of a number left unused keeps
+                // the type (8080 to 9090), however the lines moved.
+                if let whole = Self.wholeNumber(typed),
+                   let replaced = unused.firstIndex(where: Self.isNumber) {
+                    unused.remove(at: replaced)
+                    args.append(whole)
                 } else {
                     args.append(typed)
                 }

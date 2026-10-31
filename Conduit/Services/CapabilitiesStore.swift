@@ -530,11 +530,13 @@ final class CapabilitiesStore {
         await loadConnectors()
         guard token == generation else { return }
         // A reload that failed leaves the list from before the save: show the
-        // saved server there, so a renamed page doesn't read as removed.
-        if !servers.contains(where: { $0.name == name }) {
+        // saved server there, so a renamed page doesn't read as removed and
+        // the re-test goes by the saved entry.
+        if connectorsError != nil || !servers.contains(where: { $0.name == name }) {
             let saved = ConnectorServer.saved(name: name, entry: entry, replacing: before)
-            if let at = servers.firstIndex(where: { $0.name == original }) {
+            if let at = servers.firstIndex(where: { $0.name == name || $0.name == original }) {
                 servers[at] = saved
+                servers.removeAll { $0.name == original && original != name }
             } else {
                 servers.append(saved)
             }
