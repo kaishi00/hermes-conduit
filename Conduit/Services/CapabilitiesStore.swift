@@ -731,9 +731,15 @@ final class CapabilitiesStore {
 
     /// Changes the kept rows of the route's list (under `key`) as Hermes
     /// took a change, and keeps the list over any read asked before it, so
-    /// the tab opens on the change next time (#1533).
-    private func keepChange(_ route: String, list key: String, rows change: ([Any]) -> [Any]) async {
-        guard let answers else { return }
+    /// the tab opens on the change next time (#1533). In the profile's
+    /// answers, or the dashboard's for a list kept once per dashboard.
+    private func keepChange(
+        _ route: String,
+        list key: String,
+        dashboardWide: Bool = false,
+        rows change: ([Any]) -> [Any]
+    ) async {
+        guard let answers = dashboardWide ? dashboardAnswers : answers else { return }
         guard var kept = answers.kept(route), let rows = kept[key] as? [Any] else {
             // Nothing kept to change: the write counts all the same.
             answers.noteWrite(route)
@@ -741,6 +747,34 @@ final class CapabilitiesStore {
         }
         kept[key] = change(rows)
         _ = try? await answers.keep(route, true, { [kept] in kept })
+    }
+
+    /// Marks the catalog entries `matches` picks installed or not, with no
+    /// update waiting, in the catalog shown and the kept one, as Hermes took
+    /// an update or removal. The catalog hides an installed entry, so a
+    /// removal whose read fails still offers the plugin again (#1533).
+    private func markCatalog(installed: Bool, where matches: (_ name: String, _ installed: Bool) -> Bool) async {
+        pluginsEpoch &+= 1
+        for index in pluginCatalog.indices where matches(pluginCatalog[index].name, pluginCatalog[index].installed) {
+            pluginCatalog[index].installed = installed
+            pluginCatalog[index].updateAvailable = false
+        }
+        await keepCatalog(installed: installed, where: matches)
+    }
+
+    /// The kept catalog's side of `markCatalog`, over any catalog read asked
+    /// before the change. An install changes only this one: the catalog
+    /// shown keeps its entry until Hermes' answer brings the installed row.
+    private func keepCatalog(installed: Bool, where matches: (_ name: String, _ installed: Bool) -> Bool) async {
+        await keepChange(KeptRoute.pluginCatalog, list: "entries", dashboardWide: true) { rows in
+            rows.map { row -> Any in
+                guard var row = row as? [String: Any], let name = row["name"] as? String,
+                      matches(name, row["installed"] as? Bool ?? false) else { return row }
+                row["installed"] = installed
+                row["update_available"] = false
+                return row
+            }
+        }
     }
 
     func updatePlugin(_ plugin: AgentPluginRow, acceptCapabilities: Bool = false) async throws -> PluginUpdateOutcome {
@@ -770,6 +804,9 @@ final class CapabilitiesStore {
         // Its new version comes with Hermes' answer: a read asked before
         // the update isn't kept after it.
         answers?.noteWrite(KeptRoute.plugins)
+        await markCatalog(installed: true) { name, installed in
+            PluginCatalogEntry.isSource(named: name, installed: installed, of: plugin)
+        }
         await loadPlugins()
         return .updated(restartRequired: restart)
     }
@@ -792,6 +829,10 @@ final class CapabilitiesStore {
         // Kept without it, over any read asked before the removal.
         await keepChange(KeptRoute.plugins, list: "plugins") { rows in
             rows.filter { ($0 as? [String: Any])?["name"] as? String != plugin.name }
+        }
+        guard token == generation else { return }
+        await markCatalog(installed: false) { name, installed in
+            PluginCatalogEntry.isSource(named: name, installed: installed, of: plugin)
         }
         await loadPlugins()
     }
@@ -822,6 +863,7 @@ final class CapabilitiesStore {
         // Its row comes with Hermes' answer: a read asked before the
         // install isn't kept after it.
         answers?.noteWrite(KeptRoute.plugins)
+        await keepCatalog(installed: true) { name, _ in name == entry.name }
         await loadPlugins()
         return outcome
     }

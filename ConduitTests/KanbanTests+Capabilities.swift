@@ -733,6 +733,60 @@ extension KanbanTests {
         XCTAssertEqual(outcome, .updated(restartRequired: true))
         XCTAssertEqual(kept.noted.last, CapabilitiesStore.KeptRoute.plugins, "A read asked before the update isn't kept after it")
     }
+
+    /// A plugin's removal, update or install Hermes took is kept in the
+    /// plugin catalog too (#1533): the catalog hides an installed entry, so
+    /// a removal whose read fails offers the plugin again, now and next time.
+    func testPluginChangesKeepTheCatalogsFlags() async throws {
+        let hermes = CapabilityMockRequester(responses: [
+            "/api/dashboard/plugins/hub": ["plugins": [
+                ["name": "Weather", "source": "git", "runtime_status": "enabled"],
+                ["name": "Maps", "source": "git", "runtime_status": "enabled"],
+            ]],
+            "/api/dashboard/plugins/catalog": ["entries": [
+                ["name": "Weather", "installed": true],
+                ["name": "Maps", "installed": true, "update_available": true],
+                ["name": "Notes", "installed": false],
+            ]],
+        ])
+        let kept = KeptCapabilityAnswers()
+        let dashboardKept = KeptCapabilityAnswers()
+        let store = CapabilitiesStore()
+        store.configure(requester: hermes, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        await store.loadPlugins()
+        let weather = try XCTUnwrap(store.plugins.first { $0.name == "Weather" })
+        let maps = try XCTUnwrap(store.plugins.first { $0.name == "Maps" })
+        let notes = try XCTUnwrap(store.pluginCatalog.first { $0.name == "Notes" })
+
+        // Hermes takes each change, and every read after it fails.
+        hermes.responses["/api/dashboard/plugins/hub"] = nil
+        hermes.responses["/api/dashboard/plugins/catalog"] = nil
+        hermes.responses["/api/dashboard/agent-plugins/Weather"] = ["ok": true]
+        try await store.removePlugin(weather)
+        XCTAssertEqual(
+            CapabilityPluginFilter.catalog(store.pluginCatalog, query: "").map(\.name), ["Notes", "Weather"],
+            "The removed plugin is offered again at once"
+        )
+        hermes.responses["/api/dashboard/agent-plugins/Maps/update"] = ["ok": true]
+        _ = try await store.updatePlugin(maps)
+        XCTAssertEqual(store.pluginCatalog.first { $0.name == "Maps" }?.updateAvailable, false)
+        hermes.responses["/api/dashboard/agent-plugins/install"] = ["plugin_name": "Notes"]
+        _ = try await store.installPlugin(notes)
+        XCTAssertEqual(
+            store.pluginCatalog.first { $0.name == "Notes" }?.installed, false,
+            "The catalog shown keeps an installed entry until Hermes' answer brings its row"
+        )
+        XCTAssertEqual(dashboardKept.written.filter { $0 == CapabilitiesStore.KeptRoute.pluginCatalog }.count, 3)
+
+        let next = CapabilitiesStore()
+        next.configure(requester: nil, profile: "default", answers: kept.answers, dashboardAnswers: dashboardKept.answers)
+        XCTAssertEqual(next.plugins.map(\.name), ["Maps"])
+        XCTAssertEqual(
+            CapabilityPluginFilter.catalog(next.pluginCatalog, query: "").map(\.name), ["Weather"],
+            "Next time the removed plugin is offered and the installed one isn't"
+        )
+        XCTAssertEqual(next.pluginCatalog.first { $0.name == "Maps" }?.updateAvailable, false)
+    }
 }
 
 @MainActor

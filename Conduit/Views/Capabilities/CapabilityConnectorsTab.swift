@@ -301,21 +301,26 @@ struct ConnectorDetailPage: View {
         SettingsDetailContainer {
             if let server {
                 let state = ConnectorState.of(server, probe: probe, probing: store.probing.contains(name))
+                // The kept copy holds only part of the address and the
+                // command (#1533): they show once Hermes answers.
+                let showsWhere = !store.showsKept.contains(.connectors)
                 header(server, state: state)
-                ConduitSettingsSection(title: AppLocalization.string("Connection"), symbol: "link", tint: .conduitAura) {
-                    if let url = server.url {
-                        SettingsMetricRow(label: AppLocalization.string("Address"), value: url, lineLimit: 2)
-                    }
-                    if let command = server.command {
-                        SettingsMetricRow(label: AppLocalization.string("Command"), value: ([command] + server.args).joined(separator: " "), lineLimit: 3)
-                    }
-                    if server.enabled {
-                        actions(server, state: state)
-                    }
-                    if let message {
-                        Text(verbatim: message)
-                            .scaledFont(.footnote)
-                            .foregroundStyle(.secondary)
+                if showsWhere || server.enabled || message != nil {
+                    ConduitSettingsSection(title: AppLocalization.string("Connection"), symbol: "link", tint: .conduitAura) {
+                        if showsWhere, let url = server.url {
+                            SettingsMetricRow(label: AppLocalization.string("Address"), value: url, lineLimit: 2)
+                        }
+                        if showsWhere, let command = server.command {
+                            SettingsMetricRow(label: AppLocalization.string("Command"), value: ([command] + server.args).joined(separator: " "), lineLimit: 3)
+                        }
+                        if server.enabled {
+                            actions(server, state: state)
+                        }
+                        if let message {
+                            Text(verbatim: message)
+                                .scaledFont(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 toolsSection(server, state: state)

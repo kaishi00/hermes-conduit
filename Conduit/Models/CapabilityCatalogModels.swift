@@ -626,7 +626,13 @@ struct PluginCatalogEntry: Equatable, Identifiable {
     /// folder (the catalog name is often the repository's, not the
     /// manifest's).
     static func entry(for plugin: AgentPluginRow, in catalog: [PluginCatalogEntry]) -> PluginCatalogEntry? {
-        catalog.first { $0.installed && ($0.name == plugin.name || $0.name == plugin.folderName) }
+        catalog.first { isSource(named: $0.name, installed: $0.installed, of: plugin) }
+    }
+
+    /// Whether an entry, by its name and installed flag, is the one an
+    /// installed plugin came from (`entry(for:in:)`'s rule).
+    static func isSource(named name: String, installed: Bool, of plugin: AgentPluginRow) -> Bool {
+        installed && (name == plugin.name || name == plugin.folderName)
     }
 }
 
