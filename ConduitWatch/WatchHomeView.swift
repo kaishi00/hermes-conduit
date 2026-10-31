@@ -167,11 +167,14 @@ struct WatchSettingsView: View {
 
     var body: some View {
         List {
-            Section {
-                Toggle("Call on open", isOn: $call.startsOnOpen)
-                    .tint(accent)
-            } footer: {
-                Text("Opening Conduit starts a call right away. Turn this off to start each call with a tap.")
+            // Watch calls don't work on watchOS 10 (#1346): nothing to start.
+            if WatchVoiceCall.callsWork {
+                Section {
+                    Toggle("Call on open", isOn: $call.startsOnOpen)
+                        .tint(accent)
+                } footer: {
+                    Text("Opening Conduit starts a call right away. Turn this off to start each call with a tap.")
+                }
             }
             Section {
                 NavigationLink {

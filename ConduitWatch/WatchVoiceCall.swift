@@ -374,7 +374,8 @@ final class WatchVoiceCall: ObservableObject {
             WatchCallLog.shared.note("callRequestDropped", ["source": source, "callOn": isActive, "hermesCall": HermesWatchCalls.shared.holdsCall])
             return
         }
-        WatchCallLog.shared.note("callStartedOnRequest", ["source": source, "engine": engine.rawValue])
+        // On watchOS 10, start() ends it at once and logs callNotOnThisWatchOS.
+        if Self.callsWork { WatchCallLog.shared.note("callStartedOnRequest", ["source": source, "engine": engine.rawValue]) }
         dismissEnded()
         start()
     }
