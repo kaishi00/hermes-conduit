@@ -1088,7 +1088,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ wurde auf deinem Host geändert, während du bearbeitet hast. Schließe dies und bearbeite es erneut."
+            "value": "%@ wurde auf deinem Host geändert, während du ihn bearbeitet hast. Schließe dies und bearbeite es erneut."
           }
         },
         "es": {
