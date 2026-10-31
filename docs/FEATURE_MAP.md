@@ -1715,15 +1715,15 @@ list to land on)
 - Tests: `ConduitTests/V2ReopenedConversationTests.swift`, `ConduitTests/ChatReturnSurfaceTests.swift` (testV2IgnoresASessionsPickedUnderTheDrawerShell)
 
 **Rulings**
-- V2 opens on the Chats list, not the last chat (Eric, 2026-10-15), except after iOS ended Conduit in the background: then it opens on the chat that was showing, in Chats or Bots (Eric, 2026-10-31, #PRNUM, from issue #1559). The window keeps the tab as SceneStorage, which iOS restores after it ended the app and drops when the user swipes it away, so the two launches are told apart by iOS itself. The chat is the one Conduit resumes, under the saved copy while it connects; with no chat to resume it opens on Chats.
+- V2 opens on the Chats list, not the last chat (Eric, 2026-10-15), except after iOS ended Conduit in the background: then it opens on the chat that was showing, in Chats or Bots (Eric, 2026-10-31, #1597, from issue #1559). The window keeps the tab as SceneStorage, which iOS restores after it ended the app and drops when the user swipes it away, so the two launches are told apart by iOS itself. The chat is the one Conduit resumes, under the saved copy while it connects; with no chat to resume it opens on Chats.
 - The reopened chat is in the tab's path when the shell is made, never pushed during the launch's first layout (that left the app never idle).
-- "Open to" belongs to the drawer shell, and V2 hides it: a Sessions picked there is ignored under V2, on launch and on return. Before, it closed the chat on every return to Conduit with no setting left to change it (#PRNUM).
+- "Open to" belongs to the drawer shell, and V2 hides it: a Sessions picked there is ignored under V2, on launch and on return. Before, it closed the chat on every return to Conduit with no setting left to change it (#1597).
 
 **Open gaps**
 - A group room showing when iOS ended Conduit reopens on Chats: rooms are kept in memory only and open from their row.
 - Only the chat comes back, not what was under it in the tab (a project's page, Pulse): Back goes to the Chats list.
 
-**Checked:** 2026-10-31, #PRNUM (added).
+**Checked:** 2026-10-31, #1597 (added).
 
 ## Screens that open on their last answer
 
