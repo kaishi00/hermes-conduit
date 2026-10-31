@@ -174,6 +174,27 @@ final class TranscriptLayoutTests: XCTestCase {
         XCTAssertEqual(view.contentSize.height, rowsBottom)
     }
 
+    /// A pass for some rows never asks for the content size again: the
+    /// content follows a row growing after it was measured (a reply
+    /// streaming in) from the change its context carries, and stays the
+    /// room held under a sent message until the rows pass it.
+    func testTheContentFollowsARowGrowingAfterItWasMeasured() throws {
+        let padding = TranscriptLayout.topPadding + TranscriptLayout.bottomPadding
+        show(["a"])
+        measure(["a": 100])
+        XCTAssertEqual(view.contentSize.height, 100 + padding)
+
+        measure(["a": 400])
+        XCTAssertEqual(view.contentSize.height, 400 + padding)
+
+        layout.reserveContentHeight(1_000)
+        view.layoutIfNeeded()
+        measure(["a": 600])
+        XCTAssertEqual(view.contentSize.height, 1_000, "Under the room held for the reply")
+        measure(["a": 1_200])
+        XCTAssertEqual(view.contentSize.height, 1_200 + padding, "Past it")
+    }
+
     func testTheRowsCrossingABandAreFoundTopFirst() throws {
         show(["a", "b", "c", "d"])
         measure(["a": 100, "b": 100, "c": 100, "d": 100])

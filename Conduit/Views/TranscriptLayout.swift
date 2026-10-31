@@ -48,6 +48,15 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// The first item whose frame is out of date.
     private var dirtyFrom: Int?
     private var contentHeight: CGFloat = 0
+    /// The rows' bottom the next pass lays out, kept as rows change height
+    /// between passes (`noteHeight`).
+    private var pendingRowsBottom: CGFloat = 0
+    /// Whether the next pass asks for the content size: one invalidating
+    /// everything or the rows' count does, one for some rows never does.
+    private var asksContentSize = true
+    /// A cell's measurement's change to the content's height, for the
+    /// context UIKit asks for next (invalidationContext(forPreferred…)).
+    private var preferredAdjustment: CGFloat = 0
     /// Heights measured for the conversation, width and text size drawn.
     private var heights = TranscriptHeightTable()
     /// What decides a height besides the width: the conversation (row ids
@@ -106,8 +115,11 @@ final class TranscriptLayout: UICollectionViewLayout {
         guard abs(size.width - itemWidth) <= 0.5, size.height > 0 else { return }
         let height = pixelRounded(size.height)
         guard heights[id].map({ abs($0 - height) > 0.5 }) ?? true else { return }
-        heights[id] = height
-        guard let index = indexByID[id] else { return }
+        guard let index = indexByID[id] else {
+            heights[id] = height
+            return
+        }
+        let adjustment = noteHeight(height, at: index)
         switch rows[index].kind {
         case .thinking, .streaming:
             // The live turn's text arriving, a line at a time: logged, it
@@ -120,7 +132,21 @@ final class TranscriptLayout: UICollectionViewLayout {
         markDirty(from: index)
         let context = UICollectionViewLayoutInvalidationContext()
         context.invalidateItems(at: [IndexPath(item: index, section: 0)])
+        context.contentSizeAdjustment = CGSize(width: 0, height: adjustment)
         invalidateLayout(with: context)
+    }
+
+    /// Keeps a row's new height and returns how much the content's height
+    /// changes by. A pass for some rows never asks for the content size
+    /// again, so its context carries the change; one that asks (another
+    /// count of rows, a pass invalidating everything) takes none.
+    private func noteHeight(_ height: CGFloat, at index: Int) -> CGFloat {
+        let row = rows[index]
+        let before = heights[row.id] ?? Self.estimatedHeight(of: row, width: itemWidth)
+        heights[row.id] = height
+        let contentBefore = max(pendingRowsBottom, requestedReserve)
+        pendingRowsBottom += height - before
+        return asksContentSize ? 0 : max(pendingRowsBottom, requestedReserve) - contentBefore
     }
 
     // MARK: - Frames
@@ -221,6 +247,8 @@ final class TranscriptLayout: UICollectionViewLayout {
         }
         let rowsBottom = (rows.isEmpty ? Self.topPadding : itemTop[rows.count - 1] + itemHeight[rows.count - 1])
             + Self.bottomPadding
+        pendingRowsBottom = rowsBottom
+        asksContentSize = false
         appliedReserve = requestedReserve
         let height = max(rowsBottom, appliedReserve)
         if moved || abs(height - contentHeight) > 0.01 {
@@ -278,12 +306,11 @@ final class TranscriptLayout: UICollectionViewLayout {
         // split window) is measured again at the new one.
         guard abs(preferredAttributes.size.width - itemWidth) <= 0.5 else { return false }
         let height = pixelRounded(preferredAttributes.size.height)
-        let id = rows[index].id
         // Kept even when the frame already has it: an estimate that
-        // happened to match is a measurement now.
-        let changed = abs(height - itemHeight[index]) > 0.5
-        heights[id] = height
-        return changed
+        // happened to match is a measurement now. A change to the content's
+        // height still owed (a resize not laid out yet) asks for a context.
+        preferredAdjustment = noteHeight(height, at: index)
+        return abs(height - itemHeight[index]) > 0.5 || preferredAdjustment != 0
     }
 
     override func invalidationContext(
@@ -297,12 +324,17 @@ final class TranscriptLayout: UICollectionViewLayout {
         // The scroller keeps the reader's row in place; UIKit's own
         // adjustment would move it twice.
         context.contentOffsetAdjustment = .zero
+        context.contentSizeAdjustment = CGSize(width: 0, height: preferredAdjustment)
+        preferredAdjustment = 0
         markDirty(from: originalAttributes.indexPath.item)
         return context
     }
 
     override func invalidateLayout(with context: UICollectionViewLayoutInvalidationContext) {
         super.invalidateLayout(with: context)
+        if context.invalidateEverything || context.invalidateDataSourceCounts {
+            asksContentSize = true
+        }
         // New rows are laid out from the first that changed (`adopt`).
         if context.invalidateEverything {
             markDirty(from: 0)
