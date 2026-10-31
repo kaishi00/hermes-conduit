@@ -17,7 +17,7 @@ final class ComposerFullEditorTests: XCTestCase {
         XCTAssertFalse(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: false, isFocused: true), "the classic layout always shows it")
     }
 
-    /// #1527: on a Mac or with a hardware keyboard the field keeps focus
+    /// #1527: on a Mac or an iPad with a hardware keyboard the field keeps focus
     /// after a send; the bar comes back until words are typed again.
     func testFocusKeptAfterASendShowsTheMinimisedCallBarUntilTyping() {
         XCTAssertFalse(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isFocused: true, hasText: false, keepsFocusAfterSend: true))

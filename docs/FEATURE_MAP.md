@@ -1915,10 +1915,12 @@ shells; done, #1541)
   taken off) and rests below that. Mac: it stays expanded at any width, with
   its controls always in reach. There is no setting (Eric, 2026-10-29,
   #1512, issue 1483). A Mac's composer never rests, so a send that keeps
-  the field focused changes nothing there. With a hardware keyboard on an
-  iPhone or a narrow iPad a send keeps focus too, so a composer that rests
-  stays expanded after it until a tap on the transcript (Eric, 2026-10-30,
-  #1527, see Composer focus after a send).
+  the field focused changes nothing there. With a hardware keyboard on a
+  narrow iPad a send keeps focus too, so a composer that rests stays
+  expanded after it until a tap on the transcript (Eric, 2026-10-30, #1527).
+  An iPhone never keeps focus after a send, keyboard or not, so its
+  composer rests again and the reply has the height (Eric, 2026-10-31,
+  #1556, see Composer focus after a send).
 - A composer that stays expanded keeps the big voice button beside it, as the
   resting bar does, rather than sliding it aside while typing; the controls
   row then leaves out its own voice button, and its mic when the big button
@@ -1942,7 +1944,7 @@ shells; done, #1541)
 - Not yet seen on a device: an iPhone at AX3 to AX5 in a running chat and
   in a group room (#1541, checked in code and a unit test only).
 
-**Checked:** 2026-10-30, #1541 (the resting bar and its placeholder at accessibility Text Sizes on a narrow iPhone); 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
+**Checked:** 2026-10-31, #1556 (an iPhone rests again after a send, keyboard or not); 2026-10-30, #1541 (the resting bar and its placeholder at accessibility Text Sizes on a narrow iPhone); 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
 
 ## Composer focus after a send
 
@@ -1954,14 +1956,12 @@ one can be typed straight away, or gives it up so the keyboard goes down.
 Interrupt), and a message that waits for its chat ("Sends when connected";
 done, #1527) · Stop in Send's place (done, #1527) · the full editor (done,
 #1527: a send from it gives the field focus back as the sheet goes) · group
-rooms' composer (gap: its send never takes focus from the field, on any
-device, so a Mac and a hardware keyboard already keep it; on a touch-only
-iPhone too, see Open gaps) · a prediction sent from the suggestion row (done, #1527:
+rooms' composer (done, #1556: it follows the same rule, its full editor included) · a prediction sent from the suggestion row (done, #1527:
 the same send, so it keeps whatever focus the field had) · the plan card, which opens whatever the focus on a Mac or with a hardware
 keyboard (not needed: its check is for the keyboard, not the focus; its
 ruling now says the focus stays, see Plan card) · the resting composer and
-the minimised call bar (done, #1527: with a hardware keyboard on an iPhone
-or a narrow iPad the composer stays expanded after a send while the field
+the minimised call bar (done, #1527, #1556: with a hardware keyboard on a
+narrow iPad the composer stays expanded after a send while the field
 keeps focus, until a tap on the transcript, see Composer at rest and
 expanded; the call bar, on those and on a Mac, comes back after a send and
 hides again only once words are typed) ·
@@ -1971,17 +1971,21 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.keepsFocusAfterSend)
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView, ImagePasteTextView.setFocusIntent and didMoveToWindow: a field rebuilt with focus takes it once it's in the window), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`, opened by ComposerBar's expand button (which takes focus from the field) and its sheet
-- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send)
-- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow)
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send; focusesAfterFullEditor, read in the full editor sheet's onDismiss)
+- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow)
 
 **Rulings**
-- On a Mac, or with a hardware keyboard on an iPad or iPhone, a send or
-  Stop leaves the field focused when the user was typing, as a desktop
-  client does; a click or tap on the transcript still takes focus away.
-  With only the on-screen keyboard it goes down, so the reply has the
-  screen (Eric asked for it on a Mac, and chose the same for an iPad or
-  iPhone with a hardware keyboard, 2026-10-30, #1527).
-  The check is for a connected keyboard, as the plan card's is.
+- On a Mac, or on an iPad with a hardware keyboard, a send or Stop
+  leaves the field focused when the user was typing, as a desktop client
+  does; a click or tap on the transcript still takes focus away. With only
+  the on-screen keyboard it goes down, so the reply has the screen (Eric,
+  2026-10-30, #1527). The iPad's check is for a connected keyboard, as the
+  plan card's is.
+- An iPhone never keeps focus after a send, keyboard or not: a kept
+  composer takes height the reply needs (Eric, 2026-10-31, #1556; #1527 had
+  kept it with a keyboard).
+- Group rooms follow the same rule as chats (2026-10-31, #1556; their
+  send had never let go of focus).
 - Where the field keeps focus, focus alone doesn't hide the minimised call
   bar: it shows after a send and hides only while words are typed, so a
   kept focus never hides a call (2026-10-30, #1527).
@@ -1997,11 +2001,8 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   transcript take focus from the field on a Mac. No test reaches
   `updateUIView` passing the binding's focus to the field (it needs a SwiftUI
   Context), so that link is checked on a device only.
-- Group rooms keep the field focused after a send on a touch-only iPhone
-  too, where a chat's keyboard goes down; the maintainer decides whether
-  rooms follow the chat there.
 
-**Checked:** 2026-10-30, #1527 (new entry).
+**Checked:** 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
 
 ## A chat's last reply
 
@@ -2939,14 +2940,14 @@ keeps to itself there)
 - Docked at the bottom above the composer, a line that announces a new plan without opening over the chat; the artifact card was dropped (2026-10-23, #1135, Eric).
 - An announced plan is on screen: a new plan, even one that arrives finished after the last one went, clears the hidden state and gets its own 60 s (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
 - The line and the card cap Dynamic Type at accessibility1; the sheet, a scrolling list, takes every size (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
-- The plan keeps to its one line only while an on-screen keyboard can be up: a Mac has none and a hardware keyboard puts it away, and in both the composer keeps focus between messages (see Composer focus after a send), so there the line opens whatever the focus, and a tap on the line under the keyboard puts the keyboard away and opens the card (2026-10-29, #1511, issue #1510; focus kept after a send, #1527).
+- The plan keeps to its one line only while an on-screen keyboard can be up: a Mac has none and a hardware keyboard puts it away (a Mac and an iPad with one keep the composer's focus between messages, see Composer focus after a send), so there the line opens whatever the focus, and a tap on the line under the keyboard puts the keyboard away and opens the card (2026-10-29, #1511, issue #1510; focus kept after a send, #1527).
 
 **Open gaps**
 - The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
 - Two announcements within 450 ms race on the pulse (#1135 review).
 - With a hardware keyboard the line opens even if the on-screen keyboard is summoned; the check is for a connected keyboard, not a visible one (#1511 review).
 
-**Checked:** 2026-10-30, #1527 (the ruling's premise: a send keeps focus on a Mac and with a hardware keyboard; the check is unchanged); 2026-10-29, #1511.
+**Checked:** 2026-10-31, #1556 (an iPhone with a keyboard no longer keeps focus after a send; the check is unchanged); 2026-10-30, #1527 (the ruling's premise: a send keeps focus on a Mac and with a hardware keyboard; the check is unchanged); 2026-10-29, #1511.
 
 ## White text on the accent
 

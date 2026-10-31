@@ -44,7 +44,7 @@ struct V2RestingComposerHeightKey: PreferenceKey {
 }
 
 /// Whether someone is typing in a resting composer (it has focus; on a Mac
-/// or with a hardware keyboard, words too, since the field keeps focus
+/// or an iPad's keyboard, words too, since the field keeps focus
 /// after a send), so the minimised call bar steps aside. Only typing hides it:
 /// a running turn or a notice also expands the composer, and hiding the bar
 /// then left a call started from the chat with no way back (#695).

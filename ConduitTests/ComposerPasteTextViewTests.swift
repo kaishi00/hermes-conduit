@@ -680,7 +680,7 @@ final class ComposerPasteTextViewTests: XCTestCase {
         )
     }
 
-    /// A field a send rebuilt with focus (a Mac, a hardware keyboard) is
+    /// A field a send rebuilt with focus (a Mac, an iPad's keyboard) is
     /// updated before it's in the window; it takes focus as it arrives, and
     /// one that no longer wants it doesn't (#1527). The binding's half,
     /// `updateUIView` passing `isFocused` on, needs a SwiftUI Context no test

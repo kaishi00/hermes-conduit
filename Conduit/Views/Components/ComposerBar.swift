@@ -967,7 +967,7 @@ struct ComposerBar: View, Equatable {
     /// The minimised call bar above a V2 composer hides only while someone
     /// types. A running turn, a notice or a draft left unfocused keeps it,
     /// so a call minimised in a chat can always be brought back (#695).
-    /// Where the field keeps focus after a send (a Mac, a hardware
+    /// Where the field keeps focus after a send (a Mac, an iPad's
     /// keyboard: `ComposerLayout.keepsFocusAfterSend`), focus alone isn't
     /// typing: the bar hides only while the field holds words.
     static func hidesMinimisedCallBar(
@@ -2091,7 +2091,7 @@ struct ComposerBar: View, Equatable {
     /// Waiting for the gateway RPC leaves the side controls aligned to the old
     /// multiline field while the keyboard's safe area is already animating.
     /// `keepingFocus`: the user was typing (in the field or the full
-    /// editor), which on a Mac or with a hardware keyboard carries on.
+    /// editor), which on a Mac or an iPad's keyboard carries on.
     private func collapseSubmittedDraft(clearingReply: Bool, keepingFocus: Bool, fromFullEditor: Bool) {
         endInput(keepingFocus: keepingFocus, fromFullEditor: fromFullEditor)
         let updates = {
@@ -2347,7 +2347,7 @@ struct ComposerBar: View, Equatable {
         isShowingSlashSuggestions = false
     }
 
-    /// A send or Stop: on a Mac or with a hardware keyboard the field keeps
+    /// A send or Stop: on a Mac or an iPad's keyboard the field keeps
     /// focus for the next message, as a desktop client's does, when the
     /// user was typing; otherwise the keyboard goes (`dismissComposer`).
     private func endInput(keepingFocus wasTyping: Bool, fromFullEditor: Bool = false) {
