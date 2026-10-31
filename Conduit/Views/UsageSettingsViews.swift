@@ -54,7 +54,8 @@ struct UsageSettingsDetail: View {
 
     var body: some View {
         SettingsDetailContainer {
-            Picker(AppLocalization.string("Period"), selection: $days) {
+            // The new period's kept numbers in the same frame, never the old one's.
+            Picker(AppLocalization.string("Period"), selection: Binding(get: { days }, set: { days = $0; showKept() })) {
                 ForEach(UsageReport.periods, id: \.self) { period in
                     Text(periodLabel(period)).tag(period)
                 }

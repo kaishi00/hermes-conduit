@@ -37,8 +37,13 @@ extension AppState {
             throw UsageLoadError.failed
         }
         // The per-model route is the better split, but the page stands
-        // without it: the usage route has its own per-model rows.
-        let modelsResponse = try? await readKeepingAnswer(UsageReport.route(UsageReport.modelsPath, days: days), profile: profile, owner: owner)
+        // without it: the usage route has its own per-model rows. A read
+        // that fails is kept as none, so the page opens on the rows it
+        // showed, never on an older split (and its cost) beside newer totals.
+        let modelsRoute = UsageReport.route(UsageReport.modelsPath, days: days)
+        let modelsResponse = try await keepingAnswer(profile: profile, owner: owner, keptAs: { _ in modelsRoute }) {
+            (try? await owner.bridge.requestJSON(path: DashboardPath.withProfile(modelsRoute, profile: profile))) ?? [:]
+        }
         return UsageReport.parse(usage: usageResponse, models: modelsResponse, days: days)
     }
 

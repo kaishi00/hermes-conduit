@@ -1769,8 +1769,8 @@ extension AppStateMultiDashboardTests {
 
     /// Pulse is one per host: its state is kept once per dashboard, from a
     /// read or a change that answers with it (a notification's Quiet for
-    /// today too), and What Pulse remembers' list beside it; an estimate
-    /// isn't a state. Settings > Pulse opens on them in any profile, and
+    /// today too), and What Pulse remembers' list beside it, without what
+    /// Pulse forgot; an estimate isn't a state. Settings > Pulse opens on them in any profile, and
     /// another dashboard's opens on nothing.
     func testPulsesStateAndMemoryAreKeptOncePerDashboard() async throws {
         let (appState, held, vps) = heldSwitchFixture()
@@ -1798,9 +1798,13 @@ extension AppStateMultiDashboardTests {
 
         let memory = Task { try await client.memory() }
         try await held.waitForRequests(4)
-        try await held.answer(["items": [["id": 1, "text": "Call Ann", "kind": "commitment"]]])
+        try await held.answer(["items": [
+            ["id": 1, "text": "Call Ann", "kind": "commitment"], ["id": 2, "text": "Book the flights", "kind": "commitment"],
+        ]])
         _ = try await memory.value
-        XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Call Ann"])
+        XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Call Ann", "Book the flights"])
+        await appState.forgetKeptPulseMemoryItem(id: 1)
+        XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Book the flights"], "A forgotten item leaves the kept list")
 
         // Quiet for today from a Pulse notification is kept as the page's own steps are.
         let here = PulseQuietTarget(dashboardID: appState.activeDashboardID?.uuidString, gatewayID: nil)
@@ -1856,6 +1860,30 @@ extension AppStateMultiDashboardTests {
         await appState.switchDashboard(to: vps.id)
         let vpsPage = HermesVoiceConfigurationService(requester: requester, profile: "default", answers: appState.voiceSettingsAnswers(profile: "default"))
         XCTAssertFalse(vpsPage.snapshot.capability.isGatewayConnected, "Another dashboard's page")
+    }
+
+    /// A models read that fails keeps no split beside the period's new
+    /// numbers: Usage opens on the usage route's own rows, as it showed
+    /// them, never on an older split and its cost.
+    func testAUsageLoadWhoseModelsReadFailsKeepsNoOlderSplit() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let modelsRoute = UsageReport.route(UsageReport.modelsPath, days: 30)
+        appState.offlineChatCacheForTesting.recordAnswer(
+            ["models": [["model": "old-model", "input_tokens": 5]]], route: modelsRoute, dashboardID: mac, profile: "default"
+        )
+        appState.isConnected = true
+
+        let load = Task { try await appState.loadUsageReport(days: 30) }
+        try await held.waitForRequests(1)
+        try await held.answer(["totals": ["total_input": 1200], "by_model": [["model": "new-model", "input_tokens": 1200]], "period_days": 30])
+        try await held.waitForRequests(2)
+        try await held.answer(["error": "boom"], status: 500)
+        let report = try await load.value
+
+        XCTAssertEqual(held.sent.map(\.path), [UsageReport.usagePath, UsageReport.modelsPath])
+        XCTAssertEqual(report.models.map(\.model), ["new-model"])
+        XCTAssertEqual(appState.keptUsageReport(days: 30)?.models.map(\.model), ["new-model"], "Opens on what it showed")
     }
 
     /// Usage opens on each period's numbers as the active profile last read

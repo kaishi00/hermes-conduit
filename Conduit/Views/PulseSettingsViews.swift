@@ -1336,6 +1336,7 @@ struct PulseMemoryList: View {
                 items.removeAll { $0.id == item.id }
                 errorMessage = nil
                 Haptics.success()
+                await appState.forgetKeptPulseMemoryItem(id: item.id)
             } catch {
                 guard isShown(client) else { return }
                 errorMessage = PulseRefusal.message(for: error)
