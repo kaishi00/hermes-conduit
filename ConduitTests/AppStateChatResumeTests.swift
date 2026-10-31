@@ -321,6 +321,17 @@ final class AppStateChatResumeTests: XCTestCase {
         )
         // No saved reviews leaves Hermes' rows as they are.
         XCTAssertEqual(AppState.placingReviews([], into: history).map(\.id), history.map(\.id))
+
+        // Load earlier puts older rows above a review at the page's start;
+        // the review goes back after the rows timed before it.
+        let olderPage = Array(history.prefix(3))
+        let newestPage = AppState.placingReviews([review], into: Array(history.suffix(2)))
+        XCTAssertEqual(newestPage.map(\.id), ["review-summary-1", "u2", "a2"])
+        XCTAssertEqual(
+            AppState.replacingSavedReviews(in: olderPage + newestPage)?.map(\.id),
+            ["u1", "t1", "a1", "review-summary-1", "u2", "a2"]
+        )
+        XCTAssertNil(AppState.replacingSavedReviews(in: history), "no saved review, nothing to place")
     }
 
     /// Consecutive reviews read as one line (#1518): the first row draws it,

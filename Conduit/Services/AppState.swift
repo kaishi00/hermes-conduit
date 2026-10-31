@@ -6376,14 +6376,17 @@ final class AppState: ObservableObject {
     /// dates, so both are read the way the chat reads a row's time. Sorting
     /// the whole transcript by an ISO-only read used to put every saved
     /// review after the newest message (issue #1549). A row with no time it
-    /// can read never decides a review's place.
+    /// can read never decides a review's place. A review's time is the
+    /// phone's clock and a row's the host's, so a clock gap of a few seconds
+    /// can put a review a row early or late.
     static func placingReviews(_ reviews: [ChatMessage], into history: [ChatMessage]) -> [ChatMessage] {
         guard !reviews.isEmpty else { return history }
         // Parse each timestamp once: a long chat resumes with every row.
         let historyDates = history.map { MessageTimestampFormatter.date(from: $0.timestamp) }
-        let placed = reviews
-            .map { (message: $0, date: MessageTimestampFormatter.date(from: $0.timestamp) ?? .distantFuture) }
-            .sorted { $0.date < $1.date }
+        // Reviews saved in the same second keep the order they were saved in.
+        let placed = reviews.enumerated()
+            .map { (message: $1, date: MessageTimestampFormatter.date(from: $1.timestamp) ?? .distantFuture, order: $0) }
+            .sorted { ($0.date, $0.order) < ($1.date, $1.order) }
         var merged: [ChatMessage] = []
         merged.reserveCapacity(history.count + reviews.count)
         var next = 0
@@ -6398,6 +6401,17 @@ final class AppState: ObservableObject {
         }
         merged.append(contentsOf: placed[next...].map(\.message))
         return merged
+    }
+
+    /// The chat with its saved review rows placed again, after Load earlier
+    /// put older rows above a review that sat at the start of the newest
+    /// page. Nil when no review moves.
+    static func replacingSavedReviews(in messages: [ChatMessage]) -> [ChatMessage]? {
+        let isSaved = { (message: ChatMessage) in message.id.hasPrefix("review-summary-") }
+        let reviews = messages.filter(isSaved)
+        guard !reviews.isEmpty else { return nil }
+        let placed = placingReviews(reviews, into: messages.filter { !isSaved($0) })
+        return placed.map(\.id) == messages.map(\.id) ? nil : placed
     }
 
     /// The chat's "Voice call" markers for calls started from it.
@@ -30589,6 +30603,9 @@ final class AppState: ObservableObject {
                 }
             }
             if didPrepend {
+                if let replaced = Self.replacingSavedReviews(in: messages) {
+                    messages = replaced
+                }
                 // The visible transcript now starts with backfilled rows.
                 // The reconcile graft relies on this explicit fact to keep
                 // preserving the prefix across repeated reconciles — the
