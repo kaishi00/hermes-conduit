@@ -1906,7 +1906,7 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - The first session Hermes builds on a secondary profile after the dashboard starts can come up without the work tools; the upstream test takes it with a warm-up session (2026-10-31 canary).
 - The plugin's version is bumped when the branch merges to main.
 
-**Checked:** 2026-10-31, #PRNUM (rulings for notifier #485).
+**Checked:** 2026-10-31, #1587 (rulings for notifier #485).
 
 ## Composer Return key
 
