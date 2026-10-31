@@ -348,6 +348,24 @@ struct ConnectorServer: Equatable, Identifiable {
             )
         }
     }
+
+    /// A row for a server just saved, made from its entry when the list
+    /// couldn't be read again; what the entry doesn't say comes from the row
+    /// it replaces.
+    static func saved(name: String, entry: [String: Any], replacing before: ConnectorServer?) -> ConnectorServer {
+        let url = (entry["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let command = (entry["command"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return ConnectorServer(
+            name: name,
+            transport: url != nil ? "http" : (command != nil ? "stdio" : (before?.transport ?? "unknown")),
+            url: url,
+            command: command,
+            args: (entry["args"] as? [Any])?.map { "\($0)" } ?? [],
+            auth: (entry["auth"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? before?.auth,
+            enabled: entry["enabled"] as? Bool ?? before?.enabled ?? true,
+            plugin: nil
+        )
+    }
 }
 
 /// An entry of Hermes' MCP catalog (`GET /api/mcp/catalog`).
@@ -758,6 +776,16 @@ struct ConnectorServerEdit {
         entry["url"] != nil || entry["command"] == nil
     }
 
+    /// The typed text as a number when the argument it replaces was one
+    /// (an integer stays an integer); nil for anything else, true/false
+    /// included.
+    private static func number(_ typed: String, like old: Any) -> Any? {
+        guard let old = old as? NSNumber, CFGetTypeID(old) != CFBooleanGetTypeID() else { return nil }
+        if let whole = Int(typed) { return whole }
+        if let fraction = Double(typed), fraction.isFinite { return fraction }
+        return nil
+    }
+
     private static func argumentLines(_ entry: [String: Any]) -> String {
         (entry["args"] as? [Any] ?? []).map { "\($0)" }.joined(separator: "\n")
     }
@@ -779,16 +807,23 @@ struct ConnectorServerEdit {
             // A line left exactly as it was keeps its own value (a number
             // stays a number, an empty or spaced argument stays as it is),
             // each original used once; a changed or new line is the text
-            // typed, trimmed, and a blank new line is dropped.
-            var unused = entry["args"] as? [Any] ?? []
+            // typed, trimmed, and a blank new line is dropped. A number
+            // changed into another number stays a number (8080 to 9090).
+            let original = entry["args"] as? [Any] ?? []
+            var unused = original
             var args: [Any] = []
-            for line in arguments.components(separatedBy: .newlines) {
+            for (index, line) in arguments.components(separatedBy: .newlines).enumerated() {
                 if let match = unused.firstIndex(where: { "\($0)" == line }) {
                     args.append(unused.remove(at: match))
                     continue
                 }
                 let typed = line.trimmingCharacters(in: .whitespaces)
-                if !typed.isEmpty { args.append(typed) }
+                guard !typed.isEmpty else { continue }
+                if index < original.count, let number = Self.number(typed, like: original[index]) {
+                    args.append(number)
+                } else {
+                    args.append(typed)
+                }
             }
             if args.isEmpty && entry["args"] == nil {
                 next.removeValue(forKey: "args")

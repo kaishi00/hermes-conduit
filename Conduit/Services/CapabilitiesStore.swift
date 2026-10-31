@@ -526,7 +526,19 @@ final class CapabilitiesStore {
         // A test of the old entry still running is discarded and run again.
         probeEpochs[original, default: 0] &+= 1
         probeEpochs[name, default: 0] &+= 1
+        let before = servers.first { $0.name == original }
         await loadConnectors()
+        guard token == generation else { return }
+        // A reload that failed leaves the list from before the save: show the
+        // saved server there, so a renamed page doesn't read as removed.
+        if !servers.contains(where: { $0.name == name }) {
+            let saved = ConnectorServer.saved(name: name, entry: entry, replacing: before)
+            if let at = servers.firstIndex(where: { $0.name == original }) {
+                servers[at] = saved
+            } else {
+                servers.append(saved)
+            }
+        }
         // Tested again in the background: the editor closes on the save.
         if servers.first(where: { $0.name == name })?.enabled == true {
             Task { await probe(name) }

@@ -681,6 +681,37 @@ extension KanbanTests {
         XCTAssertEqual(try edit.formEntry()["args"] as? [String], ["--name", "", " x", "new"])
     }
 
+    func testAChangedNumberArgumentStaysANumber() throws {
+        var edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["--port", 8080, true]])
+        edit.arguments = "--port\n9090\nfalse"
+        let args = try XCTUnwrap(try edit.formEntry()["args"] as? [Any])
+        XCTAssertEqual(args[1] as? Int, 9090, "a number changed into a number stays one")
+        XCTAssertEqual(args[2] as? String, "false", "a flag isn't a number: the text typed")
+        edit.arguments = "--port\nauto\ntrue"
+        XCTAssertEqual((try edit.formEntry()["args"] as? [Any])?[1] as? String, "auto", "a number changed into words is the words")
+    }
+
+    func testARenamedServerShowsWhenTheListCantBeReadAfterTheSave() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/config": ["mcp_servers": ["griply": ["url": "https://old"]]],
+            "/api/mcp/servers": ["ok": true, "servers": [["name": "griply", "transport": "http", "url": "https://old", "auth": "oauth", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadConnectors()
+        XCTAssertEqual(store.servers.map(\.name), ["griply"])
+
+        let entry = try await store.serverConfig("griply")
+        requester.failures["GET /api/mcp/servers"] = DashboardTicketBridgeError.http(status: 502, detail: "Bad Gateway")
+        try await store.saveServer(original: "griply", loaded: entry, name: "Griply", entry: ["url": "https://new"], openedOn: store.generation)
+        let row = try XCTUnwrap(store.servers.first)
+        XCTAssertEqual(store.servers.map(\.name), ["Griply"], "the page follows the rename instead of saying it's gone")
+        XCTAssertEqual(row.url, "https://new")
+        XCTAssertEqual(row.auth, "oauth", "what the entry doesn't say comes from the old row")
+        XCTAssertTrue(row.enabled)
+    }
+
     func testAServerSaveSendsNothingAfterAProfileSwitch() async throws {
         let config: [String: [String: Any]] = [
             "/api/config": ["mcp_servers": ["griply": ["url": "https://old"]]],
