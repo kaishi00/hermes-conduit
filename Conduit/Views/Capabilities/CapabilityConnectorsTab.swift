@@ -755,7 +755,10 @@ struct ConnectorEditSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
+                    // A save on its way finishes here, so what Hermes says
+                    // about it is shown.
                     Button(AppLocalization.string("Cancel")) { dismiss() }
+                        .disabled(saving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if saving {
