@@ -974,11 +974,12 @@ extension KanbanTests {
 
         // A connector install counts as a write to the servers, so a read
         // asked before it isn't kept after it, and marks the kept catalog's
-        // entry installed, so when the read after it fails, the catalog
+        // entry installed, so when the reads after it fail, the catalog
         // doesn't offer it again next time.
         let notion = try XCTUnwrap(third.connectorCatalog.first { $0.name == "notion" })
         hermes.responses["/api/mcp/catalog/install"] = ["ok": true]
         hermes.responses["/api/mcp/servers"] = nil
+        hermes.responses["/api/mcp/catalog"] = nil
         let installed = await third.installConnector(notion, env: [:])
         XCTAssertTrue(installed)
         XCTAssertEqual(kept.noted.last, CapabilitiesStore.KeptRoute.servers)
