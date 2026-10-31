@@ -443,7 +443,10 @@ final class MarkdownTableLayoutTests: XCTestCase {
     // MARK: - Plain cells in the chat
 
     /// In the chat a table's cells are plain text: no text view per cell,
-    /// which made tables most of what a long answer cost to build.
+    /// which made tables most of what a long answer cost to build. A cell
+    /// with a link draws as the reply's text does, so the click or tap
+    /// opens it (issue 1585): drawn until touched, so it mounts no text
+    /// view either until then.
     @MainActor
     func testChatTablesDrawCellsAsPlainText() throws {
         let source = """
@@ -454,7 +457,8 @@ final class MarkdownTableLayoutTests: XCTestCase {
         """
         TranscriptPerf.reset()
         let host = UIHostingController(rootView: MarkdownText(source: source)
-            .environment(\.markdownTablePlainCells, true))
+            .environment(\.markdownTablePlainCells, true)
+            .environment(\.selectableTextDrawsUntilTouched, true))
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = host
         window.isHidden = false
@@ -464,9 +468,40 @@ final class MarkdownTableLayoutTests: XCTestCase {
 
         XCTAssertTrue(allTextViews(in: host.view).isEmpty, "plain cells mount no text views")
         XCTAssertGreaterThanOrEqual(
-            TranscriptPerf.plainTableCellBodyEvaluations, 9,
-            "every cell, the header's included, draws as plain text"
+            TranscriptPerf.plainTableCellBodyEvaluations, 8,
+            "every cell without a link, the header's included, draws as plain text"
         )
+        let drawn = allTextViewsDeep(in: host.view).compactMap { $0 as? SelectableTextViewHostView }
+        XCTAssertEqual(drawn.map(\.displayedText), ["log"], "the link cell draws as the reply's text does")
+    }
+
+    /// Only a cell with a link leaves plain text in the chat; once
+    /// selection is on, every cell is a text view.
+    @MainActor
+    func testOnlyLinkCellsDrawAsTextWhileCellsArePlain() {
+        let font = UIFont.preferredFont(forTextStyle: .footnote)
+        func drawsAsText(_ source: String, selectsText: Bool = false) -> Bool {
+            MarkdownTableRowView.cellDrawsAsText(
+                source: source,
+                selectsText: selectsText,
+                references: .empty,
+                foregroundStyle: .primary,
+                usesAccentSurface: false,
+                font: font
+            )
+        }
+        XCTAssertFalse(drawsAsText("**0.9 s**"))
+        XCTAssertFalse(drawsAsText("brackets [not a link] here"))
+        XCTAssertTrue(drawsAsText("[skills](https://github.com/example/skills)"))
+        XCTAssertTrue(drawsAsText("plain text", selectsText: true))
+        XCTAssertTrue(MarkdownTableRowView.cellDrawsAsText(
+            source: "[docs][d]",
+            selectsText: false,
+            references: MarkdownReferenceContext(definitionsMarkdown: "[d]: https://example.com/docs"),
+            foregroundStyle: .primary,
+            usesAccentSurface: false,
+            font: font
+        ), "a reference-style link is a link")
     }
 
     /// A plain cell keeps what the bridge styled: its font, bold runs and
