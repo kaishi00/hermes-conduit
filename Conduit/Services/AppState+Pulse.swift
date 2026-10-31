@@ -52,12 +52,13 @@ extension AppState {
         keptAnswer(PulseClient.memoryPath, profile: KeptRoute.everyProfile).map(PulseClient.memoryItems(from:))
     }
 
-    /// Takes an item Pulse forgot out of the kept list too, so the list
-    /// never opens on it, even when reading it again fails, or when a read
-    /// asked before the forget answers after it.
-    func forgetKeptPulseMemoryItem(id: Int) async {
-        guard let owner = currentDashboardRuntimeOwner() else { return }
-        guard var kept = keptAnswer(PulseClient.memoryPath, profile: KeptRoute.everyProfile) else {
+    /// Takes an item Pulse forgot out of the list kept for the dashboard it
+    /// was forgotten on (`owner`, as the forget was asked), another one
+    /// open by then or not, so the list never opens on it, even when
+    /// reading it again fails, or when a read asked before the forget
+    /// answers after it.
+    func forgetKeptPulseMemoryItem(id: Int, owner: DashboardRuntimeOwner) async {
+        guard var kept = keptAnswer(PulseClient.memoryPath, profile: KeptRoute.everyProfile, on: owner) else {
             noteKeptAnswerWrite(for: PulseClient.memoryPath, profile: KeptRoute.everyProfile, owner: owner)
             return
         }

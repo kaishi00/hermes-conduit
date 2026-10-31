@@ -1331,15 +1331,18 @@ struct PulseMemoryList: View {
         guard !forgetting else { return }
         forgetting = true
         let client = appState.pulseClient
+        let owner = appState.currentDashboardRuntimeOwner()
         Task {
             defer { forgetting = false }
             do {
                 _ = try await client.forget(id: item.id)
+                // The kept list follows on the dashboard it was forgotten on,
+                // shown or not.
+                if let owner { await appState.forgetKeptPulseMemoryItem(id: item.id, owner: owner) }
                 guard isShown(client) else { return }
                 items.removeAll { $0.id == item.id }
                 errorMessage = nil
                 Haptics.success()
-                await appState.forgetKeptPulseMemoryItem(id: item.id)
             } catch {
                 guard isShown(client) else { return }
                 errorMessage = PulseRefusal.message(for: error)

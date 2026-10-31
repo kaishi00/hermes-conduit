@@ -2743,7 +2743,12 @@ final class AppState: ObservableObject {
         guard let owner = currentDashboardRuntimeOwner() else { return { _, _ in } }
         let removals = offlineChatCache.removals
         return { [weak self] line, route in
-            self?.keepWrittenAnswer(line.answer, for: route, profile: profile, owner: owner, removals: removals)
+            guard let self else { return }
+            // A check's line is kept as a read's answer is, the last to land.
+            self.keepAnswer(
+                line.answer, for: route, profile: profile, owner: owner, removals: removals,
+                turn: self.nextKeptAnswerTurn(), writes: false
+            )
         }
     }
 
@@ -33208,16 +33213,15 @@ final class AppState: ObservableObject {
                 try await ProfileConfigWriteQueue.runThrowing {
                     _ = try await dashboardTicketBridge.requestJSON(path: "/api/dashboard/plugin-providers", method: "PUT", body: body)
                 }
-                guard ownsDashboardRuntime(owner) else { return false }
                 // The page opens on it next time, as on a config it saved,
-                // a switch to another profile meanwhile included.
-                if var config = keptAnswer(KeptRoute.config, profile: profile) {
+                // a switch to another profile or dashboard meanwhile included.
+                if var config = keptAnswer(KeptRoute.config, profile: profile, on: owner) {
                     setProfileSettingValue(value, in: &config, key: key)
                     keepWrittenAnswer(config, for: KeptRoute.config, profile: profile, owner: owner, removals: removals)
                 } else {
                     noteKeptAnswerWrite(for: KeptRoute.config, profile: profile, owner: owner)
                 }
-                return profile == activeProfile
+                return ownsDashboardRuntime(owner) && profile == activeProfile
             }
             let reasoning = key == ReasoningDisplayMode.settingKey ? value.textValue.flatMap(ReasoningDisplayMode.init(rawValue:)) : nil
             if key == ReasoningDisplayMode.settingKey, reasoning == nil { return false }
@@ -33410,7 +33414,8 @@ final class AppState: ObservableObject {
     /// state (Pulse's), which is then what the screen opens on next.
     /// `writes` for a step that changes what it answers with (a save, a
     /// forget): it's as new as when it lands, so the answer to a read asked
-    /// while it was out never goes back over it.
+    /// while it was out never goes back over it, and it's kept for the
+    /// dashboard it was made on, another one open by then or not.
     func keepingAnswer(
         profile: String,
         owner: DashboardRuntimeOwner,
@@ -33422,12 +33427,14 @@ final class AppState: ObservableObject {
         let asked = nextKeptAnswerTurn()
         let answer = try await read()
         let turn = writes ? nextKeptAnswerTurn() : asked
-        if let route = route(answer) { keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals, turn: turn) }
+        if let route = route(answer) {
+            keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals, turn: turn, writes: writes)
+        }
         return answer
     }
 
     /// Keeps what the phone just wrote, over the answer to any read asked
-    /// before it.
+    /// before it, for the dashboard it wrote to.
     private func keepWrittenAnswer(
         _ answer: [String: Any],
         for route: String,
@@ -33435,7 +33442,7 @@ final class AppState: ObservableObject {
         owner: DashboardRuntimeOwner,
         removals: Int
     ) {
-        keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals, turn: nextKeptAnswerTurn())
+        keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals, turn: nextKeptAnswerTurn(), writes: true)
     }
 
     /// Numbers the reads whose answers are kept as they're asked, and the
@@ -33462,21 +33469,27 @@ final class AppState: ObservableObject {
         [dashboardID.uuidString, profile, route].joined(separator: "\u{1F}")
     }
 
-    /// Kept only while the read still belongs to the dashboard it asked,
-    /// with nothing wiped since it was asked (a sign-out, Delete Saved
-    /// Chats, a deleted bot), and nothing newer kept since.
+    /// Kept with nothing newer kept since, and nothing wiped since it was
+    /// asked (a sign-out, Delete Saved Chats, a deleted bot): a read's
+    /// answer only while its dashboard is still the one open, and a
+    /// write's for the dashboard it was made on, as that's what its Hermes
+    /// holds now. A write counts from when it landed, kept or not.
     private func keepAnswer(
         _ answer: [String: Any],
         for route: String,
         profile: String,
         owner: DashboardRuntimeOwner,
         removals: Int,
-        turn: Int
+        turn: Int,
+        writes: Bool
     ) {
-        guard let dashboardID = owner.dashboardID, ownsDashboardRuntime(owner), offlineChatCache.removals == removals else { return }
+        guard let dashboardID = owner.dashboardID else { return }
         let scope = Self.keptAnswerScope(dashboardID, profile, route)
         guard turn > keptAnswerTurnsKept[scope, default: 0] else { return }
+        let keeps = offlineChatCache.removals == removals && (writes || ownsDashboardRuntime(owner))
+        guard keeps || writes else { return }
         keptAnswerTurnsKept[scope] = turn
+        guard keeps else { return }
         // A schema's fields are keyed by config path, not by what they hold.
         let names: Set<String> = route == KeptRoute.configSchema ? ["fields"] : []
         offlineChatCache.recordAnswer(answer, route: route, dashboardID: dashboardID, profile: profile, namesUnder: names)
@@ -33490,9 +33503,15 @@ final class AppState: ObservableObject {
         return offlineChatCache.keptAnswer(route, dashboardID: dashboardID, profile: profile ?? activeProfile)
     }
 
+    /// The answer kept for the route on the owner's dashboard, the one open
+    /// or not: what a write that lands there changes.
+    func keptAnswer(_ route: String, profile: String, on owner: DashboardRuntimeOwner) -> [String: Any]? {
+        owner.dashboardID.flatMap { offlineChatCache.keptAnswer(route, dashboardID: $0, profile: profile) }
+    }
+
     /// Where Voice settings keep their answers for the profile, beside the
-    /// other settings pages': on this dashboard, while it's the one open.
-    /// Nil without a bridge.
+    /// other settings pages': on this dashboard, which they read only while
+    /// it's the one open. Nil without a bridge.
     func voiceSettingsAnswers(profile: String) -> VoiceKeptAnswers? {
         guard let owner = currentDashboardRuntimeOwner() else { return nil }
         return VoiceKeptAnswers(

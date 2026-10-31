@@ -1184,24 +1184,30 @@ final class OfflineChatCacheStore {
         return components.string ?? ""
     }
 
-    /// A user and password after a `://`, up to the host's last `@`: a
-    /// space in them included, as that's text the parser rejects.
-    private static let unparsedUserInfo = try! NSRegularExpression(pattern: #"(?<=://)[^/?#]*@"#)
-    /// A query's name and value.
-    private static let unparsedQueryItem = try! NSRegularExpression(pattern: #"(?<=[?&])([^=&#\s]+)=([^&#\s]*)"#)
+    /// A user and password after a `://`, up to the `@` before the host. A
+    /// password may hold a space, as that's text the parser rejects, and an
+    /// `@` with no space after it before the next `@`: a host never holds a
+    /// space, so prose after a URL (an address in it included) stays.
+    private static let unparsedUserInfo = try! NSRegularExpression(
+        pattern: #"(?<=://)(?:[^/?#\s@:]*:[^/?#@]*|[^/?#\s@]*)(?:@[^/?#@\s]*)*@"#
+    )
+    /// A query's name, with its `=`.
+    private static let unparsedQueryName = try! NSRegularExpression(pattern: #"(?<=[?&])([^=&#\s]+)="#)
 
     /// Text the URL parser rejects (a space in it, say) loses the same by
     /// pattern: any user and password, and a credential's value in a
-    /// query, its name left.
+    /// query, its name left. That value runs to the next `&` or `#`, or the
+    /// end of the line, a space in it included.
     private static func withoutUnparsedURLCredentials(_ text: String) -> String {
         var kept = unparsedUserInfo.stringByReplacingMatches(
             in: text, range: NSRange(text.startIndex..., in: text), withTemplate: ""
         )
-        let items = unparsedQueryItem.matches(in: kept, range: NSRange(kept.startIndex..., in: kept))
-        for item in items.reversed() {
-            guard let name = Range(item.range(at: 1), in: kept), isCredentialKey(String(kept[name])),
-                  let value = Range(item.range(at: 2), in: kept) else { continue }
-            kept.removeSubrange(value)
+        let names = unparsedQueryName.matches(in: kept, range: NSRange(kept.startIndex..., in: kept))
+        for match in names.reversed() {
+            guard let name = Range(match.range(at: 1), in: kept), isCredentialKey(String(kept[name])),
+                  let item = Range(match.range, in: kept) else { continue }
+            let end = kept[item.upperBound...].firstIndex { $0 == "&" || $0 == "#" || $0.isNewline } ?? kept.endIndex
+            kept.removeSubrange(item.upperBound..<end)
         }
         return kept
     }

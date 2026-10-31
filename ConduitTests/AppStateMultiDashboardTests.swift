@@ -1707,6 +1707,36 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]))
     }
 
+    /// A write that lands after a switch is kept for the dashboard it was
+    /// made on, whose pages open on it when it's back, a config save and a
+    /// forget alike; the dashboard open by then keeps nothing of it.
+    func testAWriteLandingAfterASwitchIsKeptForItsDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let owner = try XCTUnwrap(appState.currentDashboardRuntimeOwner())
+        let memory = Task { try await appState.pulseClient.memory() }
+        try await held.waitForRequests(1)
+        try await held.answer(["items": [
+            ["id": 1, "text": "Call Ann", "kind": "commitment"], ["id": 2, "text": "Book the flights", "kind": "commitment"],
+        ]])
+        _ = try await memory.value
+
+        let save = Task { await appState.setProfileSetting("display.skin", value: .text("slate")) }
+        try await held.waitForRequests(2)       // the save's config read
+        try await held.answer(["display": ["skin": "ares"]])
+        try await held.waitForRequests(3)       // ... and its write
+        appState.selectDashboardTarget(vps.id)
+        try await held.answer()
+        _ = await save.value
+        await appState.forgetKeptPulseMemoryItem(id: 1, owner: owner)      // a forget landing now
+        XCTAssertNil(appState.keptProfileSettings(keys: ["display.skin"]), "Nothing of them on the VPS")
+        XCTAssertNil(appState.keptPulseMemory())
+
+        appState.selectDashboardTarget(mac)
+        XCTAssertEqual(appState.keptProfileSettings(keys: ["display.skin"])?["display.skin"], .text("slate"), "The Mac's pages open on its save")
+        XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Book the flights"], "and its list without what it forgot")
+    }
+
     /// Delete Saved Chats takes the settings pages' kept answers, and a
     /// read it overtook keeps nothing: the page shows Hermes' answer, and
     /// nothing comes back on the phone.
@@ -1772,6 +1802,7 @@ extension AppStateMultiDashboardTests {
     /// asked after it does replace it.
     func testAReadAskedBeforeAWriteNeverPutsItsAnswerBack() async throws {
         let (appState, held, _) = heldSwitchFixture()
+        let owner = try XCTUnwrap(appState.currentDashboardRuntimeOwner())
         let client = appState.pulseClient
         let items: [String: Any] = ["items": [
             ["id": 1, "text": "Call Ann", "kind": "commitment"], ["id": 2, "text": "Book the flights", "kind": "commitment"],
@@ -1783,7 +1814,7 @@ extension AppStateMultiDashboardTests {
 
         let older = Task { try await client.memory() }
         try await held.waitForRequests(2)
-        await appState.forgetKeptPulseMemoryItem(id: 1)
+        await appState.forgetKeptPulseMemoryItem(id: 1, owner: owner)
         try await held.answer(items)
         _ = try await older.value
         XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Book the flights"], "Asked before the forget")
@@ -1814,10 +1845,11 @@ extension AppStateMultiDashboardTests {
     /// memory provider's save with no config kept, still outranks a read
     /// asked before it: that read's answer isn't kept after it.
     func testAWriteWithNothingKeptStillOutranksAnOlderRead() async throws {
-        let (appState, held, _) = heldSwitchFixture()
+        let (appState, held, vps) = heldSwitchFixture()
+        let owner = try XCTUnwrap(appState.currentDashboardRuntimeOwner())
         let older = Task { try await appState.pulseClient.memory() }
         try await held.waitForRequests(1)
-        await appState.forgetKeptPulseMemoryItem(id: 1)
+        await appState.forgetKeptPulseMemoryItem(id: 1, owner: owner)
         try await held.answer(["items": [["id": 1, "text": "Call Ann", "kind": "commitment"]]])
         _ = try await older.value
         XCTAssertNil(appState.keptPulseMemory(), "Asked before the forget")
@@ -1847,6 +1879,23 @@ extension AppStateMultiDashboardTests {
         _ = await olderLoad.value
         appState.setActiveProfileForTesting("default")
         XCTAssertNil(appState.keptProfileSettings(keys: ["memory.provider"]), "Asked before a save that landed after a switch")
+
+        // And one that lands after a switch to another dashboard counts for
+        // the dashboard it was made on, where a read asked before it then
+        // answers.
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let leftLoad = Task { await appState.loadProfileSettings(keys: ["memory.provider"]) }
+        try await held.waitForRequests(6)
+        let leftSave = Task { await appState.setProfileSetting("memory.provider", value: .text("mem0")) }
+        try await held.waitForRequests(7)
+        appState.selectDashboardTarget(vps.id)
+        try await held.answer(at: 1)
+        let leftSaved = await leftSave.value
+        XCTAssertFalse(leftSaved, "The dashboard it was made on is gone")
+        appState.selectDashboardTarget(mac)
+        try await held.answer(["memory": ["provider": "builtin"]])
+        _ = await leftLoad.value
+        XCTAssertNil(appState.keptProfileSettings(keys: ["memory.provider"]), "Asked before a save that landed after a dashboard switch")
     }
 
     /// A Voice replies model save outranks a read of the slots asked
@@ -1881,6 +1930,7 @@ extension AppStateMultiDashboardTests {
     /// another dashboard's opens on nothing.
     func testPulsesStateAndMemoryAreKeptOncePerDashboard() async throws {
         let (appState, held, vps) = heldSwitchFixture()
+        let owner = try XCTUnwrap(appState.currentDashboardRuntimeOwner())
         let client = appState.pulseClient
         XCTAssertNil(appState.keptPulseState(), "Nothing kept yet")
 
@@ -1910,7 +1960,7 @@ extension AppStateMultiDashboardTests {
         ]])
         _ = try await memory.value
         XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Call Ann", "Book the flights"])
-        await appState.forgetKeptPulseMemoryItem(id: 1)
+        await appState.forgetKeptPulseMemoryItem(id: 1, owner: owner)
         XCTAssertEqual(appState.keptPulseMemory()?.map(\.text), ["Book the flights"], "A forgotten item leaves the kept list")
 
         // Quiet for today from a Pulse notification is kept as the page's own steps are.
