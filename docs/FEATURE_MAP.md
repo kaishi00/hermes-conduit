@@ -2819,6 +2819,43 @@ Recent menu) · the Archived sheet · README.md
 
 **Checked:** 2026-10-26, #1328.
 
+## All profiles in Chats
+
+The All chip in the Chats list's profile row: every included profile's chats
+in one list, newest first with each row's profile picture, or with Group by
+profile a section per profile listing its pinned chats and its five newest
+until Show more (issue 1560 asked for the list; Eric asked for the cap).
+
+**Siblings:** the chip and its Show in All sheet (which profiles, Group by
+profile) · Filter's Group by profile switch · the date sections and the
+mixed Pinned section · each profile's section (closing it, Show more,
+reordering its pins) · search and "In messages" across profiles · the
+status, Starred and source filters · opening, renaming, archiving and
+deleting another profile's chat · New chat (asks which profile) · the open
+chat's row on the iPad and Mac (same view) · unread dots (another profile's
+replies) · VoiceOver · README.md
+
+**Code**
+- Settings, merge and groups: `Conduit/Models/AllProfilesChats.swift` (AllProfilesChatsSettings, rows, groups, preview, groupPreviewCount, holdsOpen), `Conduit/Models/ChatListSections.swift` (latestActivity)
+- State and other profiles' rows: `Conduit/Services/AppState.swift` (rowProfile, isOtherProfileRow, isAllProfilesChatsOn, allProfilesIncluded, allProfilesGroupsByProfile, refreshAllProfilesCatalog, listAllProfilesCatalog, startNewChat(inProfile:))
+- Chip and sheet: `Conduit/Views/V2/V2TopBar.swift` (withAllProfilesChip), `Conduit/Views/V2/V2AllProfilesSheet.swift`
+- List: `Conduit/Views/V2/V2ChatsView.swift` (profileGroups, profileSection, profileShowMoreRow, profilesShowingAll, holdsOpenChat, collapsedProfiles, revealActiveSection, badgesRows, rowScope)
+- Row badge: `Conduit/Views/V2/V2SessionRow.swift` (V2ProfileBadge)
+- Search: `Conduit/Services/SessionContentSearch.swift` (otherProfiles)
+- Docs: `README.md` (Features)
+- Tests: `ConduitTests/SidebarLayoutTests+AllProfiles.swift`
+
+**Rulings**
+- All is offered with two or more profiles on the dashboard; the profiles left out are kept by name, so a profile added later is in, and leaving every one out lists them all (2026-10-22, #1128, Eric picked the chip and grouping).
+- Grouped by profile, a section lists its pinned chats, then the five chats with the newest activity (a nest by its newest row, as the date sections file it), in the list's order, until "Show 12 more"; "Show fewer" puts it back. The open chat stays listed past the five, so a wide window never highlights a hidden row. A search or a status or Starred filter lists every match; a source filter (Voice, Scheduled and the like) is still a browse and keeps the cap. The row shows only while the cap hides something, so a profile that shrinks to five loses its Show fewer. Show more is remembered per profile until the app closes, while a closed section stays closed across launches (2026-10-31, #1571, Eric: one busy profile filled the list and few found the section's close).
+- The ungrouped list stays one list, newest first, with no cap: it's ordered by last activity across profiles, as issue 1560 asked.
+- Projects belong to one profile, so All shows chats only (see Project chats in Chats).
+
+**Open gaps**
+- Live status (the live registry's Running and waits) and scheduled runs follow the profile in use only, as built in #1128.
+
+**Checked:** 2026-10-31, #1571.
+
 ## Unread dot on projects
 
 The gold dot on a project in the Projects list while any chat in it has a
@@ -2880,13 +2917,14 @@ widget's and the Share extension's) · README.md
 - The order is kept per profile under each chat's pin id (its lineage root), so a compacted chat keeps its place. Hermes keeps only whether a chat is pinned, so the order goes to other devices through Sync across devices (`chats.pinned_order`, the profile in use's), not through Hermes.
 - In All's mixed Pinned section a chat stays where it's dropped, among the other profiles' too: the section also keeps which profile holds each place, and each profile's chats fill its places in that profile's own order. A drag there saves the order of every profile it shows, so later activity doesn't move a chat dropped among another profile's. That mix stays on this device, like All's other settings, and applies to the mixed section only (All grouped by profile and a profile's own list follow each profile's order); a chat pinned since goes on top, and an unpinned one leaves it. This replaces "each profile's pinned rows keep the places they held among the others'", under which a drop past another profile's chats snapped back (Eric, 2026-10-29, issue 1486, #1490).
 - CarPlay's pinned chats follow the order. The widget's and Share extension's pickers don't: they pick a chat from every chat, pinned ones first by recent activity.
+- In All grouped by profile, a section's pinned chats are never held back by its Show more, and still move among themselves; the Show more row stays out of the drag (2026-10-31, #1571).
 
 **Open gaps**
 - Hermes Desktop keeps its own pin order, and Hermes has no field for one, so the two never match.
 - The classic drawer reorders only from the sheet: its nested rows are one block each, which a List drag can't move cleanly.
 - Not yet tried on a device: whether the system's lift from a held row and the touch-and-hold menu share the hold as planned.
 
-**Checked:** 2026-10-29, #1490.
+**Checked:** 2026-10-31, #1571 (a profile section's Show more, see All profiles in Chats); 2026-10-29, #1490.
 
 ## Deleting from a list row
 

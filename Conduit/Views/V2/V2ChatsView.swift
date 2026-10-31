@@ -421,6 +421,9 @@ struct V2ChatsView: View, Equatable {
         (UserDefaults.standard.string(forKey: V2ChatsView.collapsedProfilesKey) ?? "")
             .split(separator: "\n").map(String.init)
     )
+    /// All grouped by profile: the sections showing every chat after
+    /// "Show more", by name, until the app closes.
+    @State private var profilesShowingAll = Set<String>()
 
     init(appState: AppState) {
         self.appState = appState
@@ -1510,8 +1513,27 @@ struct V2ChatsView: View, Equatable {
     ) -> some View {
         Section {
             if !isProfileCollapsed(profile) {
-                // Its pinned chats lead it, and move among themselves.
-                listRows(V2ChatsListItem.items(nodes, expanded: expanded, scope: rowScope), movesPinned: dragsPinned)
+                // Its pinned chats lead it, and move among themselves; then
+                // its newest few until "Show more", unless a search or a
+                // status filter is looking through all of them (a source
+                // filter is still a browse, so it keeps the cap).
+                let preview = AllProfilesChats.preview(
+                    nodes,
+                    showsAll: !sectionsCollapsible,
+                    isPinned: { appState.isSessionPinned($0.session) },
+                    isOpen: holdsOpenChat,
+                    activity: ChatListSection.latestActivity(in:)
+                )
+                let showsAll = profilesShowingAll.contains(profile)
+                listRows(
+                    V2ChatsListItem.items(showsAll ? nodes : preview.shown, expanded: expanded, scope: rowScope),
+                    movesPinned: dragsPinned
+                )
+                // Only while the cap hides something: a profile that shrank
+                // to five gets no "Show fewer" that changes nothing.
+                if preview.hidden > 0 {
+                    profileShowMoreRow(profile, hiddenCount: preview.hidden)
+                }
             }
         } header: {
             profileSectionHeader(profile, count: nodes.count)
@@ -1519,6 +1541,44 @@ struct V2ChatsView: View, Equatable {
                     pinnedOrderTarget = PinnedChatsOrderTarget(profile: profile)
                 }
         }
+    }
+
+    /// The open chat, or one nested under it, stays listed past the
+    /// preview, so a wide window never highlights a hidden row.
+    private func holdsOpenChat(_ node: SessionNesting.Node) -> Bool {
+        AllProfilesChats.holdsOpen(node, isOpen: { appState.isOpenChatRow($0) })
+    }
+
+    /// "Show 12 more" under a profile's newest chats, "Show fewer" once
+    /// they're all listed.
+    private func profileShowMoreRow(_ profile: String, hiddenCount: Int) -> some View {
+        let showsAll = profilesShowingAll.contains(profile)
+        return Button {
+            Haptics.selection()
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                if showsAll { profilesShowingAll.remove(profile) } else { profilesShowingAll.insert(profile) }
+            }
+        } label: {
+            Label(
+                showsAll
+                    ? AppLocalization.string("Show fewer")
+                    : AppLocalization.string("Show \(hiddenCount) more"),
+                systemImage: showsAll ? "chevron.up" : "chevron.down"
+            )
+            .scaledFont(.subheadline.weight(.medium))
+            .foregroundStyle(Color.conduitAccent)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .moveDisabled(true)
+        .accessibilityHint(AppLocalization.string(showsAll
+            ? "Lists only this profile's newest chats."
+            : "Lists every chat of this profile."))
     }
 
     private func profileSectionHeader(_ profile: String, count: Int) -> some View {
