@@ -323,13 +323,17 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(AppState.placingReviews([], into: history).map(\.id), history.map(\.id))
 
         // Load earlier puts older rows above a review at the page's start;
-        // the review goes back after the rows timed before it.
+        // the review goes back among them, before the first row timed after it.
+        let early = ChatMessage(
+            id: "review-summary-3", role: .system, content: "Skill created",
+            timestamp: formatter.string(from: Date(timeIntervalSince1970: morning - 90)), review: activity
+        )
         let olderPage = Array(history.prefix(3))
-        let newestPage = AppState.placingReviews([review], into: Array(history.suffix(2)))
-        XCTAssertEqual(newestPage.map(\.id), ["review-summary-1", "u2", "a2"])
+        let newestPage = AppState.placingReviews([early], into: Array(history.suffix(2)))
+        XCTAssertEqual(newestPage.map(\.id), ["review-summary-3", "u2", "a2"])
         XCTAssertEqual(
             AppState.replacingSavedReviews(in: olderPage + newestPage)?.map(\.id),
-            ["u1", "t1", "a1", "review-summary-1", "u2", "a2"]
+            ["u1", "t1", "review-summary-3", "a1", "u2", "a2"]
         )
         XCTAssertNil(AppState.replacingSavedReviews(in: history), "no saved review, nothing to place")
     }
