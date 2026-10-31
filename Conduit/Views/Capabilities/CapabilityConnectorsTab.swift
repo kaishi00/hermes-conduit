@@ -290,6 +290,9 @@ struct ConnectorDetailPage: View {
     @State private var name: String
     let store: CapabilitiesStore
     @State private var editing = false
+    /// The page's own first test has been asked for: from then on an
+    /// untested server says so instead of waiting.
+    @State private var firstTestAsked = false
     @State private var signInFlow: String?
     @State private var signInTask: Task<Void, Never>?
     @State private var message: String?
@@ -368,6 +371,7 @@ struct ConnectorDetailPage: View {
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: server?.enabled)
         .navigationTitle(Text(verbatim: name))
         .task(id: name) {
+            firstTestAsked = true
             if let server, server.enabled, probe == nil, !store.probing.contains(name) {
                 await store.probe(name)
             }
@@ -511,7 +515,7 @@ struct ConnectorDetailPage: View {
                 Text(verbatim: AppLocalization.string("\(server.name) is off. Turn it on to read the tools it brings."))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
-            } else if state == .checking || (probe == nil && state == .unknown) {
+            } else if state == .checking || (probe == nil && state == .unknown && !firstTestAsked) {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text("Reading the tool list…")
@@ -538,6 +542,11 @@ struct ConnectorDetailPage: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+            } else if probe == nil && state == .unknown {
+                // A test cut off under it recorded nothing.
+                Text("Not tested yet. Test Connection reads its tools.")
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
             } else if state == .needsSignIn {
                 Text(verbatim: AppLocalization.string("Sign in to \(server.name) to read its tools."))
                     .scaledFont(.footnote)
@@ -776,7 +785,7 @@ struct ConnectorEditSheet: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .accessibilityLabel(Text("Edit Server"))
+            .accessibilityLabel(Text("Edit as"))
             TextField(AppLocalization.string("Name"), text: edit.name)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()

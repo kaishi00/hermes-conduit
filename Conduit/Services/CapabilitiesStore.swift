@@ -466,13 +466,17 @@ final class CapabilitiesStore {
         return config["mcp_servers"] as? [String: Any] ?? [:]
     }
 
-    /// One server's entry, to edit.
+    /// One server's entry, to edit. Read in turn with config saves, so a
+    /// switch flipped just before shows in it.
     func serverConfig(_ name: String) async throws -> [String: Any] {
         guard let requester else { throw CapabilitiesStoreError.notConnected }
-        guard let entry = try await Self.configuredServers(requester, profile: profile)[name] as? [String: Any] else {
-            throw ConnectorServerEdit.Problem.gone(name)
+        let profile = self.profile
+        return try await ProfileConfigWriteQueue.runThrowing {
+            guard let entry = try await Self.configuredServers(requester, profile: profile)[name] as? [String: Any] else {
+                throw ConnectorServerEdit.Problem.gone(name)
+            }
+            return entry
         }
-        return entry
     }
 
     /// Saves an edited server, renamed or not. The map is read again and
