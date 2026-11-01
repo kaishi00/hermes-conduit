@@ -83,6 +83,7 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 - Live Activities on the Lock Screen and in the Dynamic Island while a reply runs
 - Home Screen widgets to start a chat or talk in one tap
 - Provider, model and reasoning effort switching mid-conversation
+- Connect model providers in Settings > Models & providers: sign in, paste an API key once for every profile (or give one profile its own), or add your own OpenAI-compatible server. Keys stay on your Hermes host and are never shown again
 - Multiple dashboards and profiles, each with its own credentials and settings; rename a profile or change its photo and glow in Settings > Profiles; All in the profile row lists every profile's chats together, newest first with each row's profile picture, or grouped by profile with each profile's pinned chats and five newest until Show more
 - Capabilities: skills, tools, connectors (MCP servers you can test and edit, by form or as JSON) and plugins, plus Hermes settings and gateway logs
 - Native OAuth sign-in through your dashboard, QR code and setup links, Cloudflare Access service tokens

@@ -44,8 +44,14 @@ final class SelectionObserverUITests: XCTestCase {
         let opened = app.staticTexts.matching(identifier: "fixture.openedURL").firstMatch
         XCTAssertTrue(opened.waitForExistence(timeout: 5))
         XCTAssertEqual(opened.label, "opened:none")
-        let link = app.textViews
-            .matching(NSPredicate(format: "label CONTAINS %@", "skills link")).firstMatch
+        // The cell's text view is all link, so accessibility shows it as a
+        // Link, not a TextView: match either, the outermost first.
+        let link = app.descendants(matching: .any).matching(NSPredicate(
+            format: "(elementType == %lu OR elementType == %lu) AND label CONTAINS %@",
+            XCUIElement.ElementType.textView.rawValue,
+            XCUIElement.ElementType.link.rawValue,
+            "skills link"
+        )).firstMatch
         XCTAssertTrue(link.waitForExistence(timeout: 5), "Link cell not found. Tree:\n\(app.debugDescription)")
 
         link.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()

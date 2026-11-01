@@ -78,6 +78,7 @@
     "PrivacyManifestTests": 0.05,
     "ProfileModelDefaultsTests": 0.05,
     "ProfileTimeZoneTests": 3.0,
+    "ProviderSettingsTests": 0.1,
     "PushRelayBuildIdentityTests": 3.0,
     "RedirectCompatibilityTests": 1.0,
     "ResponseHapticPolicyTests": 0.006,
