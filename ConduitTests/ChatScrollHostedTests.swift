@@ -141,26 +141,46 @@ final class ChatScrollHostedTests: XCTestCase {
         )
     }
 
-    /// What the next frame shows. A row that grew in the last turn (a
-    /// streaming reply's text comes out a few characters at a time) is laid
-    /// out, and followed, by the collection view's pass after its own,
-    /// which TranscriptViewController asks for at once but `settle` can end
-    /// before: runs that pass, and any the rows it lays out lead to.
-    private func finishPasses(_ mounted: Mounted) {
-        for _ in 0..<4 where mounted.scrollView.layer.needsLayout() {
-            mounted.scrollView.layoutIfNeeded()
-        }
-    }
-
     private func assertAtLatest(
         _ mounted: Mounted,
         _ message: String,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        finishPasses(mounted)
         let distance = maxOffset(mounted.scrollView) - mounted.scrollView.contentOffset.y
         XCTAssertLessThanOrEqual(abs(distance), 1, "\(message) (distance \(distance))", file: file, line: line)
+    }
+
+    /// `assertAtLatest` while a reply streams in. Its text comes out a few
+    /// characters at a time, and its row reports each growth while UIKit
+    /// lays out its cell, after the collection view's own pass, so the pass
+    /// that follows the growth comes after it: TranscriptViewController
+    /// queues it on the main queue at once, and `settle` can end between
+    /// the two. Checked from a block queued after that pass, once no row's
+    /// growth still owes one.
+    private func assertAtLatestWhileStreaming(
+        _ mounted: Mounted,
+        _ message: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let checked = expectation(description: "checked after the queued pass")
+        func check(_ attempt: Int) {
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    // Text that came out after this block was queued owes a
+                    // pass queued after it: check after that one.
+                    if mounted.scrollView.layer.needsLayout(), attempt < 5 {
+                        check(attempt + 1)
+                        return
+                    }
+                    self.assertAtLatest(mounted, message, file: file, line: line)
+                    checked.fulfill()
+                }
+            }
+        }
+        check(0)
+        wait(for: [checked], timeout: 2)
     }
 
     /// What a finger would do: begin a drag, move the content, let go.
@@ -347,8 +367,63 @@ final class ChatScrollHostedTests: XCTestCase {
                 count: tick * 3
             ))
             settle(mounted.host.view, seconds: 0.1)
-            assertAtLatest(mounted, "streaming growth tick \(tick) is followed")
+            assertAtLatestWhileStreaming(mounted, "streaming growth tick \(tick) is followed")
         }
+    }
+
+    func testARowThatGrowsOnItsOwnIsLaidOutAndFollowedRightAfter() throws {
+        // A row whose content grows by itself (a reply's text coming out, a
+        // picture arriving) reports it from inside its cell's layout, after
+        // the collection view's own pass. The transcript asks for the next
+        // pass at once, on the main queue, so a block queued after the
+        // report runs after that pass. The run loop is only polled, so it
+        // drains the main queue before Core Animation's commit, the other
+        // thing that would lay the rows out.
+        let mounted = try mount(Self.transcript(0..<40))
+        let collectionView = try XCTUnwrap(mounted.scrollView as? UICollectionView)
+        let lastID = try XCTUnwrap(mounted.layout.rows.last?.id)
+        let cell = try XCTUnwrap(
+            collectionView.visibleCells.compactMap { $0 as? TranscriptCell }.first { $0.hostedRowID == lastID },
+            "the latest row is on screen"
+        )
+        let hosting = try XCTUnwrap(cell.hosting)
+        let root = hosting.rootView
+        let before = try XCTUnwrap(mounted.layout.rowFrame(lastID))
+
+        // The row's content grows by 120 pt, measured as its cell measures
+        // it and reported as its geometry observer reports it.
+        hosting.rootView = TranscriptCellRoot(
+            rowID: root.rowID,
+            content: AnyView(VStack(spacing: 0) {
+                root.content
+                Color.clear.frame(height: 120)
+            }),
+            rowEnvironment: root.rowEnvironment,
+            appState: root.appState,
+            resized: root.resized
+        )
+        let grown = hosting.sizeThatFits(in: CGSize(width: mounted.layout.itemWidth, height: .greatestFiniteMagnitude))
+        root.resized(grown)
+
+        final class Ran { var value = false }
+        let checked = Ran()
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                let height = mounted.layout.rowFrame(lastID).map { $0.maxY - $0.minY } ?? 0
+                XCTAssertEqual(
+                    height, before.maxY - before.minY + 120, accuracy: 1,
+                    "the row is laid out at its new height right after its report"
+                )
+                let distance = self.maxOffset(collectionView) - collectionView.contentOffset.y
+                XCTAssertLessThanOrEqual(abs(distance), 1, "and the reader is at its new end (distance \(distance))")
+                checked.value = true
+            }
+        }
+        let deadline = Date().addingTimeInterval(2)
+        while !checked.value, Date() < deadline {
+            _ = CFRunLoopRunInMode(.defaultMode, 0, true)
+        }
+        XCTAssertTrue(checked.value, "the block queued after the report ran")
     }
 
     func testARunningReplyOpenedAgainShowsWhatWasWrittenAtOnce() throws {
@@ -559,7 +634,7 @@ final class ChatScrollHostedTests: XCTestCase {
         appState.setStreamingTextForTesting(String(repeating: "The final answer streams in with several lines. ", count: 30))
         settle(mounted.host.view, seconds: 0.3)
         checkpoint("completion before", mounted, recorder)
-        assertAtLatest(mounted, "the live turn is followed")
+        assertAtLatestWhileStreaming(mounted, "the live turn is followed")
 
         let mark = recorder.mark()
         // finalizeStreamingCompletion: partials out, one settled reply in,

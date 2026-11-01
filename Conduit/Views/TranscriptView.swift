@@ -313,6 +313,9 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.passAsked = false
+            // A transcript taken down since lays nothing out: its pass
+            // would attach it to the scroller again.
+            guard self.attached else { return }
             self.collectionView.layoutIfNeeded()
         }
     }
