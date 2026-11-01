@@ -364,7 +364,7 @@ struct WorkstreamBar: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var botName: String {
-        work.snapshot(profile)?.botName ?? profile
+        work.snapshot(profile)?.botName ?? appState.profileDisplayName(profile)
     }
 
     var body: some View {

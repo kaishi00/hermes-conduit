@@ -6,8 +6,16 @@ import Foundation
 @MainActor
 final class BotWorkStore: ObservableObject {
     @Published private(set) var snapshots: [String: BotWorkSnapshot] = [:] {
-        didSet { workstreamSessionIDs = snapshots.values.reduce(into: Set<String>()) { $0.formUnion($1.sessionIDs) } }
+        didSet {
+            let ids = snapshots.values.reduce(into: Set<String>()) { $0.formUnion($1.sessionIDs) }
+            guard ids != workstreamSessionIDs else { return }
+            workstreamSessionIDs = ids
+            onWorkstreamsChanged?()
+        }
     }
+    /// Called when the set of workstream chats changes, so lists already
+    /// shown (All profiles, search) leave out one that just became known.
+    var onWorkstreamsChanged: (@MainActor () -> Void)?
     /// What the last action on each bot's work said when it did nothing
     /// ("W3 can't continue while it's running"), for its panel to show.
     @Published private(set) var refusals: [String: String] = [:]
@@ -18,6 +26,7 @@ final class BotWorkStore: ObservableObject {
     private(set) var workstreamSessionIDs: Set<String> = []
     /// Bots whose list is being read, so two views showing it share one read.
     private var reading: Set<String> = []
+    private var rereads: Set<String> = []
     /// Bumped by a server change (every bot) and by an action (its bot), so
     /// a list read before either never lands over what came after it.
     private var epoch = 0
@@ -49,6 +58,7 @@ final class BotWorkStore: ObservableObject {
         refusals = [:]
         acting = []
         reading = []
+        rereads = []
         epoch += 1
     }
 
@@ -75,6 +85,10 @@ final class BotWorkStore: ObservableObject {
 
     func beginReading(_ profile: String) -> Bool { reading.insert(profile).inserted }
     func endReading(_ profile: String) { reading.remove(profile) }
+    /// An action asked for a read while one was on its way, which its mark
+    /// will drop: the read under way goes again when it's done.
+    func readAgain(_ profile: String) { rereads.insert(profile) }
+    func takeReadAgain(_ profile: String) -> Bool { rereads.remove(profile) != nil }
 
     /// Whether a chat row is one of a bot's workstreams, by any of its ids.
     func isWorkstream(_ session: SessionSummary) -> Bool {
@@ -111,25 +125,33 @@ extension AppState {
     /// Shows the bot's kept work first, then asks the plugin again. Quiet
     /// when it can't: the strip keeps what it showed. One read per bot at a
     /// time, so the strip and the panel showing it never race.
-    func refreshBotWork(profile: String) async {
+    func refreshBotWork(profile: String, afterAction: Bool = false) async {
         guard servesBotWorkstreams else { return }
         let answers = screenAnswers(profile: profile)
         let client = botWorkClient(profile: profile)
         if botWork.snapshot(profile) == nil, let kept = client.kept(in: answers) {
             botWork.set(kept)
         }
-        guard isConnected, botWork.beginReading(profile) else { return }
-        defer { botWork.endReading(profile) }
-        let mark = botWork.mark(profile)
-        do {
-            let listed = try await client.list(keptIn: answers)
-            // Read before a server change or an action on this bot: the
-            // next read has what came after.
-            guard botWork.isCurrent(mark, profile: profile) else { return }
-            botWork.set(listed)
-        } catch {
-            // Kept as it was; the next refresh asks again.
+        guard isConnected else { return }
+        guard botWork.beginReading(profile) else {
+            // The read under way predates the action, so it's dropped: it
+            // reads again when it's done, and the row shows what came after.
+            if afterAction { botWork.readAgain(profile) }
+            return
         }
+        defer { botWork.endReading(profile) }
+        repeat {
+            let mark = botWork.mark(profile)
+            do {
+                let listed = try await client.list(keptIn: answers)
+                // Read before a server change or an action on this bot: the
+                // next read has what came after.
+                guard botWork.isCurrent(mark, profile: profile) else { continue }
+                botWork.set(listed)
+            } catch {
+                // Kept as it was; the next refresh asks again.
+            }
+        } while botWork.takeReadAgain(profile)
     }
 
     /// The user's own action on a workstream, straight to it: Reply, Stop,
@@ -153,15 +175,20 @@ extension AppState {
             }
             Haptics.success()
             // The buttons free up now; the list is read again behind them.
-            Task { await refreshBotWork(profile: profile) }
+            Task { await refreshBotWork(profile: profile, afterAction: true) }
             return true
-        } catch DashboardTicketBridgeError.http(_, let detail) where !detail.isEmpty {
-            botWork.setRefusal(detail, profile: profile)
         } catch {
-            botWork.setRefusal(AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."), profile: profile)
+            // After a server change the refusal isn't this server's either.
+            guard botWork.mark(profile).epoch == mark.epoch else { return false }
+            if case DashboardTicketBridgeError.http(_, let detail) = error, !detail.isEmpty {
+                botWork.setRefusal(detail, profile: profile)
+            } else {
+                botWork.setRefusal(AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."), profile: profile)
+            }
         }
         Haptics.warning()
-        await refreshBotWork(profile: profile)
+        // The refusal shows now; the row is read again behind it.
+        Task { await refreshBotWork(profile: profile, afterAction: true) }
         return false
     }
 
@@ -191,5 +218,17 @@ extension AppState {
 
     func isWorkstreamSession(_ id: String) -> Bool {
         botWork.workstreamSessionIDs.contains(id)
+    }
+
+    /// A workstream that just became known leaves the lists already shown:
+    /// All profiles drops its row, and search redraws without it.
+    func workstreamsChanged() {
+        if allProfilesCatalog.sessions.contains(where: isWorkstreamRow) {
+            allProfilesCatalog.sessions.removeAll(where: isWorkstreamRow)
+        } else {
+            // Nothing published changed; search's rows are worked out as
+            // the Chats screen draws, so it draws again.
+            objectWillChange.send()
+        }
     }
 }

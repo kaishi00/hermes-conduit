@@ -26390,7 +26390,11 @@ final class AppState: ObservableObject {
 
     /// Each bot's work, for the Bot Chat's Work strip and panel
     /// (AppState+BotWorkstreams.swift).
-    let botWork = BotWorkStore()
+    lazy var botWork: BotWorkStore = {
+        let store = BotWorkStore()
+        store.onWorkstreamsChanged = { [weak self] in self?.workstreamsChanged() }
+        return store
+    }()
 
     /// What the host's notifier plugin serves; Settings nudges an update.
     @Published private(set) var notifierPlugin = NotifierPluginStatus() {
