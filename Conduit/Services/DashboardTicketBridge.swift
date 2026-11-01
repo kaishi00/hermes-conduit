@@ -474,6 +474,17 @@ enum DashboardTicketBridgeError: LocalizedError {
         return AppLocalization.string("Hermes has the \(plugin) plugin turned off for the “\(profile)” profile. On the Hermes host, add \(plugin) to plugins.enabled in that profile's config.yaml, then restart Hermes.")
     }
 
+    /// Runs `request` to `path`, turning Hermes' bare "Plugin not found" for
+    /// a plugin the profile turned off into what to do about it (issue
+    /// 1630). Still a 404, so callers fall back as before.
+    static func explainingPluginRefusal<T>(path: String, _ request: () async throws -> T) async throws -> T {
+        do {
+            return try await request()
+        } catch DashboardTicketBridgeError.http(404, let detail) where detail == pluginRefusedDetail {
+            throw DashboardTicketBridgeError.http(status: 404, detail: pluginOffDetail(path: path) ?? detail)
+        }
+    }
+
     /// The dashboard answered but handed back no session ticket.
     static var noSessionTicketDetail: String {
         AppLocalization.string("The dashboard didn't let Conduit start a session. Try again.")
@@ -1130,22 +1141,14 @@ final class DashboardTicketBridge: NSObject {
         // GET, rather than being kept through invalidate() as a write is.
         readsOnly: Bool
     ) async throws -> [String: Any] {
-        do {
-            return try await sendJSON(
+        try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) {
+            try await sendJSON(
                 path: path,
                 method: method,
                 body: body,
                 timeoutMilliseconds: timeoutMilliseconds,
                 maxResponseBytes: maxResponseBytes,
                 readsOnly: readsOnly
-            )
-        } catch DashboardTicketBridgeError.http(404, let detail) where detail == DashboardTicketBridgeError.pluginRefusedDetail {
-            // Hermes' answer for a plugin the profile turned off says only
-            // "Plugin not found": name the profile and how to turn it on
-            // (issue 1630). Still a 404, so callers fall back as before.
-            throw DashboardTicketBridgeError.http(
-                status: 404,
-                detail: DashboardTicketBridgeError.pluginOffDetail(path: path) ?? detail
             )
         }
     }
