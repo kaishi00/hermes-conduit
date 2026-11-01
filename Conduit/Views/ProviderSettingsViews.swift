@@ -751,11 +751,13 @@ private struct ProviderKeyEditor: View {
     private var hasKey: Bool { state != .none }
     /// A key the other profiles can't read yet is pasted again to share it.
     private var showsField: Bool { state == .none || state == .mainProfileOnly || editing }
-    /// A replacement for a profile's own key stays its own; anything else
-    /// is shared unless picked otherwise.
+    /// A replacement for a profile's own key stays its own, and so does a
+    /// key for a profile whose own pool holds a sign-in (Hermes reads that
+    /// pool, not the shared one); anything else is shared unless picked
+    /// otherwise.
     private var chosenScope: ProviderKeyScope {
         if onMain { return .allProfiles }
-        return scope ?? (state == .own ? .thisProfile : .allProfiles)
+        return scope ?? (state == .own || key.profileSignIns > 0 ? .thisProfile : .allProfiles)
     }
 
     var body: some View {
