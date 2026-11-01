@@ -36,7 +36,9 @@ struct HelperModelSlot: Identifiable, Equatable {
 
     /// The slots of a `/api/model/auxiliary` answer, in Hermes' order:
     /// built-ins, then the plugins'.
-    static func slots(in response: [String: Any]) -> [HelperModelSlot] {
+    /// `includingSetElsewhere` keeps Pulse's too, for the checks that ask
+    /// what runs on a provider.
+    static func slots(in response: [String: Any], includingSetElsewhere: Bool = false) -> [HelperModelSlot] {
         let rows = response["tasks"] as? [[String: Any]] ?? []
         let titles = Dictionary(
             rows.compactMap { row -> (String, String)? in
@@ -46,7 +48,8 @@ struct HelperModelSlot: Identifiable, Equatable {
             uniquingKeysWith: { first, _ in first }
         )
         return rows.compactMap { row in
-            guard let setting = VoiceReplyModelSetting(row: row), !setElsewhere.contains(setting.task) else { return nil }
+            guard let setting = VoiceReplyModelSetting(row: row),
+                  includingSetElsewhere || !setElsewhere.contains(setting.task) else { return nil }
             let task = setting.task
             let inherits = (row["inherit_from"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             return HelperModelSlot(

@@ -600,7 +600,8 @@ struct VoiceReplyModelSetting: Equatable {
     /// Nil follows the chat's reasoning; `none` (Hermes' default) is off.
     var reasoningEffort: String?
     /// An endpoint of the slot's own (`auxiliary.<task>.base_url`), such as
-    /// a local server: Hermes keeps it while the provider stays.
+    /// a local server. Hermes keeps it while the provider stays, so a save
+    /// never sends it.
     var baseURL: String?
 
     /// Nil when this Hermes has no such slot.
@@ -664,8 +665,6 @@ struct VoiceReplyModelSetting: Equatable {
             "reasoning_effort": reasoningEffort ?? NSNull(),
             "profile": profile
         ]
-        // Sent back as Hermes holds it, so the slot stays on its endpoint.
-        if let baseURL { body["base_url"] = baseURL }
         if confirmed { body["confirm_expensive_model"] = true }
         return body
     }

@@ -2736,9 +2736,10 @@ final class AppState: ObservableObject {
         HelperModelSlot.slots(in: try await readHelperModels())
     }
 
-    /// The helper models as Hermes gave them last, kept on the phone.
-    func keptHelperModels() -> [HelperModelSlot]? {
-        keptAnswer(KeptRoute.modelAuxiliary).map(HelperModelSlot.slots(in:))
+    /// The helper models as Hermes gave them last, kept on the phone;
+    /// Pulse's too with `includingSetElsewhere`.
+    func keptHelperModels(includingSetElsewhere: Bool = false) -> [HelperModelSlot]? {
+        keptAnswer(KeptRoute.modelAuxiliary).map { HelperModelSlot.slots(in: $0, includingSetElsewhere: includingSetElsewhere) }
     }
 
     /// One helper model slot, or nil when this Hermes has no such slot.
@@ -2871,7 +2872,9 @@ final class AppState: ObservableObject {
         row["provider"] = setting.provider.isEmpty ? "auto" : setting.provider
         row["model"] = setting.model
         row["reasoning_effort"] = setting.reasoningEffort ?? ""
-        row["base_url"] = setting.baseURL ?? ""
+        // Hermes kept the endpoint (a save never sends one); the kept row
+        // keeps the one it had, as Hermes answered.
+        if setting.baseURL == nil { row["base_url"] = "" }
         tasks[index] = row
         answer["tasks"] = tasks
         keepWrittenAnswer(answer, for: KeptRoute.modelAuxiliary, profile: profile, owner: owner, removals: offlineChatCache.removals)

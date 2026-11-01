@@ -464,10 +464,12 @@ final class ProviderSettingsTests: XCTestCase {
                 ["task": "vision", "provider": "openrouter", "model": ""],
                 ["task": "compression", "provider": "auto", "model": ""],
                 ["task": "skills_hub", "provider": "nous", "model": "hermes"],
-            ]])
+                ["task": "pulse_memory", "provider": "openrouter", "model": "fast/pulse", "label": "Pulse memory", "plugin": "conduit_push"],
+            ]], includingSetElsewhere: true)
         )
-        XCTAssertEqual(uses.count, 4)
-        XCTAssertEqual(Array(uses.suffix(2)), [AppLocalization.string("Chat titles"), AppLocalization.string("Image reading")],
+        XCTAssertEqual(uses.count, 5)
+        XCTAssertEqual(uses.last, "Pulse memory", "Pulse's slot, set in Settings > Pulse, is named too")
+        XCTAssertEqual(Array(uses[2..<4]), [AppLocalization.string("Chat titles"), AppLocalization.string("Image reading")],
                        "helpers pinned to it, with or without a model")
     }
 

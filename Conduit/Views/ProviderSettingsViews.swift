@@ -90,7 +90,7 @@ struct ModelPageProviders: View {
             },
             usage: { entry in Self.usage(of: entry, catalog: catalog, settings: appState.keptProfileSettings(keys: Self.usageKeys),
                                          fallbacks: appState.keptProfileFallbackModels(),
-                                         helpers: appState.keptHelperModels()) },
+                                         helpers: appState.keptHelperModels(includingSetElsewhere: true)) },
             keyOrder: KeyOrderAccess(
                 kept: { appState.keptProfileSettings(keys: $0) },
                 load: { await appState.readProfileSettings(keys: $0) },

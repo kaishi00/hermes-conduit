@@ -338,12 +338,12 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertNotNil(endpointPicks.endpointCaption)
         endpointPicks.reasoning = "low"
         let sameProvider = try XCTUnwrap(endpointPicks.writeAsked())
-        XCTAssertEqual(sameProvider.assignmentBody(profile: "default")["base_url"] as? String, local.baseURL)
+        XCTAssertEqual(sameProvider.baseURL, local.baseURL, "Hermes keeps it while the provider stays")
+        XCTAssertNil(sameProvider.assignmentBody(profile: "default")["base_url"], "a save never sends it")
         endpointPicks.writeEnded(sameProvider, result: .saved)
         endpointPicks.selection = VoiceJobModelSettingsSection.tag(provider: "openrouter", model: "fast")
         let moved = try XCTUnwrap(endpointPicks.writeAsked())
         XCTAssertNil(moved.baseURL, "Another provider moves it off the endpoint")
-        XCTAssertNil(moved.assignmentBody(profile: "default")["base_url"])
     }
 
     /// What a save wrote is what the page opens on next, as the other
