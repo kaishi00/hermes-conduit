@@ -471,7 +471,7 @@ enum DashboardTicketBridgeError: LocalizedError {
         guard let profile = named, profile != "default" else {
             return AppLocalization.string("Hermes has the \(plugin) plugin turned off. On the Hermes host, run hermes plugins enable \(plugin), then restart Hermes.")
         }
-        return AppLocalization.string("Hermes has the \(plugin) plugin turned off for the “\(profile)” profile. On the Hermes host, add \(plugin) to plugins.enabled in that profile's config.yaml, then restart Hermes.")
+        return AppLocalization.string("Hermes has the \(plugin) plugin turned off for the “\(profile)” profile. On the Hermes host, add \(plugin) to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes.")
     }
 
     /// Runs `request` to `path`, turning Hermes' bare "Plugin not found" for

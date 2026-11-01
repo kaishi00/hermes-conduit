@@ -139841,84 +139841,84 @@
         }
       }
     },
-    "Hermes has the %@ plugin turned off for the “%@” profile. On the Hermes host, add %@ to plugins.enabled in that profile's config.yaml, then restart Hermes.": {
+    "Hermes has the %@ plugin turned off for the “%@” profile. On the Hermes host, add %@ to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Für das Profil „%2$@“ ist das Hermes-Plugin %1$@ ausgeschaltet. Füge auf dem Hermes-Host %3$@ in der config.yaml dieses Profils zu plugins.enabled hinzu und starte Hermes dann neu."
+            "value": "Für das Profil „%2$@“ ist das Hermes-Plugin %1$@ ausgeschaltet. Füge auf dem Hermes-Host %3$@ in der config.yaml dieses Profils zu plugins.enabled hinzu (und entferne es aus plugins.disabled) und starte Hermes dann neu."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "El perfil «%2$@» tiene desactivado el plugin %1$@ de Hermes. En el host de Hermes, añade %3$@ a plugins.enabled en el config.yaml de ese perfil y luego reinicia Hermes."
+            "value": "El perfil «%2$@» tiene desactivado el plugin %1$@ de Hermes. En el host de Hermes, añade %3$@ a plugins.enabled en el config.yaml de ese perfil (y quítalo de plugins.disabled) y luego reinicia Hermes."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Le plugin Hermes %1$@ est désactivé pour le profil « %2$@ ». Sur l'hôte Hermes, ajoutez %3$@ à plugins.enabled dans le config.yaml de ce profil, puis redémarrez Hermes."
+            "value": "Le plugin Hermes %1$@ est désactivé pour le profil « %2$@ ». Sur l'hôte Hermes, ajoutez %3$@ à plugins.enabled dans le config.yaml de ce profil (et retirez-le de plugins.disabled), puis redémarrez Hermes."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Plugin Hermes %1$@ dinonaktifkan untuk profil “%2$@”. Di host Hermes, tambahkan %3$@ ke plugins.enabled di config.yaml profil tersebut, lalu mulai ulang Hermes."
+            "value": "Plugin Hermes %1$@ dinonaktifkan untuk profil “%2$@”. Di host Hermes, tambahkan %3$@ ke plugins.enabled di config.yaml profil tersebut (dan hapus dari plugins.disabled), lalu mulai ulang Hermes."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Il plugin Hermes %1$@ è disattivato per il profilo «%2$@». Sull'host di Hermes aggiungi %3$@ a plugins.enabled nel config.yaml di quel profilo, poi riavvia Hermes."
+            "value": "Il plugin Hermes %1$@ è disattivato per il profilo «%2$@». Sull'host di Hermes aggiungi %3$@ a plugins.enabled nel config.yaml di quel profilo (e toglilo da plugins.disabled), poi riavvia Hermes."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "プロファイル「%2$@」で Hermes の %1$@ プラグインがオフになっています。Hermes のホストで、そのプロファイルの config.yaml の plugins.enabled に %3$@ を追加してから、Hermes を再起動してください。"
+            "value": "プロファイル「%2$@」で Hermes の %1$@ プラグインがオフになっています。Hermes のホストで、そのプロファイルの config.yaml の plugins.enabled に %3$@ を追加（plugins.disabled からは削除）してから、Hermes を再起動してください。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "“%2$@” 프로필에서 Hermes의 %1$@ 플러그인이 꺼져 있습니다. Hermes 호스트에서 해당 프로필의 config.yaml에 있는 plugins.enabled에 %3$@을(를) 추가한 다음 Hermes를 다시 시작하세요."
+            "value": "“%2$@” 프로필에서 Hermes의 %1$@ 플러그인이 꺼져 있습니다. Hermes 호스트에서 해당 프로필의 config.yaml에 있는 plugins.enabled에 %3$@을(를) 추가(plugins.disabled에서는 제거)한 다음 Hermes를 다시 시작하세요."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dla profilu „%2$@” wtyczka Hermesa %1$@ jest wyłączona. Na hoście Hermesa dodaj %3$@ do plugins.enabled w pliku config.yaml tego profilu, a potem uruchom Hermesa ponownie."
+            "value": "Dla profilu „%2$@” wtyczka Hermesa %1$@ jest wyłączona. Na hoście Hermesa dodaj %3$@ do plugins.enabled w pliku config.yaml tego profilu (i usuń ją z plugins.disabled), a potem uruchom Hermesa ponownie."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O perfil “%2$@” está com o plugin %1$@ do Hermes desativado. No host do Hermes, adicione %3$@ a plugins.enabled no config.yaml desse perfil e reinicie o Hermes."
+            "value": "O perfil “%2$@” está com o plugin %1$@ do Hermes desativado. No host do Hermes, adicione %3$@ a plugins.enabled no config.yaml desse perfil (e remova-o de plugins.disabled) e reinicie o Hermes."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Для профиля «%2$@» плагин Hermes %1$@ выключен. На хосте Hermes добавьте %3$@ в plugins.enabled в config.yaml этого профиля, затем перезапустите Hermes."
+            "value": "Для профиля «%2$@» плагин Hermes %1$@ выключен. На хосте Hermes добавьте %3$@ в plugins.enabled в config.yaml этого профиля (и уберите его из plugins.disabled), затем перезапустите Hermes."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "“%2$@” profilinde Hermes'in %1$@ eklentisi kapalı. Hermes ana makinesinde bu profilin config.yaml dosyasındaki plugins.enabled listesine %3$@ ekleyin, ardından Hermes'i yeniden başlatın."
+            "value": "“%2$@” profilinde Hermes'in %1$@ eklentisi kapalı. Hermes ana makinesinde bu profilin config.yaml dosyasındaki plugins.enabled listesine %3$@ ekleyin (ve plugins.disabled listesinden çıkarın), ardından Hermes'i yeniden başlatın."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "“%2$@”配置文件已关闭 Hermes 的 %1$@ 插件。请在 Hermes 主机上将 %3$@ 添加到该配置文件 config.yaml 的 plugins.enabled 中，然后重启 Hermes。"
+            "value": "“%2$@”配置文件已关闭 Hermes 的 %1$@ 插件。请在 Hermes 主机上将 %3$@ 添加到该配置文件 config.yaml 的 plugins.enabled 中（并将其从 plugins.disabled 中移除），然后重启 Hermes。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "「%2$@」設定檔已關閉 Hermes 的 %1$@ 外掛。請在 Hermes 主機上將 %3$@ 加入該設定檔 config.yaml 的 plugins.enabled，然後重新啟動 Hermes。"
+            "value": "「%2$@」設定檔已關閉 Hermes 的 %1$@ 外掛。請在 Hermes 主機上將 %3$@ 加入該設定檔 config.yaml 的 plugins.enabled（並將其從 plugins.disabled 移除），然後重新啟動 Hermes。"
           }
         }
       }
