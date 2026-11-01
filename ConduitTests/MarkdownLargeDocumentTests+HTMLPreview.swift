@@ -1,4 +1,5 @@
 import WebKit
+import SwiftUI
 import XCTest
 @testable import Conduit
 
@@ -144,6 +145,14 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(HTMLPreviewPage.clampedInlineHeight(10), HTMLPreviewPage.minimumInlineHeight)
         XCTAssertEqual(HTMLPreviewPage.clampedInlineHeight(320.2), 321)
         XCTAssertEqual(HTMLPreviewPage.clampedInlineHeight(5_000), HTMLPreviewPage.maximumInlineHeight)
+    }
+
+    func testHTMLPreview_FullScreenOpensOnTheLoadedPage() {
+        typealias Block = HTMLPreviewBlock<EmptyView>
+        XCTAssertEqual(Block.SheetPage(.loaded("<p>chart</p>"))?.html, "<p>chart</p>")
+        XCTAssertNil(Block.SheetPage(.loading))
+        XCTAssertNil(Block.SheetPage(.unavailable))
+        XCTAssertNotEqual(Block.SheetPage(html: "a").id, Block.SheetPage(html: "a").id)
     }
 
     func testHTMLPreview_OnlyAPageTallerThanTheMessageIsCut() {

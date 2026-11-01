@@ -56,6 +56,17 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     struct SheetPage: Identifiable {
         let id = UUID()
         let html: String
+
+        init(html: String) {
+            self.html = html
+        }
+
+        /// The page a tap opens: the loaded file, or none while it loads or
+        /// has fallen back.
+        init?(_ state: LoadState) {
+            guard case .loaded(let html) = state else { return nil }
+            self.html = html
+        }
     }
 
     enum LoadState: Equatable {
@@ -210,8 +221,8 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     }
 
     private func openFullScreen() {
-        guard case .loaded(let html) = state else { return }
-        sheetPage = SheetPage(html: html)
+        guard let page = SheetPage(state) else { return }
+        sheetPage = page
     }
 
     private func loadDocument() async {
@@ -247,21 +258,20 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     }
 
     /// The foot of a page cut at the message's height fades out; a page
-    /// that fits draws unmasked.
+    /// that fits keeps a fully opaque mask. One view either way, so the
+    /// page's web view is never rebuilt when it turns out to be cut.
     private struct CutFootFade: ViewModifier {
         let isCut: Bool
 
         func body(content: Content) -> some View {
-            if isCut {
-                content.mask {
-                    LinearGradient(
-                        stops: [.init(color: .black, location: 0.82), .init(color: .black.opacity(0.15), location: 1)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                }
-            } else {
-                content
+            content.mask {
+                LinearGradient(
+                    stops: isCut
+                        ? [.init(color: .black, location: 0.82), .init(color: .black.opacity(0.15), location: 1)]
+                        : [.init(color: .black, location: 0), .init(color: .black, location: 1)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
             }
         }
     }
