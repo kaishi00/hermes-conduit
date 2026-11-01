@@ -2008,7 +2008,7 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - The plugin's version is bumped when the branch merges to main.
 - Two journal edges from M0 that recovery leans on (notifier #495's review): a step that starts while a compacted workstream's lineage is still unsettled isn't journaled or noted as missed, and a step's end with an unknown call id closes the oldest open step of that tool by name.
 
-**Checked:** 2026-11-01, #1610 (notifier #497).
+**Checked:** 2026-11-01, #1614 (notifier #497).
 
 ## Composer Return key
 
