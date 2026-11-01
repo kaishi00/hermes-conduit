@@ -4709,6 +4709,45 @@ worker's task (see Pulse; it opens this screen) · Hermes' own board drawer
 
 **Checked:** 2026-11-01, #1603 (seeded; issue #1601; review: only `initial_status` is read as a code).
 
+## Two Hermes servers
+
+Hermes serves the chat socket (`/api/ws`) twice: `hermes dashboard` answers
+it with its TUI gateway, and the gateway's own listener (the Webapp, `hermes
+webapp`, port 9120 by default) with its session authority, which takes other
+shapes for the same verbs. Conduit works on either address and sends each
+its own shape.
+
+**Siblings:** every chat surface's send, steer, redirect, interrupt and Queue
+(chats, project chats, Bot Chat; the voice modes' turns and jobs, CarPlay
+and the Watch go through the same client) · approval and clarify answers
+(chat cards, notification actions, spoken answers) · rename, branch,
+compress, the Model sheet's pick and Move to project · busy mode in
+Settings · scheduled jobs (REST first, so neither socket verb is needed) ·
+the notifier's upstream contract leg (notifier/upstream/test_gateway_listener.py)
+and its routes, which the listener serves since it mounts the dashboard ·
+README (Connecting, Architecture) · the website's FAQ
+
+**Code**
+- Telling them apart and each shape: `Conduit/Services/HermesClient.swift` (speaksSessionAuthority from `gateway.ready`, the "session authority's shapes" section: shapedRPC, authorityMutation, authorityControl, noteAuthorityFences; createParams, sendPrompt, turnControl, respondToApproval, respondToClarification, setSessionTitle, sessionTitle, authorityBranch, authorityModelPick, compressSession, moveSessionWorkspace, busyInputMode)
+- The refusal's words: `Conduit/Services/HermesClient.swift` (RpcError.errorDescription)
+- Branch rows: `Conduit/Services/AppState.swift` (branchFromAssistantMessage)
+- Tests: `ConduitTests/HermesClientTests.swift` (the session authority tests), `notifier/upstream/test_gateway_listener.py`
+
+**Rulings**
+- The socket's `gateway.ready` decides the shape (`session_authority: true` is the gateway's listener); a request built before it was read goes in the dashboard's shape, and one refused once the socket proved to be the authority's goes again, once, in the authority's. That is safe because the authority refuses the dashboard's shape before running anything, which the notifier's upstream leg checks (2026-11-01, #1618).
+- On the authority a prompt carries a `submission_id`, the same on any resend of that message; its receipt's `queued` is its place in line, so only a Queue send reads as held. Steer, redirect and interrupt name the running turn's `execution_generation`; a stale one reads the session again and goes once more only if a turn still runs (2026-11-01, #1618).
+- Rename, branch, compress, a model pick and Move to project are `session.mutate` on the authority, fenced by the session's revision, and by the turn's generation for all but rename; a `revision_conflict` or `stale_generation` that carries the current fences goes again once with them. A branch keeps rows through the reply's own row id (2026-11-01, #1618).
+- Busy mode stays on the phone on the authority, which has no profile-wide busy setting: Conduit already sends steer, interrupt or Queue itself (2026-11-01, #1618).
+- A bare refusal token from Hermes ("invalid_params") is shown with the request and the keys Hermes named; Hermes' own sentences are shown as they are (2026-11-01, #1618).
+- Setup docs keep recommending `hermes dashboard`; the Webapp's address is mentioned as also working (2026-11-01, #1618).
+
+**Open gaps**
+- An expensive model's confirmation on the authority (`confirmation_required`, then the pick again with its token) is built but not tried against a real guarded model.
+- A clarify card answered on the socket names its prompt from the socket's event or the chat's resume; one the socket saw neither way (shown before a reconnect, in a chat not opened since) goes in the dashboard's shape and is refused until the chat is opened again. Notification answers go through the relay and the plugin, not the socket.
+- The plugin's features that drive Hermes themselves (Watch jobs, Local Live's Hermes turns, calls from Hermes) run inside the gateway's process when the Webapp serves the plugin, rather than in the dashboard's; only its routes answering there is checked so far.
+
+**Checked:** 2026-11-01, #PRNUM (seeded; issue #1618; probed against the 2026-11-01 canary).
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays

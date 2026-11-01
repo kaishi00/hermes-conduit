@@ -25444,7 +25444,12 @@ final class AppState: ObservableObject {
             let content = (message.role == .user ? message.rawContent : nil) ?? message.content
             let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return nil }
-            return SessionBranchMessage(role: message.role, content: trimmed)
+            return SessionBranchMessage(
+                role: message.role,
+                content: trimmed,
+                rowId: message.rowId,
+                isNewest: message.id == messages.last?.id
+            )
         }
         guard !prefix.isEmpty else {
             errorMessage = AppLocalization.string("There is no message history to branch from.")
