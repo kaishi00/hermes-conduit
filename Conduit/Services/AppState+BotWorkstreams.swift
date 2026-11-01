@@ -228,6 +228,46 @@ extension AppState {
         return false
     }
 
+    /// What a workstream that needs the user is asking to do: its approvals
+    /// waiting in Hermes, read as a job's are. Nil when they can't be read
+    /// (its chat answers them as before).
+    func workstreamApprovals(_ item: BotWorkItem, profile: String) async -> [ApprovalActivity]? {
+        guard item.kind == .workstream, !item.sessionID.isEmpty, isConnected else { return nil }
+        do {
+            let client = try await clientForVoiceRequest()
+            return try await client.pendingApprovals(sessionId: item.sessionID, profile: profile)
+                .filter { $0.status == .pending }
+        } catch {
+            return nil
+        }
+    }
+
+    /// Approve once or deny a workstream's approval from the Work panel, as
+    /// its chat's card would; the chat still offers it too. True when Hermes
+    /// took the answer.
+    @discardableResult
+    func answerWorkstreamApproval(_ approval: ApprovalActivity, item: BotWorkItem, profile: String,
+                                  choice: String) async -> Bool {
+        guard botWork.begin(item.ref, profile: profile) else { return false }
+        defer { botWork.end(item.ref, profile: profile) }
+        botWork.setRefusal(nil, profile: profile)
+        botWork.noteAction(profile)
+        var took = false
+        do {
+            let client = try await clientForVoiceRequest()
+            took = try await client.respondToApproval(sessionId: approval.sessionId, requestId: approval.requestId,
+                                                      choice: choice, profile: profile)
+            if !took {
+                botWork.setRefusal(AppLocalization.string("\(item.ref) isn't waiting on that any more."), profile: profile)
+            }
+        } catch {
+            botWork.setRefusal(AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."), profile: profile)
+        }
+        if took { Haptics.success() } else { Haptics.warning() }
+        Task { await refreshBotWork(profile: profile, afterAction: true) }
+        return took
+    }
+
     /// The bot's Resolved list: its first page, or the next one (`more`).
     func loadResolvedWork(profile: String, more: Bool = false) async {
         guard servesBotWorkstreams, isConnected else { return }

@@ -571,6 +571,10 @@ private struct BotWorkRow: View {
             .accessibilityElement(children: .combine)
             .accessibilityValue(expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
             .accessibilityHint(expanded ? AppLocalization.string("Shows less") : AppLocalization.string("Shows more"))
+            if item.status == "needs_you", item.kind == .workstream, !item.sessionID.isEmpty {
+                // Its approval, answered here or in its chat.
+                WorkstreamApprovalBox(item: item, profile: profile, isActing: isActing)
+            }
             if expanded {
                 if !item.checklist.isEmpty {
                     checklist
@@ -1032,5 +1036,77 @@ struct WorkStartStatusLine: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
+    }
+}
+
+/// A workstream's approval on its Work panel card: what it wants to run,
+/// with Approve and Deny. Its chat keeps the same card, so either answers
+/// it. Shows nothing while none can be read.
+private struct WorkstreamApprovalBox: View {
+    @EnvironmentObject private var appState: AppState
+    let item: BotWorkItem
+    let profile: String
+    let isActing: Bool
+    @State private var approval: ApprovalActivity?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let approval {
+                VStack(alignment: .leading, spacing: 10) {
+                    if !approval.description.isEmpty {
+                        Text(approval.description)
+                            .scaledFont(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.primary)
+                    }
+                    if !approval.command.isEmpty {
+                        Text(approval.command)
+                            .scaledFont(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.primary.opacity(0.06)))
+                    }
+                    let layout = dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+                    layout {
+                        answerButton(AppLocalization.string("Approve"), choice: "once", prominent: true)
+                        answerButton(AppLocalization.string("Deny"), choice: "deny", prominent: false)
+                    }
+                    .disabled(isActing || !appState.isConnected)
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("botWork.approval.\(item.ref)")
+            }
+        }
+        .task(id: "\(profile)\u{1F}\(item.ref)\u{1F}\(item.updatedAt.timeIntervalSince1970)\u{1F}\(appState.isConnected)") {
+            approval = await appState.workstreamApprovals(item, profile: profile)?.first
+        }
+    }
+
+    private func answerButton(_ title: String, choice: String, prominent: Bool) -> some View {
+        Button {
+            Haptics.light()
+            guard let approval else { return }
+            Task {
+                if await appState.answerWorkstreamApproval(approval, item: item, profile: profile, choice: choice) {
+                    self.approval = nil
+                }
+            }
+        } label: {
+            Text(title)
+                .scaledFont(.subheadline.weight(.semibold))
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .foregroundStyle(prominent ? Color.black.opacity(0.85) : Color.red)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(prominent ? Color.orange : Color.red.opacity(0.12))
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
