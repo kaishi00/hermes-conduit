@@ -4493,6 +4493,36 @@ read-only legacy groups (no transcript to watch)
 
 **Checked:** 2026-10-31, #1590 (a group room's transcript feeds the recorder as a chat's does, through its own TranscriptScroller and collection view; the blank-screen rebuild and its trace are gone, the reason kept so a trace an older build saved still lists and sends; Siblings, Code, Rulings); 2026-10-31, #1577 (the chat's transcript feeds the recorder: TranscriptScroller's writes and passes, the collection view's size, insets and content height, a row changing height by id, but for the live turn's thinking and reply, whose growth would push out the moves a trace is for; a chat has no blank-screen rebuild; Code, Rulings); 2026-10-31, #1566 (TranscriptScroller writes through the same recorder: the engine's write, mode, transcript and room lines, plus its own for the reply hold armed or disarmed, a switch, a landing at the reply start and a restoration placed or given up; not called yet; traces unchanged; Code); 2026-10-31, #1565 (the recorder logs each change of the chat's rows by id; a stall the app was suspended in no longer reports an end counting the time away, and a stall's end goes only in its own trace; Code, Rulings); 2026-10-31, #1554 (chat traces: the recorder in every build, its watchers in chats and group rooms, the stall trace riding with a freeze's report, Diagnostics & logs' Chat traces, the privacy manifest's Other Diagnostic Data; notifier #481, relay 0.25.0); 2026-10-29, #1505.
 
+## A blocked Kanban task
+
+A Kanban task in Blocked waits on the operator. Its screen says what it
+waits on in plain words and how to move it on: the worker's question with
+Reply & unblock, or, for a task created already Blocked or blocked with no
+reason, that nobody asked anything and Status › Ready moves it on.
+
+**Siblings:** the task screen's callout and comment buttons (iPhone, iPad and
+Mac share one view) · the task's Activity rows · a Pulse card that links a
+worker's task (see Pulse; it opens this screen) · Hermes' own board drawer
+(upstream) · Hermes' kanban tools that block a task (`kanban_create`'s
+`initial_status`, `kanban_block`'s reason; upstream, nothing in the notifier)
+
+**Code**
+- What it waits on: `Conduit/Views/Kanban/KanbanV2Support.swift` (KanbanBlockedQuestion: wait, reason, createdBlockedReason)
+- The screen: `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (blockedWait, blockedQuestion, blockedCallout, commentButtons, replyAndUnblock)
+- Activity rows: `Conduit/Views/Kanban/KanbanV2Support.swift` (KanbanActivityFormatter's `created` and `blocked` rows)
+- Tests: `ConduitTests/KanbanV2Tests.swift` (the Blocked question tests, testTaskCreatedBlockedWaitsOnYouWithoutAQuestion, testCreatedBlockedActivityRowsReadInWords)
+
+**Rulings**
+- `initial_status`, the one block reason Hermes writes itself (its `blocked` event for a task created with `initial_status="blocked"`), is never shown as the worker's question: it reads "Created as Blocked". Hermes' dependency codes (`parent_not_done`) come on `dependency_wait` and `status` rows, never as a block reason, so any other reason is shown as the worker's words. Only a question gets Reply & unblock; a task created Blocked, or blocked with no reason (a manual block, or a blocked run with no summary), gets a callout that says nobody asked anything and to set Status to Ready and save (2026-11-01, #1603, issue #1601 from a tester).
+- The question's callout says what each button does: Reply & unblock posts the answer and moves the task back to Ready; Add comment only posts it and the task stays Blocked (2026-11-01, #1603, issue #1601).
+- The comment buttons sit side by side when every label fits on one line and stack full width when one doesn't, so a long translation never wraps a pill word by word (2026-11-01, #1603, issue #1601).
+- A dependency block (a `status` row that parks the task behind a parent) gets no callout: Dependencies shows what it waits for.
+
+**Open gaps**
+- Conduit sends no push when a task goes Blocked; the board's Blocked column is where the operator finds one.
+
+**Checked:** 2026-11-01, #1603 (seeded; issue #1601; review: only `initial_status` is read as a code).
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
