@@ -4746,7 +4746,7 @@ README (Connecting, Architecture) · the website's FAQ
 - A clarify card answered on the socket names its prompt from the socket's event or the chat's resume; one the socket saw neither way (shown before a reconnect, in a chat not opened since) goes in the dashboard's shape and is refused until the chat is opened again. Notification answers go through the relay and the plugin, not the socket.
 - The plugin's features that drive Hermes themselves (Watch jobs, Local Live's Hermes turns, calls from Hermes) run inside the gateway's process when the Webapp serves the plugin, rather than in the dashboard's; only its routes answering there is checked so far.
 
-**Checked:** 2026-11-01, #PRNUM (seeded; issue #1618; probed against the 2026-11-01 canary).
+**Checked:** 2026-11-01, #1631 (seeded; issue #1618; probed against the 2026-11-01 canary).
 
 ## Feature map rules
 
