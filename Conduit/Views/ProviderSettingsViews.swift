@@ -1140,6 +1140,8 @@ private struct KeyOrderSection: View {
     @State private var answered = false
     @State private var loadFailed = false
     @State private var saving = false
+    /// Counts finished saves: a read asked before one ended is dropped.
+    @State private var writes = 0
     @State private var error: String?
 
     private var settingKey: String { KeyOrder.settingKey(for: entry.id) ?? "" }
@@ -1180,11 +1182,12 @@ private struct KeyOrderSection: View {
 
     private func read() async {
         loadFailed = false
+        let asked = writes
         guard let loaded = await access.load([settingKey]) else {
             loadFailed = true
             return
         }
-        guard !saving else { return }
+        guard !saving, asked == writes else { return }
         order = KeyOrder(stored: loaded[settingKey]?.textValue)
         answered = true
     }
@@ -1196,7 +1199,10 @@ private struct KeyOrderSection: View {
         saving = true
         error = nil
         Task {
-            defer { saving = false }
+            defer {
+                saving = false
+                writes += 1
+            }
             if !(await access.save(settingKey, .text(next.rawValue))) {
                 order = previous
                 error = AppLocalization.string("Could not save the key order.")

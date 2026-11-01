@@ -154,8 +154,26 @@ struct HelperModelsSettingsSection: View {
     @State private var slots: [HelperModelSlot]?
     /// Names the newest read: an older one that answers later is dropped.
     @State private var reads = 0
+    /// Hermes never answered and nothing is kept: an older Hermes without
+    /// the slots, so the row isn't offered, as Voice replies isn't.
+    @State private var unavailable = false
 
     var body: some View {
+        Group {
+            if !(unavailable && slots == nil) { section }
+        }
+        // Kept first, then Hermes, each time the page shows: a helper's
+        // page may have changed one.
+        .onAppear {
+            if slots == nil { slots = settings.kept() }
+            Task { await read() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: HelperModelSlot.saved)) { _ in
+            Task { await read() }
+        }
+    }
+
+    private var section: some View {
         ConduitSettingsSection(title: AppLocalization.string("Helper models"), symbol: "square.stack.3d.up", tint: .conduitAura) {
             Text(AppLocalization.string("Smaller jobs Hermes runs beside your chats, like titles, compaction and reading images. Each uses the chat model unless you pick one."))
                 .scaledFont(.footnote).foregroundStyle(.secondary)
@@ -187,26 +205,24 @@ struct HelperModelsSettingsSection: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("settings.models.helpers")
         }
-        // Kept first, then Hermes, each time the page shows: a helper's
-        // page may have changed one.
-        .onAppear {
-            if slots == nil { slots = settings.kept() }
-            Task { await read() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: HelperModelSlot.saved)) { _ in
-            Task { await read() }
-        }
     }
 
     private func read() async {
         reads += 1
         let read = reads
-        guard let loaded = try? await settings.load(), read == reads else { return }
-        slots = loaded
+        do {
+            let loaded = try await settings.load()
+            guard read == reads else { return }
+            slots = loaded
+            unavailable = false
+        } catch {
+            guard read == reads else { return }
+            unavailable = true
+        }
     }
 
     private var summary: String? {
-        guard let slots else { return nil }
+        guard let slots, !slots.isEmpty else { return nil }
         let own = slots.filter { !$0.setting.followsChats }.count
         return own == 0
             ? AppLocalization.string("All use the chat model")
