@@ -44,10 +44,30 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     @StateObject private var cardHeight = ChatCardHeight()
     /// Counts the file's loads; each page reports under its own number.
     @State private var load = 0
-    @State private var showsFullScreen = false
     /// The page the sheet shows, kept apart from `state` so a reload
-    /// underneath doesn't blank an open sheet.
-    @State private var sheetHTML: String?
+    /// underneath doesn't blank an open sheet. The sheet is presented by
+    /// this value itself: a flag beside it let the sheet build before it
+    /// saw the page and open blank, as What's New did (#1227).
+    @State private var sheetPage: SheetPage?
+    /// The page measured taller than a message shows; its foot fades so it
+    /// reads as continuing full screen.
+    @State private var isCut = false
+
+    struct SheetPage: Identifiable {
+        let id = UUID()
+        let html: String
+
+        init(html: String) {
+            self.html = html
+        }
+
+        /// The page a tap opens: the loaded file, or none while it loads or
+        /// has fallen back.
+        init?(_ state: LoadState) {
+            guard case .loaded(let html) = state else { return nil }
+            self.html = html
+        }
+    }
 
     enum LoadState: Equatable {
         case loading
@@ -90,6 +110,11 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         .task(id: LoadKey(path: path, draws: draws)) {
             await loadDocument()
         }
+        // On the block, not the card: a page that falls back to the file
+        // card while the sheet is open leaves the sheet up.
+        .sheet(item: $sheetPage) { page in
+            HTMLPreviewSheet(name: name, html: page.html)
+        }
     }
 
     private var card: some View {
@@ -119,11 +144,6 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         .padding(12)
         .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay { RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Color.secondary.opacity(0.20), lineWidth: 1) }
-        .sheet(isPresented: $showsFullScreen, onDismiss: { sheetHTML = nil }) {
-            if let sheetHTML {
-                HTMLPreviewSheet(name: name, html: sheetHTML)
-            }
-        }
     }
 
     private var header: some View {
@@ -166,6 +186,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             interactive: false,
             onHeight: { height in
                 let clamped = HTMLPreviewPage.clampedInlineHeight(height)
+                isCut = HTMLPreviewPage.isCutInline(height)
                 TranscriptPictureMemory.rememberHeight(clamped, for: heightKey)
                 cardHeight.pageMeasured(clamped, page: load)
             },
@@ -174,6 +195,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             onFailed: { fallBack() }
         )
         .opacity(drawn ? 1 : 0)
+        .modifier(CutFootFade(isCut: isCut))
         .overlay {
             if drawn {
                 Color.clear
@@ -199,9 +221,8 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     }
 
     private func openFullScreen() {
-        guard case .loaded(let html) = state else { return }
-        sheetHTML = html
-        showsFullScreen = true
+        guard let page = SheetPage(state) else { return }
+        sheetPage = page
     }
 
     private func loadDocument() async {
@@ -219,6 +240,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         let showsFileCard = state == .unavailable
         if !showsFileCard { state = .loading }
         load += 1
+        isCut = false
         cardHeight.pageReplaced()
         let dataURL = await gatewayMediaDataURL(path)
         guard !Task.isCancelled else { return }
@@ -233,6 +255,25 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     /// The page can't be drawn: the file card takes the card's place.
     private func fallBack() {
         state = .unavailable
+    }
+
+    /// The foot of a page cut at the message's height fades out; a page
+    /// that fits keeps a fully opaque mask. One view either way, so the
+    /// page's web view is never rebuilt when it turns out to be cut.
+    private struct CutFootFade: ViewModifier {
+        let isCut: Bool
+
+        func body(content: Content) -> some View {
+            content.mask {
+                LinearGradient(
+                    stops: isCut
+                        ? [.init(color: .black, location: 0.82), .init(color: .black.opacity(0.15), location: 1)]
+                        : [.init(color: .black, location: 0), .init(color: .black, location: 1)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        }
     }
 
     private struct LoadKey: Hashable {
@@ -309,6 +350,11 @@ enum HTMLPreviewPage {
 
     static func clampedInlineHeight(_ height: CGFloat) -> CGFloat {
         min(maximumInlineHeight, max(minimumInlineHeight, height.rounded(.up)))
+    }
+
+    /// A page taller than a message shows, whose foot fades in the message.
+    static func isCutInline(_ height: CGFloat) -> Bool {
+        height.rounded(.up) > maximumInlineHeight
     }
 
     /// The file's text from the dashboard's data URL, or nil when it isn't
