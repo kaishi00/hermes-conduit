@@ -1963,8 +1963,9 @@ in favour of `work_ask`) · asks between bots (`work_ask` and `work_reply`: an
 ask reaches the other bot's Bot Chat as a hidden, queued turn, and its answer
 goes into the asking workstream named in `for` or back to the asking Bot Chat
 as a work update; the digest lists open asks on both sides) · recovery after
-a restart (the journal sorts each interrupted workstream: continued once when
-nothing that changes things was in flight, else left for the user with a
+a restart (the journal sorts each interrupted workstream: continued once per restart
+(a stop lets a later one continue it again) when nothing that changes things
+was in flight, else left for the user with a
 Check first note; Hermes' own crash re-run, `desktop.auto_continue`, retired
 for workstreams, at load and in the sweep; the outbox's lost update lines
 replayed, and lost sends resent only into work recovery continued) · Opening a Bot Chat (the "Bot Chat" title is
