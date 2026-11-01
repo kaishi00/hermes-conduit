@@ -297,13 +297,14 @@ enum ProviderCatalog {
             byID[id]?.settings.sort { $0.variable < $1.variable }
             guard let key = byID[id]?.key else { continue }
             // The main profile reads its whole pool, `.env` rows included;
-            // another reads its own rows, or falls back to the shared ones.
-            // Sign-ins count: Hermes takes turns over them with the keys.
+            // another reads its own rows (a sign-in of its own is one), or
+            // falls back to the shared ones. Sign-ins count: Hermes takes
+            // turns over them with the keys.
             let shared = credentialCounts(sharedPool)[id] ?? .init()
             let own = credentialCounts(profilePool)[id] ?? .init()
             byID[id]?.key?.keysInUse = onMainProfile
                 ? shared.all
-                : (key.profileRows.isEmpty ? key.sharedRows.count + shared.signIns : own.all)
+                : (own.all == 0 ? key.sharedRows.count + shared.signIns : own.all)
         }
 
         for row in accounts?["providers"] as? [[String: Any]] ?? [] {

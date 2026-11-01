@@ -30,6 +30,21 @@ struct HelperModelSlot: Identifiable, Equatable {
     /// Conduit's predictions, a slot the Conduit plugin adds (0.124.0).
     static let predictions = "conduit_predict"
 
+    /// `/api/model/auxiliary`'s answer as the phone keeps it: each slot's
+    /// endpoint as its scheme, host and port only, since a path can carry a
+    /// token and the page shows only the host.
+    static func keptAnswer(_ answer: [String: Any]) -> [String: Any] {
+        guard let tasks = answer["tasks"] as? [[String: Any]] else { return answer }
+        var kept = answer
+        kept["tasks"] = tasks.map { row -> [String: Any] in
+            guard let url = row["base_url"] as? String, !url.isEmpty else { return row }
+            var row = row
+            row["base_url"] = ProviderCatalog.keptAddress(url)
+            return row
+        }
+        return kept
+    }
+
     /// Posted once Hermes took a slot's new model: a list read asked before
     /// it may answer with the old one, so the lists read again.
     static let saved = Notification.Name("conduit.helperModels.saved")

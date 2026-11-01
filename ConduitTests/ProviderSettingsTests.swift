@@ -550,6 +550,12 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn,
                                                profilePool: [:], onMainProfile: false)
             .first { $0.id == "openrouter" }?.key?.keysInUse, 2)
+        let ownSignIn: [String: Any] = ["providers": [["provider": "openrouter", "entries": [
+            ["id": "oauth2", "index": 0, "label": "claude.ai", "source": "oauth", "auth_type": "oauth"],
+        ]]]]
+        XCTAssertEqual(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn,
+                                               profilePool: ownSignIn, onMainProfile: false)
+            .first { $0.id == "openrouter" }?.key?.keysInUse, 1, "a sign-in of the profile's own is its own pool")
 
         XCTAssertEqual(KeyOrder.settingKey(for: "openrouter"), "credential_pool_strategies.openrouter")
         XCTAssertNil(KeyOrder.settingKey(for: "custom:together.ai"))

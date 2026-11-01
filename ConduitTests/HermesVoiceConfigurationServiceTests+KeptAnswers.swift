@@ -332,6 +332,14 @@ extension HermesVoiceConfigurationServiceTests {
             "task": "title_generation", "provider": "custom", "model": "qwen3", "base_url": "http://192.168.1.20:1234/v1",
         ]]]).first)
         XCTAssertEqual(slot.value, "qwen3 · 192.168.1.20:1234")
+        let kept = HelperModelSlot.keptAnswer(["tasks": [
+            ["task": "title_generation", "provider": "custom", "model": "qwen3", "base_url": "https://gw.example:8443/t/secret/v1?key=x"],
+            ["task": "compression", "provider": "auto", "model": "", "base_url": ""],
+        ]])
+        let keptRows = try XCTUnwrap(kept["tasks"] as? [[String: Any]])
+        XCTAssertEqual(keptRows[0]["base_url"] as? String, "https://gw.example:8443", "The phone keeps no path: it can carry a token")
+        XCTAssertEqual(keptRows[1]["base_url"] as? String, "")
+        XCTAssertEqual(HelperModelSlot.slots(in: kept).first?.value, "qwen3 · gw.example:8443")
         var endpointPicks = VoiceReplyModelPicks()
         endpointPicks.hermesAnswered(local, to: endpointPicks.readAsked())
         XCTAssertNil(endpointPicks.writeAsked(), "Its endpoint goes with the pick Hermes holds")
