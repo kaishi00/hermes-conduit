@@ -2823,7 +2823,7 @@ Profile config saves (the key order, a profile setting)
 - Hermes tries a key before it's saved; only a check that reached the provider and was refused stops the save. A provider that reads only another provider's variable isn't checked (Hermes would try the key on that provider). A variable two providers read as their own key is never removed for either, nor the pool row read from it (by Remove key, Use the shared key, a key of its own or sharing).
 - A provider's page shows "Could not load models." with Try Again when Hermes' catalog read fails, as the Model lists ruling asks.
 - Sign-ins live on the main profile, which Hermes already shares; custom endpoints are per profile, in its config, saved in the config write queue with `api_key` left out when nothing was typed (an empty one clears the saved key).
-- A provider that runs the default model can't be removed, nor its key (Remove shared key, Remove key, Remove this profile's key; going back to the shared key is fine), and the page says so; each key removal asks first and names the delegate and fallback models on the provider; Remove waits for Hermes' catalog (not the kept one) to tell; it names the delegate and fallback models on it, as last read (a name only, it changes nothing).
+- A provider that runs the default model can't be removed, nor its key (Remove shared key, Remove key, Remove this profile's key; going back to the shared key is fine), and the page says so; each key removal asks first and names the delegate and fallback models on the provider; Remove waits for Hermes' catalog (not the kept one) to tell; it names the delegate and fallback models on it, and the helper models pinned to it (#1632), as last read (a name only, it changes nothing).
 - A key another provider also reads stays in the profile's settings, where Hermes still uses it first, and the key section says so, as does a save behind it; Use the shared key is offered only when the row the profile uses first is one Conduit may remove.
 - A new endpoint's config key is made from its name (`lab-vllm`, then `lab-vllm-2`), clear of the profile's endpoints and of every slug, display name and alias in Hermes' model catalog, so it never takes a built-in's catalog row; Custom endpoint waits for that catalog, and says so with Try Again when it isn't in.
 - A provider's settings that aren't keys (each non-password `provider` variable it owns in `/api/env`: a base URL override, Bedrock's AWS region and profile, Vertex's credentials file) are rows in a Settings section of its page and its Add page, set or cleared in the profile's `.env`, their values never shown. A provider with only such settings gets a card, and one with a setting saved and no key or sign-in reads "Settings saved" ("Settings saved, no key yet" when it takes a key); one that signs in isn't set up by a setting alone (#1625).
@@ -2834,9 +2834,9 @@ Profile config saves (the key order, a profile setting)
 - A custom endpoint's saved key can be replaced but not removed from Conduit.
 - Conduit adds one key per provider and scope, so a second key for the key order comes from Hermes (`hermes auth add`) or the `.env`.
 - Key order isn't offered for a provider whose id has a dot (`custom:together.ai`): the profile setting's dotted key would split it.
-- Removing the shared key or signing out on the main profile checks only the main profile's default, delegate and fallback models, not other profiles' that run on it.
+- Removing the shared key or signing out on the main profile checks only the main profile's default, delegate, fallback and helper models, not other profiles' that run on it.
 
-**Checked:** 2026-11-01, #1632 (key order counts sign-ins, its picks in a tested type); 2026-11-01, #1625 (stage 2: key order, providers with only settings; two gaps closed, two opened); 2026-11-01, #1620 (from #1616's last reviews: a removal tries every variable, a save behind a held key says so, a given-up sign-in is cancelled on Hermes, a model pick's spinner stays until its own catalog read lands; base-URL-only providers noted as a gap); 2026-11-01, #1616 (entry added: Providers section, Add a provider, shared keys with overrides and cleanup; host-tested on Hermes 0.22.2: an override wins after its copies go, across restarts, and replacing and going back to the shared key work)
+**Checked:** 2026-11-01, #1632 (key order counts sign-ins, its picks in a tested type; a removal names the helper models pinned to the provider); 2026-11-01, #1625 (stage 2: key order, providers with only settings; two gaps closed, two opened); 2026-11-01, #1620 (from #1616's last reviews: a removal tries every variable, a save behind a held key says so, a given-up sign-in is cancelled on Hermes, a model pick's spinner stays until its own catalog read lands; base-URL-only providers noted as a gap); 2026-11-01, #1616 (entry added: Providers section, Add a provider, shared keys with overrides and cleanup; host-tested on Hermes 0.22.2: an override wins after its copies go, across restarts, and replacing and going back to the shared key work)
 
 ## Helper models
 
@@ -2858,7 +2858,7 @@ override (not needed: a board setting, apart from the Kanban helper slots) ·
 Hermes Desktop and Hermes' Models page (the same slots; not needed) · Screens
 that open on their last answer (done: the list and each page open on the
 kept slots) · Providers and keys (the pickers read Hermes' catalog as they
-open) · Watch, CarPlay and group rooms (not needed: no model settings) · the
+open; done: a removal names the helpers pinned to the provider) · Watch, CarPlay and group rooms (not needed: no model settings) · the
 notifier's README and CHANGELOG (done) · README's Settings list (done)
 
 **Code**

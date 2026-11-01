@@ -569,12 +569,12 @@ struct VoiceJobModelSettingsSection: View {
         ]
     }
 
-    /// Picker tag for a provider/model pair (provider may be empty).
     /// A provider pinned without a model: Hermes runs its default model.
     static func providerDefaultTitle(_ provider: String) -> String {
         AppLocalization.string("Default") + " · " + provider
     }
 
+    /// Picker tag for a provider/model pair (provider may be empty).
     static func tag(provider: String?, model: String) -> String {
         "\(provider ?? "")\u{1F}\(model)"
     }

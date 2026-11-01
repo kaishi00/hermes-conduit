@@ -89,7 +89,8 @@ struct ModelPageProviders: View {
                 return saved
             },
             usage: { entry in Self.usage(of: entry, catalog: catalog, settings: appState.keptProfileSettings(keys: Self.usageKeys),
-                                         fallbacks: appState.keptProfileFallbackModels()) },
+                                         fallbacks: appState.keptProfileFallbackModels(),
+                                         helpers: appState.keptHelperModels()) },
             keyOrder: KeyOrderAccess(
                 kept: { appState.keptProfileSettings(keys: $0) },
                 load: { await appState.readProfileSettings(keys: $0) },
@@ -126,9 +127,9 @@ struct ModelPageProviders: View {
     static let usageKeys = ["delegation.provider", "delegation.model"]
 
     /// The other model picks on the profile that run on `entry`: its
-    /// delegate model and fallback models.
+    /// delegate model, fallback models and the helper models pinned to it.
     static func usage(of entry: ProviderEntry, catalog: ProfileModelDefaults? = nil, settings: [String: ProfileSettingValue]?,
-                      fallbacks: [ProfileFallbackModel]?) -> [String] {
+                      fallbacks: [ProfileFallbackModel]?, helpers: [HelperModelSlot]? = nil) -> [String] {
         // A pick can name the provider by its catalog row's display name or
         // an alias, so it's matched the way the catalog matches.
         let row = catalog.flatMap { entry.catalogRow(in: $0.providers) }
@@ -142,6 +143,11 @@ struct ModelPageProviders: View {
         }
         for fallback in fallbacks ?? [] where runsOn(fallback.provider) {
             uses.append(AppLocalization.string("Fallback \(fallback.model)"))
+        }
+        // A helper pinned to the provider, with or without a model of its
+        // own; one that follows the chat model moves with it.
+        for slot in helpers ?? [] where !slot.setting.followsChats && runsOn(slot.setting.provider) {
+            uses.append(slot.title)
         }
         return uses
     }

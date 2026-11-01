@@ -458,9 +458,17 @@ final class ProviderSettingsTests: XCTestCase {
             of: entry,
             settings: ["delegation.provider": .text("OpenRouter")],
             fallbacks: [ProfileFallbackModel(provider: "openrouter", model: "gpt-x"),
-                        ProfileFallbackModel(provider: "nous", model: "hermes")]
+                        ProfileFallbackModel(provider: "nous", model: "hermes")],
+            helpers: HelperModelSlot.slots(in: ["tasks": [
+                ["task": "title_generation", "provider": "openrouter", "model": "fast/titles"],
+                ["task": "vision", "provider": "openrouter", "model": ""],
+                ["task": "compression", "provider": "auto", "model": ""],
+                ["task": "skills_hub", "provider": "nous", "model": "hermes"],
+            ]])
         )
-        XCTAssertEqual(uses.count, 2)
+        XCTAssertEqual(uses.count, 4)
+        XCTAssertEqual(Array(uses.suffix(2)), [AppLocalization.string("Chat titles"), AppLocalization.string("Image reading")],
+                       "helpers pinned to it, with or without a model")
     }
 
     // MARK: Settings that aren't keys, and key order
