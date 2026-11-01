@@ -1150,15 +1150,21 @@ private struct KeyOrderSection: View {
         ConduitSettingsSection(title: AppLocalization.string("Key order"), symbol: "arrow.triangle.2.circlepath", tint: .conduitAura) {
             Text(AppLocalization.string("This profile has \(String(keys)) keys for \(entry.name). Hermes moves to another when one hits its limit."))
                 .scaledFont(.footnote).foregroundStyle(.secondary)
-            ConduitMenuPicker(
-                value: order ?? .fillFirst,
-                choices: KeyOrder.allCases.map { (id: $0, title: $0.title) },
-                onSelect: choose
-            ) {
-                Text(AppLocalization.string("Use keys")).foregroundStyle(.secondary)
+            if let order {
+                ConduitMenuPicker(
+                    value: order,
+                    choices: KeyOrder.allCases.map { (id: $0, title: $0.title) },
+                    onSelect: choose
+                ) {
+                    Text(AppLocalization.string("Use keys")).foregroundStyle(.secondary)
+                }
+                // A save writes the setting; it waits for Hermes' answer.
+                .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving, ready: true))
+            } else if !loadFailed {
+                // Nothing kept and Hermes not answered yet: no order is
+                // shown as the profile's, Hermes' default included.
+                ProgressView().frame(maxWidth: .infinity).accessibilityLabel(AppLocalization.string("Loading…"))
             }
-            // A save writes the setting; it waits for Hermes' answer.
-            .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving, ready: order != nil))
             if loadFailed && !answered {
                 // The picker waits for Hermes: a kept or default order may not be its own.
                 VStack(alignment: .leading, spacing: 6) {
