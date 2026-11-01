@@ -30124,6 +30124,10 @@ final class AppState: ObservableObject {
                 // Older gateways report expiry as RPC 4009 instead of the
                 // typed `expired` status — same teardown either way.
                 expireClarifyRequest(requestId: requestId)
+            } else if HermesClient.isSessionNotFoundError(error) {
+                // The chat's runtime is gone (reaped, or re-opened elsewhere),
+                // as the approval card reads it: nothing waits on this answer.
+                applyClarifyResponseOutcome(.ended, requestId: requestId, questionId: question.id, answer: wireAnswer)
             } else {
                 markClarifyQuestionError(
                     requestId: requestId,

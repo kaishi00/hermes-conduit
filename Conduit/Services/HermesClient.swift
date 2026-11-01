@@ -1284,6 +1284,7 @@ final class HermesClient: ObservableObject {
         executionGenerations = [:]
         sessionRevisions = [:]
         authorityPrompts = [:]
+        authorityPromptSessions = [:]
         // A token binds the session's revision on the old socket's server.
         modelConfirmTokens = [:]
         authorityRunningSessions = []
