@@ -148,6 +148,8 @@ struct HelperModelsSettingsSection: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let settings: HelperModelsSettingsModel
     @State private var slots: [HelperModelSlot]?
+    /// Names the newest read: an older one that answers later is dropped.
+    @State private var reads = 0
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Helper models"), symbol: "square.stack.3d.up", tint: .conduitAura) {
@@ -190,7 +192,9 @@ struct HelperModelsSettingsSection: View {
     }
 
     private func read() async {
-        guard let loaded = try? await settings.load() else { return }
+        reads += 1
+        let read = reads
+        guard let loaded = try? await settings.load(), read == reads else { return }
         slots = loaded
     }
 
@@ -209,6 +213,8 @@ struct HelperModelsPage: View {
     let settings: HelperModelsSettingsModel
     @State private var slots: [HelperModelSlot]?
     @State private var failed = false
+    /// Names the newest read: an older one that answers later is dropped.
+    @State private var reads = 0
 
     var body: some View {
         SettingsDetailContainer {
@@ -248,10 +254,15 @@ struct HelperModelsPage: View {
     }
 
     private func read() async {
+        reads += 1
+        let read = reads
         do {
-            slots = try await settings.load()
+            let loaded = try await settings.load()
+            guard read == reads else { return }
+            slots = loaded
             failed = false
         } catch {
+            guard read == reads else { return }
             failed = true
         }
     }
