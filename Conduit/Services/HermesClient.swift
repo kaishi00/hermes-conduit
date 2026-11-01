@@ -3991,10 +3991,13 @@ final class HermesClient: ObservableObject {
     /// and the client is expected to recover by resuming the STORED session
     /// id. Hermes Desktop classifies the same condition by the
     /// `/session not found/i` message. Timeouts, busy rejections, connection
-    /// loss, and compression failures are never in this class.
+    /// loss, and compression failures are never in this class. The session
+    /// authority answers its refusals with 4001 too, each naming its
+    /// `data.reason`: only `not_found` means the session is gone, so an
+    /// `invalid_params` or `permission_denied` shows as the refusal it is.
     static func isSessionNotFoundError(_ error: Error) -> Bool {
         if let rpcError = error as? RpcError {
-            if rpcError.code == 4001 { return true }
+            if rpcError.code == 4001, rpcError.reason == nil || rpcError.reason == "not_found" { return true }
             return rpcError.message.lowercased().contains("session not found")
         }
         let message = (error as? LocalizedError)?.errorDescription

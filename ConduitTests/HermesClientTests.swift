@@ -3555,6 +3555,16 @@ final class HermesClientTests: XCTestCase {
         XCTAssertTrue(HermesClient.isSessionNotFoundError(
             RpcError(code: nil, message: "Session Not Found: runtime-a")
         ))
+        // The session authority's 4001s name their reason: only not_found is a gone session.
+        XCTAssertTrue(HermesClient.isSessionNotFoundError(
+            RpcError(code: 4001, message: "not_found", reason: "not_found")
+        ))
+        XCTAssertFalse(HermesClient.isSessionNotFoundError(
+            RpcError(code: 4001, message: "invalid_params", reason: "invalid_params", fields: ["answer"])
+        ))
+        XCTAssertFalse(HermesClient.isSessionNotFoundError(
+            RpcError(code: 4001, message: "permission_denied", reason: "permission_denied")
+        ))
 
         // NOT in the class: busy rejections, timeouts, connection loss,
         // compression failures — stale-runtime recovery must never fire for
