@@ -201,7 +201,10 @@ struct ProviderEntry: Identifiable, Equatable {
         case .own: return .ownKey
         case .oldCopy: return .oldCopy
         case .mainProfileOnly: return .mainProfileOnly
-        case .none: return account == nil && settings.contains(where: \.saved) ? .configured : .notConnected
+        case .none:
+            // A pool of the profile's own that holds only a sign-in.
+            if (key?.profileSignIns ?? 0) > 0 { return .signedIn }
+            return account == nil && settings.contains(where: \.saved) ? .configured : .notConnected
         }
     }
 
@@ -842,8 +845,12 @@ final class ProviderSettingsService: ObservableObject {
         let stale = (entry.key?.sharedIDs ?? []).union((entry.key?.removableRows ?? []).map(\.id))
         _ = try await request(named("/api/credentials/pool", profile: profile), method: "POST",
                               body: ["provider": entry.id, "api_key": value, "label": ProviderEntry.PoolRow.profileLabel])
+        // The key it replaces in this profile's `.env` goes too: Hermes
+        // would read it into the pool again, ahead of the new one.
+        let staleVars = entry.key?.removableVars ?? []
         return await cleanUp {
             try await removeRows(provider: entry.id, ids: stale, profile: profile)
+            try await removeVariables(staleVars)
         }
     }
 
