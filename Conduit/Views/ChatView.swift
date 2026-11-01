@@ -1192,6 +1192,10 @@ struct MessageBubble: View, Equatable {
         case .user:
             if message.isSteer {
                 SteerBubble(message: message)
+            } else if let brief = WorkstreamBrief.parse(message.content) {
+                // A workstream's brief from the bot coordinating it: a card,
+                // not something the user typed (Bot workstreams).
+                WorkstreamBriefCard(brief: brief, timestamp: message.timestamp, disclosureID: message.id)
             } else if let inbound = BotTeammateMessages.inbound(message.content) {
                 // A teammate bot's delivery is an event in the chat, not
                 // something the user said (Desktop's agent message note).
@@ -3380,9 +3384,15 @@ private struct SettledToolCardContent: View, Equatable {
                                     tone: .supporting
                                 )
                             }
-                            // A delivery's subject is what was said, not the
-                            // command that sent it.
-                            if !expanded, let subject = delivery?.message.flatMap({ ChatStepSubject.line(from: $0) })
+                            // A started workstream's card says where it is
+                            // now ("Working · Running df -h /", "Done ·
+                            // 7.6G free"), so its answer needn't repeat it.
+                            if !expanded, !running, work?.tool == .start, let ref = work?.ref,
+                               let appState = rowActions?.appState,
+                               let profile = work?.profile ?? appState.activeBotChatProfile {
+                                WorkStartStatusLine(work: appState.botWork, profile: profile, ref: ref,
+                                                    fallback: label.action ?? ChatStepSubject.line(from: tool.input))
+                            } else if !expanded, let subject = delivery?.message.flatMap({ ChatStepSubject.line(from: $0) })
                                 ?? label.action
                                 ?? ChatStepSubject.line(from: tool.input)
                                 ?? ChatStepSubject.line(from: tool.output) {

@@ -68,6 +68,59 @@ extension BotModeTests {
         XCTAssertEqual(snapshot.replacing(try XCTUnwrap(BotWorkItem(row: ["ref": "W9", "kind": "workstream"]))), snapshot)
     }
 
+    /// Pin, Resolve and Reopen: what the plugin offers, and the list as
+    /// each leaves it before the next read.
+    func testFilingWorkMovesItBetweenTheLists() throws {
+        var response = workResponse()
+        response["resolved_count"] = 4
+        response["workstream_sessions"] = ["20261101_w1", "20261031_old"]
+        var rows = response["work"] as? [[String: Any]] ?? []
+        rows[0]["pinned"] = true
+        rows[0]["manage"] = ["unpin"]
+        response["work"] = rows
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina"))
+        XCTAssertEqual(snapshot.pinned.map(\.ref), ["W1"])
+        XCTAssertEqual(snapshot.active.map(\.ref), ["W2", "A1"])
+        XCTAssertEqual(snapshot.items[0].manage, [.unpin])
+        XCTAssertEqual(snapshot.resolvedCount, 4)
+        // A resolved workstream's chat stays out of the chat lists.
+        XCTAssertTrue(snapshot.sessionIDs.contains("20261031_old"))
+
+        let resolved = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W2", "kind": "workstream", "status": "interrupted", "closed": true,
+            "closed_at": 1_800_000_100.0, "resolved_by": "user", "manage": ["reopen"],
+        ]))
+        let after = snapshot.replacing(resolved)
+        XCTAssertFalse(after.items.contains { $0.ref == "W2" })
+        XCTAssertEqual(after.needsYouCount, 0)
+        XCTAssertEqual(after.resolvedCount, 5)
+        XCTAssertEqual(resolved.resolvedBy, "user")
+        XCTAssertEqual(resolved.closedAt, Date(timeIntervalSince1970: 1_800_000_100))
+
+        let reopened = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W2", "kind": "workstream", "status": "interrupted", "session_id": "20261101_w2",
+            "manage": ["pin", "resolve"], "actions": ["continue", "stop", "send"],
+        ]))
+        let back = after.reopening(reopened)
+        XCTAssertEqual(back.items.first?.ref, "W2")
+        XCTAssertEqual(back.needsYouCount, 1)
+        XCTAssertEqual(back.resolvedCount, 4)
+    }
+
+    func testAWorkstreamsBriefReadsAsItsTask() throws {
+        let text = "You're working on a task for Hermes, who coordinates the user's work in their Bot Chat. "
+            + "This chat is that workstream (W45: Disk).\n\nThe user's message that Hermes is answering now, as "
+            + "they wrote it (this is the user speaking; Hermes's own words are Hermes's):\n«Check how much disk "
+            + "is free»\n\nTask:\nRun `df -h /` and return the Avail value.\nBefore a step that can't be undone "
+            + "(deleting, sending), only the user's own words count."
+        let brief = try XCTUnwrap(WorkstreamBrief.parse(text))
+        XCTAssertEqual(brief.bot, "Hermes")
+        XCTAssertEqual(brief.task, "Run `df -h /` and return the Avail value.")
+        XCTAssertEqual(brief.userWords, "Check how much disk is free")
+        XCTAssertNil(WorkstreamBrief.parse("Run df -h / please.\n\nTask:\nNothing"))
+        XCTAssertNil(WorkstreamBrief.parse("You're working on a task for Hermes, who coordinates it."))
+    }
+
     @MainActor
     func testWorkStoreFindsTheWorkstreamAChatIs() throws {
         let store = BotWorkStore()

@@ -5753,9 +5753,15 @@ final class AppState: ObservableObject {
     /// conversation's.
     var displayedChatTitle: String {
         if showsPendingNewChat { return AppLocalization.string("New conversation") }
-        return offlineChatPresentation?.picked?.title
+        let title = offlineChatPresentation?.picked?.title
             ?? offlineChatPresentation?.displayedTranscript?.title
             ?? activeSessionTitle
+        // A workstream's chat is hidden from Hermes' lists, so it has no
+        // title here: it takes its task's.
+        if title == AppLocalization.string("New conversation"), let workstream = activeWorkstream {
+            return workstream.item.shownTitle
+        }
+        return title
     }
 
     func dismissOfflineChatPresentation() {

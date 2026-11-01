@@ -19,6 +19,9 @@ final class BotWorkStore: ObservableObject {
     /// What the last action on each bot's work said when it did nothing
     /// ("W3 can't continue while it's running"), for its panel to show.
     @Published private(set) var refusals: [String: String] = [:]
+    /// Each bot's Resolved list as far as it was read, while its panel
+    /// shows it.
+    @Published private(set) var resolvedLists: [String: ResolvedList] = [:]
     /// Actions on their way, by bot and ref, so a button isn't tapped twice.
     @Published private(set) var acting: Set<String> = []
     /// Every workstream's chat Conduit knows of, on every bot, worked out
@@ -31,6 +34,29 @@ final class BotWorkStore: ObservableObject {
     /// a list read before either never lands over what came after it.
     private var epoch = 0
     private var actions: [String: Int] = [:]
+
+    struct ResolvedList: Equatable {
+        var items: [BotWorkItem] = []
+        var more = false
+        var isLoading = false
+        var failed = false
+    }
+
+    func resolvedList(_ profile: String) -> ResolvedList? { resolvedLists[profile] }
+
+    func setResolvedList(_ list: ResolvedList?, profile: String) {
+        guard resolvedLists[profile] != list else { return }
+        resolvedLists[profile] = list
+    }
+
+    /// A row the user resolved joins the top of a Resolved list already
+    /// read; one reopened leaves it.
+    func fileResolved(_ item: BotWorkItem, profile: String) {
+        guard var list = resolvedLists[profile] else { return }
+        list.items.removeAll { $0.ref == item.ref }
+        if item.isClosed { list.items.insert(item, at: 0) }
+        resolvedLists[profile] = list
+    }
 
     struct ReadMark: Equatable {
         let epoch: Int
@@ -48,13 +74,16 @@ final class BotWorkStore: ObservableObject {
         snapshots[snapshot.profile] = snapshot
     }
 
-    func replace(_ item: BotWorkItem, profile: String) {
+    /// A row as an action left it; `reopened` puts one back from the
+    /// Resolved list.
+    func replace(_ item: BotWorkItem, profile: String, reopened: Bool = false) {
         guard let snapshot = snapshots[profile] else { return }
-        snapshots[profile] = snapshot.replacing(item)
+        snapshots[profile] = reopened ? snapshot.reopening(item) : snapshot.replacing(item)
     }
 
     func clear() {
         snapshots = [:]
+        resolvedLists = [:]
         refusals = [:]
         acting = []
         reading = []
@@ -101,6 +130,12 @@ final class BotWorkStore: ObservableObject {
         guard !ids.isEmpty else { return nil }
         for (profile, snapshot) in snapshots {
             if let item = snapshot.item(forSession: ids) { return (profile, item) }
+        }
+        // A resolved one, opened from the Resolved list.
+        for (profile, list) in resolvedLists {
+            if let item = list.items.first(where: { $0.kind == .workstream && ids.contains($0.sessionID) }) {
+                return (profile, item)
+            }
         }
         return nil
     }
@@ -171,7 +206,8 @@ extension AppState {
             guard botWork.mark(profile).epoch == mark.epoch else { return false }
             botWork.noteAction(profile)
             if let updated {
-                botWork.replace(updated, profile: profile)
+                botWork.replace(updated, profile: profile, reopened: action == .reopen)
+                botWork.fileResolved(updated, profile: profile)
             }
             Haptics.success()
             // The buttons free up now; the list is read again behind them.
@@ -190,6 +226,35 @@ extension AppState {
         // The refusal shows now; the row is read again behind it.
         Task { await refreshBotWork(profile: profile, afterAction: true) }
         return false
+    }
+
+    /// The bot's Resolved list: its first page, or the next one (`more`).
+    func loadResolvedWork(profile: String, more: Bool = false) async {
+        guard servesBotWorkstreams, isConnected else { return }
+        var list = botWork.resolvedList(profile) ?? BotWorkStore.ResolvedList()
+        guard !list.isLoading else { return }
+        let before = more ? list.items.last?.closedAt : nil
+        list.isLoading = true
+        list.failed = false
+        botWork.setResolvedList(list, profile: profile)
+        let mark = botWork.mark(profile)
+        do {
+            let page = try await botWorkClient(profile: profile).resolved(before: before)
+            guard botWork.mark(profile).epoch == mark.epoch else { return }
+            var now = botWork.resolvedList(profile) ?? list
+            let shown = more ? now.items : []
+            let refs = Set(shown.map(\.ref))
+            now.items = shown + page.items.filter { !refs.contains($0.ref) }
+            now.more = page.more
+            now.isLoading = false
+            botWork.setResolvedList(now, profile: profile)
+        } catch {
+            guard botWork.mark(profile).epoch == mark.epoch else { return }
+            var now = botWork.resolvedList(profile) ?? list
+            now.isLoading = false
+            now.failed = true
+            botWork.setResolvedList(now, profile: profile)
+        }
     }
 
     /// The bot whose work the open chat is, and the workstream: the bar
