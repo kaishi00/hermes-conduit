@@ -413487,6 +413487,88 @@
           }
         }
       }
+    },
+    "This profile has %@ keys and sign-ins for %@. Hermes moves to another when one hits its limit.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Profil hat %@ Schlüssel und Anmeldungen für %@. Hermes wechselt, wenn eines sein Limit erreicht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este perfil tiene %@ claves e inicios de sesión para %@. Hermes pasa a otro cuando uno llega a su límite."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce profil a %@ clés et connexions pour %@. Hermes passe à une autre quand l’une atteint sa limite."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profil ini punya %@ kunci dan login untuk %@. Hermes beralih ke yang lain saat satu mencapai batasnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo profilo ha %@ chiavi e accessi per %@. Hermes passa a un altro quando uno raggiunge il limite."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このプロファイルには %@ 件の %@ のキーとサインインがあります。上限に達したものがあると、Hermesは別のものに切り替えます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 프로필에는 %@개의 %@ 키와 로그인이 있습니다. 하나가 한도에 도달하면 Hermes가 다른 것으로 바꿉니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten profil ma %@ kluczy i logowań do %@. Hermes przechodzi na inne, gdy któreś osiągnie limit."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este perfil tem %@ chaves e logins para %@. O Hermes passa para outro quando um atinge o limite."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "У этого профиля %@ ключей и входов для %@. Когда один достигает лимита, Hermes переходит к другому."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu profilde %@ adet %@ anahtarı ve girişi var. Biri sınırına ulaştığında Hermes başka birine geçer."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此配置有 %@ 个 %@ 密钥和登录。某个达到上限时，Hermes 会换用另一个。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此設定檔有 %@ 個 %@ 金鑰和登入。某個達到上限時，Hermes 會換用另一個。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
