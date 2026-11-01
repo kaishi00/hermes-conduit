@@ -261,16 +261,12 @@ struct V2ConversationScreen: View {
             // a group room keeps the profile in use.
             V2Backdrop(glowProfile: appState.activeRoomSurface == nil ? appState.conversationIdentityProfile : nil)
             conversation
-                // A Bot Chat's Work strip, or the bar over a workstream's
-                // own chat (Bot workstreams).
+                // The bar over a workstream's own chat while it needs a
+                // tap (Bot workstreams); a Bot Chat's work shows under
+                // its title.
                 .safeAreaInset(edge: .top, spacing: 0) {
                     if appState.activeRoomSurface == nil, appState.servesBotWorkstreams {
-                        BotWorkHeader(work: appState.botWork, isPanelOpen: workPanelOpen) {
-                            workPanelOpen.toggle()
-                            // One column beside the chat: the Work panel
-                            // takes Artifacts'.
-                            if workPanelOpen, fitsSidePanel { sidePanelOpen = false }
-                        }
+                        BotWorkHeader(work: appState.botWork)
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
@@ -369,6 +365,15 @@ struct V2ConversationScreen: View {
                         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                         .accessibilityLabel(AppLocalization.string("From \(parent.title)"))
                         .accessibilityHint(AppLocalization.string("Opens the conversation this one came from"))
+                    }
+                    // A Bot Chat's work, or whose work a workstream is.
+                    if appState.servesBotWorkstreams {
+                        BotWorkTitleStatus(work: appState.botWork, isPanelOpen: workPanelOpen) {
+                            workPanelOpen.toggle()
+                            // One column beside the chat: the Work panel
+                            // takes Artifacts'.
+                            if workPanelOpen, fitsSidePanel { sidePanelOpen = false }
+                        }
                     }
                     V2ConnectionLine()
                 }

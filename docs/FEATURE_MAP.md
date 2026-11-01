@@ -1991,25 +1991,32 @@ for workstreams, at load and in the sweep; the outbox's lost update lines
 replayed, and lost sends resent only into work recovery continued) · Opening a Bot Chat (the "Bot Chat" title is
 how the plugin knows the coordinator) · Hermes Desktop's Bot Chat (the same
 plugin, the same tools) · the `hermes conduit-push work` commands · the tool
-descriptions, the worker's and the update's prompts, and the notifier's
-README section · the app's Work strip under a Bot Chat's top bar ("2 working · 1
-needs you"), its Work panel (Active then Recent, each row's checklist, step,
-last result and actions; a sheet on a phone, a column beside the chat on a
-wide window), the bar over a workstream's own chat (Back to the bot, Stop,
-Continue, Check first), the work tools' transcript cards ("Started W3: Login
-bug", "Asked Nahida", with Open W3) and the working line ("Starting work…"), the
-Artifacts column beside the chat (done: one of the two shows at a time), Screens
-that open on their last answer (done: the strip, panel and bar open on the
-kept list), and Chats search and All profiles
-leaving workstreams out · the plugin's `/workstreams` routes (the list and
+descriptions, the worker's and the update's prompts (the worker's brief is
+read by the app's brief card, so its wording and `WorkstreamBrief.parse` change
+together; done), and the notifier's
+README section · the app's line under a Bot Chat's title ("2 working · 1
+needs you"), its Work panel (count chips, then Pinned, Active, Recent folded
+to three and the Resolved list, a "Needs you" card's approval with Approve
+and Deny (its chat's card answers it too), each card's checklist bar, step, last result
+in rendered Markdown and actions; a swipe or a long press pins, resolves or
+reopens; a sheet on a phone, a column beside the chat on a wide window), a
+workstream's own chat (its task as the title, "Furina's work · W3 · Done"
+under it going back to the bot, the brief as a folded "Brief from Furina"
+card, and a bar with Stop, Continue or Check first only while one is
+offered), the work tools' transcript cards ("Started W3: Login bug" with where
+W3 is now, "Asked Nahida", with Open W3) and the working line ("Starting
+work…"), the Artifacts column beside the chat (done: one of the two shows at a
+time), Screens that open on their last answer (done: the line, panel and bar
+open on the kept list), and Chats search and All profiles
+leaving workstreams out, resolved ones too · the plugin's `/workstreams` routes (the list and
 the user's own actions, which skip the Bot Chat's model; `?conduit_profile=`
 for a secondary bot) and the `bot-workstreams` capability · Bots and Tasks
 screens (not built)
 
 **Code**
 - Notifier, on its `bot-workstreams` branch (plain text until it reaches main): work_store.py (the registry, conduit/workstreams.db in the bot's home), work_broker.py (Hermes' session API in the dashboard's process), work_tool.py (the tools, the policy, the hooks' work, the note and the updates), __init__.py (the hook calls), cli.py (`work`), tests/test_work.py, upstream/test_bot_work.py
-- Notifier routes: dashboard/api/workstreams.py (`GET /workstreams`, `POST /workstreams/<ref>/<action>`), work_tool.py's `app_list` and `app_act` (acting through the copy Hermes loaded for the bot, `copy_for`)
-- App: `Conduit/Services/BotWorkstreams.swift` (the list, the client, the transcript cards' `BotWorkCall`), `Conduit/Services/AppState+BotWorkstreams.swift` (`BotWorkStore`: each bot's refusals and taps in flight, one read per bot at a time, reads marked so one asked before an action or a server change is dropped, and a read under way read again after an action; refresh, actions, opening a workstream; `workstreamsChanged`, which drops a newly known workstream from All profiles and redraws search, called from the store's `onWorkstreamsChanged`, wired in `AppState.botWork`), `Conduit/Views/BotWorkViews.swift` (strip, panel, rows, workstream bar; BotWorkHeader reads a bot's chat its list doesn't name a few times, so a new workstream's bar shows), `Conduit/Views/V2/V2ConversationScreen.swift` (where they show), `Conduit/Views/ChatView.swift` (ToolStep's work cards, runningToolTitle), `Conduit/Views/V2/V2ChatsView.swift` and `AppState.listAllProfilesCatalog` (search and All profiles), `ConduitTests/BotWorkstreamsTests.swift`; `AppState.invalidateBotModeState` (a server change clears the kept work); `Conduit/Services/HermesClient.swift` (normalizeMessages, which drops hidden rows from the transcript), `Conduit/Services/ConduitAppLink.swift` and `Conduit/Services/AppState.swift` (openAppLink, the link's profile)
+- Notifier routes: dashboard/api/workstreams.py (`GET /workstreams`, `?resolved=1&before=` for the Resolved list, `POST /workstreams/<ref>/<action>`), work_tool.py's `app_list`, `app_act` and `_app_manage_act` (pin, unpin, resolve, reopen; acting through the copy Hermes loaded for the bot, `copy_for`)
+- App: `Conduit/Services/BotWorkstreams.swift` (the list, the client and its Resolved pages, the transcript cards' `BotWorkCall`, and `WorkstreamBrief.parse`, which reads the notifier's `WORKER_PROMPT` wording: its opening, ", who coordinates", "Task:", the go-ahead rules' first words and the «» quote, so the two change together), `Conduit/Services/AppState+BotWorkstreams.swift` (`BotWorkStore`: each bot's Resolved list as read (`resolvedLists`, `loadResolvedWork`, `fileResolved`), a workstream's approvals (`workstreamApprovals`, `answerWorkstreamApproval`), its refusals and taps in flight, one read per bot at a time, reads marked so one asked before an action or a server change is dropped, and a read under way read again after an action; refresh, actions, opening a workstream; `workstreamsChanged`, which drops a newly known workstream from All profiles and redraws search, called from the store's `onWorkstreamsChanged`, wired in `AppState.botWork`), `Conduit/Views/BotWorkViews.swift` (the title line, the panel and its Resolved list, the cards and their swipes, the workstream's title line and bar, the brief card, the Started card's status line; BotWorkHeader reads a bot's chat its list doesn't name a few times, so a new workstream's bar shows), `Conduit/Views/V2/V2ConversationScreen.swift` (where they show), `Conduit/Views/ChatView.swift` (ToolStep's work cards, runningToolTitle, the brief's card in place of a user bubble), `AppState.displayedChatTitle` (a workstream's task as its title), `Conduit/Views/V2/V2ChatsView.swift` and `AppState.listAllProfilesCatalog` (search and All profiles), `ConduitTests/BotWorkstreamsTests.swift`; `AppState.invalidateBotModeState` (a server change clears the kept work); `Conduit/Services/HermesClient.swift` (normalizeMessages, which drops hidden rows from the transcript), `Conduit/Services/ConduitAppLink.swift` and `Conduit/Services/AppState.swift` (openAppLink, the link's profile)
 - Design: designs/bot-mode-coordinator (project files)
 
 **Rulings**
@@ -2033,20 +2040,23 @@ screens (not built)
 - The user's own actions from the Work panel go straight to the workstream, never through the Bot Chat's model: a reply is sent as the user's own words, as if typed in its chat; Continue and Check first say the user tapped them. Continue after a restart cut off a step that can change things tells the workstream the step may have run, so it checks before running it again; stopping interrupted work runs nothing (2026-11-01, notifier #499, design C.6 and C.7).
 - A start a restart cut off before its brief was sent offers only a reply, which goes in with the brief it never had; one cut off just as Hermes took its brief offers Check first, and Continue says its first steps may have run. A reply can't go in while a start is still under way, so it never lands before the brief; a start that never got a chat is closed by recovery so work_start starts it fresh (2026-11-01, notifier #499 and #501; Eric's rule for recovery, that a step whose effect isn't known is checked, never re-run, design C.7).
 - A start still starting two minutes after its chat was made is taken as stuck and offers Stop in the Work panel, and the coordinator's work_send waits until it's running. The two minutes is the plugin's own choice, not a maintainer ruling (2026-11-01, notifier #501's review).
+- Work leaves the panel only when it's resolved, by the user (Resolve) or by the coordinator (work_close); nothing resolves itself, however old, and unresolved work stays listed (2026-11-01, Eric: "if it's unfinished maybe people should actually go finish it, or mark it themselves"). The user's pin and reopen win: work_close refuses pinned work, and work the user reopened until it runs again. Resolve is refused while the work is still at it; resolving unpins it. Pins and resolves live in the plugin's registry, so every device agrees (2026-11-01, Eric, notifier #503).
+- A workstream's approval can be answered on its "Needs you" card (Approve once, or Deny) and still in its own chat; the coordinator never answers it (2026-11-01, Eric: "it also shouldn't take away the option to do it directly in the session").
+- The panel shows the bot's work, not its settings: the policy and its limit belong in Edit Bot (2026-11-01, Eric: "that's a configuration item").
 - The loop guard: an ask never goes to a bot already waiting in its chain (a bot with an open ask from another can't ask that one back until it answers), a chain goes at most two bots deep, and one bot asks another at most 10 times an hour (2026-11-01, notifier #493).
 
 **Open gaps**
 - An ask from another bot reaches the Bot Chat as a hidden turn, so the asked bot's transcript shows no "Furina asks" card; the ask is listed in its Work panel instead.
 - Search and All profiles leave out only the workstreams of bots whose work the app has read (opened, or kept from last time; one read later leaves the lists already shown at once); Hermes keeps them hidden from the Chats list itself.
-- The Work panel reads again every 5 seconds while work runs and every 20 otherwise, for as long as a bot's Bot Chat (strip shown or not, so new work shows), its panel or a workstream's bar is open, once for a bot with workstreams off, and up to four times 3 seconds apart for a bot's chat its list doesn't name; there's no push for a change yet.
-- The app's handling of an approval in a hidden workstream session is unchecked: the request goes to the user from that session, and nothing in the app opens it from the Bot Chat yet.
+- The Work panel reads again every 5 seconds while work runs and every 20 otherwise, for as long as a bot's Bot Chat (its title line shown or not, so new work shows), its panel or a workstream's bar is open, once for a bot with workstreams off, and up to four times 3 seconds apart for a bot's chat its list doesn't name; a chat the plugin lists as a workstream but the list doesn't show (a resolved one opened from a card or a link) reads the Resolved list's first page instead, so one resolved longer ago shows no title line. There's no push for a change yet.
+- A workstream's approval is read and answered from the Work panel the way a voice job's is (`approval.pending` and `approval.respond` with the workstream's chat id, through the chat's card when that chat is open); not yet tried on a device. Only an approval Hermes names by its request shows there; one without (an older Hermes) is answered in its chat, which checks the session's queue first. The Bot Chat itself never answers it.
 - The Notifications entry gains a line for workstream turns' quiet pushes once this reaches main.
 - The first session Hermes builds on a secondary profile after the dashboard starts can come up without the work tools; the upstream test takes it with a warm-up session (2026-10-31 canary).
 - The workstreams' own approval mode in Edit Bot (M3) isn't built; until then a workstream follows the bot's Hermes approval mode as any chat does.
 - The plugin's version is bumped when the branch merges to main.
 - Two journal edges from M0 that recovery leans on (notifier #495's review): a step that starts while a compacted workstream's lineage is still unsettled isn't journaled or noted as missed, and a step's end with an unknown call id closes the oldest open step of that tool by name.
 
-**Checked:** 2026-11-01, #1623 (notifier #501; a stuck start's Stop, workstreams read later leave lists already shown, a refused action frees its buttons at once and its row is read again, the bar names the bot by its Conduit name).
+**Checked:** 2026-11-01, #1629 (notifier #503; the UI pass: status under the title, the panel's cards and sections, pin, resolve and reopen with the Resolved list, a workstream's title, brief card and bar, the Started card's status, approvals on the card).
 
 ## Composer Return key
 

@@ -68,6 +68,94 @@ extension BotModeTests {
         XCTAssertEqual(snapshot.replacing(try XCTUnwrap(BotWorkItem(row: ["ref": "W9", "kind": "workstream"]))), snapshot)
     }
 
+    /// Pin, Resolve and Reopen: what the plugin offers, and the list as
+    /// each leaves it before the next read.
+    func testFilingWorkMovesItBetweenTheLists() throws {
+        var response = workResponse()
+        response["resolved_count"] = 4
+        response["workstream_sessions"] = ["20261101_w1", "20261031_old"]
+        var rows = response["work"] as? [[String: Any]] ?? []
+        rows[0]["pinned"] = true
+        rows[0]["manage"] = ["unpin"]
+        response["work"] = rows
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina"))
+        XCTAssertEqual(snapshot.pinned.map(\.ref), ["W1"])
+        XCTAssertEqual(snapshot.active.map(\.ref), ["W2", "A1"])
+        XCTAssertEqual(snapshot.items[0].manage, [.unpin])
+        XCTAssertEqual(snapshot.resolvedCount, 4)
+        // A resolved workstream's chat stays out of the chat lists.
+        XCTAssertTrue(snapshot.sessionIDs.contains("20261031_old"))
+
+        let resolved = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W2", "kind": "workstream", "status": "interrupted", "closed": true,
+            "closed_at": 1_800_000_100.0, "resolved_by": "user", "manage": ["reopen"],
+        ]))
+        let after = snapshot.replacing(resolved)
+        XCTAssertFalse(after.items.contains { $0.ref == "W2" })
+        XCTAssertEqual(after.needsYouCount, 0)
+        XCTAssertEqual(after.resolvedCount, 5)
+        XCTAssertEqual(resolved.resolvedBy, "user")
+        XCTAssertEqual(resolved.closedAt, Date(timeIntervalSince1970: 1_800_000_100))
+        // Resolved before it finished: it reads as resolved, not as needing you.
+        XCTAssertTrue(resolved.isResolvedUnfinished)
+        XCTAssertEqual(resolved.statusText, AppLocalization.string("Resolved"))
+
+        let reopened = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W2", "kind": "workstream", "status": "interrupted", "session_id": "20261101_w2",
+            "manage": ["pin", "resolve"], "actions": ["continue", "stop", "send"],
+        ]))
+        let back = after.reopening(reopened)
+        XCTAssertEqual(back.items.first?.ref, "W2")
+        XCTAssertEqual(back.needsYouCount, 1)
+        XCTAssertEqual(back.resolvedCount, 4)
+    }
+
+    /// A pin moves a row to Pinned; with only resolved work left the
+    /// title line still opens the panel; a reopen leaves the Resolved list.
+    @MainActor
+    func testPinnedAndResolvedWorkStayReachable() throws {
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
+        let pinned = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W2", "kind": "workstream", "status": "interrupted", "pinned": true,
+            "session_id": "20261101_w2", "manage": ["unpin", "resolve"],
+        ]))
+        let after = snapshot.replacing(pinned)
+        XCTAssertEqual(after.pinned.map(\.ref), ["W2"])
+        XCTAssertFalse(after.active.contains { $0.ref == "W2" })
+
+        let onlyResolved = try XCTUnwrap(BotWorkSnapshot(
+            response: ["ok": true, "policy": "strict", "work": [], "resolved_count": 2], profile: "furina"))
+        XCTAssertNotNil(onlyResolved.stripText)
+
+        let store = BotWorkStore()
+        let resolved = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W3", "kind": "workstream", "status": "done", "closed": true, "closed_at": 1_800_000_000.0,
+            "resolved_by": "bot", "session_id": "20261101_w3", "manage": ["reopen"],
+        ]))
+        XCTAssertFalse(resolved.needsYou)
+        store.setResolvedList(BotWorkStore.ResolvedList(items: [resolved]), profile: "furina")
+        XCTAssertEqual(store.workstream(forSession: ["20261101_w3"])?.item.ref, "W3")
+        let reopened = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W3", "kind": "workstream", "status": "done", "session_id": "20261101_w3", "manage": ["pin", "resolve"],
+        ]))
+        store.fileResolved(reopened, profile: "furina")
+        XCTAssertEqual(store.resolvedList("furina")?.items, [])
+    }
+
+    func testAWorkstreamsBriefReadsAsItsTask() throws {
+        let text = "You're working on a task for Hermes, who coordinates the user's work in their Bot Chat. "
+            + "This chat is that workstream (W45: Disk).\n\nThe user's message that Hermes is answering now, as "
+            + "they wrote it (this is the user speaking; Hermes's own words are Hermes's):\n«Check how much disk "
+            + "is free»\n\nTask:\nRun `df -h /` and return the Avail value.\nBefore a step that can't be undone "
+            + "(deleting, sending), only the user's own words count."
+        let brief = try XCTUnwrap(WorkstreamBrief.parse(text))
+        XCTAssertEqual(brief.bot, "Hermes")
+        XCTAssertEqual(brief.task, "Run `df -h /` and return the Avail value.")
+        XCTAssertEqual(brief.userWords, "Check how much disk is free")
+        XCTAssertNil(WorkstreamBrief.parse("Run df -h / please.\n\nTask:\nNothing"))
+        XCTAssertNil(WorkstreamBrief.parse("You're working on a task for Hermes, who coordinates it."))
+    }
+
     @MainActor
     func testWorkStoreFindsTheWorkstreamAChatIs() throws {
         let store = BotWorkStore()
@@ -134,6 +222,26 @@ extension BotModeTests {
         XCTAssertFalse(appState.botWork.isActing("W1", profile: "furina"))
     }
 
+    /// The panel answers only an approval Hermes names by its request: one
+    /// without would go to the session's queue, which its chat answers.
+    @MainActor
+    func testThePanelLeavesARequestlessApprovalToItsChat() async throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
+        appState.botWork.set(snapshot)
+        let item = try XCTUnwrap(snapshot.items.first { $0.ref == "W1" })
+        let approval = ApprovalActivity(sessionId: item.sessionID, requestId: nil, command: "rm -rf build",
+                                        description: "Delete the build folder", choices: nil, allowPermanent: false,
+                                        smartDenied: false, status: .pending, choice: nil, error: nil)
+        let took = await appState.answerWorkstreamApproval(approval, item: item, profile: "furina", choice: "once")
+        XCTAssertFalse(took)
+        XCTAssertNil(appState.botWork.refusal("furina"))  // nothing was sent
+        XCTAssertFalse(appState.botWork.isActing("W1", profile: "furina"))
+    }
+
     /// A read asked for after an action, while one was under way, makes
     /// that read go again once, and only once.
     @MainActor
@@ -170,8 +278,10 @@ extension BotModeTests {
         XCTAssertFalse(store.isActing("W1", profile: "furina"))
         XCTAssertTrue(store.isActing("W1", profile: "nahida"))
 
-        store.setRefusal("W1 can't continue while it's running.", profile: "furina")
-        XCTAssertNotNil(store.refusal("furina"))
+        store.setRefusal("W1 can't continue while it's running.", profile: "furina", ref: "W1")
+        XCTAssertNotNil(store.refusal("furina"))  // the panel shows it
+        XCTAssertNotNil(store.refusal("furina", ref: "W1"))  // and W1's bar
+        XCTAssertNil(store.refusal("furina", ref: "W2"))  // never W2's
         XCTAssertNil(store.refusal("nahida"))
 
         let mark = store.mark("furina")

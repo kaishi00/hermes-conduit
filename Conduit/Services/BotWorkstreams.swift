@@ -5,7 +5,8 @@ import Foundation
 /// chats of its own named W1, W2, and its asks to other bots and theirs to
 /// it (A1, A2). The plugin's `/workstreams` route lists them; the user's own
 /// actions on a workstream (Reply, Stop, Continue, Check first) go straight
-/// to it there, with no Bot Chat turn.
+/// to it there, with no Bot Chat turn, as does how they file it (Pin,
+/// Resolve, Reopen).
 struct BotWorkItem: Identifiable, Equatable {
     enum Kind: String {
         case workstream
@@ -13,9 +14,11 @@ struct BotWorkItem: Identifiable, Equatable {
         case askIn = "ask_in"
     }
 
-    /// What the user can do with the work now, as the plugin says.
+    /// What the user can do with the work now, as the plugin says, and how
+    /// they can file it (`manage`).
     enum Action: String, CaseIterable {
         case send, stop, `continue`, check
+        case pin, unpin, resolve, reopen
     }
 
     /// A line of the workstream's own checklist (`work_progress`).
@@ -45,11 +48,18 @@ struct BotWorkItem: Identifiable, Equatable {
     let otherBot: String
     let checklist: [Step]
     let updatedAt: Date
+    /// Resolved: by the user, or by the bot (`work_close`).
     let isClosed: Bool
+    let closedAt: Date?
+    /// "user" or "bot" while it's resolved.
+    let resolvedBy: String
+    let isPinned: Bool
     /// A restart cut it off during a step that can change things, so it may
     /// or may not have taken effect: Check first is offered.
     let isUncertain: Bool
     let actions: [Action]
+    /// Pin or Unpin, Resolve, or Reopen.
+    let manage: [Action]
 
     var id: String { ref }
 
@@ -73,8 +83,13 @@ struct BotWorkItem: Identifiable, Equatable {
         }
         updatedAt = Date(timeIntervalSince1970: (row["updated_at"] as? NSNumber)?.doubleValue ?? 0)
         isClosed = row["closed"] as? Bool ?? false
+        let closed = (row["closed_at"] as? NSNumber)?.doubleValue ?? 0
+        closedAt = closed > 0 ? Date(timeIntervalSince1970: closed) : nil
+        resolvedBy = row["resolved_by"] as? String ?? ""
+        isPinned = row["pinned"] as? Bool ?? false
         isUncertain = row["uncertain"] as? Bool ?? false
         actions = (row["actions"] as? [String] ?? []).compactMap(Action.init(rawValue:))
+        manage = (row["manage"] as? [String] ?? []).compactMap(Action.init(rawValue:))
     }
 
     /// Still the bot's or the user's to finish: a restart's cut-off waits
@@ -87,7 +102,7 @@ struct BotWorkItem: Identifiable, Equatable {
 
     /// Waiting on the user: an approval or a question in its chat, or a
     /// restart that left it for them to decide.
-    var needsYou: Bool { kind == .workstream && (status == "needs_you" || status == "interrupted") }
+    var needsYou: Bool { kind == .workstream && !isClosed && (status == "needs_you" || status == "interrupted") }
 
     /// What it's doing now: its checklist's step in progress, else the tool
     /// step it's on.
@@ -104,7 +119,14 @@ struct BotWorkItem: Identifiable, Equatable {
         return goal.isEmpty ? ref : goal
     }
 
+    /// Resolved before it finished: it reads as resolved, not by the
+    /// status it was left in ("Needs you", "Working").
+    var isResolvedUnfinished: Bool {
+        isClosed && ["needs_you", "interrupted", "starting", "running", "waiting"].contains(status)
+    }
+
     var statusText: String {
+        if isResolvedUnfinished { return AppLocalization.string("Resolved") }
         switch kind {
         case .askOut:
             switch status {
@@ -146,6 +168,9 @@ struct BotWorkSnapshot: Equatable {
     private(set) var workingCount: Int
     private(set) var needsYouCount: Int
     private(set) var readyCount: Int
+    private(set) var resolvedCount: Int
+    /// Every workstream's chat the plugin knows, resolved ones too.
+    let knownSessionIDs: Set<String>
 
     init?(response: [String: Any], profile: String) {
         guard response["ok"] as? Bool == true, let rows = response["work"] as? [[String: Any]] else { return nil }
@@ -157,6 +182,8 @@ struct BotWorkSnapshot: Equatable {
         workingCount = (counts["working"] as? NSNumber)?.intValue ?? 0
         needsYouCount = (counts["needs_you"] as? NSNumber)?.intValue ?? 0
         readyCount = (counts["ready"] as? NSNumber)?.intValue ?? 0
+        resolvedCount = (response["resolved_count"] as? NSNumber)?.intValue ?? 0
+        knownSessionIDs = Set((response["workstream_sessions"] as? [String] ?? []).filter { !$0.isEmpty })
     }
 
     var isOn: Bool { policy != "off" }
@@ -168,11 +195,35 @@ struct BotWorkSnapshot: Equatable {
         guard let index = items.firstIndex(where: { $0.ref == item.ref }) else { return self }
         var copy = self
         let old = items[index]
+        if item.isClosed {
+            // Resolved: it leaves the list for the Resolved one.
+            copy.items.remove(at: index)
+            copy.resolvedCount += old.isClosed ? 0 : 1
+            copy.add(old, sign: -1)
+            return copy
+        }
         copy.items[index] = item
         copy.workingCount = max(0, workingCount - Self.counts(old, "working") + Self.counts(item, "working"))
         copy.needsYouCount = max(0, needsYouCount - Self.counts(old, "needs_you") + Self.counts(item, "needs_you"))
         copy.readyCount = max(0, readyCount - Self.counts(old, "ready") + Self.counts(item, "ready"))
         return copy
+    }
+
+    /// The list with a row the user reopened from the Resolved list back
+    /// at its top.
+    func reopening(_ item: BotWorkItem) -> BotWorkSnapshot {
+        guard !item.isClosed, !items.contains(where: { $0.ref == item.ref }) else { return replacing(item) }
+        var copy = self
+        copy.items.insert(item, at: 0)
+        copy.resolvedCount = max(0, resolvedCount - 1)
+        copy.add(item, sign: 1)
+        return copy
+    }
+
+    private mutating func add(_ item: BotWorkItem, sign: Int) {
+        workingCount = max(0, workingCount + sign * Self.counts(item, "working"))
+        needsYouCount = max(0, needsYouCount + sign * Self.counts(item, "needs_you"))
+        readyCount = max(0, readyCount + sign * Self.counts(item, "ready"))
     }
 
     private static func counts(_ item: BotWorkItem, _ count: String) -> Int {
@@ -184,26 +235,31 @@ struct BotWorkSnapshot: Equatable {
         }
     }
 
-    var active: [BotWorkItem] { items.filter(\.isActive) }
-    var recent: [BotWorkItem] { items.filter { !$0.isActive } }
+    /// The panel's sections: what the user pinned, then work still at it
+    /// or waiting on them, then the rest, newest change first.
+    var pinned: [BotWorkItem] { items.filter(\.isPinned) }
+    var active: [BotWorkItem] { items.filter { $0.isActive && !$0.isPinned } }
+    var recent: [BotWorkItem] { items.filter { !$0.isActive && !$0.isPinned } }
 
     /// Every workstream's chat, so lists and search leave them to the bot.
     var sessionIDs: Set<String> {
         Set(items.compactMap { $0.kind == .workstream && !$0.sessionID.isEmpty ? $0.sessionID : nil })
+            .union(knownSessionIDs)
     }
 
     func item(forSession ids: Set<String>) -> BotWorkItem? {
         items.first { $0.kind == .workstream && ids.contains($0.sessionID) }
     }
 
-    /// The Work strip's words ("2 working · 1 needs you"), or nil when
-    /// there's no work to show.
+    /// The words under the Bot Chat's title ("2 working · 1 needs you"),
+    /// or nil when there's no work to show.
     var stripText: String? {
         var parts: [String] = []
         if workingCount > 0 { parts.append(AppLocalization.string("\(workingCount) working")) }
         if needsYouCount > 0 { parts.append(AppLocalization.string("\(needsYouCount) needs you")) }
         if readyCount > 0 { parts.append(AppLocalization.string("\(readyCount) ready")) }
-        if parts.isEmpty, !items.isEmpty { return AppLocalization.string("Work") }
+        // Resolved work alone still opens the panel, for its Resolved list.
+        if parts.isEmpty, !items.isEmpty || resolvedCount > 0 { return AppLocalization.string("Work") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
@@ -253,6 +309,17 @@ final class BotWorkstreamsClient {
         }
         guard let snapshot = BotWorkSnapshot(response: response, profile: botProfile) else { throw Failure.malformed }
         return snapshot
+    }
+
+    /// A page of the bot's resolved work, last resolved first, and whether
+    /// there's another (`before`: the last row's resolved time).
+    @MainActor
+    func resolved(before: Date? = nil) async throws -> (items: [BotWorkItem], more: Bool) {
+        var route = "\(Self.path)?resolved=1"
+        if let before { route += "&before=\(before.timeIntervalSince1970)" }
+        let response = try await request(DashboardPath.withProfile(route, profile: profile, parameter: parameter), "GET", nil)
+        guard response["ok"] as? Bool == true, let rows = response["work"] as? [[String: Any]] else { throw Failure.malformed }
+        return (rows.compactMap(BotWorkItem.init(row:)), response["more"] as? Bool ?? false)
     }
 
     /// The list kept for the bot, or nil.
@@ -408,5 +475,44 @@ struct BotWorkCall: Equatable {
             }
         }
         return object
+    }
+}
+
+/// A workstream's first message: the brief its coordinator wrote (the
+/// plugin's `WORKER_PROMPT`). Its chat shows it as a card, the task first,
+/// rather than as something the user typed.
+struct WorkstreamBrief: Equatable {
+    static let opening = "You're working on a task for "
+    static let taskMark = "\n\nTask:\n"
+    /// Where the plugin's go-ahead rules begin, after the task.
+    static let rulesMarks = ["\nBefore a step that can't be undone", "\nHermes' approvals decide which steps"]
+
+    /// The coordinating bot's name.
+    let bot: String
+    /// What the coordinator asked for.
+    let task: String
+    /// The user's message the coordinator was answering, when the brief
+    /// quotes it.
+    let userWords: String?
+
+    static func parse(_ text: String) -> WorkstreamBrief? {
+        guard text.hasPrefix(opening), let mark = text.range(of: taskMark) else { return nil }
+        let head = text[text.index(text.startIndex, offsetBy: opening.count)..<mark.lowerBound]
+        guard let comma = head.range(of: ", who coordinates") else { return nil }
+        let bot = String(head[..<comma.lowerBound]).trimmingCharacters(in: .whitespaces)
+        var task = text[mark.upperBound...]
+        if let rules = rulesMarks.compactMap({ task.range(of: $0) }).min(by: { $0.lowerBound < $1.lowerBound }) {
+            task = task[..<rules.lowerBound]
+        }
+        let trimmed = task.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !bot.isEmpty, !trimmed.isEmpty else { return nil }
+        var words: String?
+        if let quoted = head.range(of: "\n\nThe user's message that "),
+           let open = head[quoted.upperBound...].range(of: "«"),
+           let close = head[open.upperBound...].range(of: "»", options: .backwards) {
+            let said = head[open.upperBound..<close.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+            words = said.isEmpty ? nil : said
+        }
+        return WorkstreamBrief(bot: bot, task: trimmed, userWords: words)
     }
 }
