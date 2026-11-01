@@ -2056,7 +2056,7 @@ screens (not built)
 - The plugin's version is bumped when the branch merges to main.
 - Two journal edges from M0 that recovery leans on (notifier #495's review): a step that starts while a compacted workstream's lineage is still unsettled isn't journaled or noted as missed, and a step's end with an unknown call id closes the oldest open step of that tool by name.
 
-**Checked:** 2026-11-01, #1629 (notifier #503; the UI pass: status under the title, the panel's cards and sections, pin, resolve and reopen with the Resolved list, a workstream's title, brief card and bar, the Started card's status, approvals on the card); 2026-11-01, #1637 (notifier #504; from Eric's Gridania test: the "Needs you" card's approval read and answered through the plugin, the workstream's bar a compact pill, work links in Bot Chat replies drawn as cards; a resolved workstream's chat keeps its task as its title).
+**Checked:** 2026-11-01, #1629 (notifier #503; the UI pass: status under the title, the panel's cards and sections, pin, resolve and reopen with the Resolved list, a workstream's title, brief card and bar, the Started card's status, approvals on the card); 2026-11-01, #1637 (notifier #506; from Eric's Gridania test: the "Needs you" card's approval read and answered through the plugin, the workstream's bar a compact pill, work links in Bot Chat replies drawn as cards; a resolved workstream's chat keeps its task as its title).
 
 ## Composer Return key
 
