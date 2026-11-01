@@ -567,6 +567,49 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertNil(KanbanBlockedQuestion.reason(in: unblockedAfter))
     }
 
+    // Issue #1601: Hermes logs a task created already Blocked as a `blocked`
+    // event whose reason is the code `initial_status`, not a question.
+    func testTaskCreatedBlockedWaitsOnYouWithoutAQuestion() throws {
+        let detail = try blockedDetail(events: [
+            KanbanEvent(id: "2", taskID: "t", kind: "blocked", payload: .object(["reason": .string("initial_status"), "status": .string("blocked"), "actor": .string("user")]), createdAt: 100),
+            KanbanEvent(id: "1", taskID: "t", kind: "created", payload: .object(["status": .string("blocked")]), createdAt: 100),
+        ])
+        XCTAssertEqual(KanbanBlockedQuestion.wait(in: detail), .createdBlocked)
+        XCTAssertNil(KanbanBlockedQuestion.reason(in: detail), "initial_status is not a question, so no Reply & unblock")
+    }
+
+    func testAReasonCodeIsNeverShownAsTheQuestion() throws {
+        let detail = try blockedDetail(events: [
+            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("needs_human_ops")]), createdAt: 100),
+        ])
+        XCTAssertEqual(KanbanBlockedQuestion.wait(in: detail), .noReason)
+        XCTAssertNil(KanbanBlockedQuestion.reason(in: detail))
+        XCTAssertFalse(KanbanBlockedQuestion.isCode("Which API key?"))
+        XCTAssertFalse(KanbanBlockedQuestion.isCode("blocked"), "one word without an underscore is still the worker's text")
+    }
+
+    func testManualBlockWaitsOnYouAndADependencyBlockDoesNot() throws {
+        let manual = try blockedDetail(events: [KanbanEvent(id: "1", taskID: "t", kind: "blocked", createdAt: 100)])
+        XCTAssertEqual(KanbanBlockedQuestion.wait(in: manual), .noReason)
+        let dependency = try blockedDetail(events: [
+            KanbanEvent(id: "2", taskID: "t", kind: "status", payload: .object(["status": .string("blocked"), "reason": .string("parent_reopened")]), createdAt: 200),
+            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("initial_status")]), createdAt: 100),
+        ])
+        XCTAssertNil(KanbanBlockedQuestion.wait(in: dependency), "Dependencies says what a dependency block waits for")
+    }
+
+    func testCreatedBlockedActivityRowsReadInWords() {
+        let blocked = KanbanActivityFormatter.row(for: makeEvent(kind: "blocked", payload: ["reason": .string("initial_status")]))
+        XCTAssertEqual(blocked.label, "Blocked")
+        XCTAssertEqual(blocked.detail, "Created as Blocked")
+        let asked = KanbanActivityFormatter.row(for: makeEvent(kind: "blocked", payload: ["reason": .string("Which branch?")]))
+        XCTAssertEqual(asked.detail, "Which branch?")
+        let created = KanbanActivityFormatter.row(for: makeEvent(kind: "created", payload: ["status": .string("blocked"), "assignee": .string("atlas")]))
+        XCTAssertEqual(created.detail, "as Blocked for atlas")
+        let unassigned = KanbanActivityFormatter.row(for: makeEvent(kind: "created", payload: ["status": .string("ready")]))
+        XCTAssertEqual(unassigned.detail, "as Ready")
+    }
+
     func testBlockedRunErrorIsNeverShownAsTheQuestion() throws {
         let detail = try blockedDetail(runsJSON: #"[{"id": "r1", "status": "done", "outcome": "blocked", "error": "Traceback: boom", "ended_at": 100}]"#)
         XCTAssertNil(KanbanBlockedQuestion.reason(in: detail))

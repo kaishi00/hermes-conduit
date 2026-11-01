@@ -121,11 +121,19 @@ struct KanbanTaskDetailView: View {
         displayedTask?.status == "blocked"
     }
 
-    /// The worker's question on a blocked task. Nil for a manual or
-    /// dependency block, which get neither the callout nor Reply & unblock.
-    private var blockedQuestion: String? {
+    /// What a blocked task waits on: the worker's question, a task created
+    /// Blocked, or a block with no reason. Nil for a dependency block, which
+    /// gets no callout (Dependencies shows what it waits for).
+    private var blockedWait: KanbanBlockedQuestion.Wait? {
         guard isBlocked, let detail else { return nil }
-        return KanbanBlockedQuestion.reason(in: detail)
+        return KanbanBlockedQuestion.wait(in: detail)
+    }
+
+    /// The worker's question on a blocked task. Only a question gets Reply &
+    /// unblock; any other block is moved on with Status.
+    private var blockedQuestion: String? {
+        if case .question(let question)? = blockedWait { return question }
+        return nil
     }
 
     private var hasUnsavedChanges: Bool {
@@ -183,8 +191,8 @@ struct KanbanTaskDetailView: View {
                         // worker's question (when it asked one) and the reply
                         // box sit together up top.
                         if isBlocked {
-                            if let question = blockedQuestion {
-                                blockedCallout(question: question)
+                            if let wait = blockedWait {
+                                blockedCallout(wait)
                             }
                             commentsSection
                         }
@@ -681,18 +689,34 @@ struct KanbanTaskDetailView: View {
         }
     }
 
-    private func blockedCallout(question: String) -> some View {
+    /// Says in plain words what the task waits on and how to move it on;
+    /// never a code Hermes wrote, such as `initial_status` (issue #1601).
+    private func blockedCallout(_ wait: KanbanBlockedQuestion.Wait) -> some View {
         let tint = KanbanStatusPresentation.forStatus("blocked").tint
         return VStack(alignment: .leading, spacing: 6) {
-            Label("Waiting on you", systemImage: "questionmark.bubble")
-                .scaledFont(.subheadline.weight(.semibold))
-                .foregroundStyle(tint)
-            Text(question)
-                .scaledFont(.footnote)
-                .textSelection(.enabled)
-            Text("Reply & unblock posts your answer and moves the task back to Ready, so the next run sees it.")
-                .scaledFont(.caption2)
-                .foregroundStyle(.secondary)
+            switch wait {
+            case .question(let question):
+                Label("The agent needs you", systemImage: "questionmark.bubble")
+                    .scaledFont(.subheadline.weight(.semibold))
+                    .foregroundStyle(tint)
+                Text(question)
+                    .scaledFont(.footnote)
+                    .textSelection(.enabled)
+                Text("Reply & unblock posts your answer and moves the task back to Ready, so the next run sees it. Add comment only posts it, and the task stays Blocked.")
+                    .scaledFont(.caption2)
+                    .foregroundStyle(.secondary)
+            case .createdBlocked, .noReason:
+                Label("Waiting on you", systemImage: "hand.raised")
+                    .scaledFont(.subheadline.weight(.semibold))
+                    .foregroundStyle(tint)
+                Text(wait == .createdBlocked
+                     ? AppLocalization.string("This task was created as Blocked, so no worker starts it until you move it on. The agent didn't ask a question: the description says what the task is for.")
+                     : AppLocalization.string("No reason was given for this block, and the agent didn't ask a question."))
+                    .scaledFont(.footnote)
+                Text("When it can go ahead, set its status to Ready and save. Add a comment first if the worker needs to know something.")
+                    .scaledFont(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -893,54 +917,63 @@ struct KanbanTaskDetailView: View {
                     .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
             }
-            HStack(spacing: 10) {
-                Button {
-                    Task { await addComment() }
-                } label: {
-                    HStack {
-                        Spacer()
-                        if isAddingComment { ProgressView() } else { Label(isRunning ? AppLocalization.string("Send") : AppLocalization.string("Add comment"), systemImage: "paperplane") }
-                        Spacer()
-                    }
-                }
-                .buttonStyle(.bordered)
-                .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAddingComment || isUnblocking || isRequeuing)
-                .accessibilityLabel(isRunning ? AppLocalization.string("Send") : AppLocalization.string("Add comment"))
-                if isRunning {
-                    // Upstream "Note & requeue": post the note, then reclaim so
-                    // the dispatcher re-runs the task with the note in context.
-                    Button {
-                        Task { await noteAndRequeue() }
-                    } label: {
-                        HStack {
-                            Spacer()
-                            if isRequeuing { ProgressView() } else { Label("Note & requeue", systemImage: "arrow.uturn.backward.circle") }
-                            Spacer()
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.orange)
-                    .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRequeuing || isAddingComment || isUnblocking)
-                    .accessibilityLabel("Note & requeue")
-                }
-                if blockedQuestion != nil {
-                    // A comment alone leaves the task parked in Blocked; the
-                    // worker only reads the answer once the task runs again.
-                    Button {
-                        Task { await replyAndUnblock() }
-                    } label: {
-                        HStack {
-                            Spacer()
-                            if isUnblocking { ProgressView() } else { Label("Reply & unblock", systemImage: "arrowshape.turn.up.left") }
-                            Spacer()
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.conduitAccent)
-                    .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isUnblocking || isAddingComment || isRequeuing)
-                    .accessibilityLabel("Reply & unblock")
+            // Side by side when every label fits on one line; stacked full
+            // width when one doesn't (a long translation on an iPhone),
+            // instead of pills whose labels wrap word by word (issue #1601).
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { commentButtons }
+                VStack(spacing: 8) { commentButtons }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var commentButtons: some View {
+        Button {
+            Task { await addComment() }
+        } label: {
+            HStack {
+                Spacer(minLength: 0)
+                if isAddingComment { ProgressView() } else { Label(isRunning ? AppLocalization.string("Send") : AppLocalization.string("Add comment"), systemImage: "paperplane").lineLimit(1) }
+                Spacer(minLength: 0)
+            }
+        }
+        .buttonStyle(.bordered)
+        .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAddingComment || isUnblocking || isRequeuing)
+        .accessibilityLabel(isRunning ? AppLocalization.string("Send") : AppLocalization.string("Add comment"))
+        if isRunning {
+            // Upstream "Note & requeue": post the note, then reclaim so
+            // the dispatcher re-runs the task with the note in context.
+            Button {
+                Task { await noteAndRequeue() }
+            } label: {
+                HStack {
+                    Spacer(minLength: 0)
+                    if isRequeuing { ProgressView() } else { Label("Note & requeue", systemImage: "arrow.uturn.backward.circle").lineLimit(1) }
+                    Spacer(minLength: 0)
                 }
             }
+            .buttonStyle(.bordered)
+            .tint(.orange)
+            .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRequeuing || isAddingComment || isUnblocking)
+            .accessibilityLabel("Note & requeue")
+        }
+        if blockedQuestion != nil {
+            // A comment alone leaves the task parked in Blocked; the
+            // worker only reads the answer once the task runs again.
+            Button {
+                Task { await replyAndUnblock() }
+            } label: {
+                HStack {
+                    Spacer(minLength: 0)
+                    if isUnblocking { ProgressView() } else { Label("Reply & unblock", systemImage: "arrowshape.turn.up.left").lineLimit(1) }
+                    Spacer(minLength: 0)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.conduitAccent)
+            .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isUnblocking || isAddingComment || isRequeuing)
+            .accessibilityLabel("Reply & unblock")
         }
     }
 

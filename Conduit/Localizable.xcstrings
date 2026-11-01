@@ -96160,6 +96160,88 @@
         }
       }
     },
+    "Created as Blocked": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Als „Blockiert“ erstellt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Creada como Bloqueada"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Créée comme Bloquée"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dibuat dalam status Diblokir"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Creata come Bloccata"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「ブロック中」として作成"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "'차단됨' 상태로 생성됨"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utworzono jako zablokowane"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Criada como Bloqueada"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Создана заблокированной"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Engellendi olarak oluşturuldu"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建时即为阻塞"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "建立時即為受阻"
+          }
+        }
+      }
+    },
     "Created by": {
       "localizations": {
         "de": {
@@ -207342,6 +207424,88 @@
         }
       }
     },
+    "No reason was given for this block, and the agent didn't ask a question.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Für diese Blockierung wurde kein Grund angegeben, und der Agent hat keine Frage gestellt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se indicó ningún motivo para este bloqueo, y el agente no hizo ninguna pregunta."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucune raison n’a été donnée pour ce blocage, et l’agent n’a posé aucune question."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidak ada alasan yang diberikan untuk blokir ini, dan agen tidak mengajukan pertanyaan."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è stato indicato alcun motivo per questo blocco, e l’agente non ha fatto domande."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このブロックには理由が示されておらず、エージェントは質問していません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 차단에는 이유가 없으며, 에이전트는 질문하지 않았습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nie podano powodu tej blokady, a agent nie zadał pytania."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhum motivo foi dado para este bloqueio, e o agente não fez nenhuma pergunta."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Причина блокировки не указана, и агент не задавал вопроса."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu engel için bir neden belirtilmedi ve ajan bir soru sormadı."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此阻塞没有给出原因，智能体也没有提问。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此受阻沒有說明原因，代理也沒有提問。"
+          }
+        }
+      }
+    },
     "No response": {
       "localizations": {
         "de": {
@@ -258499,84 +258663,84 @@
         }
       }
     },
-    "Reply & unblock posts your answer and moves the task back to Ready, so the next run sees it.": {
+    "Reply & unblock posts your answer and moves the task back to Ready, so the next run sees it. Add comment only posts it, and the task stays Blocked.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "„Antworten & freigeben“ postet deine Antwort und verschiebt die Aufgabe zurück nach „Bereit“, damit der nächste Lauf sie sieht."
+            "value": "„Antworten & freigeben“ postet deine Antwort und verschiebt die Aufgabe zurück nach „Bereit“, damit der nächste Lauf sie sieht. „Kommentar hinzufügen“ postet sie nur, und die Aufgabe bleibt blockiert."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "«Responder y desbloquear» publica tu respuesta y devuelve la tarea a Listo para que la próxima ejecución la vea."
+            "value": "«Responder y desbloquear» publica tu respuesta y devuelve la tarea a Listo para que la próxima ejecución la vea. «Añadir comentario» solo la publica, y la tarea sigue Bloqueada."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "« Répondre et débloquer » publie votre réponse et remet la tâche dans Prêt, pour que la prochaine exécution la voie."
+            "value": "« Répondre et débloquer » publie votre réponse et remet la tâche dans Prêt, pour que la prochaine exécution la voie. « Ajouter un commentaire » la publie seulement, et la tâche reste Bloquée."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Balas & buka blokir memposting jawaban Anda dan mengembalikan tugas ke Siap, sehingga proses berikutnya melihatnya."
+            "value": "Balas & buka blokir memposting jawaban Anda dan mengembalikan tugas ke Siap, sehingga proses berikutnya melihatnya. Tambah komentar hanya memposting jawaban, dan tugas tetap Diblokir."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "«Rispondi e sblocca» pubblica la tua risposta e riporta l’attività in Pronto, così la prossima esecuzione la vede."
+            "value": "«Rispondi e sblocca» pubblica la tua risposta e riporta l’attività in Pronto, così la prossima esecuzione la vede. «Aggiungi commento» la pubblica soltanto, e l’attività resta Bloccata."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "「返信してブロック解除」は回答を投稿し、タスクを「準備完了」に戻します。次の実行で回答が参照されます。"
+            "value": "「返信してブロック解除」は回答を投稿し、タスクを「準備完了」に戻します。次の実行で回答が参照されます。「コメントを追加」は投稿だけを行い、タスクは「ブロック中」のままです。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "'답장하고 차단 해제'는 답변을 게시하고 작업을 '준비됨'으로 되돌려 다음 실행에서 답변을 볼 수 있게 합니다."
+            "value": "'답장하고 차단 해제'는 답변을 게시하고 작업을 '준비됨'으로 되돌려 다음 실행에서 답변을 볼 수 있게 합니다. '댓글 추가'는 게시만 하며 작업은 '차단됨'으로 남습니다."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "„Odpowiedz i odblokuj” publikuje Twoją odpowiedź i przenosi zadanie z powrotem do „W gotowości”, aby następne uruchomienie ją zobaczyło."
+            "value": "„Odpowiedz i odblokuj” publikuje Twoją odpowiedź i przenosi zadanie z powrotem do „W gotowości”, aby następne uruchomienie ją zobaczyło. „Dodaj komentarz” tylko ją publikuje, a zadanie pozostaje zablokowane."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "“Responder e desbloquear” publica sua resposta e devolve a tarefa para Pronto, para que a próxima execução a veja."
+            "value": "“Responder e desbloquear” publica sua resposta e devolve a tarefa para Pronto, para que a próxima execução a veja. “Adicionar comentário” só publica, e a tarefa continua Bloqueada."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "«Ответить и разблокировать» публикует ваш ответ и возвращает задачу в «Готово к работе», чтобы следующий запуск его увидел."
+            "value": "«Ответить и разблокировать» публикует ваш ответ и возвращает задачу в «Готово к работе», чтобы следующий запуск его увидел. «Добавить комментарий» только публикует его, и задача остаётся заблокированной."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "\"Yanıtla ve engeli kaldır\" yanıtınızı gönderir ve görevi Hazır'a geri taşır; böylece sonraki çalıştırma yanıtı görür."
+            "value": "\"Yanıtla ve engeli kaldır\" yanıtınızı gönderir ve görevi Hazır'a geri taşır; böylece sonraki çalıştırma yanıtı görür. \"Yorum ekle\" yalnızca gönderir; görev Engellendi olarak kalır."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "“回复并解除阻塞”会发布你的回答并将任务移回“就绪”，下一次运行即可看到。"
+            "value": "“回复并解除阻塞”会发布你的回答并将任务移回“就绪”，下一次运行即可看到。“添加评论”只发布回答，任务仍保持阻塞。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "「回覆並解除受阻」會發布你的回答並將任務移回「就緒」，下一次執行即可看到。"
+            "value": "「回覆並解除受阻」會發布你的回答並將任務移回「就緒」，下一次執行即可看到。「新增留言」只發布回答，任務仍維持受阻。"
           }
         }
       }
@@ -315340,6 +315504,88 @@
         }
       }
     },
+    "The agent needs you": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Agent braucht dich"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El agente te necesita"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’agent a besoin de vous"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agen membutuhkan Anda"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’agente ha bisogno di te"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントがあなたの対応を必要としています"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트가 회신을 기다립니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent potrzebuje Twojej pomocy"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O agente precisa de você"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Агенту нужен ваш ответ"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajanın size ihtiyacı var"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能体需要你"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代理需要你"
+          }
+        }
+      }
+    },
     "The agent reads this at its next step.": {
       "localizations": {
         "de": {
@@ -338782,6 +339028,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "此任務尚未產生執行者，因此沒有記錄。"
+          }
+        }
+      }
+    },
+    "This task was created as Blocked, so no worker starts it until you move it on. The agent didn't ask a question: the description says what the task is for.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Aufgabe wurde als „Blockiert“ erstellt, daher startet sie kein Worker, bis du sie weiterschiebst. Der Agent hat keine Frage gestellt: Die Beschreibung sagt, wofür die Aufgabe ist."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta tarea se creó como Bloqueada, así que ningún worker la empieza hasta que la muevas. El agente no hizo ninguna pregunta: la descripción explica para qué es la tarea."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette tâche a été créée comme Bloquée : aucun worker ne la lance tant que vous ne la faites pas avancer. L’agent n’a posé aucune question ; la description dit à quoi sert la tâche."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tugas ini dibuat dalam status Diblokir, jadi tidak ada worker yang memulainya sampai Anda memindahkannya. Agen tidak mengajukan pertanyaan: deskripsi menjelaskan tujuan tugas ini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questa attività è stata creata come Bloccata, quindi nessun worker la avvia finché non la fai avanzare. L’agente non ha fatto domande: la descrizione dice a cosa serve l’attività."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このタスクは「ブロック中」として作成されたため、あなたが進めるまでワーカーは開始しません。エージェントは質問していません。タスクの目的は説明に書かれています。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 작업은 '차단됨' 상태로 생성되어, 사용자가 진행시키기 전까지 워커가 시작하지 않습니다. 에이전트는 질문하지 않았으며, 작업의 목적은 설명에 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To zadanie utworzono jako zablokowane, więc żaden worker go nie uruchomi, dopóki go nie przesuniesz. Agent nie zadał pytania: opis mówi, do czego służy zadanie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta tarefa foi criada como Bloqueada, então nenhum worker a inicia até você liberá-la. O agente não fez nenhuma pergunta: a descrição diz para que serve a tarefa."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Эта задача создана заблокированной, поэтому ни один исполнитель не начнёт её, пока вы её не переведёте. Агент не задавал вопроса: в описании сказано, для чего задача."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu görev Engellendi olarak oluşturuldu; siz ilerletene kadar hiçbir worker başlatmaz. Ajan bir soru sormadı: görevin ne için olduğu açıklamada yazıyor."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此任务创建时即为阻塞状态，在你推进之前不会有 worker 开始执行。智能体没有提问：任务的用途见描述。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此任務建立時即為受阻狀態，在你推進之前不會有 worker 開始執行。代理沒有提問：任務的用途請見描述。"
           }
         }
       }
@@ -371474,6 +371802,88 @@
         }
       }
     },
+    "When it can go ahead, set its status to Ready and save. Add a comment first if the worker needs to know something.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn es weitergehen kann, setze den Status auf „Bereit“ und sichere. Füge vorher einen Kommentar hinzu, wenn der Worker etwas wissen muss."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuando pueda seguir, cambia su estado a Listo y guarda. Añade antes un comentario si el worker necesita saber algo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quand elle peut avancer, passez son état à Prêt et enregistrez. Ajoutez d’abord un commentaire si le worker doit savoir quelque chose."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jika sudah bisa dilanjutkan, ubah statusnya ke Siap lalu simpan. Tambahkan komentar dulu jika worker perlu mengetahui sesuatu."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando può procedere, imposta lo stato su Pronto e salva. Aggiungi prima un commento se il worker deve sapere qualcosa."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "進められるようになったら、ステータスを「準備完了」にして保存してください。ワーカーに伝えることがあれば、先にコメントを追加してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "진행할 수 있게 되면 상태를 '준비됨'으로 바꾸고 저장하세요. 워커가 알아야 할 내용이 있으면 먼저 댓글을 추가하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gdy może ruszyć dalej, ustaw jego stan na „W gotowości” i zapisz. Najpierw dodaj komentarz, jeśli worker musi coś wiedzieć."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando ela puder seguir, mude o status para Pronto e salve. Adicione um comentário antes se o worker precisar saber de algo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Когда задачу можно продолжать, переведите её в «Готово к работе» и сохраните. Если исполнителю нужно что-то знать, сначала добавьте комментарий."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devam edebileceği zaman durumunu Hazır yapıp kaydedin. Worker'ın bilmesi gereken bir şey varsa önce bir yorum ekleyin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可以继续时，把状态改为“就绪”并保存。如果 worker 需要知道什么，先添加一条评论。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可以繼續時，將狀態改為「就緒」並儲存。如果 worker 需要知道什麼，請先新增一則留言。"
+          }
+        }
+      }
+    },
     "When off, the chat follows each reply to its end as it arrives.": {
       "localizations": {
         "de": {
@@ -385642,6 +386052,170 @@
         }
       }
     },
+    "as %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "als %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "como %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "en %@"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "sebagai %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "come %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ として"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 상태로"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "jako %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "como %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "как «%@»"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ olarak"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状态 %@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "狀態 %@"
+          }
+        }
+      }
+    },
+    "as %@ for %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "als %1$@ für %2$@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "como %1$@ para %2$@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "en %1$@ pour %2$@"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "sebagai %1$@ untuk %2$@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "come %1$@ per %2$@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@・担当 %2$@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 상태, 담당 %2$@"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "jako %1$@ dla %2$@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "como %1$@ para %2$@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "как «%1$@» для %2$@"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ için %1$@ olarak"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状态 %1$@，负责人 %2$@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "狀態 %1$@，負責人 %2$@"
+          }
+        }
+      }
+    },
     "auto": {
       "localizations": {
         "de": {
@@ -386874,6 +387448,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "失敗"
+          }
+        }
+      }
+    },
+    "for %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "für %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "para %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pour %@"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "untuk %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "per %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "担当 %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "담당 %@"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dla %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "para %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "для %@"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ için"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "负责人 %@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "負責人 %@"
           }
         }
       }
