@@ -3386,6 +3386,13 @@ final class HermesClient: ObservableObject {
             authorityPrompt = authorityPrompts[requestId]
             if authorityPrompt == nil { return .ended }
         }
+        if authorityPrompt == nil, speaksSessionAuthority,
+           !requestId.hasPrefix(PushNotificationService.relayRequestPrefix) {
+            // Neither seen asked nor in a chat it could be read from: the
+            // authority refuses the dashboard's shape, and nothing here
+            // says it still waits.
+            return .ended
+        }
         if let prompt = authorityPrompt {
             // The authority asks one question per prompt and names the
             // turn that asked; its answer settles that prompt.
