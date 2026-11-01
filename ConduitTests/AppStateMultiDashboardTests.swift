@@ -1269,6 +1269,17 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(appState.keptHelperModel(task: "title_generation")?.model, "big/model")
         XCTAssertEqual(appState.keptHelperModel(task: "title_generation")?.provider, "openrouter")
         XCTAssertEqual(appState.keptVoiceReplyModel()?.model, "fast/model", "the other slots stay as kept")
+        // The read after the save answers before the test ends, so nothing
+        // of this AppState is left running once it's gone.
+        try await held.waitForRequests(4)
+        try await held.answer(["tasks": [
+            ["task": "title_generation", "provider": "openrouter", "model": "big/model"],
+            ["task": "voice_chat", "provider": "openrouter", "model": "fast/model", "reasoning_effort": "none"],
+        ]])
+        for _ in 0..<100 where appState.keptHelperModels(includingSetElsewhere: true)?.count != 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertNil(appState.keptHelperModels(includingSetElsewhere: true)?.first { $0.id == "pulse_memory" }, "the read after the save is kept")
     }
 
     private func heldSwitchFixture() -> (appState: AppState, held: HeldDashboardRequests, vps: SavedDashboard) {
