@@ -2042,7 +2042,7 @@ screens (not built)
 - The plugin's version is bumped when the branch merges to main.
 - Two journal edges from M0 that recovery leans on (notifier #495's review): a step that starts while a compacted workstream's lineage is still unsettled isn't journaled or noted as missed, and a step's end with an unknown call id closes the oldest open step of that tool by name.
 
-**Checked:** 2026-11-01, #PRNUM (notifier #501; a stuck start's Stop, workstreams read later leave lists already shown, a refused action frees its buttons at once, the bar names the bot by its Conduit name).
+**Checked:** 2026-11-01, #1623 (notifier #501; a stuck start's Stop, workstreams read later leave lists already shown, a refused action frees its buttons at once, the bar names the bot by its Conduit name).
 
 ## Composer Return key
 
