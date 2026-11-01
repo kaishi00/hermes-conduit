@@ -15,6 +15,17 @@ import OSLog
 private let hermesCallsStateLogger = Logger(subsystem: "com.milim.relay", category: "HermesCalls")
 
 extension AppState {
+    /// The name a bot's contact gets (Settings > Calls from Hermes, #1606):
+    /// the one its calls give (HermesCallerName), so a saved contact names
+    /// the call as the call would itself. An unnamed main profile goes by
+    /// its bot's name rather than "Hermes" (#1257).
+    func hermesCallContactName(_ profile: String) -> String {
+        let id = profile.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = id.isEmpty ? "default" : id
+        let given = profileBotTitles[key] ?? profileHermesNames[key]
+        return HermesCallerName.name(profile: key, mainName: defaultProfileName, profileName: given)
+    }
+
     /// Whether the host holds calls back while the user is in a live call
     /// (plugin 0.14+).
     var supportsHermesCallPresence: Bool {
