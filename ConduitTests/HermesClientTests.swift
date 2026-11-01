@@ -2197,7 +2197,7 @@ final class HermesClientTests: XCTestCase {
             "execution_generation": 6, "prompts": [Any]()
         ])
         let lateOutcome = try await awaitResult(of: late, "the late answer")
-        XCTAssertEqual(lateOutcome, .expired)
+        XCTAssertEqual(lateOutcome, .ended)
         XCTAssertEqual(socket.sentTexts.count, count + 1, "Nothing is answered for a prompt Hermes no longer waits on")
         client.disconnect()
     }
@@ -2259,7 +2259,7 @@ final class HermesClientTests: XCTestCase {
             "code": 4001, "message": "stale_generation", "data": ["reason": "stale_generation"]
         ])
         let staleOutcome = try await awaitResult(of: stale, "the stale answer")
-        XCTAssertEqual(staleOutcome, .expired)
+        XCTAssertEqual(staleOutcome, .ended, "A turn that ended isn't a timeout")
 
         try await deliverFrame([
             "jsonrpc": "2.0", "method": "event",
@@ -2353,10 +2353,72 @@ final class HermesClientTests: XCTestCase {
             "prompts": [["kind": "clarify", "prompt_id": "c-bot", "execution_generation": 7, "question": "Which?"]]
         ])
         XCTAssertEqual(clarifyResume["profile"] as? String, "furina")
-        try await answerRequest(on: socket, after: count + 1, method: "clarify.respond",
-                                result: ["status": "resolved", "prompt_id": "c-bot"])
+        let clarifyAnswer = try await answerRequest(on: socket, after: count + 1, method: "clarify.respond",
+                                                    result: ["status": "resolved", "prompt_id": "c-bot"])
+        XCTAssertEqual(clarifyAnswer["profile"] as? String, "furina", "Named as the approval answer names it")
         let outcome = try await awaitResult(of: answer, "the bot chat's answer")
         XCTAssertEqual(outcome, .accepted(remaining: []))
+        client.disconnect()
+    }
+
+    func testAuthorityResumeDropsPromptsItNoLongerListsAndRequestlessApprovalsAskNothing() async throws {
+        let (client, socket) = try await authorityClient()
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "approval.request", "session_id": "sess-1", "execution_generation": 2,
+                "payload": ["prompt_id": "p-old", "execution_generation": 2, "command": "rm x"]
+            ]
+        ], to: socket)
+        // Answered on another device: the next resume no longer lists it.
+        var count = socket.sentTexts.count
+        let steerless = Task<Void, Error> { try await client.cancel("sess-1") }
+        try await answerRequest(on: socket, after: count, method: "session.interrupt", error: [
+            "code": 4001, "message": "stale_generation", "data": ["reason": "stale_generation"]
+        ])
+        try await answerRequest(on: socket, after: count + 1, method: "session.resume", result: [
+            "session_id": "sess-1", "messages": [Any](), "running": false, "revision": 1,
+            "execution_generation": 2, "prompts": [Any]()
+        ])
+        try await awaitResult(of: steerless, "the idle interrupt")
+
+        count = socket.sentTexts.count
+        let late = Task<HermesClient.ApprovalResponseOutcome, Error> {
+            try await client.respondToApprovalOutcome(sessionId: "sess-1", requestId: "p-old", choice: "once")
+        }
+        try await answerRequest(on: socket, after: count, method: "session.resume", result: [
+            "session_id": "sess-1", "messages": [Any](), "running": false, "revision": 1,
+            "execution_generation": 2, "prompts": [Any]()
+        ])
+        let lateOutcome = try await awaitResult(of: late, "the answer to a prompt the chat no longer lists")
+        XCTAssertEqual(lateOutcome, .ended)
+        XCTAssertEqual(socket.sentTexts.count, count + 1, "Nothing is answered for a prompt Hermes no longer waits on")
+
+        count = socket.sentTexts.count
+        let requestless = try await client.respondToApprovalOutcome(sessionId: "sess-1", choice: "once")
+        XCTAssertEqual(requestless, .ended, "The authority names every approval it asks")
+        XCTAssertEqual(socket.sentTexts.count, count, "The dashboard's requestless shape never goes to the authority")
+        client.disconnect()
+    }
+
+    func testAuthorityStaleControlTakesTheSessionsGenerationEvenWhenLower() async throws {
+        let (client, socket) = try await authorityClient()
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.start", "session_id": "sess-1", "execution_generation": 9]
+        ], to: socket)
+        let count = socket.sentTexts.count
+        let steer = Task<Void, Error> { try await client.steer("sess-1", text: "left") }
+        let first = try await answerRequest(on: socket, after: count, method: "session.steer", error: [
+            "code": 4001, "message": "stale_generation", "data": ["reason": "stale_generation"]
+        ])
+        XCTAssertEqual(first["execution_generation"] as? Int, 9)
+        try await answerRequest(on: socket, after: count + 1, method: "session.resume", result: [
+            "session_id": "sess-1", "messages": [Any](), "running": true, "revision": 1, "execution_generation": 3
+        ])
+        let again = try await answerRequest(on: socket, after: count + 2, method: "session.steer", result: ["status": "queued"])
+        XCTAssertEqual(again["execution_generation"] as? Int, 3, "Hermes' word on the running turn")
+        try await awaitResult(of: steer, "the steer")
         client.disconnect()
     }
 

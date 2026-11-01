@@ -2267,7 +2267,14 @@ final class HermesClient: ObservableObject {
             if running == true { authorityRunningSessions.insert(id) }
             if running == false { authorityRunningSessions.remove(id) }
         }
-        for prompt in object["prompts"]?.arrayValue ?? [] {
+        guard let prompts = object["prompts"]?.arrayValue else { return }
+        // A resume lists every prompt Hermes still waits on in the chat: one
+        // it no longer lists was answered elsewhere or its turn ended.
+        let listed = Set(prompts.compactMap { $0.objectValue?["prompt_id"]?.stringValue })
+        for (id, prompt) in authorityPrompts where ids.contains(prompt.sessionId) && !listed.contains(id) {
+            authorityPrompts.removeValue(forKey: id)
+        }
+        for prompt in prompts {
             notePrompt(prompt.objectValue, sessionId: object["session_id"]?.stringValue ?? sessionId)
         }
     }
@@ -3292,6 +3299,11 @@ final class HermesClient: ObservableObject {
             // A bot chat is only found under its own profile.
             let snapshot = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
             guard snapshot["running"]?.boolValue == true else { return nil }
+            // The authority's word on the running turn, even below what this
+            // socket had: the control names it as Hermes does.
+            if let generation = Self.exactIntValue(snapshot["execution_generation"]) {
+                executionGenerations[sessionId] = generation
+            }
             do {
                 let request = authorityControl(method, sessionId: sessionId, text: text)
                 return try await rpc(request.method, params: request.params)
@@ -3315,8 +3327,16 @@ final class HermesClient: ObservableObject {
         /// The session authority's `already_resolved`: another surface
         /// answered first, so this answer wasn't taken.
         case answeredElsewhere
+        /// The session authority no longer waits on it: the turn that asked
+        /// ended (`stale_generation`) or the chat no longer lists it. Not a
+        /// timeout, so it isn't told as one.
+        case ended
 
-        var isExpired: Bool { self == .expired }
+        /// Hermes no longer waits on it, whatever the reason.
+        var isExpired: Bool {
+            if case .accepted = self { return false }
+            return true
+        }
 
         /// True only on an explicit `remaining: []` — the gateway's own
         /// confirmation that every question is resolved. An omitted
@@ -3324,7 +3344,7 @@ final class HermesClient: ObservableObject {
         var requestCompleted: Bool {
             switch self {
             case .accepted(let remaining): return remaining?.isEmpty == true
-            case .expired, .answeredElsewhere: return false
+            case .expired, .answeredElsewhere, .ended: return false
             }
         }
     }
@@ -3359,24 +3379,27 @@ final class HermesClient: ObservableObject {
             // A bot chat is only found under its own profile.
             _ = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
             authorityPrompt = authorityPrompts[requestId]
-            if authorityPrompt == nil { return .expired }
+            if authorityPrompt == nil { return .ended }
         }
         if let prompt = authorityPrompt {
             // The authority asks one question per prompt and names the
             // turn that asked; its answer settles that prompt.
             let result: AnyCodable
             do {
-                result = try await rpc("clarify.respond", params: [
+                var params: [String: Any] = [
                     "session_id": prompt.sessionId,
                     "execution_generation": prompt.generation,
                     "prompt_id": requestId,
                     "answer": answer
-                ])
+                ]
+                // Named as the approval answer names it: a bot chat's own profile.
+                if let profile, !profile.isEmpty { params["profile"] = profile }
+                result = try await rpc("clarify.respond", params: params)
             } catch let error as RpcError where error.reason == "stale_generation" {
                 // The turn that asked has ended: Hermes no longer waits.
                 authorityPrompts.removeValue(forKey: requestId)
                 authorityPromptSessions.removeValue(forKey: requestId)
-                return .expired
+                return .ended
             }
             authorityPrompts.removeValue(forKey: requestId)
             authorityPromptSessions.removeValue(forKey: requestId)
@@ -3493,6 +3516,9 @@ final class HermesClient: ObservableObject {
         /// The session authority's `already_resolved`: another surface
         /// answered first.
         case answeredElsewhere
+        /// The session authority no longer waits on it: the turn that asked
+        /// ended, or the chat no longer lists it. Not a timeout.
+        case ended
     }
 
     func respondToApproval(
@@ -3526,7 +3552,7 @@ final class HermesClient: ObservableObject {
                 )
                 cached = authorityPrompts[trimmedRequestId]
             }
-            guard let prompt = cached else { return .noLongerWaiting }
+            guard let prompt = cached else { return .ended }
             var params: [String: Any] = [
                 "session_id": prompt.sessionId,
                 "execution_generation": prompt.generation,
@@ -3541,7 +3567,7 @@ final class HermesClient: ObservableObject {
                 // The turn that asked has ended: nothing to approve.
                 authorityPrompts.removeValue(forKey: trimmedRequestId)
                 authorityPromptSessions.removeValue(forKey: trimmedRequestId)
-                return .noLongerWaiting
+                return .ended
             }
             authorityPrompts.removeValue(forKey: trimmedRequestId)
             authorityPromptSessions.removeValue(forKey: trimmedRequestId)
@@ -3550,6 +3576,12 @@ final class HermesClient: ObservableObject {
             case "already_resolved": return .answeredElsewhere
             default: return .noLongerWaiting
             }
+        }
+        if speaksSessionAuthority {
+            // The authority names every approval it asks; a card without an
+            // id asks nothing it still waits on (AppState fills a waiting
+            // one's id from `approval.pending`, which lists the same ids).
+            return .ended
         }
         var params: [String: Any] = [
             "choice": choice,

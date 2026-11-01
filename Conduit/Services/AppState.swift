@@ -32314,6 +32314,11 @@ final class AppState: ObservableObject {
                 messages[updatedIndex].approval?.status = .expired
                 messages[updatedIndex].approval?.choice = nil
                 messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
+            case .ended:
+                // Its turn ended (stopped, or the chat moved on): not a timeout.
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active.")
             case .answeredElsewhere:
                 messages[updatedIndex].approval?.status = .expired
                 messages[updatedIndex].approval?.choice = nil
@@ -35877,7 +35882,7 @@ final class AppState: ObservableObject {
         guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
               var activity = messages[index].clarify else { return }
         switch outcome {
-        case .expired, .answeredElsewhere:
+        case .expired, .answeredElsewhere, .ended:
             activity.isExpired = true
             for questionIndex in activity.questions.indices
             where activity.questions[questionIndex].status != .answered {
@@ -35885,10 +35890,10 @@ final class AppState: ObservableObject {
                 activity.questions[questionIndex].error = nil
             }
             // Only a timeout may say Hermes timed it out; another surface's
-            // answer says the question is no longer active.
-            activity.error = outcome == .answeredElsewhere
-                ? Self.clarifyExpiredNotice(for: activity.questions.count, reason: "resolved")
-                : Self.clarifyExpiredNotice(for: activity.questions.count)
+            // answer, or a turn that ended, says the question is no longer active.
+            activity.error = outcome == .expired
+                ? Self.clarifyExpiredNotice(for: activity.questions.count)
+                : Self.clarifyExpiredNotice(for: activity.questions.count, reason: outcome == .answeredElsewhere ? "resolved" : "ended")
         case .accepted(let remaining):
             // A late accepted outcome can never resurrect an expired request.
             guard !activity.isExpired,
