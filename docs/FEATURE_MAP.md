@@ -1908,7 +1908,7 @@ tool's answer and every work update carry, with the bot's profile (see Links
 in messages) · an
 approval in a workstream (marks it waiting on you and tells the Bot Chat) ·
 Bot mentions and teammate messages (`message_agent` refused in a coordinator,
-asks between bots come in M1) · Opening a Bot Chat (the "Bot Chat" title is
+asks between bots come in a later M1 PR) · Opening a Bot Chat (the "Bot Chat" title is
 how the plugin knows the coordinator) · Hermes Desktop's Bot Chat (the same
 plugin, the same tools) · the `hermes conduit-push work` commands · the tool
 descriptions, the worker's and the update's prompts, and the notifier's
@@ -1927,16 +1927,17 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - Once on, a chat whose title can't be read is held to the policy for that call, since it might be the coordinator (2026-10-31, notifier #484's review).
 - Under `plugins.isolation: host` the tools answer with the reason rather than starting anything, since the session API is only in the dashboard's process (2026-10-31, notifier #484).
 - "Bot Chat" is the coordinator's title only: work_start refuses it for a workstream, since the title names the session and the policy reads it (2026-10-31, notifier #485).
+- A registry that exists but can't be read at a turn's hooks keeps that turn quiet (no push, alert call or Live Activity), since it may be a hidden workstream; the Bot Chat's own turn still pushes when its title can be read (2026-10-31, notifier #485).
 - Ideas taken from Claude's project coordinator (design C.11): workers you can talk to in their own chat, states that say who's waiting (ready beside done), a checklist each worker keeps, the coordinator's notes in each brief, and your words quoted as yours (2026-11-01, Eric).
 - A workstream's approvals follow the bot's Hermes approval mode (manual, smart, or off/yolo), and Edit Bot can set a separate mode for its workstreams (2026-11-01, Eric; not built yet).
 - An update carries a short line of the report and the chat's link; the full report stays in the workstream's chat and in work_read (2026-11-01, notifier #490).
-- A registry that exists but can't be read at a turn's hooks keeps that turn quiet (no push, alert call or Live Activity), since it may be a hidden workstream; the Bot Chat's own turn still pushes when its title can be read (2026-10-31, notifier #485).
 
 **Open gaps**
 - No screen in the app: workstreams show only as the Bot Chat's answers and their links until M2's Work panel, which shows each one's checklist and ready state. M2 builds on the cache-first screens and the transcript rewrite (see Screens that open on their last answer), checked with that work first.
 - The app's handling of an approval in a hidden workstream session is unchecked: the request goes to the user from that session, and nothing in the app opens it from the Bot Chat yet.
 - The Notifications entry gains a line for workstream turns' quiet pushes once this reaches main.
 - The first session Hermes builds on a secondary profile after the dashboard starts can come up without the work tools; the upstream test takes it with a warm-up session (2026-10-31 canary).
+- The workstreams' own approval mode in Edit Bot (M3) isn't built; until then a workstream follows the bot's Hermes approval mode as any chat does.
 - The plugin's version is bumped when the branch merges to main.
 
 **Checked:** 2026-11-01, #1599 (notifier #490, C.11 rulings).
