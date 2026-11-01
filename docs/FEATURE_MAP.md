@@ -4509,15 +4509,15 @@ worker's task (see Pulse; it opens this screen) · Hermes' own board drawer
 - Tests: `ConduitTests/KanbanV2Tests.swift` (the Blocked question tests, testTaskCreatedBlockedWaitsOnYouWithoutAQuestion, testCreatedBlockedActivityRowsReadInWords)
 
 **Rulings**
-- A reason Hermes writes itself is never shown as the worker's question: `initial_status` (Hermes' `blocked` event for a task created with `initial_status="blocked"`) reads "Created as Blocked", and any other one-token snake_case reason counts as no reason. Only a real question gets Reply & unblock; a task created Blocked or blocked with no reason gets a callout that says nobody asked anything and to set Status to Ready and save (2026-11-01, #PRNUM, issue #1601 from a tester).
-- The question's callout says what each button does: Reply & unblock posts the answer and moves the task back to Ready; Add comment only posts it and the task stays Blocked (2026-11-01, #PRNUM, issue #1601).
-- The comment buttons sit side by side when every label fits on one line and stack full width when one doesn't, so a long translation never wraps a pill word by word (2026-11-01, #PRNUM, issue #1601).
+- A reason Hermes writes itself is never shown as the worker's question: `initial_status` (Hermes' `blocked` event for a task created with `initial_status="blocked"`) reads "Created as Blocked", and any other one-token snake_case reason counts as no reason. Only a real question gets Reply & unblock; a task created Blocked or blocked with no reason gets a callout that says nobody asked anything and to set Status to Ready and save (2026-11-01, #1603, issue #1601 from a tester).
+- The question's callout says what each button does: Reply & unblock posts the answer and moves the task back to Ready; Add comment only posts it and the task stays Blocked (2026-11-01, #1603, issue #1601).
+- The comment buttons sit side by side when every label fits on one line and stack full width when one doesn't, so a long translation never wraps a pill word by word (2026-11-01, #1603, issue #1601).
 - A dependency block (a `status` row that parks the task behind a parent) gets no callout: Dependencies shows what it waits for.
 
 **Open gaps**
 - Conduit sends no push when a task goes Blocked; the board's Blocked column is where the operator finds one.
 
-**Checked:** 2026-11-01, #PRNUM (seeded; issue #1601).
+**Checked:** 2026-11-01, #1603 (seeded; issue #1601).
 
 ## Feature map rules
 
