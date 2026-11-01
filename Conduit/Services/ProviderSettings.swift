@@ -42,6 +42,8 @@ struct ProviderEntry: Identifiable, Equatable {
         /// uses: its own rows, or the shared ones it falls back to. Hermes
         /// takes turns over them in the profile's key order.
         var keysInUse = 0
+        /// How many of `keysInUse` are sign-ins (OAuth), not keys.
+        var signInsInUse = 0
         /// Where to get a key.
         var signupURL: String?
         /// `vars` are other providers' variables this one also reads: a
@@ -304,9 +306,11 @@ enum ProviderCatalog {
             // turns over them with the keys.
             let shared = sharedCounts[id] ?? .init()
             let own = ownCounts[id] ?? .init()
+            let usesShared = onMainProfile || own.all == 0
             byID[id]?.key?.keysInUse = onMainProfile
                 ? shared.all
-                : (own.all == 0 ? key.sharedRows.count + shared.signIns : own.all)
+                : (usesShared ? key.sharedRows.count + shared.signIns : own.all)
+            byID[id]?.key?.signInsInUse = usesShared ? shared.signIns : own.signIns
         }
 
         for row in accounts?["providers"] as? [[String: Any]] ?? [] {
@@ -423,7 +427,7 @@ enum ProviderCatalog {
             var row: [String: Any] = ["id": entry.id, "name": entry.name, "on_main_profile": entry.onMainProfile]
             if let key = entry.key {
                 var access: [String: Any] = [
-                    "vars": key.vars, "vars_saved": key.savedVars, "keys_in_use": key.keysInUse,
+                    "vars": key.vars, "vars_saved": key.savedVars, "keys_in_use": key.keysInUse, "sign_ins_in_use": key.signInsInUse,
                     "vars_held": key.heldVars, "borrowed_only": key.borrowedOnly,
                     "shared_rows": key.sharedRows.map(encode), "profile_rows": key.profileRows.map(encode),
                 ]
@@ -478,6 +482,7 @@ enum ProviderCatalog {
                     vars: access["vars"] as? [String] ?? [],
                     savedVars: access["vars_saved"] as? [String] ?? [],
                     keysInUse: access["keys_in_use"] as? Int ?? 0,
+                    signInsInUse: access["sign_ins_in_use"] as? Int ?? 0,
                     signupURL: nonEmpty(access["signup_url"])
                 )
                 // Kept before settings had their own list.

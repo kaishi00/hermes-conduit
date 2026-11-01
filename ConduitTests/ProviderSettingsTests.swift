@@ -547,6 +547,11 @@ final class ProviderSettingsTests: XCTestCase {
         withSignIn["providers"] = [["provider": "openrouter", "entries": rows]]
         XCTAssertEqual(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn)
             .first { $0.id == "openrouter" }?.key?.keysInUse, 3, "a sign-in takes turns with the keys")
+        XCTAssertEqual(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn)
+            .first { $0.id == "openrouter" }?.key?.signInsInUse, 1, "the page says sign-ins are among them")
+        XCTAssertEqual(ProviderCatalog.entries(summary: ProviderCatalog.summary(
+            ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn)))?
+            .first { $0.id == "openrouter" }?.key?.signInsInUse, 1, "and keeps saying so offline")
         XCTAssertEqual(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn,
                                                profilePool: [:], onMainProfile: false)
             .first { $0.id == "openrouter" }?.key?.keysInUse, 2)
@@ -556,6 +561,7 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn,
                                                profilePool: ownSignIn, onMainProfile: false)
             .first { $0.id == "openrouter" }?.key?.keysInUse, 1, "a sign-in of the profile's own is its own pool")
+        XCTAssertEqual(entry.key?.signInsInUse, 0)
 
         XCTAssertEqual(KeyOrder.settingKey(for: "openrouter"), "credential_pool_strategies.openrouter")
         XCTAssertNil(KeyOrder.settingKey(for: "custom:together.ai"))
@@ -570,6 +576,8 @@ final class ProviderSettingsTests: XCTestCase {
     func testTheKeyOrderKeepsAPickOverAnOlderAnswer() throws {
         var picks = KeyOrderPicks()
         XCTAssertNil(picks.order, "Nothing kept: no order, Hermes' default included")
+        picks.showKept(nil)
+        XCTAssertNil(picks.order, "A kept config without the key says nothing of Hermes' order")
         picks.showKept("round_robin")
         XCTAssertEqual(picks.order, .roundRobin)
         XCTAssertNil(picks.choose(.random), "It waits for Hermes")

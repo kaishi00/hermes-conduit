@@ -24,8 +24,8 @@ struct ProviderModelContext {
     var reloadCatalog: () async -> Void = {}
     /// Makes `model` on the catalog row `provider` the profile's default.
     var makeDefault: (_ provider: String, _ model: String) async -> Bool
-    /// What else on the profile uses the provider (its delegate or fallback
-    /// models), named for Remove's confirmation.
+    /// What else on the profile uses the provider (its delegate, fallback
+    /// and helper models), named for Remove's confirmation.
     var usage: (ProviderEntry) -> [String]
     /// The order a provider's keys are used in on this profile.
     var keyOrder: KeyOrderAccess?
@@ -114,7 +114,12 @@ struct ModelPageProviders: View {
     private func reloadCatalog() async {
         catalogGeneration += 1
         let generation = catalogGeneration
+        // The helper models are read with it, so Remove names the ones
+        // pinned to a provider as Hermes holds them, not only as this
+        // phone last kept them; a read that fails leaves the kept ones.
+        async let helpers: [HelperModelSlot]? = try? await appState.loadHelperModels()
         let loaded = await load()
+        _ = await helpers
         guard generation == catalogGeneration else { return }
         catalogFailed = loaded == nil
         if let loaded {
@@ -540,7 +545,7 @@ struct ProviderDetailPage: View {
                                           usage: context.usage(entry))
                     }
                     if key.keysInUse > 1, let order = context.keyOrder, KeyOrder.settingKey(for: entry.id) != nil {
-                        KeyOrderSection(entry: entry, keys: key.keysInUse, access: order)
+                        KeyOrderSection(entry: entry, keys: key.keysInUse, signIns: key.signInsInUse, access: order)
                     }
                 }
                 ProviderSettingsRows(service: service, entry: entry)
@@ -720,7 +725,7 @@ private struct ProviderKeyEditor: View {
     /// Hermes' catalog answered and the provider doesn't run the default
     /// model, so its key may go. Off on the Add sheet's pages.
     var keyRemovable = false
-    /// The profile's delegate and fallback models on the provider, named
+    /// The profile's delegate, fallback and helper models on the provider, named
     /// when its key is removed.
     var usage: [String] = []
     @Environment(\.openURL) private var openURL
@@ -1156,7 +1161,8 @@ struct KeyOrderPicks: Equatable {
 
     /// The kept order, until Hermes answers.
     mutating func showKept(_ stored: String?) {
-        guard order == nil else { return }
+        // A kept config without the key says nothing of Hermes' order.
+        guard order == nil, let stored else { return }
         order = KeyOrder(stored: stored)
     }
 
@@ -1209,6 +1215,8 @@ private struct KeyOrderSection: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let entry: ProviderEntry
     let keys: Int
+    /// Sign-ins (OAuth) among `keys`: Hermes takes turns over them too.
+    let signIns: Int
     let access: KeyOrderAccess
     @State private var picks = KeyOrderPicks()
 
@@ -1216,8 +1224,14 @@ private struct KeyOrderSection: View {
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Key order"), symbol: "arrow.triangle.2.circlepath", tint: .conduitAura) {
-            Text(AppLocalization.string("This profile has \(String(keys)) keys for \(entry.name). Hermes moves to another when one hits its limit."))
-                .scaledFont(.footnote).foregroundStyle(.secondary)
+            Group {
+                if signIns > 0 {
+                    Text(AppLocalization.string("This profile has \(String(keys)) keys and sign-ins for \(entry.name). Hermes moves to another when one hits its limit."))
+                } else {
+                    Text(AppLocalization.string("This profile has \(String(keys)) keys for \(entry.name). Hermes moves to another when one hits its limit."))
+                }
+            }
+            .scaledFont(.footnote).foregroundStyle(.secondary)
             if let order = picks.order {
                 ConduitMenuPicker(
                     value: order,
