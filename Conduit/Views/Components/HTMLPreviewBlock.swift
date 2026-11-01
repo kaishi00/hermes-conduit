@@ -49,9 +49,6 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     /// this value itself: a flag beside it let the sheet build before it
     /// saw the page and open blank, as What's New did (#1227).
     @State private var sheetPage: SheetPage?
-    /// The page measured taller than a message shows; its foot fades so it
-    /// reads as continuing full screen.
-    @State private var isCut = false
 
     struct SheetPage: Identifiable {
         let id = UUID()
@@ -173,7 +170,6 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             interactive: false,
             onHeight: { height in
                 let clamped = HTMLPreviewPage.clampedInlineHeight(height)
-                isCut = HTMLPreviewPage.isCutInline(height)
                 TranscriptPictureMemory.rememberHeight(clamped, for: heightKey)
                 cardHeight.pageMeasured(clamped, page: load)
             },
@@ -182,15 +178,6 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             onFailed: { fallBack() }
         )
         .opacity(drawn ? 1 : 0)
-        .mask {
-            LinearGradient(
-                stops: isCut
-                    ? [.init(color: .black, location: 0.82), .init(color: .black.opacity(0.15), location: 1)]
-                    : [.init(color: .black, location: 0), .init(color: .black, location: 1)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
         .overlay {
             if drawn {
                 Color.clear
@@ -235,7 +222,6 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         let showsFileCard = state == .unavailable
         if !showsFileCard { state = .loading }
         load += 1
-        isCut = false
         cardHeight.pageReplaced()
         let dataURL = await gatewayMediaDataURL(path)
         guard !Task.isCancelled else { return }
@@ -326,11 +312,6 @@ enum HTMLPreviewPage {
 
     static func clampedInlineHeight(_ height: CGFloat) -> CGFloat {
         min(maximumInlineHeight, max(minimumInlineHeight, height.rounded(.up)))
-    }
-
-    /// A page taller than a message shows, whose foot fades in the message.
-    static func isCutInline(_ height: CGFloat) -> Bool {
-        height.rounded(.up) > maximumInlineHeight
     }
 
     /// The file's text from the dashboard's data URL, or nil when it isn't
