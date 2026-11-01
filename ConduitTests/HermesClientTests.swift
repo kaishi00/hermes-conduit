@@ -2387,6 +2387,44 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAuthorityResumeKeepsAPromptTheRunningTurnAskedAfterItsSnapshot() async throws {
+        let (client, socket) = try await authorityClient()
+        // The approval's event lands after Hermes took the resume's snapshot,
+        // so the reply doesn't list it, though its turn still runs.
+        var count = socket.sentTexts.count
+        let steerless = Task<Void, Error> { try await client.cancel("sess-1") }
+        try await answerRequest(on: socket, after: count, method: "session.interrupt", error: [
+            "code": 4001, "message": "stale_generation", "data": ["reason": "stale_generation"]
+        ])
+        await waitForSends(count + 2, on: socket)
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "approval.request", "session_id": "sess-1", "execution_generation": 3,
+                "payload": ["prompt_id": "p-new", "execution_generation": 3, "command": "ls"]
+            ]
+        ], to: socket)
+        try await answerRequest(on: socket, after: count + 1, method: "session.resume", result: [
+            "session_id": "sess-1", "messages": [Any](), "running": true, "revision": 1,
+            "execution_generation": 3, "prompts": [Any]()
+        ])
+        // A turn still runs, so the interrupt goes once more with its generation.
+        let retried = try await answerRequest(on: socket, after: count + 2, method: "session.interrupt", result: [:])
+        XCTAssertEqual(retried["execution_generation"] as? Int, 3)
+        try await awaitResult(of: steerless, "the interrupt")
+
+        count = socket.sentTexts.count
+        let answer = Task<HermesClient.ApprovalResponseOutcome, Error> {
+            try await client.respondToApprovalOutcome(sessionId: "sess-1", requestId: "p-new", choice: "once")
+        }
+        let params = try await answerRequest(on: socket, after: count, method: "approval.respond",
+                                             result: ["status": "resolved", "prompt_id": "p-new"])
+        XCTAssertEqual(params["prompt_id"] as? String, "p-new")
+        let outcome = try await awaitResult(of: answer, "the answer to the running turn's prompt")
+        XCTAssertEqual(outcome, .accepted)
+        client.disconnect()
+    }
+
     func testAuthorityResumeDropsPromptsItNoLongerListsAndRequestlessApprovalsAskNothing() async throws {
         let (client, socket) = try await authorityClient()
         try await deliverFrame([

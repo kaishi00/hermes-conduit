@@ -2274,12 +2274,15 @@ final class HermesClient: ObservableObject {
         guard let prompts = object["prompts"]?.arrayValue else { return }
         // A resume lists every prompt Hermes still waits on in the chat: one
         // it no longer lists was answered elsewhere or its turn ended.
-        // Only a prompt the snapshot's turn could have listed: one a later
-        // turn asked while the resume was on its way stays.
+        // Only a prompt the snapshot could have listed: one a later turn
+        // asked while the resume was on its way stays, and so does one the
+        // snapshot's own turn asked while it still runs, since its event can
+        // land after Hermes took the snapshot and before the reply. A kept
+        // prompt Hermes no longer waits on still reads right when answered.
         let listed = Set(prompts.compactMap { $0.objectValue?["prompt_id"]?.stringValue })
         let snapshotGeneration = Self.exactIntValue(object["execution_generation"])
         for (id, prompt) in authorityPrompts where ids.contains(prompt.sessionId) && !listed.contains(id)
-            && snapshotGeneration.map({ prompt.generation <= $0 }) == true {
+            && snapshotGeneration.map({ prompt.generation < $0 || (prompt.generation == $0 && running == false) }) == true {
             authorityPrompts.removeValue(forKey: id)
         }
         for prompt in prompts {
