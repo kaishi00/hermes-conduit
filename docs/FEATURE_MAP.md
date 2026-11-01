@@ -1942,7 +1942,7 @@ ref (W1, W2), and hears back when one finishes, fails, waits on the user or
 has something ready for them to look at.
 Each bot turns it on for itself (`hermes -p <bot> conduit-push work on`). It's
 being built on the notifier's `bot-workstreams` branch (M0, notifier #484; M1
-from notifier #490, #491, #493, #495 and #497), so
+from notifier #490, #491, #493, #495, #497 and #498), so
 none of it is on either main yet, and the app has no screen for it until M2.
 
 **Siblings:** the Bot Chat (the work tools, offered only there and only
@@ -1952,7 +1952,8 @@ in as hidden turns, which the transcript leaves out as it does every hidden
 user turn) · a workstream's session (hidden, titled, on the bot's own
 profile, its steps journaled; its own `work_progress` checklist and ready
 mark, and its report written for you in its chat; its brief carries the
-coordinator's `work_note` notes (labelled as data, never your go-ahead) and
+coordinator's `work_note` notes (labelled as data, never your go-ahead; the
+worker doesn't write the bot's memory) and
 the message of yours the Bot Chat is answering, quoted as yours (none when a
 work update started the turn), with what counts as your go-ahead under the bot's approval mode; a reply in it sends no push, the Bot Chat's
 reply to the update is the one push, and its turns start no Live Activity) · the `conduit://session/` link a work
@@ -1964,7 +1965,7 @@ in favour of `work_ask`, and in a workstream) · asks between bots (`work_ask` a
 ask reaches the other bot's Bot Chat as a hidden, queued turn, and its answer
 goes into the asking workstream named in `for` or back to the asking Bot Chat
 as a work update; the digest lists open asks on both sides) · recovery after
-a restart (the journal sorts each interrupted workstream: continued once per restart
+a restart, a clean one or a crash (the journal sorts each interrupted workstream: continued once per restart
 (a stop lets a later one continue it again) when nothing that changes things
 was in flight, else left for the user with a
 Check first note; Hermes' own crash re-run, `desktop.auto_continue`, retired
@@ -1996,6 +1997,8 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - After a restart a workstream is continued on its own only when its journal shows nothing that can change things in flight since its turn began (reads are an allow list; a `tool_call` counts by the tools it calls, and a step whose journal entry couldn't be written counts as one that changes things), only once until a turn of it ends, and only with the bot's `--after-restart continue` (the default; `ask` leaves it to the user). A step that can change things and was cut off is never re-run: the Bot Chat asks the user, with a Check first note that changes nothing. Hermes' own crash re-run is retired for workstreams, leaving a live sibling's marker alone (2026-11-01, notifier #495, design C.7). Starts and sends wait for the sweep to settle, and a stop lets a later restart continue the work again (2026-11-01, notifier #495's review).
 - A send the restart cut off that Hermes never stored is sent once more only into work recovery continued; into stopped or idle work it would start a turn nobody okayed, so the Bot Chat is told it may not have arrived instead (2026-11-01, notifier #495).
 - Only the Bot Chat asks: work_start and work_ask tell the coordinator to ask for a workstream with `for` rather than brief it to ask, and a workstream that tries, with work_ask or Hermes' `message_agent`, is refused and told to name the bot and the need in its report. An answer for an interrupted workstream (a restart or the user stopped its turn) goes to the Bot Chat, not into the workstream (2026-11-01, notifier #497, from the .58 test).
+- A clean restart is recovered like a crash: Hermes' own stop of every running turn on its way out isn't taken for the user's, and a step it cut off counts as never finished, so a change it may have made still waits for the user (2026-11-01, notifier #498, from the .58 restart test).
+- A workstream doesn't write the bot's memory: what's worth keeping goes in its report, and the coordinator decides what to remember, with `work_note` for what every workstream should know (2026-11-01, Eric, notifier #498).
 - The loop guard: an ask never goes to a bot already waiting in its chain (a bot with an open ask from another can't ask that one back until it answers), a chain goes at most two bots deep, and one bot asks another at most 10 times an hour (2026-11-01, notifier #493).
 
 **Open gaps**
@@ -2003,12 +2006,11 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - The app's handling of an approval in a hidden workstream session is unchecked: the request goes to the user from that session, and nothing in the app opens it from the Bot Chat yet.
 - The Notifications entry gains a line for workstream turns' quiet pushes once this reaches main.
 - The first session Hermes builds on a secondary profile after the dashboard starts can come up without the work tools; the upstream test takes it with a warm-up session (2026-10-31 canary).
-- For Eric to confirm: workers report lasting facts for the coordinator to keep with `work_note`, rather than writing Hermes memory themselves as design C.11 had it, so one path keeps the notes (notifier #491).
 - The workstreams' own approval mode in Edit Bot (M3) isn't built; until then a workstream follows the bot's Hermes approval mode as any chat does.
 - The plugin's version is bumped when the branch merges to main.
 - Two journal edges from M0 that recovery leans on (notifier #495's review): a step that starts while a compacted workstream's lineage is still unsettled isn't journaled or noted as missed, and a step's end with an unknown call id closes the oldest open step of that tool by name.
 
-**Checked:** 2026-11-01, #1614 (notifier #497).
+**Checked:** 2026-11-01, #1617 (notifier #498).
 
 ## Composer Return key
 
