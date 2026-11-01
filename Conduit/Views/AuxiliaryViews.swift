@@ -1019,6 +1019,7 @@ struct SettingsView: View {
             HermesCallsSettingsPage(
                 model: HermesCallSettingsModel(
                     profile: appState.activeProfile,
+                    botName: appState.profileDisplayName(appState.activeProfile),
                     status: appState.activeHermesCallsStatus,
                     load: {
                         await appState.refreshHermesCallsStatus()

@@ -25679,84 +25679,84 @@
         }
       }
     },
-    "Add Hermes to Contacts": {
+    "Add %@ to Contacts": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermes zu Kontakten hinzufügen"
+            "value": "%@ zu Kontakten hinzufügen"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Añadir Hermes a Contactos"
+            "value": "Añadir %@ a Contactos"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ajouter Hermes aux contacts"
+            "value": "Ajouter %@ aux contacts"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tambahkan Hermes ke Kontak"
+            "value": "Tambahkan %@ ke Kontak"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aggiungi Hermes ai Contatti"
+            "value": "Aggiungi %@ ai Contatti"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermesを連絡先に追加"
+            "value": "%@を連絡先に追加"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "연락처에 Hermes 추가"
+            "value": "연락처에 %@ 추가"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dodaj Hermesa do kontaktów"
+            "value": "Dodaj %@ do kontaktów"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Adicionar Hermes aos Contatos"
+            "value": "Adicionar %@ aos Contatos"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Добавить Hermes в контакты"
+            "value": "Добавить %@ в контакты"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermes'i Kişiler'e ekle"
+            "value": "%@ öğesini Kişiler'e ekle"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "将 Hermes 添加到通讯录"
+            "value": "将 %@ 添加到通讯录"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "將 Hermes 加入聯絡人"
+            "value": "將 %@ 加入聯絡人"
           }
         }
       }

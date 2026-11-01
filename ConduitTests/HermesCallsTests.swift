@@ -817,15 +817,20 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(HermesNativeCalls.stopsWatchRing(after: nil))
     }
 
-    func testACallRingsFromTheAddressTheHermesContactHolds() {
+    func testEachBotRingsFromTheAddressItsContactHolds() {
         // A Focus lets a call through only from a contact in its allowed
-        // people (#1606): the call rings from an address the contact from
-        // Settings > Hermes calls holds, on the iPhone and the Watch.
-        let handle = HermesCallerName.callHandle
+        // people (#1606): each profile's calls ring from its own address,
+        // which the contact its call settings add holds, under its name.
+        let handle = HermesCallerName.callHandle(profile: "Furina")
         XCTAssertEqual(handle.type, .emailAddress)
-        XCTAssertEqual(handle.value, HermesCallerName.contactAddress)
-        let contact = HermesNewContactSheet.contact()
-        XCTAssertEqual(contact.givenName, HermesCallerName.fallback)
+        XCTAssertEqual(handle.value, "hermes+furina@hermesconduit.app")
+        XCTAssertEqual(HermesCallerName.contactAddress(profile: "default"), "hermes+default@hermesconduit.app")
+        XCTAssertNotEqual(HermesCallerName.contactAddress(profile: "nova"), handle.value, "One contact per bot")
+        XCTAssertEqual(HermesCallerName.contactAddress(profile: nil), "hermes@hermesconduit.app", "A call naming no profile matches no bot's contact")
+        XCTAssertEqual(HermesCallerName.contactAddress(profile: "a b/ü"), "hermes+ab@hermesconduit.app")
+        XCTAssertEqual(HermesCallerName.handleTypes, [.emailAddress])
+        let contact = HermesNewContactSheet.contact(profile: "furina", name: "Furina")
+        XCTAssertEqual(contact.givenName, "Furina")
         XCTAssertEqual(contact.emailAddresses.map { $0.value as String }, [handle.value])
     }
 

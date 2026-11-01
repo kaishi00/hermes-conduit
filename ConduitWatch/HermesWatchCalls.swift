@@ -63,6 +63,8 @@ final class HermesWatchCalls: NSObject {
         let ring: HermesRing
         /// Who the call says is calling (HermesCallerName).
         let callerName: String
+        /// The calling profile, whose address the call rings from.
+        let profile: String?
         var answered = false
         var unanswered: Task<Void, Never>?
         var work: Task<Void, Never>?
@@ -98,7 +100,7 @@ final class HermesWatchCalls: NSObject {
         configuration.maximumCallGroups = 1
         configuration.maximumCallsPerCallGroup = 1
         // An address a contact can hold, so a Focus can allow Hermes.
-        configuration.supportedHandleTypes = [.emailAddress]
+        configuration.supportedHandleTypes = HermesCallerName.handleTypes
         // A Hermes call can't be called back from the Phone app.
         configuration.includesCallsInRecents = false
         let provider = CXProvider(configuration: configuration)
@@ -169,11 +171,12 @@ final class HermesWatchCalls: NSObject {
         let id = UUID()
         let rings = ring != nil && !late && !busy && !settled && WatchVoiceCall.callsWork
         let callerName = Self.callerName(userInfo)
-        if rings, let ring { calls[id] = Call(ring: ring, callerName: callerName) }
+        let profile = HermesRingPush.caller(userInfo).profile
+        if rings, let ring { calls[id] = Call(ring: ring, callerName: callerName, profile: profile) }
         WatchCallLog.shared.note("hermesCallPush", ["ring": ring != nil, "late": late, "busy": busy, "settled": settled, "callsWork": WatchVoiceCall.callsWork, "engine": "\(WatchVoiceCall.shared.engine)"])
         // Every VoIP push is reported before this returns, even one that
         // can't ring here (the iPhone rings it).
-        provider.reportNewIncomingCall(with: id, update: Self.update(callerName: callerName)) { error in
+        provider.reportNewIncomingCall(with: id, update: Self.update(callerName: callerName, profile: profile)) { error in
             Task { @MainActor in
                 defer { completion() }
                 if let error {
@@ -204,7 +207,7 @@ final class HermesWatchCalls: NSObject {
         let reason: CXCallEndedReason = settled.outcome == .answered ? .answeredElsewhere : .declinedElsewhere
         noteSettled(settled.id)
         WatchCallLog.shared.note("hermesCallSettledOnPhone", ["outcome": settled.outcome.rawValue, "here": calls[id] != nil])
-        provider.reportNewIncomingCall(with: id, update: Self.update(callerName: calls[id]?.callerName ?? HermesCallerName.fallback)) { _ in
+        provider.reportNewIncomingCall(with: id, update: Self.update(callerName: calls[id]?.callerName ?? HermesCallerName.fallback, profile: calls[id]?.profile)) { _ in
             Task { @MainActor in
                 if let call = self.calls[id] {
                     // Answered here too: `connect` settles that race.
@@ -223,9 +226,9 @@ final class HermesWatchCalls: NSObject {
         settledRings[ringID] = now
     }
 
-    private static func update(callerName: String) -> CXCallUpdate {
+    private static func update(callerName: String, profile: String?) -> CXCallUpdate {
         let update = CXCallUpdate()
-        update.remoteHandle = HermesCallerName.callHandle
+        update.remoteHandle = HermesCallerName.callHandle(profile: profile)
         update.localizedCallerName = callerName
         update.hasVideo = false
         return update

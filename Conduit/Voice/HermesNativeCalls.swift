@@ -257,7 +257,7 @@ final class HermesNativeCalls: NSObject {
             configuration.maximumCallGroups = 1
             configuration.maximumCallsPerCallGroup = 1
             // An address a contact can hold, so a Focus can allow Hermes.
-            configuration.supportedHandleTypes = [.emailAddress]
+            configuration.supportedHandleTypes = HermesCallerName.handleTypes
             // A Hermes call can't be called back from the Phone app.
             configuration.includesCallsInRecents = false
             let provider = CXProvider(configuration: configuration)
@@ -358,7 +358,7 @@ final class HermesNativeCalls: NSObject {
         }
         let id = UUID()
         let update = CXCallUpdate()
-        update.remoteHandle = HermesCallerName.callHandle
+        update.remoteHandle = HermesCallerName.callHandle(profile: call.target?.profile)
         let callerName = Self.callerName(call.target)
         update.localizedCallerName = callerName
         update.hasVideo = false
@@ -713,7 +713,7 @@ final class HermesNativeCalls: NSObject {
         }
         let id = match?.key ?? UUID()
         let update = CXCallUpdate()
-        update.remoteHandle = HermesCallerName.callHandle
+        update.remoteHandle = HermesCallerName.callHandle(profile: match?.value.target.profile)
         update.localizedCallerName = match?.value.callerName ?? HermesCallerName.fallback
         update.hasVideo = false
         provider.reportNewIncomingCall(with: id, update: update) { _ in

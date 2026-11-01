@@ -18,6 +18,8 @@ import SwiftUI
 /// What Settings needs to show the profile's call settings.
 struct HermesCallSettingsModel {
     var profile: String
+    /// The profile's bot as Conduit shows it, the name its contact gets.
+    var botName: String = HermesCallerName.fallback
     /// Nil until read from the host.
     var status: HermesCallsStatus?
     /// Reads them again; false when the host couldn't answer.
@@ -139,20 +141,23 @@ struct HermesCallsHowToSection: View {
 /// calls ring from. It runs outside Conduit's process, so it needs no
 /// contacts permission.
 struct HermesNewContactSheet: UIViewControllerRepresentable {
+    let profile: String
+    let name: String
     @Environment(\.dismiss) private var dismiss
 
-    /// Hermes, at the address its calls ring from.
-    static func contact() -> CNMutableContact {
+    /// The bot, at the address its calls ring from: its name is what the
+    /// call screen shows once the contact is saved.
+    static func contact(profile: String, name: String) -> CNMutableContact {
         let contact = CNMutableContact()
-        contact.givenName = HermesCallerName.fallback
-        contact.emailAddresses = [CNLabeledValue(label: CNLabelOther, value: HermesCallerName.contactAddress as NSString)]
+        contact.givenName = name
+        contact.emailAddresses = [CNLabeledValue(label: CNLabelOther, value: HermesCallerName.contactAddress(profile: profile) as NSString)]
         return contact
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(dismiss: { dismiss() }) }
 
     func makeUIViewController(context: Context) -> UINavigationController {
-        let controller = CNContactViewController(forNewContact: Self.contact())
+        let controller = CNContactViewController(forNewContact: Self.contact(profile: profile, name: name))
         controller.delegate = context.coordinator
         return UINavigationController(rootViewController: controller)
     }
@@ -248,13 +253,14 @@ struct HermesCallSettingsSection: View {
     }
 
     /// A Focus lets a call through only from its allowed people, matched
-    /// by contact, so Hermes needs a contact to be allowed in one (#1606).
+    /// by contact, so each bot needs its own contact to be allowed in one
+    /// (#1606, Eric chose one contact per bot).
     private var focusContactRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             Button {
                 addsContact = true
             } label: {
-                Label(AppLocalization.string("Add Hermes to Contacts"), systemImage: "person.crop.circle.badge.plus")
+                Label(AppLocalization.string("Add \(model.botName) to Contacts"), systemImage: "person.crop.circle.badge.plus")
             }
             .accessibilityIdentifier("hermesCalls.addContact")
             Text("A Focus or Do Not Disturb silences Hermes' calls. To let them ring through one, save this contact once, then add it to that Focus's People in Settings > Focus. Other callers still follow the Focus's settings.")
@@ -262,7 +268,7 @@ struct HermesCallSettingsSection: View {
                 .foregroundStyle(.secondary)
         }
         .sheet(isPresented: $addsContact) {
-            HermesNewContactSheet()
+            HermesNewContactSheet(profile: model.profile, name: model.botName)
                 .ignoresSafeArea()
         }
     }
