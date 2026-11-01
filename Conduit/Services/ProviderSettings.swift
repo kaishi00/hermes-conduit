@@ -87,6 +87,12 @@ struct ProviderEntry: Identifiable, Equatable {
         /// its `.env` rows and old copies. Removing them puts it back on
         /// the shared key.
         var ownRows: [PoolRow] { profileRows.filter { !sharedIDs.contains($0.id) } }
+        /// The own rows Conduit may remove: not one read from a variable
+        /// another provider also reads, since removing it takes that
+        /// variable out of the `.env`.
+        var removableRows: [PoolRow] {
+            ownRows.filter { row in !heldVars.contains { row.source == "env:\($0)" } }
+        }
         /// A new or replacement key goes under the provider's own variable,
         /// so a shared fallback another provider reads is never overwritten.
         var writeVar: String { vars.first ?? "" }
@@ -713,7 +719,7 @@ final class ProviderSettingsService: ObservableObject {
         let mainVars = isSharedProfile ? entry.key?.removableVars ?? [] : []
         // Shared from another profile, that profile uses it too: the rows
         // ahead of it there (its own key, an old copy) go.
-        let ownHere = isSharedProfile ? [] : Set((entry.key?.ownRows ?? []).map(\.id))
+        let ownHere = isSharedProfile ? [] : Set((entry.key?.removableRows ?? []).map(\.id))
         _ = try await request(shared("/api/credentials/pool"), method: "POST",
                               body: ["provider": entry.id, "api_key": value, "label": ProviderEntry.PoolRow.sharedLabel])
         return await cleanUp {
@@ -746,7 +752,7 @@ final class ProviderSettingsService: ObservableObject {
     func override(key value: String, for entry: ProviderEntry) async throws -> Bool {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !isSharedProfile else { return true }
-        let stale = (entry.key?.sharedIDs ?? []).union((entry.key?.ownRows ?? []).map(\.id))
+        let stale = (entry.key?.sharedIDs ?? []).union((entry.key?.removableRows ?? []).map(\.id))
         _ = try await request(named("/api/credentials/pool", profile: profile), method: "POST",
                               body: ["provider": entry.id, "api_key": value, "label": ProviderEntry.PoolRow.profileLabel])
         return await cleanUp {
@@ -760,12 +766,7 @@ final class ProviderSettingsService: ObservableObject {
     func useShared(_ entry: ProviderEntry) async throws {
         guard !isSharedProfile, let key = entry.key else { return }
         try await afterWrite {
-            // A row read from a variable another provider also reads stays:
-            // removing it would take that variable out of the `.env`.
-            let rows = key.ownRows.filter { row in
-                !key.heldVars.contains { row.source == "env:\($0)" }
-            }
-            try await removeRows(provider: entry.id, ids: Set(rows.map(\.id)), profile: profile)
+            try await removeRows(provider: entry.id, ids: Set(key.removableRows.map(\.id)), profile: profile)
             try await removeVariables(key.removableVars)
         }
     }

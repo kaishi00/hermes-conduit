@@ -378,11 +378,15 @@ struct AddProviderSheet: View {
 /// there's no Providers section to share one with (the Model sheet).
 struct AddProviderSheetHost: View {
     @StateObject private var service: ProviderSettingsService
+    /// Reads the picker's model catalog again, for when it had none.
+    let loadCatalog: () async -> [ProviderInfo]?
 
     /// `catalog` is the picker's model catalog: a new endpoint's key stays
     /// clear of its providers.
     init(bridge: DashboardJSONRequester, profile: String, profileName: String, answers: KeptAnswers?,
-         catalog: [ProviderInfo]?, profiles: @escaping () -> [String]) {
+         catalog: [ProviderInfo]?, loadCatalog: @escaping () async -> [ProviderInfo]?,
+         profiles: @escaping () -> [String]) {
+        self.loadCatalog = loadCatalog
         _service = StateObject(wrappedValue: {
             let service = ProviderSettingsService(
                 requester: bridge, profile: profile, profileName: profileName, answers: answers, profiles: profiles
@@ -394,6 +398,13 @@ struct AddProviderSheetHost: View {
 
     var body: some View {
         AddProviderSheet(service: service)
+            .task {
+                // The picker had no catalog when the sheet opened: Custom
+                // endpoint waits for one.
+                if !service.catalogReserved, let catalog = await loadCatalog() {
+                    service.reserve(catalog: catalog)
+                }
+            }
     }
 }
 

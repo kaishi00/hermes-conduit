@@ -369,6 +369,10 @@ struct ModelPickerView: View {
                     profileName: appState.profileDisplayName(appState.conversationIdentityProfile),
                     answers: appState.screenAnswers(profile: appState.conversationIdentityProfile),
                     catalog: catalog.loaded ? catalog.providers : nil,
+                    loadCatalog: {
+                        await loadModels()
+                        return catalog.loaded ? catalog.providers : nil
+                    },
                     profiles: { appState.profiles }
                 )
                 .environmentObject(appState)

@@ -69,6 +69,17 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(deletes.map(\.path).filter { $0.hasPrefix("/api/credentials") }, ["/api/credentials/pool/alpha/2?profile=bot"])
         removed = deletes.compactMap { $0.body?["key"] as? String }
         XCTAssertEqual(removed, ["ALPHA_API_KEY"])
+
+        // A key of its own, or one shared from there, leaves that row too.
+        for write in ["override", "share"] {
+            let requester = FakeProviderRequester()
+            requester.pools["bot"] = pool("alpha", [("e1", "", "env:SHARED_API_KEY"), ("e2", "", "env:ALPHA_API_KEY")])
+            let service = ProviderSettingsService(requester: requester, profile: "bot", profiles: { ["default", "bot"] })
+            if write == "override" { try await service.override(key: "sk-bot", for: onBot) }
+            else { try await service.share(key: "sk-all", for: onBot) }
+            let rows = requester.calls.filter { $0.method == "DELETE" && $0.path.hasPrefix("/api/credentials") }.map(\.path)
+            XCTAssertEqual(rows, ["/api/credentials/pool/alpha/2?profile=bot"], write)
+        }
     }
 
     private func pool(_ provider: String, _ rows: [(id: String, label: String, source: String)]) -> [String: Any] {
