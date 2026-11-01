@@ -1896,9 +1896,11 @@ on" (a Bot Chat's `/new` opens no chat, so nothing waits on one)
 
 A bot's Bot Chat as its coordinator: it hands work that needs tools to
 workstreams, hidden sessions of its own on the bot's profile, follows them by
-ref (W1, W2), and hears back when one finishes, fails or waits on the user.
+ref (W1, W2), and hears back when one finishes, fails, waits on the user or
+has something ready for them to look at.
 Each bot turns it on for itself (`hermes -p <bot> conduit-push work on`). It's
-being built on the notifier's `bot-workstreams` branch (M0, notifier #484), so
+being built on the notifier's `bot-workstreams` branch (M0, notifier #484; M1
+from notifier #490), so
 none of it is on either main yet, and the app has no screen for it until M2.
 
 **Siblings:** the Bot Chat (the eight work tools, offered only there and only
@@ -1906,12 +1908,14 @@ with workstreams on; its policy, strict or lookups, holding its tools and a
 fork's; the note on its turns listing open work; the work updates that come
 in as hidden turns, which the transcript leaves out as it does every hidden
 user turn) · a workstream's session (hidden, titled, on the bot's own
-profile, its steps journaled; a reply in it sends no push, the Bot Chat's
+profile, its steps journaled; its own `work_progress` checklist and ready
+mark, and its report written for you in its chat; a reply in it sends no push, the Bot Chat's
 reply to the update is the one push, and its turns start no Live Activity) · the `conduit://session/` link a work
-tool's answer carries, with the bot's profile (see Links in messages) · an
+tool's answer and every work update carry, with the bot's profile (see Links
+in messages) · an
 approval in a workstream (marks it waiting on you and tells the Bot Chat) ·
 Bot mentions and teammate messages (`message_agent` refused in a coordinator,
-asks between bots come in M1) · Opening a Bot Chat (the "Bot Chat" title is
+asks between bots come in a later M1 PR) · Opening a Bot Chat (the "Bot Chat" title is
 how the plugin knows the coordinator) · Hermes Desktop's Bot Chat (the same
 plugin, the same tools) · the `hermes conduit-push work` commands · the tool
 descriptions, the worker's and the update's prompts, and the notifier's
@@ -1931,15 +1935,19 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - Under `plugins.isolation: host` the tools answer with the reason rather than starting anything, since the session API is only in the dashboard's process (2026-10-31, notifier #484).
 - "Bot Chat" is the coordinator's title only: work_start refuses it for a workstream, since the title names the session and the policy reads it (2026-10-31, notifier #485).
 - A registry that exists but can't be read at a turn's hooks keeps that turn quiet (no push, alert call or Live Activity), since it may be a hidden workstream; the Bot Chat's own turn still pushes when its title can be read (2026-10-31, notifier #485).
+- Ideas taken from Claude's project coordinator (design C.11): workers you can talk to in their own chat, states that say who's waiting (ready beside done), a checklist each worker keeps, the coordinator's notes in each brief, and your words quoted as yours (2026-11-01, Eric).
+- A workstream's approvals follow the bot's Hermes approval mode (manual, smart, or off/yolo), and Edit Bot can set a separate mode for its workstreams (2026-11-01, Eric; not built yet).
+- An update carries a short line of the report and the chat's link; the full report stays in the workstream's chat and in work_read (2026-11-01, notifier #490).
 
 **Open gaps**
-- No screen in the app: workstreams show only as the Bot Chat's answers and their links until M2's Work panel. M2 builds on the cache-first screens and the transcript rewrite (see Screens that open on their last answer), checked with that work first.
+- No screen in the app: workstreams show only as the Bot Chat's answers and their links until M2's Work panel, which shows each one's checklist and ready state. M2 builds on the cache-first screens and the transcript rewrite (see Screens that open on their last answer), checked with that work first.
 - The app's handling of an approval in a hidden workstream session is unchecked: the request goes to the user from that session, and nothing in the app opens it from the Bot Chat yet.
 - The Notifications entry gains a line for workstream turns' quiet pushes once this reaches main.
 - The first session Hermes builds on a secondary profile after the dashboard starts can come up without the work tools; the upstream test takes it with a warm-up session (2026-10-31 canary).
+- The workstreams' own approval mode in Edit Bot (M3) isn't built; until then a workstream follows the bot's Hermes approval mode as any chat does.
 - The plugin's version is bumped when the branch merges to main.
 
-**Checked:** 2026-10-31, #1587 (rulings for notifier #485).
+**Checked:** 2026-11-01, #1599 (notifier #490, C.11 rulings).
 
 ## Composer Return key
 
