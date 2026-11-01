@@ -638,10 +638,22 @@ final class AppState: ObservableObject {
     /// the status says the gateway is likely down and a failed sign-in
     /// refresh shows its banner.
     static let quietReconnectAttempts = 3
+    /// A failed sign-in refresh or ticket kept quiet during those retries,
+    /// shown once they have failed, by the next ticket or by a readiness
+    /// probe the gateway doesn't answer (#1624).
+    private var quietReconnectFailure: Error?
+
+    private func surfaceQuietReconnectFailure() {
+        guard let error = quietReconnectFailure else { return }
+        quietReconnectFailure = nil
+        lastConnectionFailure = ConnectionFailureClassifier.classify(error)
+        errorMessage = AppLocalization.string("Failed to refresh the dashboard session: \(UserFacingError.message(for: error))")
+    }
     /// Just back on screen and reconnecting: the header stays quiet, since
     /// the reconnect usually lands before anyone could read the words.
+    /// Never without a network: that shows at once.
     var hidesBriefReconnect: Bool {
-        isReturningQuietly && isRecoveringConnection
+        isReturningQuietly && networkPathUsable && isRecoveringConnection
     }
     /// The device has a usable network path (the app's one path monitor).
     @Published private(set) var networkPathUsable = true
@@ -18881,6 +18893,9 @@ final class AppState: ObservableObject {
                       self.connection?.baseUrl == baseURL, self.canRunTransportRecovery else { return }
                 if !answered {
                     self.noteConnectionStep("Gateway not answering yet")
+                    if self.reconnectAttempts >= Self.quietReconnectAttempts {
+                        self.surfaceQuietReconnectFailure()
+                    }
                     self.scheduleReconnect(purpose: purpose)
                     return
                 }
@@ -19104,9 +19119,9 @@ final class AppState: ObservableObject {
                 // is back). The banner and the classified failure, which
                 // offers Repair, wait until they have failed too, when the
                 // status already says the dashboard looks down (#1624).
+                quietReconnectFailure = error
                 if reconnectAttempts >= Self.quietReconnectAttempts {
-                    lastConnectionFailure = ConnectionFailureClassifier.classify(error)
-                    errorMessage = AppLocalization.string("Failed to refresh the dashboard session: \(UserFacingError.message(for: error))")
+                    surfaceQuietReconnectFailure()
                 }
                 scheduleReconnectAfterFailedSync()
             }
@@ -19140,6 +19155,7 @@ final class AppState: ObservableObject {
             errorMessage = nil
             chatErrorBehindRoom = nil
             lastConnectionFailure = nil
+            quietReconnectFailure = nil
             reconnectAttempts = 0
             connectedAt = Date()
             // Bot Mode evidence before the sync: a reconnect re-runs the same

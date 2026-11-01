@@ -4947,6 +4947,7 @@ final class AppStateChatResumeTests: XCTestCase {
             baseUrl: "https://one.example",
             ticket: "saved-ticket"
         )
+        harness.appState.gatewayReadinessProbe = { _ in true }
 
         await harness.appState.reconnectForRetry(purpose: .automaticReturn)
         XCTAssertNil(harness.appState.errorMessage)
@@ -4962,6 +4963,33 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to refresh the dashboard session") == true)
         XCTAssertEqual(harness.appState.lastConnectionFailure, ConnectionFailureClassifier.classify(URLError(.networkConnectionLost)),
                        "Repair routes from what failed")
+        XCTAssertTrue(harness.appState.showsConnectionRepair)
+    }
+
+    /// A gateway that stops answering the readiness probe after a quiet
+    /// ticket failure still gets its banner and Repair once the quiet
+    /// retries are spent, though no ticket is asked for again (#1624).
+    func testQuietTicketFailureShowsWhenTheGatewayStopsAnswering() async {
+        let scheduler = ControlledReconnectScheduler()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in throw URLError(.networkConnectionLost) }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        harness.appState.gatewayReadinessProbe = { _ in false }
+
+        await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        for retry in 1..<AppState.quietReconnectAttempts {
+            await scheduler.runNew()
+            XCTAssertNil(harness.appState.errorMessage, "Probe \(retry) stays quiet")
+        }
+        await scheduler.runNew()
+        XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to refresh the dashboard session") == true)
         XCTAssertTrue(harness.appState.showsConnectionRepair)
     }
 
