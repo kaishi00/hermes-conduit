@@ -261,7 +261,11 @@ final class ProviderSettingsTests: XCTestCase {
         do {
             try await service.remove(variables: ["A_KEY", "B_KEY"])
             XCTFail("the failure is reported")
-        } catch {}
+        } catch DashboardTicketBridgeError.http(let status, _) {
+            XCTAssertEqual(status, 500, "the first failure is the one reported")
+        } catch {
+            XCTFail("unexpected error \(error)")
+        }
 
         let tried = requester.calls.filter { $0.method == "DELETE" }.compactMap { $0.body?["key"] as? String }
         XCTAssertEqual(tried, ["A_KEY", "B_KEY"])
