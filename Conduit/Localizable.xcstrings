@@ -273271,6 +273271,88 @@
         }
       }
     },
+    "Saved, but this profile still has a key another provider reads, and Hermes uses that one first here.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gespeichert, aber dieses Profil hat noch einen Schlüssel, den ein anderer Anbieter liest, und Hermes verwendet hier zuerst diesen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardada, pero este perfil aún tiene una clave que lee otro proveedor, y Hermes usa esa primero aquí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistrée, mais ce profil a encore une clé lue par un autre fournisseur, et Hermes utilise celle-ci en premier ici."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tersimpan, tetapi profil ini masih punya kunci yang dibaca penyedia lain, dan Hermes memakai kunci itu lebih dulu di sini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvata, ma questo profilo ha ancora una chiave letta da un altro provider, e qui Hermes usa prima quella."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存しましたが、このプロファイルには別のプロバイダも読むキーが残っており、ここでは Hermes がそちらを先に使います。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "저장했지만 이 프로필에는 다른 공급자도 읽는 키가 남아 있어 여기서는 Hermes가 그 키를 먼저 사용합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapisano, ale ten profil nadal ma klucz odczytywany przez innego dostawcę i tutaj Hermes używa go jako pierwszego."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva, mas este perfil ainda tem uma chave que outro provedor lê, e o Hermes usa essa primeiro aqui."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранено, но в этом профиле остался ключ, который читает другой провайдер, и здесь Hermes использует его первым."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaydedildi, ancak bu profilde başka bir sağlayıcının da okuduğu bir anahtar duruyor ve Hermes burada önce onu kullanıyor."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保存，但此配置文件仍有另一个提供方读取的密钥，Hermes 在这里会优先使用它。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已儲存，但此設定檔仍有另一個提供者讀取的金鑰，Hermes 在這裡會優先使用它。"
+          }
+        }
+      }
+    },
     "Saved, but this profile's old key couldn't be removed, so it may still be used first.": {
       "localizations": {
         "de": {

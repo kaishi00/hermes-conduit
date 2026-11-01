@@ -49,6 +49,10 @@ struct ModelPageProviders: View {
     @State private var catalogAnswered = false
     @State private var catalogFailed = false
     @State private var catalogGeneration = 0
+    /// A model pick on a provider's page is saving and reads the catalog
+    /// itself, so the page's refresh for that save doesn't start another
+    /// read that would end the pick's spinner early.
+    @State private var picking = false
 
     init(
         bridge: DashboardJSONRequester, profile: String, profileName: String,
@@ -74,6 +78,10 @@ struct ModelPageProviders: View {
             catalogFailed: catalogFailed,
             reloadCatalog: { await reloadCatalog() },
             makeDefault: { provider, model in
+                // Read here, so the page's spinner stays until the new default
+                // shows; the refresh the save raises is skipped meanwhile.
+                picking = true
+                defer { picking = false }
                 let saved = await makeDefault(provider, model, catalog?.reasoning ?? "medium")
                 if saved { await reloadCatalog() }
                 return saved
@@ -87,7 +95,10 @@ struct ModelPageProviders: View {
             onChange()
             Task { await reloadCatalog() }
         }
-        .onChange(of: refresh) { _, _ in Task { await reloadCatalog() } }
+        .onChange(of: refresh) { _, _ in
+            guard !picking else { return }
+            Task { await reloadCatalog() }
+        }
     }
 
     /// Reads Hermes' catalog. A read that a later one overtook is dropped,
@@ -963,13 +974,21 @@ private struct ProviderKeyEditor: View {
                 draft = ""
                 self.scope = nil
                 editing = false
+                var notes: [String] = []
                 if !cleaned {
-                    note = scope == .allProfiles
+                    notes.append(scope == .allProfiles
                         ? AppLocalization.string("Saved, but the old key couldn't be removed everywhere. A profile still using it says Old copy of the shared key.")
-                        : AppLocalization.string("Saved, but this profile's old key couldn't be removed, so it may still be used first.")
-                } else if !check.ok {
-                    note = AppLocalization.string("Saved. Hermes couldn't reach the provider to check the key.")
+                        : AppLocalization.string("Saved, but this profile's old key couldn't be removed, so it may still be used first."))
                 }
+                // The key another provider also reads stays, and Hermes
+                // reads it ahead of the saved one on this profile.
+                if !key.heldVars.isEmpty {
+                    notes.append(AppLocalization.string("Saved, but this profile still has a key another provider reads, and Hermes uses that one first here."))
+                }
+                if cleaned, !check.ok {
+                    notes.append(AppLocalization.string("Saved. Hermes couldn't reach the provider to check the key."))
+                }
+                note = notes.isEmpty ? nil : notes.joined(separator: " ")
                 // A note stays in view: the Add sheet closes on onSaved.
                 if note == nil { onSaved() }
             } catch {
@@ -1136,9 +1155,12 @@ private struct ProviderSignInView: View {
                 // sign-in gone) says so instead of waiting on.
                 failures += 1
                 if failures >= Self.pollFailureLimit, !Task.isCancelled {
+                    // Its own task, started before signIn goes: clearing it
+                    // ends this one, whose request would never be sent.
+                    let service = service
+                    Task { await service.cancel(started) }
                     signIn = nil
                     self.error = UserFacingError.message(for: error)
-                    await service.cancel(started)
                     return
                 }
                 try? await Task.sleep(for: .seconds(started.pollInterval))
