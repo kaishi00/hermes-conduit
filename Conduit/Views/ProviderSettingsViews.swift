@@ -36,14 +36,19 @@ struct ModelPageProviders: View {
     let load: () async -> ProfileModelDefaults?
     let makeDefault: (_ provider: String, _ model: String, _ reasoning: String) async -> Bool
     let onChange: () -> Void
+    /// Raised when the page saved model defaults, so the catalog (its
+    /// default and reasoning) is read again.
+    var refresh = 0
     @State private var catalog: ProfileModelDefaults?
 
     init(
         bridge: DashboardJSONRequester, profile: String, profileName: String,
         answers: KeptAnswers?, profiles: @escaping () -> [String],
         kept: @escaping () -> ProfileModelDefaults?, load: @escaping () async -> ProfileModelDefaults?,
-        makeDefault: @escaping (String, String, String) async -> Bool, onChange: @escaping () -> Void
+        makeDefault: @escaping (String, String, String) async -> Bool, onChange: @escaping () -> Void,
+        refresh: Int = 0
     ) {
+        self.refresh = refresh
         _service = StateObject(wrappedValue: ProviderSettingsService(
             requester: bridge, profile: profile, profileName: profileName, answers: answers, profiles: profiles
         ))
@@ -70,6 +75,7 @@ struct ModelPageProviders: View {
             onChange()
             Task { await reloadCatalog() }
         }
+        .onChange(of: refresh) { _, _ in Task { await reloadCatalog() } }
     }
 
     private func reloadCatalog() async {
@@ -294,8 +300,17 @@ struct AddProviderSheet: View {
                 }
                 ConduitSettingsSection(title: AppLocalization.string("Providers"), symbol: "key.horizontal", tint: .conduitAccent) {
                     let matches = matches
-                    if matches.isEmpty {
-                        Text(verbatim: AppLocalization.string("Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”."))
+                    let wanted = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !service.hasList {
+                        if service.loadFailed {
+                            Button(AppLocalization.string("Try Again")) { Task { await service.reload() } }
+                                .scaledFont(.subheadline.weight(.semibold))
+                                .tint(.conduitAccent)
+                        } else {
+                            ProgressView().frame(maxWidth: .infinity)
+                        }
+                    } else if matches.isEmpty, !wanted.isEmpty {
+                        Text(verbatim: AppLocalization.string("Nothing matches “\(wanted)”."))
                             .scaledFont(.footnote).foregroundStyle(.secondary)
                     }
                     ForEach(matches) { entry in
@@ -1080,7 +1095,10 @@ private struct CustomEndpointForm: View {
         var withKey = draft
         if withKey.endpointID.isEmpty {
             // A new endpoint's config key comes from its name.
+            // Clear of built-in providers' slugs too, so the endpoint never
+            // takes a built-in's catalog row.
             let taken = Set(service.entries.compactMap { $0.endpoint?.endpointID })
+                .union(service.entries.filter { $0.endpoint == nil }.map { $0.id.lowercased() })
             withKey.endpointID = CustomEndpointDraft.endpointID(forName: draft.trimmedName, taken: taken)
         }
         let typed = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1097,7 +1115,12 @@ private struct CustomEndpointForm: View {
             checkFailed = !result.ok
             if !result.models.isEmpty {
                 draft.models = result.models
-                if !result.models.contains(draft.model) { draft.model = result.models[0] }
+                // A model typed by hand that the server doesn't list stays.
+                if draft.model.isEmpty {
+                    draft.model = result.models[0]
+                } else if !result.models.contains(draft.model) {
+                    draft.models = [draft.model] + result.models
+                }
             }
             if result.ok {
                 checkMessage = AppLocalization.string("The server answered.")

@@ -68,7 +68,9 @@ struct ProviderEntry: Identifiable, Equatable {
                 if shared { return .shared }
                 return saved ? .mainProfileOnly : .none
             }
-            guard let first = profileRows.first else { return saved ? .own : .none }
+            // No rows listed: Hermes falls back to the shared ones, which
+            // come ahead of a `.env` key once it reads it.
+            guard let first = profileRows.first else { return shared ? .shared : (saved ? .own : .none) }
             if sharedIDs.contains(first.id) { return .shared }
             return first.label == PoolRow.sharedLabel ? .oldCopy : .own
         }

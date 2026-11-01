@@ -694,7 +694,8 @@ struct SettingsView: View {
                                 if saved { await MainActor.run { mainModelSaves += 1 } }
                                 return saved
                             },
-                            onChange: { providerChanges += 1 }
+                            onChange: { providerChanges += 1 },
+                            refresh: mainModelSaves
                         )
                         .id(snapshot.profile)
                     }

@@ -75,8 +75,11 @@ final class ProviderSettingsTests: XCTestCase {
         // No rows of its own: Hermes falls back to the main pool.
         let noRows = ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: shared,
                                              profilePool: ["providers": []], onMainProfile: false)
-        XCTAssertEqual(noRows.first { $0.id == "openrouter" }?.key?.state(onMainProfile: false), .own,
-                       "a saved .env variable with no pool rows yet reads as the profile's own")
+        XCTAssertEqual(noRows.first { $0.id == "openrouter" }?.status, .sharedKey,
+                       "with no rows of its own the profile falls back to the shared key, ahead of its .env one")
+        let noRowsNoShared = ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil,
+                                                     profilePool: ["providers": []], onMainProfile: false)
+        XCTAssertEqual(noRowsNoShared.first { $0.id == "openrouter" }?.status, .ownKey)
     }
 
     func testAccountsAndEndpointsJoinTheList() {
