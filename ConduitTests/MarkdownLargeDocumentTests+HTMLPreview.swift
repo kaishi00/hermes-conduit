@@ -146,6 +146,13 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(HTMLPreviewPage.clampedInlineHeight(5_000), HTMLPreviewPage.maximumInlineHeight)
     }
 
+    func testHTMLPreview_OnlyAPageTallerThanTheMessageIsCut() {
+        XCTAssertFalse(HTMLPreviewPage.isCutInline(320))
+        XCTAssertFalse(HTMLPreviewPage.isCutInline(HTMLPreviewPage.maximumInlineHeight))
+        XCTAssertFalse(HTMLPreviewPage.isCutInline(HTMLPreviewPage.maximumInlineHeight - 0.4))
+        XCTAssertTrue(HTMLPreviewPage.isCutInline(HTMLPreviewPage.maximumInlineHeight + 1))
+    }
+
     func testHTMLPreview_NavigationStaysOnThePage() {
         let link = URL(string: "https://example.com/details")!
         // The page itself loads.

@@ -42,7 +42,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 - Streaming replies with Markdown, highlighted code, math, Mermaid diagrams and task lists
 - Thinking, tool calls and each turn's steps, shown live or folded away; delegated-agent progress
 - Map, place, travel, media, contact and info cards that Hermes draws in the chat
-- HTML pages Hermes draws with `::preview` (charts, small dashboards) show in the reply up to 900 points tall; tap one to open it full screen, where you can touch and scroll it. A page's `window.hermes.send` answers `undelivered`: Conduit doesn't send prompts from a page
+- HTML pages Hermes draws with `::preview` (charts, small dashboards) show in the reply up to 900 points tall, their foot fading when there's more; tap one to open it full screen, where you can touch and scroll it. A page's `window.hermes.send` answers `undelivered`: Conduit doesn't send prompts from a page
 - Answer Hermes' questions with a tap, or in a short form when it needs several details: fill in what you know and leave the rest blank
 - Attach photos, camera shots and any file, or drag them onto a chat (Finder on a Mac, Files on an iPad); a long paste becomes a text attachment you can open, edit or put back as text; quote a message, react to it, copy it
 - Open a picture full screen and swipe through the chat's pictures (or Artifacts' or a folder's): pinch or double-tap to zoom, swipe down to close, share or save
