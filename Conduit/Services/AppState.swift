@@ -678,6 +678,13 @@ final class AppState: ObservableObject {
         scheduleReconnectAfterFailedSync()
     }
 
+    /// Which silent re-auth failures retry quietly instead of asking to
+    /// sign in: those the network cut off. Any answer from the server,
+    /// a 5xx included, still asks, as before #1624.
+    static func reauthFailureRetriesQuietly(_ error: Error) -> Bool {
+        DictationUploadRetry.isTransient(error)
+    }
+
     private func surfaceQuietReconnectFailure() {
         guard let error = quietReconnectFailure else { return }
         quietReconnectFailure = nil
@@ -14074,7 +14081,14 @@ final class AppState: ObservableObject {
     var showsConnectionRepair: Bool {
         connection != nil
             && !isConnected
-            && (lastConnectionFailure != nil || !(errorMessage ?? "").isEmpty)
+            && (lastConnectionFailure != nil
+                || (!(errorMessage ?? "").isEmpty && !isHoldingQuietReconnectFailure))
+    }
+
+    /// A failed renewal is being kept quiet: an older, unrelated message
+    /// left on screen doesn't offer Repair meanwhile (#1624).
+    var isHoldingQuietReconnectFailure: Bool {
+        quietReconnectFailure != nil && lastConnectionFailure == nil
     }
 
     /// Entering Repair is an explicit user takeover of connection recovery:
@@ -19138,12 +19152,13 @@ final class AppState: ObservableObject {
                         // A re-auth the network cut off (a slow link just
                         // after a resume) says nothing about the sign-in:
                         // retry quietly, as a failed ticket does (#1624).
-                        if DictationUploadRetry.isTransient(error) {
+                        if Self.reauthFailureRetriesQuietly(error) {
                             retryQuietlyAfterFailedRenewal(error)
                             return
                         }
-                        // The silent re-auth failure (429 throttle, 401
-                        // rejection, 503 outage…) is the most diagnostic
+                        // An answer from the server (429 throttle, 401
+                        // rejection, 503 outage…) asks to sign in, as before.
+                        // The silent re-auth failure is the most diagnostic
                         // explanation for the forced sign-in; carry it to the
                         // classifier. This only determines whether recovery
                         // can be silent. Preserve the saved credentials for

@@ -4993,6 +4993,36 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(harness.appState.showsConnectionRepair)
     }
 
+    /// An older, unrelated message left on screen doesn't offer Repair while
+    /// a failed ticket is kept quiet (#1624).
+    func testAStaleMessageOffersNoRepairDuringTheQuietRetries() async {
+        let scheduler = ControlledReconnectScheduler()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in throw URLError(.networkConnectionLost) }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        harness.appState.gatewayReadinessProbe = { _ in true }
+        harness.appState.errorMessage = "Couldn't save the draft"
+
+        await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        XCTAssertFalse(harness.appState.showsConnectionRepair)
+    }
+
+    /// Only a re-auth the network cut off retries quietly; any answer from
+    /// the server, a 5xx included, still asks to sign in (#1624).
+    func testOnlyANetworkCutReauthRetriesQuietly() {
+        XCTAssertTrue(AppState.reauthFailureRetriesQuietly(URLError(.networkConnectionLost)))
+        XCTAssertTrue(AppState.reauthFailureRetriesQuietly(URLError(.timedOut)))
+        XCTAssertFalse(AppState.reauthFailureRetriesQuietly(AuthClientError.loginFailed(status: 401, detail: "")))
+        XCTAssertFalse(AppState.reauthFailureRetriesQuietly(AuthClientError.loginFailed(status: 503, detail: "")))
+    }
+
     /// A link that keeps changing restarts the backoff's count each time;
     /// the failed renewals still surface after the quiet retries (#1624).
     func testQuietTicketFailureSurfacesWhenTheLinkKeepsChanging() async {
