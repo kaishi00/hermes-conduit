@@ -493,6 +493,13 @@ struct V2Shell: View {
     /// elsewhere meanwhile).
     @MainActor private func reopenRoomIfWaiting() async {
         guard let launch = roomToReopen, launch.roomID != nil, appState.isConnected else { return }
+        // A notification, widget or Shortcut at launch pushes its own chat:
+        // opening the room would cancel it, so the room gives way.
+        if appState.hasPendingExplicitNavigation {
+            roomToReopen = nil
+            conversationOnLeave = conversationToReopen?.encoded ?? ""
+            return
+        }
         func step() -> V2ReopenedConversation.RoomStep {
             launch.roomStep(
                 in: appState.shownGroupRooms,
