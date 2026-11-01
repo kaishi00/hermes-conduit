@@ -177,7 +177,7 @@ struct ProvidersSettingsSection: View {
         }
         .task { await service.reload() }
         .sheet(isPresented: $adding) {
-            AddProviderSheet(service: service)
+            AddProviderSheet(service: service, retryCatalog: { await context.reloadCatalog() })
         }
     }
 
@@ -289,6 +289,8 @@ enum ProviderText {
 struct AddProviderSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @ObservedObject var service: ProviderSettingsService
+    /// Reads Hermes' model catalog again, which Custom endpoint waits for.
+    var retryCatalog: () async -> Void = {}
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
 
@@ -323,6 +325,15 @@ struct AddProviderSheet: View {
                     // providers and Hermes' model catalog.
                     .disabled(!service.answered || !service.catalogReserved)
                     .accessibilityIdentifier("settings.providers.add.custom")
+                    if service.answered, !service.catalogReserved {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(AppLocalization.string("Custom endpoints wait for Hermes' model list."))
+                                .scaledFont(.footnote).foregroundStyle(.secondary)
+                            Button(AppLocalization.string("Try Again")) { Task { await retryCatalog() } }
+                                .scaledFont(.subheadline.weight(.semibold))
+                                .tint(.conduitAccent)
+                        }
+                    }
                 }
                 ConduitSettingsSection(title: AppLocalization.string("Providers"), symbol: "key.horizontal", tint: .conduitAccent) {
                     let matches = matches
@@ -397,14 +408,16 @@ struct AddProviderSheetHost: View {
     }
 
     var body: some View {
-        AddProviderSheet(service: service)
+        AddProviderSheet(service: service, retryCatalog: readCatalog)
             .task {
                 // The picker had no catalog when the sheet opened: Custom
                 // endpoint waits for one.
-                if !service.catalogReserved, let catalog = await loadCatalog() {
-                    service.reserve(catalog: catalog)
-                }
+                if !service.catalogReserved { await readCatalog() }
             }
+    }
+
+    private func readCatalog() async {
+        if let catalog = await loadCatalog() { service.reserve(catalog: catalog) }
     }
 }
 
@@ -459,6 +472,15 @@ struct ProviderDetailPage: View {
                                       valueColor: ProviderText.color(entry))
                     if let endpoint = entry.endpoint {
                         SettingsMetricRow(label: AppLocalization.string("Address"), value: endpoint.baseURL, lineLimit: 1)
+                    }
+                }
+                if service.loadFailed {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(AppLocalization.string("Could not load providers."))
+                            .scaledFont(.footnote).foregroundStyle(.secondary)
+                        Button(AppLocalization.string("Try Again")) { Task { await service.reload() } }
+                            .scaledFont(.subheadline.weight(.semibold))
+                            .tint(.conduitAccent)
                     }
                 }
                 modelsSection(entry)
@@ -611,9 +633,10 @@ struct ProviderDetailPage: View {
     }
 
     private func makeDefault(provider: String, model: String) {
+        guard settingDefault == nil else { return }
+        settingDefault = model
+        error = nil
         Task {
-            settingDefault = model
-            error = nil
             if !(await context.makeDefault(provider, model)) {
                 error = AppLocalization.string("Could not save model defaults.")
             }
@@ -622,9 +645,10 @@ struct ProviderDetailPage: View {
     }
 
     private func remove(_ entry: ProviderEntry) {
+        guard !removing else { return }
+        removing = true
+        error = nil
         Task {
-            removing = true
-            error = nil
             defer { removing = false }
             do {
                 if let endpoint = entry.endpoint {
@@ -807,7 +831,8 @@ private struct ProviderKeyEditor: View {
                 .buttonStyle(.settings)
                 .disabled(saving || !service.answered)
             }
-        } else if state == .own || state == .oldCopy, key.shared || keyRemovable {
+        } else if state == .own || state == .oldCopy, key.shared || keyRemovable,
+                  !(key.removableRows.isEmpty && key.removableVars.isEmpty) {
             // Back on the shared key the default model still runs; with no
             // shared key, removing this one would leave it none.
             Button {
@@ -855,7 +880,7 @@ private struct ProviderKeyEditor: View {
                         }
                     }
                     .buttonStyle(.settings)
-                    .disabled(saving)
+                    .disabled(saving || !service.answered)
                 }
                 Button(AppLocalization.string("Cancel"), role: .cancel) {
                     baseURLDraft = ""
@@ -873,7 +898,7 @@ private struct ProviderKeyEditor: View {
                     }
                 }
                 .buttonStyle(.settingsPrimary)
-                .disabled(saving || baseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(saving || !service.answered || baseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
     }
@@ -910,7 +935,9 @@ private struct ProviderKeyEditor: View {
                 self.scope = nil
                 editing = false
                 if !cleaned {
-                    note = AppLocalization.string("Saved, but the old key couldn't be removed everywhere. A profile still using it says Old copy of the shared key.")
+                    note = scope == .allProfiles
+                        ? AppLocalization.string("Saved, but the old key couldn't be removed everywhere. A profile still using it says Old copy of the shared key.")
+                        : AppLocalization.string("Saved, but this profile's old key couldn't be removed, so it may still be used first.")
                 } else if !check.ok {
                     note = AppLocalization.string("Saved. Hermes couldn't reach the provider to check the key.")
                 }

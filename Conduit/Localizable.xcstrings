@@ -98784,6 +98784,88 @@
         }
       }
     },
+    "Custom endpoints wait for Hermes' model list.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eigene Endpunkte warten auf die Modellliste von Hermes."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los endpoints personalizados esperan la lista de modelos de Hermes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les endpoints personnalisés attendent la liste des modèles de Hermes."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endpoint kustom menunggu daftar model Hermes."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gli endpoint personalizzati attendono l'elenco dei modelli di Hermes."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "カスタムエンドポイントは Hermes のモデル一覧を待っています。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "사용자 지정 엔드포인트는 Hermes의 모델 목록을 기다립니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Własne punkty końcowe czekają na listę modeli Hermesa."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endpoints personalizados aguardam a lista de modelos do Hermes."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Свои эндпоинты ждут список моделей Hermes."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Özel uç noktalar Hermes'in model listesini bekliyor."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自定义端点需等待 Hermes 的模型列表。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自訂端點需等待 Hermes 的模型清單。"
+          }
+        }
+      }
+    },
     "Custom words": {
       "localizations": {
         "de": {
@@ -272939,6 +273021,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "已儲存，但舊金鑰未能在所有地方移除。仍在使用它的設定檔會顯示「共用金鑰的舊副本」。"
+          }
+        }
+      }
+    },
+    "Saved, but this profile's old key couldn't be removed, so it may still be used first.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gespeichert, aber der alte Schlüssel dieses Profils konnte nicht entfernt werden und wird eventuell zuerst verwendet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardada, pero no se pudo quitar la clave anterior de este perfil, así que puede que se siga usando primero."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistrée, mais l'ancienne clé de ce profil n'a pas pu être retirée ; elle peut encore être utilisée en premier."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tersimpan, tetapi kunci lama profil ini tidak bisa dihapus, jadi mungkin masih dipakai lebih dulu."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvata, ma non è stato possibile rimuovere la vecchia chiave di questo profilo, quindi potrebbe essere ancora usata per prima."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存しましたが、このプロファイルの古いキーを削除できなかったため、先に使われる可能性があります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "저장했지만 이 프로필의 이전 키를 제거하지 못해 그 키가 먼저 사용될 수 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapisano, ale nie udało się usunąć starego klucza tego profilu, więc może nadal być używany jako pierwszy."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva, mas não foi possível remover a chave antiga deste perfil, então ela ainda pode ser usada primeiro."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранено, но старый ключ этого профиля удалить не удалось, поэтому он может по-прежнему использоваться первым."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaydedildi, ancak bu profilin eski anahtarı kaldırılamadı, bu yüzden hâlâ önce kullanılabilir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保存，但无法移除此配置文件的旧密钥，因此它可能仍会被优先使用。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已儲存，但無法移除此設定檔的舊金鑰，因此它可能仍會被優先使用。"
           }
         }
       }
