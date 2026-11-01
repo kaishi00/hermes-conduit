@@ -1247,6 +1247,9 @@ struct MessageBubble: View, Equatable {
                 // A Bot Chat reply's links to its work: cards under the
                 // reply, not plain links among its words.
                 VStack(alignment: .leading, spacing: 8) {
+                    if let why = rowState.followUpReasons[message.id] {
+                        PredictiveFollowUpTag(why: why)
+                    }
                     if !split.text.isEmpty {
                         AssistantBubble(
                             message: message.withContent(split.text),

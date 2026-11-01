@@ -1127,15 +1127,17 @@ private struct WorkstreamApprovalBox: View {
         if let approval = item.approval {
             VStack(alignment: .leading, spacing: 10) {
                 if !approval.description.isEmpty {
-                    Text(approval.description)
+                    // Drawn as the chat's card draws it, hidden characters shown.
+                    Text(ApprovalDisplayText.revealingHidden(HermesApprovalText.description(approval.description)))
                         .scaledFont(.footnote.weight(.semibold))
                         .foregroundStyle(Color.primary)
                 }
                 if !approval.command.isEmpty {
-                    Text(approval.command)
+                    // Whole, as written: Approve approves what it shows.
+                    Text(ApprovalDisplayText.revealingHidden(HermesApprovalText.command(approval.command)))
                         .scaledFont(.caption.monospaced())
                         .foregroundStyle(.secondary)
-                        .lineLimit(4)
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
                         .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -1143,8 +1145,16 @@ private struct WorkstreamApprovalBox: View {
                 }
                 let layout = dynamicTypeSize.isAccessibilitySize
                     ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+                if !approval.isApprovable {
+                    Text(AppLocalization.string("This card can’t show all of it. Approve it in its chat, or deny it here."))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 layout {
-                    answerButton(approval, AppLocalization.string("Approve"), approve: true)
+                    if approval.isApprovable {
+                        answerButton(approval, AppLocalization.string("Approve"), approve: true)
+                    }
                     answerButton(approval, AppLocalization.string("Deny"), approve: false)
                 }
                 .disabled(isActing || !appState.isConnected)

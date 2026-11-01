@@ -244,6 +244,18 @@ extension BotModeTests {
             "ref": "W47", "kind": "workstream", "status": "needs_you", "approval": ["command": "rm x"],
         ]))
         XCTAssertNil(requestless.approval)
+        // A command the plugin cut, or an empty one, is denied only.
+        let cut = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W48", "kind": "workstream", "status": "needs_you",
+            "approval": ["request_id": "appr-3", "command": "x…", "description": "", "approvable": false],
+        ]))
+        XCTAssertEqual(cut.approval?.isApprovable, false)
+        let empty = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W49", "kind": "workstream", "status": "needs_you",
+            "approval": ["request_id": "appr-4", "command": " \n", "approvable": true],
+        ]))
+        XCTAssertEqual(empty.approval?.isApprovable, false)
+        XCTAssertEqual(asked.approval?.isApprovable, true)
     }
 
     /// A Bot Chat reply's links to its work become cards under it; other
@@ -262,6 +274,9 @@ extension BotModeTests {
         XCTAssertEqual(two.links.map(\.ref), ["W1", "W2"])
         XCTAssertNil(BotWorkLinks.split("Open [the file](conduit://file?path=/tmp/x)"))
         XCTAssertNil(BotWorkLinks.split("No links here."))
+        // Only the link's own place changes: code elsewhere stays as written.
+        let code = try XCTUnwrap(BotWorkLinks.split("Run `ls -a .` then f() , see [Open W3](conduit://session/c)"))
+        XCTAssertEqual(code.text, "Run `ls -a .` then f() , see")
     }
 
     /// A read asked for after an action, while one was under way, makes

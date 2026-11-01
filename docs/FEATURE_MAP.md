@@ -1534,22 +1534,24 @@ drawn until a touch mounts its text view.
 table cells with a link, and every cell once selection is on (see Tables in messages) · VoiceOver and Switch Control (text view always mounted) · Voice Control and Full
 Keyboard Access (the text view mounts and lays out when they ask for the
 reply's elements) · long-press Open Link · file paths, linked to the Folder
-(Workspace files)
+(Workspace files) · a reply's `conduit://session/` links to its workstreams,
+drawn as work cards under it (Bot workstreams)
 
 **Code**
 - Drawn until touched, mounted on touch: `Conduit/Views/Components/SelectableTextView.swift` (drawsUntilTouched, SelectableTextViewHostView.hitTest and accessibilityElements, mountTextViewForTouch)
 - File paths: `Conduit/Views/Components/SelectableTextView.swift` (bridge), `Conduit/Services/WorkspaceFiles.swift` (WorkspacePathLinks), `Conduit/Services/ConduitAppLink.swift` (file), `Conduit/Services/AppState+Workspace.swift` (absoluteWorkspacePath, revealWorkspaceFile)
 - Test: `ConduitTests/DrawnTextLinkTapTests.swift`
-- Surfaces that draw until touched: `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift` (selectableTextDrawsUntilTouched); table cells with a link, `Conduit/Views/Components/MarkdownText.swift` (MarkdownTableRowView.cellDrawsAsText)
+- Surfaces that draw until touched: `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift` (selectableTextDrawsUntilTouched); work links as cards, `Conduit/Services/BotWorkstreams.swift` (BotWorkLinks) and `Conduit/Views/BotWorkViews.swift` (BotWorkLinkCard); table cells with a link, `Conduit/Views/Components/MarkdownText.swift` (MarkdownTableRowView.cellDrawsAsText)
 
 **Rulings**
 - The touch that mounts a reply's text view is routed to it laid out, so it finds the link under the finger; a link never needs a second tap (2026-10-26, #1303, carried in #1311).
 - A file path in a reply is a `conduit://file` link, drawn as a link, that opens the Folder at that file; only inside the app (2026-10-27, #1399).
+- A reply's "[Open W3](conduit://session/…)" link to a workstream leaves its words and becomes a work card under it, a button (one tap, VoiceOver and Switch Control as any button, so no long-press Open Link); the rest of the reply stays as written (2026-11-01, #1637, Eric's Gridania test).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-31, #1596 (table cells with a link are always on the drawn-until-touched path); 2026-10-30, #1535 (table cells join the drawn-until-touched path once selection is on); 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
+**Checked:** 2026-11-01, #1637 (a reply's links to its workstreams drawn as work cards); 2026-10-31, #1596 (table cells with a link are always on the drawn-until-touched path); 2026-10-30, #1535 (table cells join the drawn-until-touched path once selection is on); 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
 
 ## Markdown lists in messages
 
@@ -2049,14 +2051,14 @@ screens (not built)
 - An ask from another bot reaches the Bot Chat as a hidden turn, so the asked bot's transcript shows no "Furina asks" card; the ask is listed in its Work panel instead.
 - Search and All profiles leave out only the workstreams of bots whose work the app has read (opened, or kept from last time; one read later leaves the lists already shown at once); Hermes keeps them hidden from the Chats list itself.
 - The Work panel reads again every 5 seconds while work runs and every 20 otherwise, for as long as a bot's Bot Chat (its title line shown or not, so new work shows), its panel or a workstream's bar is open, once for a bot with workstreams off, and up to four times 3 seconds apart for a bot's chat its list doesn't name; a chat the plugin lists as a workstream but the list doesn't show (a resolved one opened from a card or a link) reads the Resolved list's first page instead, so one resolved longer ago shows no title line. There's no push for a change yet.
-- A workstream's approval shows on its "Needs you" card as the plugin reads it from Hermes in the process the workstream runs in (`approval.pending` and `approval.respond` on its live session, by request id), since Hermes answers a session's approvals only for its live session, which the phone can't name; through the chat's card when that chat is open. Only an approval Hermes names by its request shows there; one without (an older Hermes) is answered in its chat, which checks the session's queue first. The Bot Chat itself never answers it.
+- A workstream's approval shows on its "Needs you" card as the plugin reads it from Hermes in the process the workstream runs in (`approval.pending` and `approval.respond` on its live session, by request id), since Hermes answers a session's approvals only for its live session, which the phone can't name; through the chat's card when that chat is open. Only an approval Hermes names by its request shows there; one without (an older Hermes) is answered in its chat, which checks the session's queue first. The card shows the command whole, as written; an empty one or one over 2,000 characters is cut and offered Deny only, and the plugin reads the request again before an approve and refuses it (`deny_only`), as the Watch's approval cards do. The Bot Chat itself never answers it.
 - The Notifications entry gains a line for workstream turns' quiet pushes once this reaches main.
 - The first session Hermes builds on a secondary profile after the dashboard starts can come up without the work tools; the upstream test takes it with a warm-up session (2026-10-31 canary).
 - The workstreams' own approval mode in Edit Bot (M3) isn't built; until then a workstream follows the bot's Hermes approval mode as any chat does.
 - The plugin's version is bumped when the branch merges to main.
 - Two journal edges from M0 that recovery leans on (notifier #495's review): a step that starts while a compacted workstream's lineage is still unsettled isn't journaled or noted as missed, and a step's end with an unknown call id closes the oldest open step of that tool by name.
 
-**Checked:** 2026-11-01, #1629 (notifier #503; the UI pass: status under the title, the panel's cards and sections, pin, resolve and reopen with the Resolved list, a workstream's title, brief card and bar, the Started card's status, approvals on the card); 2026-11-01, #1637 (notifier #506; from Eric's Gridania test: the "Needs you" card's approval read and answered through the plugin, the workstream's bar a compact pill, work links in Bot Chat replies drawn as cards; a resolved workstream's chat keeps its task as its title).
+**Checked:** 2026-11-01, #1629 (notifier #503; the UI pass: status under the title, the panel's cards and sections, pin, resolve and reopen with the Resolved list, a workstream's title, brief card and bar, the Started card's status, approvals on the card); 2026-11-01, #1637 (notifier #506; from Eric's Gridania test: the "Needs you" card's approval read and answered through the plugin, a command it can't show whole denied only, the workstream's bar a compact pill, work links in Bot Chat replies drawn as cards (with Links in messages), the card's approval text drawn as the chat's card draws it; a resolved workstream's chat keeps its task as its title).
 
 ## Composer Return key
 
