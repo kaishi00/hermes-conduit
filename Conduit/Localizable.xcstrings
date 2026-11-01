@@ -127043,88 +127043,6 @@
         }
       }
     },
-    "Fast model on your host: %@.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Schnelles Modell auf deinem Host: %@."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Modelo rápido en tu host: %@."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Modèle rapide sur votre hôte : %@."
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Model cepat di host Anda: %@."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Modello veloce sul tuo host: %@."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ホストの高速モデル: %@"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "호스트의 빠른 모델: %@"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Szybki model na hoście: %@."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Modelo rápido no seu host: %@."
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Быстрая модель на хосте: %@."
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ana makinenizdeki hızlı model: %@."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "主机上的快速模型：%@。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "主機上的快速模型：%@。"
-          }
-        }
-      }
-    },
     "Fetches the next older page of this conversation": {
       "localizations": {
         "de": {
@@ -388506,88 +388424,6 @@
         }
       }
     },
-    "Your host has no fast model set (auxiliary.conduit_predict), so the chat's own model answers.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Auf deinem Host ist kein schnelles Modell festgelegt (auxiliary.conduit_predict), daher antwortet das Modell des Chats."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tu host no tiene un modelo rápido configurado (auxiliary.conduit_predict), así que responde el modelo del propio chat."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Votre hôte n'a pas de modèle rapide défini (auxiliary.conduit_predict) : c'est le modèle de la conversation qui répond."
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Host Anda tidak memiliki model cepat (auxiliary.conduit_predict), jadi model obrolan itu sendiri yang menjawab."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Il tuo host non ha un modello veloce impostato (auxiliary.conduit_predict), quindi risponde il modello della chat."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ホストに高速モデル(auxiliary.conduit_predict)が設定されていないため、チャット自体のモデルが答えます。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "호스트에 빠른 모델(auxiliary.conduit_predict)이 설정되어 있지 않아 채팅 자체 모델이 답합니다."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Na hoście nie ustawiono szybkiego modelu (auxiliary.conduit_predict), więc odpowiada model czatu."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Seu host não tem um modelo rápido definido (auxiliary.conduit_predict), então o próprio modelo da conversa responde."
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "На хосте не задана быстрая модель (auxiliary.conduit_predict), поэтому отвечает модель самого чата."
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ana makinenizde hızlı model ayarlı değil (auxiliary.conduit_predict), bu yüzden sohbetin kendi modeli yanıtlar."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你的主机未设置快速模型（auxiliary.conduit_predict），因此由聊天本身的模型回答。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你的主機未設定快速模型（auxiliary.conduit_predict），因此由聊天本身的模型回答。"
-          }
-        }
-      }
-    },
     "Your iPhone and iPad share Conduit's preferences through the Conduit plugin on your Hermes host: appearance, chat and voice settings, the order of your pinned chats, CarPlay, and your other saved dashboards (their addresses only).": {
       "localizations": {
         "de": {
@@ -398048,90 +397884,90 @@
         }
       }
     },
-    "Never" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nie"
+    "Never": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nie"
           }
         },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Never"
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Never"
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nunca"
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nunca"
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jamais"
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jamais"
           }
         },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tidak pernah"
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidak pernah"
           }
         },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mai"
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mai"
           }
         },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "しない"
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "しない"
           }
         },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "안 함"
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "안 함"
           }
         },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nigdy"
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nigdy"
           }
         },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nunca"
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nunca"
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Никогда"
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Никогда"
           }
         },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hiçbir zaman"
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiçbir zaman"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "永不"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "永不"
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "永不"
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "永不"
           }
         }
       }
@@ -398218,90 +398054,90 @@
         }
       }
     },
-    "Conduit doesn't ask you to update. New versions, security fixes included, wait here until you update. An update you start still asks for its restart." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit bittet dich nicht um Updates. Neue Versionen, auch mit Sicherheitskorrekturen, warten hier, bis du aktualisierst. Ein Update, das du startest, fragt trotzdem nach seinem Neustart."
+    "Conduit doesn't ask you to update. New versions, security fixes included, wait here until you update. An update you start still asks for its restart.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit bittet dich nicht um Updates. Neue Versionen, auch mit Sicherheitskorrekturen, warten hier, bis du aktualisierst. Ein Update, das du startest, fragt trotzdem nach seinem Neustart."
           }
         },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit doesn't ask you to update. New versions, security fixes included, wait here until you update. An update you start still asks for its restart."
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit doesn't ask you to update. New versions, security fixes included, wait here until you update. An update you start still asks for its restart."
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit no te pide actualizar. Las versiones nuevas, incluidas las correcciones de seguridad, esperan aquí hasta que actualices. Una actualización que inicies sigue pidiendo su reinicio."
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit no te pide actualizar. Las versiones nuevas, incluidas las correcciones de seguridad, esperan aquí hasta que actualices. Una actualización que inicies sigue pidiendo su reinicio."
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit ne vous demande pas de mettre à jour. Les nouvelles versions, correctifs de sécurité compris, attendent ici jusqu’à votre mise à jour. Une mise à jour que vous lancez demande toujours son redémarrage."
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit ne vous demande pas de mettre à jour. Les nouvelles versions, correctifs de sécurité compris, attendent ici jusqu’à votre mise à jour. Une mise à jour que vous lancez demande toujours son redémarrage."
           }
         },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit tidak meminta Anda memperbarui. Versi baru, termasuk perbaikan keamanan, menunggu di sini sampai Anda memperbarui. Pembaruan yang Anda mulai tetap meminta untuk dimulai ulang."
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit tidak meminta Anda memperbarui. Versi baru, termasuk perbaikan keamanan, menunggu di sini sampai Anda memperbarui. Pembaruan yang Anda mulai tetap meminta untuk dimulai ulang."
           }
         },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit non ti chiede di aggiornare. Le nuove versioni, correzioni di sicurezza comprese, aspettano qui finché non aggiorni. Un aggiornamento che avvii chiede comunque il suo riavvio."
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit non ti chiede di aggiornare. Le nuove versioni, correzioni di sicurezza comprese, aspettano qui finché non aggiorni. Un aggiornamento che avvii chiede comunque il suo riavvio."
           }
         },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit はアップデートを求めません。セキュリティ修正を含む新しいバージョンは、アップデートするまでここで待機します。開始したアップデートは、引き続き再起動を求めます。"
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit はアップデートを求めません。セキュリティ修正を含む新しいバージョンは、アップデートするまでここで待機します。開始したアップデートは、引き続き再起動を求めます。"
           }
         },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit가 업데이트를 요청하지 않습니다. 보안 수정을 포함한 새 버전은 업데이트할 때까지 여기에서 기다립니다. 직접 시작한 업데이트는 여전히 재시작을 요청합니다."
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit가 업데이트를 요청하지 않습니다. 보안 수정을 포함한 새 버전은 업데이트할 때까지 여기에서 기다립니다. 직접 시작한 업데이트는 여전히 재시작을 요청합니다."
           }
         },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit nie prosi o aktualizację. Nowe wersje, również z poprawkami bezpieczeństwa, czekają tutaj, aż je zaktualizujesz. Aktualizacja, którą rozpoczniesz, nadal poprosi o ponowne uruchomienie."
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit nie prosi o aktualizację. Nowe wersje, również z poprawkami bezpieczeństwa, czekają tutaj, aż je zaktualizujesz. Aktualizacja, którą rozpoczniesz, nadal poprosi o ponowne uruchomienie."
           }
         },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O Conduit não pede para atualizar. Versões novas, incluindo correções de segurança, ficam aqui até você atualizar. Uma atualização que você iniciar ainda pede a reinicialização."
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Conduit não pede para atualizar. Versões novas, incluindo correções de segurança, ficam aqui até você atualizar. Uma atualização que você iniciar ainda pede a reinicialização."
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit не просит обновиться. Новые версии, включая исправления безопасности, ждут здесь, пока вы не обновите. Обновление, которое вы запустили, всё равно попросит перезапуск."
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit не просит обновиться. Новые версии, включая исправления безопасности, ждут здесь, пока вы не обновите. Обновление, которое вы запустили, всё равно попросит перезапуск."
           }
         },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit güncellemenizi istemez. Güvenlik düzeltmeleri dahil yeni sürümler, siz güncelleyene kadar burada bekler. Başlattığınız bir güncelleme yine de yeniden başlatma ister."
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit güncellemenizi istemez. Güvenlik düzeltmeleri dahil yeni sürümler, siz güncelleyene kadar burada bekler. Başlattığınız bir güncelleme yine de yeniden başlatma ister."
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit 不会请你更新。新版本（包括安全修复）会在这里等你更新。你开始的更新仍会请你重启。"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 不会请你更新。新版本（包括安全修复）会在这里等你更新。你开始的更新仍会请你重启。"
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conduit 不會請你更新。新版本（包括安全性修正）會在這裡等你更新。你開始的更新仍會請你重新啟動。"
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 不會請你更新。新版本（包括安全性修正）會在這裡等你更新。你開始的更新仍會請你重新啟動。"
           }
         }
       }
@@ -398388,90 +398224,90 @@
         }
       }
     },
-    "Works with this app. Newer versions wait in Settings." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Funktioniert mit dieser App. Neuere Versionen warten in den Einstellungen."
+    "Works with this app. Newer versions wait in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funktioniert mit dieser App. Neuere Versionen warten in den Einstellungen."
           }
         },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Works with this app. Newer versions wait in Settings."
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Works with this app. Newer versions wait in Settings."
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Funciona con esta app. Las versiones más nuevas esperan en Ajustes."
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funciona con esta app. Las versiones más nuevas esperan en Ajustes."
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fonctionne avec cette app. Les versions plus récentes attendent dans Réglages."
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fonctionne avec cette app. Les versions plus récentes attendent dans Réglages."
           }
         },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Berfungsi dengan aplikasi ini. Versi yang lebih baru menunggu di Pengaturan."
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Berfungsi dengan aplikasi ini. Versi yang lebih baru menunggu di Pengaturan."
           }
         },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Funziona con questa app. Le versioni più recenti aspettano in Impostazioni."
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funziona con questa app. Le versioni più recenti aspettano in Impostazioni."
           }
         },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このアプリで使えます。新しいバージョンは設定で待機しています。"
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このアプリで使えます。新しいバージョンは設定で待機しています。"
           }
         },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 앱과 함께 작동합니다. 새 버전은 설정에서 기다립니다."
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 앱과 함께 작동합니다. 새 버전은 설정에서 기다립니다."
           }
         },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Działa z tą aplikacją. Nowsze wersje czekają w Ustawieniach."
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Działa z tą aplikacją. Nowsze wersje czekają w Ustawieniach."
           }
         },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Funciona com este app. Versões mais novas aguardam em Ajustes."
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funciona com este app. Versões mais novas aguardam em Ajustes."
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Работает с этим приложением. Новые версии ждут в Настройках."
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Работает с этим приложением. Новые версии ждут в Настройках."
           }
         },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu uygulamayla çalışır. Daha yeni sürümler Ayarlar'da bekler."
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu uygulamayla çalışır. Daha yeni sürümler Ayarlar'da bekler."
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可与此 App 配合使用。较新版本在“设置”中等候。"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可与此 App 配合使用。较新版本在“设置”中等候。"
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可與此 App 搭配使用。較新版本在「設定」中等候。"
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可與此 App 搭配使用。較新版本在「設定」中等候。"
           }
         }
       }
@@ -398558,90 +398394,90 @@
         }
       }
     },
-    "Works with this app. Some features need the newer version in Settings." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Funktioniert mit dieser App. Manche Funktionen brauchen die neuere Version in den Einstellungen."
+    "Works with this app. Some features need the newer version in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funktioniert mit dieser App. Manche Funktionen brauchen die neuere Version in den Einstellungen."
           }
         },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Works with this app. Some features need the newer version in Settings."
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Works with this app. Some features need the newer version in Settings."
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Funciona con esta app. Algunas funciones necesitan la versión más nueva de Ajustes."
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funciona con esta app. Algunas funciones necesitan la versión más nueva de Ajustes."
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fonctionne avec cette app. Certaines fonctions ont besoin de la version plus récente, dans Réglages."
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fonctionne avec cette app. Certaines fonctions ont besoin de la version plus récente, dans Réglages."
           }
         },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Berfungsi dengan aplikasi ini. Beberapa fitur memerlukan versi yang lebih baru di Pengaturan."
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Berfungsi dengan aplikasi ini. Beberapa fitur memerlukan versi yang lebih baru di Pengaturan."
           }
         },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Funziona con questa app. Alcune funzioni richiedono la versione più recente, in Impostazioni."
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funziona con questa app. Alcune funzioni richiedono la versione più recente, in Impostazioni."
           }
         },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このアプリで使えます。一部の機能には、設定にある新しいバージョンが必要です。"
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このアプリで使えます。一部の機能には、設定にある新しいバージョンが必要です。"
           }
         },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 앱과 함께 작동합니다. 일부 기능에는 설정에 있는 새 버전이 필요합니다."
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 앱과 함께 작동합니다. 일부 기능에는 설정에 있는 새 버전이 필요합니다."
           }
         },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Działa z tą aplikacją. Niektóre funkcje wymagają nowszej wersji z Ustawień."
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Działa z tą aplikacją. Niektóre funkcje wymagają nowszej wersji z Ustawień."
           }
         },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Funciona com este app. Alguns recursos precisam da versão mais nova em Ajustes."
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funciona com este app. Alguns recursos precisam da versão mais nova em Ajustes."
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Работает с этим приложением. Некоторым функциям нужна новая версия из Настроек."
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Работает с этим приложением. Некоторым функциям нужна новая версия из Настроек."
           }
         },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu uygulamayla çalışır. Bazı özellikler Ayarlar'daki daha yeni sürüme ihtiyaç duyar."
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu uygulamayla çalışır. Bazı özellikler Ayarlar'daki daha yeni sürüme ihtiyaç duyar."
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可与此 App 配合使用。部分功能需要“设置”中的较新版本。"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可与此 App 配合使用。部分功能需要“设置”中的较新版本。"
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可與此 App 搭配使用。部分功能需要「設定」中的較新版本。"
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可與此 App 搭配使用。部分功能需要「設定」中的較新版本。"
           }
         }
       }
@@ -409384,6 +409220,3778 @@
           "stringUnit": {
             "state": "translated",
             "value": "Hermes 需要你的核准。打開 Conduit 查看詳細資料。"
+          }
+        }
+      }
+    },
+    "%@ of %@ have a model of their own": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ von %@ haben ein eigenes Modell"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ de %@ tienen modelo propio"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ sur %@ ont leur propre modèle"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ dari %@ punya model sendiri"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ su %@ hanno un modello proprio"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ / %@ 件が独自のモデルを使用"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/%@개가 자체 모델 사용"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ z %@ ma własny model"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ de %@ têm modelo próprio"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "У %@ из %@ своя модель"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ / %@ kendi modelini kullanıyor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/%@ 项使用自己的模型"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/%@ 項使用自己的模型"
+          }
+        }
+      }
+    },
+    "All use the chat model": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle nutzen das Chatmodell"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todos usan el modelo del chat"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tous utilisent le modèle de la conversation"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Semua memakai model obrolan"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tutti usano il modello della chat"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべてチャットのモデルを使用"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모두 채팅 모델 사용"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wszystkie używają modelu czatu"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todos usam o modelo do chat"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Все используют модель чата"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hepsi sohbet modelini kullanıyor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部使用聊天模型"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部使用聊天模型"
+          }
+        }
+      }
+    },
+    "Chat titles": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat-Titel"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Títulos de chats"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Titres des conversations"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Judul obrolan"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Titoli delle chat"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チャットのタイトル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "채팅 제목"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tytuły czatów"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Títulos dos chats"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Названия чатов"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sohbet başlıkları"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天标题"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天標題"
+          }
+        }
+      }
+    },
+    "Code review": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code-Review"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revisión de código"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revue de code"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tinjauan kode"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revisione del codice"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードレビュー"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "코드 리뷰"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przegląd kodu"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revisão de código"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ревью кода"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kod incelemesi"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代码审查"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "程式碼審查"
+          }
+        }
+      }
+    },
+    "Compaction": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Komprimierung"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compactación"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compactage"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pemadatan"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compattazione"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "圧縮"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "압축"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kompaktowanie"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compactação"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сжатие"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sıkıştırma"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "压缩"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "壓縮"
+          }
+        }
+      }
+    },
+    "Conduit predictions": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit-Vorschläge"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Predicciones de Conduit"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prédictions de Conduit"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prediksi Conduit"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previsioni di Conduit"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduitの予測"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 예측"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Podpowiedzi Conduit"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previsões do Conduit"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подсказки Conduit"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit tahminleri"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 预测"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 預測"
+          }
+        }
+      }
+    },
+    "Connect to Hermes to change this profile's models.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verbinde dich mit Hermes, um die Modelle dieses Profils zu ändern."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conéctate a Hermes para cambiar los modelos de este perfil."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connectez-vous à Hermes pour changer les modèles de ce profil."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hubungkan ke Hermes untuk mengubah model profil ini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connettiti a Hermes per cambiare i modelli di questo profilo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このプロファイルのモデルを変更するにはHermesに接続してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 프로필의 모델을 바꾸려면 Hermes에 연결하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Połącz się z Hermesem, aby zmienić modele tego profilu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conecte-se ao Hermes para mudar os modelos deste perfil."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подключитесь к Hermes, чтобы изменить модели этого профиля."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu profilin modellerini değiştirmek için Hermes'e bağlanın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接 Hermes 才能更改此配置的模型。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連線到 Hermes 才能變更此設定檔的模型。"
+          }
+        }
+      }
+    },
+    "Could not save the helper model: %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hilfsmodell konnte nicht gespeichert werden: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo guardar el modelo auxiliar: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible d’enregistrer le modèle auxiliaire : %@"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidak dapat menyimpan model pembantu: %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile salvare il modello ausiliario: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "補助モデルを保存できませんでした: %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보조 모델을 저장할 수 없습니다: %@"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nie udało się zapisać modelu pomocniczego: %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível salvar o modelo auxiliar: %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось сохранить вспомогательную модель: %@"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yardımcı model kaydedilemedi: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法保存辅助模型：%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法儲存輔助模型：%@"
+          }
+        }
+      }
+    },
+    "Could not save the key order.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schlüsselreihenfolge konnte nicht gespeichert werden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo guardar el orden de las claves."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible d’enregistrer l’ordre des clés."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidak dapat menyimpan urutan kunci."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile salvare l’ordine delle chiavi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "キーの順序を保存できませんでした。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "키 순서를 저장할 수 없습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nie udało się zapisać kolejności kluczy."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível salvar a ordem das chaves."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось сохранить порядок ключей."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anahtar sırası kaydedilemedi."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法保存密钥顺序。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法儲存金鑰順序。"
+          }
+        }
+      }
+    },
+    "Decides which commands are safe to run without asking you, when smart approvals are on.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entscheidet bei aktivierten intelligenten Freigaben, welche Befehle ohne Nachfrage laufen dürfen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Con las aprobaciones inteligentes activadas, decide qué comandos son seguros sin preguntarte."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avec les approbations intelligentes, décide quelles commandes peuvent s’exécuter sans vous demander."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saat persetujuan pintar aktif, memutuskan perintah mana yang aman dijalankan tanpa bertanya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Con le approvazioni intelligenti attive, decide quali comandi eseguire senza chiederti."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スマート承認がオンのとき、確認なしで実行してよいコマンドを判断します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "스마트 승인이 켜져 있으면 묻지 않고 실행해도 안전한 명령을 판단합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przy włączonych inteligentnych zgodach decyduje, które polecenia można uruchomić bez pytania."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Com as aprovações inteligentes ativadas, decide quais comandos podem rodar sem perguntar."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Когда включены умные подтверждения, решает, какие команды можно выполнять без вопроса."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Akıllı onaylar açıkken, hangi komutların size sormadan çalıştırılabileceğine karar verir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启智能批准时，判断哪些命令无需询问即可安全运行。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟智慧核准時，判斷哪些指令不必詢問即可安全執行。"
+          }
+        }
+      }
+    },
+    "Fast model on your host: %@. Change it in Models & providers under Helper models.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schnelles Modell auf deinem Host: %@. Ändere es unter Modelle & Anbieter > Hilfsmodelle."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo rápido en tu host: %@. Cámbialo en Modelos y proveedores, en Modelos auxiliares."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modèle rapide sur votre hôte : %@. Changez-le dans Modèles et fournisseurs, sous Modèles auxiliaires."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model cepat di host Anda: %@. Ubah di Model & penyedia, bagian Model pembantu."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modello veloce sul tuo host: %@. Cambialo in Modelli e provider, sotto Modelli ausiliari."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ホストの高速モデル: %@。「モデルとプロバイダ」の「補助モデル」で変更できます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "호스트의 빠른 모델: %@. 모델 및 제공자의 보조 모델에서 바꿀 수 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Szybki model na hoście: %@. Zmień go w Modele i dostawcy, w sekcji Modele pomocnicze."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo rápido no seu host: %@. Mude em Modelos e provedores, em Modelos auxiliares."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Быстрая модель на хосте: %@. Измените её в разделе «Модели и провайдеры» → «Вспомогательные модели»."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ana makinenizdeki hızlı model: %@. Modeller ve sağlayıcılar > Yardımcı modeller'den değiştirin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机上的快速模型：%@。可在“模型和提供方”的“辅助模型”中更改。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主機上的快速模型：%@。可在「模型與供應商」的「輔助模型」中變更。"
+          }
+        }
+      }
+    },
+    "Fills in a new Kanban task's details.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ergänzt die Details einer neuen Kanban-Aufgabe."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completa los detalles de una nueva tarea de Kanban."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Complète les détails d’une nouvelle tâche Kanban."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Melengkapi detail tugas Kanban baru."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completa i dettagli di una nuova attività Kanban."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいKanbanタスクの詳細を補います。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 Kanban 작업의 세부 정보를 채웁니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uzupełnia szczegóły nowego zadania Kanban."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preenche os detalhes de uma nova tarefa do Kanban."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дополняет описание новой задачи Kanban."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni bir Kanban görevinin ayrıntılarını doldurur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "补全新 Kanban 任务的详情。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "補全新 Kanban 工作的詳細資料。"
+          }
+        }
+      }
+    },
+    "Finds skills in the Skills Hub.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sucht Skills im Skills Hub."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Busca skills en el Skills Hub."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trouve des skills dans le Skills Hub."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mencari skill di Skills Hub."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerca skill nello Skills Hub."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skills Hubでスキルを探します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skills Hub에서 스킬을 찾습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Szuka umiejętności w Skills Hub."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Encontra skills no Skills Hub."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ищет навыки в Skills Hub."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skills Hub'da beceri bulur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Skills Hub 中查找技能。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Skills Hub 中尋找技能。"
+          }
+        }
+      }
+    },
+    "First key until it runs out": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erster Schlüssel, bis er ausgeschöpft ist"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La primera clave hasta que se agote"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La première clé jusqu’à épuisement"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunci pertama sampai habis"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La prima chiave finché non si esaurisce"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使い切るまで最初のキー"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "소진될 때까지 첫 번째 키"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pierwszy klucz, aż się wyczerpie"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A primeira chave até se esgotar"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Первый ключ, пока не исчерпан"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bitene kadar ilk anahtar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先用第一个密钥直到用尽"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先用第一把金鑰直到用盡"
+          }
+        }
+      }
+    },
+    "Helper models": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hilfsmodelle"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelos auxiliares"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modèles auxiliaires"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model pembantu"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelli ausiliari"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "補助モデル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보조 모델"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modele pomocnicze"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelos auxiliares"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вспомогательные модели"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yardımcı modeller"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "辅助模型"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "輔助模型"
+          }
+        }
+      }
+    },
+    "Hermes runs these jobs on the chat model unless you pick one. A small, fast model saves time and money on most of them.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes erledigt diese Aufgaben mit dem Chatmodell, sofern du keines wählst. Ein kleines, schnelles Modell spart bei den meisten Zeit und Geld."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes hace estas tareas con el modelo del chat salvo que elijas otro. Un modelo pequeño y rápido ahorra tiempo y dinero en la mayoría."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes effectue ces tâches avec le modèle de la conversation, sauf si vous en choisissez un. Un petit modèle rapide fait gagner du temps et de l’argent sur la plupart."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes menjalankan tugas ini dengan model obrolan kecuali Anda memilih model lain. Model kecil yang cepat menghemat waktu dan biaya untuk sebagian besar tugas."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes svolge questi compiti con il modello della chat, a meno che tu non ne scelga uno. Un modello piccolo e veloce fa risparmiare tempo e denaro sulla maggior parte."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "モデルを選ばない限り、Hermesはこれらの処理をチャットのモデルで行います。小さく速いモデルにすると、ほとんどの処理で時間と費用を節約できます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모델을 고르지 않으면 Hermes는 이 작업을 채팅 모델로 실행합니다. 작고 빠른 모델을 쓰면 대부분의 작업에서 시간과 비용을 아낄 수 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes wykonuje te zadania modelem czatu, chyba że wybierzesz inny. Mały, szybki model oszczędza czas i pieniądze przy większości z nich."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Hermes faz essas tarefas com o modelo do chat, a menos que você escolha outro. Um modelo pequeno e rápido economiza tempo e dinheiro na maioria delas."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes выполняет эти задачи моделью чата, если вы не выберете другую. Небольшая быстрая модель экономит время и деньги на большинстве из них."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siz bir model seçmedikçe Hermes bu işleri sohbet modeliyle yapar. Küçük ve hızlı bir model, çoğunda zaman ve para kazandırır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "除非你另选模型，Hermes 会用聊天模型执行这些任务。对大多数任务来说，小而快的模型能省时省钱。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "除非你另選模型，Hermes 會用聊天模型執行這些工作。對大多數工作來說，小而快的模型能省時省錢。"
+          }
+        }
+      }
+    },
+    "Image reading": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder lesen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lectura de imágenes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lecture d’images"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Membaca gambar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lettura delle immagini"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画像の読み取り"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지 읽기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odczyt obrazów"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leitura de imagens"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Чтение изображений"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Görüntü okuma"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取图片"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "讀取圖片"
+          }
+        }
+      }
+    },
+    "Kanban task details": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kanban-Aufgabendetails"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detalles de tareas de Kanban"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Détails des tâches Kanban"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detail tugas Kanban"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dettagli delle attività Kanban"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kanbanタスクの詳細"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kanban 작업 세부 정보"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Szczegóły zadań Kanban"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detalhes das tarefas do Kanban"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Описание задач Kanban"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kanban görev ayrıntıları"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kanban 任务详情"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kanban 工作詳細資料"
+          }
+        }
+      }
+    },
+    "Kanban task splitting": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kanban-Aufgaben aufteilen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "División de tareas de Kanban"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Découpage des tâches Kanban"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pemecahan tugas Kanban"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suddivisione delle attività Kanban"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kanbanタスクの分割"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kanban 작업 나누기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dzielenie zadań Kanban"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Divisão de tarefas do Kanban"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разбиение задач Kanban"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kanban görevlerini bölme"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拆分 Kanban 任务"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拆分 Kanban 工作"
+          }
+        }
+      }
+    },
+    "Key order": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schlüsselreihenfolge"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orden de las claves"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordre des clés"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Urutan kunci"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordine delle chiavi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "キーの順序"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "키 순서"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kolejność kluczy"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordem das chaves"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Порядок ключей"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anahtar sırası"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密钥顺序"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "金鑰順序"
+          }
+        }
+      }
+    },
+    "MCP tool routing": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP-Werkzeugauswahl"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selección de herramientas MCP"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choix des outils MCP"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pemilihan alat MCP"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scelta degli strumenti MCP"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCPツールの振り分け"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP 도구 선택"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wybór narzędzi MCP"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha de ferramentas MCP"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбор инструментов MCP"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP araç seçimi"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP 工具路由"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP 工具路由"
+          }
+        }
+      }
+    },
+    "Names new chats.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Benennt neue Chats."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pone nombre a los chats nuevos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nomme les nouvelles conversations."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memberi nama obrolan baru."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dà un nome alle nuove chat."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいチャットに名前を付けます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 채팅의 이름을 짓습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nadaje nazwy nowym czatom."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dá nome aos novos chats."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Даёт названия новым чатам."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni sohbetlere ad verir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "为新聊天命名。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "為新聊天命名。"
+          }
+        }
+      }
+    },
+    "Picks which MCP tools a turn needs.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wählt aus, welche MCP-Werkzeuge ein Zug braucht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elige qué herramientas MCP necesita un turno."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisit les outils MCP dont un tour a besoin."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memilih alat MCP yang dibutuhkan satu giliran."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sceglie quali strumenti MCP servono a un turno."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "各ターンに必要なMCPツールを選びます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "한 턴에 필요한 MCP 도구를 고릅니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wybiera narzędzia MCP potrzebne w danej turze."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolhe quais ferramentas MCP um turno precisa."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбирает, какие инструменты MCP нужны ходу."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir turun hangi MCP araçlarına ihtiyacı olduğunu seçer."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "挑选每轮需要的 MCP 工具。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "挑選每輪需要的 MCP 工具。"
+          }
+        }
+      }
+    },
+    "Profile descriptions": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profilbeschreibungen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descripciones de perfiles"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descriptions des profils"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deskripsi profil"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descrizioni dei profili"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロファイルの説明"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "프로필 설명"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opisy profili"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descrições de perfis"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Описания профилей"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profil açıklamaları"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置描述"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定檔描述"
+          }
+        }
+      }
+    },
+    "Random": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zufällig"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aleatorio"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aléatoire"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acak"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Casuale"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ランダム"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "무작위"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Losowo"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aleatório"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Случайно"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rastgele"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "随机"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隨機"
+          }
+        }
+      }
+    },
+    "Reads pictures and screenshots for a chat model that can't see them.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liest Bilder und Screenshots für ein Chatmodell, das sie nicht sehen kann."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lee imágenes y capturas para un modelo de chat que no puede verlas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lit les images et captures d’écran pour un modèle de conversation qui ne les voit pas."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Membaca gambar dan tangkapan layar untuk model obrolan yang tidak bisa melihatnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Legge immagini e screenshot per un modello di chat che non può vederli."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画像を見られないチャットモデルのために、写真やスクリーンショットを読み取ります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이미지를 볼 수 없는 채팅 모델을 위해 사진과 스크린샷을 읽습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odczytuje zdjęcia i zrzuty ekranu dla modelu czatu, który ich nie widzi."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lê imagens e capturas de tela para um modelo de chat que não consegue vê-las."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Читает изображения и снимки экрана для модели чата, которая их не видит."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Göremeyen bir sohbet modeli için resimleri ve ekran görüntülerini okur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "为看不到图片的聊天模型读取图片和截图。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "為看不到圖片的聊天模型讀取圖片和截圖。"
+          }
+        }
+      }
+    },
+    "Reviews how skills are used and suggests improvements.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prüft, wie Skills genutzt werden, und schlägt Verbesserungen vor."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revisa cómo se usan las skills y sugiere mejoras."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Examine l’usage des skills et propose des améliorations."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meninjau cara skill dipakai dan menyarankan perbaikan."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esamina come vengono usate le skill e suggerisce miglioramenti."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スキルの使われ方を確認し、改善を提案します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "스킬 사용 방식을 검토하고 개선점을 제안합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprawdza, jak używane są umiejętności, i proponuje ulepszenia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revisa como as skills são usadas e sugere melhorias."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проверяет, как используются навыки, и предлагает улучшения."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Becerilerin nasıl kullanıldığını inceler ve iyileştirmeler önerir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查技能的使用情况并提出改进建议。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "檢查技能的使用情況並提出改進建議。"
+          }
+        }
+      }
+    },
+    "Runs the /review command's reviewer.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Führt den Prüfer des Befehls /review aus."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ejecuta el revisor del comando /review."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exécute le relecteur de la commande /review."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menjalankan peninjau untuk perintah /review."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esegue il revisore del comando /review."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "/reviewコマンドのレビュー担当を実行します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "/review 명령의 리뷰어를 실행합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uruchamia recenzenta polecenia /review."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Executa o revisor do comando /review."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запускает рецензента команды /review."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "/review komutunun inceleyicisini çalıştırır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行 /review 命令的审查者。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "執行 /review 指令的審查者。"
+          }
+        }
+      }
+    },
+    "Same as %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wie %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Igual que %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comme %@"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sama dengan %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Come %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@と同じ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@과(와) 동일"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jak %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Igual a %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Как у «%@»"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ile aynı"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "与 %@ 相同"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "與 %@ 相同"
+          }
+        }
+      }
+    },
+    "Settings saved": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einstellungen gespeichert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajustes guardados"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réglages enregistrés"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pengaturan tersimpan"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impostazioni salvate"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定を保存済み"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "설정 저장됨"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ustawienia zapisane"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajustes salvos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Настройки сохранены"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayarlar kaydedildi"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置已保存"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定已儲存"
+          }
+        }
+      }
+    },
+    "Settings saved, no key yet": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einstellungen gespeichert, noch kein Schlüssel"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajustes guardados, aún sin clave"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réglages enregistrés, pas encore de clé"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pengaturan tersimpan, belum ada kunci"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impostazioni salvate, nessuna chiave ancora"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定を保存済み、キーはまだありません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "설정 저장됨, 아직 키 없음"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ustawienia zapisane, brak klucza"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajustes salvos, ainda sem chave"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Настройки сохранены, ключа пока нет"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayarlar kaydedildi, henüz anahtar yok"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置已保存，尚无密钥"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定已儲存，尚無金鑰"
+          }
+        }
+      }
+    },
+    "Skill curator": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skill-Kurator"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Curador de skills"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Curateur de skills"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kurator skill"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Curatore delle skill"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スキルキュレーター"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "스킬 큐레이터"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kurator umiejętności"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Curador de skills"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Куратор навыков"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beceri küratörü"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "技能整理"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "技能整理"
+          }
+        }
+      }
+    },
+    "Skill search": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skill-Suche"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Búsqueda de skills"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recherche de skills"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pencarian skill"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricerca di skill"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スキル検索"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "스킬 검색"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wyszukiwanie umiejętności"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Busca de skills"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Поиск навыков"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beceri arama"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "技能搜索"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "技能搜尋"
+          }
+        }
+      }
+    },
+    "Smaller jobs Hermes runs beside your chats, like titles, compaction and reading images. Each uses the chat model unless you pick one.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kleinere Aufgaben, die Hermes neben deinen Chats erledigt, etwa Titel, Komprimierung und Bilder lesen. Jede nutzt das Chatmodell, sofern du keines wählst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tareas menores que Hermes hace junto a tus chats, como títulos, compactación y lectura de imágenes. Cada una usa el modelo del chat salvo que elijas otro."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Petites tâches qu’Hermes effectue à côté de vos conversations, comme les titres, le compactage et la lecture d’images. Chacune utilise le modèle de la conversation, sauf si vous en choisissez un."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tugas kecil yang dijalankan Hermes di samping obrolan Anda, seperti judul, pemadatan, dan membaca gambar. Masing-masing memakai model obrolan kecuali Anda memilih model lain."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compiti minori che Hermes svolge accanto alle tue chat, come titoli, compattazione e lettura delle immagini. Ognuno usa il modello della chat, a meno che tu non ne scelga uno."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タイトル付け、圧縮、画像の読み取りなど、Hermesがチャットの横で行う小さな処理です。モデルを選ばない限り、それぞれチャットのモデルを使います。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "제목 짓기, 압축, 이미지 읽기처럼 Hermes가 채팅 옆에서 처리하는 작은 작업입니다. 모델을 고르지 않으면 각각 채팅 모델을 사용합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mniejsze zadania, które Hermes wykonuje obok czatów, np. tytuły, kompaktowanie i odczyt obrazów. Każde używa modelu czatu, chyba że wybierzesz inny."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tarefas menores que o Hermes faz junto aos seus chats, como títulos, compactação e leitura de imagens. Cada uma usa o modelo do chat, a menos que você escolha outro."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Небольшие задачи, которые Hermes выполняет рядом с чатами: названия, сжатие, чтение изображений. Каждая использует модель чата, если вы не выберете другую."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes'in sohbetlerinizin yanında yaptığı başlık, sıkıştırma ve görüntü okuma gibi küçük işler. Siz bir model seçmedikçe her biri sohbet modelini kullanır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes 在聊天之外执行的小任务，例如标题、压缩和读取图片。除非你另选模型，每项都使用聊天模型。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes 在聊天之外執行的小工作，例如標題、壓縮和讀取圖片。除非你另選模型，每項都使用聊天模型。"
+          }
+        }
+      }
+    },
+    "Smart approvals": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Intelligente Freigaben"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aprobaciones inteligentes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approbations intelligentes"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Persetujuan pintar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approvazioni intelligenti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スマート承認"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "스마트 승인"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inteligentne zgody"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aprovações inteligentes"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Умные подтверждения"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Akıllı onaylar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能批准"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智慧核准"
+          }
+        }
+      }
+    },
+    "Splits a Kanban task into smaller ones.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Teilt eine Kanban-Aufgabe in kleinere auf."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Divide una tarea de Kanban en otras más pequeñas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Découpe une tâche Kanban en tâches plus petites."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memecah tugas Kanban menjadi tugas yang lebih kecil."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Divide un’attività Kanban in attività più piccole."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kanbanタスクを小さなタスクに分割します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kanban 작업을 더 작은 작업으로 나눕니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dzieli zadanie Kanban na mniejsze."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Divide uma tarefa do Kanban em tarefas menores."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разбивает задачу Kanban на более мелкие."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir Kanban görevini daha küçük görevlere böler."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把 Kanban 任务拆分为更小的任务。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把 Kanban 工作拆分為更小的工作。"
+          }
+        }
+      }
+    },
+    "Suggested replies and draft guesses in Conduit, when Predictive uses the fast model.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Antwortvorschläge und Entwurfsvorschläge in Conduit, wenn Predictive das schnelle Modell nutzt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Respuestas sugeridas y sugerencias de borrador en Conduit, cuando Predictive usa el modelo rápido."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réponses suggérées et suggestions de brouillon dans Conduit, quand Predictive utilise le modèle rapide."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saran balasan dan tebakan draf di Conduit, saat Predictive memakai model cepat."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Risposte suggerite e completamenti delle bozze in Conduit, quando Predictive usa il modello veloce."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Predictiveが高速モデルを使うときの、Conduitの返信候補と下書きの予測です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Predictive가 빠른 모델을 쓸 때 Conduit의 추천 답장과 초안 예측입니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proponowane odpowiedzi i podpowiedzi szkiców w Conduit, gdy Predictive używa szybkiego modelu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Respostas sugeridas e palpites de rascunho no Conduit, quando o Predictive usa o modelo rápido."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Предложенные ответы и подсказки к черновику в Conduit, когда Predictive использует быструю модель."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Predictive hızlı modeli kullandığında Conduit'teki önerilen yanıtlar ve taslak tahminleri."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Predictive 使用快速模型时，Conduit 中的建议回复和草稿推测。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Predictive 使用快速模型時，Conduit 中的建議回覆和草稿推測。"
+          }
+        }
+      }
+    },
+    "Summarizes a long chat so it still fits the model's context.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fasst einen langen Chat zusammen, damit er weiter in den Kontext des Modells passt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume un chat largo para que siga cabiendo en el contexto del modelo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Résume une longue conversation pour qu’elle tienne encore dans le contexte du modèle."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meringkas obrolan panjang agar tetap muat dalam konteks model."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riassume una chat lunga perché entri ancora nel contesto del modello."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "長いチャットを要約して、モデルのコンテキストに収まるようにします。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "긴 채팅을 요약해 모델의 컨텍스트에 계속 들어가게 합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Streszcza długi czat, żeby nadal mieścił się w kontekście modelu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume um chat longo para que ainda caiba no contexto do modelo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сжимает длинный чат, чтобы он помещался в контекст модели."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uzun bir sohbeti modelin bağlamına sığması için özetler."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "总结长聊天，让它仍能放进模型的上下文。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "摘要長聊天，讓它仍能放進模型的上下文。"
+          }
+        }
+      }
+    },
+    "Take turns": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abwechselnd"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Por turnos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "À tour de rôle"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bergantian"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A turno"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "順番に使う"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "번갈아 사용"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na zmianę"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revezar"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "По очереди"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sırayla"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轮流使用"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "輪流使用"
+          }
+        }
+      }
+    },
+    "This Hermes has no helper models to set.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Hermes hat keine Hilfsmodelle zum Einstellen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este Hermes no tiene modelos auxiliares que configurar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet Hermes n’a aucun modèle auxiliaire à régler."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes ini tidak punya model pembantu untuk diatur."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo Hermes non ha modelli ausiliari da impostare."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このHermesには設定できる補助モデルがありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 Hermes에는 설정할 보조 모델이 없습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten Hermes nie ma modeli pomocniczych do ustawienia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este Hermes não tem modelos auxiliares para definir."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В этом Hermes нет вспомогательных моделей для настройки."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu Hermes'te ayarlanacak yardımcı model yok."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 Hermes 没有可设置的辅助模型。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 Hermes 沒有可設定的輔助模型。"
+          }
+        }
+      }
+    },
+    "This profile has %@ keys for %@. Hermes moves to another when one hits its limit.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Profil hat %@ Schlüssel für %@. Hermes wechselt, wenn einer sein Limit erreicht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este perfil tiene %@ claves para %@. Hermes pasa a otra cuando una llega a su límite."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce profil a %@ clés pour %@. Hermes passe à une autre quand l’une atteint sa limite."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profil ini punya %@ kunci untuk %@. Hermes beralih ke kunci lain saat satu kunci mencapai batasnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo profilo ha %@ chiavi per %@. Hermes passa a un’altra quando una raggiunge il limite."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このプロファイルには %@ 個の %@ キーがあります。上限に達したキーがあると、Hermesは別のキーに切り替えます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 프로필에는 %@개의 %@ 키가 있습니다. 키 하나가 한도에 도달하면 Hermes가 다른 키로 바꿉니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten profil ma %@ kluczy do %@. Hermes przechodzi na inny, gdy któryś osiągnie limit."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este perfil tem %@ chaves para %@. O Hermes passa para outra quando uma atinge o limite."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "У этого профиля %@ ключей для %@. Когда один достигает лимита, Hermes переходит к другому."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu profilde %@ adet %@ anahtarı var. Biri sınırına ulaştığında Hermes başka birine geçer."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此配置有 %@ 个 %@ 密钥。某个密钥达到上限时，Hermes 会换用另一个。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此設定檔有 %@ 把 %@ 金鑰。某把金鑰達到上限時，Hermes 會換用另一把。"
+          }
+        }
+      }
+    },
+    "This provider needs no key here. Hermes reaches it with these settings for this profile.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Anbieter braucht hier keinen Schlüssel. Hermes erreicht ihn für dieses Profil mit diesen Einstellungen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este proveedor no necesita clave aquí. Hermes lo alcanza con estos ajustes para este perfil."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce fournisseur n’a pas besoin de clé ici. Hermes le joint avec ces réglages pour ce profil."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Penyedia ini tidak memerlukan kunci di sini. Hermes menjangkaunya dengan pengaturan ini untuk profil ini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo provider non richiede una chiave qui. Hermes lo raggiunge con queste impostazioni per questo profilo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このプロバイダにはここでキーは不要です。Hermesはこのプロファイルでこれらの設定を使って接続します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 제공자는 여기서 키가 필요 없습니다. Hermes는 이 프로필에서 이 설정으로 연결합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten dostawca nie potrzebuje tu klucza. Hermes łączy się z nim w tym profilu przy użyciu tych ustawień."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este provedor não precisa de chave aqui. O Hermes o acessa com estes ajustes para este perfil."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Этому провайдеру здесь не нужен ключ. Hermes подключается к нему с этими настройками для этого профиля."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu sağlayıcının burada anahtara ihtiyacı yok. Hermes bu profil için ona bu ayarlarla ulaşır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此提供方在这里不需要密钥。Hermes 会用这些设置为此配置连接它。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此供應商在這裡不需要金鑰。Hermes 會用這些設定為此設定檔連線。"
+          }
+        }
+      }
+    },
+    "Use It Anyway": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trotzdem verwenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usarlo de todos modos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’utiliser quand même"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tetap gunakan"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usalo comunque"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "それでも使う"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "그래도 사용"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Użyj mimo to"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar mesmo assim"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Всё равно использовать"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yine de kullan"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仍然使用"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仍然使用"
+          }
+        }
+      }
+    },
+    "Use keys": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schlüssel verwenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar claves"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utiliser les clés"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gunakan kunci"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa le chiavi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "キーの使い方"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "키 사용 방식"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Używaj kluczy"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar chaves"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Использовать ключи"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anahtar kullanımı"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密钥使用方式"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "金鑰使用方式"
+          }
+        }
+      }
+    },
+    "Writes a profile's description.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schreibt die Beschreibung eines Profils."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escribe la descripción de un perfil."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rédige la description d’un profil."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menulis deskripsi profil."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scrive la descrizione di un profilo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロファイルの説明を書きます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "프로필 설명을 작성합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pisze opis profilu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escreve a descrição de um perfil."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пишет описание профиля."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir profilin açıklamasını yazar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编写配置的描述。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撰寫設定檔的描述。"
+          }
+        }
+      }
+    },
+    "Your host has no fast model set, so the chat's own model answers. Pick one in Models & providers under Helper models, as Conduit predictions.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf deinem Host ist kein schnelles Modell festgelegt, daher antwortet das Modell des Chats. Wähle eines unter Modelle & Anbieter > Hilfsmodelle, als Conduit-Vorschläge."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu host no tiene un modelo rápido configurado, así que responde el modelo del propio chat. Elige uno en Modelos y proveedores, en Modelos auxiliares, como Predicciones de Conduit."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre hôte n’a pas de modèle rapide défini : c’est le modèle de la conversation qui répond. Choisissez-en un dans Modèles et fournisseurs, sous Modèles auxiliaires, en tant que Prédictions de Conduit."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host Anda tidak memiliki model cepat, jadi model obrolan itu sendiri yang menjawab. Pilih satu di Model & penyedia, bagian Model pembantu, sebagai Prediksi Conduit."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo host non ha un modello veloce impostato, quindi risponde il modello della chat. Scegline uno in Modelli e provider, sotto Modelli ausiliari, come Previsioni di Conduit."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ホストに高速モデルが設定されていないため、チャット自体のモデルが答えます。「モデルとプロバイダ」の「補助モデル」で「Conduitの予測」として選べます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "호스트에 빠른 모델이 설정되어 있지 않아 채팅 자체 모델이 답합니다. 모델 및 제공자의 보조 모델에서 Conduit 예측으로 하나를 고르세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na hoście nie ustawiono szybkiego modelu, więc odpowiada model czatu. Wybierz go w Modele i dostawcy, w sekcji Modele pomocnicze, jako Podpowiedzi Conduit."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu host não tem um modelo rápido definido, então responde o próprio modelo do chat. Escolha um em Modelos e provedores, em Modelos auxiliares, como Previsões do Conduit."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "На хосте не задана быстрая модель, поэтому отвечает модель самого чата. Выберите её в разделе «Модели и провайдеры» → «Вспомогательные модели» как «Подсказки Conduit»."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ana makinenizde hızlı model ayarlı değil, bu yüzden sohbetin kendi modeli yanıtlıyor. Modeller ve sağlayıcılar > Yardımcı modeller'de Conduit tahminleri olarak bir model seçin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机未设置快速模型，所以由聊天自己的模型回答。可在“模型和提供方”的“辅助模型”中，将其设为“Conduit 预测”。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主機未設定快速模型，所以由聊天自己的模型回答。可在「模型與供應商」的「輔助模型」中，將其設為「Conduit 預測」。"
           }
         }
       }

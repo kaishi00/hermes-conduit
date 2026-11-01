@@ -2721,16 +2721,41 @@ final class AppState: ObservableObject {
     /// or nil when this Hermes has no such slot; it throws when Hermes
     /// didn't answer. The answer is kept for the section to open on (#1533).
     func loadVoiceReplyModel() async throws -> VoiceReplyModelSetting? {
-        let profile = activeProfile
-        guard let owner = currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }
-        let response = try await readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner)
-        guard profile == activeProfile else { throw CancellationError() }
-        return VoiceReplyModelSetting(auxiliaryResponse: response)
+        try await loadHelperModel(task: VoiceReplyModelSetting.task)
     }
 
     /// The voice reply model as Hermes gave it last, kept on the phone.
     func keptVoiceReplyModel() -> VoiceReplyModelSetting? {
-        keptAnswer(KeptRoute.modelAuxiliary).flatMap(VoiceReplyModelSetting.init(auxiliaryResponse:))
+        keptHelperModel(task: VoiceReplyModelSetting.task)
+    }
+
+    /// Hermes' helper model slots (`/api/model/auxiliary`) for this
+    /// profile, as Models & providers lists them; throws when Hermes didn't
+    /// answer. Kept, with Voice replies' read, for the page to open on.
+    func loadHelperModels() async throws -> [HelperModelSlot] {
+        HelperModelSlot.slots(in: try await readHelperModels())
+    }
+
+    /// The helper models as Hermes gave them last, kept on the phone.
+    func keptHelperModels() -> [HelperModelSlot]? {
+        keptAnswer(KeptRoute.modelAuxiliary).map(HelperModelSlot.slots(in:))
+    }
+
+    /// One helper model slot, or nil when this Hermes has no such slot.
+    func loadHelperModel(task: String) async throws -> VoiceReplyModelSetting? {
+        VoiceReplyModelSetting(auxiliaryResponse: try await readHelperModels(), task: task)
+    }
+
+    func keptHelperModel(task: String) -> VoiceReplyModelSetting? {
+        keptAnswer(KeptRoute.modelAuxiliary).flatMap { VoiceReplyModelSetting(auxiliaryResponse: $0, task: task) }
+    }
+
+    private func readHelperModels() async throws -> [String: Any] {
+        let profile = activeProfile
+        guard let owner = currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }
+        let response = try await readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner)
+        guard profile == activeProfile else { throw CancellationError() }
+        return response
     }
 
     /// A live voice mode's status line on Voice settings as its last check
@@ -2776,13 +2801,30 @@ final class AppState: ObservableObject {
         KeptRoute.liveVoiceStatus + (mode == .gptLive ? "\(mode.storageID)/\(billing.rawValue)" : mode.storageID)
     }
 
-    /// Nil when Hermes took the setting; otherwise why not, for the
-    /// section to show beside the pickers (#1533).
-    func setVoiceReplyModel(_ setting: VoiceReplyModelSetting) async -> String? {
+    /// How Hermes took the voice reply model, for the section to show
+    /// beside the pickers (#1533). `confirmed` answers Hermes' price check.
+    func setVoiceReplyModel(_ setting: VoiceReplyModelSetting, confirmed: Bool = false) async -> HelperModelSaveResult {
+        await setHelperModel(
+            setting, confirmed: confirmed,
+            offline: AppLocalization.string("Connect to Hermes to configure voice for this profile."),
+            failure: { AppLocalization.string("Could not save the voice reply model: \($0)") }
+        )
+    }
+
+    /// Writes a helper model slot (Models & providers > Helper models).
+    func setHelperModel(_ setting: VoiceReplyModelSetting, confirmed: Bool) async -> HelperModelSaveResult {
+        await setHelperModel(
+            setting, confirmed: confirmed,
+            offline: AppLocalization.string("Connect to Hermes to change this profile's models."),
+            failure: { AppLocalization.string("Could not save the helper model: \($0)") }
+        )
+    }
+
+    private func setHelperModel(
+        _ setting: VoiceReplyModelSetting, confirmed: Bool, offline: String, failure: (String) -> String
+    ) async -> HelperModelSaveResult {
         let profile = activeProfile
-        guard let owner = currentDashboardRuntimeOwner() else {
-            return AppLocalization.string("Connect to Hermes to configure voice for this profile.")
-        }
+        guard let owner = currentDashboardRuntimeOwner() else { return .refused(offline) }
         let dashboardTicketBridge = owner.bridge
         do {
             // Hermes writes the profile config for it: in turn with every
@@ -2791,23 +2833,25 @@ final class AppState: ObservableObject {
                 try await dashboardTicketBridge.requestJSON(
                     path: dashboardPath("/api/model/set", profile: profile),
                     method: "POST",
-                    body: setting.assignmentBody(profile: profile)
+                    body: setting.assignmentBody(profile: profile, confirmed: confirmed)
                 )
             }
             if result["confirm_required"] as? Bool == true {
-                return result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
+                return .needsConfirmation(
+                    result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
+                )
             }
             // The answer to a read asked before the save isn't kept after
             // it, and the kept slots follow the save, so the section opens
             // on it next time (#1533).
             noteKeptAnswerWrite(for: KeptRoute.modelAuxiliary, profile: profile, owner: owner)
-            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return .saved }
             Task { [weak self] in
                 _ = try? await self?.readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner)
             }
-            return nil
+            return .saved
         } catch {
-            return AppLocalization.string("Could not save the voice reply model: \(UserFacingError.message(for: error))")
+            return .refused(failure(UserFacingError.message(for: error)))
         }
     }
 

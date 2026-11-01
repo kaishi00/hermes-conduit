@@ -27,6 +27,8 @@ struct ProviderModelContext {
     /// What else on the profile uses the provider (its delegate or fallback
     /// models), named for Remove's confirmation.
     var usage: (ProviderEntry) -> [String]
+    /// The order a provider's keys are used in on this profile.
+    var keyOrder: KeyOrderAccess?
 }
 
 // MARK: - On the Model page
@@ -87,7 +89,12 @@ struct ModelPageProviders: View {
                 return saved
             },
             usage: { entry in Self.usage(of: entry, catalog: catalog, settings: appState.keptProfileSettings(keys: Self.usageKeys),
-                                         fallbacks: appState.keptProfileFallbackModels()) }
+                                         fallbacks: appState.keptProfileFallbackModels()) },
+            keyOrder: KeyOrderAccess(
+                kept: { appState.keptProfileSettings(keys: $0) },
+                load: { await appState.loadProfileSettings(keys: $0) },
+                save: { await appState.setProfileSetting($0, value: $1) }
+            )
         ))
         .onAppear { if catalog == nil { catalog = kept() } }
         .task { await reloadCatalog() }
@@ -252,6 +259,8 @@ enum ProviderText {
         case .ownKey: return AppLocalization.string("This profile's own key")
         case .oldCopy: return AppLocalization.string("Old copy of the shared key")
         case .mainProfileOnly: return AppLocalization.string("Saved for the main profile only")
+        case .configured:
+            return entry.key == nil ? AppLocalization.string("Settings saved") : AppLocalization.string("Settings saved, no key yet")
         case .notConnected: return ways(entry)
         }
     }
@@ -262,6 +271,7 @@ enum ProviderText {
         if entry.account?.flow == .deviceCode { ways.append(AppLocalization.string("Sign in")) }
         if entry.account?.flow == .external { ways.append(AppLocalization.string("Sign in on the host")) }
         if entry.key != nil { ways.append(AppLocalization.string("API key")) }
+        if entry.key == nil, entry.account == nil, !entry.settings.isEmpty { ways.append(AppLocalization.string("Settings")) }
         return ways.joined(separator: " · ")
     }
 
@@ -271,7 +281,8 @@ enum ProviderText {
         case .signedIn: return "person.crop.circle.badge.checkmark"
         case .sharedKey, .ownKey: return "checkmark.shield.fill"
         case .oldCopy, .mainProfileOnly: return "exclamationmark.shield"
-        case .notConnected: return entry.key != nil ? "key" : "person.crop.circle"
+        case .configured: return "slider.horizontal.3"
+        case .notConnected: return entry.key != nil ? "key" : (entry.account != nil ? "person.crop.circle" : "slider.horizontal.3")
         }
     }
 
@@ -306,7 +317,7 @@ struct AddProviderSheet: View {
     @State private var query = ""
 
     private var matches: [ProviderEntry] {
-        let listed = service.entries.filter { $0.endpoint == nil && ($0.key != nil || $0.account != nil) }
+        let listed = service.entries.filter { $0.endpoint == nil && ($0.key != nil || $0.account != nil || !$0.settings.isEmpty) }
         let wanted = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !wanted.isEmpty else { return listed }
         return listed.filter { $0.name.localizedCaseInsensitiveContains(wanted) || $0.id.localizedCaseInsensitiveContains(wanted) }
@@ -452,6 +463,7 @@ private struct ProviderConnectPage: View {
                         ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: onConnected)
                     }
                 }
+                ProviderSettingsRows(service: service, entry: entry)
             }
         }
         .navigationTitle(service.entry(entryID)?.name ?? "")
@@ -521,7 +533,11 @@ struct ProviderDetailPage: View {
                                           keyRemovable: context.catalogAnswered && !runsDefault(entry),
                                           usage: context.usage(entry))
                     }
+                    if key.keysInUse > 1, let order = context.keyOrder, KeyOrder.settingKey(for: entry.id) != nil {
+                        KeyOrderSection(entry: entry, keys: key.keysInUse, access: order)
+                    }
                 }
+                ProviderSettingsRows(service: service, entry: entry)
                 if let error {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .scaledFont(.footnote).foregroundStyle(.red)
@@ -710,10 +726,6 @@ private struct ProviderKeyEditor: View {
     @State private var error: String?
     @State private var confirmingUnshare = false
     @State private var confirmingRemoveKey = false
-    @State private var baseURLDraft = ""
-    @State private var editingBaseURL = false
-
-    private static let baseURLPlaceholder = "https://"
 
     private var state: ProviderEntry.KeyAccess.State { entry.keyState }
     private var onMain: Bool { service.isSharedProfile }
@@ -800,7 +812,6 @@ private struct ProviderKeyEditor: View {
         if let error {
             Text(verbatim: error).scaledFont(.caption).foregroundStyle(.red)
         }
-        if let baseURLVar = key.baseURLVar { baseURLRows(baseURLVar) }
     }
 
     private var explanation: String {
@@ -886,63 +897,6 @@ private struct ProviderKeyEditor: View {
         return " " + AppLocalization.string("These stop working until you pick another model: \(usage.joined(separator: ", ")).")
     }
 
-    @ViewBuilder
-    private func baseURLRows(_ baseURLVar: String) -> some View {
-        Divider()
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(AppLocalization.string("Base URL override"))
-                    .scaledFont(.subheadline)
-                Text(key.baseURLSaved ? AppLocalization.string("Set for this profile") : AppLocalization.string("Not set, uses the provider's own"))
-                    .scaledFont(.caption).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 8)
-            if !editingBaseURL {
-                Button(key.baseURLSaved ? AppLocalization.string("Change") : AppLocalization.string("Set")) { editingBaseURL = true }
-                    .buttonStyle(.settings)
-                    .disabled(saving)
-            }
-        }
-        if editingBaseURL {
-            TextField(Self.baseURLPlaceholder, text: $baseURLDraft)
-                .textFieldStyle(.roundedBorder)
-                .keyboardType(.URL)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .disabled(saving)
-            HStack {
-                if key.baseURLSaved {
-                    Button(AppLocalization.string("Clear"), role: .destructive) {
-                        run {
-                            try await service.remove(variables: [baseURLVar])
-                            baseURLDraft = ""
-                            editingBaseURL = false
-                        }
-                    }
-                    .buttonStyle(.settings)
-                    .disabled(saving || !service.answered)
-                }
-                Button(AppLocalization.string("Cancel"), role: .cancel) {
-                    baseURLDraft = ""
-                    editingBaseURL = false
-                }
-                .buttonStyle(.settings)
-                .disabled(saving)
-                Spacer()
-                Button(AppLocalization.string("Save")) {
-                    let value = baseURLDraft
-                    run {
-                        try await service.save(key: value, for: baseURLVar)
-                        baseURLDraft = ""
-                        editingBaseURL = false
-                    }
-                }
-                .buttonStyle(.settingsPrimary)
-                .disabled(saving || !service.answered || baseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-    }
-
     private func save() {
         let value = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !saving else { return }
@@ -1008,6 +962,218 @@ private struct ProviderKeyEditor: View {
                 try await work()
             } catch {
                 self.error = UserFacingError.message(for: error)
+            }
+        }
+    }
+}
+
+// MARK: - Settings that aren't keys
+
+/// A provider's settings in this profile's `.env` that aren't keys: a base
+/// URL override, Bedrock's AWS region, Vertex's credentials file. Their
+/// values are never shown; each can be set again or cleared.
+private struct ProviderSettingsRows: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @ObservedObject var service: ProviderSettingsService
+    let entry: ProviderEntry
+    @State private var editing: String?
+    @State private var draft = ""
+    @State private var saving = false
+    @State private var error: String?
+
+    private static let urlPlaceholder = "https://"
+
+    var body: some View {
+        if !entry.settings.isEmpty {
+            ConduitSettingsSection(title: AppLocalization.string("Settings"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+                if entry.key == nil, entry.account == nil {
+                    Text(AppLocalization.string("This provider needs no key here. Hermes reaches it with these settings for this profile."))
+                        .scaledFont(.footnote).foregroundStyle(.secondary)
+                }
+                ForEach(Array(entry.settings.enumerated()), id: \.element.variable) { index, setting in
+                    if index > 0 { Divider() }
+                    row(setting)
+                }
+                if let error {
+                    Text(verbatim: error).scaledFont(.caption).foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func row(_ setting: ProviderEntry.Setting) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: setting.isBaseURL ? AppLocalization.string("Base URL override") : setting.variable)
+                    .scaledFont(.subheadline)
+                Text(verbatim: status(setting))
+                    .scaledFont(.caption).foregroundStyle(.secondary)
+                if !setting.description.isEmpty, !setting.isBaseURL {
+                    Text(verbatim: setting.description)
+                        .scaledFont(.caption).foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 8)
+            if editing != setting.variable {
+                Button(setting.saved ? AppLocalization.string("Change") : AppLocalization.string("Set")) {
+                    draft = ""
+                    error = nil
+                    editing = setting.variable
+                }
+                .buttonStyle(.settings)
+                .disabled(saving)
+            }
+        }
+        if editing == setting.variable {
+            let placeholder = setting.isBaseURL ? Self.urlPlaceholder : setting.variable
+            TextField(placeholder, text: $draft)
+                .textFieldStyle(.roundedBorder)
+                .keyboardType(setting.isBaseURL ? .URL : .default)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .disabled(saving)
+            HStack {
+                if setting.saved {
+                    Button(AppLocalization.string("Clear"), role: .destructive) {
+                        run { try await service.remove(variables: [setting.variable]) }
+                    }
+                    .buttonStyle(.settings)
+                    .disabled(saving || !service.answered)
+                }
+                Button(AppLocalization.string("Cancel"), role: .cancel) {
+                    draft = ""
+                    editing = nil
+                }
+                .buttonStyle(.settings)
+                .disabled(saving)
+                Spacer()
+                Button(AppLocalization.string("Save")) {
+                    let value = draft
+                    run { try await service.save(key: value, for: setting.variable) }
+                }
+                .buttonStyle(.settingsPrimary)
+                .disabled(saving || !service.answered || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+    }
+
+    private func status(_ setting: ProviderEntry.Setting) -> String {
+        if setting.saved { return AppLocalization.string("Set for this profile") }
+        return setting.isBaseURL ? AppLocalization.string("Not set, uses the provider's own") : AppLocalization.string("Not set")
+    }
+
+    private func run(_ work: @escaping () async throws -> Void) {
+        guard !saving else { return }
+        saving = true
+        error = nil
+        Task {
+            defer { saving = false }
+            do {
+                try await work()
+                draft = ""
+                editing = nil
+            } catch {
+                self.error = UserFacingError.message(for: error)
+            }
+        }
+    }
+}
+
+// MARK: - Key order
+
+/// How Hermes picks among a provider's keys on a profile
+/// (`credential_pool_strategies.<provider>` in its config).
+enum KeyOrder: String, CaseIterable {
+    /// Hermes' default: the first key until it hits a limit, then the next.
+    case fillFirst = "fill_first"
+    case roundRobin = "round_robin"
+    case random
+    case leastUsed = "least_used"
+
+    /// The profile setting for `provider`, nil for an id a dotted config
+    /// key can't name (a custom provider like `custom:together.ai`).
+    static func settingKey(for provider: String) -> String? {
+        provider.isEmpty || provider.contains(".") ? nil : "credential_pool_strategies.\(provider)"
+    }
+
+    /// Hermes' reading of a stored value: anything else is the default.
+    init(stored: String?) {
+        self = KeyOrder(rawValue: (stored ?? "").trimmingCharacters(in: .whitespaces).lowercased()) ?? .fillFirst
+    }
+
+    var title: String {
+        switch self {
+        case .fillFirst: return AppLocalization.string("First key until it runs out")
+        case .roundRobin: return AppLocalization.string("Take turns")
+        case .random: return AppLocalization.string("Random")
+        case .leastUsed: return AppLocalization.string("Least used first")
+        }
+    }
+}
+
+/// What the key order needs from the page: the profile's settings.
+struct KeyOrderAccess {
+    var kept: ([String]) -> [String: ProfileSettingValue]?
+    var load: ([String]) async -> [String: ProfileSettingValue]
+    var save: (String, ProfileSettingValue) async -> Bool
+}
+
+/// The order a profile's keys for a provider are used in, once it has
+/// more than one.
+private struct KeyOrderSection: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let entry: ProviderEntry
+    let keys: Int
+    let access: KeyOrderAccess
+    @State private var order: KeyOrder?
+    @State private var answered = false
+    @State private var saving = false
+    @State private var error: String?
+
+    private var settingKey: String { KeyOrder.settingKey(for: entry.id) ?? "" }
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Key order"), symbol: "arrow.triangle.2.circlepath", tint: .conduitAura) {
+            Text(AppLocalization.string("This profile has \(String(keys)) keys for \(entry.name). Hermes moves to another when one hits its limit."))
+                .scaledFont(.footnote).foregroundStyle(.secondary)
+            ConduitMenuPicker(
+                value: order ?? .fillFirst,
+                choices: KeyOrder.allCases.map { (id: $0, title: $0.title) },
+                onSelect: choose
+            ) {
+                Text(AppLocalization.string("Use keys")).foregroundStyle(.secondary)
+            }
+            // A save writes the setting; it waits for Hermes' answer.
+            .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving, ready: order != nil))
+            if let error {
+                Text(verbatim: error).scaledFont(.caption).foregroundStyle(.red)
+            }
+        }
+        .onAppear {
+            guard order == nil, let kept = access.kept([settingKey]) else { return }
+            order = KeyOrder(stored: kept[settingKey]?.textValue)
+        }
+        .task {
+            let loaded = await access.load([settingKey])
+            guard !saving else { return }
+            order = KeyOrder(stored: loaded[settingKey]?.textValue)
+            answered = true
+        }
+    }
+
+    private func choose(_ next: KeyOrder) {
+        guard next != order, !saving else { return }
+        let previous = order
+        order = next
+        saving = true
+        error = nil
+        Task {
+            defer { saving = false }
+            if !(await access.save(settingKey, .text(next.rawValue))) {
+                order = previous
+                error = AppLocalization.string("Could not save the key order.")
             }
         }
     }
