@@ -1233,6 +1233,10 @@ final class HermesClientTests: XCTestCase {
         XCTAssertTrue(RpcError(code: 4000, message: "invalid params for prompt.submit: voice_turn: Extra inputs are not permitted").refusesUnknownParam("voice_turn"))
         XCTAssertFalse(RpcError(code: 4000, message: "invalid params for prompt.submit: surface: Extra inputs are not permitted").refusesUnknownParam("voice_turn"))
         XCTAssertFalse(RpcError(code: 4090, message: "voice_turn busy").refusesUnknownParam("voice_turn"))
+        // The session authority's contract refusal names the keys in data.fields.
+        XCTAssertTrue(RpcError(code: 4001, message: "invalid_params", reason: "invalid_params", fields: ["queued"]).refusesUnknownParam("queued"))
+        XCTAssertFalse(RpcError(code: 4001, message: "invalid_params", reason: "invalid_params", fields: ["text"]).refusesUnknownParam("queued"))
+        XCTAssertFalse(RpcError(code: 4001, message: "queued", reason: "permission_denied").refusesUnknownParam("queued"))
     }
 
     func testActiveSessionsParsesRuntimeRegistryWithoutMutatingParams() async throws {

@@ -200,9 +200,12 @@ struct RpcError: Decodable, Error, LocalizedError, Sendable {
 
     /// Hermes' contract check refused a key this gateway doesn't know
     /// (`4000 invalid params for <method>: <key>: Extra inputs are not
-    /// permitted`). Nothing ran, so the request is safe to resend without it.
+    /// permitted`), or the session authority's contract check did (`4001`,
+    /// reason `invalid_params`, the key in `data.fields`). Nothing ran, so the
+    /// request is safe to resend without it.
     func refusesUnknownParam(_ key: String) -> Bool {
-        code == 4000 && message.contains("invalid params") && message.contains(key)
+        if code == 4001, reason == "invalid_params" { return fields?.contains(key) ?? false }
+        return code == 4000 && message.contains("invalid params") && message.contains(key)
     }
 }
 
