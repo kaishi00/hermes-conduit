@@ -225189,6 +225189,88 @@
         }
       }
     },
+    "Open the chat again to branch from this reply.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öffne den Chat erneut, um von dieser Antwort abzuzweigen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vuelve a abrir el chat para crear una rama desde esta respuesta."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rouvrez la conversation pour créer une branche à partir de cette réponse."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buka chat lagi untuk membuat cabang dari balasan ini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riapri la chat per creare un ramo da questa risposta."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この返信から分岐するには、チャットを開き直してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 답장에서 분기하려면 채팅을 다시 여세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otwórz czat ponownie, aby utworzyć gałąź od tej odpowiedzi."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abra o chat de novo para criar um ramo a partir desta resposta."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Откройте чат снова, чтобы создать ветку от этого ответа."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu yanıttan dal oluşturmak için sohbeti yeniden açın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请重新打开聊天，再从这条回复创建分支。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請重新開啟聊天，再從這則回覆建立分支。"
+          }
+        }
+      }
+    },
     "Open the model and run settings": {
       "localizations": {
         "de": {

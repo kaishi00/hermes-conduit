@@ -3007,8 +3007,8 @@ final class HermesClient: ObservableObject {
             payload["through_message_id"] = rowId
         } else if !(messages.last?.isNewest ?? false) {
             // Without the reply's row the branch would keep everything
-            // after it too.
-            throw HermesError.invalidResponse
+            // after it too: reopening the chat reads the rows' ids.
+            throw BranchPointUnknownError()
         }
         let result = try await authorityMutation(
             sessionId: parentSessionId, operation: "branch", payload: payload, fencesGeneration: true
@@ -3238,6 +3238,15 @@ final class HermesClient: ObservableObject {
     struct HiddenPromptUnsupportedError: Error {}
 
     /// Queue on a Hermes without `prompt.submit`'s `queued` key.
+    /// A branch on the authority names its reply by the row id Hermes gave
+    /// it; a reply whose id never arrived (its completion missed in the
+    /// background) gets it when the chat is read again.
+    struct BranchPointUnknownError: LocalizedError {
+        var errorDescription: String? {
+            AppLocalization.string("Open the chat again to branch from this reply.")
+        }
+    }
+
     struct QueueUnsupportedError: LocalizedError {
         var errorDescription: String? {
             AppLocalization.string("This Hermes can't queue messages. Update Hermes, or touch and hold send to steer or interrupt instead.")

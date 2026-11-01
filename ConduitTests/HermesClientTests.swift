@@ -2145,6 +2145,24 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAuthorityBranchFromAReplyWithNoRowAsksToReopenTheChat() async throws {
+        let (client, socket) = try await authorityClient()
+        let count = socket.sentTexts.count
+        do {
+            _ = try await client.branchSession(
+                parentSessionId: "sess-1",
+                messages: [SessionBranchMessage(role: .user, content: "hi", rowId: 53),
+                           SessionBranchMessage(role: .assistant, content: "hello")],
+                title: "Branch",
+                cwd: nil
+            )
+            XCTFail("A branch point with no row can't be named on the authority")
+        } catch is HermesClient.BranchPointUnknownError {
+        }
+        XCTAssertEqual(socket.sentTexts.count, count, "Nothing is sent without the reply's row")
+        client.disconnect()
+    }
+
     func testAuthorityModelPickAsksForConfirmationThenSendsItsToken() async throws {
         let (client, socket) = try await authorityClient()
         var count = socket.sentTexts.count
