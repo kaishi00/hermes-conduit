@@ -74,8 +74,11 @@ struct ModelPageProviders: View {
             catalogFailed: catalogFailed,
             reloadCatalog: { await reloadCatalog() },
             makeDefault: { provider, model in
-                // A save raises the page's refresh, which reads the catalog again.
-                await makeDefault(provider, model, catalog?.reasoning ?? "medium")
+                // Read here, so the page's spinner stays until the new default
+                // shows; the page's refresh read after it is dropped or agrees.
+                let saved = await makeDefault(provider, model, catalog?.reasoning ?? "medium")
+                if saved { await reloadCatalog() }
+                return saved
             },
             usage: { entry in Self.usage(of: entry, catalog: catalog, settings: appState.keptProfileSettings(keys: Self.usageKeys),
                                          fallbacks: appState.keptProfileFallbackModels()) }
@@ -966,12 +969,17 @@ private struct ProviderKeyEditor: View {
                     note = scope == .allProfiles
                         ? AppLocalization.string("Saved, but the old key couldn't be removed everywhere. A profile still using it says Old copy of the shared key.")
                         : AppLocalization.string("Saved, but this profile's old key couldn't be removed, so it may still be used first.")
-                } else if !key.heldVars.isEmpty {
+                } else {
+                    var notes: [String] = []
                     // The key another provider also reads stays, and Hermes
                     // reads it ahead of the saved one on this profile.
-                    note = AppLocalization.string("Saved, but this profile still has a key another provider reads, and Hermes uses that one first here.")
-                } else if !check.ok {
-                    note = AppLocalization.string("Saved. Hermes couldn't reach the provider to check the key.")
+                    if !key.heldVars.isEmpty {
+                        notes.append(AppLocalization.string("Saved, but this profile still has a key another provider reads, and Hermes uses that one first here."))
+                    }
+                    if !check.ok {
+                        notes.append(AppLocalization.string("Saved. Hermes couldn't reach the provider to check the key."))
+                    }
+                    note = notes.isEmpty ? nil : notes.joined(separator: " ")
                 }
                 // A note stays in view: the Add sheet closes on onSaved.
                 if note == nil { onSaved() }

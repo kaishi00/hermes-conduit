@@ -2828,7 +2828,7 @@ Notifications and control list and the Settings captions (done)
 - A provider Hermes lists with only a base URL variable (no key of its own) has no card, so its override isn't reachable from Conduit.
 - Removing the shared key or signing out on the main profile checks only the main profile's default, delegate and fallback models, not other profiles' that run on it.
 
-**Checked:** 2026-11-01, #1620 (from #1616's last reviews: a removal tries every variable, a save behind a held key says so, a given-up sign-in is cancelled on Hermes, one catalog read per model pick; base-URL-only providers noted as a gap); 2026-11-01, #1616 (entry added: Providers section, Add a provider, shared keys with overrides and cleanup; host-tested on Hermes 0.22.2: an override wins after its copies go, across restarts, and replacing and going back to the shared key work)
+**Checked:** 2026-11-01, #1620 (from #1616's last reviews: a removal tries every variable, a save behind a held key says so, a given-up sign-in is cancelled on Hermes; base-URL-only providers noted as a gap); 2026-11-01, #1616 (entry added: Providers section, Add a provider, shared keys with overrides and cleanup; host-tested on Hermes 0.22.2: an override wins after its copies go, across restarts, and replacing and going back to the shared key work)
 
 ## Profile config saves
 

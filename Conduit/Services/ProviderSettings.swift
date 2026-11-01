@@ -771,8 +771,6 @@ final class ProviderSettingsService: ObservableObject {
         }
     }
 
-    /// Runs the rest of a write that has already changed something on the
-    /// host, then reads the page again whether or not the rest worked.
     /// Takes variables out of this profile's `.env`; one already gone is fine.
     /// Every variable is tried; the first failure is thrown after.
     private func removeVariables(_ variables: [String]) async throws {
@@ -802,6 +800,8 @@ final class ProviderSettingsService: ObservableObject {
         }
     }
 
+    /// Runs the rest of a write that has already changed something on the
+    /// host, then reads the page again whether or not the rest worked.
     private func afterWrite(_ rest: () async throws -> Void) async throws {
         do {
             try await rest()
