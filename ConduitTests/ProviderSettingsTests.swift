@@ -172,6 +172,55 @@ final class ProviderSettingsTests: XCTestCase {
         ])
     }
 
+    func testAnOverrideAlsoRemovesAnOldCopyAheadOfIt() async throws {
+        let requester = FakeProviderRequester()
+        requester.pools["bot"] = pool("openrouter", [("gone", ProviderEntry.PoolRow.sharedLabel, "manual"),
+                                                     ("new", ProviderEntry.PoolRow.profileLabel, "manual")])
+        let service = ProviderSettingsService(requester: requester, profile: "bot")
+        var entry = ProviderEntry(id: "openrouter", name: "OpenRouter")
+        entry.onMainProfile = false
+        entry.key = ProviderEntry.KeyAccess(vars: ["OPENROUTER_API_KEY"], savedVars: [],
+                                            sharedRows: [.init(id: "current", index: 1)],
+                                            profileRows: [.init(id: "gone", index: 1, label: ProviderEntry.PoolRow.sharedLabel)])
+        XCTAssertEqual(entry.status, .oldCopy)
+
+        try await service.override(key: "sk-bot", for: entry)
+
+        XCTAssertEqual(requester.calls.filter { $0.method == "DELETE" }.map(\.path),
+                       ["/api/credentials/pool/openrouter/1?profile=bot"])
+    }
+
+    func testAFailedPoolReadFailsTheReloadAndKeepsWhatWasShown() async {
+        let requester = FakeProviderRequester()
+        requester.envAnswer = env
+        requester.pools["default"] = pool("openrouter", [("r1", ProviderEntry.PoolRow.sharedLabel, "manual")])
+        let service = ProviderSettingsService(requester: requester, profile: "default")
+        await service.reload()
+        XCTAssertEqual(service.entry("openrouter")?.status, .sharedKey)
+
+        requester.failures["/api/credentials/pool"] = DashboardTicketBridgeError.http(status: 500, detail: "")
+        await service.reload()
+        XCTAssertTrue(service.loadFailed)
+        XCTAssertEqual(service.entry("openrouter")?.status, .sharedKey, "a dropped pool read doesn't show the shared key as gone")
+
+        // A route an older Hermes doesn't have adds nothing instead.
+        requester.failures = ["/api/providers/oauth": DashboardTicketBridgeError.http(status: 404, detail: "")]
+        await service.reload()
+        XCTAssertFalse(service.loadFailed)
+        XCTAssertEqual(service.entry("openrouter")?.status, .sharedKey)
+    }
+
+    func testANewEndpointGetsAnIDFromItsName() {
+        XCTAssertEqual(CustomEndpointDraft.endpointID(forName: "Lab vLLM", taken: []), "lab-vllm")
+        XCTAssertEqual(CustomEndpointDraft.endpointID(forName: "Lab vLLM", taken: ["lab-vllm", "lab-vllm-2"]), "lab-vllm-3")
+        XCTAssertEqual(CustomEndpointDraft.endpointID(forName: "  ", taken: []), "endpoint")
+    }
+
+    func testAKeptEndpointAddressLeavesOutItsPath() {
+        XCTAssertEqual(ProviderCatalog.keptAddress("https://user:pw@host.example:8443/v1/tok123?key=x"), "https://host.example:8443")
+        XCTAssertEqual(ProviderCatalog.keptAddress("not a url"), "")
+    }
+
     // MARK: Endpoints and sign-ins
 
     func testAnEndpointSaveWithNoTypedKeyKeepsTheSavedOne() {
@@ -218,9 +267,15 @@ private final class FakeProviderRequester: DashboardJSONRequester {
     var calls: [Call] = []
     /// Each profile's credential pool answer.
     var pools: [String: [String: Any]] = [:]
+    var envAnswer: [String: Any] = [:]
+    /// Errors for GETs, by the path before its query.
+    var failures: [String: Error] = [:]
 
     func requestJSON(path: String, method: String, body: [String: Any]?, timeoutMilliseconds: Int, maxResponseBytes: Int) async throws -> [String: Any] {
         calls.append(Call(path: path, method: method, body: body))
+        let route = path.components(separatedBy: "?").first ?? path
+        if method == "GET", let failure = failures[route] { throw failure }
+        if method == "GET", route == "/api/env" { return envAnswer }
         if method == "GET", path.hasPrefix("/api/credentials/pool?") {
             let profile = path.components(separatedBy: "profile=").last ?? ""
             return pools[profile] ?? ["providers": []]

@@ -331,8 +331,8 @@ enum ProviderCatalog {
     // MARK: The summary kept on the phone
 
     /// Which providers are connected and how, for the page to open on. It
-    /// names the variables a key goes under, never a key or Hermes' preview
-    /// of one.
+    /// names the variables a key goes under and the pool rows, never a key
+    /// or Hermes' preview of one, and an endpoint's host but not its path.
     static func summary(_ entries: [ProviderEntry]) -> [String: Any] {
         ["providers": entries.map { entry -> [String: Any] in
             var row: [String: Any] = ["id": entry.id, "name": entry.name, "on_main_profile": entry.onMainProfile]
@@ -353,13 +353,25 @@ enum ProviderCatalog {
             }
             if let endpoint = entry.endpoint {
                 row["endpoint"] = [
-                    "endpoint_id": endpoint.endpointID, "base_url": endpoint.baseURL, "model": endpoint.model,
+                    "endpoint_id": endpoint.endpointID, "base_url": keptAddress(endpoint.baseURL), "model": endpoint.model,
                     "models": endpoint.models, "api_mode": endpoint.apiMode,
                     "secret_saved": endpoint.keySaved, "is_current": endpoint.isCurrent,
                 ] as [String: Any]
             }
             return row
         }]
+    }
+
+    /// An endpoint's address as kept: its scheme, host and port only, since
+    /// a path can carry a token. The page edits the full one, from Hermes.
+    static func keptAddress(_ address: String) -> String {
+        guard var parts = URLComponents(string: address), parts.host != nil else { return "" }
+        parts.user = nil
+        parts.password = nil
+        parts.path = ""
+        parts.query = nil
+        parts.fragment = nil
+        return parts.string ?? ""
     }
 
     /// A pool row as kept: no key or preview, only which row it is.
@@ -472,7 +484,8 @@ struct ProviderSignIn: Equatable {
 }
 
 /// What a custom endpoint is saved with. `key` nil leaves a saved key as
-/// it is: Hermes reads an empty one as "remove the key".
+/// it is: Hermes would read an empty one as "remove the key", which
+/// Conduit doesn't offer.
 struct CustomEndpointDraft: Equatable {
     var endpointID = ""
     var name = ""
@@ -484,6 +497,17 @@ struct CustomEndpointDraft: Equatable {
     var makeDefault = false
 
     var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// The config key for a new endpoint, made from its name and kept clear
+    /// of the ones the profile has: "Lab vLLM" is `lab-vllm`, then `lab-vllm-2`.
+    static func endpointID(forName name: String, taken: Set<String>) -> String {
+        let words = name.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+        let base = words.isEmpty ? "endpoint" : words.joined(separator: "-")
+        guard taken.contains(base) else { return base }
+        var number = 2
+        while taken.contains("\(base)-\(number)") { number += 1 }
+        return "\(base)-\(number)"
+    }
     var trimmedBaseURL: String { baseURL.trimmingCharacters(in: .whitespacesAndNewlines) }
     var canSave: Bool { !trimmedName.isEmpty && !trimmedBaseURL.isEmpty && !model.isEmpty }
 
@@ -516,6 +540,8 @@ final class ProviderSettingsService: ObservableObject {
     @Published private(set) var isLoading = false
 
     let profile: String
+    /// The profile's name as Conduit shows it (see Profile names).
+    let profileName: String
     /// Where shared keys and sign-ins live: the main profile, whose
     /// credential pool every other profile falls back to per provider.
     static let sharedProfile = "default"
@@ -530,10 +556,11 @@ final class ProviderSettingsService: ObservableObject {
     /// shared key out of each one's pool.
     private let profiles: () -> [String]
 
-    init(requester: DashboardJSONRequester, profile: String, answers: KeptAnswers? = nil,
+    init(requester: DashboardJSONRequester, profile: String, profileName: String? = nil, answers: KeptAnswers? = nil,
          profiles: @escaping () -> [String] = { [] }) {
         self.requester = requester
         self.profile = profile
+        self.profileName = profileName ?? profile
         self.answers = answers
         self.profiles = profiles
         entries = ProviderCatalog.entries(summary: answers?.kept(Self.keptRoute)) ?? []
@@ -546,28 +573,37 @@ final class ProviderSettingsService: ObservableObject {
 
     // MARK: Reads
 
+    /// Counts reloads, so one that started before a later one can't put
+    /// back what was there before a write.
+    private var reloadGeneration = 0
+
     func reload() async {
+        reloadGeneration += 1
+        let generation = reloadGeneration
         isLoading = true
         loadFailed = false
-        defer { isLoading = false }
+        defer { if generation == reloadGeneration { isLoading = false } }
         let onMain = isSharedProfile
+        var fresh: [ProviderEntry]?
         let read = { [self] () async throws -> [String: Any] in
-            // Each list can fail on its own (an older Hermes without one of
-            // the routes); the env list is the one the page can't do without.
+            // A route an older Hermes lacks adds nothing; any other failure
+            // fails the read, so a dropped pool read never shows a shared
+            // key as missing.
             let envPath = scoped("/api/env")
             let accountsPath = shared("/api/providers/oauth")
             let endpointsPath = scoped("/api/providers/custom-endpoints")
             let sharedPoolPath = shared("/api/credentials/pool")
             let profilePoolPath = onMain ? nil : named("/api/credentials/pool", profile: profile)
             async let env = request(envPath)
-            async let accounts = try? request(accountsPath)
-            async let endpoints = try? request(endpointsPath)
-            async let sharedPool = try? request(sharedPoolPath)
-            async let profilePool = optionalRequest(profilePoolPath)
+            async let accounts = optionalRoute(accountsPath)
+            async let endpoints = optionalRoute(endpointsPath)
+            async let sharedPool = optionalRoute(sharedPoolPath)
+            async let profilePool = optionalRoute(profilePoolPath)
             let built = ProviderCatalog.entries(
-                env: try await env, accounts: await accounts, endpoints: await endpoints,
-                sharedPool: await sharedPool, profilePool: await profilePool, onMainProfile: onMain
+                env: try await env, accounts: try await accounts, endpoints: try await endpoints,
+                sharedPool: try await sharedPool, profilePool: try await profilePool, onMainProfile: onMain
             )
+            fresh = built
             return ProviderCatalog.summary(built)
         }
         do {
@@ -577,9 +613,13 @@ final class ProviderSettingsService: ObservableObject {
             } else {
                 summary = try await read()
             }
-            entries = ProviderCatalog.entries(summary: summary) ?? []
+            guard generation == reloadGeneration else { return }
+            // What Hermes just said, in full; the kept summary is what the
+            // page opens on next time.
+            entries = fresh ?? ProviderCatalog.entries(summary: summary) ?? []
             answered = true
         } catch {
+            guard generation == reloadGeneration else { return }
             loadFailed = true
         }
     }
@@ -607,11 +647,12 @@ final class ProviderSettingsService: ObservableObject {
         let replaced = entry.key?.sharedIDs ?? []
         _ = try await request(shared("/api/credentials/pool"), method: "POST",
                               body: ["provider": entry.id, "api_key": value, "label": ProviderEntry.PoolRow.sharedLabel])
-        if !replaced.isEmpty {
-            try await removeRows(provider: entry.id, ids: replaced, profile: Self.sharedProfile)
-            await removeCopies(provider: entry.id, ids: replaced)
+        try await afterWrite {
+            if !replaced.isEmpty {
+                try await removeRows(provider: entry.id, ids: replaced, profile: Self.sharedProfile)
+                await removeCopies(provider: entry.id, ids: replaced)
+            }
         }
-        await changed()
     }
 
     /// Removes the provider's shared key, and Hermes' copies of it: every
@@ -619,32 +660,53 @@ final class ProviderSettingsService: ObservableObject {
     func unshare(_ entry: ProviderEntry) async throws {
         let ids = entry.key?.sharedIDs ?? []
         guard !ids.isEmpty else { return }
-        try await removeRows(provider: entry.id, ids: ids, profile: Self.sharedProfile)
-        await removeCopies(provider: entry.id, ids: ids)
-        await changed()
+        try await afterWrite {
+            try await removeRows(provider: entry.id, ids: ids, profile: Self.sharedProfile)
+            await removeCopies(provider: entry.id, ids: ids)
+        }
     }
 
     /// Gives this profile a key of its own, which it uses instead of the
-    /// shared one. Adding it may copy the shared rows into this profile's
-    /// pool; those copies go, so its own key is the one it uses.
+    /// shared one. Adding it copies the shared rows into this profile's
+    /// pool, ahead of it; those copies go, and so does every other row it
+    /// held (an earlier key of its own, an old copy of a replaced shared
+    /// key), so its new key is the one it uses.
     func override(key value: String, for entry: ProviderEntry) async throws {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !isSharedProfile else { return }
-        let replaced = Set((entry.key?.ownRows ?? []).filter { $0.label == ProviderEntry.PoolRow.profileLabel }.map(\.id))
+        let stale = (entry.key?.sharedIDs ?? []).union((entry.key?.ownRows ?? []).map(\.id))
         _ = try await request(named("/api/credentials/pool", profile: profile), method: "POST",
                               body: ["provider": entry.id, "api_key": value, "label": ProviderEntry.PoolRow.profileLabel])
-        try await removeRows(provider: entry.id, ids: (entry.key?.sharedIDs ?? []).union(replaced), profile: profile)
-        await changed()
+        try await afterWrite {
+            try await removeRows(provider: entry.id, ids: stale, profile: profile)
+        }
     }
 
     /// Puts this profile back on the shared key: its own rows go (a `.env`
     /// row's removal takes the variable out of its `.env` too), and so do
-    /// the `.env` variables left over.
+    /// the `.env` variables left over. One already gone is fine.
     func useShared(_ entry: ProviderEntry) async throws {
         guard !isSharedProfile, let key = entry.key else { return }
-        try await removeRows(provider: entry.id, ids: Set(key.ownRows.map(\.id)), profile: profile)
-        for variable in key.savedVars {
-            _ = try? await request(scoped("/api/env"), method: "DELETE", body: ["key": variable, "profile": profile])
+        try await afterWrite {
+            try await removeRows(provider: entry.id, ids: Set(key.ownRows.map(\.id)), profile: profile)
+            for variable in key.savedVars {
+                do {
+                    _ = try await request(scoped("/api/env"), method: "DELETE", body: ["key": variable, "profile": profile])
+                } catch where Self.isNotFound(error) {
+                    continue
+                }
+            }
+        }
+    }
+
+    /// Runs the rest of a write that has already changed something on the
+    /// host, then reads the page again whether or not the rest worked.
+    private func afterWrite(_ rest: () async throws -> Void) async throws {
+        do {
+            try await rest()
+        } catch {
+            await changed()
+            throw error
         }
         await changed()
     }
@@ -768,9 +830,20 @@ final class ProviderSettingsService: ObservableObject {
         DashboardPath.withExplicitProfile(path, profile: profile)
     }
 
-    private func optionalRequest(_ path: String?) async -> [String: Any]? {
+    /// A route an older Hermes may not have: nil when it says so, or when
+    /// there's no path to read.
+    private func optionalRoute(_ path: String?) async throws -> [String: Any]? {
         guard let path else { return nil }
-        return try? await request(path)
+        do {
+            return try await request(path)
+        } catch where Self.isNotFound(error) {
+            return nil
+        }
+    }
+
+    static func isNotFound(_ error: Error) -> Bool {
+        guard case DashboardTicketBridgeError.http(let status, _) = error else { return false }
+        return status == 404 || status == 405 || status == 410
     }
 
     private func component(_ value: String) -> String {

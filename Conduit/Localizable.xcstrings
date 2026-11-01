@@ -29205,88 +29205,6 @@
         }
       }
     },
-    "Adds to the %@ profile.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wird dem Profil %@ hinzugefügt."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Se añade al perfil %@."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "S’ajoute au profil %@."
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ditambahkan ke profil %@."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Viene aggiunto al profilo %@."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ プロファイルに追加します。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ 프로필에 추가됩니다."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zostanie dodany do profilu %@."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "É adicionado ao perfil %@."
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Добавляется в профиль %@."
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ profiline eklenir."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "添加到 %@ 配置。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "新增到 %@ 設定檔。"
-          }
-        }
-      }
-    },
     "Advanced": {
       "localizations": {
         "de": {
@@ -130729,6 +130647,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "適用於會檢查標頭的反向代理伺服器，例如 Pangolin、Traefik 或 nginx。只會透過 HTTPS 傳送到此伺服器。"
+          }
+        }
+      }
+    },
+    "For the %@ profile. Sign-ins and shared keys reach every profile.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Für das Profil %@. Anmeldungen und gemeinsame Schlüssel gelten für jedes Profil."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Para el perfil %@. Los inicios de sesión y las claves compartidas llegan a todos los perfiles."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pour le profil %@. Les connexions et les clés partagées valent pour tous les profils."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Untuk profil %@. Akun masuk dan kunci bersama berlaku di semua profil."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Per il profilo %@. Gli accessi e le chiavi condivise valgono per tutti i profili."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ プロファイル用です。サインインと共有キーはすべてのプロファイルで使われます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 프로필용입니다. 로그인과 공유 키는 모든 프로필에 적용됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dla profilu %@. Logowania i wspólne klucze działają we wszystkich profilach."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Para o perfil %@. Logins e chaves compartilhadas valem para todos os perfis."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Для профиля %@. Входы и общие ключи действуют во всех профилях."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ profili için. Girişler ve paylaşılan anahtarlar her profile ulaşır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于 %@ 配置。登录和共享密钥适用于所有配置。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用於 %@ 設定檔。登入與共用金鑰適用於所有設定檔。"
           }
         }
       }

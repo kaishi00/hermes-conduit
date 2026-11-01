@@ -39,13 +39,13 @@ struct ModelPageProviders: View {
     @State private var catalog: ProfileModelDefaults?
 
     init(
-        bridge: DashboardJSONRequester, profile: String,
+        bridge: DashboardJSONRequester, profile: String, profileName: String,
         answers: KeptAnswers?, profiles: @escaping () -> [String],
         kept: @escaping () -> ProfileModelDefaults?, load: @escaping () async -> ProfileModelDefaults?,
         makeDefault: @escaping (String, String, String) async -> Bool, onChange: @escaping () -> Void
     ) {
         _service = StateObject(wrappedValue: ProviderSettingsService(
-            requester: bridge, profile: profile, answers: answers, profiles: profiles
+            requester: bridge, profile: profile, profileName: profileName, answers: answers, profiles: profiles
         ))
         self.kept = kept
         self.load = load
@@ -268,7 +268,7 @@ struct AddProviderSheet: View {
     var body: some View {
         NavigationStack {
             SettingsDetailContainer(compact: true) {
-                Text(AppLocalization.string("Adds to the \(service.profile) profile."))
+                Text(AppLocalization.string("For the \(service.profileName) profile. Sign-ins and shared keys reach every profile."))
                     .scaledFont(.footnote).foregroundStyle(.secondary)
                 ConduitSettingsSection(title: AppLocalization.string("Your own server"), symbol: "server.rack", tint: .conduitAura) {
                     NavigationLink {
@@ -321,9 +321,9 @@ struct AddProviderSheet: View {
 struct AddProviderSheetHost: View {
     @StateObject private var service: ProviderSettingsService
 
-    init(bridge: DashboardJSONRequester, profile: String, answers: KeptAnswers?, profiles: @escaping () -> [String]) {
+    init(bridge: DashboardJSONRequester, profile: String, profileName: String, answers: KeptAnswers?, profiles: @escaping () -> [String]) {
         _service = StateObject(wrappedValue: ProviderSettingsService(
-            requester: bridge, profile: profile, answers: answers, profiles: profiles
+            requester: bridge, profile: profile, profileName: profileName, answers: answers, profiles: profiles
         ))
     }
 
@@ -396,6 +396,8 @@ struct ProviderDetailPage: View {
                             Label(AppLocalization.string("Edit endpoint"), systemImage: "pencil")
                                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         }
+                        // The kept address has no path; editing waits for Hermes' full one.
+                        .disabled(!service.answered)
                         .accessibilityIdentifier("settings.providers.endpoint.edit")
                     }
                 }
@@ -495,7 +497,8 @@ struct ProviderDetailPage: View {
     /// Remove takes away an endpoint or a sign-in. A key is changed or
     /// removed in its own section, which says which profiles it reaches.
     private func canRemove(_ entry: ProviderEntry) -> Bool {
-        if runsDefault(entry) { return false }
+        // Until the catalog answers, whether it runs the default is unknown.
+        guard context.catalog != nil, !runsDefault(entry) else { return false }
         if entry.endpoint != nil { return true }
         return entry.account?.signedIn == true && entry.account?.signsOutHere == true
     }
@@ -603,7 +606,6 @@ private struct ProviderKeyEditor: View {
         if showsField {
             SecureField(AppLocalization.string("Paste API key"), text: $draft)
                 .textFieldStyle(.roundedBorder)
-                .textContentType(.password)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .disabled(saving)
@@ -633,7 +635,7 @@ private struct ProviderKeyEditor: View {
                 }
                 Spacer()
                 Button { save() } label: {
-                    if saving { ProgressView() } else { Text(AppLocalization.string("Save key")) }
+                    if saving { ProgressView().accessibilityLabel(AppLocalization.string("Saving…")) } else { Text(AppLocalization.string("Save key")) }
                 }
                 .buttonStyle(.settingsPrimary)
                 .disabled(saving || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -772,10 +774,11 @@ private struct ProviderKeyEditor: View {
         let value = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !saving else { return }
         let scope = chosenScope
+        // Set before the task starts, so a second tap can't start another.
+        saving = true
+        error = nil
+        note = nil
         Task {
-            saving = true
-            error = nil
-            note = nil
             defer { saving = false }
             let check = await service.check(key: value, for: key.writeVar)
             if check.blocksSave {
@@ -802,10 +805,10 @@ private struct ProviderKeyEditor: View {
 
     private func run(_ work: @escaping () async throws -> Void) {
         guard !saving else { return }
+        saving = true
+        error = nil
+        note = nil
         Task {
-            saving = true
-            error = nil
-            note = nil
             defer { saving = false }
             do {
                 try await work()
@@ -890,7 +893,7 @@ private struct ProviderSignInView: View {
             .task(id: signIn.sessionID) { await waitForSignIn(signIn) }
         } else {
             Button { start() } label: {
-                if starting { ProgressView() } else { Text(AppLocalization.string("Sign in")) }
+                if starting { ProgressView().accessibilityLabel(AppLocalization.string("Starting…")) } else { Text(AppLocalization.string("Sign in")) }
             }
             .buttonStyle(.settingsPrimary)
             .disabled(starting)
@@ -902,9 +905,10 @@ private struct ProviderSignInView: View {
     }
 
     private func start() {
+        guard !starting else { return }
+        starting = true
+        error = nil
         Task {
-            starting = true
-            error = nil
             defer { starting = false }
             do {
                 let started = try await service.startSignIn(entry.id)
@@ -918,9 +922,14 @@ private struct ProviderSignInView: View {
 
     private func waitForSignIn(_ started: ProviderSignIn) async {
         while !Task.isCancelled, signIn == started {
+            let asked = ContinuousClock.now
             do {
                 switch try await service.poll(entry.id, signIn: started) {
                 case .pending:
+                    // A Hermes that answers at once instead of waiting is
+                    // asked again only after the provider's interval.
+                    let wait = Duration.seconds(started.pollInterval) - (ContinuousClock.now - asked)
+                    if wait > .zero { try? await Task.sleep(for: wait) }
                     continue
                 case .approved:
                     signIn = nil
@@ -990,8 +999,7 @@ private struct CustomEndpointForm: View {
                             : AppLocalization.string("New API key (leave empty to keep the saved one)"),
                             text: $keyDraft)
                     .textFieldStyle(.roundedBorder)
-                    .textContentType(.password)
-                    .autocorrectionDisabled()
+                        .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                 ConduitMenuPicker(value: draft.apiMode, choices: ProviderText.apiModes(), onSelect: { draft.apiMode = $0 }) {
                     Text(AppLocalization.string("API mode")).foregroundStyle(.secondary)
@@ -999,7 +1007,7 @@ private struct CustomEndpointForm: View {
             }
             ConduitSettingsSection(title: AppLocalization.string("Models"), symbol: "cpu", tint: .conduitAura) {
                 Button { check() } label: {
-                    if checking { ProgressView() } else { Text(AppLocalization.string("Find models")) }
+                    if checking { ProgressView().accessibilityLabel(AppLocalization.string("Checking…")) } else { Text(AppLocalization.string("Find models")) }
                 }
                 .buttonStyle(.settings)
                 .disabled(checking || draft.trimmedBaseURL.isEmpty)
@@ -1049,14 +1057,20 @@ private struct CustomEndpointForm: View {
     /// The typed key goes up with the check and the save, nowhere else.
     private func withKey() -> CustomEndpointDraft {
         var withKey = draft
+        if withKey.endpointID.isEmpty {
+            // A new endpoint's config key comes from its name.
+            let taken = Set(service.entries.compactMap { $0.endpoint?.endpointID })
+            withKey.endpointID = CustomEndpointDraft.endpointID(forName: draft.trimmedName, taken: taken)
+        }
         let typed = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         withKey.key = typed.isEmpty ? nil : typed
         return withKey
     }
 
     private func check() {
+        guard !checking else { return }
+        checking = true
         Task {
-            checking = true
             defer { checking = false }
             let result = await service.check(endpoint: withKey())
             checkFailed = !result.ok
@@ -1073,9 +1087,10 @@ private struct CustomEndpointForm: View {
     }
 
     private func save() {
+        guard !saving else { return }
+        saving = true
+        error = nil
         Task {
-            saving = true
-            error = nil
             defer { saving = false }
             do {
                 try await service.save(endpoint: withKey())

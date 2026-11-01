@@ -684,6 +684,7 @@ struct SettingsView: View {
                         ModelPageProviders(
                             bridge: bridge,
                             profile: snapshot.profile,
+                            profileName: appState.profileDisplayName(snapshot.profile),
                             answers: appState.screenAnswers(profile: snapshot.profile),
                             profiles: { appState.profiles },
                             kept: { appState.keptProfileModelDefaults() },

@@ -366,6 +366,7 @@ struct ModelPickerView: View {
                 AddProviderSheetHost(
                     bridge: bridge,
                     profile: appState.conversationIdentityProfile,
+                    profileName: appState.profileDisplayName(appState.conversationIdentityProfile),
                     answers: appState.screenAnswers(profile: appState.conversationIdentityProfile),
                     profiles: { appState.profiles }
                 )

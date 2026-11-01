@@ -2775,9 +2775,10 @@ Pulse and Kanban model pickers (not needed: each reads Hermes' catalog as it
 opens) · the voice key rows and toolset key fields (not needed: speech and
 toolset credentials, kept apart) · Usage's provider quotas (not needed: they
 read the same accounts) · Profile config saves (a custom endpoint) ·
-Screens that open on their last answer · Watch, CarPlay and the notifier
-(not needed: none shows provider settings) · README's Notifications and
-control list and the Settings captions (done)
+Screens that open on their last answer · Profile names (done: the Add a
+provider sheet names the profile by its Conduit name) · Watch, CarPlay and
+the notifier (not needed: none shows provider settings) · README's
+Notifications and control list and the Settings captions (done)
 
 **Code**
 - Service: `Conduit/Services/ProviderSettings.swift` (ProviderEntry and its KeyAccess states, ProviderCatalog.entries and summary, ProviderSettingsService: share, unshare, override, useShared, removeRows, removeCopies, sign-ins and endpoints)
@@ -2788,18 +2789,21 @@ control list and the Settings captions (done)
 
 **Rulings**
 - Providers live on the Model page, renamed Models & providers; no new Settings row (Eric, 2026-11-01, #1616).
-- Keys only go up: Conduit never calls `/api/env/reveal`, never shows Hermes' masked preview and keeps no key on the phone. The kept summary names providers, variables and pool rows only (Eric, 2026-11-01, #1616).
+- Keys only go up: Conduit never calls `/api/env/reveal`, never shows Hermes' masked preview and keeps no key on the phone (Eric, 2026-11-01, #1616). The kept summary names the providers, the variables a key goes under, the pool rows (id, place, label, source), accounts' sign-in commands and links, and endpoints' names, models and address without its path, which can carry a token; an endpoint is edited only once Hermes has given its full address.
+- A read of the pools, accounts or endpoints that fails fails the reload, which keeps what's shown; only a route an older Hermes lacks (404, 405, 410) is read as nothing there. A reload that started before a later one is dropped. A write that changed the host reads the page again even when its cleanup failed.
 - Model defaults stay per profile; a key is set once for every profile, with an override per profile when needed, done from Conduit with no upstream change and no copying of keys between profiles (Eric, 2026-11-01, #1616). A shared key is a row in the main (`default`) profile's credential pool, which a profile with no rows of its own for the provider falls back to. An override is a row in that profile's pool, with Hermes' copies of the shared rows removed, since Hermes copies them into a profile's pool and the copy comes first (tested on 0.22.2). Replacing or removing a shared key removes its copies in every profile Conduit lists.
 - A key in the main profile's `.env` reaches no other profile; it shows as "Saved for the main profile only" with a note to paste it again to share it.
 - Hermes tries a key before it's saved; only a check that reached the provider and was refused stops the save.
 - Sign-ins live on the main profile, which Hermes already shares; custom endpoints are per profile, in its config, saved in the config write queue with `api_key` left out when nothing was typed (an empty one clears the saved key).
-- A provider that runs the default model can't be removed; Remove names the delegate and fallback models on it.
+- A provider that runs the default model can't be removed, and Remove waits for the catalog to tell; it names the delegate and fallback models on it.
+- A new endpoint's config key is made from its name (`lab-vllm`, then `lab-vllm-2`).
 
 **Open gaps**
 - A profile Conduit doesn't list, or one that can't be read when a shared key is replaced, keeps its copy of the old key until its page's "Use the shared key".
 - Helper (auxiliary) models and the credential pool's rotation order aren't editable yet (stage 2).
+- A custom endpoint's saved key can be replaced but not removed from Conduit.
 
-**Checked:** 2026-11-01, #1616 (entry added: Providers section, Add a provider, shared keys with overrides and cleanup)
+**Checked:** 2026-11-01, #1616 (entry added: Providers section, Add a provider, shared keys with overrides and cleanup; host-tested on Hermes 0.22.2: an override wins after its copies go, across restarts, and replacing and going back to the shared key work)
 
 ## Profile config saves
 
@@ -3923,7 +3927,8 @@ profile, so its name in Bots and its name everywhere else are one name.
 Photo) · Settings > Edit profile (the profile in use) · Edit Bot's name
 · Hermes Desktop's bot editor (the same title) · every place Conduit names a
 profile through `profileDisplayName` (sidebar, profile switcher and chips,
-All profiles, chat placeholders, call screens, voice settings, widgets) ·
+All profiles, chat placeholders, call screens, voice settings, widgets, the
+Add a provider sheet) ·
 Siri and Shortcuts' profile picker (`conduit.knownProfileNames.v1`) ·
 spoken "for <name>, …" jobs on the phone and the Watch (`voiceJobProfileTarget`, `watchJobProfileNames`) ·
 the Bots list and Bot Chats, rooms, the widget and Artifacts (`displayLabel`; the main bot's carries its Conduit name, `conduitName`; a rename replaces the label an open Bot Chat captured) · pushes and calls from Hermes,
@@ -3959,7 +3964,7 @@ profiles line)
 - A push carries no Bot Chat marker, so a regular main-profile chat titled exactly the bot's name, "Hermes" or "Default" is renamed in its push as the Bot Chat is (#1457). A marker from the notifier would let the extension rename only Bot Chats.
 - A plugin older than #1257 sends no `profile_name`, so with a phone name its titled main bot's Bot Chat push keeps the bot's title over the phone name as subtitle (#1457).
 
-**Checked:** 2026-10-31, #1568 (a spoken job and a Watch call's names reach a bot from the kept roster until Hermes answers); 2026-10-28, #1457 (the main bot goes by its Conduit name in Bot Mode and its pushes); 2026-10-28, #1448 (an unnamed profile goes by its id capitalized in Bots, rooms, the widget, Artifacts and pushes); 2026-10-28, #1413.
+**Checked:** 2026-11-01, #1616 (the Add a provider sheet names the profile through `profileDisplayName`); 2026-10-31, #1568 (a spoken job and a Watch call's names reach a bot from the kept roster until Hermes answers); 2026-10-28, #1457 (the main bot goes by its Conduit name in Bot Mode and its pushes); 2026-10-28, #1448 (an unnamed profile goes by its id capitalized in Bots, rooms, the widget, Artifacts and pushes); 2026-10-28, #1413.
 
 ## Settings rows a toggle reveals
 
