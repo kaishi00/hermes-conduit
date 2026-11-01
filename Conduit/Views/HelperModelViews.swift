@@ -27,6 +27,9 @@ struct HelperModelSlot: Identifiable, Equatable {
     /// profile only, and Settings > Pulse sets it there.
     static let setElsewhere: Set<String> = ["pulse_memory"]
 
+    /// Conduit's predictions, a slot the Conduit plugin adds (0.124.0).
+    static let predictions = "conduit_predict"
+
     /// Posted once Hermes took a slot's new model: a list read asked before
     /// it may answer with the old one, so the lists read again.
     static let saved = Notification.Name("conduit.helperModels.saved")
@@ -56,22 +59,19 @@ struct HelperModelSlot: Identifiable, Equatable {
         }
     }
 
-    /// Hermes' default model on a provider pinned without a model: not the
-    /// chat model, so the row names the provider.
-    var providerOnly: Bool {
-        setting.followsChats && !setting.provider.isEmpty && setting.provider != "auto"
-    }
-
     /// Runs on the chat model or the slot it follows.
-    var followsChats: Bool { setting.followsChats && !providerOnly }
+    var followsChats: Bool { setting.followsChats }
 
-    /// The model it runs on, or what it follows.
+    /// The model it runs on, or what it follows; a slot on an endpoint of
+    /// its own names its host.
     var value: String {
-        if providerOnly { return setting.provider }
         if setting.followsChats {
             return followsTitle.map { AppLocalization.string("Same as \($0)") } ?? AppLocalization.string("Same as chats")
         }
-        return setting.model
+        let model = setting.providerOnly
+            ? VoiceJobModelSettingsSection.providerDefaultTitle(setting.provider)
+            : setting.model
+        return setting.endpointHost.map { model + " · " + $0 } ?? model
     }
 
     /// "Same as chats" in the model picker, or the slot it follows.
@@ -128,7 +128,7 @@ struct HelperModelSlot: Identifiable, Equatable {
         "curator": Words(title: { AppLocalization.string("Skill curator") },
                          caption: { AppLocalization.string("Reviews how skills are used and suggests improvements.") },
                          symbol: "sparkles"),
-        "conduit_predict": Words(title: { AppLocalization.string("Conduit predictions") },
+        predictions: Words(title: { AppLocalization.string("Conduit predictions") },
                                  caption: { AppLocalization.string("Suggested replies and draft guesses in Conduit, when Predictive uses the fast model.") },
                                  symbol: "wand.and.stars"),
     ]

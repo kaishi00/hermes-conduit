@@ -57,6 +57,9 @@ struct PredictiveSettingsPage: View {
     @AppStorage(Predictive.followUpDelayKey) private var followUpDelay = Predictive.defaultFollowUpDelay
     @AppStorage(Predictive.modelKey) private var model = Predictive.Model.fast.rawValue
     @State private var status: Predictive.HostStatus?
+    /// Helper models lists Conduit's predictions: only then do the captions
+    /// point there. An older plugin doesn't add the slot.
+    @State private var predictionsSlotListed = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -91,7 +94,14 @@ struct PredictiveSettingsPage: View {
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: followUp)
         .navigationTitle("Predictive")
         // Again once the plugin's capabilities arrive.
-        .task(id: appState.predictiveIsServed) { status = await appState.loadPredictiveHostStatus() }
+        .task(id: appState.predictiveIsServed) {
+            predictionsSlotListed = appState.keptHelperModel(task: HelperModelSlot.predictions) != nil
+            status = await appState.loadPredictiveHostStatus()
+            // A read that fails keeps what the kept slots said.
+            do {
+                predictionsSlotListed = try await appState.loadHelperModel(task: HelperModelSlot.predictions) != nil
+            } catch {}
+        }
     }
 
     private var repliesSection: some View {
@@ -165,15 +175,21 @@ struct PredictiveSettingsPage: View {
             }
             // Said once the host has answered; until then, nothing.
             if let status {
-                if let fast = status.fastModel {
-                    Text("Fast model on your host: \(fast). Change it in Models & providers under Helper models.")
-                        .scaledFont(.footnote)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Your host has no fast model set, so the chat's own model answers. Pick one in Models & providers under Helper models, as Conduit predictions.")
-                        .scaledFont(.footnote)
-                        .foregroundStyle(.secondary)
+                Group {
+                    if let fast = status.fastModel {
+                        if predictionsSlotListed {
+                            Text("Fast model on your host: \(fast). Change it in Models & providers under Helper models.")
+                        } else {
+                            Text("Fast model on your host: \(fast). Update the Conduit plugin to change it here.")
+                        }
+                    } else if predictionsSlotListed {
+                        Text("Your host has no fast model set, so the chat's own model answers. Pick one in Models & providers under Helper models, as Conduit predictions.")
+                    } else {
+                        Text("Your host has no fast model set, so the chat's own model answers. Update the Conduit plugin to pick one here.")
+                    }
                 }
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
                 SettingsMetricRow(label: AppLocalization.string("Predictions today"), value: String(status.today))
             }
         }

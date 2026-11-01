@@ -413077,6 +413077,252 @@
           }
         }
       }
+    },
+    "Fast model on your host: %@. Update the Conduit plugin to change it here.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schnelles Modell auf deinem Host: %@. Aktualisiere das Conduit-Plugin, um es hier zu ändern."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo rápido en tu host: %@. Actualiza el plugin de Conduit para cambiarlo aquí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modèle rapide sur ton hôte : %@. Mets à jour le plugin Conduit pour le changer ici."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model cepat di host kamu: %@. Perbarui plugin Conduit untuk mengubahnya di sini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modello veloce sul tuo host: %@. Aggiorna il plugin Conduit per cambiarlo qui."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ホストの高速モデル: %@。ここで変更するには Conduit プラグインを更新してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "호스트의 빠른 모델: %@. 여기서 바꾸려면 Conduit 플러그인을 업데이트하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Szybki model na Twoim hoście: %@. Zaktualizuj wtyczkę Conduit, aby zmienić go tutaj."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo rápido no seu host: %@. Atualize o plugin do Conduit para alterá-lo aqui."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Быстрая модель на вашем хосте: %@. Обновите плагин Conduit, чтобы изменить её здесь."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucundaki hızlı model: %@. Burada değiştirmek için Conduit eklentisini güncelle."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机上的快速模型：%@。更新 Conduit 插件后可在这里更改。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主機上的快速模型：%@。更新 Conduit 外掛後可在這裡更改。"
+          }
+        }
+      }
+    },
+    "Your host has no fast model set, so the chat's own model answers. Update the Conduit plugin to pick one here.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf deinem Host ist kein schnelles Modell eingestellt, daher antwortet das Modell des Chats. Aktualisiere das Conduit-Plugin, um hier eines zu wählen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu host no tiene un modelo rápido configurado, así que responde el modelo del chat. Actualiza el plugin de Conduit para elegir uno aquí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ton hôte n'a pas de modèle rapide, c'est donc le modèle du chat qui répond. Mets à jour le plugin Conduit pour en choisir un ici."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host kamu belum punya model cepat, jadi model chat yang menjawab. Perbarui plugin Conduit untuk memilihnya di sini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo host non ha un modello veloce impostato, quindi risponde il modello della chat. Aggiorna il plugin Conduit per sceglierne uno qui."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ホストに高速モデルが設定されていないため、チャットのモデルが応答します。ここで選ぶには Conduit プラグインを更新してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "호스트에 빠른 모델이 설정되어 있지 않아 채팅 모델이 답합니다. 여기서 고르려면 Conduit 플러그인을 업데이트하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Twój host nie ma ustawionego szybkiego modelu, więc odpowiada model czatu. Zaktualizuj wtyczkę Conduit, aby wybrać go tutaj."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu host não tem um modelo rápido definido, então o modelo do chat responde. Atualize o plugin do Conduit para escolher um aqui."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "На вашем хосте не задана быстрая модель, поэтому отвечает модель чата. Обновите плагин Conduit, чтобы выбрать её здесь."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucunda hızlı model ayarlı değil, bu yüzden sohbetin modeli yanıt veriyor. Burada seçmek için Conduit eklentisini güncelle."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的主机没有设置快速模型，所以由聊天自己的模型回答。更新 Conduit 插件后可在这里选择。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的主機沒有設定快速模型，所以由聊天自己的模型回答。更新 Conduit 外掛後可在這裡選擇。"
+          }
+        }
+      }
+    },
+    "Runs on your endpoint at %@. A model from another provider moves it off.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Läuft auf deinem Endpunkt unter %@. Ein Modell eines anderen Anbieters nimmt es davon herunter."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se ejecuta en tu endpoint en %@. Un modelo de otro proveedor lo saca de ahí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fonctionne sur ton point de terminaison à %@. Un modèle d'un autre fournisseur l'en retire."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Berjalan di endpoint kamu di %@. Model dari penyedia lain memindahkannya dari sana."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funziona sul tuo endpoint a %@. Un modello di un altro provider lo sposta altrove."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "あなたのエンドポイント（%@）で動作します。別のプロバイダのモデルを選ぶとそこから外れます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 엔드포인트(%@)에서 실행됩니다. 다른 제공자의 모델을 고르면 그곳에서 벗어납니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Działa na Twoim punkcie końcowym pod %@. Model innego dostawcy go stamtąd przenosi."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Roda no seu endpoint em %@. Um modelo de outro provedor o tira de lá."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Работает на вашем эндпоинте %@. Модель другого провайдера переносит его оттуда."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kendi uç noktanda çalışır: %@. Başka bir sağlayıcının modeli onu oradan çıkarır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行在你的端点 %@ 上。选择其他提供商的模型会让它离开该端点。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "執行於你的端點 %@。選擇其他供應商的模型會讓它離開該端點。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

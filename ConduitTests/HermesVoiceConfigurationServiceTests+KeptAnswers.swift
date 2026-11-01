@@ -302,6 +302,50 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(slots[5].followTitle, AppLocalization.string("Same as chats"))
     }
 
+    /// A provider pinned without a model is a choice of its own, named
+    /// as its default model; "Same as chats" unpins it. A slot on an
+    /// endpoint of its own names its host and keeps it while its provider
+    /// stays.
+    func testAPinnedProviderAndAnEndpointAreShownAndKept() throws {
+        let pinned = try XCTUnwrap(VoiceReplyModelSetting(row: ["task": "vision", "provider": "openrouter", "model": ""]))
+        XCTAssertTrue(pinned.providerOnly)
+        XCTAssertFalse(pinned.followsChats)
+        var picks = VoiceReplyModelPicks()
+        picks.hermesAnswered(pinned, to: picks.readAsked())
+        XCTAssertEqual(picks.selection, VoiceJobModelSettingsSection.tag(provider: "openrouter", model: ""))
+        XCTAssertNil(picks.writeAsked(), "Showing it writes nothing")
+        let choices = VoiceJobModelSettingsSection.modelChoices(
+            defaultTitle: "chats", defaultTag: VoiceReplyModelPicks.sameAsChats, selection: picks.selection, providers: []
+        )
+        XCTAssertEqual(choices.last?.title, VoiceJobModelSettingsSection.providerDefaultTitle("openrouter"))
+        picks.selection = VoiceReplyModelPicks.sameAsChats
+        let unpinned = try XCTUnwrap(picks.writeAsked())
+        XCTAssertEqual(unpinned.provider, "auto")
+        XCTAssertTrue(unpinned.followsChats)
+
+        let local = try XCTUnwrap(VoiceReplyModelSetting(row: [
+            "task": "title_generation", "provider": "custom", "model": "qwen3",
+            "base_url": "http://user:pw@192.168.1.20:1234/v1",
+        ]))
+        XCTAssertEqual(local.endpointHost, "192.168.1.20:1234", "Its host, never its path or credentials")
+        let slot = try XCTUnwrap(HelperModelSlot.slots(in: ["tasks": [[
+            "task": "title_generation", "provider": "custom", "model": "qwen3", "base_url": "http://192.168.1.20:1234/v1",
+        ]]]).first)
+        XCTAssertEqual(slot.value, "qwen3 · 192.168.1.20:1234")
+        var endpointPicks = VoiceReplyModelPicks()
+        endpointPicks.hermesAnswered(local, to: endpointPicks.readAsked())
+        XCTAssertNil(endpointPicks.writeAsked(), "Its endpoint goes with the pick Hermes holds")
+        XCTAssertNotNil(endpointPicks.endpointCaption)
+        endpointPicks.reasoning = "low"
+        let sameProvider = try XCTUnwrap(endpointPicks.writeAsked())
+        XCTAssertEqual(sameProvider.assignmentBody(profile: "default")["base_url"] as? String, local.baseURL)
+        endpointPicks.writeEnded(sameProvider, result: .saved)
+        endpointPicks.selection = VoiceJobModelSettingsSection.tag(provider: "openrouter", model: "fast")
+        let moved = try XCTUnwrap(endpointPicks.writeAsked())
+        XCTAssertNil(moved.baseURL, "Another provider moves it off the endpoint")
+        XCTAssertNil(moved.assignmentBody(profile: "default")["base_url"])
+    }
+
     /// What a save wrote is what the page opens on next, as the other
     /// settings pages' saves are.
     func testAConfigSaveIsWhatThePageOpensOnNext() async {

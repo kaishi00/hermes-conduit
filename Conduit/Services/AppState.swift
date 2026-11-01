@@ -2841,10 +2841,10 @@ final class AppState: ObservableObject {
                     result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
                 )
             }
-            // The answer to a read asked before the save isn't kept after
-            // it, and the kept slots follow the save, so the section opens
-            // on it next time (#1533).
-            noteKeptAnswerWrite(for: KeptRoute.modelAuxiliary, profile: profile, owner: owner)
+            // The kept slots take the save at once, so the pages open on
+            // it even if the read after it never lands, and an answer to a
+            // read asked before it isn't kept over it (#1533).
+            keepHelperModelWrite(setting, profile: profile, owner: owner)
             // An open list's read asked before the save is dropped for one
             // asked after it.
             NotificationCenter.default.post(name: HelperModelSlot.saved, object: nil)
@@ -2856,6 +2856,25 @@ final class AppState: ObservableObject {
         } catch {
             return .refused(failure(UserFacingError.message(for: error)))
         }
+    }
+
+    /// The kept `/api/model/auxiliary` answer with `setting`'s slot as
+    /// Hermes took it; with nothing kept, the write is still counted.
+    private func keepHelperModelWrite(_ setting: VoiceReplyModelSetting, profile: String, owner: DashboardRuntimeOwner) {
+        guard var answer = keptAnswer(KeptRoute.modelAuxiliary, profile: profile, on: owner),
+              var tasks = answer["tasks"] as? [[String: Any]],
+              let index = tasks.firstIndex(where: { $0["task"] as? String == setting.task }) else {
+            noteKeptAnswerWrite(for: KeptRoute.modelAuxiliary, profile: profile, owner: owner)
+            return
+        }
+        var row = tasks[index]
+        row["provider"] = setting.provider.isEmpty ? "auto" : setting.provider
+        row["model"] = setting.model
+        row["reasoning_effort"] = setting.reasoningEffort ?? ""
+        row["base_url"] = setting.baseURL ?? ""
+        tasks[index] = row
+        answer["tasks"] = tasks
+        keepWrittenAnswer(answer, for: KeptRoute.modelAuxiliary, profile: profile, owner: owner, removals: offlineChatCache.removals)
     }
 
     /// Where Gemini Live's quick lookups search on this profile.

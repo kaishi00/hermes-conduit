@@ -1129,6 +1129,74 @@ struct KeyOrderAccess {
     var save: (String, ProfileSettingValue) async -> Bool
 }
 
+/// The key order section's state, apart from its view so the order of
+/// Hermes' answers and the saves can be tested.
+struct KeyOrderPicks: Equatable {
+    /// What's shown: Hermes' order, or the kept one until it answers. Nil
+    /// shows none, Hermes' default included.
+    private(set) var order: KeyOrder?
+    private(set) var answered = false
+    private(set) var loadFailed = false
+    private(set) var saving = false
+    private(set) var error: String?
+    /// Counts finished saves: a read asked before one ended is dropped.
+    private var writes = 0
+    private var beforeSave: KeyOrder?
+
+    /// A read, as it was asked.
+    struct Read: Equatable {
+        fileprivate let writes: Int
+    }
+
+    /// The kept order, until Hermes answers.
+    mutating func showKept(_ stored: String?) {
+        guard order == nil else { return }
+        order = KeyOrder(stored: stored)
+    }
+
+    mutating func readAsked() -> Read {
+        loadFailed = false
+        return Read(writes: writes)
+    }
+
+    /// Hermes' answer to `read`, unless a save was out or ended since it
+    /// was asked: the pick stays then.
+    mutating func hermesAnswered(_ stored: String?, to read: Read) {
+        guard !saving, read.writes == writes else { return }
+        order = KeyOrder(stored: stored)
+        answered = true
+    }
+
+    mutating func readFailed() {
+        loadFailed = true
+    }
+
+    /// A save writes the setting, so it waits for Hermes' answer.
+    var canPick: Bool {
+        KeptAnswerGate.canSave(answered: answered, saving: saving, ready: order != nil)
+    }
+
+    /// The order to save, shown while it's written; nil when there's
+    /// nothing to save or the picker waits.
+    mutating func choose(_ next: KeyOrder) -> KeyOrder? {
+        guard canPick, next != order else { return nil }
+        beforeSave = order
+        order = next
+        saving = true
+        error = nil
+        return next
+    }
+
+    /// A save that fails puts back the order shown before it.
+    mutating func saveEnded(saved: Bool) {
+        saving = false
+        writes += 1
+        guard !saved else { return }
+        order = beforeSave
+        error = AppLocalization.string("Could not save the key order.")
+    }
+}
+
 /// The order a profile's keys for a provider are used in, once it has
 /// more than one.
 private struct KeyOrderSection: View {
@@ -1136,13 +1204,7 @@ private struct KeyOrderSection: View {
     let entry: ProviderEntry
     let keys: Int
     let access: KeyOrderAccess
-    @State private var order: KeyOrder?
-    @State private var answered = false
-    @State private var loadFailed = false
-    @State private var saving = false
-    /// Counts finished saves: a read asked before one ended is dropped.
-    @State private var writes = 0
-    @State private var error: String?
+    @State private var picks = KeyOrderPicks()
 
     private var settingKey: String { KeyOrder.settingKey(for: entry.id) ?? "" }
 
@@ -1150,7 +1212,7 @@ private struct KeyOrderSection: View {
         ConduitSettingsSection(title: AppLocalization.string("Key order"), symbol: "arrow.triangle.2.circlepath", tint: .conduitAura) {
             Text(AppLocalization.string("This profile has \(String(keys)) keys for \(entry.name). Hermes moves to another when one hits its limit."))
                 .scaledFont(.footnote).foregroundStyle(.secondary)
-            if let order {
+            if let order = picks.order {
                 ConduitMenuPicker(
                     value: order,
                     choices: KeyOrder.allCases.map { (id: $0, title: $0.title) },
@@ -1158,14 +1220,13 @@ private struct KeyOrderSection: View {
                 ) {
                     Text(AppLocalization.string("Use keys")).foregroundStyle(.secondary)
                 }
-                // A save writes the setting; it waits for Hermes' answer.
-                .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving, ready: true))
-            } else if !loadFailed {
+                .disabled(!picks.canPick)
+            } else if !picks.loadFailed {
                 // Nothing kept and Hermes not answered yet: no order is
                 // shown as the profile's, Hermes' default included.
                 ProgressView().frame(maxWidth: .infinity).accessibilityLabel(AppLocalization.string("Loading…"))
             }
-            if loadFailed && !answered {
+            if picks.loadFailed && !picks.answered {
                 // The picker waits for Hermes: a kept or default order may not be its own.
                 VStack(alignment: .leading, spacing: 6) {
                     Text(AppLocalization.string("Could not load the key order."))
@@ -1175,44 +1236,31 @@ private struct KeyOrderSection: View {
                         .tint(.conduitAccent)
                 }
             }
-            if let error {
+            if let error = picks.error {
                 Text(verbatim: error).scaledFont(.caption).foregroundStyle(.red)
             }
         }
         .onAppear {
-            guard order == nil, let kept = access.kept([settingKey]) else { return }
-            order = KeyOrder(stored: kept[settingKey]?.textValue)
+            guard let kept = access.kept([settingKey]) else { return }
+            picks.showKept(kept[settingKey]?.textValue)
         }
         .task { await read() }
     }
 
     private func read() async {
-        loadFailed = false
-        let asked = writes
+        let asked = picks.readAsked()
         guard let loaded = await access.load([settingKey]) else {
-            loadFailed = true
+            picks.readFailed()
             return
         }
-        guard !saving, asked == writes else { return }
-        order = KeyOrder(stored: loaded[settingKey]?.textValue)
-        answered = true
+        picks.hermesAnswered(loaded[settingKey]?.textValue, to: asked)
     }
 
     private func choose(_ next: KeyOrder) {
-        guard next != order, !saving else { return }
-        let previous = order
-        order = next
-        saving = true
-        error = nil
+        guard let next = picks.choose(next) else { return }
         Task {
-            defer {
-                saving = false
-                writes += 1
-            }
-            if !(await access.save(settingKey, .text(next.rawValue))) {
-                order = previous
-                error = AppLocalization.string("Could not save the key order.")
-            }
+            let saved = await access.save(settingKey, .text(next.rawValue))
+            picks.saveEnded(saved: saved)
         }
     }
 }
