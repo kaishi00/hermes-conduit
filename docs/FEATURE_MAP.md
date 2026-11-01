@@ -2028,12 +2028,12 @@ screens (not built)
 - A clean restart is recovered like a crash: Hermes' own stop of every running turn on its way out isn't taken for the user's, and a step it cut off counts as never finished, so a change it may have made still waits for the user (2026-11-01, notifier #498, from the .58 restart test).
 - A workstream doesn't write the bot's memory: what's worth keeping goes in its report, and the coordinator decides what to remember, with `work_note` for what every workstream should know (2026-11-01, Eric, notifier #498).
 - The user's own actions from the Work panel go straight to the workstream, never through the Bot Chat's model: a reply is sent as the user's own words, as if typed in its chat; Continue and Check first say the user tapped them. Continue after a restart cut off a step that can change things tells the workstream the step may have run, so it checks before running it again; stopping interrupted work runs nothing (2026-11-01, notifier #499, design C.6 and C.7).
-- A start a restart cut off before its brief was sent offers only a reply, which goes in with the brief it never had; one cut off just as Hermes took its brief offers Check first, and Continue says its first steps may have run. A reply can't go in while a start is still under way, so it never lands before the brief (2026-11-01, notifier #499; Eric's rule for recovery, that a step whose effect isn't known is checked, never re-run, design C.7).
+- A start a restart cut off before its brief was sent offers only a reply, which goes in with the brief it never had; one cut off just as Hermes took its brief offers Check first, and Continue says its first steps may have run. A reply can't go in while a start is still under way, so it never lands before the brief; one still starting after two minutes is stuck and offers Stop, and a start that never got a chat is closed by recovery so work_start starts it fresh (2026-11-01, notifier #499 and #501; Eric's rule for recovery, that a step whose effect isn't known is checked, never re-run, design C.7).
 - The loop guard: an ask never goes to a bot already waiting in its chain (a bot with an open ask from another can't ask that one back until it answers), a chain goes at most two bots deep, and one bot asks another at most 10 times an hour (2026-11-01, notifier #493).
 
 **Open gaps**
 - An ask from another bot reaches the Bot Chat as a hidden turn, so the asked bot's transcript shows no "Furina asks" card; the ask is listed in its Work panel instead.
-- Search and All profiles leave out only the workstreams of bots whose work the app has read (opened, or kept from last time); Hermes keeps them hidden from the Chats list itself.
+- Search and All profiles leave out only the workstreams of bots whose work the app has read (opened, or kept from last time; one read later leaves the lists already shown at once); Hermes keeps them hidden from the Chats list itself.
 - The Work panel reads again every 5 seconds while work runs and every 20 otherwise, for as long as a bot's Bot Chat (strip shown or not, so new work shows), its panel or a workstream's bar is open, once for a bot with workstreams off, and up to four times 3 seconds apart for a bot's chat its list doesn't name; there's no push for a change yet.
 - The app's handling of an approval in a hidden workstream session is unchecked: the request goes to the user from that session, and nothing in the app opens it from the Bot Chat yet.
 - The Notifications entry gains a line for workstream turns' quiet pushes once this reaches main.
@@ -2042,7 +2042,7 @@ screens (not built)
 - The plugin's version is bumped when the branch merges to main.
 - Two journal edges from M0 that recovery leans on (notifier #495's review): a step that starts while a compacted workstream's lineage is still unsettled isn't journaled or noted as missed, and a step's end with an unknown call id closes the oldest open step of that tool by name.
 
-**Checked:** 2026-11-01, #1619 (notifier #499; review fixes: the Artifacts column, unmatched workstreams, per-bot refusals and taps, one read, accessibility).
+**Checked:** 2026-11-01, #PRNUM (notifier #501; a stuck start's Stop, workstreams read later leave lists already shown, a refused action frees its buttons at once, the bar names the bot by its Conduit name).
 
 ## Composer Return key
 

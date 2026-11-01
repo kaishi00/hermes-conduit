@@ -80,6 +80,21 @@ extension BotModeTests {
         XCTAssertTrue(store.workstreamSessionIDs.isEmpty)
     }
 
+    /// Lists already shown hear when a workstream becomes known, and only then.
+    @MainActor
+    func testWorkStoreSaysWhenItsWorkstreamsChange() throws {
+        let store = BotWorkStore()
+        var changes = 0
+        store.onWorkstreamsChanged = { changes += 1 }
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
+        store.set(snapshot)
+        XCTAssertEqual(changes, 1)
+        store.setRefusal("No.", profile: "furina")
+        XCTAssertEqual(changes, 1)
+        store.clear()
+        XCTAssertEqual(changes, 2)
+    }
+
     /// Chats, search and All profiles leave a workstream's row out by any
     /// of its ids; a refusal and a tap in flight belong to one bot.
     @MainActor

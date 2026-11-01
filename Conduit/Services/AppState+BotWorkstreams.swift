@@ -6,8 +6,16 @@ import Foundation
 @MainActor
 final class BotWorkStore: ObservableObject {
     @Published private(set) var snapshots: [String: BotWorkSnapshot] = [:] {
-        didSet { workstreamSessionIDs = snapshots.values.reduce(into: Set<String>()) { $0.formUnion($1.sessionIDs) } }
+        didSet {
+            let ids = snapshots.values.reduce(into: Set<String>()) { $0.formUnion($1.sessionIDs) }
+            guard ids != workstreamSessionIDs else { return }
+            workstreamSessionIDs = ids
+            onWorkstreamsChanged?()
+        }
     }
+    /// Called when the set of workstream chats changes, so lists already
+    /// shown (All profiles, search) leave out one that just became known.
+    var onWorkstreamsChanged: (@MainActor () -> Void)?
     /// What the last action on each bot's work said when it did nothing
     /// ("W3 can't continue while it's running"), for its panel to show.
     @Published private(set) var refusals: [String: String] = [:]
@@ -161,7 +169,8 @@ extension AppState {
             botWork.setRefusal(AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."), profile: profile)
         }
         Haptics.warning()
-        await refreshBotWork(profile: profile)
+        // The refusal shows now; the row is read again behind it.
+        Task { await refreshBotWork(profile: profile) }
         return false
     }
 
@@ -191,5 +200,13 @@ extension AppState {
 
     func isWorkstreamSession(_ id: String) -> Bool {
         botWork.workstreamSessionIDs.contains(id)
+    }
+
+    /// A workstream that just became known leaves the lists already shown:
+    /// All profiles drops its row, and search redraws without it.
+    func workstreamsChanged() {
+        let before = allProfilesCatalog.sessions.count
+        allProfilesCatalog.sessions.removeAll(where: isWorkstreamRow)
+        if allProfilesCatalog.sessions.count == before { workstreamListVersion &+= 1 }
     }
 }
