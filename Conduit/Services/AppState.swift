@@ -4377,9 +4377,11 @@ final class AppState: ObservableObject {
             guard let self else { return false }
             return (try? await self.respondToApprovalByVoice(approval, choice: choice, profile: profile)) ?? false
         },
-        respondToClarify: { [weak self] clarify, questionID, answer in
+        respondToClarify: { [weak self] clarify, questionID, answer, sessionID, profile in
             guard let self else { return nil }
-            return try? await self.respondToClarifyByVoice(clarify, questionID: questionID, answer: answer)
+            return try? await self.respondToClarifyByVoice(
+                clarify, questionID: questionID, answer: answer, sessionID: sessionID, profile: profile
+            )
         }
     ))
 
@@ -4725,9 +4727,11 @@ final class AppState: ObservableObject {
                 guard let self else { throw HermesError.notConnected }
                 return try await self.respondToApprovalByVoice(approval, choice: choice, profile: profile)
             },
-            respondToClarify: { [weak self] clarify, questionID, answer in
+            respondToClarify: { [weak self] clarify, questionID, answer, sessionID, profile in
                 guard let self else { throw HermesError.notConnected }
-                return try await self.respondToClarifyByVoice(clarify, questionID: questionID, answer: answer)
+                return try await self.respondToClarifyByVoice(
+                    clarify, questionID: questionID, answer: answer, sessionID: sessionID, profile: profile
+                )
             }
         ))
         supervisor.callbacks = self.makeHermesCallbackBackend()
