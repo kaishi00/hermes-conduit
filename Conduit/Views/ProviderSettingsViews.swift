@@ -334,6 +334,15 @@ struct AddProviderSheet: View {
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("settings.providers.add.\(entry.id)")
                     }
+                    if service.hasList, service.loadFailed {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(AppLocalization.string("Could not load providers."))
+                                .scaledFont(.footnote).foregroundStyle(.secondary)
+                            Button(AppLocalization.string("Try Again")) { Task { await service.reload() } }
+                                .scaledFont(.subheadline.weight(.semibold))
+                                .tint(.conduitAccent)
+                        }
+                    }
                 }
             }
             .navigationTitle(AppLocalization.string("Add a provider"))
