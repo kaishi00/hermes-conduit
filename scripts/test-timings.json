@@ -85,7 +85,7 @@
     "ScreenQuestionTests": 0.5,
     "SecurityBoundaryTests": 0.012,
     "SelectableTextViewPresentationCacheTests": 0.078,
-    "SelectionObserverUITests": 102.7,
+    "SelectionObserverUITests": 115.0,
     "ServerSignOutTests": 3.0,
     "SessionCatalogCacheTests": 0.009,
     "SessionCatalogLoadTests": 3.0,

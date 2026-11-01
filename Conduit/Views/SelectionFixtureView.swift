@@ -9,6 +9,14 @@ import UIKit
 /// actually produced. Never compiled into release builds.
 struct SelectionFixtureView: View {
     static let launchArgument = "-conduitSelectionFixture"
+    /// With this too, the table draws as the chat draws it: plain cells,
+    /// text drawn until touched, inside a row whose tap puts the keyboard
+    /// away (TranscriptCellRoot); a link the reply opens shows in
+    /// `fixture.openedURL` instead of leaving the app (issue 1585).
+    static let chatTableArgument = "-conduitChatTableFixture"
+
+    private let drawsAsChat = ProcessInfo.processInfo.arguments.contains(Self.chatTableArgument)
+    @State private var openedURL = ""
 
     static let source = """
     Before the table paragraph one.
@@ -25,6 +33,15 @@ struct SelectionFixtureView: View {
     After the blocks paragraph two.
     """
 
+    static let chatTableSource = """
+    Before the table paragraph one.
+
+    | Column A | Column B |
+    | --- | --- |
+    | alpha cell | beta cell |
+    | [skills link](https://example.com/skills) | delta cell |
+    """
+
     @State private var pasteboardText = ""
     @State private var restoredAnimations = false
 
@@ -35,8 +52,21 @@ struct SelectionFixtureView: View {
                     Color.clear
                         .frame(height: 2)
                         .accessibilityIdentifier("fixture.top")
-                    MarkdownText(source: Self.source)
-                        .padding(16)
+                    if drawsAsChat {
+                        MarkdownText(source: Self.chatTableSource)
+                            .padding(16)
+                            .environment(\.markdownTablePlainCells, true)
+                            .environment(\.selectableTextDrawsUntilTouched, true)
+                            .contentShape(Rectangle())
+                            .onTapGesture {}
+                            .environment(\.openURL, OpenURLAction { url in
+                                openedURL = url.absoluteString
+                                return .handled
+                            })
+                    } else {
+                        MarkdownText(source: Self.source)
+                            .padding(16)
+                    }
                     Color.clear
                         .frame(height: 2)
                         .accessibilityIdentifier("fixture.bottom")
@@ -54,6 +84,14 @@ struct SelectionFixtureView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
             Divider()
+            if drawsAsChat {
+                Text(verbatim: openedURL.isEmpty ? "opened:none" : "opened:\(openedURL)")
+                    .accessibilityIdentifier("fixture.openedURL")
+                    .scaledFont(.footnote.monospaced())
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+            }
             Text(verbatim: pasteboardText.isEmpty ? "pasteboard:empty" : "pasteboard:\(pasteboardText)")
                 .accessibilityIdentifier("fixture.pasteboard")
                 .scaledFont(.footnote.monospaced())
