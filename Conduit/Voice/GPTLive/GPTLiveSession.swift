@@ -191,6 +191,7 @@ final class GPTLiveSession {
     }
 
     private func connect(_ peer: GPTLivePeer) async {
+        var requestFailed = false
         do {
             guard isCurrent(peer), !Task.isCancelled else { return }
             guard initialCaptureAuthorization?.mayStartCapture != false else {
@@ -210,6 +211,7 @@ final class GPTLiveSession {
             do {
                 answer = try await client.createSession(offer: offer, history: history, voice: voice, briefing: briefing, greeting: greeting, callOpening: callOpening)
             } catch {
+                requestFailed = true
                 if isCurrent(peer) { onTrace?("Session request failed") }
                 throw error
             }
@@ -224,6 +226,9 @@ final class GPTLiveSession {
             guard isCurrent(peer) else { return }
         } catch {
             guard isCurrent(peer) else { return }
+            // The request's own failure is already traced; this is the
+            // WebRTC side (the offer or the answer), named by kind only.
+            if !requestFailed { onTrace?("WebRTC setup failed") }
             fail(UserFacingError.message(for: error))
             return
         }

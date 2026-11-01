@@ -251,7 +251,7 @@ extension HermesVoiceGatewayTimeoutTests {
             return try reply.get()
         })
         let answer = try await client.createSession(offer: "v=0 offer", history: [GPTLiveProtocol.historyItem(role: "user", text: "hi")])
-        XCTAssertEqual(answer, GPTLiveSessionAnswer(sessionID: "rtc_abc", sdp: "v=0 answer"))
+        XCTAssertEqual(answer, GPTLiveSessionAnswer(sessionID: "rtc_abc", sdp: "v=0 answer", source: "plugin"))
         XCTAssertEqual(requests.first?.path, DashboardPath.withProfile(GPTLiveClient.sessionPath, profile: "coder"))
         XCTAssertEqual(requests.first?.method, "POST")
         XCTAssertEqual(requests.first?.body?["sdp"] as? String, "v=0 offer")
@@ -531,6 +531,35 @@ extension HermesVoiceGatewayTimeoutTests {
         await settle()
         XCTAssertEqual(steps.last, "Session request failed")
         XCTAssertFalse(steps.joined().contains("host text"))
+    }
+
+    func testGPTLiveSessionTracesATimeoutALostConnectionAndAFailedWebRTCSetup() async {
+        let (late, _) = makeGPTSession(client: FakeGPTLiveClient(), startTimeout: .milliseconds(10))
+        var lateSteps: [String] = []
+        late.onTrace = { lateSteps.append($0) }
+        late.start()
+        await settle(until: { late.state != .connecting })
+        XCTAssertEqual(lateSteps.last, "No session.started in time")
+
+        let (dropped, droppedPeer) = makeGPTSession(client: FakeGPTLiveClient(), reconnectGrace: .milliseconds(10))
+        var droppedSteps: [String] = []
+        dropped.onTrace = { droppedSteps.append($0) }
+        dropped.start()
+        await settle()
+        droppedPeer.deliver(["type": "session.started"])
+        droppedPeer.onConnectionInterrupted?(true)
+        await settle(until: { dropped.state != .ready })
+        XCTAssertEqual(Array(droppedSteps.suffix(2)), ["Connection interrupted", "Connection lost"])
+
+        let client = FakeGPTLiveClient()
+        let (broken, brokenPeer) = makeGPTSession(client: client)
+        brokenPeer.offerError = GPTLiveClientError.malformedResponse
+        var brokenSteps: [String] = []
+        broken.onTrace = { brokenSteps.append($0) }
+        broken.start()
+        await settle()
+        XCTAssertEqual(brokenSteps, ["WebRTC setup failed"])
+        XCTAssertTrue(client.offers.isEmpty)
     }
 
     func testGPTLiveClientReadsOnlyTheKnownSessionBuilders() throws {
@@ -918,6 +947,19 @@ extension VoiceConversationControllerTests {
         applied.stop()
         XCTAssertEqual(LiveCallTrace.shared.steps.map { $0.split(separator: " ", maxSplits: 1).last.map(String.init) ?? "" },
                        ["Starting call", "User started speaking, before the model"])
+    }
+
+    func testGPTLiveTracesABriefingAndOpeningThatCouldNotBeSent() async {
+        let (controller, session, _, _) = makeGPTController(openingPrompt: "[greet]", clock: Date.init)
+        controller.traceName = "GPT-Live"
+        session.failAppends = true
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.outputTranscript("  "))
+        controller.stop()
+        XCTAssertEqual(LiveCallTrace.shared.steps.map { $0.split(separator: " ", maxSplits: 1).last.map(String.init) ?? "" },
+                       ["Starting call", "Briefing not sent after the start", "Opening not sent"],
+                       "An empty transcript piece isn't the model speaking")
     }
 
     func testGPTLiveCallMutedWhileOpeningNeverOpensTheMicrophone() async {
