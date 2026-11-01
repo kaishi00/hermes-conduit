@@ -140,6 +140,11 @@ extension BotModeTests {
         ]))
         store.fileResolved(reopened, profile: "furina")
         XCTAssertEqual(store.resolvedList("furina")?.items, [])
+        // Resolved with no Resolved list read yet: its chat still knows it.
+        let fresh = BotWorkStore()
+        fresh.fileResolved(resolved, profile: "furina")
+        XCTAssertEqual(fresh.workstream(forSession: ["20261101_w3"])?.item.ref, "W3")
+        XCTAssertEqual(fresh.resolvedList("furina")?.more, true)  // the rest pages in after it
     }
 
     func testAWorkstreamsBriefReadsAsItsTask() throws {

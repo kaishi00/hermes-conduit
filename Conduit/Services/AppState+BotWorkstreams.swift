@@ -54,10 +54,14 @@ final class BotWorkStore: ObservableObject {
         resolvedLists[profile] = list
     }
 
-    /// A row the user resolved joins the top of a Resolved list already
-    /// read; one reopened leaves it.
+    /// A row the user resolved joins the top of the Resolved list, one
+    /// started for it if none was read, so its chat, if open, still knows
+    /// it (the rest pages in after it); one reopened leaves it.
     func fileResolved(_ item: BotWorkItem, profile: String) {
-        guard var list = resolvedLists[profile] else { return }
+        guard var list = resolvedLists[profile] else {
+            if item.isClosed { resolvedLists[profile] = ResolvedList(items: [item], more: true) }
+            return
+        }
         list.items.removeAll { $0.ref == item.ref }
         if item.isClosed { list.items.insert(item, at: 0) }
         resolvedLists[profile] = list
@@ -173,8 +177,14 @@ extension AppState {
     /// workstream's chat takes its task's title), and the chat screen
     /// watches only AppState, so it's told when that changes.
     private func setBotWork(_ snapshot: BotWorkSnapshot) {
+        whileKeepingTitle { botWork.set(snapshot) }
+    }
+
+    /// Runs a change to the bots' work and tells the chat screen when the
+    /// open chat's task title changed with it.
+    private func whileKeepingTitle(_ change: () -> Void) {
         let before = activeWorkstream?.item.shownTitle
-        botWork.set(snapshot)
+        change()
         if activeWorkstream?.item.shownTitle != before { objectWillChange.send() }
     }
 
@@ -227,8 +237,10 @@ extension AppState {
             guard botWork.mark(profile).epoch == mark.epoch else { return false }
             botWork.noteAction(profile)
             if let updated {
-                botWork.replace(updated, profile: profile, reopened: action == .reopen)
-                botWork.fileResolved(updated, profile: profile)
+                whileKeepingTitle {
+                    botWork.replace(updated, profile: profile, reopened: action == .reopen)
+                    botWork.fileResolved(updated, profile: profile)
+                }
             }
             Haptics.success()
             // The buttons free up now; the list is read again behind them.
@@ -349,9 +361,7 @@ extension AppState {
             now.more = page.more
             now.isLoading = false
             // The open chat may be one of these (its title is its task's).
-            let titleBefore = activeWorkstream?.item.shownTitle
-            botWork.setResolvedList(now, profile: profile)
-            if activeWorkstream?.item.shownTitle != titleBefore { objectWillChange.send() }
+            whileKeepingTitle { botWork.setResolvedList(now, profile: profile) }
         } catch {
             guard botWork.mark(profile).epoch == mark.epoch else { return }
             var now = botWork.resolvedList(profile) ?? list
