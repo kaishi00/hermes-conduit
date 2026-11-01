@@ -599,6 +599,11 @@ struct V2Shell: View {
                 if conversationOnLeave != value { conversationOnLeave = value }
             }
             .task(id: appState.isConnected) { await reopenRoomIfWaiting() }
+            .onChange(of: appState.isModalSheetPresented) { _, presented in
+                // A sheet's dismissal shows the chat again: what came in under
+                // it is read now (#1579).
+                if !presented { appState.clearShownChatNotifications() }
+            }
             .onChange(of: appState.showSidebar) { _, covered in
                 if !covered, !conversationVisible {
                     // A call's screen covers the chat on its own; the list

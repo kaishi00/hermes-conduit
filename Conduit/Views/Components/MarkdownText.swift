@@ -1759,7 +1759,7 @@ struct MarkdownTable: View {
                 },
                 selectText: { [turnedOn = $selectionTurnedOn] in turnedOn.wrappedValue = true },
                 selectionCoordinator: selectionCoordinator,
-                selectionSegmentID: selectionSegment(row: 0, column: 0)?.id,
+                selectionSegmentID: selectionSegment(row: 0, column: 0).map { MarkdownSelectionCoordinator.tableMountKey(forSegmentID: $0.id) },
                 tableWidth: MarkdownTableLayout.tableWidth(columnContentWidths: widths)
             ))
         }
@@ -1796,11 +1796,47 @@ struct MarkdownTableRowView: View {
     let foregroundStyle: Color
     let usesAccentSurface: Bool
     /// Each cell a selectable text view, or plain text: the chat's tables,
-    /// until selection turns on (MarkdownTableMenu).
+    /// until selection turns on (MarkdownTableMenu). A cell with a link is
+    /// a selectable text view either way (`cellDrawsAsText`).
     let selectsText: Bool
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let segmentFor: (Int) -> MarkdownSelectionSegmentDescriptor?
     @Environment(\.chatTextSize) private var chatTextSize
+    @Environment(\.markdownReferences) private var references
+
+    /// Whether a cell draws as the reply's text does, a selectable text view
+    /// (drawn until touched in the chat), rather than as plain text. A cell
+    /// with a link always does: the text view opens its links on the click
+    /// or tap as the reply's other links do, where a plain cell's SwiftUI
+    /// link lost the click to the row's tap that puts the keyboard away
+    /// (issue 1585). Links are few, so the chat still draws most cells
+    /// plain (#693). The fragment is the one either cell draws, cached.
+    static func cellDrawsAsText(
+        source: String,
+        selectsText: Bool,
+        references: MarkdownReferenceContext,
+        foregroundStyle: Color,
+        usesAccentSurface: Bool,
+        font: UIFont
+    ) -> Bool {
+        if selectsText { return true }
+        let bridged = InlineMarkdownContent.bridged(
+            source: source,
+            references: references,
+            foregroundStyle: foregroundStyle,
+            usesAccentSurface: usesAccentSurface,
+            font: font,
+            trailingCharacterOpacities: []
+        )
+        var hasLink = false
+        bridged.enumerateAttribute(.link, in: NSRange(location: 0, length: bridged.length)) { value, _, stop in
+            if value != nil {
+                hasLink = true
+                stop.pointee = true
+            }
+        }
+        return hasLink
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -1814,7 +1850,14 @@ struct MarkdownTableRowView: View {
                     appearance: chatTextSize
                 )
                 Group {
-                    if selectsText {
+                    if Self.cellDrawsAsText(
+                        source: cell,
+                        selectsText: selectsText,
+                        references: references,
+                        foregroundStyle: foregroundStyle,
+                        usesAccentSurface: usesAccentSurface,
+                        font: font
+                    ) {
                         InlineMarkdown(
                             source: cell,
                             foregroundStyle: foregroundStyle,
@@ -1853,8 +1896,9 @@ struct MarkdownTableRowView: View {
 /// A table cell drawn as plain text, from the attributed content the
 /// selectable cell shows. A selectable text view per cell made a table
 /// most of what a long answer cost to build as it scrolled in; plain text
-/// costs a fraction of that. Links stay tappable: SwiftUI opens them
-/// through the environment's openURL, as the text views do.
+/// costs a fraction of that. A cell with a link isn't plain: it draws as
+/// a selectable text view, which opens the link
+/// (MarkdownTableRowView.cellDrawsAsText).
 private struct MarkdownPlainCell: View {
     let source: String
     let foregroundStyle: Color
@@ -1893,8 +1937,9 @@ private struct MarkdownTableMenu: ViewModifier {
     let copyText: @Sendable () -> String
     let selectText: () -> Void
     let selectionCoordinator: MarkdownSelectionCoordinator?
-    /// The table's first cell segment, the key its deferred mount waits
-    /// under in the message's coordinator.
+    /// The key its deferred mount waits under in the message's
+    /// coordinator, made from the table's first cell segment
+    /// (MarkdownSelectionCoordinator.tableMountKey).
     let selectionSegmentID: String?
     /// The drawn table's width, so the Copy Table button sits at its
     /// corner, not at the column's edge, when the table is narrower.
@@ -2170,7 +2215,7 @@ struct LargeMarkdownTable: View {
                 },
                 selectText: { [turnedOn = $selectionTurnedOn] in turnedOn.wrappedValue = true },
                 selectionCoordinator: selectionCoordinator,
-                selectionSegmentID: segmentDescriptor(row: 0, column: 0)?.id,
+                selectionSegmentID: segmentDescriptor(row: 0, column: 0).map { MarkdownSelectionCoordinator.tableMountKey(forSegmentID: $0.id) },
                 tableWidth: MarkdownTableLayout.tableWidth(columnContentWidths: widths)
             ))
             if renderedRowCount < rows.count {
