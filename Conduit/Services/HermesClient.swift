@@ -1107,9 +1107,9 @@ final class HermesClient: ObservableObject {
     /// An open approval or clarify prompt's id → its session and the turn
     /// that asked, which the authority's answers name.
     private var authorityPrompts: [String: (sessionId: String, generation: Int)] = [:]
-    /// A prompt's session, kept across reconnects (the fences above are
-    /// not: a new socket reads them again), so an answer to a card shown
-    /// before a reconnect knows which chat to read its prompt from.
+    /// A prompt's session, so an answer to a card whose prompt this socket
+    /// can't name knows which chat to read it from. `connect()` clears it
+    /// with the fences; a socket handoff carries it over (`adoptSocket`).
     private var authorityPromptSessions: [String: String] = [:]
     private var closedIntentionally = false
     private var receiveTask: Task<Void, Never>?
@@ -2231,7 +2231,8 @@ final class HermesClient: ObservableObject {
         )
         switch event["type"]?.stringValue {
         case "approval.request", "clarify.request":
-            notePrompt(event["payload"]?.objectValue, sessionId: sessionId)
+            notePrompt(event["payload"]?.objectValue, sessionId: sessionId,
+                       askingGeneration: Self.exactIntValue(event["execution_generation"]))
         case "message.start":
             authorityRunningSessions.insert(sessionId)
         case "message.complete", "error":
@@ -2247,12 +2248,14 @@ final class HermesClient: ObservableObject {
     /// as an idle send, so this is what tells the two apart.
     private var authorityRunningSessions: Set<String> = []
 
-    private func notePrompt(_ prompt: [String: AnyCodable]?, sessionId: String) {
-        guard let prompt, let id = prompt["prompt_id"]?.stringValue, !id.isEmpty,
-              let generation = Self.exactIntValue(prompt["execution_generation"])
-                ?? executionGenerations[sessionId] else { return }
-        authorityPrompts[id] = (sessionId: sessionId, generation: generation)
+    private func notePrompt(_ prompt: [String: AnyCodable]?, sessionId: String, askingGeneration: Int? = nil) {
+        guard let prompt, let id = prompt["prompt_id"]?.stringValue, !id.isEmpty else { return }
         authorityPromptSessions[id] = sessionId
+        // Only the turn that asked (the prompt's own generation, else its
+        // event's): a cached earlier turn's would be refused as stale and
+        // read as ended. Without either, its answer reads the chat's resume.
+        guard let generation = Self.exactIntValue(prompt["execution_generation"]) ?? askingGeneration else { return }
+        authorityPrompts[id] = (sessionId: sessionId, generation: generation)
     }
 
     /// A snapshot (`session.create`, `session.resume`, `session.mutate`)
@@ -3320,7 +3323,10 @@ final class HermesClient: ObservableObject {
         } catch let error as RpcError where error.reason == "stale_generation" {
             // A bot chat is only found under its own profile.
             let snapshot = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
-            guard snapshot["running"]?.boolValue == true else { return nil }
+            guard snapshot["running"]?.boolValue == true else {
+                authorityRunningSessions.remove(sessionId)
+                return nil
+            }
             // The authority's word on the running turn, even below what this
             // socket had: the control names it as Hermes does.
             if let generation = Self.exactIntValue(snapshot["execution_generation"]) {
@@ -3330,6 +3336,8 @@ final class HermesClient: ObservableObject {
                 let request = authorityControl(method, sessionId: sessionId, text: text)
                 return try await rpc(request.method, params: request.params)
             } catch let error as RpcError where error.reason == "stale_generation" {
+                // No turn runs after all: a send there starts one, not held.
+                authorityRunningSessions.remove(sessionId)
                 return nil
             }
         }
