@@ -3147,9 +3147,10 @@ final class HermesClient: ObservableObject {
             guard !gatewayRefusesQueued else { throw QueueUnsupportedError() }
             params["queued"] = true
         }
-        // The authority admits a prompt by its own id: one per message, the
-        // same on a resend, so a resend Hermes already admitted is that
-        // admission again, never a second copy.
+        // The authority admits a prompt by its own id, one per call: this
+        // call's own resends (a refused key, a reshape) reuse it, so one
+        // Hermes already admitted is that admission again, never a second
+        // copy. A send the user makes again is a new call with a new id.
         let submissionID = UUID().uuidString.lowercased()
         var sentToAuthority = false
         // Read before sending: an idle send's own turn can start before
@@ -3407,7 +3408,8 @@ final class HermesClient: ObservableObject {
             case "resolved": return .accepted(remaining: [])
             // Another surface answered first, so this answer wasn't taken.
             case "already_resolved": return .answeredElsewhere
-            default: return .expired
+            // Any other word isn't a timeout either: no longer active.
+            default: return .ended
             }
         }
         var params: [String: Any] = [
@@ -3574,7 +3576,8 @@ final class HermesClient: ObservableObject {
             switch result.objectValue?["status"]?.stringValue?.lowercased() {
             case "resolved": return .accepted
             case "already_resolved": return .answeredElsewhere
-            default: return .noLongerWaiting
+            // Any other word isn't a timeout either: no longer active.
+            default: return .ended
             }
         }
         if speaksSessionAuthority {
