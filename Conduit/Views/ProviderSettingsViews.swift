@@ -61,7 +61,7 @@ struct ModelPageProviders: View {
                 if saved { await reloadCatalog() }
                 return saved
             },
-            usage: { entry in Self.usage(of: entry, settings: appState.keptProfileSettings(keys: Self.usageKeys),
+            usage: { entry in Self.usage(of: entry, catalog: catalog, settings: appState.keptProfileSettings(keys: Self.usageKeys),
                                          fallbacks: appState.keptProfileFallbackModels()) }
         ))
         .onAppear { if catalog == nil { catalog = kept() } }
@@ -80,10 +80,15 @@ struct ModelPageProviders: View {
 
     /// The other model picks on the profile that run on `entry`: its
     /// delegate model and fallback models.
-    static func usage(of entry: ProviderEntry, settings: [String: ProfileSettingValue]?,
+    static func usage(of entry: ProviderEntry, catalog: ProfileModelDefaults? = nil, settings: [String: ProfileSettingValue]?,
                       fallbacks: [ProfileFallbackModel]?) -> [String] {
+        // A pick can name the provider by its catalog row's display name or
+        // an alias, so it's matched the way the catalog matches.
+        let row = catalog.flatMap { entry.catalogRow(in: $0.providers) }
         let names = entry.catalogNames.map(ProviderInfo.normalized)
-        func runsOn(_ provider: String) -> Bool { names.contains(ProviderInfo.normalized(provider)) }
+        func runsOn(_ provider: String) -> Bool {
+            row?.matches(provider) == true || names.contains(ProviderInfo.normalized(provider))
+        }
         var uses: [String] = []
         if let provider = settings?["delegation.provider"]?.textValue, !provider.isEmpty, runsOn(provider) {
             uses.append(AppLocalization.string("Delegate model"))
@@ -835,6 +840,8 @@ private struct ProviderSignInView: View {
     @State private var error: String?
     @State private var signingOut = false
 
+    private static let pollFailureLimit = 3
+
     var body: some View {
         if account.signedIn {
             HStack(spacing: 10) {
@@ -921,10 +928,13 @@ private struct ProviderSignInView: View {
     }
 
     private func waitForSignIn(_ started: ProviderSignIn) async {
+        var failures = 0
         while !Task.isCancelled, signIn == started {
             let asked = ContinuousClock.now
             do {
-                switch try await service.poll(entry.id, signIn: started) {
+                let outcome = try await service.poll(entry.id, signIn: started)
+                failures = 0
+                switch outcome {
                 case .pending:
                     // A Hermes that answers at once instead of waiting is
                     // asked again only after the provider's interval.
@@ -941,8 +951,17 @@ private struct ProviderSignInView: View {
                     return
                 }
             } catch {
-                // A dropped long-poll is retried after the provider's interval.
+                // A dropped long-poll is retried after the provider's
+                // interval; one that keeps failing (Hermes restarted, the
+                // sign-in gone) says so instead of waiting on.
+                failures += 1
+                if failures >= Self.pollFailureLimit, !Task.isCancelled {
+                    signIn = nil
+                    self.error = UserFacingError.message(for: error)
+                    return
+                }
                 try? await Task.sleep(for: .seconds(started.pollInterval))
+                continue
             }
         }
         // The page went away mid-sign-in: Hermes stops waiting too.
@@ -1052,6 +1071,8 @@ private struct CustomEndpointForm: View {
         draft.apiMode = existing.endpoint.apiMode
         draft.model = existing.endpoint.model
         draft.models = existing.endpoint.models
+        // Saving sends the toggle, so an edit keeps the endpoint the default.
+        draft.makeDefault = existing.endpoint.isCurrent
     }
 
     /// The typed key goes up with the check and the save, nowhere else.
