@@ -520,7 +520,13 @@ struct V2Shell: View {
             await appState.openGroupRoom(room)
             // Opened: its screen keeps the record from here. A failed or cut
             // short open stays kept, and tries again on the next connection.
-            if appState.activeRoomSurface?.room.roomID == room.roomID { roomToReopen = nil }
+            if appState.activeRoomSurface?.room.roomID == room.roomID {
+                roomToReopen = nil
+            } else if !Task.isCancelled, step() == .giveUp {
+                // The open read Hermes' list, and the room is gone from it.
+                roomToReopen = nil
+                conversationOnLeave = conversationToReopen?.encoded ?? ""
+            }
         }
     }
 
