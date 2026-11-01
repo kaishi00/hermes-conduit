@@ -2006,6 +2006,7 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - For Eric to confirm: workers report lasting facts for the coordinator to keep with `work_note`, rather than writing Hermes memory themselves as design C.11 had it, so one path keeps the notes (notifier #491).
 - The workstreams' own approval mode in Edit Bot (M3) isn't built; until then a workstream follows the bot's Hermes approval mode as any chat does.
 - The plugin's version is bumped when the branch merges to main.
+- A workstream can still reach another bot with Hermes' `message_agent`, which is refused only in the Bot Chat, so it skips the asks' loop guard and limits (notifier #497's review). Refusing it in workstreams too is open.
 - Two journal edges from M0 that recovery leans on (notifier #495's review): a step that starts while a compacted workstream's lineage is still unsettled isn't journaled or noted as missed, and a step's end with an unknown call id closes the oldest open step of that tool by name.
 
 **Checked:** 2026-11-01, #1614 (notifier #497).
