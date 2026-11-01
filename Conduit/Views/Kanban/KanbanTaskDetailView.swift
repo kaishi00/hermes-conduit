@@ -920,21 +920,23 @@ struct KanbanTaskDetailView: View {
             // Side by side when every label fits on one line; stacked full
             // width when one doesn't (a long translation on an iPhone),
             // instead of pills whose labels wrap word by word (issue #1601).
+            // Stacked, a label may still wrap at the largest text sizes
+            // rather than be cut off.
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) { commentButtons }
-                VStack(spacing: 8) { commentButtons }
+                HStack(spacing: 10) { commentButtons(oneLine: true) }
+                VStack(spacing: 8) { commentButtons(oneLine: false) }
             }
         }
     }
 
     @ViewBuilder
-    private var commentButtons: some View {
+    private func commentButtons(oneLine: Bool) -> some View {
         Button {
             Task { await addComment() }
         } label: {
             HStack {
                 Spacer(minLength: 0)
-                if isAddingComment { ProgressView() } else { Label(isRunning ? AppLocalization.string("Send") : AppLocalization.string("Add comment"), systemImage: "paperplane").lineLimit(1) }
+                if isAddingComment { ProgressView() } else { Label(isRunning ? AppLocalization.string("Send") : AppLocalization.string("Add comment"), systemImage: "paperplane").lineLimit(oneLine ? 1 : nil) }
                 Spacer(minLength: 0)
             }
         }
@@ -949,7 +951,7 @@ struct KanbanTaskDetailView: View {
             } label: {
                 HStack {
                     Spacer(minLength: 0)
-                    if isRequeuing { ProgressView() } else { Label("Note & requeue", systemImage: "arrow.uturn.backward.circle").lineLimit(1) }
+                    if isRequeuing { ProgressView() } else { Label("Note & requeue", systemImage: "arrow.uturn.backward.circle").lineLimit(oneLine ? 1 : nil) }
                     Spacer(minLength: 0)
                 }
             }
@@ -966,7 +968,7 @@ struct KanbanTaskDetailView: View {
             } label: {
                 HStack {
                     Spacer(minLength: 0)
-                    if isUnblocking { ProgressView() } else { Label("Reply & unblock", systemImage: "arrowshape.turn.up.left").lineLimit(1) }
+                    if isUnblocking { ProgressView() } else { Label("Reply & unblock", systemImage: "arrowshape.turn.up.left").lineLimit(oneLine ? 1 : nil) }
                     Spacer(minLength: 0)
                 }
             }
