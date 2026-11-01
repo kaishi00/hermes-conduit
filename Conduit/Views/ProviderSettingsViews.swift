@@ -319,6 +319,9 @@ struct AddProviderSheet: View {
                     } else if matches.isEmpty, !wanted.isEmpty {
                         Text(verbatim: AppLocalization.string("Nothing matches “\(wanted)”."))
                             .scaledFont(.footnote).foregroundStyle(.secondary)
+                    } else if matches.isEmpty {
+                        Text(AppLocalization.string("No providers yet."))
+                            .scaledFont(.footnote).foregroundStyle(.secondary)
                     }
                     ForEach(matches) { entry in
                         NavigationLink {

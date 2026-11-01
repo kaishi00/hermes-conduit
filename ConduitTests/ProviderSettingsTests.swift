@@ -137,6 +137,22 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(service.changes, 1)
     }
 
+    func testSharingFromAnotherProfileClearsWhatComesAheadOfItThere() async throws {
+        let requester = FakeProviderRequester()
+        requester.pools["bot"] = pool("openrouter", [("stale", ProviderEntry.PoolRow.sharedLabel, "manual")])
+        let service = ProviderSettingsService(requester: requester, profile: "bot")
+        var entry = ProviderEntry(id: "openrouter", name: "OpenRouter")
+        entry.onMainProfile = false
+        entry.key = ProviderEntry.KeyAccess(vars: ["OPENROUTER_API_KEY"], savedVars: [],
+                                            profileRows: [.init(id: "stale", index: 1, label: ProviderEntry.PoolRow.sharedLabel)])
+        XCTAssertEqual(entry.status, .oldCopy)
+
+        try await service.share(key: "sk-new", for: entry)
+
+        XCTAssertEqual(requester.calls.filter { $0.method == "DELETE" }.map(\.path),
+                       ["/api/credentials/pool/openrouter/1?profile=bot"])
+    }
+
     func testSharingOnTheMainProfileReplacesItsOwnEnvKey() async throws {
         let requester = FakeProviderRequester()
         let service = ProviderSettingsService(requester: requester, profile: "default")

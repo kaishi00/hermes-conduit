@@ -655,6 +655,9 @@ final class ProviderSettingsService: ObservableObject {
         guard !value.isEmpty else { return true }
         let replaced = entry.key?.sharedIDs ?? []
         let mainVars = isSharedProfile ? entry.key?.savedVars ?? [] : []
+        // Shared from another profile, that profile uses it too: the rows
+        // ahead of it there (its own key, an old copy) go.
+        let ownHere = isSharedProfile ? [] : Set((entry.key?.ownRows ?? []).map(\.id))
         _ = try await request(shared("/api/credentials/pool"), method: "POST",
                               body: ["provider": entry.id, "api_key": value, "label": ProviderEntry.PoolRow.sharedLabel])
         return await cleanUp {
@@ -663,6 +666,7 @@ final class ProviderSettingsService: ObservableObject {
                 await removeCopies(provider: entry.id, ids: replaced)
             }
             try await removeVariables(mainVars)
+            try await removeRows(provider: entry.id, ids: ownHere, profile: profile)
         }
     }
 
