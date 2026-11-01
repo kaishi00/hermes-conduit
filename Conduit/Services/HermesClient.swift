@@ -2392,8 +2392,9 @@ final class HermesClient: ObservableObject {
 
     /// Creates the bot's ONE forever chat: born hidden, titled "Bot Chat",
     /// and always following the profile's CURRENT model/provider config.
-    /// Older gateways ignore the unknown `hidden`/`follow_profile_config`
-    /// params (upstream behavior). The stored row is lazy until the eager
+    /// Older dashboards ignore the unknown `hidden`/`follow_profile_config`
+    /// params (upstream behavior); the gateway's session authority takes
+    /// both (probed, #1631). The stored row is lazy until the eager
     /// `session.title` write lands.
     func createBotChatSession(profile: String) async throws -> (sessionId: String, storedSessionId: String?) {
         let result = try await shapedRPC { authority in

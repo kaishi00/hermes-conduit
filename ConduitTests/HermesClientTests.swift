@@ -1931,6 +1931,28 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAuthorityBotChatCreateKeepsHiddenAndFollowsTheProfile() async throws {
+        // Probed on the canary (notifier upstream test_bot_chat_create_and_redirect_in_conduits_shapes):
+        // the authority's create takes hidden and follow_profile_config.
+        let (client, socket) = try await authorityClient()
+        let count = socket.sentTexts.count
+        let create = Task<(sessionId: String, storedSessionId: String?), Error> {
+            try await client.createBotChatSession(profile: "atlas")
+        }
+        let params = try await answerRequest(on: socket, after: count, method: "session.create", result: [
+            "session_id": "local-bot", "stored_session_id": "local-bot", "revision": 0, "execution_generation": 0
+        ])
+        XCTAssertEqual(params["hidden"] as? Bool, true)
+        XCTAssertEqual(params["follow_profile_config"] as? Bool, true)
+        XCTAssertEqual(params["title"] as? String, "Bot Chat")
+        XCTAssertEqual(params["profile"] as? String, "atlas")
+        XCTAssertEqual(params["source"] as? String, "gui")
+        XCTAssertNil(params["cols"], "the authority's create has no window width")
+        let created = try await awaitResult(of: create, "the Bot Chat create")
+        XCTAssertEqual(created.sessionId, "local-bot")
+        client.disconnect()
+    }
+
     func testDashboardPromptCarriesNoSubmissionID() async throws {
         let (client, socket) = try await connectedClientForServerRequests()
         try await advertise(socket, result: [:])
