@@ -1740,7 +1740,7 @@ list to land on)
 **Open gaps**
 - The list's scroll position and search under the reopened chat aren't kept: Back shows the list at its top.
 
-**Checked:** 2026-11-01, #PRNUM (a room past Hermes' first page of rooms stays waiting, open gap); 2026-10-31, #1597 (added; the record dropped at sign-out and with V2 off, a waiting room's record kept until Hermes lists it, a page tap or a launch's notification, widget or Shortcut gives it up, a partial room list doesn't, a failed load on the room's screen shows its error, the caption names the resumed chat, from review).
+**Checked:** 2026-11-01, #1605 (a room past Hermes' first page of rooms stays waiting, open gap); 2026-10-31, #1597 (added; the record dropped at sign-out and with V2 off, a waiting room's record kept until Hermes lists it, a page tap or a launch's notification, widget or Shortcut gives it up, a partial room list doesn't, a failed load on the room's screen shows its error, the caption names the resumed chat, from review).
 
 ## Screens that open on their last answer
 
