@@ -114,6 +114,39 @@ extension BotModeTests {
         XCTAssertEqual(appState.allProfilesCatalog.sessions.map(\.id), ["plain"])
     }
 
+    /// A refused action clears the last refusal, shows its own at once and
+    /// frees its buttons, without waiting for the list to be read again.
+    @MainActor
+    func testARefusedActionShowsItsRefusalAndFreesItsButtons() async throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
+        appState.botWork.set(snapshot)
+        appState.botWork.setRefusal("An older refusal.", profile: "furina")
+        let item = try XCTUnwrap(snapshot.items.first { $0.ref == "W1" })
+        // No dashboard yet, so the request fails as one that can't reach the bot.
+        let done = await appState.actOnWorkstream(item, profile: "furina", action: .stop)
+        XCTAssertFalse(done)
+        XCTAssertEqual(appState.botWork.refusal("furina"),
+                       AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."))
+        XCTAssertFalse(appState.botWork.isActing("W1", profile: "furina"))
+    }
+
+    /// A read asked for after an action, while one was under way, makes
+    /// that read go again once, and only once.
+    @MainActor
+    func testAReadAfterAnActionGoesAgainOnce() {
+        let store = BotWorkStore()
+        XCTAssertTrue(store.beginReading("furina"))
+        XCTAssertFalse(store.takeReadAgain("furina"))
+        store.readAgain("furina")
+        XCTAssertTrue(store.takeReadAgain("furina"))
+        XCTAssertFalse(store.takeReadAgain("furina"))
+        store.endReading("furina")
+    }
+
     /// Chats, search and All profiles leave a workstream's row out by any
     /// of its ids; a refusal and a tap in flight belong to one bot.
     @MainActor
