@@ -358,7 +358,7 @@ final class HermesNativeCalls: NSObject {
         }
         let id = UUID()
         let update = CXCallUpdate()
-        update.remoteHandle = Self.callerHandle
+        update.remoteHandle = HermesCallerName.callHandle
         let callerName = Self.callerName(call.target)
         update.localizedCallerName = callerName
         update.hasVideo = false
@@ -402,13 +402,6 @@ final class HermesNativeCalls: NSObject {
         case .ring: return inCar
         default: return false
         }
-    }
-
-    /// Who every Hermes call rings from: an address the contact from
-    /// Settings > Hermes calls holds, so a Focus's allowed people can let
-    /// it through (#1606).
-    nonisolated static var callerHandle: CXHandle {
-        CXHandle(type: .emailAddress, value: HermesCallerName.contactAddress)
     }
 
     /// Whether the Apple Watch stops ringing a call CallKit wouldn't show
@@ -720,7 +713,7 @@ final class HermesNativeCalls: NSObject {
         }
         let id = match?.key ?? UUID()
         let update = CXCallUpdate()
-        update.remoteHandle = Self.callerHandle
+        update.remoteHandle = HermesCallerName.callHandle
         update.localizedCallerName = match?.value.callerName ?? HermesCallerName.fallback
         update.hasVideo = false
         provider.reportNewIncomingCall(with: id, update: update) { _ in

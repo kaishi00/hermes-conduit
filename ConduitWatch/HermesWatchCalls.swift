@@ -225,7 +225,7 @@ final class HermesWatchCalls: NSObject {
 
     private static func update(callerName: String) -> CXCallUpdate {
         let update = CXCallUpdate()
-        update.remoteHandle = CXHandle(type: .emailAddress, value: HermesCallerName.contactAddress)
+        update.remoteHandle = HermesCallerName.callHandle
         update.localizedCallerName = callerName
         update.hasVideo = false
         return update

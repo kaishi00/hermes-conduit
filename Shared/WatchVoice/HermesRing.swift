@@ -703,3 +703,15 @@ enum HermesRingHandoffKey {
         return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
     }
 }
+
+#if canImport(CallKit)
+import CallKit
+
+extension HermesCallerName {
+    /// Who a Hermes call rings from in CallKit, on the iPhone and the Watch:
+    /// the address the Hermes contact holds (#1606).
+    static var callHandle: CXHandle {
+        CXHandle(type: .emailAddress, value: contactAddress)
+    }
+}
+#endif

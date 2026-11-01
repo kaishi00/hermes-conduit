@@ -821,7 +821,7 @@ extension VoiceConversationControllerTests {
         // A Focus lets a call through only from a contact in its allowed
         // people (#1606): the call rings from an address the contact from
         // Settings > Hermes calls holds, on the iPhone and the Watch.
-        let handle = HermesNativeCalls.callerHandle
+        let handle = HermesCallerName.callHandle
         XCTAssertEqual(handle.type, .emailAddress)
         XCTAssertEqual(handle.value, HermesCallerName.contactAddress)
         let contact = HermesNewContactSheet.contact()
