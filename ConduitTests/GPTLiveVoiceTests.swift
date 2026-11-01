@@ -486,6 +486,61 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(session.state, .stopped)
     }
 
+    func testGPTLiveSessionTracesItsSetupWithoutTheBriefingsText() async {
+        let client = FakeGPTLiveClient()
+        client.answerResult = .success(GPTLiveSessionAnswer(sessionID: "rtc_1", sdp: "v=0 answer", voice: "cove", briefingApplied: true, greetingApplied: true, source: "hermes"))
+        let peer = FakeGPTLivePeer()
+        let briefing = GPTLiveConversationController.briefing(personality: "A secret persona line")
+        let session = GPTLiveSession(client: client, briefing: briefing, callOpening: true, makePeer: { peer }, reconnectGrace: .seconds(60))
+        var steps: [String] = []
+        session.onTrace = { steps.append($0) }
+        session.start()
+        await settle()
+        peer.deliver(["type": "session.started", "session": ["id": "sess_9"]])
+        peer.onConnectionInterrupted?(true)
+        peer.onConnectionInterrupted?(false)
+        peer.onConnectionInterrupted?(false)
+        peer.deliver(["type": "error", "error": ["code": "rate_limited", "message": "private provider text"]])
+        session.stop()
+        XCTAssertEqual(steps, [
+            "Session request: briefing \(briefing.unicodeScalars.count) characters (persona yes, memory no), call from Hermes, 0 history items",
+            "Host answered: built by Hermes, ChatGPT plan, briefing applied yes, opening applied yes, voice cove",
+            "session.started",
+            "Connection interrupted",
+            "Connection back",
+            "GPT-Live error: rate_limited",
+        ])
+        XCTAssertFalse(steps.joined().contains("secret"), "Never the briefing's text")
+        XCTAssertFalse(steps.joined().contains("private"), "Never the provider's message")
+        XCTAssertFalse(steps.joined().contains("sess_9"), "Never a session id")
+
+        XCTAssertEqual(GPTLiveSession.requestStep(briefing: nil, greeting: "", callOpening: false, historyItems: 2),
+                       "Session request: no briefing, greeting, 2 history items")
+        XCTAssertEqual(GPTLiveSession.answerStep(GPTLiveSessionAnswer(sessionID: nil, sdp: "v=0", voice: "a voice with spaces", billing: .api)),
+                       "Host answered: builder not reported, API key, briefing applied no, opening applied no")
+        XCTAssertNil(GPTLiveSession.traceCode("has a space"))
+    }
+
+    func testGPTLiveSessionTracesARefusedRequest() async {
+        let client = FakeGPTLiveClient()
+        client.answerResult = .failure(GPTLiveClientError.host("host text"))
+        let (session, _) = makeGPTSession(client: client)
+        var steps: [String] = []
+        session.onTrace = { steps.append($0) }
+        session.start()
+        await settle()
+        XCTAssertEqual(steps.last, "Session request failed")
+        XCTAssertFalse(steps.joined().contains("host text"))
+    }
+
+    func testGPTLiveClientReadsOnlyTheKnownSessionBuilders() throws {
+        let base: [String: Any] = ["ok": true, "auth": "subscription", "transport": ["type": "webrtc", "sdp": "v=0 answer"]]
+        XCTAssertEqual(try GPTLiveClient.answer(from: base.merging(["source": "hermes"]) { $1 }).source, "hermes")
+        XCTAssertEqual(try GPTLiveClient.answer(from: base.merging(["source": "plugin"]) { $1 }).source, "plugin")
+        XCTAssertNil(try GPTLiveClient.answer(from: base.merging(["source": "elsewhere"]) { $1 }).source)
+        XCTAssertNil(try GPTLiveClient.answer(from: base).source)
+    }
+
     func testGPTLiveAppendCutShortStillCountsAsSentSoItIsNeverResent() async {
         let (session, peer) = makeGPTSession(client: FakeGPTLiveClient())
         session.start()
@@ -830,6 +885,39 @@ extension VoiceConversationControllerTests {
             headsetMute: headsetMute ?? HeadsetMicrophoneMute(system: FakeSystemInputMute())
         )
         return (controller, session, supervisor, fake)
+    }
+
+    func testGPTLiveTracesALateBriefingTheOpeningAndWhoSpokeFirst() async {
+        let (controller, session, _, _) = makeGPTController(openingPrompt: "[greet]", clock: Date.init)
+        controller.traceName = "GPT-Live"
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.outputTranscript("Hi there"))
+        session.onEvent?(.inputTranscript("Hello"))
+        session.onEvent?(.outputTranscript("More"))
+        controller.stop()
+        let lines = LiveCallTrace.shared.report?.components(separatedBy: "\n") ?? []
+        XCTAssertEqual(lines.first, "Last GPT-Live call: steps")
+        let labels = lines.dropFirst().map { $0.split(separator: " ", maxSplits: 1).last.map(String.init) ?? "" }
+        XCTAssertEqual(labels, [
+            "Starting call",
+            "Briefing sent after the start: 7 characters",
+            "Opening asked for as a turn",
+            "Model started speaking, before the user",
+            "User started speaking",
+        ])
+
+        // The host took both: nothing more to say about them.
+        let (applied, appliedSession, _, _) = makeGPTController(openingPrompt: "[greet]", clock: Date.init)
+        applied.traceName = "GPT-Live"
+        appliedSession.briefingApplied = true
+        appliedSession.greetingApplied = true
+        await applied.start()
+        appliedSession.becomeReady()
+        appliedSession.onEvent?(.inputTranscript("Hello?"))
+        applied.stop()
+        XCTAssertEqual(LiveCallTrace.shared.steps.map { $0.split(separator: " ", maxSplits: 1).last.map(String.init) ?? "" },
+                       ["Starting call", "User started speaking, before the model"])
     }
 
     func testGPTLiveCallMutedWhileOpeningNeverOpensTheMicrophone() async {
