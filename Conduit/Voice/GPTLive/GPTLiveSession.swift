@@ -167,6 +167,8 @@ final class GPTLiveSession {
             guard let encoded = try? GPTLiveProtocol.encode(message), peer.send(encoded) else {
                 if index > 0 {
                     gptLiveLogger.error("GPT-Live context append cut short after \(index, privacy: .public) of \(messages.count, privacy: .public) chunks")
+                    // So a "sent" step after it reads as partly sent.
+                    onTrace?("Context cut short: \(index) of \(messages.count) pieces sent")
                 }
                 return index > 0
             }

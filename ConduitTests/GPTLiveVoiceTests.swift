@@ -572,6 +572,8 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testGPTLiveAppendCutShortStillCountsAsSentSoItIsNeverResent() async {
         let (session, peer) = makeGPTSession(client: FakeGPTLiveClient())
+        var steps: [String] = []
+        session.onTrace = { steps.append($0) }
         session.start()
         await settle()
         peer.deliver(["type": "session.started"])
@@ -581,6 +583,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(peer.sent.count, 1)
         XCTAssertFalse(session.appendContext("nothing goes out", channel: .speakable, delegationID: "del_2"))
         session.stop()
+        XCTAssertEqual(steps.last, "Context cut short: 1 of 3 pieces sent")
     }
 
     func testGPTLiveAudioLinkStopsWebRTCOnInterruptionAndResumesWhenItEnds() {
