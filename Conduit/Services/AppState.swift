@@ -11496,6 +11496,7 @@ final class AppState: ObservableObject {
     /// mutate state against the outgoing server.
     private func invalidateBotModeState() {
         botRosterEpoch += 1
+        botWork.clear()
         botRosterVerifiedForCurrentConnection = false
         botChatOpenFlights.values.forEach { $0.task?.cancel() }
         botChatSessionProfiles.removeAll()
@@ -26387,6 +26388,10 @@ final class AppState: ObservableObject {
     // A send refused because Hermes Desktop or a terminal owns the chat
     // (SESSION_NOT_OWNED) offers "Take over"; see ChatTakeover.swift.
 
+    /// Each bot's work, for the Bot Chat's Work strip and panel
+    /// (AppState+BotWorkstreams.swift).
+    let botWork = BotWorkStore()
+
     /// What the host's notifier plugin serves; Settings nudges an update.
     @Published private(set) var notifierPlugin = NotifierPluginStatus() {
         // A plugin that just said it takes on-screen reports gets the turn
@@ -39391,6 +39396,7 @@ extension AppState {
         let kept = rows.filter { session in
             !BotChatHygiene.isCanonicalBotChatRow(session, roster: botRoster)
                 && !BotChatHygiene.isBotOwnedRow(session, botOwnedSessionIDs: botOwned)
+                && !isWorkstreamRow(session)
         }
         // Each other profile's rows are noted the way its own list notes
         // them, so a reply that lands there later lights its dot here.

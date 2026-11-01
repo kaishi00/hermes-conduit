@@ -85,6 +85,15 @@ struct V2ConversationScreen: View {
     /// The chat's ids when the panel opened.
     @State private var sidePanelIDs: [String] = []
     @State private var screenWidth: CGFloat = 0
+    /// The Bot Chat's Work panel: beside the chat on a window with room,
+    /// else a sheet.
+    @State private var workPanelOpen = false
+
+    /// The bot whose Work panel can open: the open Bot Chat's.
+    private var workProfile: String? {
+        appState.activeRoomSurface == nil && appState.servesBotWorkstreams ? appState.activeBotChatProfile : nil
+    }
+    private var showsWorkPanel: Bool { workPanelOpen && fitsSidePanel && workProfile != nil }
 
     private var fitsSidePanel: Bool { ChatSidePanel.fits(width: screenWidth) }
     /// As wide as the user dragged it, less on a window without the room.
@@ -93,7 +102,7 @@ struct V2ConversationScreen: View {
         ChatSidePanel.widths.resolved(draggedSidePanelWidth.map { Double($0) } ?? storedSidePanelWidth, window: screenWidth, keeping: V2SplitLayout.minimumChatWidth)
     }
     private var showsSidePanel: Bool {
-        sidePanelOpen && fitsSidePanel && appState.activeRoomSurface == nil
+        sidePanelOpen && fitsSidePanel && appState.activeRoomSurface == nil && !showsWorkPanel
     }
 
     private var parent: SessionSummary? {
@@ -104,7 +113,7 @@ struct V2ConversationScreen: View {
 
     /// The chat column's width, beside Artifacts when they show.
     private var chatColumnWidth: CGFloat {
-        showsSidePanel ? screenWidth - sidePanelWidth - 1 : screenWidth
+        showsSidePanel || showsWorkPanel ? screenWidth - sidePanelWidth - 1 : screenWidth
     }
 
     /// Expanded on a Mac and on an iPad with the room, so the voice button
@@ -147,8 +156,17 @@ struct V2ConversationScreen: View {
                 .frame(width: sidePanelWidth)
                 .transition(.move(edge: .trailing))
             }
+            if showsWorkPanel, let workProfile {
+                Divider()
+                BotWorkPanel(work: appState.botWork, profile: workProfile) {
+                    workPanelOpen = false
+                }
+                .frame(width: sidePanelWidth)
+                .transition(.move(edge: .trailing))
+            }
         }
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showsSidePanel)
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showsWorkPanel)
         .background {
             GeometryReader { proxy in
                 Color.clear
@@ -165,6 +183,9 @@ struct V2ConversationScreen: View {
         .onAppear { sidePanelIDs = appState.activeChatArtifactSessionIDs }
         .onChange(of: appState.activeSessionId) { _, _ in
             sidePanelIDs = appState.activeChatArtifactSessionIDs
+            // A workstream opened from the panel shows its own chat, and
+            // the Bot Chat opens again without it, on any window.
+            workPanelOpen = false
         }
         .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
             composerExpanded = expanded
@@ -184,6 +205,18 @@ struct V2ConversationScreen: View {
             if !covered { appState.clearShownChatNotifications() }
         }
         .onDisappear { appState.chatCoveredBySheet = false }
+        .sheet(isPresented: Binding(
+            get: { workPanelOpen && !fitsSidePanel && workProfile != nil },
+            set: { if !$0 { workPanelOpen = false } }
+        )) {
+            if let workProfile {
+                BotWorkPanel(work: appState.botWork, profile: workProfile) {
+                    workPanelOpen = false
+                }
+                .presentationDetents([.medium, .large])
+                .environmentObject(appState)
+            }
+        }
         .sheet(item: $artifactSessionIDs) { sheet in
             ChatArtifactsSheet(sessionIDs: sheet.ids, tab: sheet.tab) { artifactSessionIDs?.tab = $0 }
                 .environmentObject(appState)
@@ -204,6 +237,8 @@ struct V2ConversationScreen: View {
             sidePanelIDs = ids
             sidePanelTab = tab
             sidePanelOpen = true
+            // One column beside the chat: Artifacts take the Work panel's.
+            workPanelOpen = false
         } else if artifactSessionIDs?.tab != tab || tab == .made {
             // An open sheet on the other tab comes back on this one, where
             // its Folder takes the tapped path.
@@ -226,6 +261,18 @@ struct V2ConversationScreen: View {
             // a group room keeps the profile in use.
             V2Backdrop(glowProfile: appState.activeRoomSurface == nil ? appState.conversationIdentityProfile : nil)
             conversation
+                // A Bot Chat's Work strip, or the bar over a workstream's
+                // own chat (Bot workstreams).
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if appState.activeRoomSurface == nil, appState.servesBotWorkstreams {
+                        BotWorkHeader(work: appState.botWork, isPanelOpen: workPanelOpen) {
+                            workPanelOpen.toggle()
+                            // One column beside the chat: the Work panel
+                            // takes Artifacts'.
+                            if workPanelOpen, fitsSidePanel { sidePanelOpen = false }
+                        }
+                    }
+                }
                 .overlay(alignment: .bottomTrailing) {
                     if appState.activeRoomSurface == nil {
                         // Beside the resting composer; it slides aside,
@@ -352,7 +399,7 @@ struct V2ConversationScreen: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Haptics.light()
-                    if sidePanelOpen {
+                    if showsSidePanel {
                         sidePanelOpen = false
                     } else {
                         openArtifacts(tab: sidePanelTab)
@@ -360,13 +407,13 @@ struct V2ConversationScreen: View {
                 } label: {
                     Image(systemName: "sidebar.right")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(sidePanelOpen ? Color.conduitAccent : Color.primary)
+                        .foregroundStyle(showsSidePanel ? Color.conduitAccent : Color.primary)
                         .frame(width: 40, height: 40)
                         .modifier(V2PreGlassToolbarControl())
                 }
                 .keyboardShortcut("a", modifiers: [.command, .option])
                 .disabled(!shell.isTabActive)
-                .accessibilityLabel(sidePanelOpen ? AppLocalization.string("Hide artifacts") : AppLocalization.string("Show artifacts"))
+                .accessibilityLabel(showsSidePanel ? AppLocalization.string("Hide artifacts") : AppLocalization.string("Show artifacts"))
                 .accessibilityIdentifier("conversation.sidePanelToggle")
             }
         }
