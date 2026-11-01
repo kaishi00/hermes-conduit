@@ -443,6 +443,10 @@ final class DashboardProxySignOutTests: XCTestCase {
              "Hermes has the conduit_push plugin turned off for the “Revisor” profile. On the Hermes host, add conduit_push to plugins.enabled in that profile's config.yaml, then restart Hermes."),
             ("/api/plugins/conduit_push/local-live/status?conduit_profile=coder",
              "Hermes has the conduit_push plugin turned off for the “coder” profile. On the Hermes host, add conduit_push to plugins.enabled in that profile's config.yaml, then restart Hermes."),
+            ("/api/plugins/conduit_push/local-live/status?profile=coder&conduit_profile=writer",
+             "Hermes has the conduit_push plugin turned off for the “writer” profile. On the Hermes host, add conduit_push to plugins.enabled in that profile's config.yaml, then restart Hermes."),
+            ("/api/plugins/conduit_push/artifacts?profile=default",
+             "Hermes has the conduit_push plugin turned off. On the Hermes host, run hermes plugins enable conduit_push, then restart Hermes."),
             ("/api/plugins/kanban/boards",
              "Hermes has the kanban plugin turned off. On the Hermes host, run hermes plugins enable kanban, then restart Hermes."),
         ]
