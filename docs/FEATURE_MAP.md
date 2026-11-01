@@ -1950,7 +1950,7 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - The workstreams' own approval mode in Edit Bot (M3) isn't built; until then a workstream follows the bot's Hermes approval mode as any chat does.
 - The plugin's version is bumped when the branch merges to main.
 
-**Checked:** 2026-11-01, #1599 (notifier #490, C.11 rulings).
+**Checked:** 2026-11-01, #1602 (notifier #491).
 
 ## Composer Return key
 
