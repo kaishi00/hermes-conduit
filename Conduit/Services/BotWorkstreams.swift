@@ -143,9 +143,9 @@ struct BotWorkSnapshot: Equatable {
     let policy: String
     let botName: String
     var items: [BotWorkItem]
-    let workingCount: Int
-    let needsYouCount: Int
-    let readyCount: Int
+    private(set) var workingCount: Int
+    private(set) var needsYouCount: Int
+    private(set) var readyCount: Int
 
     init?(response: [String: Any], profile: String) {
         guard response["ok"] as? Bool == true, let rows = response["work"] as? [[String: Any]] else { return nil }
@@ -160,6 +160,29 @@ struct BotWorkSnapshot: Equatable {
     }
 
     var isOn: Bool { policy != "off" }
+
+    /// The list with one row as an action left it, its counts moved by the
+    /// row's change, as the plugin counts them, so the strip follows a Stop
+    /// at once.
+    func replacing(_ item: BotWorkItem) -> BotWorkSnapshot {
+        guard let index = items.firstIndex(where: { $0.ref == item.ref }) else { return self }
+        var copy = self
+        let old = items[index]
+        copy.items[index] = item
+        copy.workingCount = max(0, workingCount - Self.counts(old, "working") + Self.counts(item, "working"))
+        copy.needsYouCount = max(0, needsYouCount - Self.counts(old, "needs_you") + Self.counts(item, "needs_you"))
+        copy.readyCount = max(0, readyCount - Self.counts(old, "ready") + Self.counts(item, "ready"))
+        return copy
+    }
+
+    private static func counts(_ item: BotWorkItem, _ count: String) -> Int {
+        guard item.kind == .workstream, !item.isClosed else { return 0 }
+        switch count {
+        case "working": return ["starting", "running"].contains(item.status) ? 1 : 0
+        case "needs_you": return ["needs_you", "interrupted"].contains(item.status) ? 1 : 0
+        default: return item.status == "ready" ? 1 : 0
+        }
+    }
 
     var active: [BotWorkItem] { items.filter(\.isActive) }
     var recent: [BotWorkItem] { items.filter { !$0.isActive } }

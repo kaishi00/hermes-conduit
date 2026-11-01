@@ -56,6 +56,18 @@ extension BotModeTests {
         XCTAssertNil(off?.stripText)
     }
 
+    /// A Stop moves the strip's counts at once, before the next read.
+    func testAReplacedRowMovesTheCounts() throws {
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
+        let stopped = try XCTUnwrap(BotWorkItem(row: ["ref": "W1", "kind": "workstream", "status": "stopped",
+                                                      "session_id": "20261101_w1", "actions": ["continue", "send"]]))
+        let after = snapshot.replacing(stopped)
+        XCTAssertEqual(after.workingCount, 0)
+        XCTAssertEqual(after.needsYouCount, 1)
+        XCTAssertEqual(after.items.first?.status, "stopped")
+        XCTAssertEqual(snapshot.replacing(try XCTUnwrap(BotWorkItem(row: ["ref": "W9", "kind": "workstream"]))), snapshot)
+    }
+
     @MainActor
     func testWorkStoreFindsTheWorkstreamAChatIs() throws {
         let store = BotWorkStore()

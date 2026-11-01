@@ -92,13 +92,6 @@ final class BotWorkStore: ObservableObject {
     }
 }
 
-extension BotWorkSnapshot {
-    func replacing(_ item: BotWorkItem) -> BotWorkSnapshot {
-        var copy = self
-        copy.items = items.map { $0.ref == item.ref ? item : $0 }
-        return copy
-    }
-}
 
 extension AppState {
     /// Whether the host's plugin serves the Work panel's routes.
@@ -159,7 +152,8 @@ extension AppState {
                 botWork.replace(updated, profile: profile)
             }
             Haptics.success()
-            await refreshBotWork(profile: profile)
+            // The buttons free up now; the list is read again behind them.
+            Task { await refreshBotWork(profile: profile) }
             return true
         } catch DashboardTicketBridgeError.http(_, let detail) where !detail.isEmpty {
             botWork.setRefusal(detail, profile: profile)
