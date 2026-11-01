@@ -97,7 +97,8 @@ final class HermesWatchCalls: NSObject {
         configuration.supportsVideo = false
         configuration.maximumCallGroups = 1
         configuration.maximumCallsPerCallGroup = 1
-        configuration.supportedHandleTypes = [.generic]
+        // An address a contact can hold, so a Focus can allow Hermes.
+        configuration.supportedHandleTypes = [.emailAddress]
         // A Hermes call can't be called back from the Phone app.
         configuration.includesCallsInRecents = false
         let provider = CXProvider(configuration: configuration)
@@ -224,7 +225,7 @@ final class HermesWatchCalls: NSObject {
 
     private static func update(callerName: String) -> CXCallUpdate {
         let update = CXCallUpdate()
-        update.remoteHandle = CXHandle(type: .generic, value: "hermes")
+        update.remoteHandle = CXHandle(type: .emailAddress, value: HermesCallerName.contactAddress)
         update.localizedCallerName = callerName
         update.hasVideo = false
         return update

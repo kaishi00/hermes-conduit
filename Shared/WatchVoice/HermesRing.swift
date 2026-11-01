@@ -45,6 +45,12 @@ struct HermesRing: Equatable {
 /// capitalized profile id.
 enum HermesCallerName {
     static let fallback = "Hermes"
+    /// The address every Hermes call rings from, on the iPhone and the
+    /// Watch. A Focus lets a call through only from a caller it can match
+    /// to a contact in its allowed people, so a user who saves this address
+    /// as a contact (Settings > Hermes calls) can let Hermes ring through
+    /// one Focus and not others. Nothing is ever sent to it.
+    static let contactAddress = "hermes@hermesconduit.app"
     static let maximumNameCharacters = 40
 
     /// `mainName`: the name the user gave the main profile on the call's

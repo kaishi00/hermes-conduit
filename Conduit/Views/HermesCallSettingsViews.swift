@@ -11,6 +11,8 @@
 //  Design: /mnt/project-files/designs/hermes-calls-teaching.md
 //
 
+import Contacts
+import ContactsUI
 import SwiftUI
 
 /// What Settings needs to show the profile's call settings.
@@ -133,6 +135,43 @@ struct HermesCallsHowToSection: View {
     }
 }
 
+/// The system's new-contact screen, filled in with the address Hermes
+/// calls ring from. It runs outside Conduit's process, so it needs no
+/// contacts permission.
+struct HermesNewContactSheet: UIViewControllerRepresentable {
+    @Environment(\.dismiss) private var dismiss
+
+    /// Hermes, at the address its calls ring from.
+    static func contact() -> CNMutableContact {
+        let contact = CNMutableContact()
+        contact.givenName = HermesCallerName.fallback
+        contact.emailAddresses = [CNLabeledValue(label: CNLabelOther, value: HermesCallerName.contactAddress as NSString)]
+        return contact
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(dismiss: { dismiss() }) }
+
+    func makeUIViewController(context: Context) -> UINavigationController {
+        let controller = CNContactViewController(forNewContact: Self.contact())
+        controller.delegate = context.coordinator
+        return UINavigationController(rootViewController: controller)
+    }
+
+    func updateUIViewController(_ controller: UINavigationController, context: Context) {}
+
+    final class Coordinator: NSObject, CNContactViewControllerDelegate {
+        let dismiss: () -> Void
+
+        init(dismiss: @escaping () -> Void) {
+            self.dismiss = dismiss
+        }
+
+        func contactViewController(_ viewController: CNContactViewController, didCompleteWith contact: CNContact?) {
+            dismiss()
+        }
+    }
+}
+
 struct HermesCallSettingsSection: View {
     let model: HermesCallSettingsModel
     var startTestCall: (() -> Void)?
@@ -145,6 +184,7 @@ struct HermesCallSettingsSection: View {
     @AppStorage(HermesNativeCalls.ringsKey) private var ringsLikeCall = true
     @ObservedObject private var notifications = PushNotificationService.shared
     @State private var loadFailed = false
+    @State private var addsContact = false
     @State private var saveTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -207,6 +247,26 @@ struct HermesCallSettingsSection: View {
         )
     }
 
+    /// A Focus lets a call through only from its allowed people, matched
+    /// by contact, so Hermes needs a contact to be allowed in one (#1606).
+    private var focusContactRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                addsContact = true
+            } label: {
+                Label(AppLocalization.string("Add Hermes to Contacts"), systemImage: "person.crop.circle.badge.plus")
+            }
+            .accessibilityIdentifier("hermesCalls.addContact")
+            Text("A Focus or Do Not Disturb silences Hermes' calls. To let them ring through one, save this contact, then add it to the Focus's allowed people in Settings > Focus > People. Other callers stay silenced.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .sheet(isPresented: $addsContact) {
+            HermesNewContactSheet()
+                .ignoresSafeArea()
+        }
+    }
+
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Calls from Hermes"), symbol: "phone.arrow.down.left", tint: .green) {
             if let status = model.status {
@@ -232,6 +292,9 @@ struct HermesCallSettingsSection: View {
                                 .scaledFont(.caption)
                                 .foregroundStyle(.orange)
                                 .accessibilityIdentifier("hermesCalls.watchElsewhere")
+                        }
+                        if ringsLikeCall {
+                            focusContactRow
                         }
                     }
                     Toggle("Call when I ask", isOn: binding(\.whenAsked))

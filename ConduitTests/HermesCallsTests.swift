@@ -13,6 +13,7 @@
 //
 
 import CallKit
+import Contacts
 import CryptoKit
 import XCTest
 @testable import Conduit
@@ -814,6 +815,18 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(HermesNativeCalls.stopsWatchRing(after: .callUUIDAlreadyExists))
         XCTAssertFalse(HermesNativeCalls.stopsWatchRing(after: .unknown))
         XCTAssertFalse(HermesNativeCalls.stopsWatchRing(after: nil))
+    }
+
+    func testACallRingsFromTheAddressTheHermesContactHolds() {
+        // A Focus lets a call through only from a contact in its allowed
+        // people (#1606): the call rings from an address the contact from
+        // Settings > Hermes calls holds, on the iPhone and the Watch.
+        let handle = HermesNativeCalls.callerHandle
+        XCTAssertEqual(handle.type, .emailAddress)
+        XCTAssertEqual(handle.value, HermesCallerName.contactAddress)
+        let contact = HermesNewContactSheet.contact()
+        XCTAssertEqual(contact.givenName, HermesCallerName.fallback)
+        XCTAssertEqual(contact.emailAddresses.map { $0.value as String }, [handle.value])
     }
 
     func testACallSaysWhichProfileIsCalling() throws {
