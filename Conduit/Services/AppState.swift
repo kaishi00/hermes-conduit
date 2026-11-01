@@ -10555,12 +10555,19 @@ final class AppState: ObservableObject {
         defaults.set(surface.rawValue, forKey: Self.chatReturnSurfaceKey)
     }
 
+    /// "Open to" is the drawer shell's choice. V2 hides it (its tabs keep
+    /// the chat that was showing), so a Sessions picked under the drawer
+    /// shell no longer closes the chat on every return (#1559).
+    var chatReturnSurfaceApplies: Bool {
+        !(defaults.object(forKey: V2ShellPreference.key) as? Bool ?? V2ShellPreference.defaultValue)
+    }
+
     /// Issues a one-shot preferred-return-surface request. Suppressed while
     /// an explicit destination is pending or being opened, or when a modal
     /// sheet already owns the surface; MainView re-checks at presentation
     /// time as a backstop.
     func requestPreferredReturnSurface() {
-        guard chatReturnSurface == .sessions else { return }
+        guard chatReturnSurfaceApplies, chatReturnSurface == .sessions else { return }
         guard !hasPendingExplicitNavigation else { return }
         guard !isOpeningNotificationSession else { return }
         guard !isModalSheetPresented else { return }
@@ -10609,7 +10616,7 @@ final class AppState: ObservableObject {
             return false
         }
         consumedReturnSurfaceRequest = current
-        guard chatReturnSurface == .sessions,
+        guard chatReturnSurfaceApplies, chatReturnSurface == .sessions,
               !isOpeningNotificationSession,
               !isModalSheetPresented else { return false }
         return true
@@ -11600,8 +11607,12 @@ final class AppState: ObservableObject {
     @Published private(set) var groupRooms: [GroupRoom] = []
     /// `groups.list` has answered since the group state was last cleared:
     /// until then the Bots list shows the rooms kept from its last answer on
-    /// this dashboard (`shownGroupRooms`, #1533).
-    private(set) var groupRoomsListed = false
+    /// this dashboard (`shownGroupRooms`, #1533). Published so a room a
+    /// launch waits on opens as soon as Hermes lists it (#1597).
+    @Published private(set) var groupRoomsListed = false
+    /// The last `groups.list` answer was its last page: only then does a
+    /// room missing from `groupRooms` prove it's gone.
+    private(set) var groupRoomsComplete = false
     private var keptGroupRoomsMemo: (key: String, rooms: KeptGroupRooms?)?
     /// Hermes Desktop's group chats, read from its ui_meta projection on the
     /// `default` profile (refreshed with the bot roster). Read-only here:
@@ -11767,6 +11778,7 @@ final class AppState: ObservableObject {
         // Whether the gateway can make pictures is the outgoing one's answer.
         canGeneratePictures = false
         groupRoomsListed = false
+        groupRoomsComplete = false
         groupRooms = []
         desktopGroupChats = []
         groupRoomPictureData = [:]
@@ -12100,6 +12112,7 @@ final class AppState: ObservableObject {
                     self.groupRoomsListed = true
                 }
                 self.groupRooms = rooms.filter { !$0.isDisbanded }
+                self.groupRoomsComplete = nextOffset == nil
                 // Only a complete list proves a room is gone: a partial page
                 // (next_offset set) must not drop another room's retry key.
                 if nextOffset == nil {
