@@ -511,7 +511,8 @@ struct V2Shell: View {
         if next == .askHermes || (next != .giveUp && !hermesListed()) {
             await appState.refreshGroupChatSupport()
             // Cut short (the connection dropped) or still unlisted: kept for
-            // the next connection.
+            // the next connection. Given up meanwhile: nothing to open.
+            guard roomToReopen != nil else { return }
             guard !Task.isCancelled, appState.isConnected, hermesListed() else { return }
             next = step()
         }
