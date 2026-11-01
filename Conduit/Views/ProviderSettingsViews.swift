@@ -1042,6 +1042,7 @@ private struct ProviderSettingsRows: View {
                     }
                     .buttonStyle(.settings)
                     .disabled(saving || !service.answered)
+                    .accessibilityLabel(Text(verbatim: AppLocalization.string("Clear") + ", " + title(setting)))
                 }
                 Button(AppLocalization.string("Cancel"), role: .cancel) {
                     draft = ""
@@ -1049,6 +1050,7 @@ private struct ProviderSettingsRows: View {
                 }
                 .buttonStyle(.settings)
                 .disabled(saving)
+                .accessibilityLabel(Text(verbatim: AppLocalization.string("Cancel") + ", " + title(setting)))
                 Spacer()
                 Button(AppLocalization.string("Save")) {
                     let value = draft
@@ -1056,6 +1058,7 @@ private struct ProviderSettingsRows: View {
                 }
                 .buttonStyle(.settingsPrimary)
                 .disabled(saving || !service.answered || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityLabel(Text(verbatim: AppLocalization.string("Save") + ", " + title(setting)))
             }
         }
     }

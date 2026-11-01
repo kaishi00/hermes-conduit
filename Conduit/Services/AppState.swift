@@ -2845,6 +2845,9 @@ final class AppState: ObservableObject {
             // it, and the kept slots follow the save, so the section opens
             // on it next time (#1533).
             noteKeptAnswerWrite(for: KeptRoute.modelAuxiliary, profile: profile, owner: owner)
+            // An open list's read asked before the save is dropped for one
+            // asked after it.
+            NotificationCenter.default.post(name: HelperModelSlot.saved, object: nil)
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return .saved }
             Task { [weak self] in
                 _ = try? await self?.readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner)

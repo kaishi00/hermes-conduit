@@ -27,6 +27,10 @@ struct HelperModelSlot: Identifiable, Equatable {
     /// profile only, and Settings > Pulse sets it there.
     static let setElsewhere: Set<String> = ["pulse_memory"]
 
+    /// Posted once Hermes took a slot's new model: a list read asked before
+    /// it may answer with the old one, so the lists read again.
+    static let saved = Notification.Name("conduit.helperModels.saved")
+
     /// The slots of a `/api/model/auxiliary` answer, in Hermes' order:
     /// built-ins, then the plugins'.
     static func slots(in response: [String: Any]) -> [HelperModelSlot] {
@@ -189,6 +193,9 @@ struct HelperModelsSettingsSection: View {
             if slots == nil { slots = settings.kept() }
             Task { await read() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: HelperModelSlot.saved)) { _ in
+            Task { await read() }
+        }
     }
 
     private func read() async {
@@ -249,6 +256,9 @@ struct HelperModelsPage: View {
         // Again on coming back from a helper's page.
         .onAppear {
             if slots == nil { slots = settings.kept() }
+            Task { await read() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: HelperModelSlot.saved)) { _ in
             Task { await read() }
         }
     }
