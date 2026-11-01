@@ -169,6 +169,15 @@ extension AppState {
         )
     }
 
+    /// A bot's work as read. The open chat's title reads it too (a
+    /// workstream's chat takes its task's title), and the chat screen
+    /// watches only AppState, so it's told when that changes.
+    private func setBotWork(_ snapshot: BotWorkSnapshot) {
+        let before = activeWorkstream?.item.shownTitle
+        botWork.set(snapshot)
+        if activeWorkstream?.item.shownTitle != before { objectWillChange.send() }
+    }
+
     /// Shows the bot's kept work first, then asks the plugin again. Quiet
     /// when it can't: the strip keeps what it showed. One read per bot at a
     /// time, so the strip and the panel showing it never race.
@@ -177,7 +186,7 @@ extension AppState {
         let answers = screenAnswers(profile: profile)
         let client = botWorkClient(profile: profile)
         if botWork.snapshot(profile) == nil, let kept = client.kept(in: answers) {
-            botWork.set(kept)
+            setBotWork(kept)
         }
         guard isConnected else { return }
         guard botWork.beginReading(profile) else {
@@ -194,7 +203,7 @@ extension AppState {
                 // Read before a server change or an action on this bot: the
                 // next read has what came after.
                 guard botWork.isCurrent(mark, profile: profile) else { continue }
-                botWork.set(listed)
+                setBotWork(listed)
             } catch {
                 // Kept as it was; the next refresh asks again.
             }
