@@ -143,6 +143,10 @@ extension BotModeTests {
             toolName: "work_stop", input: #"{"ref": "W3"}"#, output: "Tool failed: bridge closed"
         ))
         XCTAssertNil(unread.title(running: false))
+        let wrapped = try XCTUnwrap(BotWorkCall.parse(
+            toolName: "work_stop", input: #"{"ref": "W3"}"#, output: #"{"output": "W3 is not running"}"#
+        ))
+        XCTAssertNil(wrapped.title(running: false))
         XCTAssertNil(BotWorkCall.parse(toolName: "terminal", input: #"{"command": "ls"}"#, output: nil))
         XCTAssertNil(BotWorkCall.parse(toolName: "tool_call", input: #"{"name": "terminal"}"#, output: nil))
     }

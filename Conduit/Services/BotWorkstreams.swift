@@ -215,11 +215,11 @@ final class BotWorkstreamsClient {
 
     @MainActor
     func list(keptIn answers: KeptAnswers? = nil) async throws -> BotWorkSnapshot {
-        let path = DashboardPath.withProfile(Self.path, profile: profile, parameter: parameter)
-        let profile = profile
+        let botProfile = profile
+        let path = DashboardPath.withProfile(Self.path, profile: botProfile, parameter: parameter)
         let read = { () async throws -> [String: Any] in
             let response = try await self.request(path, "GET", nil)
-            guard BotWorkSnapshot(response: response, profile: profile) != nil else { throw Failure.malformed }
+            guard BotWorkSnapshot(response: response, profile: botProfile) != nil else { throw Failure.malformed }
             return response
         }
         let response: [String: Any]
@@ -228,7 +228,7 @@ final class BotWorkstreamsClient {
         } else {
             response = try await read()
         }
-        guard let snapshot = BotWorkSnapshot(response: response, profile: profile) else { throw Failure.malformed }
+        guard let snapshot = BotWorkSnapshot(response: response, profile: botProfile) else { throw Failure.malformed }
         return snapshot
     }
 
@@ -324,7 +324,7 @@ struct BotWorkCall: Equatable {
 
     /// The card's title, or nil to keep the step's own words.
     func title(running: Bool) -> String? {
-        let ref = ref ?? ""
+        let ref = self.ref ?? ""
         if running {
             switch tool {
             case .start: return AppLocalization.string("Starting work…")
@@ -378,8 +378,10 @@ struct BotWorkCall: Equatable {
         guard let object = jsonObject(text) else { return nil }
         if object["ref"] == nil, object["ok"] == nil {
             for key in ["result", "output", "content"] {
-                if let inner = (object[key] as? String).flatMap(jsonObject) { return inner }
                 if let inner = object[key] as? [String: Any] { return inner }
+                // A bridge's plain-text answer ("W3 is not running") says
+                // nothing was done for sure: the step keeps its own words.
+                if let text = object[key] as? String { return jsonObject(text) }
             }
         }
         return object
