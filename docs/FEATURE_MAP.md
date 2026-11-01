@@ -2287,6 +2287,7 @@ itself · the hidden dashboard page's failed load
 - A call's requests: `Conduit/Services/AppState.swift` (voiceBackgroundJobSupervisor's backend), `Conduit/Services/AppState+SpokenApprovals.swift` (respondToApprovalByVoice, respondToClarifyByVoice)
 - Network path: `Conduit/Services/PowerPolicy.swift` (pathSatisfied), `Conduit/Services/HermesClient.swift` (networkPathChanged, the ping of an open socket, checkLiveness)
 - Coming back to the app: `Conduit/Services/AppState.swift` (beginQuietReturn, quietReturnWindow, hidesBriefReconnect), `Conduit/Services/AppState+PendingSend.swift` (sendWhenConnected ends the quiet), `Conduit/Views/V2/V2ConversationScreen.swift` (V2ConnectionLine, V2ConversationMenu's dot), `Conduit/Views/RootView.swift` (ConnectionStatusIndicator, the classic layout's dot)
+- Which renewal failures retry quietly: `Conduit/Voice/DictationClipStore.swift` (DictationUploadRetry.isTransient, shared with dictation uploads)
 - A tapped Reconnect and a waiting Siri launch: `Conduit/Services/AppState.swift` (reconnect, surfacesRenewalFailureAtOnce, quietReconnectFailureClass), `Conduit/Voice/Wake/PendingVoiceLaunchPolicy.swift` (voiceLaunchConnectionSnapshot)
 - Timing in Instruments: `Conduit/Services/ResponsivenessSignposts.swift` ("OAuth refresh" in `Conduit/Services/NativeOAuth.swift`, "Ticket mint" and "WebSocket connect" in AppState)
 - The hidden dashboard page: `Conduit/Services/DashboardTicketBridge.swift` (waitUntilReady, mintCookieTicket, requestJSON)
@@ -2988,7 +2989,7 @@ into the composer" (done) · Watch and CarPlay (not needed, no composer
 dictation)
 
 **Code**
-- Store and retry policy: `Conduit/Voice/DictationClipStore.swift` (DictationClipStore, DictationUploadRetry)
+- Store and retry policy: `Conduit/Voice/DictationClipStore.swift` (DictationClipStore, DictationUploadRetry; its isTransient also decides which reconnect renewals retry quietly, see Reconnecting to Hermes)
 - What the composer offers: `Conduit/Voice/DictationClipInbox.swift` (keep, release, delivered, retry; AppState.restoreRetriedDictation)
 - The recognizer: `Conduit/Voice/DictationRecognizers.swift` (HermesDictationRecognizer keepRecording, upload, cancel, deliver)
 - Wiring: `Conduit/Voice/ComposerDictationService.swift` (clipInbox, makeRecognizer clips), `Conduit/ConduitApp.swift` (load at launch), `Conduit/Services/AppState+PendingSend.swift` (ComposerRestoreRequest.dictationClipID)
@@ -3007,7 +3008,7 @@ dictation)
 - A recording is written when the dictation stops, not while it runs: Conduit ending mid-dictation still loses it.
 - Recordings over about 9 minutes exceed the host's 25 MB transcription limit once base64-encoded, so their upload and Retry fail the same way.
 
-**Checked:** 2026-10-27, at #1385.
+**Checked:** 2026-11-01, #1628 (its retry rule also decides which reconnect renewals retry quietly, so a change to it reaches Reconnecting to Hermes); 2026-10-27, at #1385.
 
 ## Chats top bar and search
 
