@@ -40,12 +40,36 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(entries.map(\.id), ["openai", "openrouter"])
         let openrouter = entries[1]
         XCTAssertEqual(openrouter.name, "OpenRouter")
-        XCTAssertEqual(openrouter.key?.vars, ["OPENROUTER_API_KEY", "OPENAI_API_KEY"])
+        XCTAssertEqual(openrouter.key?.vars, ["OPENROUTER_API_KEY"], "another provider's variable it can read isn't its key")
         XCTAssertEqual(openrouter.key?.writeVar, "OPENROUTER_API_KEY")
         XCTAssertEqual(openrouter.key?.savedVars, ["OPENROUTER_API_KEY"])
         XCTAssertEqual(openrouter.key?.baseURLVar, "OPENROUTER_BASE_URL")
         XCTAssertEqual(openrouter.key?.signupURL, "https://openrouter.ai/keys")
         XCTAssertEqual(entries[0].status, .notConnected)
+    }
+
+    func testAnotherProvidersKeyIsNeverCountedOrRemovedForThisOne() {
+        var withOpenAI = env
+        var openAI = env["OPENAI_API_KEY"] as! [String: Any]
+        openAI["is_set"] = true
+        withOpenAI["OPENAI_API_KEY"] = openAI
+        var openrouterUnset = env["OPENROUTER_API_KEY"] as! [String: Any]
+        openrouterUnset["is_set"] = false
+        withOpenAI["OPENROUTER_API_KEY"] = openrouterUnset
+        let entries = ProviderCatalog.entries(env: withOpenAI, accounts: nil, endpoints: nil)
+        let openrouter = entries.first { $0.id == "openrouter" }
+        XCTAssertEqual(openrouter?.status, .notConnected)
+        XCTAssertEqual(openrouter?.key?.savedVars, [])
+        XCTAssertEqual(entries.first { $0.id == "openai" }?.status, .mainProfileOnly)
+
+        // A provider that only borrows a variable still names it for the check.
+        let borrowedOnly: [String: Any] = ["SHARED_API_KEY": [
+            "category": "provider", "is_password": true, "is_set": true,
+            "provider_profiles": [["provider": "lab", "provider_label": "Lab", "primary": false]],
+        ]]
+        let lab = ProviderCatalog.entries(env: borrowedOnly, accounts: nil, endpoints: nil).first
+        XCTAssertEqual(lab?.key?.vars, ["SHARED_API_KEY"])
+        XCTAssertEqual(lab?.key?.savedVars, [])
     }
 
     func testMainProfileKeyStates() {

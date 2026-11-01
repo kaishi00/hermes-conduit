@@ -191,6 +191,10 @@ enum ProviderCatalog {
     ) -> [ProviderEntry] {
         var byID: [String: ProviderEntry] = [:]
         var order: [String] = []
+        /// Variables another provider owns that this one can also read.
+        /// They aren't this provider's key: never counted as saved, never
+        /// removed for it.
+        var borrowed: [String: [String]] = [:]
         func update(_ id: String, name: String, _ change: (inout ProviderEntry) -> Void) {
             if byID[id] == nil {
                 byID[id] = ProviderEntry(id: id, name: name)
@@ -208,8 +212,12 @@ enum ProviderCatalog {
                 if isPassword {
                     update(profile.slug, name: profile.label) { entry in
                         var key = entry.key ?? ProviderEntry.KeyAccess(vars: [], savedVars: [])
-                        if profile.primary { key.vars.insert(variable, at: 0) } else { key.vars.append(variable) }
-                        if isSet { key.savedVars.append(variable) }
+                        if profile.primary {
+                            key.vars.append(variable)
+                            if isSet { key.savedVars.append(variable) }
+                        } else {
+                            borrowed[profile.slug, default: []].append(variable)
+                        }
                         if key.signupURL == nil { key.signupURL = profile.url }
                         entry.key = key
                     }
@@ -223,20 +231,14 @@ enum ProviderCatalog {
                 }
             }
         }
-        // A provider whose only variable is a base URL has no key to add.
-        for id in order where byID[id]?.key?.vars.isEmpty == true {
-            byID[id]?.key = nil
-        }
-        // Several primaries can't happen, but keep the order stable when the
-        // dictionary's order changes: the provider's own variable, then the rest.
+        // A provider with only borrowed variables still takes a key (named
+        // by the first, for Hermes' check); one with only a base URL has none.
         for id in order {
             guard var key = byID[id]?.key else { continue }
-            if key.vars.count > 1 {
-                let first = key.vars[0]
-                key.vars = [first] + key.vars.dropFirst().sorted()
-            }
+            key.vars.sort()
             key.savedVars.sort()
-            byID[id]?.key = key
+            if key.vars.isEmpty { key.vars = (borrowed[id] ?? []).sorted() }
+            byID[id]?.key = key.vars.isEmpty ? nil : key
         }
 
         // A key pasted into the main profile's pool is shared. Rows the pool
@@ -323,8 +325,9 @@ enum ProviderCatalog {
         }
         if !shared.isEmpty { return shared }
         guard let slug = nonEmpty(row["provider"]) else { return [] }
+        // A variable naming a single provider is that provider's own.
         return [ProviderProfile(slug: slug, label: nonEmpty(row["provider_label"]) ?? slug,
-                                url: nonEmpty(row["url"]), primary: row["provider_primary"] as? Bool ?? false)]
+                                url: nonEmpty(row["url"]), primary: row["provider_primary"] as? Bool ?? true)]
     }
 
     private static func nonEmpty(_ value: Any?) -> String? {
@@ -663,7 +666,7 @@ final class ProviderSettingsService: ObservableObject {
         return await cleanUp {
             if !replaced.isEmpty {
                 try await removeRows(provider: entry.id, ids: replaced, profile: Self.sharedProfile)
-                await removeCopies(provider: entry.id, ids: replaced)
+                try await removeCopies(provider: entry.id, ids: replaced)
             }
             try await removeVariables(mainVars)
             try await removeRows(provider: entry.id, ids: ownHere, profile: profile)
@@ -677,7 +680,7 @@ final class ProviderSettingsService: ObservableObject {
         guard !ids.isEmpty else { return }
         try await afterWrite {
             try await removeRows(provider: entry.id, ids: ids, profile: Self.sharedProfile)
-            await removeCopies(provider: entry.id, ids: ids)
+            try await removeCopies(provider: entry.id, ids: ids)
         }
     }
 
@@ -775,10 +778,17 @@ final class ProviderSettingsService: ObservableObject {
     /// every other profile's pool. A profile that only falls back to the
     /// main pool lists none of them any more, so only real copies go. A
     /// profile that can't be read keeps its copy; its page says so.
-    private func removeCopies(provider: String, ids: Set<String>) async {
+    /// Throws when a profile's copy couldn't be removed, after trying the rest.
+    private func removeCopies(provider: String, ids: Set<String>) async throws {
+        var failure: Error?
         for name in profiles() where name != Self.sharedProfile {
-            try? await removeRows(provider: provider, ids: ids, profile: name)
+            do {
+                try await removeRows(provider: provider, ids: ids, profile: name)
+            } catch {
+                failure = failure ?? error
+            }
         }
+        if let failure { throw failure }
     }
 
     // MARK: Accounts

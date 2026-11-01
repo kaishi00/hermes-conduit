@@ -303,6 +303,8 @@ struct AddProviderSheet: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    // A new endpoint's key is kept clear of the listed ones.
+                    .disabled(!service.answered)
                     .accessibilityIdentifier("settings.providers.add.custom")
                 }
                 ConduitSettingsSection(title: AppLocalization.string("Providers"), symbol: "key.horizontal", tint: .conduitAccent) {
@@ -503,7 +505,8 @@ struct ProviderDetailPage: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(settingDefault != nil || isDefault)
+                    // Picks only from a catalog Hermes gave since the page opened.
+                    .disabled(settingDefault != nil || isDefault || !context.catalogAnswered)
                 }
                 if models.count > Self.shortModelList {
                     Button(showsAllModels ? AppLocalization.string("Show fewer") : AppLocalization.string("Show all models")) {
@@ -826,11 +829,12 @@ private struct ProviderKeyEditor: View {
                 self.scope = nil
                 editing = false
                 if !cleaned {
-                    note = AppLocalization.string("Saved, but the key it replaces couldn't be removed everywhere. Save it again to finish.")
+                    note = AppLocalization.string("Saved, but the old key couldn't be removed everywhere. A profile still using it says Old copy of the shared key.")
                 } else if !check.ok {
                     note = AppLocalization.string("Saved. Hermes couldn't reach the provider to check the key.")
                 }
-                onSaved()
+                // A note stays in view: the Add sheet closes on onSaved.
+                if note == nil { onSaved() }
             } catch {
                 self.error = AppLocalization.string("Could not save credential: \(UserFacingError.message(for: error))")
             }
@@ -987,6 +991,7 @@ private struct ProviderSignInView: View {
                 if failures >= Self.pollFailureLimit, !Task.isCancelled {
                     signIn = nil
                     self.error = UserFacingError.message(for: error)
+                    await service.cancel(started)
                     return
                 }
                 try? await Task.sleep(for: .seconds(started.pollInterval))

@@ -272697,84 +272697,84 @@
         }
       }
     },
-    "Saved, but the key it replaces couldn't be removed everywhere. Save it again to finish.": {
+    "Saved, but the old key couldn't be removed everywhere. A profile still using it says Old copy of the shared key.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gespeichert, aber der ersetzte Schlüssel konnte nicht überall entfernt werden. Speichere ihn erneut, um es abzuschließen."
+            "value": "Gespeichert, aber der alte Schlüssel konnte nicht überall entfernt werden. Ein Profil, das ihn noch nutzt, zeigt „Alte Kopie des gemeinsamen Schlüssels“."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Guardada, pero la clave que reemplaza no se pudo quitar en todas partes. Guárdala de nuevo para terminar."
+            "value": "Guardada, pero la clave antigua no se pudo quitar en todas partes. Un perfil que aún la use muestra «Copia antigua de la clave compartida»."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enregistrée, mais la clé remplacée n’a pas pu être supprimée partout. Enregistrez-la à nouveau pour terminer."
+            "value": "Enregistrée, mais l’ancienne clé n’a pas pu être supprimée partout. Un profil qui l’utilise encore affiche « Ancienne copie de la clé partagée »."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Disimpan, tetapi kunci yang digantikan tidak dapat dihapus di semua tempat. Simpan lagi untuk menyelesaikan."
+            "value": "Disimpan, tetapi kunci lama tidak dapat dihapus di semua tempat. Profil yang masih memakainya menampilkan “Salinan lama kunci bersama”."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Salvata, ma la chiave che sostituisce non è stata rimossa ovunque. Salvala di nuovo per finire."
+            "value": "Salvata, ma la vecchia chiave non è stata rimossa ovunque. Un profilo che la usa ancora mostra «Vecchia copia della chiave condivisa»."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "保存しましたが、置き換えたキーをすべての場所から削除できませんでした。もう一度保存して完了してください。"
+            "value": "保存しましたが、古いキーをすべての場所から削除できませんでした。まだ使っているプロファイルには「共有キーの古いコピー」と表示されます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "저장했지만 대체된 키를 모든 곳에서 제거하지 못했습니다. 다시 저장해 마무리하세요."
+            "value": "저장했지만 이전 키를 모든 곳에서 제거하지 못했습니다. 아직 사용하는 프로필에는 '공유 키의 이전 사본'이 표시됩니다."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zapisano, ale zastępowanego klucza nie udało się wszędzie usunąć. Zapisz go ponownie, aby dokończyć."
+            "value": "Zapisano, ale starego klucza nie udało się wszędzie usunąć. Profil, który wciąż go używa, pokazuje „Stara kopia wspólnego klucza”."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Salva, mas a chave substituída não pôde ser removida em todos os lugares. Salve de novo para concluir."
+            "value": "Salva, mas a chave antiga não pôde ser removida em todos os lugares. Um perfil que ainda a use mostra “Cópia antiga da chave compartilhada”."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сохранено, но заменённый ключ удалось удалить не везде. Сохраните ещё раз, чтобы завершить."
+            "value": "Сохранено, но старый ключ удалось удалить не везде. Профиль, который всё ещё его использует, показывает «Старая копия общего ключа»."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kaydedildi, ancak değiştirilen anahtar her yerden kaldırılamadı. Bitirmek için yeniden kaydedin."
+            "value": "Kaydedildi, ancak eski anahtar her yerden kaldırılamadı. Onu hâlâ kullanan bir profil “Paylaşılan anahtarın eski kopyası” gösterir."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已保存，但被替换的密钥未能在所有地方移除。请再次保存以完成。"
+            "value": "已保存，但旧密钥未能在所有地方移除。仍在使用它的配置会显示“共享密钥的旧副本”。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "已儲存，但被替換的金鑰未能在所有地方移除。請再次儲存以完成。"
+            "value": "已儲存，但舊金鑰未能在所有地方移除。仍在使用它的設定檔會顯示「共用金鑰的舊副本」。"
           }
         }
       }
