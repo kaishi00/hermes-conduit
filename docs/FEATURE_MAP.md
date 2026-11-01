@@ -1910,8 +1910,9 @@ in as hidden turns, which the transcript leaves out as it does every hidden
 user turn) · a workstream's session (hidden, titled, on the bot's own
 profile, its steps journaled; its own `work_progress` checklist and ready
 mark, and its report written for you in its chat; its brief carries the
-coordinator's `work_note` notes and your last message to the Bot Chat, quoted
-as yours, with what counts as your go-ahead under the bot's approval mode; a reply in it sends no push, the Bot Chat's
+coordinator's `work_note` notes (labelled as data, never your go-ahead) and
+the message of yours the Bot Chat is answering, quoted as yours (none when a
+work update started the turn), with what counts as your go-ahead under the bot's approval mode; a reply in it sends no push, the Bot Chat's
 reply to the update is the one push, and its turns start no Live Activity) · the `conduit://session/` link a work
 tool's answer and every work update carry, with the bot's profile (see Links
 in messages) · an
