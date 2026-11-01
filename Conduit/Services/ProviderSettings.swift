@@ -292,6 +292,8 @@ enum ProviderCatalog {
                 byID[id]?.key?.profileRows = rows
             }
         }
+        let sharedCounts = credentialCounts(sharedPool)
+        let ownCounts = credentialCounts(profilePool)
         for id in order {
             byID[id]?.onMainProfile = onMainProfile
             byID[id]?.settings.sort { $0.variable < $1.variable }
@@ -300,8 +302,8 @@ enum ProviderCatalog {
             // another reads its own rows (a sign-in of its own is one), or
             // falls back to the shared ones. Sign-ins count: Hermes takes
             // turns over them with the keys.
-            let shared = credentialCounts(sharedPool)[id] ?? .init()
-            let own = credentialCounts(profilePool)[id] ?? .init()
+            let shared = sharedCounts[id] ?? .init()
+            let own = ownCounts[id] ?? .init()
             byID[id]?.key?.keysInUse = onMainProfile
                 ? shared.all
                 : (own.all == 0 ? key.sharedRows.count + shared.signIns : own.all)

@@ -1279,7 +1279,8 @@ extension AppStateMultiDashboardTests {
         for _ in 0..<100 where appState.keptHelperModels(includingSetElsewhere: true)?.count != 2 {
             try await Task.sleep(for: .milliseconds(10))
         }
-        XCTAssertNil(appState.keptHelperModels(includingSetElsewhere: true)?.first { $0.id == "pulse_memory" }, "the read after the save is kept")
+        XCTAssertEqual(appState.keptHelperModels(includingSetElsewhere: true).map { Set($0.map(\.id)) },
+                       Set(["title_generation", "voice_chat"]), "the read after the save is kept")
     }
 
     private func heldSwitchFixture() -> (appState: AppState, held: HeldDashboardRequests, vps: SavedDashboard) {

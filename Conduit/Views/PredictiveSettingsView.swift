@@ -58,8 +58,9 @@ struct PredictiveSettingsPage: View {
     @AppStorage(Predictive.modelKey) private var model = Predictive.Model.fast.rawValue
     @State private var status: Predictive.HostStatus?
     /// Helper models lists Conduit's predictions: only then do the captions
-    /// point there. An older plugin doesn't add the slot.
-    @State private var predictionsSlotListed = false
+    /// point there. An older plugin doesn't add the slot. Nil until the
+    /// kept slots or Hermes tell, and the caption waits for it.
+    @State private var predictionsSlotListed: Bool?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -95,12 +96,15 @@ struct PredictiveSettingsPage: View {
         .navigationTitle("Predictive")
         // Again once the plugin's capabilities arrive.
         .task(id: appState.predictiveIsServed) {
-            predictionsSlotListed = appState.keptHelperModel(task: HelperModelSlot.predictions) != nil
+            predictionsSlotListed = appState.keptHelperModelListed(task: HelperModelSlot.predictions)
             status = await appState.loadPredictiveHostStatus()
-            // A read that fails keeps what the kept slots said.
+            // A read that fails keeps what the kept slots said, or reads as
+            // an older plugin's when nothing is kept.
             do {
                 predictionsSlotListed = try await appState.loadHelperModel(task: HelperModelSlot.predictions) != nil
-            } catch {}
+            } catch {
+                if predictionsSlotListed == nil { predictionsSlotListed = false }
+            }
         }
     }
 
@@ -175,7 +179,7 @@ struct PredictiveSettingsPage: View {
             }
             // Said once the host has answered; until then, nothing.
             if let status {
-                Group {
+                if let predictionsSlotListed { Group {
                     if let fast = status.fastModel {
                         if predictionsSlotListed {
                             Text("Fast model on your host: \(fast). Change it in Models & providers under Helper models.")
@@ -189,7 +193,7 @@ struct PredictiveSettingsPage: View {
                     }
                 }
                 .scaledFont(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.secondary) }
                 SettingsMetricRow(label: AppLocalization.string("Predictions today"), value: String(status.today))
             }
         }

@@ -2751,6 +2751,12 @@ final class AppState: ObservableObject {
         keptAnswer(KeptRoute.modelAuxiliary).flatMap { VoiceReplyModelSetting(auxiliaryResponse: $0, task: task) }
     }
 
+    /// Whether the kept helper models list the slot, or nil when none are
+    /// kept.
+    func keptHelperModelListed(task: String) -> Bool? {
+        keptAnswer(KeptRoute.modelAuxiliary).map { VoiceReplyModelSetting(auxiliaryResponse: $0, task: task) != nil }
+    }
+
     private func readHelperModels() async throws -> [String: Any] {
         let profile = activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }

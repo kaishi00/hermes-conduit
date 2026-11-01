@@ -413247,7 +413247,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Läuft auf deinem Endpunkt unter %@. Ein Modell eines anderen Anbieters nimmt es davon herunter."
+            "value": "Läuft auf deinem Endpunkt unter %@. Mit einem Modell eines anderen Anbieters nutzt es diesen Endpunkt nicht mehr."
           }
         },
         "es": {
