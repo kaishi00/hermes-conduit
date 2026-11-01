@@ -587,6 +587,16 @@ struct MainView: View {
                 }
             }
         }
+        // A prompt over the chat holds its read clear, and closing it, or a
+        // sheet over the chat, clears what came in under it (#1579).
+        .onChange(of: chatTitlePendingRename != nil || chatTitlePendingDeletion != nil) { _, covered in
+            appState.chatCoveredBySheet = covered
+            if !covered { appState.clearShownChatNotifications() }
+        }
+        .onChange(of: appState.isModalSheetPresented) { _, presented in
+            if !presented { appState.clearShownChatNotifications() }
+        }
+        .onDisappear { appState.chatCoveredBySheet = false }
         // The chat title's menu needs host-owned rename and delete prompts,
         // like the session list's rows.
         .sheet(item: $chatTitlePendingRename) { session in

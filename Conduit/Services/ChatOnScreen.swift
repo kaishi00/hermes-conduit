@@ -129,3 +129,38 @@ extension ChatOnScreen {
         }
     }
 }
+
+/// The notifications a chat on screen has made read (#1579): those this
+/// device holds for the chat, under any of its ids, that a tap would open
+/// here (NotificationDashboardOwnership, as routing decides). One that
+/// waits on the user (an approval, a question, a call, a calendar change)
+/// stays until it's answered, and one Conduit can't read never matches.
+/// Session ids are the host's own and unique across its profiles, so a
+/// Bot Chat's pushes clear with it whichever profile is in use.
+@MainActor
+enum ReadChatNotifications {
+    static let waitingTypes: Set<String> = ["approval.needed", "input.needed", "call.requested", "phone.changes"]
+
+    static func identifiers(
+        of delivered: [(identifier: String, target: ConduitNotificationTarget?)],
+        sessionIDs: Set<String>,
+        activeDashboardID: UUID?,
+        savedDashboardIDs: [UUID],
+        activeDashboardGatewayIDs: Set<String>
+    ) -> [String] {
+        delivered.compactMap { identifier, target in
+            guard let target, !waitingTypes.contains(target.type ?? ""), target.decision == nil, target.call == nil,
+                  sessionIDs.contains(target.sessionId)
+                    || target.durableSessionID.map({ sessionIDs.contains($0) }) == true,
+                  NotificationDashboardOwnership.resolve(
+                    targetDashboardID: target.dashboardID,
+                    hasMalformedDashboardID: target.hasMalformedDashboardID,
+                    activeDashboardID: activeDashboardID,
+                    savedDashboardIDs: savedDashboardIDs,
+                    targetGatewayID: target.relayGatewayID,
+                    activeDashboardGatewayIDs: activeDashboardGatewayIDs
+                  ) == .route else { return nil }
+            return identifier
+        }
+    }
+}
