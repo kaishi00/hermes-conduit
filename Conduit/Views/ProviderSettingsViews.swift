@@ -484,12 +484,17 @@ struct ProviderDetailPage: View {
                 }
                 if let key = entry.key {
                     ConduitSettingsSection(title: AppLocalization.string("API key"), symbol: "key", tint: .conduitAura) {
-                        ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: {})
+                        ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: {},
+                                          keyRemovable: context.catalogAnswered && !runsDefault(entry))
                     }
                 }
                 if let error {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .scaledFont(.footnote).foregroundStyle(.red)
+                }
+                if context.catalogAnswered, runsDefault(entry) {
+                    Text(AppLocalization.string("This provider runs the default model. Pick another default to remove it."))
+                        .scaledFont(.footnote).foregroundStyle(.secondary)
                 }
                 if canRemove(entry) {
                     Button(role: .destructive) { confirmingRemove = true } label: {
@@ -654,6 +659,9 @@ private struct ProviderKeyEditor: View {
     let entry: ProviderEntry
     let key: ProviderEntry.KeyAccess
     let onSaved: () -> Void
+    /// Hermes' catalog answered and the provider doesn't run the default
+    /// model, so its key may go. Off on the Add sheet's pages.
+    var keyRemovable = false
     @Environment(\.openURL) private var openURL
     @State private var draft = ""
     @State private var editing = false
@@ -742,6 +750,10 @@ private struct ProviderKeyEditor: View {
             }
         }
         if !editing { keyActions }
+        if !key.heldVars.isEmpty {
+            Text(AppLocalization.string("Another provider reads this key too, so Conduit leaves it in this profile's settings."))
+                .scaledFont(.caption).foregroundStyle(.secondary)
+        }
         if let note {
             Text(verbatim: note).scaledFont(.caption).foregroundStyle(.secondary)
         }
@@ -773,7 +785,7 @@ private struct ProviderKeyEditor: View {
     @ViewBuilder
     private var keyActions: some View {
         if onMain {
-            if state == .shared {
+            if state == .shared, keyRemovable {
                 Button(role: .destructive) { confirmingUnshare = true } label: {
                     Text(AppLocalization.string("Remove shared key"))
                 }
@@ -786,7 +798,7 @@ private struct ProviderKeyEditor: View {
                 } message: {
                     Text(AppLocalization.string("Every profile without a key of its own stops using \(entry.name)."))
                 }
-            } else if state == .mainProfileOnly, !key.removableVars.isEmpty {
+            } else if state == .mainProfileOnly, !key.removableVars.isEmpty, keyRemovable {
                 Button(role: .destructive) {
                     run { try await service.remove(variables: key.removableVars) }
                 } label: {
@@ -795,7 +807,9 @@ private struct ProviderKeyEditor: View {
                 .buttonStyle(.settings)
                 .disabled(saving || !service.answered)
             }
-        } else if state == .own || state == .oldCopy {
+        } else if state == .own || state == .oldCopy, key.shared || keyRemovable {
+            // Back on the shared key the default model still runs; with no
+            // shared key, removing this one would leave it none.
             Button {
                 run { try await service.useShared(entry) }
             } label: {
@@ -1077,7 +1091,10 @@ private struct ProviderSignInView: View {
         }
         // The page went away mid-sign-in: Hermes stops waiting too.
         if Task.isCancelled, signIn == started {
-            await service.cancel(started)
+            // Its own task: this one is cancelled, and a request from it
+            // would never be sent.
+            let service = service
+            Task { await service.cancel(started) }
         }
     }
 

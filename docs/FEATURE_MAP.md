@@ -2798,7 +2798,8 @@ Notifications and control list and the Settings captions (done)
 - Hermes tries a key before it's saved; only a check that reached the provider and was refused stops the save. A provider that reads only another provider's variable isn't checked (Hermes would try the key on that provider). A variable two providers read as their own key is never removed for either, nor the pool row read from it (by Remove key, Use the shared key, a key of its own or sharing).
 - A provider's page shows "Could not load models." with Try Again when Hermes' catalog read fails, as the Model lists ruling asks.
 - Sign-ins live on the main profile, which Hermes already shares; custom endpoints are per profile, in its config, saved in the config write queue with `api_key` left out when nothing was typed (an empty one clears the saved key).
-- A provider that runs the default model can't be removed, and Remove waits for Hermes' catalog (not the kept one) to tell; it names the delegate and fallback models on it.
+- A provider that runs the default model can't be removed, nor its key (Remove shared key, Remove key, Remove this profile's key; going back to the shared key is fine), and the page says so; Remove waits for Hermes' catalog (not the kept one) to tell; it names the delegate and fallback models on it.
+- A key another provider also reads stays in the profile's settings, and the key section says so.
 - A new endpoint's config key is made from its name (`lab-vllm`, then `lab-vllm-2`), clear of the profile's endpoints and of every slug, display name and alias in Hermes' model catalog, so it never takes a built-in's catalog row; Custom endpoint waits for that catalog.
 
 **Open gaps**

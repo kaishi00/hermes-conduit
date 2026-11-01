@@ -33989,6 +33989,88 @@
         }
       }
     },
+    "Another provider reads this key too, so Conduit leaves it in this profile's settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein anderer Anbieter liest diesen Schlüssel auch, daher lässt Conduit ihn in den Einstellungen dieses Profils."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otro proveedor también lee esta clave, así que Conduit la deja en los ajustes de este perfil."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un autre fournisseur lit aussi cette clé, Conduit la laisse donc dans les réglages de ce profil."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Penyedia lain juga membaca kunci ini, jadi Conduit membiarkannya di pengaturan profil ini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anche un altro provider legge questa chiave, quindi Conduit la lascia nelle impostazioni di questo profilo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "別のプロバイダもこのキーを読むため、Conduit はこのプロファイルの設定に残します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 공급자도 이 키를 읽으므로 Conduit는 이 프로필 설정에 그대로 둡니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inny dostawca też odczytuje ten klucz, więc Conduit zostawia go w ustawieniach tego profilu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outro provedor também lê esta chave, então o Conduit a mantém nas configurações deste perfil."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Этот ключ читает и другой провайдер, поэтому Conduit оставляет его в настройках этого профиля."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu anahtarı başka bir sağlayıcı da okuyor, bu yüzden Conduit onu bu profilin ayarlarında bırakır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另一个提供方也读取此密钥，因此 Conduit 会将其保留在此配置文件的设置中。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另一個提供者也會讀取此金鑰，因此 Conduit 會將其保留在此設定檔的設定中。"
+          }
+        }
+      }
+    },
     "Another server is already called %@.": {
       "localizations": {
         "de": {
@@ -342718,6 +342800,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "此專案尚無任何對話。"
+          }
+        }
+      }
+    },
+    "This provider runs the default model. Pick another default to remove it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Anbieter betreibt das Standardmodell. Wähle ein anderes Standardmodell, um ihn zu entfernen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este proveedor ejecuta el modelo predeterminado. Elige otro predeterminado para quitarlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce fournisseur fait tourner le modèle par défaut. Choisissez-en un autre par défaut pour le retirer."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Penyedia ini menjalankan model default. Pilih default lain untuk menghapusnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo provider esegue il modello predefinito. Scegli un altro predefinito per rimuoverlo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このプロバイダはデフォルトモデルを実行しています。削除するには別のデフォルトを選んでください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 공급자가 기본 모델을 실행합니다. 제거하려면 다른 기본 모델을 선택하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten dostawca obsługuje model domyślny. Wybierz inny model domyślny, aby go usunąć."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este provedor executa o modelo padrão. Escolha outro padrão para removê-lo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Этот провайдер обслуживает модель по умолчанию. Выберите другую модель по умолчанию, чтобы удалить его."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu sağlayıcı varsayılan modeli çalıştırıyor. Kaldırmak için başka bir varsayılan seçin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此提供方运行着默认模型。请先选择其他默认模型再移除它。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此提供者正在執行預設模型。請先選擇其他預設模型再移除它。"
           }
         }
       }
