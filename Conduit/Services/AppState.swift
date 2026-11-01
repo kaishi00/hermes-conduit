@@ -632,12 +632,76 @@ final class AppState: ObservableObject {
     var isRecoveringConnection: Bool {
         isConnecting
             || (networkPathUsable && !isConnected && connection != nil
-                && turnState == .reconnecting && reconnectAttempts < 3)
+                && turnState == .reconnecting && reconnectAttempts < Self.quietReconnectAttempts)
+    }
+    /// The retries after a drop that still read as reconnecting, before
+    /// the status says the gateway is likely down and a failed sign-in
+    /// refresh shows its banner.
+    static let quietReconnectAttempts = 3
+    /// A failed sign-in refresh or ticket kept quiet during those retries,
+    /// shown once they have failed, by the next ticket or by a readiness
+    /// probe the gateway doesn't answer (#1624).
+    private var quietReconnectFailure: Error?
+    /// Renewals that have failed quietly since the last one worked. Counted
+    /// apart from the backoff's attempts, which a network change resets, so
+    /// a link that keeps changing still surfaces the failure.
+    private var quietRenewalFailures = 0
+    /// A Reconnect someone asked for (the button, Settings, a gateway
+    /// restart) shows its failure at once, as before #1624: it is an
+    /// answer they are waiting for, not a resume.
+    private var surfacesRenewalFailureAtOnce = false
+    /// What a failure kept quiet would show, for a Siri launch that is
+    /// waiting on the connection: it fails at once on it, as before.
+    var quietReconnectFailureClass: ConnectionFailure? {
+        quietReconnectFailure.map { ConnectionFailureClassifier.classify($0) }
+    }
+
+    /// As when the socket fails: the first retries run quietly (a
+    /// resume's first request often fails before the network is back). The
+    /// banner and the classified failure, which offers Repair, wait until
+    /// they have failed too, when the status already says the dashboard
+    /// looks down (#1624).
+    private func retryQuietlyAfterFailedRenewal(_ error: Error) {
+        isConnected = false
+        isConnecting = false
+        turnState = .reconnecting
+        noteQuietRenewalFailure(error)
+        scheduleReconnectAfterFailedSync()
+    }
+
+    /// Keeps a renewal's failure quiet, or shows it once the quiet retries
+    /// are spent.
+    private func noteQuietRenewalFailure(_ error: Error) {
+        quietReconnectFailure = error
+        quietRenewalFailures += 1
+        // Quiet only on screen: off screen (CarPlay, a locked call, the
+        // Watch) it reports at once, as before, since the quiet is for
+        // coming back to the app.
+        if surfacesRenewalFailureAtOnce
+            || !isSceneActive
+            || quietRenewalFailures > Self.quietReconnectAttempts {
+            surfaceQuietReconnectFailure()
+        }
+    }
+
+    /// Which silent re-auth failures retry quietly instead of asking to
+    /// sign in: those the network cut off. Any answer from the server,
+    /// a 5xx included, still asks, as before #1624.
+    static func reauthFailureRetriesQuietly(_ error: Error) -> Bool {
+        DictationUploadRetry.isTransient(error)
+    }
+
+    private func surfaceQuietReconnectFailure() {
+        guard let error = quietReconnectFailure else { return }
+        quietReconnectFailure = nil
+        lastConnectionFailure = ConnectionFailureClassifier.classify(error)
+        errorMessage = AppLocalization.string("Failed to refresh the dashboard session: \(UserFacingError.message(for: error))")
     }
     /// Just back on screen and reconnecting: the header stays quiet, since
     /// the reconnect usually lands before anyone could read the words.
+    /// Never without a network: that shows at once.
     var hidesBriefReconnect: Bool {
-        isReturningQuietly && isRecoveringConnection
+        isReturningQuietly && networkPathUsable && isRecoveringConnection
     }
     /// The device has a usable network path (the app's one path monitor).
     @Published private(set) var networkPathUsable = true
@@ -2277,7 +2341,16 @@ final class AppState: ObservableObject {
     /// Cleared by any successful connection, by explicit disconnect, and
     /// when the user starts a manual login (which abandons the prior
     /// failure's repair context).
-    @Published var lastConnectionFailure: ConnectionFailure?
+    @Published var lastConnectionFailure: ConnectionFailure? {
+        // Wherever a failure is forgotten (a connect, a sign-out, a
+        // dashboard switch), a quiet one goes with it (#1624).
+        didSet {
+            if lastConnectionFailure == nil {
+                quietReconnectFailure = nil
+                quietRenewalFailures = 0
+            }
+        }
+    }
     @Published var showLogin = true {
         didSet {
             // The sign-in surface never keeps a saved copy in memory: after an
@@ -5266,11 +5339,14 @@ final class AppState: ObservableObject {
     /// off screen, so a quick switch to another app comes back to the same
     /// connection (notifier #296).
     var backgroundConnectionGrace = BackgroundConnectionGrace()
-    /// The first few seconds back on screen: a reconnect that finishes in
-    /// that time doesn't flash "Reconnecting…" over the saved chat.
+    /// The first seconds back on screen: a reconnect that finishes in that
+    /// time doesn't show "Reconnecting…" over the saved chat. Long enough
+    /// for a sign-in refresh, a ticket and the socket over a slow remote
+    /// link; a message sent meanwhile ends it, so its wait is explained
+    /// (#1624).
     @Published private(set) var isReturningQuietly = false
     private var quietReturnTask: Task<Void, Never>?
-    static let quietReturnWindow: TimeInterval = 3
+    static let quietReturnWindow: TimeInterval = 10
     /// Armed only by a real .background phase. Ordinary inactive → active
     /// transitions (Control Center, incoming-call banner) must not be treated
     /// as reopening the app, so they never arm the preferred return surface.
@@ -13805,7 +13881,8 @@ final class AppState: ObservableObject {
         syncPurpose: ChatResumeSyncPurpose,
         cancelsResumeRestoration: Bool,
         automaticWorkToken existingAutomaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
-        automaticReconnectOperationID: UUID? = nil
+        automaticReconnectOperationID: UUID? = nil,
+        isRenewal: Bool = false
     ) async {
         if cancelsResumeRestoration {
             cancelChatResumeTransportRecovery()
@@ -13979,10 +14056,16 @@ final class AppState: ObservableObject {
             isConnecting = false
             isConnected = false
             turnState = .reconnecting
-            errorMessage = UserFacingError.message(for: error)
-            // The typed classification is retained for Repair Connection's
-            // seeding and routing; the raw error never reaches the UI.
-            lastConnectionFailure = ConnectionFailureClassifier.classify(error)
+            if isRenewal {
+                // A socket after a renewal's silent re-auth: quiet like the
+                // renewal itself (#1624).
+                noteQuietRenewalFailure(error)
+            } else {
+                errorMessage = UserFacingError.message(for: error)
+                // The typed classification is retained for Repair Connection's
+                // seeding and routing; the raw error never reaches the UI.
+                lastConnectionFailure = ConnectionFailureClassifier.classify(error)
+            }
             // Only an explicit dashboard 401/403 may return the user to the
             // sign-in screen. A transient gateway or WebKit startup failure
             // must retain the saved dashboard session and retry.
@@ -14058,7 +14141,14 @@ final class AppState: ObservableObject {
     var showsConnectionRepair: Bool {
         connection != nil
             && !isConnected
-            && (lastConnectionFailure != nil || !(errorMessage ?? "").isEmpty)
+            && (lastConnectionFailure != nil
+                || (!(errorMessage ?? "").isEmpty && !isHoldingQuietReconnectFailure))
+    }
+
+    /// A failed renewal is being kept quiet: an older, unrelated message
+    /// left on screen doesn't offer Repair meanwhile (#1624).
+    var isHoldingQuietReconnectFailure: Bool {
+        quietReconnectFailure != nil && lastConnectionFailure == nil
     }
 
     /// Entering Repair is an explicit user takeover of connection recovery:
@@ -18921,6 +19011,9 @@ final class AppState: ObservableObject {
                       self.connection?.baseUrl == baseURL, self.canRunTransportRecovery else { return }
                 if !answered {
                     self.noteConnectionStep("Gateway not answering yet")
+                    if self.reconnectAttempts >= Self.quietReconnectAttempts {
+                        self.surfaceQuietReconnectFailure()
+                    }
                     self.scheduleReconnect(purpose: purpose)
                     return
                 }
@@ -18959,6 +19052,8 @@ final class AppState: ObservableObject {
             return
         }
         cancelChatResumeTransportRecovery()
+        surfacesRenewalFailureAtOnce = true
+        defer { surfacesRenewalFailureAtOnce = false }
         await executeReconnect(purpose: .preserveCurrent)
     }
 
@@ -19064,6 +19159,9 @@ final class AppState: ObservableObject {
                   activeDashboardID == renewalDashboardID else { return }
             connection = HermesConnection(baseUrl: savedConnection.baseUrl, ticket: ticket)
             self.connection = connection
+            // Only the latest step's failure may surface later.
+            quietReconnectFailure = nil
+            quietRenewalFailures = 0
             if let dashboardID = renewalDashboardID {
                 KeychainHelper.saveConnection(connection, dashboardID: dashboardID)
             }
@@ -19100,7 +19198,8 @@ final class AppState: ObservableObject {
                             syncPurpose: continuationPurpose,
                             cancelsResumeRestoration: false,
                             automaticWorkToken: continuationAutomaticWorkToken,
-                            automaticReconnectOperationID: automaticOperationID
+                            automaticReconnectOperationID: automaticOperationID,
+                            isRenewal: true
                         )
                         guard refreshTransportContinuation() else { return }
                         return
@@ -19111,8 +19210,16 @@ final class AppState: ObservableObject {
                         return
                     } catch {
                         guard refreshTransportContinuation() else { return }
-                        // The silent re-auth failure (429 throttle, 401
-                        // rejection, 503 outage…) is the most diagnostic
+                        // A re-auth the network cut off (a slow link just
+                        // after a resume) says nothing about the sign-in:
+                        // retry quietly, as a failed ticket does (#1624).
+                        if Self.reauthFailureRetriesQuietly(error) {
+                            retryQuietlyAfterFailedRenewal(error)
+                            return
+                        }
+                        // An answer from the server (429 throttle, 401
+                        // rejection, 503 outage…) asks to sign in, as before.
+                        // The silent re-auth failure is the most diagnostic
                         // explanation for the forced sign-in; carry it to the
                         // classifier. This only determines whether recovery
                         // can be silent. Preserve the saved credentials for
@@ -19136,12 +19243,7 @@ final class AppState: ObservableObject {
                 )
             } else {
                 guard refreshTransportContinuation() else { return }
-                isConnected = false
-                isConnecting = false
-                turnState = .reconnecting
-                lastConnectionFailure = ConnectionFailureClassifier.classify(error)
-                errorMessage = AppLocalization.string("Failed to refresh the dashboard session: \(UserFacingError.message(for: error))")
-                scheduleReconnectAfterFailedSync()
+                retryQuietlyAfterFailedRenewal(error)
             }
             return
         }
@@ -19262,6 +19364,9 @@ final class AppState: ObservableObject {
         prepareDashboardBridge(for: connection.baseUrl)
         guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         let startedAt = Date()
+        let signposter = ResponsivenessSignposts.signposter
+        let minting = signposter.beginInterval("Ticket mint", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("Ticket mint", minting) }
         do {
             let ticket = try await dashboardTicketBridge.mintTicket()
             noteConnectionStep("Ticket", since: startedAt)
@@ -19287,6 +19392,9 @@ final class AppState: ObservableObject {
             try await connectClient(client)
         } else {
             let startedAt = Date()
+            let signposter = ResponsivenessSignposts.signposter
+            let connecting = signposter.beginInterval("WebSocket connect", id: signposter.makeSignpostID())
+            defer { signposter.endInterval("WebSocket connect", connecting) }
             do {
                 try await client.connect()
                 noteConnectionStep("Socket open", since: startedAt)
@@ -19748,7 +19856,11 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func endQuietReturn() {
+    func beginQuietReturnForTesting() {
+        beginQuietReturn()
+    }
+
+    func endQuietReturn() {
         quietReturnTask?.cancel()
         quietReturnTask = nil
         if isReturningQuietly { isReturningQuietly = false }

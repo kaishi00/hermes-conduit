@@ -2276,15 +2276,23 @@ once instead of waiting out its backoff.
 **Siblings:** a socket that closed (handleDisconnect) · the network path
 changing · someone waiting by voice (a call's request, CarPlay back on
 screen) · CarPlay, locked, Watch and CallKit calls with the app in the
-background · a failed sync's retry · the backoff itself · the hidden
-dashboard page's failed load
+background · a failed sync's retry · a failed sign-in refresh or ticket's
+retry and its banner · coming back to the app (the conversation header's
+line and menu dot, the classic layout's status dot) · a message sent while
+it reconnects · a tapped Reconnect · a Siri voice launch waiting on the
+connection · the backoff
+itself · the hidden dashboard page's failed load
 
 **Code**
-- Reconnects: `Conduit/Services/AppState.swift` (handleDisconnect, scheduleReconnect, scheduleReconnectAfterFailedSync, networkPathChanged, reconnectNowForWaitingVoice, recoverTransportForCarPlayIfNeeded, handleCarPlaySceneWillEnterForeground, checkQuietTransportOffScreen, clientForVoiceRequest)
+- Reconnects: `Conduit/Services/AppState.swift` (handleDisconnect, scheduleReconnect, scheduleReconnectAfterFailedSync, reconnectForRetry's failed ticket, quietReconnectAttempts, isRecoveringConnection, networkPathChanged, reconnectNowForWaitingVoice, recoverTransportForCarPlayIfNeeded, handleCarPlaySceneWillEnterForeground, checkQuietTransportOffScreen, clientForVoiceRequest)
 - A call's requests: `Conduit/Services/AppState.swift` (voiceBackgroundJobSupervisor's backend), `Conduit/Services/AppState+SpokenApprovals.swift` (respondToApprovalByVoice, respondToClarifyByVoice)
 - Network path: `Conduit/Services/PowerPolicy.swift` (pathSatisfied), `Conduit/Services/HermesClient.swift` (networkPathChanged, the ping of an open socket, checkLiveness)
+- Coming back to the app: `Conduit/Services/AppState.swift` (beginQuietReturn, quietReturnWindow, hidesBriefReconnect), `Conduit/Services/AppState+PendingSend.swift` (sendWhenConnected ends the quiet), `Conduit/Views/V2/V2ConversationScreen.swift` (V2ConnectionLine, V2ConversationMenu's dot), `Conduit/Views/RootView.swift` (ConnectionStatusIndicator, the classic layout's dot)
+- Which renewal failures retry quietly: `Conduit/Voice/DictationClipStore.swift` (DictationUploadRetry.isTransient, shared with dictation uploads)
+- A tapped Reconnect and a waiting Siri launch: `Conduit/Services/AppState.swift` (reconnect, surfacesRenewalFailureAtOnce, quietReconnectFailureClass, quietRenewalFailures, the off-screen rule in retryQuietlyAfterFailedRenewal, reauthFailureRetriesQuietly, isHoldingQuietReconnectFailure in showsConnectionRepair, noteQuietRenewalFailure, connect(with:)'s isRenewal for the socket after a silent re-auth; quietReconnectFailure and quietRenewalFailures are cleared by lastConnectionFailure's didSet, so whatever forgets a failure forgets a quiet one), `Conduit/Voice/Wake/PendingVoiceLaunchPolicy.swift` (voiceLaunchConnectionSnapshot)
+- Timing in Instruments: `Conduit/Services/ResponsivenessSignposts.swift` ("OAuth refresh" in `Conduit/Services/NativeOAuth.swift`, "Ticket mint" and "WebSocket connect" in AppState)
 - The hidden dashboard page: `Conduit/Services/DashboardTicketBridge.swift` (waitUntilReady, mintCookieTicket, requestJSON)
-- Tests: `ConduitTests/ReconnectBackoffTests.swift`, `ConduitTests/CarPlayTransportRecoveryTests.swift`, `ConduitTests/HermesClientTests.swift` (the liveness check), `ConduitTests/DashboardTicketBridgeTests.swift` (testRequestOnAFailedPageReloadsIt, testConcurrentRequestsOnAFailedPageReloadItOnce, testRequestLeavesALoadInFlightAlone)
+- Tests: `ConduitTests/ReconnectBackoffTests.swift`, `ConduitTests/CarPlayTransportRecoveryTests.swift`, `ConduitTests/HermesClientTests.swift` (the liveness check), `ConduitTests/DashboardTicketBridgeTests.swift` (testRequestOnAFailedPageReloadsIt, testConcurrentRequestsOnAFailedPageReloadItOnce, testRequestLeavesALoadInFlightAlone), `ConduitTests/AppStateChatResumeTests.swift` (testFailedTicketShowsItsBannerOnlyAfterTheQuietRetries, testQuietTicketFailureShowsWhenTheGatewayStopsAnswering, testTappedReconnectAndSiriSeeAFailedTicketAtOnce, testQuietTicketFailureSurfacesWhenTheLinkKeepsChanging, testAStaleMessageOffersNoRepairDuringTheQuietRetries, testOnlyANetworkCutReauthRetriesQuietly), `ConduitTests/OfflineChatCacheTests.swift` (testAMessageThatWaitsEndsTheQuietReturn), `ConduitTests/AppStateForegroundLifecycleTests.swift` (testLeavingWithAnOpenSocketHoldsItUntilTheAppIsBack)
 
 **Rulings**
 - A reconnect that skips the backoff needs a usable network path: without one no attempt can work, and the path coming back reconnects at once anyway. A drop mid-reply and someone waiting by voice both check it (#1060; #846 follow-up, #1191).
@@ -2293,11 +2301,12 @@ dashboard page's failed load
 - The path change's ping of an open socket waits while a large frame (a picture) is still being written: its pings can't be answered in time and would close a working socket. A path that really died fails the write (2026-10-25, #1268).
 - A call's request to Hermes made while Conduit is off screen (CarPlay, a locked phone, a Watch call, a call from Hermes; every voice mode, spoken approvals and answers included) first pings a socket that has been quiet 30 s, as the phone coming on screen does: iOS may have held Conduit suspended until the car or the call woke it, and a socket that died then still looks open. Starting, titling and cancelling a call's jobs count, and so does asking whether a chat is busy before its turn. One that doesn't answer in a keepalive ping's 10 s (a relayed path can be slow off screen without being dead) is closed and the request waits for the reconnect, as after any drop. Before, GPT-Live started from CarPlay ran (it starts over HTTP) while every request it handed Hermes waited on the dead socket until it timed out (2026-10-27, #1382, from #1362).
 - The hidden dashboard page comes back with the next dashboard request, not only with the next ticket: any request (chat history, status, a ticket) reloads a page whose load failed, and one still loading is waited for, never restarted. A request that stalled across a Wi-Fi change marks the page failed while the socket stays open, and an open socket mints no ticket, so before, every history and status read was refused with "still connecting to your dashboard" until the app quit (2026-10-30, #1526, issue 1412).
+- Reconnecting stays out of sight while it works: coming back to the app, the header's "Reconnecting…" line waits 10 s (was 3 s, #296) and the menu's dot stays grey, long enough for a sign-in refresh, a ticket and the socket over a slow remote link; a message sent meanwhile ends the wait so its delay is explained, and no network at all says so at once. A failed sign-in refresh or ticket, or a silent re-auth with the saved password that the network cut off, or the socket after a silent re-auth that worked (a sign-in the server refused still asks to sign in), retries quietly like a failed socket and shows "Failed to refresh the dashboard session", and the classified failure that offers Repair, only once three retries have failed, when the status says the dashboard looks down, whether the last one asked for a ticket or found the gateway not answering its readiness probe (Repair never shows while the first attempts are quiet); a refused sign-in still asks to sign in. The count is of renewals failed since the last one worked, so a link that keeps changing (which restarts the backoff) still gets there. Off screen (CarPlay, a call with the app in the background or the phone locked, the Watch) a failed renewal shows at once, as before, since the quiet is for coming back to the app; a failed sync's retry and the hidden page's failed load are unchanged. An older, unrelated message left on screen offers no Repair while a failure is kept quiet. A re-auth the server answered, a 5xx included, asks to sign in as before; only one the network cut off retries quietly. A Reconnect someone or something asked for (anything that calls reconnect: the button, Settings, a gateway restart, a profile switch, a plugin update) still shows its failure at once, and a waiting Siri voice launch still fails at once on a quiet failure, as before. Others feel faster because they reconnect without saying so (Eric 2026-11-01, #1628, issue 1624). Refreshing the OAuth token ahead of time was declined: on becoming active the ticket waits on it anyway, and on suspending, a rotated grant iOS suspends before it's saved signs the user out.
 
 **Open gaps**
 - `recoverTransportForCarPlayIfNeeded(immediately:)` still reconnects at once without a path check (CarPlay connecting only).
 
-**Checked:** 2026-10-30, #1526 (the hidden page reloads a failed load on any request); 2026-10-28, #1452 (a drop on a socket handed on at a profile switch reaches the client holding it); 2026-10-27, #1382 (a call's request off screen checks a quiet socket first); 2026-10-25, at #1268; 2026-10-24, at #1191.
+**Checked:** 2026-11-01, #1628 (reconnecting kept quiet on return, the ticket banner after the quiet retries, signposts); 2026-10-30, #1526 (the hidden page reloads a failed load on any request); 2026-10-28, #1452 (a drop on a socket handed on at a profile switch reaches the client holding it); 2026-10-27, #1382 (a call's request off screen checks a quiet socket first); 2026-10-25, at #1268; 2026-10-24, at #1191.
 
 ## Native sign-in browser
 
@@ -3029,7 +3038,7 @@ into the composer" (done) · Watch and CarPlay (not needed, no composer
 dictation)
 
 **Code**
-- Store and retry policy: `Conduit/Voice/DictationClipStore.swift` (DictationClipStore, DictationUploadRetry)
+- Store and retry policy: `Conduit/Voice/DictationClipStore.swift` (DictationClipStore, DictationUploadRetry; its isTransient also decides which reconnect renewals retry quietly, see Reconnecting to Hermes)
 - What the composer offers: `Conduit/Voice/DictationClipInbox.swift` (keep, release, delivered, retry; AppState.restoreRetriedDictation)
 - The recognizer: `Conduit/Voice/DictationRecognizers.swift` (HermesDictationRecognizer keepRecording, upload, cancel, deliver)
 - Wiring: `Conduit/Voice/ComposerDictationService.swift` (clipInbox, makeRecognizer clips), `Conduit/ConduitApp.swift` (load at launch), `Conduit/Services/AppState+PendingSend.swift` (ComposerRestoreRequest.dictationClipID)
@@ -3048,7 +3057,7 @@ dictation)
 - A recording is written when the dictation stops, not while it runs: Conduit ending mid-dictation still loses it.
 - Recordings over about 9 minutes exceed the host's 25 MB transcription limit once base64-encoded, so their upload and Retry fail the same way.
 
-**Checked:** 2026-10-27, at #1385.
+**Checked:** 2026-11-01, #1628 (its retry rule also decides which reconnect renewals retry quietly, so a change to it reaches Reconnecting to Hermes); 2026-10-27, at #1385.
 
 ## Chats top bar and search
 
