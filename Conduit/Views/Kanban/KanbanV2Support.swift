@@ -523,10 +523,11 @@ enum KanbanActivityFormatter {
 /// such as parent_reopened), `unblocked`, claim or completion - makes the
 /// question stale and yields nil. A manual or dependency block yields nil.
 ///
-/// A reason Hermes writes itself is a code, not a question: `initial_status`
-/// marks a task created already Blocked (`initial_status="blocked"`), and any
-/// other snake_case token is taken as a code too, so `wait(in:)` says what the
-/// task waits on in plain words instead of showing it (issue #1601).
+/// `initial_status` is the one reason Hermes writes on a `blocked` event
+/// itself: it marks a task created already Blocked (`initial_status="blocked"`),
+/// so `wait(in:)` says that in plain words instead of showing the code (issue
+/// #1601). Hermes logs its dependency codes (`parent_not_done`) on
+/// `dependency_wait` and `status` rows, never as a block reason.
 ///
 /// Events arrive newest-first, so array order breaks ties between blocked
 /// events, and an event without a timestamp is taken as the newest.
@@ -537,7 +538,7 @@ enum KanbanBlockedQuestion {
         case question(String)
         /// The task was created already Blocked; nobody asked anything.
         case createdBlocked
-        /// Blocked by hand, with no reason (or only a code).
+        /// Blocked with no reason: by hand, or a blocked run with no summary.
         case noReason
     }
 
@@ -553,8 +554,8 @@ enum KanbanBlockedQuestion {
     }
 
     /// Nil when the current block isn't waiting on the operator: a
-    /// dependency block (a `status` row) or a question a newer transition
-    /// made stale, or a blocked run with no summary.
+    /// dependency block (a `status` row), a block a newer transition made
+    /// stale, or no block recorded at all.
     static func wait(in detail: KanbanTaskDetail) -> Wait? {
         let transitions = detail.events.enumerated().filter { transitionKinds.contains($0.element.kind) }
         let wait: Wait?
@@ -567,7 +568,7 @@ enum KanbanBlockedQuestion {
             let reason = nonEmpty(block.element.payload?.objectValue?["reason"]?.stringValue)
             if reason == createdBlockedReason {
                 wait = .createdBlocked
-            } else if let reason, !isCode(reason) {
+            } else if let reason {
                 wait = .question(reason)
             } else {
                 wait = .noReason
@@ -578,7 +579,7 @@ enum KanbanBlockedQuestion {
             guard let run = blockedRuns.max(by: { ($0.endedAt ?? $0.startedAt ?? 0) < ($1.endedAt ?? $1.startedAt ?? 0) }) else {
                 return nil
             }
-            wait = nonEmpty(run.summary).flatMap { summary -> Wait? in isCode(summary) ? nil : Wait.question(summary) }
+            wait = nonEmpty(run.summary).map(Wait.question) ?? .noReason
             blockTime = run.endedAt ?? run.startedAt ?? Int.max
         }
         // A transition strictly newer than the block supersedes it. One
@@ -588,13 +589,6 @@ enum KanbanBlockedQuestion {
             other.element.kind != "blocked" && (other.element.createdAt ?? Int.max) > blockTime
         }
         return superseded ? nil : wait
-    }
-
-    /// A reason Hermes wrote itself, such as `initial_status` or
-    /// `parent_not_done`: one lowercase snake_case token with an underscore.
-    /// A worker's question is prose.
-    static func isCode(_ reason: String) -> Bool {
-        reason.range(of: #"^[a-z0-9]+(_[a-z0-9]+)+$"#, options: .regularExpression) != nil
     }
 
     private static func nonEmpty(_ value: String?) -> String? {

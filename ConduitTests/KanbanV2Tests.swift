@@ -578,14 +578,19 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertNil(KanbanBlockedQuestion.reason(in: detail), "initial_status is not a question, so no Reply & unblock")
     }
 
-    func testAReasonCodeIsNeverShownAsTheQuestion() throws {
+    func testCreatedBlockedTaskMovedOnNoLongerWaits() throws {
         let detail = try blockedDetail(events: [
-            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("needs_human_ops")]), createdAt: 100),
+            KanbanEvent(id: "2", taskID: "t", kind: "unblocked", createdAt: 200),
+            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("initial_status")]), createdAt: 100),
         ])
+        XCTAssertNil(KanbanBlockedQuestion.wait(in: detail))
+    }
+
+    func testBlockedRunWithoutSummaryWaitsOnYouWithoutAQuestion() throws {
+        let detail = try blockedDetail(runsJSON: #"[{"id": "r1", "status": "done", "outcome": "blocked", "ended_at": 100}]"#)
         XCTAssertEqual(KanbanBlockedQuestion.wait(in: detail), .noReason)
         XCTAssertNil(KanbanBlockedQuestion.reason(in: detail))
-        XCTAssertFalse(KanbanBlockedQuestion.isCode("Which API key?"))
-        XCTAssertFalse(KanbanBlockedQuestion.isCode("blocked"), "one word without an underscore is still the worker's text")
+        XCTAssertNil(KanbanBlockedQuestion.wait(in: try blockedDetail()), "no block recorded at all")
     }
 
     func testManualBlockWaitsOnYouAndADependencyBlockDoesNot() throws {
@@ -613,6 +618,7 @@ final class KanbanV2Tests: XCTestCase {
     func testBlockedRunErrorIsNeverShownAsTheQuestion() throws {
         let detail = try blockedDetail(runsJSON: #"[{"id": "r1", "status": "done", "outcome": "blocked", "error": "Traceback: boom", "ended_at": 100}]"#)
         XCTAssertNil(KanbanBlockedQuestion.reason(in: detail))
+        XCTAssertEqual(KanbanBlockedQuestion.wait(in: detail), .noReason, "the error stays hidden; the task still waits on you")
     }
 
     // MARK: - Runs presentation (V2 §17)
