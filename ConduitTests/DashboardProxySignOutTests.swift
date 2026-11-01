@@ -419,6 +419,60 @@ final class DashboardProxySignOutTests: XCTestCase {
         }
     }
 
+    /// Hermes refuses a plugin request for a profile that turned the plugin
+    /// off with a bare 404 "Plugin not found" (issue 1630). Conduit names the
+    /// plugin and the profile and says how to turn it on, and keeps the 404,
+    /// so callers that fall back on one still do.
+    func testAPluginTurnedOffForTheProfileSaysHowToTurnItOn() async throws {
+        let dashboard = try LoopbackHTTPServer.start { request in
+            let path = request.path.split(separator: "?").first.map(String.init) ?? request.path
+            switch path {
+            case "/api/status":
+                return .json(status: 200, body: #"{"version":"fixture"}"#)
+            case "/api/sessions/missing":
+                return .json(status: 404, body: #"{"detail":"Session not found"}"#)
+            default:
+                return .json(status: 404, body: #"{"detail":"Plugin not found"}"#)
+            }
+        }
+        defer { dashboard.stop() }
+        let bridge = try await readyPageBridge(port: dashboard.port)
+
+        let cases: [(path: String, expected: String)] = [
+            ("/api/plugins/conduit_push/workspace/list?root=%2Fw&profile=Revisor",
+             "Hermes has the conduit_push plugin turned off for the “Revisor” profile. On the Hermes host, add conduit_push to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes."),
+            ("/api/plugins/conduit_push/local-live/status?conduit_profile=coder",
+             "Hermes has the conduit_push plugin turned off for the “coder” profile. On the Hermes host, add conduit_push to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes."),
+            ("/api/plugins/conduit_push/local-live/status?profile=coder&conduit_profile=writer",
+             "Hermes has the conduit_push plugin turned off for the “writer” profile. On the Hermes host, add conduit_push to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes."),
+            ("/api/plugins/conduit_push/artifacts?profile=default",
+             "Hermes has the conduit_push plugin turned off. On the Hermes host, run hermes plugins enable conduit_push, then restart Hermes."),
+            ("/api/plugins/kanban/boards",
+             "Hermes has the kanban plugin turned off. On the Hermes host, run hermes plugins enable kanban, then restart Hermes."),
+        ]
+        for (path, expected) in cases {
+            do {
+                _ = try await bridge.requestJSON(path: path)
+                XCTFail("\(path) was refused")
+            } catch DashboardTicketBridgeError.http(let status, let detail) {
+                XCTAssertEqual(status, 404, path)
+                XCTAssertEqual(detail, expected, path)
+                XCTAssertEqual(DashboardTicketBridgeError.describe(status: status, detail: detail), expected, path)
+            } catch {
+                XCTFail("Expected Hermes' 404 for \(path), got \(error)")
+            }
+        }
+
+        // Any other 404 keeps Hermes' own words.
+        do {
+            _ = try await bridge.requestJSON(path: "/api/sessions/missing")
+            XCTFail("A missing chat was refused")
+        } catch DashboardTicketBridgeError.http(let status, let detail) {
+            XCTAssertEqual(status, 404)
+            XCTAssertEqual(detail, "Session not found")
+        }
+    }
+
     func testAReadyPagesRequestFollowsASameOriginRedirectToAnOrdinaryPage() async throws {
         let dashboard = try LoopbackHTTPServer.start { request in
             let path = request.path.split(separator: "?").first.map(String.init) ?? request.path

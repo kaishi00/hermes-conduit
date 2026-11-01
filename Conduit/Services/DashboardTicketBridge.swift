@@ -452,6 +452,39 @@ enum DashboardTicketBridgeError: LocalizedError {
         return object["code"] is String
     }
 
+    /// Hermes' whole answer for a request to a plugin the profile it acts
+    /// for turned off (not in its plugins.enabled, or in plugins.disabled).
+    static let pluginRefusedDetail = "Plugin not found"
+
+    /// What to do about `pluginRefusedDetail` on `path`: the plugin it asked
+    /// and the profile it asked for (`?conduit_profile=` or `?profile=`; none
+    /// is the dashboard's own). Nil for a path that isn't a plugin's.
+    static func pluginOffDetail(path: String) -> String? {
+        guard let components = URLComponents(string: path) else { return nil }
+        let parts = components.path.split(separator: "/", omittingEmptySubsequences: true)
+        guard parts.count >= 3, parts[0] == "api", parts[1] == "plugins" else { return nil }
+        let plugin = String(parts[2])
+        let items = components.queryItems ?? []
+        let named = [DashboardPath.conduitProfileParameter, "profile"].lazy
+            .compactMap { name in items.first(where: { $0.name == name })?.value?.trimmingCharacters(in: .whitespaces) }
+            .first(where: { !$0.isEmpty })
+        guard let profile = named, profile != "default" else {
+            return AppLocalization.string("Hermes has the \(plugin) plugin turned off. On the Hermes host, run hermes plugins enable \(plugin), then restart Hermes.")
+        }
+        return AppLocalization.string("Hermes has the \(plugin) plugin turned off for the “\(profile)” profile. On the Hermes host, add \(plugin) to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes.")
+    }
+
+    /// Runs `request` to `path`, turning Hermes' bare "Plugin not found" for
+    /// a plugin the profile turned off into what to do about it (issue
+    /// 1630). Still a 404, so callers fall back as before.
+    static func explainingPluginRefusal<T>(path: String, _ request: () async throws -> T) async throws -> T {
+        do {
+            return try await request()
+        } catch DashboardTicketBridgeError.http(404, let detail) where detail == pluginRefusedDetail {
+            throw DashboardTicketBridgeError.http(status: 404, detail: pluginOffDetail(path: path) ?? detail)
+        }
+    }
+
     /// The dashboard answered but handed back no session ticket.
     static var noSessionTicketDetail: String {
         AppLocalization.string("The dashboard didn't let Conduit start a session. Try again.")
@@ -1106,6 +1139,26 @@ final class DashboardTicketBridge: NSObject {
         maxResponseBytes: Int = DataURLLimits.maxJSONResponseBytes,
         // A POST that only reads (the history page) fails with the page like a
         // GET, rather than being kept through invalidate() as a write is.
+        readsOnly: Bool
+    ) async throws -> [String: Any] {
+        try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) {
+            try await sendJSON(
+                path: path,
+                method: method,
+                body: body,
+                timeoutMilliseconds: timeoutMilliseconds,
+                maxResponseBytes: maxResponseBytes,
+                readsOnly: readsOnly
+            )
+        }
+    }
+
+    private func sendJSON(
+        path: String,
+        method: String,
+        body: [String: Any]?,
+        timeoutMilliseconds: Int,
+        maxResponseBytes: Int,
         readsOnly: Bool
     ) async throws -> [String: Any] {
         if let nativeOAuthSession {
