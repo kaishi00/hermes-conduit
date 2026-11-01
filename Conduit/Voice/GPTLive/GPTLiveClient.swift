@@ -75,6 +75,10 @@ struct GPTLiveSessionAnswer: Equatable {
     /// The path the host confirmed it billed. The call speaks that path's
     /// protocol (the subscription's Codex events or the public API's).
     var billing: GPTLiveBilling = .subscription
+    /// Who built the session: "hermes" (Hermes' own GPT-Live code) or
+    /// "plugin" (the plugin's). Nil from a host that doesn't say. Read
+    /// only for the call trace (#1611).
+    var source: String? = nil
 }
 
 enum GPTLiveClientError: LocalizedError, Equatable {
@@ -255,7 +259,10 @@ final class GPTLiveClient: GPTLiveSessionProviding {
             voice: voice,
             briefingApplied: response["briefing_applied"] as? Bool == true,
             greetingApplied: response["greeting_applied"] as? Bool == true,
-            billing: billing
+            billing: billing,
+            // Only the two names the plugin sends: nothing else the host
+            // says reaches the trace.
+            source: (response["source"] as? String).flatMap { ["hermes", "plugin"].contains($0) ? $0 : nil }
         )
     }
 }

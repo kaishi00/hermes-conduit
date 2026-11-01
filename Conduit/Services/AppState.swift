@@ -3612,7 +3612,7 @@ final class AppState: ObservableObject {
         let hostContext = geminiLiveTokenClient
         let controller = GPTLiveConversationController(
             makeSession: { [weak self] in
-                GPTLiveSession(
+                let session = GPTLiveSession(
                     client: client,
                     history: self?.liveVoiceResumeContext?.gptLiveHistory ?? [],
                     voice: self?.gptLiveCallVoice,
@@ -3622,6 +3622,9 @@ final class AppState: ObservableObject {
                     greeting: self?.liveHermesCall == nil ? self?.liveVoiceStyle.greeting : nil,
                     callOpening: self?.liveHermesCall != nil
                 )
+                // The session's own setup steps in the call trace (#1611).
+                session.onTrace = { LiveCallTrace.shared.note($0) }
+                return session
             },
             availability: { [weak self] in
                 let status = try await client.availability()
@@ -3651,6 +3654,7 @@ final class AppState: ObservableObject {
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in self?.closeGPTLiveConversation() }
         controller.startsMuted = { [weak self] in self?.hermesCallStartsMuted ?? false }
+        controller.traceName = "GPT-Live"
         controller.apiCallLimit = { [weak self] in
             guard let self else { return nil }
             return GPTLiveAPICallLimit.duration(self.loadVoiceProfilePreferences(profile: self.activeProfile).gptLiveAPIMaxMinutes)

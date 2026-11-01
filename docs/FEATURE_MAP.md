@@ -2675,18 +2675,22 @@ Classic's transcription streams · Watch calls (Gemini, Qwen, Grok, Local Live; 
 
 ## Live call trace
 
-The steps of the last Grok Live, Qwen Live or Local Live call that Diagnostics & logs
-(Last connection) shows and copies, so a user can paste them into an issue:
-setup, the microphone, the server's turn detection and the user's turns, and
-each tool call.
+The steps of the last Grok Live, Qwen Live, Local Live or GPT-Live call that
+Diagnostics & logs (Last connection) shows and copies, so a user can paste them
+into an issue: setup, the microphone, the server's turn detection and the
+user's turns, and each tool call; for GPT-Live, its startup.
 
 **Siblings:** Grok Live (phone, CarPlay, calls from Hermes) · Local Live ·
-Qwen Live (turn steps and the controller's tool steps) · Gemini Live and GPT-Live (no trace) · Watch
-calls (no trace) · docs/VOICE_SETTINGS.md
+Qwen Live (turn steps and the controller's tool steps) · GPT-Live on the iPhone,
+CarPlay and calls from Hermes (startup steps, #1611) · Gemini Live (no trace) ·
+Watch calls (no trace here; the Watch's own call log, Voice settings > Apple
+Watch, already keeps a GPT-Live call's `briefingApplied` and `greetingApplied`
+in `bridgeStarted`) · docs/VOICE_SETTINGS.md
 
 **Code**
 - The trace and its report: `Conduit/Voice/LiveCallTrace.swift`, `Conduit/Views/ChatSupportSheets.swift` (lastConnectionReport)
 - Steps: `Shared/GrokLive/GrokLiveSession.swift`, `Shared/LocalLive/LocalLiveSession.swift`, `Shared/GeminiLive/QwenLiveSocket.swift`, `Shared/GeminiLive/GeminiLiveSession.swift` (onTrace), `Shared/GrokLive/LiveTurnTrace.swift`, `Shared/GrokLive/GrokLiveProtocol.swift` (turnDetectionSummary), `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (traceName, traceInputRoute)
+- GPT-Live's steps: `Conduit/Voice/GPTLive/GPTLiveSession.swift` (onTrace, requestStep, answerStep), `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (traceName), `Conduit/Voice/GPTLive/GPTLiveClient.swift` (the answer's `source`)
 - Wiring: `Conduit/Services/AppState.swift` (traceName, session.onTrace)
 
 **Rulings**
@@ -2695,11 +2699,13 @@ calls (no trace) · docs/VOICE_SETTINGS.md
 - The user's turns show when the server heard speech start and end, with the microphone's loudest and quietest 100 ms between them, and say once when 15 s of audio pass with no start or no end, so a turn the server never ends can be told apart from audio that never arrived (2026-10-28, #1424, from #1418).
 - Qwen Live's trace has the turn steps, dropped microphone audio and the controller's tool steps; Grok's own session steps (setup, functions taken) have no Qwen counterpart (2026-10-28, #1424).
 - A tool step is noted only while its call is still the current one, so a lookup that returns after hang-up stays out of the next call's trace (2026-10-28, #1424).
+- GPT-Live's trace is its startup (#1611): the request's briefing length and whether it carried a persona and memory (by their blocks), whether it was a call from Hermes, a greeting or waits for the user, and how many history items; what the host answered (built by Hermes or the plugin, the billing path, `briefing_applied`, `greeting_applied`, the voice); session.started or its timeout; a briefing or opening Conduit sent after the start, or asked for again; which side spoke first; connection drops and the provider's error code, never its message. "Applied" means the text was in the instructions the host sent, not that OpenAI took it or the model followed it (2026-11-01, #1611).
 
 **Open gaps**
-- Gemini Live sends no turn detection events and GPT-Live's turns run over WebRTC, so neither is traced; the Watch has no trace to show.
+- Gemini Live sends no turn detection events and GPT-Live's turns run over WebRTC, so neither has turn steps; Gemini Live has no trace; the Watch has no trace to show.
+- Every trace keeps only the last call, in memory until the app restarts (its steps also go to the system log, which keeps them longer), and nothing joins a call from Hermes, its saved call and the host's session request (#1611 asked for an alias).
 
-**Checked:** 2026-10-28, #1424.
+**Checked:** 2026-11-01, #1612 (GPT-Live's startup steps, from issue 1611); 2026-10-28, #1424.
 
 ## Narrated actions left out of speech
 

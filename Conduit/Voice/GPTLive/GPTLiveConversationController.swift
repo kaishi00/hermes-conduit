@@ -308,6 +308,10 @@ final class GPTLiveConversationController: ObservableObject {
     private var openingRequestedAt: Date?
     private var openingAskedAgain = false
     private var openingTask: Task<Void, Never>?
+    /// Whether this call's trace already has the first words each side
+    /// said (#1611).
+    private var tracedModelSpeech = false
+    private var tracedUserSpeech = false
     private let bridge: GPTLiveDelegationBridge
     private let supervisor: GeminiLiveJobSupervising
     private let requestPermission: @MainActor () async -> Bool
@@ -453,6 +457,9 @@ final class GPTLiveConversationController: ObservableObject {
         hasSentOpening = false
         clearOpeningHold()
         openingAskedAgain = false
+        tracedModelSpeech = false
+        tracedUserSpeech = false
+        if let traceName { LiveCallTrace.shared.begin(traceName) }
         finishedTurn = nil
         endTask?.cancel()
         endTask = nil
@@ -671,7 +678,11 @@ final class GPTLiveConversationController: ObservableObject {
             // Given with the call when the host takes it there: appended after
             // the call starts, the model answers each piece out loud.
             if session?.briefingApplied != true {
-                session?.appendContext(briefing(), channel: .commentary, delegationID: nil)
+                let text = briefing()
+                let sent = session?.appendContext(text, channel: .commentary, delegationID: nil) == true
+                trace(sent
+                    ? "Briefing sent after the start: \(text.unicodeScalars.count) characters"
+                    : "Briefing not sent after the start")
             }
             sendOpeningIfNeeded()
             phase = endRequestedAt != nil ? .ending : audioPaused ? .paused : modelTurnActive ? .speaking : .listening
@@ -734,8 +745,12 @@ final class GPTLiveConversationController: ObservableObject {
         guard endRequestedAt == nil, !audioPaused, !hasSentOpening, session?.isReady == true,
               let opening = openingPrompt() else { return }
         // Not sent (the channel failed): the next ready tries again.
-        hasSentOpening = session?.greetingApplied == true
-            || session?.appendContext(opening, channel: .speakable, delegationID: nil) == true
+        if session?.greetingApplied == true {
+            hasSentOpening = true
+        } else {
+            hasSentOpening = session?.appendContext(opening, channel: .speakable, delegationID: nil) == true
+            trace(hasSentOpening ? "Opening asked for as a turn" : "Opening not sent")
+        }
         guard hasSentOpening, lastModelTurnEndedAt == nil, lastUserSpeechAt == nil else { return }
         let current = now()
         openingRequestedAt = current
@@ -768,7 +783,8 @@ final class GPTLiveConversationController: ObservableObject {
               let opening = openingPrompt() else { return }
         // Once, sent or not: a channel that refuses it is failing anyway.
         openingAskedAgain = true
-        session?.appendContext(opening, channel: .speakable, delegationID: nil)
+        let sent = session?.appendContext(opening, channel: .speakable, delegationID: nil) == true
+        trace(sent ? "Opening asked for again: the model hadn't spoken" : "Opening not sent again")
     }
 
     private func clearOpeningHold() {
@@ -779,6 +795,30 @@ final class GPTLiveConversationController: ObservableObject {
     }
 
     var isHoldingForOpeningForTesting: Bool { openingHeldUntil != nil }
+
+    // MARK: Call trace
+
+    /// The call's name in Gateway Diagnostics' call trace ("GPT-Live").
+    /// Nil keeps the call out of the trace (#1611).
+    var traceName: String?
+
+    private func trace(_ label: String) {
+        guard traceName != nil else { return }
+        LiveCallTrace.shared.note(label)
+    }
+
+    /// Notes the first words each side says, once a piece has words in
+    /// it: an empty delta isn't speech.
+    private func traceFirstSpeech(of speaker: VoiceConversationTranscriptEntry.Speaker, _ text: String) {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        if speaker == .user, !tracedUserSpeech {
+            tracedUserSpeech = true
+            trace(tracedModelSpeech ? "User started speaking" : "User started speaking, before the model")
+        } else if speaker == .assistant, !tracedModelSpeech {
+            tracedModelSpeech = true
+            trace(tracedUserSpeech ? "Model started speaking" : "Model started speaking, before the user")
+        }
+    }
 
     private func finishEnd() {
         let close = onEndConversation
@@ -808,11 +848,13 @@ final class GPTLiveConversationController: ObservableObject {
     private func handle(_ event: GPTLiveProtocol.ServerEvent) {
         switch event {
         case .inputTranscript(let text):
+            traceFirstSpeech(of: .user, text)
             lastUserSpeechAt = now()
             // Someone is talking: the opening is under way or not wanted.
             clearOpeningHold()
             appendTranscript(text, speaker: .user)
         case .outputTranscript(let text):
+            traceFirstSpeech(of: .assistant, text)
             // Kept while paused: GPT-Live can't be told to hold its turn, so
             // what it said into the pause stays readable.
             modelTurnActive = true
@@ -827,6 +869,8 @@ final class GPTLiveConversationController: ObservableObject {
         case .turnDone(let role, let text):
             switch role {
             case "user":
+                // A turn can arrive whole, with no pieces before it.
+                traceFirstSpeech(of: .user, text)
                 lastUserSpeechAt = now()
                 clearOpeningHold()
                 let finished = finishTurn(userTurnEntries, speaker: .user, text: text)
@@ -837,6 +881,7 @@ final class GPTLiveConversationController: ObservableObject {
                     userFinished(finished)
                 }
             case "assistant":
+                traceFirstSpeech(of: .assistant, text)
                 modelTurnActive = false
                 lastModelTurnEndedAt = now()
                 clearOpeningHold()
