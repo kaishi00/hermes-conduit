@@ -141,12 +141,24 @@ final class ChatScrollHostedTests: XCTestCase {
         )
     }
 
+    /// What the next frame shows. A row that grew in the last turn (a
+    /// streaming reply's text comes out a few characters at a time) is laid
+    /// out, and followed, by the collection view's pass after its own,
+    /// which TranscriptViewController asks for at once but `settle` can end
+    /// before: runs that pass, and any the rows it lays out lead to.
+    private func finishPasses(_ mounted: Mounted) {
+        for _ in 0..<4 where mounted.scrollView.layer.needsLayout() {
+            mounted.scrollView.layoutIfNeeded()
+        }
+    }
+
     private func assertAtLatest(
         _ mounted: Mounted,
         _ message: String,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
+        finishPasses(mounted)
         let distance = maxOffset(mounted.scrollView) - mounted.scrollView.contentOffset.y
         XCTAssertLessThanOrEqual(abs(distance), 1, "\(message) (distance \(distance))", file: file, line: line)
     }
