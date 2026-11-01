@@ -44,6 +44,9 @@ struct ProviderEntry: Identifiable, Equatable {
         var keysInUse = 0
         /// How many of `keysInUse` are sign-ins (OAuth), not keys.
         var signInsInUse = 0
+        /// Sign-ins in this profile's own pool (not the main one's): with
+        /// them Hermes uses that pool, not the shared key.
+        var profileSignIns = 0
         /// Where to get a key.
         var signupURL: String?
         /// `vars` are other providers' variables this one also reads: a
@@ -81,7 +84,12 @@ struct ProviderEntry: Identifiable, Equatable {
             }
             // No rows listed: Hermes falls back to the shared ones, which
             // come ahead of a `.env` key once it reads it.
-            guard let first = profileRows.first else { return shared ? .shared : (saved ? .own : .none) }
+            guard let first = profileRows.first else {
+                // A pool of its own that holds only a sign-in: Hermes uses
+                // it, so no shared key is in use.
+                if profileSignIns > 0 { return saved ? .own : .none }
+                return shared ? .shared : (saved ? .own : .none)
+            }
             if sharedIDs.contains(first.id) { return .shared }
             return first.label == PoolRow.sharedLabel ? .oldCopy : .own
         }
@@ -311,6 +319,7 @@ enum ProviderCatalog {
                 ? shared.all
                 : (usesShared ? key.sharedRows.count + shared.signIns : own.all)
             byID[id]?.key?.signInsInUse = usesShared ? shared.signIns : own.signIns
+            if !onMainProfile { byID[id]?.key?.profileSignIns = own.signIns }
         }
 
         for row in accounts?["providers"] as? [[String: Any]] ?? [] {
@@ -427,7 +436,7 @@ enum ProviderCatalog {
             var row: [String: Any] = ["id": entry.id, "name": entry.name, "on_main_profile": entry.onMainProfile]
             if let key = entry.key {
                 var access: [String: Any] = [
-                    "vars": key.vars, "vars_saved": key.savedVars, "keys_in_use": key.keysInUse, "sign_ins_in_use": key.signInsInUse,
+                    "vars": key.vars, "vars_saved": key.savedVars, "keys_in_use": key.keysInUse, "sign_ins_in_use": key.signInsInUse, "profile_sign_ins": key.profileSignIns,
                     "vars_held": key.heldVars, "borrowed_only": key.borrowedOnly,
                     "shared_rows": key.sharedRows.map(encode), "profile_rows": key.profileRows.map(encode),
                 ]
@@ -491,6 +500,7 @@ enum ProviderCatalog {
                 }
                 entry.key?.heldVars = access["vars_held"] as? [String] ?? []
                 entry.key?.borrowedOnly = access["borrowed_only"] as? Bool ?? false
+                entry.key?.profileSignIns = access["profile_sign_ins"] as? Int ?? 0
                 entry.key?.sharedRows = (access["shared_rows"] as? [[String: Any]] ?? []).compactMap(poolRow)
                 entry.key?.profileRows = (access["profile_rows"] as? [[String: Any]] ?? []).compactMap(poolRow)
             }

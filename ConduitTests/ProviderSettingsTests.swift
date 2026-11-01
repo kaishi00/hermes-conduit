@@ -561,6 +561,13 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn,
                                                profilePool: ownSignIn, onMainProfile: false)
             .first { $0.id == "openrouter" }?.key?.keysInUse, 1, "a sign-in of the profile's own is its own pool")
+        let signInOnly = try XCTUnwrap(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn,
+                                                               profilePool: ownSignIn, onMainProfile: false)
+            .first { $0.id == "openrouter" }?.key)
+        XCTAssertNotEqual(signInOnly.state(onMainProfile: false), .shared, "Hermes uses its own pool, not the shared key")
+        XCTAssertEqual(ProviderCatalog.entries(summary: ProviderCatalog.summary(ProviderCatalog.entries(
+            env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn, profilePool: ownSignIn, onMainProfile: false)))?
+            .first { $0.id == "openrouter" }?.key?.state(onMainProfile: false), signInOnly.state(onMainProfile: false), "kept the same")
         XCTAssertEqual(entry.key?.signInsInUse, 0)
 
         XCTAssertEqual(KeyOrder.settingKey(for: "openrouter"), "credential_pool_strategies.openrouter")
