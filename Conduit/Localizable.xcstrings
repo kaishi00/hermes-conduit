@@ -19605,6 +19605,88 @@
         }
       }
     },
+    "A Focus or Do Not Disturb silences Hermes' calls. To let them ring through one, save this contact once, then add it to that Focus's People in Settings > Focus. Other callers still follow the Focus's settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Fokus oder „Nicht stören“ schaltet Anrufe von Hermes stumm. Damit sie trotzdem klingeln, speichere diesen Kontakt einmal und füge ihn unter Einstellungen > Fokus bei den Personen dieses Fokus hinzu. Für andere Anrufer gelten weiter die Einstellungen des Fokus."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un modo de concentración o No molestar silencia las llamadas de Hermes. Para que suenen con uno de ellos activo, guarda este contacto una vez y añádelo a las Personas de ese modo en Ajustes > Concentración. Las demás llamadas siguen los ajustes de ese modo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un mode de concentration ou Ne pas déranger met en silence les appels de Hermes. Pour qu’ils sonnent malgré tout, enregistrez ce contact une fois, puis ajoutez-le aux Personnes de ce mode dans Réglages > Concentration. Les autres appels suivent toujours les réglages du mode."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fokus atau Jangan Ganggu membisukan panggilan dari Hermes. Agar tetap berdering, simpan kontak ini sekali, lalu tambahkan ke Orang di Fokus tersebut di Pengaturan > Fokus. Penelepon lain tetap mengikuti pengaturan Fokus."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una modalità Full immersion o Non disturbare silenzia le chiamate di Hermes. Per farle squillare comunque, salva questo contatto una volta e aggiungilo alle Persone di quella modalità in Impostazioni > Full immersion. Le altre chiamate seguono le impostazioni della modalità."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "集中モードやおやすみモードでは、Hermesからの着信は消音されます。着信させるには、この連絡先を一度保存し、設定 > 集中モードでそのモードの「人」に追加してください。ほかの着信は集中モードの設定に従います。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "집중 모드나 방해 금지 모드에서는 Hermes의 전화가 무음이 됩니다. 울리게 하려면 이 연락처를 한 번 저장한 다음 설정 > 집중 모드에서 해당 모드의 사람에 추가하세요. 다른 전화는 집중 모드 설정을 그대로 따릅니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tryb skupienia lub Nie przeszkadzać wycisza połączenia od Hermesa. Aby mimo to dzwoniły, zapisz ten kontakt raz i dodaj go do Osób tego trybu w Ustawienia > Skupienie. Inne połączenia nadal podlegają ustawieniom trybu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um modo de Foco ou o Não Perturbe silencia as ligações do Hermes. Para que toquem mesmo assim, salve este contato uma vez e adicione-o às Pessoas desse Foco em Ajustes > Foco. As outras ligações seguem os ajustes do Foco."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Режим фокусирования или «Не беспокоить» глушит звонки Hermes. Чтобы они проходили, сохраните этот контакт один раз и добавьте его в «Люди» этого режима в «Настройки» > «Фокусирование». Остальные звонки по-прежнему следуют настройкам режима."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir Odak modu veya Rahatsız Etme, Hermes'in aramalarını sessize alır. Yine de çalmaları için bu kişiyi bir kez kaydedin, ardından Ayarlar > Odak'ta o modun Kişiler listesine ekleyin. Diğer aramalar Odak ayarlarına uymaya devam eder."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "专注模式或勿扰模式会让 Hermes 的来电静音。若要让它响铃，请存储此联系人一次，然后在“设置”>“专注模式”中将其添加到该模式的“联系人”。其他来电仍按该专注模式的设置处理。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "專注模式或勿擾模式會讓 Hermes 的來電靜音。若要讓它響鈴，請儲存此聯絡人一次，然後在「設定」>「專注模式」中將其加入該模式的「聯絡人」。其他來電仍依該專注模式的設定處理。"
+          }
+        }
+      }
+    },
     "A Hermes terminal is still replying in this chat. Try again when it finishes.": {
       "localizations": {
         "de": {
@@ -25593,6 +25675,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "加入儀表板"
+          }
+        }
+      }
+    },
+    "Add %@ to Contacts": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ zu Kontakten hinzufügen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir %@ a Contactos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter %@ aux contacts"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tambahkan %@ ke Kontak"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi %@ ai Contatti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@を連絡先に追加"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "연락처에 %@ 추가"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dodaj %@ do kontaktów"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicionar %@ aos Contatos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить %@ в контакты"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kişiler'e %@ ekle"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将 %@ 添加到通讯录"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "將 %@ 加入聯絡人"
           }
         }
       }
