@@ -33362,6 +33362,17 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The settings as Hermes answers now, or nil when it didn't: for a
+    /// control that waits for Hermes rather than show a kept value as its
+    /// answer (a provider's key order).
+    func readProfileSettings(keys: [String]) async -> [String: ProfileSettingValue]? {
+        let profile = activeProfile
+        guard let owner = currentDashboardRuntimeOwner(),
+              let config = try? await readKeepingAnswer(KeptRoute.config, profile: profile, owner: owner),
+              ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
+        return profileSettings(in: config, keys: keys)
+    }
+
     /// What the settings pages open on before Hermes answers, and keep when
     /// it can't: the config last read, kept on the phone, with the display
     /// settings the chats follow meanwhile over it. Nil when no config is

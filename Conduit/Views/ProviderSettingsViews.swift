@@ -92,7 +92,7 @@ struct ModelPageProviders: View {
                                          fallbacks: appState.keptProfileFallbackModels()) },
             keyOrder: KeyOrderAccess(
                 kept: { appState.keptProfileSettings(keys: $0) },
-                load: { await appState.loadProfileSettings(keys: $0) },
+                load: { await appState.readProfileSettings(keys: $0) },
                 save: { await appState.setProfileSetting($0, value: $1) }
             )
         ))
@@ -1005,7 +1005,7 @@ private struct ProviderSettingsRows: View {
     private func row(_ setting: ProviderEntry.Setting) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: setting.isBaseURL ? AppLocalization.string("Base URL override") : setting.variable)
+                Text(verbatim: title(setting))
                     .scaledFont(.subheadline)
                 Text(verbatim: status(setting))
                     .scaledFont(.caption).foregroundStyle(.secondary)
@@ -1024,6 +1024,7 @@ private struct ProviderSettingsRows: View {
                 }
                 .buttonStyle(.settings)
                 .disabled(saving)
+                .accessibilityLabel(Text(verbatim: (setting.saved ? AppLocalization.string("Change") : AppLocalization.string("Set")) + ", " + title(setting)))
             }
         }
         if editing == setting.variable {
@@ -1057,6 +1058,10 @@ private struct ProviderSettingsRows: View {
                 .disabled(saving || !service.answered || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
+    }
+
+    private func title(_ setting: ProviderEntry.Setting) -> String {
+        setting.isBaseURL ? AppLocalization.string("Base URL override") : setting.variable
     }
 
     private func status(_ setting: ProviderEntry.Setting) -> String {
@@ -1116,7 +1121,8 @@ enum KeyOrder: String, CaseIterable {
 /// What the key order needs from the page: the profile's settings.
 struct KeyOrderAccess {
     var kept: ([String]) -> [String: ProfileSettingValue]?
-    var load: ([String]) async -> [String: ProfileSettingValue]
+    /// Nil when Hermes didn't answer.
+    var load: ([String]) async -> [String: ProfileSettingValue]?
     var save: (String, ProfileSettingValue) async -> Bool
 }
 
@@ -1129,6 +1135,7 @@ private struct KeyOrderSection: View {
     let access: KeyOrderAccess
     @State private var order: KeyOrder?
     @State private var answered = false
+    @State private var loadFailed = false
     @State private var saving = false
     @State private var error: String?
 
@@ -1147,6 +1154,16 @@ private struct KeyOrderSection: View {
             }
             // A save writes the setting; it waits for Hermes' answer.
             .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving, ready: order != nil))
+            if loadFailed && !answered {
+                // The picker waits for Hermes: a kept or default order may not be its own.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(AppLocalization.string("Could not load the key order."))
+                        .scaledFont(.footnote).foregroundStyle(.secondary)
+                    Button(AppLocalization.string("Try Again")) { Task { await read() } }
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .tint(.conduitAccent)
+                }
+            }
             if let error {
                 Text(verbatim: error).scaledFont(.caption).foregroundStyle(.red)
             }
@@ -1155,12 +1172,18 @@ private struct KeyOrderSection: View {
             guard order == nil, let kept = access.kept([settingKey]) else { return }
             order = KeyOrder(stored: kept[settingKey]?.textValue)
         }
-        .task {
-            let loaded = await access.load([settingKey])
-            guard !saving else { return }
-            order = KeyOrder(stored: loaded[settingKey]?.textValue)
-            answered = true
+        .task { await read() }
+    }
+
+    private func read() async {
+        loadFailed = false
+        guard let loaded = await access.load([settingKey]) else {
+            loadFailed = true
+            return
         }
+        guard !saving else { return }
+        order = KeyOrder(stored: loaded[settingKey]?.textValue)
+        answered = true
     }
 
     private func choose(_ next: KeyOrder) {
