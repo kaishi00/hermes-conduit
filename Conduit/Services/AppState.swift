@@ -26395,9 +26395,6 @@ final class AppState: ObservableObject {
         store.onWorkstreamsChanged = { [weak self] in self?.workstreamsChanged() }
         return store
     }()
-    /// Bumped when a workstream becomes known and no published list changed,
-    /// so a search already shown redraws without it.
-    @Published var workstreamListVersion = 0
 
     /// What the host's notifier plugin serves; Settings nudges an update.
     @Published private(set) var notifierPlugin = NotifierPluginStatus() {

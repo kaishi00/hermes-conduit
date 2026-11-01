@@ -95,6 +95,25 @@ extension BotModeTests {
         XCTAssertEqual(changes, 2)
     }
 
+    /// A workstream that becomes known after All profiles listed it leaves
+    /// the list at once, without waiting for All's next read.
+    @MainActor
+    func testAWorkstreamReadLaterLeavesAllProfiles() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        func row(_ id: String) -> SessionSummary {
+            SessionSummary(id: id, storedSessionId: nil, alternateIds: [], title: "Chat", model: "Hermes",
+                           updatedLabel: "now", lastActivityAt: nil, profile: "furina", source: .chat,
+                           isActive: false, isArchived: false, lineageRootId: nil)
+        }
+        appState.allProfilesCatalog = AllProfilesCatalog(dashboardID: nil, sessions: [row("20261101_w1"), row("plain")],
+                                                         isLoaded: true)
+        appState.botWork.set(try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina")))
+        XCTAssertEqual(appState.allProfilesCatalog.sessions.map(\.id), ["plain"])
+    }
+
     /// Chats, search and All profiles leave a workstream's row out by any
     /// of its ids; a refusal and a tap in flight belong to one bot.
     @MainActor
