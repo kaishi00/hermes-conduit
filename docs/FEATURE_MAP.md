@@ -1941,7 +1941,7 @@ ref (W1, W2), and hears back when one finishes, fails, waits on the user or
 has something ready for them to look at.
 Each bot turns it on for itself (`hermes -p <bot> conduit-push work on`). It's
 being built on the notifier's `bot-workstreams` branch (M0, notifier #484; M1
-from notifier #490, #491 and #494), so
+from notifier #490, #491 and #493), so
 none of it is on either main yet, and the app has no screen for it until M2.
 
 **Siblings:** the Bot Chat (the work tools, offered only there and only
