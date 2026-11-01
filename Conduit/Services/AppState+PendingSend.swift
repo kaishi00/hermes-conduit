@@ -175,6 +175,9 @@ extension AppState {
             returnPendingComposerSendToDraft(other)
         }
         pendingComposerSend = pending
+        // A message that waits says why: a reconnect kept quiet after
+        // coming back to the app shows from now (#1624).
+        if !isConnected { endQuietReturn() }
         // The chat shows it below its rows, the saved copy's included.
         switch composerChatOnScreen {
         case .live, .savedCopy: requestChatScrollToLatest()

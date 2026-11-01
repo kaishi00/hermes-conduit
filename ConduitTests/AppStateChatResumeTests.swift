@@ -4931,6 +4931,37 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeSessionId, visible.id)
     }
 
+    /// A failed sign-in refresh or ticket retries quietly, as a failed
+    /// socket does: a resume's first request often fails before the
+    /// network is back. The banner waits until the quiet retries have
+    /// failed too (#1624).
+    func testFailedTicketShowsItsBannerOnlyAfterTheQuietRetries() async {
+        let scheduler = ControlledReconnectScheduler()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in throw URLError(.networkConnectionLost) }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+
+        await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        XCTAssertNil(harness.appState.errorMessage)
+        XCTAssertEqual(harness.appState.lastConnectionFailure, ConnectionFailureClassifier.classify(URLError(.networkConnectionLost)),
+                       "Repair still knows what failed")
+        XCTAssertEqual(scheduler.scheduledCount, 1, "It retries")
+
+        for retry in 1..<AppState.quietReconnectAttempts {
+            await scheduler.runNew()
+            XCTAssertNil(harness.appState.errorMessage, "Retry \(retry) fails quietly")
+        }
+        await scheduler.runNew()
+        XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to refresh the dashboard session") == true)
+    }
+
     func testFailedColdAutomaticReconnectRetainsSavedSessionPurpose() async {
         let scheduler = ControlledReconnectScheduler()
         let reconnectSpy = ReconnectExecutionSpy()
@@ -8301,6 +8332,18 @@ private final class ControlledReconnectScheduler {
             await item.operation()
         }
     }
+
+    /// Runs only what was scheduled since the last call, so a retry that
+    /// schedules the next one can be stepped through.
+    func runNew() async {
+        let start = ranThrough
+        ranThrough = work.count
+        for item in work[start...] where !item.isCancelled {
+            await item.operation()
+        }
+    }
+
+    private var ranThrough = 0
 }
 
 @MainActor

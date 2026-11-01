@@ -632,8 +632,12 @@ final class AppState: ObservableObject {
     var isRecoveringConnection: Bool {
         isConnecting
             || (networkPathUsable && !isConnected && connection != nil
-                && turnState == .reconnecting && reconnectAttempts < 3)
+                && turnState == .reconnecting && reconnectAttempts < Self.quietReconnectAttempts)
     }
+    /// The retries after a drop that still read as reconnecting, before
+    /// the status says the gateway is likely down and a failed sign-in
+    /// refresh shows its banner.
+    static let quietReconnectAttempts = 3
     /// Just back on screen and reconnecting: the header stays quiet, since
     /// the reconnect usually lands before anyone could read the words.
     var hidesBriefReconnect: Bool {
@@ -5219,11 +5223,14 @@ final class AppState: ObservableObject {
     /// off screen, so a quick switch to another app comes back to the same
     /// connection (notifier #296).
     var backgroundConnectionGrace = BackgroundConnectionGrace()
-    /// The first few seconds back on screen: a reconnect that finishes in
-    /// that time doesn't flash "Reconnecting…" over the saved chat.
+    /// The first seconds back on screen: a reconnect that finishes in that
+    /// time doesn't show "Reconnecting…" over the saved chat. Long enough
+    /// for a sign-in refresh, a ticket and the socket over a slow remote
+    /// link; a message sent meanwhile ends it, so its wait is explained
+    /// (#1624).
     @Published private(set) var isReturningQuietly = false
     private var quietReturnTask: Task<Void, Never>?
-    static let quietReturnWindow: TimeInterval = 3
+    static let quietReturnWindow: TimeInterval = 10
     /// Armed only by a real .background phase. Ordinary inactive → active
     /// transitions (Control Center, incoming-call banner) must not be treated
     /// as reopening the app, so they never arm the preferred return surface.
@@ -19093,7 +19100,14 @@ final class AppState: ObservableObject {
                 isConnecting = false
                 turnState = .reconnecting
                 lastConnectionFailure = ConnectionFailureClassifier.classify(error)
-                errorMessage = AppLocalization.string("Failed to refresh the dashboard session: \(UserFacingError.message(for: error))")
+                // As when the socket fails: the first retries run quietly
+                // (a resume's first request often fails before the network
+                // is back), and the banner waits until they have failed too,
+                // when the status already says the dashboard looks down.
+                // Repair still reads the classification above (#1624).
+                if reconnectAttempts >= Self.quietReconnectAttempts {
+                    errorMessage = AppLocalization.string("Failed to refresh the dashboard session: \(UserFacingError.message(for: error))")
+                }
                 scheduleReconnectAfterFailedSync()
             }
             return
@@ -19215,6 +19229,9 @@ final class AppState: ObservableObject {
         prepareDashboardBridge(for: connection.baseUrl)
         guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         let startedAt = Date()
+        let signposter = ResponsivenessSignposts.signposter
+        let minting = signposter.beginInterval("Ticket mint", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("Ticket mint", minting) }
         do {
             let ticket = try await dashboardTicketBridge.mintTicket()
             noteConnectionStep("Ticket", since: startedAt)
@@ -19240,6 +19257,9 @@ final class AppState: ObservableObject {
             try await connectClient(client)
         } else {
             let startedAt = Date()
+            let signposter = ResponsivenessSignposts.signposter
+            let connecting = signposter.beginInterval("WebSocket connect", id: signposter.makeSignpostID())
+            defer { signposter.endInterval("WebSocket connect", connecting) }
             do {
                 try await client.connect()
                 noteConnectionStep("Socket open", since: startedAt)
@@ -19701,7 +19721,11 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func endQuietReturn() {
+    func beginQuietReturnForTesting() {
+        beginQuietReturn()
+    }
+
+    func endQuietReturn() {
         quietReturnTask?.cancel()
         quietReturnTask = nil
         if isReturningQuietly { isReturningQuietly = false }
