@@ -35,9 +35,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, bot-workstreams]
   pull_request:
-    branches: [main]
+    # bot-workstreams: Bot Mode as a coordinator, kept off main until Eric says.
+    branches: [main, bot-workstreams]
 
 # A PR's newer push supersedes its older run. A push is grouped by its own
 # commit instead, so every merge gets a full run: branch protection does not
