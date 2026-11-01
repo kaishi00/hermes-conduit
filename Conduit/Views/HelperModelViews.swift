@@ -36,10 +36,16 @@ struct HelperModelSlot: Identifiable, Equatable {
     static func keptAnswer(_ answer: [String: Any]) -> [String: Any] {
         guard let tasks = answer["tasks"] as? [[String: Any]] else { return answer }
         var kept = answer
+        // An inheriting plugin slot's `effective` route carries one too.
+        func keptEndpoint(_ fields: [String: Any]) -> [String: Any] {
+            guard let url = fields["base_url"] as? String, !url.isEmpty else { return fields }
+            var fields = fields
+            fields["base_url"] = ProviderCatalog.keptAddress(url)
+            return fields
+        }
         kept["tasks"] = tasks.map { row -> [String: Any] in
-            guard let url = row["base_url"] as? String, !url.isEmpty else { return row }
-            var row = row
-            row["base_url"] = ProviderCatalog.keptAddress(url)
+            var row = keptEndpoint(row)
+            if let effective = row["effective"] as? [String: Any] { row["effective"] = keptEndpoint(effective) }
             return row
         }
         return kept

@@ -98,13 +98,11 @@ struct PredictiveSettingsPage: View {
         .task(id: appState.predictiveIsServed) {
             predictionsSlotListed = appState.keptHelperModelListed(task: HelperModelSlot.predictions)
             status = await appState.loadPredictiveHostStatus()
-            // A read that fails keeps what the kept slots said, or reads as
-            // an older plugin's when nothing is kept.
+            // A read that fails keeps what the kept slots said; with nothing
+            // kept the caption stays off rather than guess an older plugin.
             do {
                 predictionsSlotListed = try await appState.loadHelperModel(task: HelperModelSlot.predictions) != nil
-            } catch {
-                if predictionsSlotListed == nil { predictionsSlotListed = false }
-            }
+            } catch {}
         }
     }
 
