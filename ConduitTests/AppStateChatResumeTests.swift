@@ -4993,6 +4993,32 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(harness.appState.showsConnectionRepair)
     }
 
+    /// A link that keeps changing restarts the backoff's count each time;
+    /// the failed renewals still surface after the quiet retries (#1624).
+    func testQuietTicketFailureSurfacesWhenTheLinkKeepsChanging() async {
+        let scheduler = ControlledReconnectScheduler()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in throw URLError(.networkConnectionLost) }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        harness.appState.gatewayReadinessProbe = { _ in true }
+
+        // Each attempt starts fresh, as after a path change.
+        for attempt in 0..<AppState.quietReconnectAttempts {
+            await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+            XCTAssertNil(harness.appState.errorMessage, "Attempt \(attempt) stays quiet")
+        }
+        await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to refresh the dashboard session") == true)
+        XCTAssertTrue(harness.appState.showsConnectionRepair)
+    }
+
     /// A tapped Reconnect is an answer someone is waiting for: its failed
     /// ticket shows at once, as before #1624. A waiting Siri launch fails
     /// at once on a quiet failure too.

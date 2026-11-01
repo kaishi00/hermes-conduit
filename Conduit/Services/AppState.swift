@@ -642,6 +642,10 @@ final class AppState: ObservableObject {
     /// shown once they have failed, by the next ticket or by a readiness
     /// probe the gateway doesn't answer (#1624).
     private var quietReconnectFailure: Error?
+    /// Renewals that have failed quietly since the last one worked. Counted
+    /// apart from the backoff's attempts, which a network change resets, so
+    /// a link that keeps changing still surfaces the failure.
+    private var quietRenewalFailures = 0
     /// A Reconnect someone asked for (the button, Settings, a gateway
     /// restart) shows its failure at once, as before #1624: it is an
     /// answer they are waiting for, not a resume.
@@ -662,7 +666,13 @@ final class AppState: ObservableObject {
         isConnecting = false
         turnState = .reconnecting
         quietReconnectFailure = error
-        if surfacesRenewalFailureAtOnce || reconnectAttempts >= Self.quietReconnectAttempts {
+        quietRenewalFailures += 1
+        // Quiet only on screen: off screen (CarPlay, a locked call, the
+        // Watch) it reports at once, as before, since the quiet is for
+        // coming back to the app.
+        if surfacesRenewalFailureAtOnce
+            || !isSceneActive
+            || quietRenewalFailures > Self.quietReconnectAttempts {
             surfaceQuietReconnectFailure()
         }
         scheduleReconnectAfterFailedSync()
@@ -2321,7 +2331,12 @@ final class AppState: ObservableObject {
     @Published var lastConnectionFailure: ConnectionFailure? {
         // Wherever a failure is forgotten (a connect, a sign-out, a
         // dashboard switch), a quiet one goes with it (#1624).
-        didSet { if lastConnectionFailure == nil { quietReconnectFailure = nil } }
+        didSet {
+            if lastConnectionFailure == nil {
+                quietReconnectFailure = nil
+                quietRenewalFailures = 0
+            }
+        }
     }
     @Published var showLogin = true {
         didSet {
@@ -19072,6 +19087,7 @@ final class AppState: ObservableObject {
             self.connection = connection
             // Only the latest step's failure may surface later.
             quietReconnectFailure = nil
+            quietRenewalFailures = 0
             if let dashboardID = renewalDashboardID {
                 KeychainHelper.saveConnection(connection, dashboardID: dashboardID)
             }
