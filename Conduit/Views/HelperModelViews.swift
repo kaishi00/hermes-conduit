@@ -56,8 +56,18 @@ struct HelperModelSlot: Identifiable, Equatable {
         }
     }
 
+    /// Hermes' default model on a provider pinned without a model: not the
+    /// chat model, so the row names the provider.
+    var providerOnly: Bool {
+        setting.followsChats && !setting.provider.isEmpty && setting.provider != "auto"
+    }
+
+    /// Runs on the chat model or the slot it follows.
+    var followsChats: Bool { setting.followsChats && !providerOnly }
+
     /// The model it runs on, or what it follows.
     var value: String {
+        if providerOnly { return setting.provider }
         if setting.followsChats {
             return followsTitle.map { AppLocalization.string("Same as \($0)") } ?? AppLocalization.string("Same as chats")
         }
@@ -223,7 +233,7 @@ struct HelperModelsSettingsSection: View {
 
     private var summary: String? {
         guard let slots, !slots.isEmpty else { return nil }
-        let own = slots.filter { !$0.setting.followsChats }.count
+        let own = slots.filter { !$0.followsChats }.count
         return own == 0
             ? AppLocalization.string("All use the chat model")
             : AppLocalization.string("\(String(own)) of \(String(slots.count)) have a model of their own")
@@ -309,7 +319,7 @@ private struct HelperModelRow: View {
                     .foregroundStyle(.primary)
                 Text(verbatim: slot.value)
                     .scaledFont(.caption)
-                    .foregroundStyle(slot.setting.followsChats ? Color.secondary : Color.conduitAccent)
+                    .foregroundStyle(slot.followsChats ? Color.secondary : Color.conduitAccent)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
