@@ -13,7 +13,7 @@
 import SwiftUI
 
 /// Reads a bot's work while something shows it: often while work runs,
-/// now and then otherwise.
+/// now and then otherwise, and once for a bot whose workstreams are off.
 private struct BotWorkRefresh: ViewModifier {
     @EnvironmentObject private var appState: AppState
     let profile: String
@@ -26,6 +26,8 @@ private struct BotWorkRefresh: ViewModifier {
             while !Task.isCancelled {
                 await appState.refreshBotWork(profile: profile)
                 let snapshot = appState.botWork.snapshot(profile)
+                // Off: nothing to watch until the chat opens again.
+                if snapshot?.isOn == false { return }
                 let busy = (snapshot?.workingCount ?? 0) > 0 || (snapshot?.items.contains { $0.status == "starting" } ?? false)
                 try? await Task.sleep(nanoseconds: busy ? Self.busyInterval : Self.idleInterval)
             }
@@ -48,7 +50,8 @@ struct BotWorkStrip: View {
     let onOpen: () -> Void
 
     var body: some View {
-        Group {
+        // A stack, not a Group, so the read runs while nothing shows yet.
+        VStack(spacing: 0) {
             if let snapshot = work.snapshot(profile), snapshot.isOn, let text = snapshot.stripText {
                 Button {
                     Haptics.light()
@@ -92,6 +95,24 @@ struct BotWorkPanel: View {
     @ObservedObject var work: BotWorkStore
     let profile: String
     let onClose: () -> Void
+    /// Rows opened and replies being typed, by ref, here rather than in
+    /// each row: a row that moves between Active and Recent keeps them.
+    @State private var expanded: Set<String> = []
+    @State private var replies: [String: String] = [:]
+
+    private func row(_ item: BotWorkItem) -> some View {
+        BotWorkRow(
+            item: item, profile: profile, isActing: work.isActing(item.ref, profile: profile),
+            expanded: Binding(
+                get: { expanded.contains(item.ref) },
+                set: { if $0 { expanded.insert(item.ref) } else { expanded.remove(item.ref) } }
+            ),
+            reply: Binding(
+                get: { replies[item.ref] ?? "" },
+                set: { replies[item.ref] = $0.isEmpty ? nil : $0 }
+            )
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -116,7 +137,7 @@ struct BotWorkPanel: View {
             .padding(.leading, 16)
             .padding(.trailing, 8)
             .padding(.top, 8)
-            if let refusal = work.lastRefusal {
+            if let refusal = work.refusal(profile) {
                 Text(refusal)
                     .scaledFont(.footnote)
                     .foregroundStyle(Color.orange)
@@ -134,14 +155,14 @@ struct BotWorkPanel: View {
                     if !snapshot.active.isEmpty {
                         Section("Active") {
                             ForEach(snapshot.active) { item in
-                                BotWorkRow(item: item, profile: profile, isActing: work.acting.contains(item.ref))
+                                row(item)
                             }
                         }
                     }
                     if !snapshot.recent.isEmpty {
                         Section("Recent") {
                             ForEach(snapshot.recent) { item in
-                                BotWorkRow(item: item, profile: profile, isActing: work.acting.contains(item.ref))
+                                row(item)
                             }
                         }
                     }
@@ -155,6 +176,8 @@ struct BotWorkPanel: View {
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .refreshesBotWork(profile: profile)
+        // A refusal belongs to the panel it was tapped in.
+        .onDisappear { work.setRefusal(nil, profile: profile) }
         .accessibilityIdentifier("botWork.panel")
     }
 }
@@ -166,8 +189,8 @@ private struct BotWorkRow: View {
     let item: BotWorkItem
     let profile: String
     let isActing: Bool
-    @State private var expanded = false
-    @State private var reply = ""
+    @Binding var expanded: Bool
+    @Binding var reply: String
 
     private var tint: Color {
         switch item.status {
@@ -227,7 +250,8 @@ private struct BotWorkRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .combine)
-            .accessibilityHint(AppLocalization.string("Shows more"))
+            .accessibilityValue(expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
+            .accessibilityHint(expanded ? AppLocalization.string("Shows less") : AppLocalization.string("Shows more"))
             if expanded {
                 if !item.checklist.isEmpty {
                     VStack(alignment: .leading, spacing: 3) {
@@ -332,45 +356,39 @@ struct WorkstreamBar: View {
     let profile: String
     let item: BotWorkItem
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private var botName: String {
         work.snapshot(profile)?.botName ?? profile
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Button {
-                Haptics.light()
-                appState.openCoordinator(profile: profile)
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.left")
-                        .scaledFont(.caption.weight(.bold))
-                        .accessibilityHidden(true)
-                    Text(AppLocalization.string("Back to \(botName)"))
-                        .scaledFont(.footnote.weight(.semibold))
-                        .lineLimit(1)
+        VStack(alignment: .leading, spacing: 0) {
+            // At accessibility Text Sizes the buttons go under the labels,
+            // so neither is cut.
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 6) {
+                    back
+                    label
+                    HStack(spacing: 8) { buttons }
                 }
-                .foregroundStyle(Color.conduitAccent)
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("workstream.back")
-            Text(AppLocalization.string("\(botName)’s work · \(item.ref)"))
-                .scaledFont(.footnote)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Spacer(minLength: 4)
-            Group {
-                if item.actions.contains(.check) {
-                    barButton(AppLocalization.string("Check first"), action: .check)
-                }
-                if item.actions.contains(.continue) {
-                    barButton(AppLocalization.string("Continue"), action: .continue)
-                }
-                if item.actions.contains(.stop) {
-                    barButton(AppLocalization.string("Stop"), action: .stop)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(spacing: 8) {
+                    back
+                    label
+                    Spacer(minLength: 4)
+                    buttons
                 }
             }
-            .disabled(work.acting.contains(item.ref) || !appState.isConnected)
+            // What the plugin said when a tap here did nothing.
+            if let refusal = work.refusal(profile) {
+                Text(refusal)
+                    .scaledFont(.footnote)
+                    .foregroundStyle(Color.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -378,7 +396,49 @@ struct WorkstreamBar: View {
         .padding(.horizontal, 12)
         .padding(.top, 4)
         .refreshesBotWork(profile: profile)
+        .onDisappear { work.setRefusal(nil, profile: profile) }
         .accessibilityIdentifier("workstream.bar")
+    }
+
+    private var back: some View {
+        Button {
+            Haptics.light()
+            appState.openCoordinator(profile: profile)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left")
+                    .scaledFont(.caption.weight(.bold))
+                    .accessibilityHidden(true)
+                Text(AppLocalization.string("Back to \(botName)"))
+                    .scaledFont(.footnote.weight(.semibold))
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            }
+            .foregroundStyle(Color.conduitAccent)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("workstream.back")
+    }
+
+    private var label: some View {
+        Text(AppLocalization.string("\(botName)’s work · \(item.ref)"))
+            .scaledFont(.footnote)
+            .foregroundStyle(.secondary)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+    }
+
+    private var buttons: some View {
+        Group {
+            if item.actions.contains(.check) {
+                barButton(AppLocalization.string("Check first"), action: .check)
+            }
+            if item.actions.contains(.continue) {
+                barButton(AppLocalization.string("Continue"), action: .continue)
+            }
+            if item.actions.contains(.stop) {
+                barButton(AppLocalization.string("Stop"), action: .stop)
+            }
+        }
+        .disabled(work.isActing(item.ref, profile: profile) || !appState.isConnected)
     }
 
     private func barButton(_ title: String, action: BotWorkItem.Action) -> some View {
@@ -401,18 +461,34 @@ struct BotWorkHeader: View {
     let isPanelOpen: Bool
     let onOpenPanel: () -> Void
 
+    /// Reads for a bot's chat its list doesn't name yet, a few seconds
+    /// apart: a workstream the bot just started shows in one of them.
+    static let unmatchedReads = 4
+    static let unmatchedInterval: UInt64 = 3_000_000_000
+
     var body: some View {
         if let profile = appState.activeBotChatProfile {
             BotWorkStrip(work: work, profile: profile, isPanelOpen: isPanelOpen, onOpen: onOpenPanel)
         } else if let workstream = appState.activeWorkstream {
             WorkstreamBar(work: work, profile: workstream.profile, item: workstream.item)
-        } else if appState.shownBotRoster.contains(where: { $0.name == appState.activeProfile }),
-                  work.snapshot(appState.activeProfile) == nil {
-            // A workstream opened from a link or a push before its bot's
-            // work was read: read it once, so its bar can show.
+        } else if let id = appState.activeSessionId, !id.isEmpty,
+                  appState.shownBotRoster.contains(where: { $0.name == appState.activeProfile }) {
+            // A chat on a bot that its last list didn't name: a workstream
+            // opened from a card, a link or a push before the list showed
+            // it. Read it again a few times, so its bar shows once it does.
+            let profile = appState.activeProfile
             Color.clear
                 .frame(height: 0)
-                .task(id: appState.activeProfile) { await appState.refreshBotWork(profile: appState.activeProfile) }
+                .task(id: "\(profile)\u{1F}\(id)") {
+                    for attempt in 0..<Self.unmatchedReads {
+                        if attempt > 0 {
+                            try? await Task.sleep(nanoseconds: Self.unmatchedInterval)
+                        }
+                        guard !Task.isCancelled else { return }
+                        await appState.refreshBotWork(profile: profile)
+                        if work.snapshot(profile)?.isOn == false { return }
+                    }
+                }
         }
     }
 }

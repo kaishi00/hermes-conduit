@@ -68,6 +68,41 @@ extension BotModeTests {
         XCTAssertTrue(store.workstreamSessionIDs.isEmpty)
     }
 
+    /// Chats, search and All profiles leave a workstream's row out by any
+    /// of its ids; a refusal and a tap in flight belong to one bot.
+    @MainActor
+    func testWorkStoreKeepsEachBotsRowsRefusalsAndTapsApart() throws {
+        let store = BotWorkStore()
+        store.set(try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina")))
+        func row(_ id: String, stored: String? = nil) -> SessionSummary {
+            SessionSummary(id: id, storedSessionId: stored, alternateIds: [], title: "Chat", model: "Hermes",
+                           updatedLabel: "now", lastActivityAt: nil, profile: "furina", source: .chat,
+                           isActive: false, isArchived: false, lineageRootId: nil)
+        }
+        XCTAssertTrue(store.isWorkstream(row("20261101_w2")))
+        XCTAssertTrue(store.isWorkstream(row("rt-9", stored: "20261101_w1")))
+        XCTAssertFalse(store.isWorkstream(row("20261101_other")))
+
+        XCTAssertTrue(store.begin("W1", profile: "furina"))
+        XCTAssertFalse(store.begin("W1", profile: "furina"))
+        XCTAssertTrue(store.begin("W1", profile: "nahida"))  // another bot's W1
+        XCTAssertTrue(store.isActing("W1", profile: "furina"))
+        store.end("W1", profile: "furina")
+        XCTAssertFalse(store.isActing("W1", profile: "furina"))
+        XCTAssertTrue(store.isActing("W1", profile: "nahida"))
+
+        store.setRefusal("W1 can't continue while it's running.", profile: "furina")
+        XCTAssertNotNil(store.refusal("furina"))
+        XCTAssertNil(store.refusal("nahida"))
+
+        XCTAssertTrue(store.beginReading("furina"))
+        XCTAssertFalse(store.beginReading("furina"))  // the panel shares the strip's read
+        store.endReading("furina")
+        store.clear()
+        XCTAssertNil(store.refusal("furina"))
+        XCTAssertFalse(store.isWorkstream(row("20261101_w2")))
+    }
+
     func testWorkToolCallsDrawAsWorkCards() throws {
         let started = try XCTUnwrap(BotWorkCall.parse(
             toolName: "work_start",
@@ -93,6 +128,10 @@ extension BotModeTests {
             toolName: "work_stop", input: #"{"ref": "W9"}"#, output: #"{"ok": false, "error": "no_such_work"}"#
         ))
         XCTAssertNil(refused.title(running: false))
+        let unread = try XCTUnwrap(BotWorkCall.parse(
+            toolName: "work_stop", input: #"{"ref": "W3"}"#, output: "Tool failed: bridge closed"
+        ))
+        XCTAssertNil(unread.title(running: false))
         XCTAssertNil(BotWorkCall.parse(toolName: "terminal", input: #"{"command": "ls"}"#, output: nil))
         XCTAssertNil(BotWorkCall.parse(toolName: "tool_call", input: #"{"name": "terminal"}"#, output: nil))
     }

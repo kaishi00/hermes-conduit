@@ -317,7 +317,8 @@ struct BotWorkCall: Equatable {
             text: instructions,
             sessionID: text("link", answer).flatMap(sessionID(inLink:)),
             profile: text("link", answer).flatMap(profile(inLink:)),
-            succeeded: answer["ok"] as? Bool ?? true
+            // An answer that can't be read keeps the step's own words.
+            succeeded: answer["ok"] as? Bool ?? !answer.isEmpty
         )
     }
 

@@ -212,13 +212,16 @@ struct ChatView: View {
         return Self.runningTool(in: appState.messages)?.input
     }
 
-    /// "Messaging Atlas…" while a delivery to a teammate runs, as its step
-    /// says; nil for any other tool.
+    /// "Messaging Atlas…" while a delivery to a teammate runs, "Starting
+    /// work…" while a work tool does, as their steps say; nil for any other
+    /// tool.
     private var runningToolTitle: String? {
-        guard appState.isBusy, let tool = Self.runningTool(in: appState.messages),
-              let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) else { return nil }
-        let name = BotTeammateMessages.displayName(for: key, in: appState.shownBotRoster)
-        return AppLocalization.string("Messaging \(name)…")
+        guard appState.isBusy, let tool = Self.runningTool(in: appState.messages) else { return nil }
+        if let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) {
+            let name = BotTeammateMessages.displayName(for: key, in: appState.shownBotRoster)
+            return AppLocalization.string("Messaging \(name)…")
+        }
+        return BotWorkCall.parse(toolName: tool.name, input: tool.input, output: nil)?.title(running: true)
     }
 
     static func runningToolName(in messages: [ChatMessage]) -> String? {
