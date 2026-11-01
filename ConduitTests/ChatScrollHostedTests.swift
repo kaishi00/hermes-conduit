@@ -151,6 +151,31 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertLessThanOrEqual(abs(distance), 1, "\(message) (distance \(distance))", file: file, line: line)
     }
 
+    /// Pumps layout until the transcript has sat at its end, with its
+    /// content height unchanged, for 0.15 s, or `cap` seconds have passed.
+    /// A row measuring its new height late (a loaded runner) only delays
+    /// it; a growth that following never catches leaves the reader off the
+    /// end at the cap.
+    private func settleUntilRestingAtLatest(_ mounted: Mounted, cap: TimeInterval = 3.0) {
+        let view = mounted.scrollView
+        let deadline = Date().addingTimeInterval(cap)
+        var restingSince: Date?
+        var lastHeight = view.contentSize.height
+        while Date() < deadline {
+            settle(mounted.host.view, seconds: 0.03)
+            let atEnd = abs(maxOffset(view) - view.contentOffset.y) <= 1
+            let unchanged = abs(view.contentSize.height - lastHeight) <= 0.5
+            lastHeight = view.contentSize.height
+            if atEnd, unchanged {
+                let since = restingSince ?? Date()
+                restingSince = since
+                if Date().timeIntervalSince(since) >= 0.15 { return }
+            } else {
+                restingSince = nil
+            }
+        }
+    }
+
     /// What a finger would do: begin a drag, move the content, let go.
     private func browse(_ mounted: Mounted, to offsetY: CGFloat) {
         mounted.scroller.userDragBegan()
@@ -329,13 +354,24 @@ final class ChatScrollHostedTests: XCTestCase {
         settle(mounted.host.view)
         assertAtLatest(mounted, "an appended reply is followed")
 
+        let recorder = ScrollRecorder(mounted.scrollView)
         for tick in 1...8 {
+            ChatViewportTrace.shared.reset()
             mounted.appState.setStreamingTextForTesting(String(
                 repeating: "Streaming line \(tick) grows the live bubble. ",
                 count: tick * 3
             ))
-            settle(mounted.host.view, seconds: 0.1)
-            assertAtLatest(mounted, "streaming growth tick \(tick) is followed")
+            // The live row measures its new height a pass or more after the
+            // text lands; on a loaded runner that took longer than a fixed
+            // 0.1 s settle (Nightly 2026-11-01: a line short of the end).
+            // Following must still reach the end without any input.
+            let mark = recorder.mark()
+            settleUntilRestingAtLatest(mounted)
+            assertAtLatest(
+                mounted,
+                "streaming growth tick \(tick) is followed\n\(recorder.dump(since: mark))\nscroller:\n\(ChatViewportTrace.shared.dump())"
+            )
+            XCTAssertTrue(mounted.scroller.isFollowingLatest, "streaming growth tick \(tick) keeps following")
         }
     }
 
