@@ -38,6 +38,26 @@ extension NotificationCopyTests {
         )
     }
 
+    func testEveryPromptTemplateFollowsTheAppLanguage() {
+        UserDefaults.standard.set("pt-BR", forKey: AppLanguageStore.defaultsKey)
+        let cases: [(String, String)] = [
+            ("Server 'gh' is configured 'trust: untrusted'. Approve to run 'push' once, or deny to block it.",
+             "O servidor 'gh' está configurado como 'trust: untrusted'. Aprove para executar 'push' uma vez, ou negue para bloquear."),
+            ("Server 'gh' declares a spend limit per chat. Approve to run 'push' once (every further paid call in this chat asks again), or deny to block it.",
+             "O servidor 'gh' define um limite de gastos por chat. Aprove para executar 'push' uma vez (cada nova chamada paga neste chat pergunta de novo), ou negue para bloquear."),
+            ("Allow computer_use to perform `left_click`?", "Permitir que o computer_use faça `left_click`?"),
+            ("execute_code script execution. The script can spawn subprocesses or mutate files without passing through terminal command approval; approval is one-shot for this run.",
+             "Execução de script do execute_code. O script pode iniciar subprocessos ou alterar arquivos sem passar pela aprovação de comandos do terminal; a aprovação vale só para esta execução."),
+            ("The agent wants to enter your saved card details into this checkout page. The card number and CVC never enter the conversation. Approve only if you intend to pay here.",
+             "O agente quer inserir os dados do seu cartão salvo nesta página de pagamento. O número do cartão e o CVC nunca entram na conversa. Aprove só se você pretende pagar aqui."),
+            ("Hermes needs your approval. Open Conduit for details.",
+             "O Hermes precisa da sua aprovação. Abra o Conduit para ver os detalhes."),
+        ]
+        for (english, portuguese) in cases {
+            XCTAssertEqual(HermesApprovalText.description(english), portuguese)
+        }
+    }
+
     func testUnknownApprovalTextAndRealCommandsShowAsSent() {
         UserDefaults.standard.set("pt-BR", forKey: AppLanguageStore.defaultsKey)
         XCTAssertEqual(HermesApprovalText.description("Deploys to production"), "Deploys to production")
@@ -66,6 +86,7 @@ extension NotificationCopyTests {
         XCTAssertEqual(reply.body, "recursive delete", "only an approval's body is Hermes' approval text")
     }
 
+    @MainActor
     func testSpokenApprovalLinesFollowTheAppLanguage() {
         UserDefaults.standard.set("pt-BR", forKey: AppLanguageStore.defaultsKey)
         func approval(_ description: String, command: String = "rm -rf build") -> ApprovalActivity {
@@ -86,6 +107,7 @@ extension NotificationCopyTests {
                        "O trabalho Limpar precisa do seu OK para continuar: exclusão recursiva. Diga sim para permitir uma vez, ou não.")
     }
 
+    @MainActor
     func testCallFromHermesSaysTheApprovalInTheAppLanguage() {
         UserDefaults.standard.set("pt-BR", forKey: AppLanguageStore.defaultsKey)
         XCTAssertEqual(HermesApprovalText.description("Codex requests exec in /Users/me/project"),
