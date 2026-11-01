@@ -2309,7 +2309,11 @@ final class AppState: ObservableObject {
     /// Cleared by any successful connection, by explicit disconnect, and
     /// when the user starts a manual login (which abandons the prior
     /// failure's repair context).
-    @Published var lastConnectionFailure: ConnectionFailure?
+    @Published var lastConnectionFailure: ConnectionFailure? {
+        // Wherever a failure is forgotten (a connect, a sign-out, a
+        // dashboard switch), a quiet one goes with it (#1624).
+        didSet { if lastConnectionFailure == nil { quietReconnectFailure = nil } }
+    }
     @Published var showLogin = true {
         didSet {
             // The sign-in surface never keeps a saved copy in memory: after an
@@ -14344,7 +14348,6 @@ final class AppState: ObservableObject {
         cancelScenePhaseAttempt()
         owedPostConnectBootstrap = nil
         lastConnectionFailure = nil
-        quietReconnectFailure = nil
         client?.disconnect()
         isConnected = false
         isConnecting = false
@@ -19169,7 +19172,6 @@ final class AppState: ObservableObject {
             errorMessage = nil
             chatErrorBehindRoom = nil
             lastConnectionFailure = nil
-            quietReconnectFailure = nil
             reconnectAttempts = 0
             connectedAt = Date()
             // Bot Mode evidence before the sync: a reconnect re-runs the same
