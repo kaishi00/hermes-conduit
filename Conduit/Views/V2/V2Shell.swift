@@ -502,11 +502,17 @@ struct V2Shell: View {
                 roomOpen: appState.activeRoomSurface != nil
             )
         }
+        func hermesListed() -> Bool {
+            appState.groupRoomsListed || appState.groupChatPhase == .gatewayUnsupported
+        }
         var next = step()
-        if next == .askHermes {
+        // A room found only in the kept list waits for Hermes' own list, so
+        // the open doesn't refresh it and show an error nobody tapped for.
+        if next == .askHermes || (next != .giveUp && !hermesListed()) {
             await appState.refreshGroupChatSupport()
-            // Cut short (the connection dropped): kept for the next one.
-            guard !Task.isCancelled, appState.isConnected else { return }
+            // Cut short (the connection dropped) or still unlisted: kept for
+            // the next connection.
+            guard !Task.isCancelled, appState.isConnected, hermesListed() else { return }
             next = step()
         }
         switch next {
@@ -528,6 +534,18 @@ struct V2Shell: View {
                 conversationOnLeave = conversationToReopen?.encoded ?? ""
             }
         }
+    }
+
+    /// Gives up a waiting room once the reader left the launch's screen (a
+    /// tab, a page, a chat), and keeps what's showing instead.
+    private func giveUpRoomIfLeft() {
+        guard let launch = roomToReopen, !launch.isUntouched(
+            tab: selectedTab,
+            path: path(of: launch.tab),
+            roomOpen: appState.activeRoomSurface != nil
+        ) else { return }
+        roomToReopen = nil
+        conversationOnLeave = conversationToReopen?.encoded ?? ""
     }
 
     /// Whether either tab holds the conversation, shown or not.
@@ -599,6 +617,9 @@ struct V2Shell: View {
                 if conversationOnLeave != value { conversationOnLeave = value }
             }
             .task(id: appState.isConnected) { await reopenRoomIfWaiting() }
+            // A page tapped while a room waits takes the reader elsewhere too.
+            .onChange(of: chatsPath) { giveUpRoomIfLeft() }
+            .onChange(of: botsPath) { giveUpRoomIfLeft() }
             .onChange(of: appState.isModalSheetPresented) { _, presented in
                 // A sheet's dismissal shows the chat again: what came in under
                 // it is read now (#1579).
@@ -653,11 +674,7 @@ struct V2Shell: View {
             }
             .onChange(of: selectedTab) { _, tab in
                 visitedTabs.insert(tab)
-                // The reader left the tab a waiting room launch belongs to.
-                if let launch = roomToReopen, launch.tab != tab {
-                    roomToReopen = nil
-                    conversationOnLeave = conversationToReopen?.encoded ?? ""
-                }
+                giveUpRoomIfLeft()
                 // Only a tab the user picked clicks; a chat or link that
                 // switches tabs for them doesn't.
                 if programmaticTab == tab {
