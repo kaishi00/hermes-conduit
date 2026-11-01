@@ -20,6 +20,9 @@ struct ProviderModelContext {
     var catalogAnswered = false
     /// Hermes' last catalog read failed.
     var catalogFailed = false
+    /// The helper models `usage` names were asked of Hermes since the page
+    /// opened (answered or not): Remove waits for it.
+    var usageAnswered = true
     /// Reads the catalog again.
     var reloadCatalog: () async -> Void = {}
     /// Makes `model` on the catalog row `provider` the profile's default.
@@ -49,6 +52,7 @@ struct ModelPageProviders: View {
     var refresh = 0
     @State private var catalog: ProfileModelDefaults?
     @State private var catalogAnswered = false
+    @State private var helpersRead = false
     @State private var catalogFailed = false
     @State private var catalogGeneration = 0
     /// A model pick on a provider's page is saving and reads the catalog
@@ -78,6 +82,7 @@ struct ModelPageProviders: View {
             catalog: catalog,
             catalogAnswered: catalogAnswered,
             catalogFailed: catalogFailed,
+            usageAnswered: helpersRead,
             reloadCatalog: { await reloadCatalog() },
             makeDefault: { provider, model in
                 // Read here, so the page's spinner stays until the new default
@@ -99,6 +104,14 @@ struct ModelPageProviders: View {
         ))
         .onAppear { if catalog == nil { catalog = kept() } }
         .task { await reloadCatalog() }
+        // Read apart from the catalog, so a slow answer holds only Remove:
+        // it names the helper models pinned to a provider as Hermes holds
+        // them, not only as this phone last kept them (a read that fails
+        // leaves the kept ones).
+        .task {
+            _ = try? await appState.loadHelperModels()
+            helpersRead = true
+        }
         .onChange(of: service.changes) { _, _ in
             onChange()
             Task { await reloadCatalog() }
@@ -114,12 +127,7 @@ struct ModelPageProviders: View {
     private func reloadCatalog() async {
         catalogGeneration += 1
         let generation = catalogGeneration
-        // The helper models are read with it, so Remove names the ones
-        // pinned to a provider as Hermes holds them, not only as this
-        // phone last kept them; a read that fails leaves the kept ones.
-        async let helpers: [HelperModelSlot]? = try? await appState.loadHelperModels()
         let loaded = await load()
-        _ = await helpers
         guard generation == catalogGeneration else { return }
         catalogFailed = loaded == nil
         if let loaded {
@@ -541,7 +549,7 @@ struct ProviderDetailPage: View {
                 if let key = entry.key {
                     ConduitSettingsSection(title: AppLocalization.string("API key"), symbol: "key", tint: .conduitAura) {
                         ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: {},
-                                          keyRemovable: context.catalogAnswered && !runsDefault(entry),
+                                          keyRemovable: context.catalogAnswered && context.usageAnswered && !runsDefault(entry),
                                           usage: context.usage(entry))
                     }
                     if key.keysInUse > 1, let order = context.keyOrder, KeyOrder.settingKey(for: entry.id) != nil {
@@ -657,7 +665,7 @@ struct ProviderDetailPage: View {
     /// removed in its own section, which says which profiles it reaches.
     private func canRemove(_ entry: ProviderEntry) -> Bool {
         // Until the catalog answers, whether it runs the default is unknown.
-        guard context.catalogAnswered, !runsDefault(entry) else { return false }
+        guard context.catalogAnswered, context.usageAnswered, !runsDefault(entry) else { return false }
         if entry.endpoint != nil { return true }
         return entry.account?.signedIn == true && entry.account?.signsOutHere == true
     }
