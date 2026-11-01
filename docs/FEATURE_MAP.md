@@ -1479,7 +1479,8 @@ who each tag is · a teammate's delivery in the chat ("Message from Atlas") ·
 the bot's folded reply to it ("Replied to Atlas") · the same notes in a saved
 chat's copy · the sender's step ("Messaged Atlas") · the Live Activity's tool line ·
 Hermes Desktop's bot chat · chat list previews and quotes · Read Aloud and live voice ·
-the bot's SOUL messaging section · README.md's bots line
+the bot's SOUL messaging section · README.md's bots line · the plugin's
+move of an old Bot Chat under its gateway, which keeps a bot reachable while its chat is open
 
 **Code**
 - Tags and the note to the bot: `Conduit/Services/BotMentions.swift`, `Conduit/Services/GroupChatModels.swift` (MentionAutocomplete), `Conduit/Services/AppState.swift` (composerMentionCandidates and mentionAnnotatedOutboundText, from the shown roster)
@@ -1488,6 +1489,7 @@ the bot's SOUL messaging section · README.md's bots line
 - Previews, quotes and speech: `Conduit/Services/PreviewText.swift` (strip), read by the chat list and spoken previews
 - Tool categories: `Shared/Widgets/HermesTurnActivity.swift`, and its twin, `notifier/live_activity.py` (`tool_category`, notifier #338)
 - The messaging protocol a bot is born with: `Conduit/Services/BotManagement.swift` (BotSoul)
+- An old Bot Chat moved under its gateway: `notifier/bot_chat_adopt.py` (notifier #492)
 
 **Rulings**
 - A tag is sent as typed; Conduit only adds a note naming the teammate, and the bot sends with its own `message_agent` tool. Nothing is delivered from the phone (upstream Desktop's mention middleware).
@@ -1503,12 +1505,13 @@ the bot's SOUL messaging section · README.md's bots line
 - A signature is read from the first 320 characters, so a message of any length is still a delivery; tool calls past 64 KB aren't scanned. A signed name may contain "(" ("Atlas (v2)") (2026-10-24).
 - A "Messaged" step names the bot from the roster, and redraws when the roster loads (2026-10-24). Until Hermes' roster answers, the notes, replies and steps name teammates from the bots kept from its last answer, so a name doesn't change when it does, and the @ list, Mention a Bot and the note to the bot offer and name the kept bots; a tag for one Hermes no longer has reaches no one, as a mistyped tag does (2026-10-31, #1568).
 - Group rooms have no Mention a Bot item: their recipient picks do the same job (2026-10-24).
+- A Bot Chat from before Hermes' gateway owned sessions (no chat_id, no local keys) is moved under its profile's gateway by the plugin, a native resume and detach soon after a restart, because Hermes' relay only moves it while nothing holds it, and Conduit's open chat holds it: every message to that bot was refused, "held by another session writer" (2026-11-01, notifier #492, Eric's report on Zhongli; Zhongli's and Rei's moved by hand on .52 with his OK).
 - A delivery's note and a folded reply open and close like every other row: the chat's scroller hears first, so the tapped row stays put, and the choice outlives the row being rebuilt (2026-10-25, Eric's report: opening either one froze the app until iOS ended it).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-31, #1577 (TranscriptScroller is the scroller that hears first, now that chats draw on the transcript; Rulings); 2026-10-31, #1568 (teammates named, the @ list and Mention a Bot offered, and the note to the bot written from the kept bots until Hermes answers; a teammate's note reads the bots again once a change has landed, so the empty roster before Hermes answers never takes its name; Code); 2026-10-31, #1565 (the folded replies are worked out once per change of the rows drawn, not on each publish; Code); 2026-10-30, #1550 (a saved copy's notes and folded replies are drawn by the chat's own rows, folded as Hermes' rows will be); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1448 (an unnamed teammate is named by its id capitalized in its notes, replies and steps, through displayLabel); 2026-10-25, at #1259.
+**Checked:** 2026-11-01, #1604 (an old Bot Chat moved under its gateway by the plugin, notifier #492; Siblings, Code, Rulings); 2026-10-31, #1577 (TranscriptScroller is the scroller that hears first, now that chats draw on the transcript; Rulings); 2026-10-31, #1568 (teammates named, the @ list and Mention a Bot offered, and the note to the bot written from the kept bots until Hermes answers; a teammate's note reads the bots again once a change has landed, so the empty roster before Hermes answers never takes its name; Code); 2026-10-31, #1565 (the folded replies are worked out once per change of the rows drawn, not on each publish; Code); 2026-10-30, #1550 (a saved copy's notes and folded replies are drawn by the chat's own rows, folded as Hermes' rows will be); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1448 (an unnamed teammate is named by its id capitalized in its notes, replies and steps, through displayLabel); 2026-10-25, at #1259.
 
 ## Links in messages
 
