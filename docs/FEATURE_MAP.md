@@ -2820,11 +2820,11 @@ models (their own entry; their pickers read Hermes' catalog as they open) ·
 Profile config saves (the key order, a profile setting)
 
 **Code**
-- Service: `Conduit/Services/ProviderSettings.swift` (ProviderEntry and its KeyAccess states, its Settings and keysInUse, ProviderCatalog.entries and summary, ProviderSettingsService: share, unshare, override, useShared, removeRows, removeCopies, sign-ins and endpoints)
-- Views: `Conduit/Views/ProviderSettingsViews.swift` (ModelPageProviders, ProvidersSettingsSection, AddProviderSheet and AddProviderSheetHost, ProviderDetailPage, ProviderKeyEditor, ProviderSettingsRows, KeyOrder and KeyOrderSection, ProviderSignInView, CustomEndpointForm)
+- Service: `Conduit/Services/ProviderSettings.swift` (ProviderEntry and its KeyAccess states, its Settings and keysInUse, ProviderCatalog.entries, credentialCounts and summary, ProviderSettingsService: share, unshare, override, useShared, removeRows, removeCopies, sign-ins and endpoints)
+- Views: `Conduit/Views/ProviderSettingsViews.swift` (ModelPageProviders, ProvidersSettingsSection, AddProviderSheet and AddProviderSheetHost, ProviderDetailPage, ProviderKeyEditor, ProviderSettingsRows, KeyOrder, KeyOrderPicks and KeyOrderSection, ProviderSignInView, CustomEndpointForm)
 - Model page: `Conduit/Views/AuxiliaryViews.swift` (SettingsView's `.model` page and providerChanges, ProfileModelSettingsDetail's and FallbackModelsSettings' refresh)
 - Model sheet: `Conduit/Views/ModelPickerView.swift` (addProviderRow)
-- Tests: `ConduitTests/ProviderSettingsTests.swift`
+- Tests: `ConduitTests/ProviderSettingsTests.swift` (testTheKeysAProfileTakesTurnsOver, testTheKeyOrderKeepsAPickOverAnOlderAnswer)
 
 **Rulings**
 - Providers live on the Model page, renamed Models & providers; no new Settings row (Eric, 2026-11-01, #1616).
@@ -2835,20 +2835,20 @@ Profile config saves (the key order, a profile setting)
 - Hermes tries a key before it's saved; only a check that reached the provider and was refused stops the save. A provider that reads only another provider's variable isn't checked (Hermes would try the key on that provider). A variable two providers read as their own key is never removed for either, nor the pool row read from it (by Remove key, Use the shared key, a key of its own or sharing).
 - A provider's page shows "Could not load models." with Try Again when Hermes' catalog read fails, as the Model lists ruling asks.
 - Sign-ins live on the main profile, which Hermes already shares; custom endpoints are per profile, in its config, saved in the config write queue with `api_key` left out when nothing was typed (an empty one clears the saved key).
-- A provider that runs the default model can't be removed, nor its key (Remove shared key, Remove key, Remove this profile's key; going back to the shared key is fine), and the page says so; each key removal asks first and names the delegate and fallback models on the provider; Remove waits for Hermes' catalog (not the kept one) to tell; it names the delegate and fallback models on it, as last read (a name only, it changes nothing).
+- A provider that runs the default model can't be removed, nor its key (Remove shared key, Remove key, Remove this profile's key; going back to the shared key is fine), and the page says so; each key removal asks first and names the delegate and fallback models on the provider; Remove waits for Hermes' catalog (not the kept one) to tell; it names the delegate and fallback models on it, and the helper models pinned to it, Pulse's included (#1632), as last read (a name only, it changes nothing).
 - A key another provider also reads stays in the profile's settings, where Hermes still uses it first, and the key section says so, as does a save behind it; Use the shared key is offered only when the row the profile uses first is one Conduit may remove.
 - A new endpoint's config key is made from its name (`lab-vllm`, then `lab-vllm-2`), clear of the profile's endpoints and of every slug, display name and alias in Hermes' model catalog, so it never takes a built-in's catalog row; Custom endpoint waits for that catalog, and says so with Try Again when it isn't in.
 - A provider's settings that aren't keys (each non-password `provider` variable it owns in `/api/env`: a base URL override, Bedrock's AWS region and profile, Vertex's credentials file) are rows in a Settings section of its page and its Add page, set or cleared in the profile's `.env`, their values never shown. A provider with only such settings gets a card, and one with a setting saved and no key or sign-in reads "Settings saved" ("Settings saved, no key yet" when it takes a key); one that signs in isn't set up by a setting alone (#1625).
-- Key order (Hermes' `credential_pool_strategies.<provider>`, per profile: first key until it runs out, take turns, random, least used first) shows on a provider's page once the pool the profile uses holds two or more keys: the main profile's whole pool, `.env` rows included, or another profile's own rows, else the shared ones it falls back to. It's a profile setting, saved in the config write queue once Hermes has answered (a read that fails leaves the picker waiting, with Try Again, never Hermes' default shown as its answer), and offered only for an id a dotted config key can name (#1625).
+- Key order (Hermes' `credential_pool_strategies.<provider>`, per profile: first key until it runs out, take turns, random, least used first) shows on a provider's page once the pool the profile uses holds two or more keys: the main profile's whole pool, `.env` rows included, or another profile's own rows, else the shared ones it falls back to. It's a profile setting, saved in the config write queue once Hermes has answered (a read that fails leaves the picker waiting, with Try Again, never Hermes' default shown as its answer), and offered only for an id a dotted config key can name (#1625). Sign-ins in the pool (OAuth) count with the keys, as Hermes takes turns over them too, and a profile whose own pool holds only a sign-in uses its own pool; an answer to a read asked before a save ended is dropped (#1632).
 
 **Open gaps**
 - A profile Conduit doesn't list, or one that can't be read when a shared key is replaced, keeps its copy of the old key until its page's "Use the shared key".
 - A custom endpoint's saved key can be replaced but not removed from Conduit.
 - Conduit adds one key per provider and scope, so a second key for the key order comes from Hermes (`hermes auth add`) or the `.env`.
 - Key order isn't offered for a provider whose id has a dot (`custom:together.ai`): the profile setting's dotted key would split it.
-- Removing the shared key or signing out on the main profile checks only the main profile's default, delegate and fallback models, not other profiles' that run on it.
+- Removing the shared key or signing out on the main profile checks only the main profile's default, delegate, fallback and helper models, not other profiles' that run on it.
 
-**Checked:** 2026-11-01, #1625 (stage 2: key order, providers with only settings; two gaps closed, two opened); 2026-11-01, #1620 (from #1616's last reviews: a removal tries every variable, a save behind a held key says so, a given-up sign-in is cancelled on Hermes, a model pick's spinner stays until its own catalog read lands; base-URL-only providers noted as a gap); 2026-11-01, #1616 (entry added: Providers section, Add a provider, shared keys with overrides and cleanup; host-tested on Hermes 0.22.2: an override wins after its copies go, across restarts, and replacing and going back to the shared key work)
+**Checked:** 2026-11-01, #1632 (key order counts sign-ins, a profile's own sign-in among its own rows, its picks in a tested type; a removal names the helper models pinned to the provider); 2026-11-01, #1625 (stage 2: key order, providers with only settings; two gaps closed, two opened); 2026-11-01, #1620 (from #1616's last reviews: a removal tries every variable, a save behind a held key says so, a given-up sign-in is cancelled on Hermes, a model pick's spinner stays until its own catalog read lands; base-URL-only providers noted as a gap); 2026-11-01, #1616 (entry added: Providers section, Add a provider, shared keys with overrides and cleanup; host-tested on Hermes 0.22.2: an override wins after its copies go, across restarts, and replacing and going back to the shared key work)
 
 ## Helper models
 
@@ -2864,30 +2864,33 @@ section, kept route and writes; done: it gets Use It Anyway too) · Settings >
 Pulse's model (`pulse_memory`, left out of the list: it runs on the main
 profile only and Settings > Pulse sets it there) · Predictions' fast model
 (`conduit_predict`, done: the plugin registers it from 0.124.0 so Hermes
-lists and sets it, and the Predictive page points here) · Kanban's model
+lists and sets it, and the Predictive page points here once Hermes lists it,
+asking for a plugin update before then) · Kanban's model
 override (not needed: a board setting, apart from the Kanban helper slots) ·
 Hermes Desktop and Hermes' Models page (the same slots; not needed) · Screens
 that open on their last answer (done: the list and each page open on the
 kept slots) · Providers and keys (the pickers read Hermes' catalog as they
-open) · Watch, CarPlay and group rooms (not needed: no model settings) · the
+open; done: a removal names the helpers pinned to the provider) · Watch, CarPlay and group rooms (not needed: no model settings) · the
 notifier's README and CHANGELOG (done) · README's Settings list (done)
 
 **Code**
-- Model: `Conduit/Views/HelperModelViews.swift` (HelperModelSlot, HelperModelsSettingsSection, HelperModelsPage, HelperModelPage), `Conduit/Views/GeminiLiveViews.swift` (VoiceReplyModelSetting with its task, HelperModelSaveResult, VoiceReplyModelPicks' confirmAsked, VoiceReplyModelSettingsSection's helper)
-- App: `Conduit/Services/AppState.swift` (loadHelperModels, keptHelperModels, loadHelperModel, setHelperModel, setVoiceReplyModel), wired in `Conduit/Views/AuxiliaryViews.swift` (helperModelSettings, the `.model` page's trailing section)
+- Model: `Conduit/Views/HelperModelViews.swift` (HelperModelSlot, HelperModelsSettingsSection, HelperModelsPage, HelperModelPage), `Conduit/Views/GeminiLiveViews.swift` (VoiceReplyModelSetting with its task, providerOnly, baseURL and endpointHost, HelperModelSaveResult, VoiceReplyModelPicks' confirmAsked, chosen and endpointCaption, VoiceJobModelSettingsSection.providerDefaultTitle, VoiceReplyModelSettingsSection's helper)
+- App: `Conduit/Services/AppState.swift` (loadHelperModels, keptHelperModels, loadHelperModel, setHelperModel, keepHelperModelWrite, setVoiceReplyModel), `Conduit/Views/PredictiveSettingsView.swift` (predictionsSlotListed), wired in `Conduit/Views/AuxiliaryViews.swift` (helperModelSettings, the `.model` page's trailing section)
 - Notifier: `notifier/__init__.py` (_register_predict_task), tested in `notifier/tests/test_calls.py` and `notifier/upstream/test_helper_models.py`
-- Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift` (slots and Use It Anyway), `ConduitTests/AppStateMultiDashboardTests.swift` (testHelperModelsShareTheSlotsAndAskBeforeAnExpensivePick)
+- Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift` (slots, Use It Anyway, testAPinnedProviderAndAnEndpointAreShownAndKept), `ConduitTests/AppStateMultiDashboardTests.swift` (testHelperModelsShareTheSlotsAndAskBeforeAnExpensivePick, the kept slots after a save)
 
 **Rulings**
 - One Helper models row on Models & providers, a list page, and a page per helper, so Settings doesn't grow a row per slot (Eric's no-bloat ask, 2026-11-01, #1625).
 - Slots come from Hermes' `/api/model/auxiliary` for the profile, in its order; writes go through `/api/model/set` (scope auxiliary) in the config write queue, as Voice replies' do. Conduit names Hermes' built-in slots and its own plugin's, in the app's language; another plugin's slot shows its label and hint, a slot a newer Hermes adds reads as its key, and a plugin slot that follows another while unpinned says "Same as" that slot (#1625).
 - When Hermes' price check asks before taking a model, its warning shows with Use It Anyway, which writes the pick again with `confirm_expensive_model`; the pickers show what Hermes holds until then, and another pick drops the offer (#1625).
+- A provider pinned without a model is its own choice, "Default · provider", and "Same as chats" unpins the provider too (#1632).
+- A slot on an endpoint of its own (`base_url`) names its host (never its path or credentials; the phone keeps only its scheme, host and port, as a provider's endpoint does, an inheriting plugin slot's effective route included) and keeps the endpoint while its provider stays (Hermes keeps it then, so a save never sends one); a model from another provider moves it off, as Hermes does, and the page says so. A named custom endpoint is picked from the catalog as `custom:<name>` (#1632).
+- A save Hermes takes rewrites that slot in the kept answer at once, so the pages open on it even if the read after it never lands (#1632).
 
 **Open gaps**
-- A slot pinned to a custom base URL shows its model, not the address, and a new pick from Conduit doesn't carry a base URL.
 - Hermes' Reset all (`__reset__`) isn't offered: it would reset Pulse's slot too.
 
-**Checked:** 2026-11-01, #1625 (entry added)
+**Checked:** 2026-11-01, #1632 (provider-only pins, slots on their own endpoint, kept slots follow a save, the Predictive caption waits for the slot; a gap closed); 2026-11-01, #1625 (entry added)
 
 ## Profile config saves
 
@@ -4130,7 +4133,7 @@ Helper models (the fast model is the Conduit predictions slot)
 - Step summaries still use `prompt.btw`, so Desktop keeps showing their notes; moving them to `/predict` is left for its own change.
 - Which reply is Hermes' own, when other clients' messages are queued around the hidden prompt, is inferred from row timestamps (the phone's clock at sending against the host's) and `user.message` events. Hermes sends no turn ownership, so a message sent within clock skew of the prompt, one read into the chat before its event arrives, another device's message repeating the text this iPhone sent last before that message has its row id (taken for this iPhone's own), a message whose event arrives only after the hidden prompt while its turn is the one the prompt queued behind (counted twice), or a message queued ahead whose row is read in before the turn the prompt queued behind ends and whose event came before the prompt (not counted), can still put the tag on the wrong reply; and this iPhone's own message announced back after a newer one of its own is taken for someone else's, which drops the tag. The event's origin isn't read for this (#1290).
 
-**Checked:** 2026-11-01, #1625 (the fast model is a helper model Conduit sets, notifier 0.124.0; the Model section's captions point there; a gap closed); 2026-10-30, #1527 (a guess sent from the row keeps whatever focus the field had, see Composer focus after a send); 2026-10-29, #1495, carrying #1489 (a guess's fork sends no push, notifier #464); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1455 (carrying #1431; a chip that sends wraps instead of truncating; Rulings); 2026-10-26, #1290 (a follow-up's tag skips replies to other messages); at #1281 (carrying #1242).
+**Checked:** 2026-11-01, #1632 (the captions point at Helper models once Hermes lists Conduit predictions, and ask for a plugin update before then; with no slots kept the caption waits for Hermes, and stays off if it never answers); 2026-11-01, #1625 (the fast model is a helper model Conduit sets, notifier 0.124.0; the Model section's captions point there; a gap closed); 2026-10-30, #1527 (a guess sent from the row keeps whatever focus the field had, see Composer focus after a send); 2026-10-29, #1495, carrying #1489 (a guess's fork sends no push, notifier #464); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1455 (carrying #1431; a chip that sends wraps instead of truncating; Rulings); 2026-10-26, #1290 (a follow-up's tag skips replies to other messages); at #1281 (carrying #1242).
 
 ## Linked Rooms
 

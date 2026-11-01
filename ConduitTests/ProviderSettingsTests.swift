@@ -458,9 +458,19 @@ final class ProviderSettingsTests: XCTestCase {
             of: entry,
             settings: ["delegation.provider": .text("OpenRouter")],
             fallbacks: [ProfileFallbackModel(provider: "openrouter", model: "gpt-x"),
-                        ProfileFallbackModel(provider: "nous", model: "hermes")]
+                        ProfileFallbackModel(provider: "nous", model: "hermes")],
+            helpers: HelperModelSlot.slots(in: ["tasks": [
+                ["task": "title_generation", "provider": "openrouter", "model": "fast/titles"],
+                ["task": "vision", "provider": "openrouter", "model": ""],
+                ["task": "compression", "provider": "auto", "model": ""],
+                ["task": "skills_hub", "provider": "nous", "model": "hermes"],
+                ["task": "pulse_memory", "provider": "openrouter", "model": "fast/pulse", "label": "Pulse memory", "plugin": "conduit_push"],
+            ]], includingSetElsewhere: true)
         )
-        XCTAssertEqual(uses.count, 2)
+        XCTAssertEqual(uses.count, 5)
+        XCTAssertEqual(uses.last, "Pulse memory", "Pulse's slot, set in Settings > Pulse, is named too")
+        XCTAssertEqual(Array(uses[2..<4]), [AppLocalization.string("Chat titles"), AppLocalization.string("Image reading")],
+                       "helpers pinned to it, with or without a model")
     }
 
     // MARK: Settings that aren't keys, and key order
@@ -531,11 +541,59 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(entry.key?.keysInUse, 3)
         XCTAssertEqual(ProviderCatalog.entries(summary: ProviderCatalog.summary(own))?.first { $0.id == "openrouter" }?.key?.keysInUse, 3)
 
+        var withSignIn = shared
+        var rows = ((withSignIn["providers"] as! [[String: Any]])[0]["entries"] as! [[String: Any]])
+        rows.append(["id": "oauth1", "index": 3, "label": "claude.ai", "source": "oauth", "auth_type": "oauth"])
+        withSignIn["providers"] = [["provider": "openrouter", "entries": rows]]
+        XCTAssertEqual(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn)
+            .first { $0.id == "openrouter" }?.key?.keysInUse, 3, "a sign-in takes turns with the keys")
+        XCTAssertEqual(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn,
+                                               profilePool: [:], onMainProfile: false)
+            .first { $0.id == "openrouter" }?.key?.keysInUse, 2)
+        let ownSignIn: [String: Any] = ["providers": [["provider": "openrouter", "entries": [
+            ["id": "oauth2", "index": 0, "label": "claude.ai", "source": "oauth", "auth_type": "oauth"],
+        ]]]]
+        XCTAssertEqual(ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn,
+                                               profilePool: ownSignIn, onMainProfile: false)
+            .first { $0.id == "openrouter" }?.key?.keysInUse, 1, "a sign-in of the profile's own is its own pool")
+
         XCTAssertEqual(KeyOrder.settingKey(for: "openrouter"), "credential_pool_strategies.openrouter")
         XCTAssertNil(KeyOrder.settingKey(for: "custom:together.ai"))
         XCTAssertEqual(KeyOrder(stored: " Round_Robin "), .roundRobin)
         XCTAssertEqual(KeyOrder(stored: "sideways"), .fillFirst, "Hermes reads anything else as its default")
         XCTAssertEqual(KeyOrder(stored: nil), .fillFirst)
+    }
+
+    /// The key order shows the kept order until Hermes answers, drops an
+    /// answer to a read asked before a save ended, and a failed save puts
+    /// back the order shown before it.
+    func testTheKeyOrderKeepsAPickOverAnOlderAnswer() throws {
+        var picks = KeyOrderPicks()
+        XCTAssertNil(picks.order, "Nothing kept: no order, Hermes' default included")
+        picks.showKept("round_robin")
+        XCTAssertEqual(picks.order, .roundRobin)
+        XCTAssertNil(picks.choose(.random), "It waits for Hermes")
+
+        picks.hermesAnswered("fill_first", to: picks.readAsked())
+        XCTAssertEqual(picks.order, .fillFirst)
+        let before = picks.readAsked()
+        XCTAssertEqual(picks.choose(.random), .random)
+        XCTAssertNil(picks.choose(.leastUsed), "One save at a time")
+        picks.saveEnded(saved: true)
+        picks.hermesAnswered("fill_first", to: before)
+        XCTAssertEqual(picks.order, .random, "Asked before the save")
+
+        XCTAssertEqual(picks.choose(.leastUsed), .leastUsed)
+        picks.saveEnded(saved: false)
+        XCTAssertEqual(picks.order, .random)
+        XCTAssertNotNil(picks.error)
+
+        _ = picks.readAsked()
+        picks.readFailed()
+        XCTAssertTrue(picks.loadFailed)
+        picks.hermesAnswered("least_used", to: picks.readAsked())
+        XCTAssertEqual(picks.order, .leastUsed)
+        XCTAssertFalse(picks.loadFailed)
     }
 }
 

@@ -292,15 +292,21 @@ enum ProviderCatalog {
                 byID[id]?.key?.profileRows = rows
             }
         }
+        let sharedCounts = credentialCounts(sharedPool)
+        let ownCounts = credentialCounts(profilePool)
         for id in order {
             byID[id]?.onMainProfile = onMainProfile
             byID[id]?.settings.sort { $0.variable < $1.variable }
             guard let key = byID[id]?.key else { continue }
             // The main profile reads its whole pool, `.env` rows included;
-            // another reads its own rows, or falls back to the shared ones.
+            // another reads its own rows (a sign-in of its own is one), or
+            // falls back to the shared ones. Sign-ins count: Hermes takes
+            // turns over them with the keys.
+            let shared = sharedCounts[id] ?? .init()
+            let own = ownCounts[id] ?? .init()
             byID[id]?.key?.keysInUse = onMainProfile
-                ? (sharedRows[id] ?? []).count
-                : (key.profileRows.isEmpty ? key.sharedRows.count : key.profileRows.count)
+                ? shared.all
+                : (own.all == 0 ? key.sharedRows.count + shared.signIns : own.all)
         }
 
         for row in accounts?["providers"] as? [[String: Any]] ?? [] {
@@ -348,6 +354,26 @@ enum ProviderCatalog {
             rows[id] = (provider["entries"] as? [[String: Any]] ?? []).compactMap(poolRow)
         }
         return rows
+    }
+
+    struct CredentialCount {
+        var all = 0
+        /// Not keys: OAuth and other sign-ins.
+        var signIns = 0
+    }
+
+    /// Every credential a pool holds per provider, sign-ins with the keys.
+    static func credentialCounts(_ answer: [String: Any]?) -> [String: CredentialCount] {
+        var counts: [String: CredentialCount] = [:]
+        for provider in answer?["providers"] as? [[String: Any]] ?? [] {
+            guard let id = nonEmpty(provider["provider"]) else { continue }
+            let entries = provider["entries"] as? [[String: Any]] ?? []
+            counts[id] = CredentialCount(
+                all: entries.count,
+                signIns: entries.filter { ($0["auth_type"] as? String ?? "api_key") != "api_key" }.count
+            )
+        }
+        return counts
     }
 
     private static func poolRow(_ row: [String: Any]) -> ProviderEntry.PoolRow? {
