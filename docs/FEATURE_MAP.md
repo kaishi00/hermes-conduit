@@ -1966,7 +1966,8 @@ as a work update; the digest lists open asks on both sides) · recovery after
 a restart (the journal sorts each interrupted workstream: continued once when
 nothing that changes things was in flight, else left for the user with a
 Check first note; Hermes' own crash re-run, `desktop.auto_continue`, retired
-for workstreams; the outbox's lost update lines and sends replayed) · Opening a Bot Chat (the "Bot Chat" title is
+for workstreams, at load and in the sweep; the outbox's lost update lines
+replayed, and lost sends resent only into work recovery continued) · Opening a Bot Chat (the "Bot Chat" title is
 how the plugin knows the coordinator) · Hermes Desktop's Bot Chat (the same
 plugin, the same tools) · the `hermes conduit-push work` commands · the tool
 descriptions, the worker's and the update's prompts, and the notifier's
@@ -1990,7 +1991,7 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - A workstream's approvals follow the bot's Hermes approval mode (manual, smart, or off/yolo), and Edit Bot can set a separate mode for its workstreams (2026-11-01, Eric; not built yet).
 - An update carries a short line of the report and the chat's link; the full report stays in the workstream's chat and in work_read (2026-11-01, notifier #490).
 - Asks between bots go coordinator to coordinator, only between the user's bots on one Hermes, and only to a bot whose workstreams are on. What one bot asks or answers reaches the other as data, never as the user's go-ahead, and each bot does the work with its own tools and approvals. An answer goes into the workstream named in `for` (queued, no extra Bot Chat turn), else to the asking Bot Chat; closing an ask unanswered tells the bot that asked (2026-11-01, notifier #493, design C.9).
-- After a restart a workstream is continued on its own only when its journal shows nothing that can change things in flight since its turn began (reads are an allow list), only once until a turn of it ends, and only with the bot's `--after-restart continue` (the default; `ask` leaves it to the user). A step that can change things and was cut off is never re-run: the Bot Chat asks the user, with a Check first note that changes nothing. Hermes' own crash re-run is retired for workstreams, leaving a live sibling's marker alone (2026-11-01, notifier #495, design C.7).
+- After a restart a workstream is continued on its own only when its journal shows nothing that can change things in flight since its turn began (reads are an allow list; a `tool_call` counts by the tools it calls, and a step whose journal entry couldn't be written counts as one that changes things), only once until a turn of it ends, and only with the bot's `--after-restart continue` (the default; `ask` leaves it to the user). A step that can change things and was cut off is never re-run: the Bot Chat asks the user, with a Check first note that changes nothing. Hermes' own crash re-run is retired for workstreams, leaving a live sibling's marker alone (2026-11-01, notifier #495, design C.7). Starts and sends wait for the sweep to settle, and a stop lets a later restart continue the work again (2026-11-01, notifier #495's review).
 - A send the restart cut off that Hermes never stored is sent once more only into work recovery continued; into stopped or idle work it would start a turn nobody okayed, so the Bot Chat is told it may not have arrived instead (2026-11-01, notifier #495).
 - The loop guard: an ask never goes to a bot already waiting in its chain (a bot with an open ask from another can't ask that one back until it answers), a chain goes at most two bots deep, and one bot asks another at most 10 times an hour (2026-11-01, notifier #493).
 
