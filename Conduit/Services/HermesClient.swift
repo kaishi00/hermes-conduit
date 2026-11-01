@@ -1286,6 +1286,7 @@ final class HermesClient: ObservableObject {
         authorityPrompts = [:]
         // A token binds the session's revision on the old socket's server.
         modelConfirmTokens = [:]
+        authorityRunningSessions = []
 
         closedIntentionally = false
         socketHasOpened = false
@@ -1364,6 +1365,9 @@ final class HermesClient: ObservableObject {
         sessionRevisions.merge(predecessor.sessionRevisions) { mine, _ in mine }
         authorityPrompts.merge(predecessor.authorityPrompts) { mine, _ in mine }
         authorityPromptSessions.merge(predecessor.authorityPromptSessions) { mine, _ in mine }
+        // A confirm token belongs to the socket, which stays the same.
+        modelConfirmTokens.merge(predecessor.modelConfirmTokens) { mine, _ in mine }
+        authorityRunningSessions.formUnion(predecessor.authorityRunningSessions)
         // Server requests still open on the socket come here, so a later
         // request.cancel still withdraws their cards.
         openServerRequestIDs.formUnion(predecessor.openServerRequestIDs)
@@ -2224,10 +2228,20 @@ final class HermesClient: ObservableObject {
         switch event["type"]?.stringValue {
         case "approval.request", "clarify.request":
             notePrompt(event["payload"]?.objectValue, sessionId: sessionId)
+        case "message.start":
+            authorityRunningSessions.insert(sessionId)
+        case "message.complete", "error":
+            authorityRunningSessions.remove(sessionId)
         default:
             break
         }
     }
+
+    /// Chats this socket saw a turn start in and not yet end, kept from
+    /// the stream and from snapshots' `running`. The authority admits a
+    /// send into a running turn as the next turn, with the same receipt
+    /// as an idle send, so this is what tells the two apart.
+    private var authorityRunningSessions: Set<String> = []
 
     private func notePrompt(_ prompt: [String: AnyCodable]?, sessionId: String) {
         guard let prompt, let id = prompt["prompt_id"]?.stringValue, !id.isEmpty,
@@ -2243,12 +2257,15 @@ final class HermesClient: ObservableObject {
         guard speaksSessionAuthority else { return }
         let ids = Set([sessionId, object["session_id"]?.stringValue, object["stored_session_id"]?.stringValue]
             .compactMap { $0 }.filter { !$0.isEmpty })
+        let running = object["running"]?.boolValue
         for id in ids {
             noteAuthorityFences(
                 sessionId: id,
                 generation: Self.exactIntValue(object["execution_generation"]),
                 revision: Self.exactIntValue(object["revision"])
             )
+            if running == true { authorityRunningSessions.insert(id) }
+            if running == false { authorityRunningSessions.remove(id) }
         }
         for prompt in object["prompts"]?.arrayValue ?? [] {
             notePrompt(prompt.objectValue, sessionId: object["session_id"]?.stringValue ?? sessionId)
@@ -3128,6 +3145,9 @@ final class HermesClient: ObservableObject {
         // admission again, never a second copy.
         let submissionID = UUID().uuidString.lowercased()
         var sentToAuthority = false
+        // Read before sending: an idle send's own turn can start before
+        // its receipt comes back.
+        let joinsRunningTurn = authorityRunningSessions.contains(sessionId)
         // An older Hermes refuses one unknown key at a time: each optional
         // key it refuses goes, and the prompt is resent, until it's taken.
         var answer: AnyCodable?
@@ -3160,14 +3180,15 @@ final class HermesClient: ObservableObject {
         let result = answer ?? AnyCodable.null
         if sentToAuthority {
             // An admission receipt: `queued` is its place in the session's
-            // line whether a turn runs or not, so only a Queue send reads
-            // as held for the next turn.
+            // line whether a turn runs or not. The authority has no busy
+            // policy of its own: a send into a running turn waits for the
+            // next one, so it reads as held, like a Queue send.
             noteAuthorityFences(
                 sessionId: sessionId,
                 generation: Self.exactIntValue(result.objectValue?["execution_generation"]),
                 revision: nil
             )
-            return queued ? .queued : .accepted
+            return queued || joinsRunningTurn ? .queued : .accepted
         }
         return PromptSubmissionOutcome(
             gatewayStatus: result.objectValue?["status"]?.stringValue
@@ -3229,23 +3250,25 @@ final class HermesClient: ObservableObject {
         return rows.compactMap { LiveSessionStatus(from: $0.objectValue ?? [:]) }
     }
 
-    func steer(_ sessionId: String, text: String) async throws {
-        guard let result = try await turnControl("session.steer", sessionId: sessionId, text: text),
+    /// `profile` is the chat's own (a bot chat's), for the authority's
+    /// stale-turn read; nil is the client's.
+    func steer(_ sessionId: String, text: String, profile: String? = nil) async throws {
+        guard let result = try await turnControl("session.steer", sessionId: sessionId, text: text, profile: profile),
               result.objectValue?["status"]?.stringValue != "rejected" else {
             throw HermesError.steerRejected
         }
     }
 
-    func redirect(_ sessionId: String, text: String) async throws -> SessionRedirectOutcome {
-        guard let result = try await turnControl("session.redirect", sessionId: sessionId, text: text) else {
+    func redirect(_ sessionId: String, text: String, profile: String? = nil) async throws -> SessionRedirectOutcome {
+        guard let result = try await turnControl("session.redirect", sessionId: sessionId, text: text, profile: profile) else {
             return .rejected
         }
         return SessionRedirectOutcome(gatewayStatus: result.objectValue?["status"]?.stringValue)
     }
 
-    func cancel(_ sessionId: String) async throws {
+    func cancel(_ sessionId: String, profile: String? = nil) async throws {
         // Nil: no turn is running, so there is nothing to stop.
-        _ = try await turnControl("session.interrupt", sessionId: sessionId)
+        _ = try await turnControl("session.interrupt", sessionId: sessionId, profile: profile)
     }
 
     /// A steer, redirect or interrupt of the running turn. The authority
@@ -3253,7 +3276,9 @@ final class HermesClient: ObservableObject {
     /// (`stale_generation`) is read again from the session, and the
     /// control goes once more if a turn still runs. Nil when none does:
     /// the turn ended first, the dashboard's `rejected`.
-    private func turnControl(_ method: String, sessionId: String, text: String? = nil) async throws -> AnyCodable? {
+    private func turnControl(
+        _ method: String, sessionId: String, text: String? = nil, profile: String? = nil
+    ) async throws -> AnyCodable? {
         func dashboardRequest() -> GatewayRequest {
             var params: [String: Any] = ["session_id": sessionId]
             if let text { params["text"] = text }
@@ -3264,7 +3289,8 @@ final class HermesClient: ObservableObject {
                 authority ? authorityControl(method, sessionId: sessionId, text: text) : dashboardRequest()
             }
         } catch let error as RpcError where error.reason == "stale_generation" {
-            let snapshot = try await resumeSessionObject(sessionId, omitMessages: true)
+            // A bot chat is only found under its own profile.
+            let snapshot = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
             guard snapshot["running"]?.boolValue == true else { return nil }
             do {
                 let request = authorityControl(method, sessionId: sessionId, text: text)
@@ -3286,6 +3312,9 @@ final class HermesClient: ObservableObject {
     enum ClarifyResponseOutcome: Equatable {
         case accepted(remaining: [String]?)
         case expired
+        /// The session authority's `already_resolved`: another surface
+        /// answered first, so this answer wasn't taken.
+        case answeredElsewhere
 
         var isExpired: Bool { self == .expired }
 
@@ -3295,7 +3324,7 @@ final class HermesClient: ObservableObject {
         var requestCompleted: Bool {
             switch self {
             case .accepted(let remaining): return remaining?.isEmpty == true
-            case .expired: return false
+            case .expired, .answeredElsewhere: return false
             }
         }
     }
@@ -3310,7 +3339,8 @@ final class HermesClient: ObservableObject {
         requestId: String,
         answer: String,
         questionId: String? = nil,
-        sessionId: String? = nil
+        sessionId: String? = nil,
+        profile: String? = nil
     ) async throws -> ClarifyResponseOutcome {
         if isServerRequestID(requestId) {
             return try await respondToClarifyServerRequest(
@@ -3326,7 +3356,8 @@ final class HermesClient: ObservableObject {
             // the chat's resume lists the prompts Hermes still waits on, with
             // the turn that asked. One it no longer lists was answered or
             // ended.
-            _ = try await resumeSessionObject(sessionId, omitMessages: true)
+            // A bot chat is only found under its own profile.
+            _ = try await resumeSessionObject(sessionId, omitMessages: true, profile: profile)
             authorityPrompt = authorityPrompts[requestId]
             if authorityPrompt == nil { return .expired }
         }
@@ -3349,11 +3380,12 @@ final class HermesClient: ObservableObject {
             }
             authorityPrompts.removeValue(forKey: requestId)
             authorityPromptSessions.removeValue(forKey: requestId)
-            // `already_resolved`: another surface answered first, so this
-            // answer wasn't taken.
-            return result.objectValue?["status"]?.stringValue?.lowercased() == "resolved"
-                ? .accepted(remaining: [])
-                : .expired
+            switch result.objectValue?["status"]?.stringValue?.lowercased() {
+            case "resolved": return .accepted(remaining: [])
+            // Another surface answered first, so this answer wasn't taken.
+            case "already_resolved": return .answeredElsewhere
+            default: return .expired
+            }
         }
         var params: [String: Any] = [
             "request_id": requestId,
@@ -3453,12 +3485,33 @@ final class HermesClient: ObservableObject {
         clarifySessions.removeValue(forKey: requestId)
     }
 
+    /// What became of an approval answer.
+    enum ApprovalResponseOutcome: Equatable {
+        case accepted
+        /// Nothing waits on it any more (timed out, or its turn ended).
+        case noLongerWaiting
+        /// The session authority's `already_resolved`: another surface
+        /// answered first.
+        case answeredElsewhere
+    }
+
     func respondToApproval(
         sessionId: String,
         requestId: String? = nil,
         choice: String,
         profile: String? = nil
     ) async throws -> Bool {
+        try await respondToApprovalOutcome(
+            sessionId: sessionId, requestId: requestId, choice: choice, profile: profile
+        ) == .accepted
+    }
+
+    func respondToApprovalOutcome(
+        sessionId: String,
+        requestId: String? = nil,
+        choice: String,
+        profile: String? = nil
+    ) async throws -> ApprovalResponseOutcome {
         let trimmedRequestId = requestId?.trimmingCharacters(in: .whitespacesAndNewlines)
         if speaksSessionAuthority, let trimmedRequestId, !trimmedRequestId.isEmpty {
             // The authority names the prompt and the turn that asked;
@@ -3473,7 +3526,7 @@ final class HermesClient: ObservableObject {
                 )
                 cached = authorityPrompts[trimmedRequestId]
             }
-            guard let prompt = cached else { return false }
+            guard let prompt = cached else { return .noLongerWaiting }
             var params: [String: Any] = [
                 "session_id": prompt.sessionId,
                 "execution_generation": prompt.generation,
@@ -3488,11 +3541,15 @@ final class HermesClient: ObservableObject {
                 // The turn that asked has ended: nothing to approve.
                 authorityPrompts.removeValue(forKey: trimmedRequestId)
                 authorityPromptSessions.removeValue(forKey: trimmedRequestId)
-                return false
+                return .noLongerWaiting
             }
             authorityPrompts.removeValue(forKey: trimmedRequestId)
             authorityPromptSessions.removeValue(forKey: trimmedRequestId)
-            return result.objectValue?["status"]?.stringValue == "resolved"
+            switch result.objectValue?["status"]?.stringValue?.lowercased() {
+            case "resolved": return .accepted
+            case "already_resolved": return .answeredElsewhere
+            default: return .noLongerWaiting
+            }
         }
         var params: [String: Any] = [
             "choice": choice,
@@ -3516,7 +3573,7 @@ final class HermesClient: ObservableObject {
             if hasRequestId {
                 throw HermesError.invalidResponse
             }
-            return true
+            return .accepted
         }
         guard let resolved = Self.exactIntValue(rawResolved), resolved >= 0 else {
             throw HermesError.invalidResponse
@@ -3526,7 +3583,7 @@ final class HermesClient: ObservableObject {
             // a card that is no longer pending.
             approvalQueueIDs = approvalQueueIDs.filter { $0.value.queueID != trimmedRequestId }
         }
-        return resolved > 0
+        return resolved > 0 ? .accepted : .noLongerWaiting
     }
 
     /// Returns every unresolved approval for one live Hermes session. Current

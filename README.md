@@ -164,7 +164,7 @@ On your home network the address is then `http://<nas-ip>:9119`; through Tailsca
 4. **Sign in.** Open Conduit, enter the address and sign in with the username and password from step 1.
 5. **Add the plugin** as described in [Notifications, voice and phone features](#notifications-voice-and-phone-features), or from **Settings > Conduit plugin** once you're signed in.
 
-**Note:** Conduit connects to the native Hermes dashboard, not the separate Hermes WebUI project. The default port is 9119. The address of the gateway's own web listener (the one `hermes webapp` serves, port 9120 by default) works too.
+**Note:** Conduit connects to the native Hermes dashboard, not the separate Hermes WebUI project. The default port is 9119. The address of the gateway's own web listener (the one `hermes webapp` serves, port 9120 by default) works too. It serves the gateway's own profile's chats; Bot Chats in other profiles need the dashboard, or a gateway that serves several profiles.
 
 Plain HTTP over Tailscale (MagicDNS `.ts.net` domains and `100.64.0.0/10` tailnet IPs) is supported, since that traffic is already WireGuard-encrypted.
 
