@@ -257,7 +257,7 @@ struct HermesCallSettingsSection: View {
                 Label(AppLocalization.string("Add Hermes to Contacts"), systemImage: "person.crop.circle.badge.plus")
             }
             .accessibilityIdentifier("hermesCalls.addContact")
-            Text("A Focus or Do Not Disturb silences Hermes' calls. To let them ring through one, save this contact once, then add it to that Focus's People in Settings > Focus. Other callers stay silenced.")
+            Text("A Focus or Do Not Disturb silences Hermes' calls. To let them ring through one, save this contact once, then add it to that Focus's People in Settings > Focus. Other callers still follow the Focus's settings.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
