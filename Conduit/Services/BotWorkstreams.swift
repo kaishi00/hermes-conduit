@@ -119,7 +119,14 @@ struct BotWorkItem: Identifiable, Equatable {
         return goal.isEmpty ? ref : goal
     }
 
+    /// Resolved before it finished: it reads as resolved, not by the
+    /// status it was left in ("Needs you", "Working").
+    var isResolvedUnfinished: Bool {
+        isClosed && ["needs_you", "interrupted", "starting", "running", "waiting"].contains(status)
+    }
+
     var statusText: String {
+        if isResolvedUnfinished { return AppLocalization.string("Resolved") }
         switch kind {
         case .askOut:
             switch status {

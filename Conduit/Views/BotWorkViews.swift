@@ -45,6 +45,7 @@ extension View {
 /// How a piece of work looks: its color and its mark.
 enum BotWorkLook {
     static func tint(_ item: BotWorkItem) -> Color {
+        if item.isResolvedUnfinished { return .secondary }
         switch item.status {
         case "needs_you", "interrupted": return .orange
         case "failed": return .red
@@ -55,6 +56,7 @@ enum BotWorkLook {
     }
 
     static func symbol(_ item: BotWorkItem) -> String {
+        if item.isResolvedUnfinished { return "archivebox" }
         switch item.status {
         case "needs_you", "interrupted": return "exclamationmark"
         case "failed": return "xmark"
@@ -510,7 +512,9 @@ struct BotWorkPanel: View {
                     .foregroundStyle(.secondary)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-            } else if list?.more == true {
+            }
+            // Also after a failed page, so it can be tried again.
+            if list?.isLoading == false, list?.more == true {
                 Button {
                     Task { await appState.loadResolvedWork(profile: profile, more: true) }
                 } label: {
@@ -547,6 +551,8 @@ private struct BotWorkRow: View {
     /// The line under the title: what it's doing, else why it stopped,
     /// else where it stands.
     private var subtitle: String {
+        // Resolved before it finished: "Resolved", not where it was left.
+        if item.isResolvedUnfinished { return item.statusText }
         if item.isClosed {
             return item.resolvedBy == "bot" ? AppLocalization.string("\(item.statusText) · resolved by the bot")
                 : AppLocalization.string("\(item.statusText) · resolved by you")
@@ -571,7 +577,7 @@ private struct BotWorkRow: View {
             .accessibilityElement(children: .combine)
             .accessibilityValue(expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
             .accessibilityHint(expanded ? AppLocalization.string("Shows less") : AppLocalization.string("Shows more"))
-            if item.status == "needs_you", item.kind == .workstream, !item.sessionID.isEmpty {
+            if item.status == "needs_you", !item.isClosed, item.kind == .workstream, !item.sessionID.isEmpty {
                 // Its approval, answered here or in its chat.
                 WorkstreamApprovalBox(item: item, profile: profile, isActing: isActing)
             }

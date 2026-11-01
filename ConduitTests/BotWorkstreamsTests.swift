@@ -96,6 +96,9 @@ extension BotModeTests {
         XCTAssertEqual(after.resolvedCount, 5)
         XCTAssertEqual(resolved.resolvedBy, "user")
         XCTAssertEqual(resolved.closedAt, Date(timeIntervalSince1970: 1_800_000_100))
+        // Resolved before it finished: it reads as resolved, not as needing you.
+        XCTAssertTrue(resolved.isResolvedUnfinished)
+        XCTAssertEqual(resolved.statusText, AppLocalization.string("Resolved"))
 
         let reopened = try XCTUnwrap(BotWorkItem(row: [
             "ref": "W2", "kind": "workstream", "status": "interrupted", "session_id": "20261101_w2",
