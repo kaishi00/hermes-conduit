@@ -164,8 +164,9 @@ struct HelperModelsSettingsSection: View {
     @State private var slots: [HelperModelSlot]?
     /// Names the newest read: an older one that answers later is dropped.
     @State private var reads = 0
-    /// Hermes never answered and nothing is kept: an older Hermes without
-    /// the slots, so the row isn't offered, as Voice replies isn't.
+    /// Hermes has no slots route (an older Hermes) and nothing is kept, so
+    /// the row isn't offered. Any other failure keeps it, for the page's
+    /// Try Again.
     @State private var unavailable = false
 
     var body: some View {
@@ -227,7 +228,7 @@ struct HelperModelsSettingsSection: View {
             unavailable = false
         } catch {
             guard read == reads else { return }
-            unavailable = true
+            if ProviderSettingsService.isNotFound(error) { unavailable = true }
         }
     }
 

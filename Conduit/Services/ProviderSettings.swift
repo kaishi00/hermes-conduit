@@ -241,7 +241,7 @@ enum ProviderCatalog {
             guard let row = value as? [String: Any], row["category"] as? String == "provider" else { continue }
             let isSet = row["is_set"] as? Bool ?? false
             let isPassword = row["is_password"] as? Bool ?? false
-            for profile in providerProfiles(of: row) {
+            for profile in providerProfiles(of: row, isPassword: isPassword) {
                 if isPassword {
                     update(profile.slug, name: profile.label) { entry in
                         var key = entry.key ?? ProviderEntry.KeyAccess(vars: [], savedVars: [])
@@ -366,7 +366,7 @@ enum ProviderCatalog {
 
     /// One credential can serve several providers (`provider_profiles`);
     /// each gets it on its own card.
-    private static func providerProfiles(of row: [String: Any]) -> [ProviderProfile] {
+    private static func providerProfiles(of row: [String: Any], isPassword: Bool = true) -> [ProviderProfile] {
         let shared = (row["provider_profiles"] as? [[String: Any]] ?? []).compactMap { profile -> ProviderProfile? in
             guard let slug = nonEmpty(profile["provider"]) else { return nil }
             return ProviderProfile(slug: slug, label: nonEmpty(profile["provider_label"]) ?? slug,
@@ -374,9 +374,12 @@ enum ProviderCatalog {
         }
         if !shared.isEmpty { return shared }
         guard let slug = nonEmpty(row["provider"]) else { return [] }
-        // A variable naming a single provider is that provider's own.
+        // A variable naming a single provider is that provider's own. Hermes
+        // marks only a key as primary: a setting (a base URL, Bedrock's
+        // region) comes with `provider_primary: false` and is still its own.
+        let primary = isPassword ? (row["provider_primary"] as? Bool ?? true) : true
         return [ProviderProfile(slug: slug, label: nonEmpty(row["provider_label"]) ?? slug,
-                                url: nonEmpty(row["url"]), primary: row["provider_primary"] as? Bool ?? true)]
+                                url: nonEmpty(row["url"]), primary: primary)]
     }
 
     private static func nonEmpty(_ value: Any?) -> String? {

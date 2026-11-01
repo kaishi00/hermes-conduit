@@ -14,7 +14,8 @@ final class ProviderSettingsTests: XCTestCase {
         ],
         "OPENROUTER_BASE_URL": [
             "category": "provider", "is_password": false, "is_set": false, "advanced": true,
-            "provider": "openrouter", "provider_label": "OpenRouter",
+            // Hermes marks only keys primary (config_env.py's _row).
+            "provider": "openrouter", "provider_label": "OpenRouter", "provider_primary": false,
         ],
         "OPENAI_API_KEY": [
             "category": "provider", "is_password": true, "is_set": false, "advanced": false,
@@ -471,9 +472,10 @@ final class ProviderSettingsTests: XCTestCase {
     func testAProviderWithOnlySettingsGetsACard() throws {
         var env = self.env
         env["AWS_REGION"] = ["category": "provider", "is_password": false, "is_set": false, "advanced": false,
-                             "description": "AWS region for Bedrock API calls", "provider": "bedrock", "provider_label": "AWS Bedrock"]
+                             "description": "AWS region for Bedrock API calls", "provider": "bedrock", "provider_label": "AWS Bedrock",
+                             "provider_primary": false]
         env["AWS_PROFILE"] = ["category": "provider", "is_password": false, "is_set": false, "advanced": false,
-                              "provider": "bedrock", "provider_label": "AWS Bedrock"]
+                              "provider": "bedrock", "provider_label": "AWS Bedrock", "provider_primary": false]
         var entries = ProviderCatalog.entries(env: env, accounts: nil, endpoints: nil)
         var bedrock = try XCTUnwrap(entries.first { $0.id == "bedrock" })
         XCTAssertNil(bedrock.key)
