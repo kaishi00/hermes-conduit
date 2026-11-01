@@ -1283,6 +1283,22 @@ extension AppStateMultiDashboardTests {
                        Set(["title_generation", "voice_chat"]), "the read after the save is kept")
     }
 
+    /// The Model page and its Helper models section read together: one
+    /// request answers both.
+    func testHelperModelReadersAskingTogetherShareOneRead() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let page = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(1)
+        let section = Task { try await appState.loadHelperModels() }
+        for _ in 0..<5 { await Task.yield() }
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "auto", "model": ""]]])
+        let pageSlots = try await page.value
+        let sectionSlots = try await section.value
+        XCTAssertEqual(pageSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(sectionSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(held.sent.map(\.path), [AppState.KeptRoute.modelAuxiliary], "one request for both")
+    }
+
     private func heldSwitchFixture() -> (appState: AppState, held: HeldDashboardRequests, vps: SavedDashboard) {
         let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
         let vps = dashboard("VPS", "https://vps-\(UUID().uuidString.lowercased()).invalid")

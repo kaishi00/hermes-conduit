@@ -595,6 +595,28 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(ProviderCatalog.entries(summary: ProviderCatalog.summary(ProviderCatalog.entries(
             env: unsetEnv, accounts: nil, endpoints: nil, sharedPool: withSignIn, profilePool: ownSignIn, onMainProfile: false)))?
             .first { $0.id == "openrouter" }?.key?.state(onMainProfile: false), signInOnly.state(onMainProfile: false), "kept the same")
+
+        // A summary kept by a build that didn't count sign-ins: the page
+        // waits for Hermes, and the card says connected without saying how.
+        var older = ProviderCatalog.summary(ProviderCatalog.entries(
+            env: unsetEnv, accounts: nil, endpoints: nil, sharedPool: withSignIn, profilePool: [:], onMainProfile: false))
+        var rows = try XCTUnwrap(older["providers"] as? [[String: Any]])
+        let index = try XCTUnwrap(rows.firstIndex { $0["id"] as? String == "openrouter" })
+        var access = try XCTUnwrap(rows[index]["env"] as? [String: Any])
+        access["sign_ins_in_use"] = nil
+        access["profile_sign_ins"] = nil
+        rows[index]["env"] = access
+        older["providers"] = rows
+        let olderEntry = try XCTUnwrap(ProviderCatalog.entries(summary: older)?.first { $0.id == "openrouter" })
+        XCTAssertEqual(olderEntry.key?.signInsKnown, false)
+        XCTAssertTrue(olderEntry.keyUseUnknown)
+        XCTAssertTrue(olderEntry.isConnected)
+        XCTAssertEqual(ProviderText.status(olderEntry), AppLocalization.string("Connected"))
+        let fresh = try XCTUnwrap(ProviderCatalog.entries(summary: ProviderCatalog.summary(ProviderCatalog.entries(
+            env: unsetEnv, accounts: nil, endpoints: nil, sharedPool: withSignIn, profilePool: [:], onMainProfile: false)))?
+            .first { $0.id == "openrouter" })
+        XCTAssertEqual(fresh.key?.signInsKnown, true)
+        XCTAssertFalse(fresh.keyUseUnknown)
         XCTAssertEqual(entry.key?.signInsInUse, 0)
 
         XCTAssertEqual(KeyOrder.settingKey(for: "openrouter"), "credential_pool_strategies.openrouter")

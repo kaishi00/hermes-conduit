@@ -2830,12 +2830,32 @@ final class AppState: ObservableObject {
         keptAnswer(KeptRoute.modelAuxiliary).map { VoiceReplyModelSetting(auxiliaryResponse: $0, task: task) != nil }
     }
 
+    /// Hermes' `/api/model/auxiliary` answer, carried from the read to
+    /// every reader sharing it.
+    private struct HelperModelsAnswer: @unchecked Sendable { let json: [String: Any] }
+
+    /// The helper models read in flight. A reader asking meanwhile on the
+    /// same profile and Hermes shares it: the Model page and its Helper
+    /// models section open together. A save drops it, so a read asked
+    /// after the save isn't answered from before it.
+    private var helperModelsRead: (profile: String, owner: DashboardRuntimeOwner, task: Task<HelperModelsAnswer, Error>)?
+
     private func readHelperModels() async throws -> [String: Any] {
         let profile = activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }
-        let response = try await readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner)
+        let task: Task<HelperModelsAnswer, Error>
+        if let read = helperModelsRead, read.profile == profile, ownsDashboardRuntime(read.owner) {
+            task = read.task
+        } else {
+            task = Task { [self] in
+                HelperModelsAnswer(json: try await readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner))
+            }
+            helperModelsRead = (profile, owner, task)
+        }
+        let result = await task.result
+        if helperModelsRead?.task == task { helperModelsRead = nil }
         guard profile == activeProfile else { throw CancellationError() }
-        return response
+        return try result.get().json
     }
 
     /// A live voice mode's status line on Voice settings as its last check
@@ -2925,6 +2945,7 @@ final class AppState: ObservableObject {
             // it even if the read after it never lands, and an answer to a
             // read asked before it isn't kept over it (#1533).
             keepHelperModelWrite(setting, profile: profile, owner: owner)
+            helperModelsRead = nil
             // An open list's read asked before the save is dropped for one
             // asked after it.
             NotificationCenter.default.post(name: HelperModelSlot.saved, object: nil)

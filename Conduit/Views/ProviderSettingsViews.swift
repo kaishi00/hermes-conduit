@@ -274,7 +274,7 @@ enum ProviderText {
         switch entry.status {
         case .customEndpoint: return AppLocalization.string("Custom endpoint")
         case .signedIn: return AppLocalization.string("Signed in")
-        case .sharedKey: return AppLocalization.string("Shared key")
+        case .sharedKey: return entry.keyUseUnknown ? AppLocalization.string("Connected") : AppLocalization.string("Shared key")
         case .ownKey: return AppLocalization.string("This profile's own key")
         case .oldCopy: return AppLocalization.string("Old copy of the shared key")
         case .mainProfileOnly: return AppLocalization.string("Saved for the main profile only")
@@ -548,11 +548,18 @@ struct ProviderDetailPage: View {
                 }
                 if let key = entry.key {
                     ConduitSettingsSection(title: AppLocalization.string("API key"), symbol: "key", tint: .conduitAura) {
-                        ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: {},
-                                          keyRemovable: context.catalogAnswered && context.usageAnswered && !runsDefault(entry),
-                                          usage: context.usage(entry))
+                        // A summary kept by an older build doesn't count
+                        // sign-ins, so which key the profile uses waits
+                        // for Hermes.
+                        if key.signInsKnown {
+                            ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: {},
+                                              keyRemovable: context.catalogAnswered && context.usageAnswered && !runsDefault(entry),
+                                              usage: context.usage(entry))
+                        } else {
+                            ProgressView().frame(maxWidth: .infinity).accessibilityLabel(AppLocalization.string("Loading…"))
+                        }
                     }
-                    if key.keysInUse > 1, let order = context.keyOrder, KeyOrder.settingKey(for: entry.id) != nil {
+                    if key.signInsKnown, key.keysInUse > 1, let order = context.keyOrder, KeyOrder.settingKey(for: entry.id) != nil {
                         KeyOrderSection(entry: entry, keys: key.keysInUse, signIns: key.signInsInUse, access: order)
                     }
                 }
