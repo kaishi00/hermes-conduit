@@ -164,7 +164,9 @@ struct ProviderEntry: Identifiable, Equatable {
     /// The names Hermes' model catalog may list this provider under.
     var catalogNames: [String] {
         guard let endpoint else { return [id] }
-        return [endpoint.endpointID, "custom:\(endpoint.endpointID)", name]
+        // Not its display name: one named like a built-in provider would
+        // take that provider's catalog row.
+        return [endpoint.endpointID, "custom:\(endpoint.endpointID)"]
     }
 
     /// The catalog row serving this provider's models, if Hermes lists one.
@@ -643,17 +645,24 @@ final class ProviderSettingsService: ObservableObject {
     /// replaces goes, and so do the copies of it Hermes made in other
     /// profiles' pools, which would otherwise keep the old key in use.
     /// Nothing on the phone keeps the key.
-    func share(key value: String, for entry: ProviderEntry) async throws {
+    /// On the main profile a key in its own `.env`, which Hermes reads into
+    /// the pool ahead of the new row, goes too: the pasted key replaces it.
+    /// Returns false when the key was saved but something it replaces
+    /// couldn't be removed.
+    @discardableResult
+    func share(key value: String, for entry: ProviderEntry) async throws -> Bool {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else { return }
+        guard !value.isEmpty else { return true }
         let replaced = entry.key?.sharedIDs ?? []
+        let mainVars = isSharedProfile ? entry.key?.savedVars ?? [] : []
         _ = try await request(shared("/api/credentials/pool"), method: "POST",
                               body: ["provider": entry.id, "api_key": value, "label": ProviderEntry.PoolRow.sharedLabel])
-        try await afterWrite {
+        return await cleanUp {
             if !replaced.isEmpty {
                 try await removeRows(provider: entry.id, ids: replaced, profile: Self.sharedProfile)
                 await removeCopies(provider: entry.id, ids: replaced)
             }
+            try await removeVariables(mainVars)
         }
     }
 
@@ -673,13 +682,14 @@ final class ProviderSettingsService: ObservableObject {
     /// pool, ahead of it; those copies go, and so does every other row it
     /// held (an earlier key of its own, an old copy of a replaced shared
     /// key), so its new key is the one it uses.
-    func override(key value: String, for entry: ProviderEntry) async throws {
+    @discardableResult
+    func override(key value: String, for entry: ProviderEntry) async throws -> Bool {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty, !isSharedProfile else { return }
+        guard !value.isEmpty, !isSharedProfile else { return true }
         let stale = (entry.key?.sharedIDs ?? []).union((entry.key?.ownRows ?? []).map(\.id))
         _ = try await request(named("/api/credentials/pool", profile: profile), method: "POST",
                               body: ["provider": entry.id, "api_key": value, "label": ProviderEntry.PoolRow.profileLabel])
-        try await afterWrite {
+        return await cleanUp {
             try await removeRows(provider: entry.id, ids: stale, profile: profile)
         }
     }
@@ -691,18 +701,36 @@ final class ProviderSettingsService: ObservableObject {
         guard !isSharedProfile, let key = entry.key else { return }
         try await afterWrite {
             try await removeRows(provider: entry.id, ids: Set(key.ownRows.map(\.id)), profile: profile)
-            for variable in key.savedVars {
-                do {
-                    _ = try await request(scoped("/api/env"), method: "DELETE", body: ["key": variable, "profile": profile])
-                } catch where Self.isNotFound(error) {
-                    continue
-                }
-            }
+            try await removeVariables(key.savedVars)
         }
     }
 
     /// Runs the rest of a write that has already changed something on the
     /// host, then reads the page again whether or not the rest worked.
+    /// Takes variables out of this profile's `.env`; one already gone is fine.
+    private func removeVariables(_ variables: [String]) async throws {
+        for variable in variables {
+            do {
+                _ = try await request(scoped("/api/env"), method: "DELETE", body: ["key": variable, "profile": profile])
+            } catch where Self.isNotFound(error) {
+                continue
+            }
+        }
+    }
+
+    /// The cleanup after a key was added: the key is saved whatever
+    /// happens, so a failure here is reported as false, not thrown.
+    private func cleanUp(_ rest: () async throws -> Void) async -> Bool {
+        do {
+            try await rest()
+            await changed()
+            return true
+        } catch {
+            await changed()
+            return false
+        }
+    }
+
     private func afterWrite(_ rest: () async throws -> Void) async throws {
         do {
             try await rest()

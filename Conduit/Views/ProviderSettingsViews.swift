@@ -16,6 +16,8 @@ import UIKit
 struct ProviderModelContext {
     /// The catalog Hermes gave last, or nil while it hasn't answered.
     var catalog: ProfileModelDefaults?
+    /// Hermes gave the catalog since the page opened, not only the kept one.
+    var catalogAnswered = false
     /// Makes `model` on the catalog row `provider` the profile's default.
     var makeDefault: (_ provider: String, _ model: String) async -> Bool
     /// What else on the profile uses the provider (its delegate or fallback
@@ -40,6 +42,7 @@ struct ModelPageProviders: View {
     /// default and reasoning) is read again.
     var refresh = 0
     @State private var catalog: ProfileModelDefaults?
+    @State private var catalogAnswered = false
 
     init(
         bridge: DashboardJSONRequester, profile: String, profileName: String,
@@ -61,6 +64,7 @@ struct ModelPageProviders: View {
     var body: some View {
         ProvidersSettingsSection(service: service, context: ProviderModelContext(
             catalog: catalog,
+            catalogAnswered: catalogAnswered,
             makeDefault: { provider, model in
                 let saved = await makeDefault(provider, model, catalog?.reasoning ?? "medium")
                 if saved { await reloadCatalog() }
@@ -79,7 +83,10 @@ struct ModelPageProviders: View {
     }
 
     private func reloadCatalog() async {
-        if let loaded = await load() { catalog = loaded }
+        if let loaded = await load() {
+            catalog = loaded
+            catalogAnswered = true
+        }
     }
 
     static let usageKeys = ["delegation.provider", "delegation.model"]
@@ -489,7 +496,7 @@ struct ProviderDetailPage: View {
                                     .accessibilityLabel(AppLocalization.string("Default model"))
                             }
                         }
-                        .frame(minHeight: 40)
+                        .frame(minHeight: 44)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -518,7 +525,7 @@ struct ProviderDetailPage: View {
     /// removed in its own section, which says which profiles it reaches.
     private func canRemove(_ entry: ProviderEntry) -> Bool {
         // Until the catalog answers, whether it runs the default is unknown.
-        guard context.catalog != nil, !runsDefault(entry) else { return false }
+        guard context.catalogAnswered, !runsDefault(entry) else { return false }
         if entry.endpoint != nil { return true }
         return entry.account?.signedIn == true && entry.account?.signsOutHere == true
     }
@@ -658,7 +665,8 @@ private struct ProviderKeyEditor: View {
                     if saving { ProgressView().accessibilityLabel(AppLocalization.string("Saving…")) } else { Text(AppLocalization.string("Save key")) }
                 }
                 .buttonStyle(.settingsPrimary)
-                .disabled(saving || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                // What a save replaces comes from Hermes' answer, not the kept one.
+                .disabled(saving || !service.answered || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityIdentifier("settings.providers.key.save")
             }
             if let signup = key.signupURL.flatMap(URL.init(string:)) {
@@ -704,7 +712,7 @@ private struct ProviderKeyEditor: View {
                     Text(AppLocalization.string("Remove shared key"))
                 }
                 .buttonStyle(.settings)
-                .disabled(saving)
+                .disabled(saving || !service.answered)
                 .accessibilityIdentifier("settings.providers.key.unshare")
                 .confirmationDialog(AppLocalization.string("Remove the shared key?"), isPresented: $confirmingUnshare, titleVisibility: .visible) {
                     Button(AppLocalization.string("Remove"), role: .destructive) { run { try await service.unshare(entry) } }
@@ -719,7 +727,7 @@ private struct ProviderKeyEditor: View {
                     Text(AppLocalization.string("Remove key"))
                 }
                 .buttonStyle(.settings)
-                .disabled(saving)
+                .disabled(saving || !service.answered)
             }
         } else if state == .own || state == .oldCopy {
             Button {
@@ -728,7 +736,7 @@ private struct ProviderKeyEditor: View {
                 Text(key.shared ? AppLocalization.string("Use the shared key") : AppLocalization.string("Remove this profile's key"))
             }
             .buttonStyle(.settings)
-            .disabled(saving)
+            .disabled(saving || !service.answered)
             .accessibilityIdentifier("settings.providers.key.useShared")
         }
     }
@@ -806,14 +814,17 @@ private struct ProviderKeyEditor: View {
                 return
             }
             do {
+                let cleaned: Bool
                 switch scope {
-                case .allProfiles: try await service.share(key: value, for: entry)
-                case .thisProfile: try await service.override(key: value, for: entry)
+                case .allProfiles: cleaned = try await service.share(key: value, for: entry)
+                case .thisProfile: cleaned = try await service.override(key: value, for: entry)
                 }
                 draft = ""
                 self.scope = nil
                 editing = false
-                if !check.ok {
+                if !cleaned {
+                    note = AppLocalization.string("Saved, but the key it replaces couldn't be removed everywhere. Save it again to finish.")
+                } else if !check.ok {
                     note = AppLocalization.string("Saved. Hermes couldn't reach the provider to check the key.")
                 }
                 onSaved()

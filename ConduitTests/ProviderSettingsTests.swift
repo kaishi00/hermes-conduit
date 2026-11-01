@@ -97,7 +97,7 @@ final class ProviderSettingsTests: XCTestCase {
         let lab = entries.first { $0.id == ProviderEntry.endpointEntryID("lab") }
         XCTAssertEqual(lab?.status, .customEndpoint)
         XCTAssertEqual(lab?.endpoint?.models, ["qwen", "llama"])
-        XCTAssertEqual(lab?.catalogNames, ["lab", "custom:lab", "Lab vLLM"])
+        XCTAssertEqual(lab?.catalogNames, ["lab", "custom:lab"], "never its display name, which a built-in can share")
     }
 
     func testKeptSummaryRoundTripsWithoutAnyKeyOrPreview() throws {
@@ -135,6 +135,21 @@ final class ProviderSettingsTests: XCTestCase {
             "/api/credentials/pool/openrouter/1?profile=bot",
         ])
         XCTAssertEqual(service.changes, 1)
+    }
+
+    func testSharingOnTheMainProfileReplacesItsOwnEnvKey() async throws {
+        let requester = FakeProviderRequester()
+        let service = ProviderSettingsService(requester: requester, profile: "default")
+        var entry = ProviderEntry(id: "openrouter", name: "OpenRouter")
+        entry.key = ProviderEntry.KeyAccess(vars: ["OPENROUTER_API_KEY"], savedVars: ["OPENROUTER_API_KEY"])
+        XCTAssertEqual(entry.status, .mainProfileOnly)
+
+        let cleaned = try await service.share(key: "sk-new", for: entry)
+
+        XCTAssertTrue(cleaned)
+        let delete = try XCTUnwrap(requester.calls.first { $0.method == "DELETE" })
+        XCTAssertEqual(delete.path, "/api/env")
+        XCTAssertEqual(delete.body?["key"] as? String, "OPENROUTER_API_KEY")
     }
 
     func testAnOverrideRemovesTheSharedCopiesFromThatProfile() async throws {

@@ -272697,6 +272697,88 @@
         }
       }
     },
+    "Saved, but the key it replaces couldn't be removed everywhere. Save it again to finish.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gespeichert, aber der ersetzte Schlüssel konnte nicht überall entfernt werden. Speichere ihn erneut, um es abzuschließen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardada, pero la clave que reemplaza no se pudo quitar en todas partes. Guárdala de nuevo para terminar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistrée, mais la clé remplacée n’a pas pu être supprimée partout. Enregistrez-la à nouveau pour terminer."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disimpan, tetapi kunci yang digantikan tidak dapat dihapus di semua tempat. Simpan lagi untuk menyelesaikan."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvata, ma la chiave che sostituisce non è stata rimossa ovunque. Salvala di nuovo per finire."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存しましたが、置き換えたキーをすべての場所から削除できませんでした。もう一度保存して完了してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "저장했지만 대체된 키를 모든 곳에서 제거하지 못했습니다. 다시 저장해 마무리하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapisano, ale zastępowanego klucza nie udało się wszędzie usunąć. Zapisz go ponownie, aby dokończyć."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva, mas a chave substituída não pôde ser removida em todos os lugares. Salve de novo para concluir."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранено, но заменённый ключ удалось удалить не везде. Сохраните ещё раз, чтобы завершить."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaydedildi, ancak değiştirilen anahtar her yerden kaldırılamadı. Bitirmek için yeniden kaydedin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保存，但被替换的密钥未能在所有地方移除。请再次保存以完成。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已儲存，但被替換的金鑰未能在所有地方移除。請再次儲存以完成。"
+          }
+        }
+      }
+    },
     "Saved. Changes apply to new sessions.": {
       "localizations": {
         "de": {
