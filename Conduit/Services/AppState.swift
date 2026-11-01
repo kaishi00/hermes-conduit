@@ -14344,6 +14344,7 @@ final class AppState: ObservableObject {
         cancelScenePhaseAttempt()
         owedPostConnectBootstrap = nil
         lastConnectionFailure = nil
+        quietReconnectFailure = nil
         client?.disconnect()
         isConnected = false
         isConnecting = false
