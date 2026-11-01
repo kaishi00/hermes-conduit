@@ -1941,10 +1941,10 @@ ref (W1, W2), and hears back when one finishes, fails, waits on the user or
 has something ready for them to look at.
 Each bot turns it on for itself (`hermes -p <bot> conduit-push work on`). It's
 being built on the notifier's `bot-workstreams` branch (M0, notifier #484; M1
-from notifier #490 and #491), so
+from notifier #490, #491 and #493), so
 none of it is on either main yet, and the app has no screen for it until M2.
 
-**Siblings:** the Bot Chat (the eight work tools, offered only there and only
+**Siblings:** the Bot Chat (the work tools, offered only there and only
 with workstreams on; its policy, strict or lookups, holding its tools and a
 fork's; the note on its turns listing open work; the work updates that come
 in as hidden turns, which the transcript leaves out as it does every hidden
@@ -1958,8 +1958,11 @@ reply to the update is the one push, and its turns start no Live Activity) · th
 tool's answer and every work update carry, with the bot's profile (see Links
 in messages) · an
 approval in a workstream (marks it waiting on you and tells the Bot Chat) ·
-Bot mentions and teammate messages (`message_agent` refused in a coordinator,
-asks between bots come in a later M1 PR) · Opening a Bot Chat (the "Bot Chat" title is
+Bot mentions and teammate messages (`message_agent` refused in a coordinator
+in favour of `work_ask`) · asks between bots (`work_ask` and `work_reply`: an
+ask reaches the other bot's Bot Chat as a hidden, queued turn, and its answer
+goes into the asking workstream named in `for` or back to the asking Bot Chat
+as a work update; the digest lists open asks on both sides) · Opening a Bot Chat (the "Bot Chat" title is
 how the plugin knows the coordinator) · Hermes Desktop's Bot Chat (the same
 plugin, the same tools) · the `hermes conduit-push work` commands · the tool
 descriptions, the worker's and the update's prompts, and the notifier's
@@ -1982,6 +1985,8 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - Ideas taken from Claude's project coordinator (design C.11): workers you can talk to in their own chat, states that say who's waiting (ready beside done), a checklist each worker keeps, the coordinator's notes in each brief, and your words quoted as yours (2026-11-01, Eric).
 - A workstream's approvals follow the bot's Hermes approval mode (manual, smart, or off/yolo), and Edit Bot can set a separate mode for its workstreams (2026-11-01, Eric; not built yet).
 - An update carries a short line of the report and the chat's link; the full report stays in the workstream's chat and in work_read (2026-11-01, notifier #490).
+- Asks between bots go coordinator to coordinator, only between the user's bots on one Hermes, and only to a bot whose workstreams are on. What one bot asks or answers reaches the other as data, never as the user's go-ahead, and each bot does the work with its own tools and approvals. An answer goes into the workstream named in `for` (queued, no extra Bot Chat turn), else to the asking Bot Chat; closing an ask unanswered tells the bot that asked (2026-11-01, notifier #493, design C.9).
+- The loop guard: an ask never goes to a bot already waiting in its chain (a bot with an open ask from another can't ask that one back until it answers), a chain goes at most two bots deep, and one bot asks another at most 10 times an hour (2026-11-01, notifier #493).
 
 **Open gaps**
 - No screen in the app: workstreams show only as the Bot Chat's answers and their links until M2's Work panel, which shows each one's checklist and ready state. M2 builds on the cache-first screens and the transcript rewrite (see Screens that open on their last answer), checked with that work first.
@@ -1991,8 +1996,9 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - For Eric to confirm: workers report lasting facts for the coordinator to keep with `work_note`, rather than writing Hermes memory themselves as design C.11 had it, so one path keeps the notes (notifier #491).
 - The workstreams' own approval mode in Edit Bot (M3) isn't built; until then a workstream follows the bot's Hermes approval mode as any chat does.
 - The plugin's version is bumped when the branch merges to main.
+- An ask or an answer waiting in the update batch when the dashboard stops isn't resent; the other bot's digest still lists the open ask on its next turn. The outbox replay comes with restart recovery, the next M1 PR.
 
-**Checked:** 2026-11-01, #1602 (notifier #491).
+**Checked:** 2026-11-01, #1607 (notifier #493).
 
 ## Composer Return key
 
