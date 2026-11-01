@@ -57,7 +57,7 @@ enum HermesCallerName {
     static func contactAddress(profile: String?) -> String {
         let id = (profile ?? "").lowercased().unicodeScalars.filter { allowedAddressCharacters.contains($0) }
         guard !id.isEmpty else { return "hermes@\(addressDomain)" }
-        return "hermes+\(String(id).prefix(48))@\(addressDomain)"
+        return "hermes+\(String(id).prefix(64))@\(addressDomain)"
     }
 
     private static let addressDomain = "hermesconduit.app"
