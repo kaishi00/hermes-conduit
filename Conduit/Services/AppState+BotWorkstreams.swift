@@ -333,6 +333,15 @@ extension AppState {
         do {
             let page = try await botWorkClient(profile: profile).resolved(before: before)
             guard botWork.mark(profile).epoch == mark.epoch else { return }
+            // Read before an action on this bot (a reopen it'd put back):
+            // read again from the top.
+            guard botWork.isCurrent(mark, profile: profile) else {
+                var stale = botWork.resolvedList(profile) ?? list
+                stale.isLoading = false
+                botWork.setResolvedList(stale, profile: profile)
+                await loadResolvedWork(profile: profile)
+                return
+            }
             var now = botWork.resolvedList(profile) ?? list
             let shown = more ? now.items : []
             let refs = Set(shown.map(\.ref))

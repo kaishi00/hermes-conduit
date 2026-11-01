@@ -907,6 +907,13 @@ struct BotWorkHeader: View {
             Color.clear
                 .frame(height: 0)
                 .task(id: "\(profile)\u{1F}\(id)") {
+                    // A workstream the list knows but doesn't show is a
+                    // resolved one, opened from a card or a link: its
+                    // Resolved page names it.
+                    if appState.isWorkstreamSession(id) {
+                        await appState.loadResolvedWork(profile: profile)
+                        return
+                    }
                     for attempt in 0..<Self.unmatchedReads {
                         if attempt > 0 {
                             try? await Task.sleep(nanoseconds: Self.unmatchedInterval)
