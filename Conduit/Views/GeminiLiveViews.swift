@@ -542,7 +542,11 @@ struct VoiceJobModelSettingsSection: View {
         if selection != defaultTag, !providers.contains(where: { provider in
             provider.models.contains { tag(provider: provider.name, model: $0.id) == selection }
         }) {
-            choices.append((id: selection, title: parse(selection).model))
+            let held = parse(selection)
+            // A provider pinned without a model runs on its default one.
+            choices.append((id: selection, title: held.model.isEmpty
+                ? providerDefaultTitle(held.provider ?? "")
+                : held.model))
         }
         for provider in providers {
             for model in provider.models {
@@ -563,6 +567,11 @@ struct VoiceJobModelSettingsSection: View {
             (id: "xhigh", title: AppLocalization.string("Extra High")),
             (id: "max", title: AppLocalization.string("Max")),
         ]
+    }
+
+    /// A provider pinned without a model: Hermes runs its default model.
+    static func providerDefaultTitle(_ provider: String) -> String {
+        AppLocalization.string("Default") + " · " + provider
     }
 
     /// Picker tag for a provider/model pair (provider may be empty).
@@ -590,6 +599,10 @@ struct VoiceReplyModelSetting: Equatable {
     var model: String
     /// Nil follows the chat's reasoning; `none` (Hermes' default) is off.
     var reasoningEffort: String?
+    /// An endpoint of the slot's own (`auxiliary.<task>.base_url`), such as
+    /// a local server. Hermes keeps it while the provider stays, so a save
+    /// never sends it.
+    var baseURL: String?
 
     /// Nil when this Hermes has no such slot.
     init?(auxiliaryResponse response: [String: Any], task: String = Self.task) {
@@ -608,17 +621,36 @@ struct VoiceReplyModelSetting: Equatable {
         model = (row["model"] as? String ?? "").trimmingCharacters(in: .whitespaces)
         let effort = (row["reasoning_effort"] as? String ?? "").trimmingCharacters(in: .whitespaces)
         reasoningEffort = effort.isEmpty ? nil : effort
+        let url = (row["base_url"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+        baseURL = url.isEmpty ? nil : url
     }
 
-    init(task: String = Self.task, provider: String, model: String, reasoningEffort: String?) {
+    init(task: String = Self.task, provider: String, model: String, reasoningEffort: String?, baseURL: String? = nil) {
         self.task = task
         self.provider = provider
         self.model = model
         self.reasoningEffort = reasoningEffort
+        self.baseURL = baseURL
     }
 
     /// Follows the chat's model.
-    var followsChats: Bool { model.isEmpty }
+    var followsChats: Bool { model.isEmpty && !providerOnly }
+
+    /// A provider pinned without a model: Hermes runs that provider's
+    /// default model, not the chat's.
+    var providerOnly: Bool {
+        model.isEmpty && !provider.isEmpty && provider != "auto"
+    }
+
+    /// The slot's own endpoint by host (and port), never its path or any
+    /// credentials in it.
+    var endpointHost: String? {
+        guard let baseURL else { return nil }
+        guard let components = URLComponents(string: baseURL), let host = components.host, !host.isEmpty else {
+            return nil
+        }
+        return components.port.map { "\(host):\($0)" } ?? host
+    }
 
     /// `POST /api/model/set` body. An explicit null reasoning means "same as
     /// chats"; Hermes keeps it from falling back to its off default.
@@ -765,6 +797,11 @@ struct VoiceReplyModelPicks {
         setting.followsChats ? sameAsChats : VoiceJobModelSettingsSection.tag(provider: setting.provider, model: setting.model)
     }
 
+    /// The model Hermes runs the slot on, its endpoint's host beside it.
+    var endpointCaption: String? {
+        saved?.endpointHost.map { AppLocalization.string("Runs on your endpoint at \($0). A model from another provider moves it off.") }
+    }
+
     /// How a write ended: Hermes took it, refused it, or asks first.
     mutating func writeEnded(_ setting: VoiceReplyModelSetting, result: HelperModelSaveResult) {
         switch result {
@@ -792,13 +829,17 @@ struct VoiceReplyModelPicks {
 
     private var chosen: VoiceReplyModelSetting {
         let pick = selection == Self.sameAsChats ? nil : VoiceJobModelSettingsSection.parse(selection)
-        // "Same as chats" keeps a provider pinned without a model as is.
-        let unpinnedProvider = saved.map { $0.model.isEmpty ? $0.provider : "auto" } ?? "auto"
+        // "Same as chats" unpins the provider too; a provider pinned
+        // without a model is a choice of its own.
+        let provider = pick.map { $0.provider ?? "auto" } ?? "auto"
         return VoiceReplyModelSetting(
             task: saved?.task ?? VoiceReplyModelSetting.task,
-            provider: pick.map { $0.provider ?? "auto" } ?? unpinnedProvider,
+            provider: provider,
             model: pick?.model ?? "",
-            reasoningEffort: reasoning == Self.inheritReasoning ? nil : reasoning
+            reasoningEffort: reasoning == Self.inheritReasoning ? nil : reasoning,
+            // The slot's endpoint stays while its provider does, as Hermes
+            // keeps it then.
+            baseURL: provider == saved?.provider ? saved?.baseURL : nil
         )
     }
 
@@ -873,6 +914,12 @@ struct VoiceReplyModelSettingsSection: View {
                             .scaledFont(.subheadline.weight(.semibold))
                             .tint(.conduitAccent)
                             .disabled(picks.writing)
+                    }
+                    if let endpoint = picks.endpointCaption {
+                        Text(verbatim: endpoint)
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     if let helper {
                         Text(verbatim: helper.caption)

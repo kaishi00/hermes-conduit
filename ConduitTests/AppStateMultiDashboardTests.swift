@@ -1258,6 +1258,29 @@ extension AppStateMultiDashboardTests {
         let result = await save.value
         XCTAssertEqual(result, .needsConfirmation("big/model costs $75 per million tokens."))
         XCTAssertEqual(held.sent.map(\.path), [AppState.KeptRoute.modelAuxiliary, "/api/model/set"])
+
+        // Taken with the user's yes: the kept slots follow the save before
+        // the read after it answers, or if it never does.
+        let confirmed = Task { await appState.setHelperModel(pick, confirmed: true) }
+        try await held.waitForRequests(3)
+        try await held.answer(["ok": true, "scope": "auxiliary", "tasks": ["title_generation"]])
+        let confirmedResult = await confirmed.value
+        XCTAssertEqual(confirmedResult, .saved)
+        XCTAssertEqual(appState.keptHelperModel(task: "title_generation")?.model, "big/model")
+        XCTAssertEqual(appState.keptHelperModel(task: "title_generation")?.provider, "openrouter")
+        XCTAssertEqual(appState.keptVoiceReplyModel()?.model, "fast/model", "the other slots stay as kept")
+        // The read after the save answers before the test ends, so nothing
+        // of this AppState is left running once it's gone.
+        try await held.waitForRequests(4)
+        try await held.answer(["tasks": [
+            ["task": "title_generation", "provider": "openrouter", "model": "big/model"],
+            ["task": "voice_chat", "provider": "openrouter", "model": "fast/model", "reasoning_effort": "none"],
+        ]])
+        for _ in 0..<100 where appState.keptHelperModels(includingSetElsewhere: true)?.count != 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(appState.keptHelperModels(includingSetElsewhere: true).map { Set($0.map(\.id)) },
+                       Set(["title_generation", "voice_chat"]), "the read after the save is kept")
     }
 
     private func heldSwitchFixture() -> (appState: AppState, held: HeldDashboardRequests, vps: SavedDashboard) {

@@ -139923,6 +139923,170 @@
         }
       }
     },
+    "Hermes has the %@ plugin turned off for the “%@” profile. On the Hermes host, add %@ to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Für das Profil „%2$@“ ist das Hermes-Plugin %1$@ ausgeschaltet. Füge auf dem Hermes-Host %3$@ in der config.yaml dieses Profils zu plugins.enabled hinzu (und entferne es aus plugins.disabled) und starte Hermes dann neu."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El perfil «%2$@» tiene desactivado el plugin %1$@ de Hermes. En el host de Hermes, añade %3$@ a plugins.enabled en el config.yaml de ese perfil (y quítalo de plugins.disabled) y luego reinicia Hermes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le plugin Hermes %1$@ est désactivé pour le profil « %2$@ ». Sur l'hôte Hermes, ajoutez %3$@ à plugins.enabled dans le config.yaml de ce profil (et retirez-le de plugins.disabled), puis redémarrez Hermes."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plugin Hermes %1$@ dinonaktifkan untuk profil “%2$@”. Di host Hermes, tambahkan %3$@ ke plugins.enabled di config.yaml profil tersebut (dan hapus dari plugins.disabled), lalu mulai ulang Hermes."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il plugin Hermes %1$@ è disattivato per il profilo «%2$@». Sull'host di Hermes aggiungi %3$@ a plugins.enabled nel config.yaml di quel profilo (e toglilo da plugins.disabled), poi riavvia Hermes."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロファイル「%2$@」で Hermes の %1$@ プラグインがオフになっています。Hermes のホストで、そのプロファイルの config.yaml の plugins.enabled に %3$@ を追加（plugins.disabled からは削除）してから、Hermes を再起動してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%2$@” 프로필에서 Hermes의 %1$@ 플러그인이 꺼져 있습니다. Hermes 호스트에서 해당 프로필의 config.yaml에 있는 plugins.enabled에 %3$@을(를) 추가(plugins.disabled에서는 제거)한 다음 Hermes를 다시 시작하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dla profilu „%2$@” wtyczka Hermesa %1$@ jest wyłączona. Na hoście Hermesa dodaj %3$@ do plugins.enabled w pliku config.yaml tego profilu (i usuń ją z plugins.disabled), a potem uruchom Hermesa ponownie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O perfil “%2$@” está com o plugin %1$@ do Hermes desativado. No host do Hermes, adicione %3$@ a plugins.enabled no config.yaml desse perfil (e remova-o de plugins.disabled) e reinicie o Hermes."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Для профиля «%2$@» плагин Hermes %1$@ выключен. На хосте Hermes добавьте %3$@ в plugins.enabled в config.yaml этого профиля (и уберите его из plugins.disabled), затем перезапустите Hermes."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%2$@” profilinde Hermes'in %1$@ eklentisi kapalı. Hermes ana makinesinde bu profilin config.yaml dosyasındaki plugins.enabled listesine %3$@ ekleyin (ve plugins.disabled listesinden çıkarın), ardından Hermes'i yeniden başlatın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%2$@”配置文件已关闭 Hermes 的 %1$@ 插件。请在 Hermes 主机上将 %3$@ 添加到该配置文件 config.yaml 的 plugins.enabled 中（并将其从 plugins.disabled 中移除），然后重启 Hermes。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%2$@」設定檔已關閉 Hermes 的 %1$@ 外掛。請在 Hermes 主機上將 %3$@ 加入該設定檔 config.yaml 的 plugins.enabled（並將其從 plugins.disabled 移除），然後重新啟動 Hermes。"
+          }
+        }
+      }
+    },
+    "Hermes has the %@ plugin turned off. On the Hermes host, run hermes plugins enable %@, then restart Hermes.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Hermes ist das Plugin %1$@ ausgeschaltet. Führe auf dem Hermes-Host hermes plugins enable %2$@ aus und starte Hermes dann neu."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes tiene desactivado el plugin %1$@. En el host de Hermes, ejecuta hermes plugins enable %2$@ y luego reinicia Hermes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le plugin %1$@ est désactivé dans Hermes. Sur l'hôte Hermes, exécutez hermes plugins enable %2$@, puis redémarrez Hermes."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plugin %1$@ dinonaktifkan di Hermes. Di host Hermes, jalankan hermes plugins enable %2$@, lalu mulai ulang Hermes."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Hermes il plugin %1$@ è disattivato. Sull'host di Hermes esegui hermes plugins enable %2$@, poi riavvia Hermes."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes で %1$@ プラグインがオフになっています。Hermes のホストで hermes plugins enable %2$@ を実行してから、Hermes を再起動してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes에서 %1$@ 플러그인이 꺼져 있습니다. Hermes 호스트에서 hermes plugins enable %2$@을(를) 실행한 다음 Hermes를 다시 시작하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "W Hermesie wtyczka %1$@ jest wyłączona. Na hoście Hermesa uruchom hermes plugins enable %2$@, a potem uruchom Hermesa ponownie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Hermes está com o plugin %1$@ desativado. No host do Hermes, execute hermes plugins enable %2$@ e reinicie o Hermes."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В Hermes плагин %1$@ выключен. На хосте Hermes выполните hermes plugins enable %2$@, затем перезапустите Hermes."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes'te %1$@ eklentisi kapalı. Hermes ana makinesinde hermes plugins enable %2$@ komutunu çalıştırın, ardından Hermes'i yeniden başlatın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes 已关闭 %1$@ 插件。请在 Hermes 主机上运行 hermes plugins enable %2$@，然后重启 Hermes。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes 已關閉 %1$@ 外掛。請在 Hermes 主機上執行 hermes plugins enable %2$@，然後重新啟動 Hermes。"
+          }
+        }
+      }
+    },
     "HTTPS & certificates": {
       "localizations": {
         "de": {
@@ -413156,6 +413320,252 @@
           "stringUnit": {
             "state": "translated",
             "value": "無法載入金鑰順序。"
+          }
+        }
+      }
+    },
+    "Fast model on your host: %@. Update the Conduit plugin to change it here.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schnelles Modell auf deinem Host: %@. Aktualisiere das Conduit-Plugin, um es hier zu ändern."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo rápido en tu host: %@. Actualiza el plugin de Conduit para cambiarlo aquí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modèle rapide sur ton hôte : %@. Mets à jour le plugin Conduit pour le changer ici."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model cepat di host kamu: %@. Perbarui plugin Conduit untuk mengubahnya di sini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modello veloce sul tuo host: %@. Aggiorna il plugin Conduit per cambiarlo qui."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ホストの高速モデル: %@。ここで変更するには Conduit プラグインを更新してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "호스트의 빠른 모델: %@. 여기서 바꾸려면 Conduit 플러그인을 업데이트하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Szybki model na Twoim hoście: %@. Zaktualizuj wtyczkę Conduit, aby zmienić go tutaj."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modelo rápido no seu host: %@. Atualize o plugin do Conduit para alterá-lo aqui."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Быстрая модель на вашем хосте: %@. Обновите плагин Conduit, чтобы изменить её здесь."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucundaki hızlı model: %@. Burada değiştirmek için Conduit eklentisini güncelle."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机上的快速模型：%@。更新 Conduit 插件后可在这里更改。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主機上的快速模型：%@。更新 Conduit 外掛後可在這裡更改。"
+          }
+        }
+      }
+    },
+    "Your host has no fast model set, so the chat's own model answers. Update the Conduit plugin to pick one here.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf deinem Host ist kein schnelles Modell eingestellt, daher antwortet das Modell des Chats. Aktualisiere das Conduit-Plugin, um hier eines zu wählen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu host no tiene un modelo rápido configurado, así que responde el modelo del chat. Actualiza el plugin de Conduit para elegir uno aquí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ton hôte n'a pas de modèle rapide, c'est donc le modèle du chat qui répond. Mets à jour le plugin Conduit pour en choisir un ici."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host kamu belum punya model cepat, jadi model chat yang menjawab. Perbarui plugin Conduit untuk memilihnya di sini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo host non ha un modello veloce impostato, quindi risponde il modello della chat. Aggiorna il plugin Conduit per sceglierne uno qui."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ホストに高速モデルが設定されていないため、チャットのモデルが応答します。ここで選ぶには Conduit プラグインを更新してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "호스트에 빠른 모델이 설정되어 있지 않아 채팅 모델이 답합니다. 여기서 고르려면 Conduit 플러그인을 업데이트하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Twój host nie ma ustawionego szybkiego modelu, więc odpowiada model czatu. Zaktualizuj wtyczkę Conduit, aby wybrać go tutaj."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu host não tem um modelo rápido definido, então o modelo do chat responde. Atualize o plugin do Conduit para escolher um aqui."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "На вашем хосте не задана быстрая модель, поэтому отвечает модель чата. Обновите плагин Conduit, чтобы выбрать её здесь."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucunda hızlı model ayarlı değil, bu yüzden sohbetin modeli yanıt veriyor. Burada seçmek için Conduit eklentisini güncelle."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的主机没有设置快速模型，所以由聊天自己的模型回答。更新 Conduit 插件后可在这里选择。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的主機沒有設定快速模型，所以由聊天自己的模型回答。更新 Conduit 外掛後可在這裡選擇。"
+          }
+        }
+      }
+    },
+    "Runs on your endpoint at %@. A model from another provider moves it off.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Läuft auf deinem Endpunkt unter %@. Mit einem Modell eines anderen Anbieters nutzt es diesen Endpunkt nicht mehr."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se ejecuta en tu endpoint en %@. Un modelo de otro proveedor lo saca de ahí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fonctionne sur ton point de terminaison à %@. Un modèle d'un autre fournisseur l'en retire."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Berjalan di endpoint kamu di %@. Model dari penyedia lain memindahkannya dari sana."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funziona sul tuo endpoint a %@. Un modello di un altro provider lo sposta altrove."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "あなたのエンドポイント（%@）で動作します。別のプロバイダのモデルを選ぶとそこから外れます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 엔드포인트(%@)에서 실행됩니다. 다른 제공자의 모델을 고르면 그곳에서 벗어납니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Działa na Twoim punkcie końcowym pod %@. Model innego dostawcy go stamtąd przenosi."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Roda no seu endpoint em %@. Um modelo de outro provedor o tira de lá."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Работает на вашем эндпоинте %@. Модель другого провайдера переносит его оттуда."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kendi uç noktanda çalışır: %@. Başka bir sağlayıcının modeli onu oradan çıkarır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行在你的端点 %@ 上。选择其他提供商的模型会让它离开该端点。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "執行於你的端點 %@。選擇其他供應商的模型會讓它離開該端點。"
           }
         }
       }

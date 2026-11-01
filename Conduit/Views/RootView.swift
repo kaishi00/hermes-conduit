@@ -834,9 +834,13 @@ struct ConnectionStatusIndicator: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
 
+    /// Grey while a reconnect back in the app is still kept quiet, as the
+    /// V2 conversation menu's dot is (#1624).
     private var color: Color {
         if appState.isConnected {
             return .green
+        } else if appState.hidesBriefReconnect {
+            return .secondary
         } else if appState.isRecoveringConnection {
             return .orange
         } else {

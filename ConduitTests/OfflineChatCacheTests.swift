@@ -2276,6 +2276,22 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(appState.messages.isEmpty, "Nothing went into the live transcript")
     }
 
+    /// Back in the app, a reconnect stays quiet until a message waits for
+    /// it: then the header says why the message hasn't gone (#1624).
+    func testAMessageThatWaitsEndsTheQuietReturn() {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        appState.beginQuietReturnForTesting()
+        XCTAssertTrue(appState.hidesBriefReconnect)
+
+        XCTAssertTrue(appState.sendWhenConnected("Hello", replyReference: nil))
+
+        XCTAssertFalse(appState.isReturningQuietly)
+        XCTAssertFalse(appState.hidesBriefReconnect)
+    }
+
     /// Typing over the copy picks its chat, so the one being typed in is
     /// the one that opens.
     func testTypingOverTheCopyPicksItsChat() throws {

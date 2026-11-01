@@ -4931,6 +4931,153 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeSessionId, visible.id)
     }
 
+    /// A failed sign-in refresh or ticket retries quietly, as a failed
+    /// socket does: a resume's first request often fails before the
+    /// network is back. The banner waits until the quiet retries have
+    /// failed too (#1624).
+    func testFailedTicketShowsItsBannerOnlyAfterTheQuietRetries() async {
+        let scheduler = ControlledReconnectScheduler()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in throw URLError(.networkConnectionLost) }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        harness.appState.gatewayReadinessProbe = { _ in true }
+
+        await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        XCTAssertNil(harness.appState.errorMessage)
+        XCTAssertFalse(harness.appState.showsConnectionRepair, "No Repair while it's quiet")
+        XCTAssertEqual(scheduler.scheduledCount, 1, "It retries")
+
+        for retry in 1..<AppState.quietReconnectAttempts {
+            await scheduler.runNew()
+            XCTAssertNil(harness.appState.errorMessage, "Retry \(retry) fails quietly")
+            XCTAssertFalse(harness.appState.showsConnectionRepair, "Retry \(retry) offers no Repair")
+        }
+        await scheduler.runNew()
+        XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to refresh the dashboard session") == true)
+        XCTAssertEqual(harness.appState.lastConnectionFailure, ConnectionFailureClassifier.classify(URLError(.networkConnectionLost)),
+                       "Repair routes from what failed")
+        XCTAssertTrue(harness.appState.showsConnectionRepair)
+    }
+
+    /// A gateway that stops answering the readiness probe after a quiet
+    /// ticket failure still gets its banner and Repair once the quiet
+    /// retries are spent, though no ticket is asked for again (#1624).
+    func testQuietTicketFailureShowsWhenTheGatewayStopsAnswering() async {
+        let scheduler = ControlledReconnectScheduler()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in throw URLError(.networkConnectionLost) }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        harness.appState.gatewayReadinessProbe = { _ in false }
+
+        await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        for retry in 1..<AppState.quietReconnectAttempts {
+            await scheduler.runNew()
+            XCTAssertNil(harness.appState.errorMessage, "Probe \(retry) stays quiet")
+        }
+        await scheduler.runNew()
+        XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to refresh the dashboard session") == true)
+        XCTAssertTrue(harness.appState.showsConnectionRepair)
+    }
+
+    /// An older, unrelated message left on screen doesn't offer Repair while
+    /// a failed ticket is kept quiet (#1624).
+    func testAStaleMessageOffersNoRepairDuringTheQuietRetries() async {
+        let scheduler = ControlledReconnectScheduler()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in throw URLError(.networkConnectionLost) }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        harness.appState.gatewayReadinessProbe = { _ in true }
+        harness.appState.errorMessage = "Couldn't save the draft"
+
+        await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        XCTAssertFalse(harness.appState.showsConnectionRepair)
+    }
+
+    /// Only a re-auth the network cut off retries quietly; any answer from
+    /// the server, a 5xx included, still asks to sign in (#1624).
+    func testOnlyANetworkCutReauthRetriesQuietly() {
+        XCTAssertTrue(AppState.reauthFailureRetriesQuietly(URLError(.networkConnectionLost)))
+        XCTAssertTrue(AppState.reauthFailureRetriesQuietly(URLError(.timedOut)))
+        XCTAssertFalse(AppState.reauthFailureRetriesQuietly(AuthClientError.loginFailed(status: 401, detail: "")))
+        XCTAssertFalse(AppState.reauthFailureRetriesQuietly(AuthClientError.loginFailed(status: 503, detail: "")))
+    }
+
+    /// A link that keeps changing restarts the backoff's count each time;
+    /// the failed renewals still surface after the quiet retries (#1624).
+    func testQuietTicketFailureSurfacesWhenTheLinkKeepsChanging() async {
+        let scheduler = ControlledReconnectScheduler()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in throw URLError(.networkConnectionLost) }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        harness.appState.gatewayReadinessProbe = { _ in true }
+
+        // Each attempt starts fresh, as after a path change.
+        for attempt in 0..<AppState.quietReconnectAttempts {
+            await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+            XCTAssertNil(harness.appState.errorMessage, "Attempt \(attempt) stays quiet")
+        }
+        await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to refresh the dashboard session") == true)
+        XCTAssertTrue(harness.appState.showsConnectionRepair)
+    }
+
+    /// A tapped Reconnect is an answer someone is waiting for: its failed
+    /// ticket shows at once, as before #1624. A waiting Siri launch fails
+    /// at once on a quiet failure too.
+    func testTappedReconnectAndSiriSeeAFailedTicketAtOnce() async {
+        let scheduler = ControlledReconnectScheduler()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in throw URLError(.networkConnectionLost) }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        harness.appState.gatewayReadinessProbe = { _ in true }
+
+        await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        XCTAssertNil(harness.appState.errorMessage, "A resume stays quiet")
+        let siri = harness.appState.voiceLaunchConnectionSnapshot()
+        XCTAssertEqual(siri.phase, .stableFailure, "Siri doesn't wait out its budget")
+        XCTAssertEqual(siri.classifiedFailure, ConnectionFailureClassifier.classify(URLError(.networkConnectionLost)))
+
+        await harness.appState.reconnect()
+        XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to refresh the dashboard session") == true,
+                      "A tapped Reconnect shows its failure at once")
+        XCTAssertTrue(harness.appState.showsConnectionRepair)
+    }
+
     func testFailedColdAutomaticReconnectRetainsSavedSessionPurpose() async {
         let scheduler = ControlledReconnectScheduler()
         let reconnectSpy = ReconnectExecutionSpy()
@@ -8301,6 +8448,18 @@ private final class ControlledReconnectScheduler {
             await item.operation()
         }
     }
+
+    /// Runs only what was scheduled since the last call, so a retry that
+    /// schedules the next one can be stepped through.
+    func runNew() async {
+        let start = ranThrough
+        ranThrough = work.count
+        for item in work[start...] where !item.isCancelled {
+            await item.operation()
+        }
+    }
+
+    private var ranThrough = 0
 }
 
 @MainActor

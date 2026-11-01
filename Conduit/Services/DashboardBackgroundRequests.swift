@@ -27,20 +27,22 @@ extension DashboardTicketBridge {
         timeoutMilliseconds: Int = 12_000
     ) async throws -> [String: Any] {
         guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
-        if let nativeOAuthSession {
-            return try await nativeOAuthSession.requestJSON(
+        return try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) { () async throws -> [String: Any] in
+            if let nativeOAuthSession {
+                return try await nativeOAuthSession.requestJSON(
+                    path: path,
+                    method: method,
+                    encodedBody: encodedBody,
+                    timeoutMilliseconds: timeoutMilliseconds
+                )
+            }
+            return try await requestJSONWithoutPage(
                 path: path,
                 method: method,
                 encodedBody: encodedBody,
                 timeoutMilliseconds: timeoutMilliseconds
             )
         }
-        return try await requestJSONWithoutPage(
-            path: path,
-            method: method,
-            encodedBody: encodedBody,
-            timeoutMilliseconds: timeoutMilliseconds
-        )
     }
 
     /// The request the page's `fetch` would send, without the page: same

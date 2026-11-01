@@ -27,13 +27,39 @@ struct HelperModelSlot: Identifiable, Equatable {
     /// profile only, and Settings > Pulse sets it there.
     static let setElsewhere: Set<String> = ["pulse_memory"]
 
+    /// Conduit's predictions, a slot the Conduit plugin adds (0.124.0).
+    static let predictions = "conduit_predict"
+
+    /// `/api/model/auxiliary`'s answer as the phone keeps it: each slot's
+    /// endpoint as its scheme, host and port only, since a path can carry a
+    /// token and the page shows only the host.
+    static func keptAnswer(_ answer: [String: Any]) -> [String: Any] {
+        guard let tasks = answer["tasks"] as? [[String: Any]] else { return answer }
+        var kept = answer
+        // An inheriting plugin slot's `effective` route carries one too.
+        func keptEndpoint(_ fields: [String: Any]) -> [String: Any] {
+            guard let url = fields["base_url"] as? String, !url.isEmpty else { return fields }
+            var fields = fields
+            fields["base_url"] = ProviderCatalog.keptAddress(url)
+            return fields
+        }
+        kept["tasks"] = tasks.map { row -> [String: Any] in
+            var row = keptEndpoint(row)
+            if let effective = row["effective"] as? [String: Any] { row["effective"] = keptEndpoint(effective) }
+            return row
+        }
+        return kept
+    }
+
     /// Posted once Hermes took a slot's new model: a list read asked before
     /// it may answer with the old one, so the lists read again.
     static let saved = Notification.Name("conduit.helperModels.saved")
 
     /// The slots of a `/api/model/auxiliary` answer, in Hermes' order:
     /// built-ins, then the plugins'.
-    static func slots(in response: [String: Any]) -> [HelperModelSlot] {
+    /// `includingSetElsewhere` keeps Pulse's too, for the checks that ask
+    /// what runs on a provider.
+    static func slots(in response: [String: Any], includingSetElsewhere: Bool = false) -> [HelperModelSlot] {
         let rows = response["tasks"] as? [[String: Any]] ?? []
         let titles = Dictionary(
             rows.compactMap { row -> (String, String)? in
@@ -43,7 +69,8 @@ struct HelperModelSlot: Identifiable, Equatable {
             uniquingKeysWith: { first, _ in first }
         )
         return rows.compactMap { row in
-            guard let setting = VoiceReplyModelSetting(row: row), !setElsewhere.contains(setting.task) else { return nil }
+            guard let setting = VoiceReplyModelSetting(row: row),
+                  includingSetElsewhere || !setElsewhere.contains(setting.task) else { return nil }
             let task = setting.task
             let inherits = (row["inherit_from"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             return HelperModelSlot(
@@ -56,22 +83,19 @@ struct HelperModelSlot: Identifiable, Equatable {
         }
     }
 
-    /// Hermes' default model on a provider pinned without a model: not the
-    /// chat model, so the row names the provider.
-    var providerOnly: Bool {
-        setting.followsChats && !setting.provider.isEmpty && setting.provider != "auto"
-    }
-
     /// Runs on the chat model or the slot it follows.
-    var followsChats: Bool { setting.followsChats && !providerOnly }
+    var followsChats: Bool { setting.followsChats }
 
-    /// The model it runs on, or what it follows.
+    /// The model it runs on, or what it follows; a slot on an endpoint of
+    /// its own names its host.
     var value: String {
-        if providerOnly { return setting.provider }
         if setting.followsChats {
             return followsTitle.map { AppLocalization.string("Same as \($0)") } ?? AppLocalization.string("Same as chats")
         }
-        return setting.model
+        let model = setting.providerOnly
+            ? VoiceJobModelSettingsSection.providerDefaultTitle(setting.provider)
+            : setting.model
+        return setting.endpointHost.map { model + " · " + $0 } ?? model
     }
 
     /// "Same as chats" in the model picker, or the slot it follows.
@@ -128,7 +152,7 @@ struct HelperModelSlot: Identifiable, Equatable {
         "curator": Words(title: { AppLocalization.string("Skill curator") },
                          caption: { AppLocalization.string("Reviews how skills are used and suggests improvements.") },
                          symbol: "sparkles"),
-        "conduit_predict": Words(title: { AppLocalization.string("Conduit predictions") },
+        predictions: Words(title: { AppLocalization.string("Conduit predictions") },
                                  caption: { AppLocalization.string("Suggested replies and draft guesses in Conduit, when Predictive uses the fast model.") },
                                  symbol: "wand.and.stars"),
     ]
