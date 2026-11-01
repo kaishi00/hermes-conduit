@@ -18,6 +18,10 @@ struct ProviderModelContext {
     var catalog: ProfileModelDefaults?
     /// Hermes gave the catalog since the page opened, not only the kept one.
     var catalogAnswered = false
+    /// Hermes' last catalog read failed.
+    var catalogFailed = false
+    /// Reads the catalog again.
+    var reloadCatalog: () async -> Void = {}
     /// Makes `model` on the catalog row `provider` the profile's default.
     var makeDefault: (_ provider: String, _ model: String) async -> Bool
     /// What else on the profile uses the provider (its delegate or fallback
@@ -43,6 +47,7 @@ struct ModelPageProviders: View {
     var refresh = 0
     @State private var catalog: ProfileModelDefaults?
     @State private var catalogAnswered = false
+    @State private var catalogFailed = false
 
     init(
         bridge: DashboardJSONRequester, profile: String, profileName: String,
@@ -65,6 +70,8 @@ struct ModelPageProviders: View {
         ProvidersSettingsSection(service: service, context: ProviderModelContext(
             catalog: catalog,
             catalogAnswered: catalogAnswered,
+            catalogFailed: catalogFailed,
+            reloadCatalog: { await reloadCatalog() },
             makeDefault: { provider, model in
                 let saved = await makeDefault(provider, model, catalog?.reasoning ?? "medium")
                 if saved { await reloadCatalog() }
@@ -83,7 +90,9 @@ struct ModelPageProviders: View {
     }
 
     private func reloadCatalog() async {
-        if let loaded = await load() {
+        let loaded = await load()
+        catalogFailed = loaded == nil
+        if let loaded {
             catalog = loaded
             catalogAnswered = true
             service.reserve(catalog: loaded.providers)
@@ -133,7 +142,7 @@ struct ProvidersSettingsSection: View {
                 if service.loadFailed {
                     failedRow
                 } else {
-                    ProgressView().frame(maxWidth: .infinity)
+                    ProgressView().frame(maxWidth: .infinity).accessibilityLabel(AppLocalization.string("Loading…"))
                 }
             } else {
                 if connected.isEmpty {
@@ -304,8 +313,9 @@ struct AddProviderSheet: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    // A new endpoint's key is kept clear of the listed ones.
-                    .disabled(!service.answered)
+                    // A new endpoint's key is kept clear of the listed
+                    // providers and Hermes' model catalog.
+                    .disabled(!service.answered || !service.catalogReserved)
                     .accessibilityIdentifier("settings.providers.add.custom")
                 }
                 ConduitSettingsSection(title: AppLocalization.string("Providers"), symbol: "key.horizontal", tint: .conduitAccent) {
@@ -317,7 +327,7 @@ struct AddProviderSheet: View {
                                 .scaledFont(.subheadline.weight(.semibold))
                                 .tint(.conduitAccent)
                         } else {
-                            ProgressView().frame(maxWidth: .infinity)
+                            ProgressView().frame(maxWidth: .infinity).accessibilityLabel(AppLocalization.string("Loading…"))
                         }
                     } else if matches.isEmpty, !wanted.isEmpty {
                         Text(verbatim: AppLocalization.string("Nothing matches “\(wanted)”."))
@@ -366,12 +376,12 @@ struct AddProviderSheetHost: View {
     /// `catalog` is the picker's model catalog: a new endpoint's key stays
     /// clear of its providers.
     init(bridge: DashboardJSONRequester, profile: String, profileName: String, answers: KeptAnswers?,
-         catalog: [ProviderInfo], profiles: @escaping () -> [String]) {
+         catalog: [ProviderInfo]?, profiles: @escaping () -> [String]) {
         _service = StateObject(wrappedValue: {
             let service = ProviderSettingsService(
                 requester: bridge, profile: profile, profileName: profileName, answers: answers, profiles: profiles
             )
-            service.reserve(catalog: catalog)
+            if let catalog { service.reserve(catalog: catalog) }
             return service
         }())
     }
@@ -497,6 +507,7 @@ struct ProviderDetailPage: View {
         let models = row?.models ?? []
         if let row, !models.isEmpty {
             ConduitSettingsSection(title: AppLocalization.string("Models"), symbol: "cpu", tint: .conduitAccent) {
+                if context.catalogFailed { catalogFailedRow }
                 Text(AppLocalization.string("Tap a model to make it this profile's default."))
                     .scaledFont(.footnote).foregroundStyle(.secondary)
                 let shown = showsAllModels ? models : Array(models.prefix(Self.shortModelList))
@@ -533,6 +544,21 @@ struct ProviderDetailPage: View {
                     .tint(.conduitAccent)
                 }
             }
+        } else if context.catalogFailed {
+            ConduitSettingsSection(title: AppLocalization.string("Models"), symbol: "cpu", tint: .conduitAccent) {
+                catalogFailedRow
+            }
+        }
+    }
+
+    /// The Model lists ruling: a failed read says so and offers Try Again.
+    private var catalogFailedRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(AppLocalization.string("Could not load models."))
+                .scaledFont(.footnote).foregroundStyle(.secondary)
+            Button(AppLocalization.string("Try Again")) { Task { await context.reloadCatalog() } }
+                .scaledFont(.subheadline.weight(.semibold))
+                .tint(.conduitAccent)
         }
     }
 
@@ -792,7 +818,7 @@ private struct ProviderKeyEditor: View {
                 if key.baseURLSaved {
                     Button(AppLocalization.string("Clear"), role: .destructive) {
                         run {
-                            try await service.remove(variable: baseURLVar)
+                            try await service.remove(variables: [baseURLVar])
                             baseURLDraft = ""
                             editingBaseURL = false
                         }
@@ -831,7 +857,14 @@ private struct ProviderKeyEditor: View {
         note = nil
         Task {
             defer { saving = false }
-            let check = await service.check(key: value, for: key.writeVar)
+            // A key read only through another provider's variable can't be
+            // tried under it: Hermes would try it on that provider.
+            let check: ProviderCheck
+            if key.borrowedOnly {
+                check = ProviderCheck(ok: true, reachable: true, message: "")
+            } else {
+                check = await service.check(key: value, for: key.writeVar)
+            }
             if check.blocksSave {
                 error = check.message.isEmpty ? AppLocalization.string("The provider didn't take this key.") : check.message
                 return
@@ -949,7 +982,8 @@ private struct ProviderSignInView: View {
                     .buttonStyle(.settingsPrimary)
             }
             HStack(spacing: 8) {
-                ProgressView()
+                // The text beside it says what it waits for.
+                ProgressView().accessibilityHidden(true)
                 Text(AppLocalization.string("Waiting for you to finish…"))
                     .scaledFont(.caption).foregroundStyle(.secondary)
                 Spacer()

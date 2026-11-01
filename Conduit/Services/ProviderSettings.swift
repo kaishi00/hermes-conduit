@@ -43,6 +43,9 @@ struct ProviderEntry: Identifiable, Equatable {
         var baseURLSaved = false
         /// Where to get a key.
         var signupURL: String?
+        /// `vars` are other providers' variables this one also reads: a
+        /// check under them would try the key on the other provider.
+        var borrowedOnly = false
 
         enum State: Equatable {
             case none
@@ -237,7 +240,10 @@ enum ProviderCatalog {
             guard var key = byID[id]?.key else { continue }
             key.vars.sort()
             key.savedVars.sort()
-            if key.vars.isEmpty { key.vars = (borrowed[id] ?? []).sorted() }
+            if key.vars.isEmpty {
+                key.vars = (borrowed[id] ?? []).sorted()
+                key.borrowedOnly = true
+            }
             byID[id]?.key = key.vars.isEmpty ? nil : key
         }
 
@@ -569,8 +575,12 @@ final class ProviderSettingsService: ObservableObject {
     /// A new endpoint's key stays clear of them, so it never takes a
     /// built-in's catalog row, listed on this profile or not.
     private(set) var catalogNames: Set<String> = []
+    /// Hermes' model catalog has been given to `reserve`. A new endpoint
+    /// waits for it, so its key can't take a built-in's row.
+    @Published private(set) var catalogReserved = false
 
     func reserve(catalog providers: [ProviderInfo]) {
+        catalogReserved = true
         catalogNames = Set(providers.flatMap { row in
             ([row.name, row.displayName ?? ""] + row.aliases).map(ProviderInfo.normalized)
         }.filter { !$0.isEmpty })

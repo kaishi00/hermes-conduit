@@ -62,7 +62,8 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(openrouter?.key?.savedVars, [])
         XCTAssertEqual(entries.first { $0.id == "openai" }?.status, .mainProfileOnly)
 
-        // A provider that only borrows a variable still names it for the check.
+        // A provider that only borrows a variable still takes a key, but
+        // isn't checked under it (Hermes would try it on the other provider).
         let borrowedOnly: [String: Any] = ["SHARED_API_KEY": [
             "category": "provider", "is_password": true, "is_set": true,
             "provider_profiles": [["provider": "lab", "provider_label": "Lab", "primary": false]],
@@ -70,6 +71,8 @@ final class ProviderSettingsTests: XCTestCase {
         let lab = ProviderCatalog.entries(env: borrowedOnly, accounts: nil, endpoints: nil).first
         XCTAssertEqual(lab?.key?.vars, ["SHARED_API_KEY"])
         XCTAssertEqual(lab?.key?.savedVars, [])
+        XCTAssertEqual(lab?.key?.borrowedOnly, true)
+        XCTAssertEqual(entries.first { $0.id == "openrouter" }?.key?.borrowedOnly, false)
     }
 
     func testMainProfileKeyStates() {
@@ -189,6 +192,18 @@ final class ProviderSettingsTests: XCTestCase {
         let deleted = requester.calls.filter { $0.method == "DELETE" }.compactMap { $0.body?["key"] as? String }
         XCTAssertEqual(deleted, ["OPENROUTER_API_KEY", "OPENROUTER_KEY_2"])
         XCTAssertEqual(service.changes, 1)
+    }
+
+    func testClearingABaseURLOverrideRemovesItsVariable() async throws {
+        let requester = FakeProviderRequester()
+        let service = ProviderSettingsService(requester: requester, profile: "bot")
+
+        try await service.remove(variables: ["OPENROUTER_BASE_URL"])
+
+        let delete = try XCTUnwrap(requester.calls.first { $0.method == "DELETE" })
+        XCTAssertEqual(delete.path, "/api/env?profile=bot")
+        XCTAssertEqual(delete.body?["key"] as? String, "OPENROUTER_BASE_URL")
+        XCTAssertEqual(delete.body?["profile"] as? String, "bot")
     }
 
     func testSharingFromAnotherProfileClearsWhatComesAheadOfItThere() async throws {
@@ -314,6 +329,9 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(service.newEndpointID(forName: "Codex"), "codex-2")
         XCTAssertEqual(service.newEndpointID(forName: "Lab"), "lab-2", "custom:lab is an endpoint already")
         XCTAssertEqual(service.newEndpointID(forName: "Lab vLLM"), "lab-vllm")
+        XCTAssertTrue(service.catalogReserved)
+        XCTAssertFalse(ProviderSettingsService(requester: FakeProviderRequester(), profile: "default").catalogReserved,
+                       "a new endpoint waits for the catalog")
     }
 
     func testEditingTheDefaultEndpointKeepsItTheDefault() {
