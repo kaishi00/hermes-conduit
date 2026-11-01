@@ -348,7 +348,10 @@ extension AppState {
             now.items = shown + page.items.filter { !refs.contains($0.ref) }
             now.more = page.more
             now.isLoading = false
+            // The open chat may be one of these (its title is its task's).
+            let titleBefore = activeWorkstream?.item.shownTitle
             botWork.setResolvedList(now, profile: profile)
+            if activeWorkstream?.item.shownTitle != titleBefore { objectWillChange.send() }
         } catch {
             guard botWork.mark(profile).epoch == mark.epoch else { return }
             var now = botWork.resolvedList(profile) ?? list
