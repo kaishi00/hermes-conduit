@@ -253,6 +253,21 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(service.changes, 1)
     }
 
+    func testRemovingVariablesTriesEveryOneBeforeSayingOneFailed() async {
+        let requester = FakeProviderRequester()
+        requester.envDeleteFailures = ["A_KEY": DashboardTicketBridgeError.http(status: 500, detail: "")]
+        let service = ProviderSettingsService(requester: requester, profile: "default")
+
+        do {
+            try await service.remove(variables: ["A_KEY", "B_KEY"])
+            XCTFail("the failure is reported")
+        } catch {}
+
+        let tried = requester.calls.filter { $0.method == "DELETE" }.compactMap { $0.body?["key"] as? String }
+        XCTAssertEqual(tried, ["A_KEY", "B_KEY"])
+        XCTAssertEqual(service.changes, 1)
+    }
+
     func testClearingABaseURLOverrideRemovesItsVariable() async throws {
         let requester = FakeProviderRequester()
         let service = ProviderSettingsService(requester: requester, profile: "bot")

@@ -774,14 +774,19 @@ final class ProviderSettingsService: ObservableObject {
     /// Runs the rest of a write that has already changed something on the
     /// host, then reads the page again whether or not the rest worked.
     /// Takes variables out of this profile's `.env`; one already gone is fine.
+    /// Every variable is tried; the first failure is thrown after.
     private func removeVariables(_ variables: [String]) async throws {
+        var failure: Error?
         for variable in variables {
             do {
                 _ = try await request(scoped("/api/env"), method: "DELETE", body: ["key": variable, "profile": profile])
             } catch where Self.isNotFound(error) {
                 continue
+            } catch {
+                failure = failure ?? error
             }
         }
+        if let failure { throw failure }
     }
 
     /// The cleanup after a key was added: the key is saved whatever
@@ -807,8 +812,7 @@ final class ProviderSettingsService: ObservableObject {
         await changed()
     }
 
-    /// Saves a value to this profile's `.env`: a base URL override, or the
-    /// main profile's own key. Nothing on the phone keeps it.
+    /// Saves a base URL override to this profile's `.env`.
     func save(key value: String, for variable: String) async throws {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !variable.isEmpty else { return }

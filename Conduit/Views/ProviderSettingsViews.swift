@@ -74,9 +74,8 @@ struct ModelPageProviders: View {
             catalogFailed: catalogFailed,
             reloadCatalog: { await reloadCatalog() },
             makeDefault: { provider, model in
-                let saved = await makeDefault(provider, model, catalog?.reasoning ?? "medium")
-                if saved { await reloadCatalog() }
-                return saved
+                // A save raises the page's refresh, which reads the catalog again.
+                await makeDefault(provider, model, catalog?.reasoning ?? "medium")
             },
             usage: { entry in Self.usage(of: entry, catalog: catalog, settings: appState.keptProfileSettings(keys: Self.usageKeys),
                                          fallbacks: appState.keptProfileFallbackModels()) }
@@ -967,6 +966,10 @@ private struct ProviderKeyEditor: View {
                     note = scope == .allProfiles
                         ? AppLocalization.string("Saved, but the old key couldn't be removed everywhere. A profile still using it says Old copy of the shared key.")
                         : AppLocalization.string("Saved, but this profile's old key couldn't be removed, so it may still be used first.")
+                } else if !key.heldVars.isEmpty {
+                    // The key another provider also reads stays, and Hermes
+                    // reads it ahead of the saved one on this profile.
+                    note = AppLocalization.string("Saved, but this profile still has a key another provider reads, and Hermes uses that one first here.")
                 } else if !check.ok {
                     note = AppLocalization.string("Saved. Hermes couldn't reach the provider to check the key.")
                 }
@@ -1136,9 +1139,12 @@ private struct ProviderSignInView: View {
                 // sign-in gone) says so instead of waiting on.
                 failures += 1
                 if failures >= Self.pollFailureLimit, !Task.isCancelled {
+                    // Its own task, started before signIn goes: clearing it
+                    // ends this one, whose request would never be sent.
+                    let service = service
+                    Task { await service.cancel(started) }
                     signIn = nil
                     self.error = UserFacingError.message(for: error)
-                    await service.cancel(started)
                     return
                 }
                 try? await Task.sleep(for: .seconds(started.pollInterval))

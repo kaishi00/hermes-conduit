@@ -2818,16 +2818,17 @@ Notifications and control list and the Settings captions (done)
 - A provider's page shows "Could not load models." with Try Again when Hermes' catalog read fails, as the Model lists ruling asks.
 - Sign-ins live on the main profile, which Hermes already shares; custom endpoints are per profile, in its config, saved in the config write queue with `api_key` left out when nothing was typed (an empty one clears the saved key).
 - A provider that runs the default model can't be removed, nor its key (Remove shared key, Remove key, Remove this profile's key; going back to the shared key is fine), and the page says so; each key removal asks first and names the delegate and fallback models on the provider; Remove waits for Hermes' catalog (not the kept one) to tell; it names the delegate and fallback models on it, as last read (a name only, it changes nothing).
-- A key another provider also reads stays in the profile's settings, where Hermes still uses it first, and the key section says so; Use the shared key is offered only when the row the profile uses first is one Conduit may remove.
+- A key another provider also reads stays in the profile's settings, where Hermes still uses it first, and the key section says so, as does a save behind it; Use the shared key is offered only when the row the profile uses first is one Conduit may remove.
 - A new endpoint's config key is made from its name (`lab-vllm`, then `lab-vllm-2`), clear of the profile's endpoints and of every slug, display name and alias in Hermes' model catalog, so it never takes a built-in's catalog row; Custom endpoint waits for that catalog, and says so with Try Again when it isn't in.
 
 **Open gaps**
 - A profile Conduit doesn't list, or one that can't be read when a shared key is replaced, keeps its copy of the old key until its page's "Use the shared key".
 - Helper (auxiliary) models and the credential pool's rotation order aren't editable yet (stage 2).
 - A custom endpoint's saved key can be replaced but not removed from Conduit.
+- A provider Hermes lists with only a base URL variable (no key of its own) has no card, so its override isn't reachable from Conduit.
 - Removing the shared key or signing out on the main profile checks only the main profile's default, delegate and fallback models, not other profiles' that run on it.
 
-**Checked:** 2026-11-01, #1616 (entry added: Providers section, Add a provider, shared keys with overrides and cleanup; host-tested on Hermes 0.22.2: an override wins after its copies go, across restarts, and replacing and going back to the shared key work)
+**Checked:** 2026-11-01, #1620 (from #1616's last reviews: a removal tries every variable, a save behind a held key says so, a given-up sign-in is cancelled on Hermes, one catalog read per model pick; base-URL-only providers noted as a gap); 2026-11-01, #1616 (entry added: Providers section, Add a provider, shared keys with overrides and cleanup; host-tested on Hermes 0.22.2: an override wins after its copies go, across restarts, and replacing and going back to the shared key work)
 
 ## Profile config saves
 
