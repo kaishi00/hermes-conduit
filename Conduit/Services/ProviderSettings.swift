@@ -46,6 +46,11 @@ struct ProviderEntry: Identifiable, Equatable {
         /// `vars` are other providers' variables this one also reads: a
         /// check under them would try the key on the other provider.
         var borrowedOnly = false
+        /// Saved variables another provider also reads as its own key.
+        /// Removing one would take that provider's key too.
+        var heldVars: [String] = []
+        /// The saved variables Conduit may take out for this provider.
+        var removableVars: [String] { savedVars.filter { !heldVars.contains($0) } }
 
         enum State: Equatable {
             case none
@@ -198,6 +203,8 @@ enum ProviderCatalog {
         /// They aren't this provider's key: never counted as saved, never
         /// removed for it.
         var borrowed: [String: [String]] = [:]
+        /// How many providers read each variable as their own key.
+        var owners: [String: Int] = [:]
         func update(_ id: String, name: String, _ change: (inout ProviderEntry) -> Void) {
             if byID[id] == nil {
                 byID[id] = ProviderEntry(id: id, name: name)
@@ -216,6 +223,7 @@ enum ProviderCatalog {
                     update(profile.slug, name: profile.label) { entry in
                         var key = entry.key ?? ProviderEntry.KeyAccess(vars: [], savedVars: [])
                         if profile.primary {
+                            owners[variable, default: 0] += 1
                             key.vars.append(variable)
                             if isSet { key.savedVars.append(variable) }
                         } else {
@@ -240,6 +248,7 @@ enum ProviderCatalog {
             guard var key = byID[id]?.key else { continue }
             key.vars.sort()
             key.savedVars.sort()
+            key.heldVars = key.savedVars.filter { owners[$0, default: 0] > 1 }
             if key.vars.isEmpty {
                 key.vars = (borrowed[id] ?? []).sorted()
                 key.borrowedOnly = true
@@ -352,6 +361,7 @@ enum ProviderCatalog {
             if let key = entry.key {
                 var access: [String: Any] = [
                     "vars": key.vars, "vars_saved": key.savedVars, "base_url_saved": key.baseURLSaved,
+                    "vars_held": key.heldVars, "borrowed_only": key.borrowedOnly,
                     "shared_rows": key.sharedRows.map(encode), "profile_rows": key.profileRows.map(encode),
                 ]
                 if let baseURLVar = key.baseURLVar { access["base_url_var"] = baseURLVar }
@@ -406,6 +416,8 @@ enum ProviderCatalog {
                     baseURLSaved: access["base_url_saved"] as? Bool ?? false,
                     signupURL: nonEmpty(access["signup_url"])
                 )
+                entry.key?.heldVars = access["vars_held"] as? [String] ?? []
+                entry.key?.borrowedOnly = access["borrowed_only"] as? Bool ?? false
                 entry.key?.sharedRows = (access["shared_rows"] as? [[String: Any]] ?? []).compactMap(poolRow)
                 entry.key?.profileRows = (access["profile_rows"] as? [[String: Any]] ?? []).compactMap(poolRow)
             }
@@ -698,7 +710,7 @@ final class ProviderSettingsService: ObservableObject {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return true }
         let replaced = entry.key?.sharedIDs ?? []
-        let mainVars = isSharedProfile ? entry.key?.savedVars ?? [] : []
+        let mainVars = isSharedProfile ? entry.key?.removableVars ?? [] : []
         // Shared from another profile, that profile uses it too: the rows
         // ahead of it there (its own key, an old copy) go.
         let ownHere = isSharedProfile ? [] : Set((entry.key?.ownRows ?? []).map(\.id))
@@ -748,8 +760,13 @@ final class ProviderSettingsService: ObservableObject {
     func useShared(_ entry: ProviderEntry) async throws {
         guard !isSharedProfile, let key = entry.key else { return }
         try await afterWrite {
-            try await removeRows(provider: entry.id, ids: Set(key.ownRows.map(\.id)), profile: profile)
-            try await removeVariables(key.savedVars)
+            // A row read from a variable another provider also reads stays:
+            // removing it would take that variable out of the `.env`.
+            let rows = key.ownRows.filter { row in
+                !key.heldVars.contains { row.source == "env:\($0)" }
+            }
+            try await removeRows(provider: entry.id, ids: Set(rows.map(\.id)), profile: profile)
+            try await removeVariables(key.removableVars)
         }
     }
 

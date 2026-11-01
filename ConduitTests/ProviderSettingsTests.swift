@@ -26,6 +26,51 @@ final class ProviderSettingsTests: XCTestCase {
         "TELEGRAM_BOT_TOKEN": ["category": "messaging", "is_password": true, "is_set": true],
     ]
 
+    /// One variable two providers read as their own key, and one a third
+    /// provider only borrows.
+    private let heldEnv: [String: Any] = [
+        "SHARED_API_KEY": [
+            "category": "provider", "is_password": true, "is_set": true,
+            "provider_profiles": [["provider": "alpha", "provider_label": "Alpha", "primary": true],
+                                  ["provider": "beta", "provider_label": "Beta", "primary": true],
+                                  ["provider": "gamma", "provider_label": "Gamma", "primary": false]],
+        ],
+        "ALPHA_API_KEY": [
+            "category": "provider", "is_password": true, "is_set": true,
+            "provider_profiles": [["provider": "alpha", "provider_label": "Alpha", "primary": true]],
+        ],
+    ]
+
+    func testAVariableAnotherProviderAlsoOwnsIsNeverRemovedForOne() async throws {
+        let entries = ProviderCatalog.entries(env: heldEnv, accounts: nil, endpoints: nil)
+        let alpha = try XCTUnwrap(entries.first { $0.id == "alpha" })
+        XCTAssertEqual(alpha.key?.heldVars, ["SHARED_API_KEY"])
+        XCTAssertEqual(alpha.key?.removableVars, ["ALPHA_API_KEY"])
+        XCTAssertEqual(entries.first { $0.id == "beta" }?.key?.removableVars, [])
+        XCTAssertEqual(entries.first { $0.id == "gamma" }?.key?.borrowedOnly, true)
+
+        // Sharing on the main profile replaces only alpha's own variable.
+        let requester = FakeProviderRequester()
+        let service = ProviderSettingsService(requester: requester, profile: "default", profiles: { ["default"] })
+        try await service.share(key: "sk-alpha", for: alpha)
+        var removed = requester.calls.filter { $0.method == "DELETE" }.compactMap { $0.body?["key"] as? String }
+        XCTAssertEqual(removed, ["ALPHA_API_KEY"])
+
+        // Going back to the shared key on another profile keeps it too,
+        // and the pool row read from it.
+        var onBot = alpha
+        onBot.key?.profileRows = [.init(id: "e1", index: 1, label: "", source: "env:SHARED_API_KEY"),
+                                  .init(id: "e2", index: 2, label: "", source: "env:ALPHA_API_KEY")]
+        let botRequester = FakeProviderRequester()
+        botRequester.pools["bot"] = pool("alpha", [("e1", "", "env:SHARED_API_KEY"), ("e2", "", "env:ALPHA_API_KEY")])
+        let bot = ProviderSettingsService(requester: botRequester, profile: "bot")
+        try await bot.useShared(onBot)
+        let deletes = botRequester.calls.filter { $0.method == "DELETE" }
+        XCTAssertEqual(deletes.map(\.path).filter { $0.hasPrefix("/api/credentials") }, ["/api/credentials/pool/alpha/2?profile=bot"])
+        removed = deletes.compactMap { $0.body?["key"] as? String }
+        XCTAssertEqual(removed, ["ALPHA_API_KEY"])
+    }
+
     private func pool(_ provider: String, _ rows: [(id: String, label: String, source: String)]) -> [String: Any] {
         ["providers": [[
             "provider": provider,
@@ -133,6 +178,9 @@ final class ProviderSettingsTests: XCTestCase {
                                               profilePool: shared, onMainProfile: false)
         let summary = ProviderCatalog.summary(entries)
         XCTAssertEqual(ProviderCatalog.entries(summary: summary), entries)
+        let held = ProviderCatalog.entries(env: heldEnv, accounts: nil, endpoints: nil)
+        XCTAssertEqual(ProviderCatalog.entries(summary: ProviderCatalog.summary(held)), held,
+                       "borrowed-only and held variables survive the kept summary")
         let text = String(data: try JSONSerialization.data(withJSONObject: summary), encoding: .utf8) ?? ""
         XCTAssertFalse(text.contains("sk-or"), "Hermes' masked preview is never kept")
         XCTAssertFalse(text.contains("redacted"))

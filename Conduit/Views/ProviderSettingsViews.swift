@@ -48,6 +48,7 @@ struct ModelPageProviders: View {
     @State private var catalog: ProfileModelDefaults?
     @State private var catalogAnswered = false
     @State private var catalogFailed = false
+    @State private var catalogGeneration = 0
 
     init(
         bridge: DashboardJSONRequester, profile: String, profileName: String,
@@ -89,8 +90,13 @@ struct ModelPageProviders: View {
         .onChange(of: refresh) { _, _ in Task { await reloadCatalog() } }
     }
 
+    /// Reads Hermes' catalog. A read that a later one overtook is dropped,
+    /// so a save's reload can't be undone by an older answer.
     private func reloadCatalog() async {
+        catalogGeneration += 1
+        let generation = catalogGeneration
         let loaded = await load()
+        guard generation == catalogGeneration else { return }
         catalogFailed = loaded == nil
         if let loaded {
             catalog = loaded
@@ -769,9 +775,9 @@ private struct ProviderKeyEditor: View {
                 } message: {
                     Text(AppLocalization.string("Every profile without a key of its own stops using \(entry.name)."))
                 }
-            } else if state == .mainProfileOnly {
+            } else if state == .mainProfileOnly, !key.removableVars.isEmpty {
                 Button(role: .destructive) {
-                    run { try await service.remove(variables: key.savedVars) }
+                    run { try await service.remove(variables: key.removableVars) }
                 } label: {
                     Text(AppLocalization.string("Remove key"))
                 }
