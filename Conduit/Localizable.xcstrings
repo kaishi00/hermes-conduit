@@ -73626,6 +73626,88 @@
         }
       }
     },
+    "Conduit never shows a key, so you'd paste it again to use it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit zeigt Schlüssel nie an, du müsstest ihn also erneut einfügen, um ihn zu verwenden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit nunca muestra una clave, así que tendrías que pegarla de nuevo para usarla."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit n'affiche jamais une clé : il faudrait la coller à nouveau pour l'utiliser."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit tidak pernah menampilkan kunci, jadi kamu perlu menempelkannya lagi untuk memakainya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit non mostra mai una chiave, quindi dovresti incollarla di nuovo per usarla."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit はキーを表示しないため、使うにはもう一度貼り付ける必要があります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit는 키를 표시하지 않으므로 다시 사용하려면 키를 다시 붙여 넣어야 합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit nigdy nie pokazuje klucza, więc aby go użyć, trzeba będzie wkleić go ponownie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Conduit nunca mostra uma chave, então você teria que colá-la de novo para usá-la."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit никогда не показывает ключ, поэтому чтобы снова им пользоваться, его придётся вставить заново."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit bir anahtarı asla göstermez, bu yüzden kullanmak için onu yeniden yapıştırman gerekir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 从不显示密钥，因此要再次使用需重新粘贴。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conduit 從不顯示金鑰，因此要再次使用需重新貼上。"
+          }
+        }
+      }
+    },
     "Conduit on your iPhone couldn't reach Hermes. Open it once and try again.": {
       "localizations": {
         "de": {

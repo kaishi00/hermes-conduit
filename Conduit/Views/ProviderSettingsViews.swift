@@ -507,7 +507,8 @@ struct ProviderDetailPage: View {
                 if let key = entry.key {
                     ConduitSettingsSection(title: AppLocalization.string("API key"), symbol: "key", tint: .conduitAura) {
                         ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: {},
-                                          keyRemovable: context.catalogAnswered && !runsDefault(entry))
+                                          keyRemovable: context.catalogAnswered && !runsDefault(entry),
+                                          usage: context.usage(entry))
                     }
                 }
                 if let error {
@@ -686,6 +687,9 @@ private struct ProviderKeyEditor: View {
     /// Hermes' catalog answered and the provider doesn't run the default
     /// model, so its key may go. Off on the Add sheet's pages.
     var keyRemovable = false
+    /// The profile's delegate and fallback models on the provider, named
+    /// when its key is removed.
+    var usage: [String] = []
     @Environment(\.openURL) private var openURL
     @State private var draft = ""
     @State private var editing = false
@@ -694,6 +698,7 @@ private struct ProviderKeyEditor: View {
     @State private var note: String?
     @State private var error: String?
     @State private var confirmingUnshare = false
+    @State private var confirmingRemoveKey = false
     @State private var baseURLDraft = ""
     @State private var editingBaseURL = false
 
@@ -820,30 +825,54 @@ private struct ProviderKeyEditor: View {
                     Button(AppLocalization.string("Remove"), role: .destructive) { run { try await service.unshare(entry) } }
                     Button(AppLocalization.string("Cancel"), role: .cancel) {}
                 } message: {
-                    Text(AppLocalization.string("Every profile without a key of its own stops using \(entry.name)."))
+                    Text(verbatim: AppLocalization.string("Every profile without a key of its own stops using \(entry.name).") + usageLine)
                 }
             } else if state == .mainProfileOnly, !key.removableVars.isEmpty, keyRemovable {
-                Button(role: .destructive) {
-                    run { try await service.remove(variables: key.removableVars) }
-                } label: {
+                Button(role: .destructive) { confirmingRemoveKey = true } label: {
                     Text(AppLocalization.string("Remove key"))
                 }
                 .buttonStyle(.settings)
                 .disabled(saving || !service.answered)
+                .confirmationDialog(AppLocalization.string("Remove \(entry.name)?"), isPresented: $confirmingRemoveKey, titleVisibility: .visible) {
+                    Button(AppLocalization.string("Remove"), role: .destructive) {
+                        run { try await service.remove(variables: key.removableVars) }
+                    }
+                    Button(AppLocalization.string("Cancel"), role: .cancel) {}
+                } message: {
+                    Text(verbatim: AppLocalization.string("Conduit never shows a key, so you'd paste it again to use it.") + usageLine)
+                }
             }
-        } else if state == .own || state == .oldCopy, key.shared || keyRemovable,
-                  !(key.removableRows.isEmpty && key.removableVars.isEmpty) {
+        } else if state == .own || state == .oldCopy, key.shared || keyRemovable, leavesItsOwnKey {
             // Back on the shared key the default model still runs; with no
             // shared key, removing this one would leave it none.
             Button {
-                run { try await service.useShared(entry) }
+                if key.shared { run { try await service.useShared(entry) } } else { confirmingRemoveKey = true }
             } label: {
                 Text(key.shared ? AppLocalization.string("Use the shared key") : AppLocalization.string("Remove this profile's key"))
             }
             .buttonStyle(.settings)
             .disabled(saving || !service.answered)
             .accessibilityIdentifier("settings.providers.key.useShared")
+            .confirmationDialog(AppLocalization.string("Remove \(entry.name)?"), isPresented: $confirmingRemoveKey, titleVisibility: .visible) {
+                Button(AppLocalization.string("Remove"), role: .destructive) { run { try await service.useShared(entry) } }
+                Button(AppLocalization.string("Cancel"), role: .cancel) {}
+            } message: {
+                Text(verbatim: AppLocalization.string("Conduit never shows a key, so you'd paste it again to use it.") + usageLine)
+            }
         }
+    }
+
+    /// Going back to the shared key changes what the profile uses: the row
+    /// it uses first is one Conduit may remove, or there are no rows and a
+    /// `.env` variable to remove.
+    private var leavesItsOwnKey: Bool {
+        if let first = key.ownRows.first { return key.removableRows.contains(first) }
+        return !key.removableVars.isEmpty
+    }
+
+    private var usageLine: String {
+        guard !usage.isEmpty else { return "" }
+        return " " + AppLocalization.string("These stop working until you pick another model: \(usage.joined(separator: ", ")).")
     }
 
     @ViewBuilder
