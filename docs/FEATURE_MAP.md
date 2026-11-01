@@ -2769,7 +2769,9 @@ Settings > Models & providers' Providers section, the Add a provider sheet
 and a provider's page.
 
 **Siblings:** the Model page's Default model and Fallback models (read the
-catalog again after a change; done) · the Model sheet's Add a provider row
+catalog again after a change; done) · Memory & delegation's Delegate model
+(not needed: it reads Hermes' catalog as its page opens; Remove names it
+when the delegate runs on the provider) · the Model sheet's Add a provider row
 (done) · the bot editor's Model page and the Voice replies, Voice jobs,
 Pulse and Kanban model pickers (not needed: each reads Hermes' catalog as it
 opens) · the voice key rows and toolset key fields (not needed: speech and
@@ -2796,7 +2798,7 @@ Notifications and control list and the Settings captions (done)
 - Hermes tries a key before it's saved; only a check that reached the provider and was refused stops the save.
 - Sign-ins live on the main profile, which Hermes already shares; custom endpoints are per profile, in its config, saved in the config write queue with `api_key` left out when nothing was typed (an empty one clears the saved key).
 - A provider that runs the default model can't be removed, and Remove waits for Hermes' catalog (not the kept one) to tell; it names the delegate and fallback models on it.
-- A new endpoint's config key is made from its name (`lab-vllm`, then `lab-vllm-2`).
+- A new endpoint's config key is made from its name (`lab-vllm`, then `lab-vllm-2`), clear of the profile's endpoints and of every slug, display name and alias in Hermes' model catalog, so it never takes a built-in's catalog row.
 
 **Open gaps**
 - A profile Conduit doesn't list, or one that can't be read when a shared key is replaced, keeps its copy of the old key until its page's "Use the shared key".

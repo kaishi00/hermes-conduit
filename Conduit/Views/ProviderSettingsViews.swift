@@ -86,6 +86,7 @@ struct ModelPageProviders: View {
         if let loaded = await load() {
             catalog = loaded
             catalogAnswered = true
+            service.reserve(catalog: loaded.providers)
         }
     }
 
@@ -362,10 +363,17 @@ struct AddProviderSheet: View {
 struct AddProviderSheetHost: View {
     @StateObject private var service: ProviderSettingsService
 
-    init(bridge: DashboardJSONRequester, profile: String, profileName: String, answers: KeptAnswers?, profiles: @escaping () -> [String]) {
-        _service = StateObject(wrappedValue: ProviderSettingsService(
-            requester: bridge, profile: profile, profileName: profileName, answers: answers, profiles: profiles
-        ))
+    /// `catalog` is the picker's model catalog: a new endpoint's key stays
+    /// clear of its providers.
+    init(bridge: DashboardJSONRequester, profile: String, profileName: String, answers: KeptAnswers?,
+         catalog: [ProviderInfo], profiles: @escaping () -> [String]) {
+        _service = StateObject(wrappedValue: {
+            let service = ProviderSettingsService(
+                requester: bridge, profile: profile, profileName: profileName, answers: answers, profiles: profiles
+            )
+            service.reserve(catalog: catalog)
+            return service
+        }())
     }
 
     var body: some View {
@@ -504,7 +512,7 @@ struct ProviderDetailPage: View {
                                 .lineLimit(1)
                             Spacer(minLength: 8)
                             if settingDefault == model.id {
-                                ProgressView()
+                                ProgressView().accessibilityLabel(AppLocalization.string("Saving…"))
                             } else if isDefault {
                                 Image(systemName: "checkmark").foregroundStyle(Color.conduitAccent)
                                     .accessibilityLabel(AppLocalization.string("Default model"))
@@ -737,7 +745,7 @@ private struct ProviderKeyEditor: View {
                 }
             } else if state == .mainProfileOnly {
                 Button(role: .destructive) {
-                    run { for variable in key.savedVars { try await service.remove(variable: variable) } }
+                    run { try await service.remove(variables: key.savedVars) }
                 } label: {
                     Text(AppLocalization.string("Remove key"))
                 }
@@ -881,6 +889,8 @@ private struct ProviderSignInView: View {
     @State private var starting = false
     @State private var error: String?
     @State private var signingOut = false
+    /// Check again ran and the host still has no sign-in.
+    @State private var stillSignedOut = false
 
     private static let pollFailureLimit = 3
 
@@ -908,10 +918,17 @@ private struct ProviderSignInView: View {
                         .buttonStyle(.settings)
                 }
             }
+            if stillSignedOut {
+                Text(AppLocalization.string("Not signed in yet."))
+                    .scaledFont(.footnote).foregroundStyle(.secondary)
+            }
             Button(AppLocalization.string("Check again")) {
                 Task {
+                    stillSignedOut = false
                     await service.reload()
-                    if service.entry(entry.id)?.account?.signedIn == true { onSignedIn() }
+                    let signedIn = service.entry(entry.id)?.account?.signedIn == true
+                    stillSignedOut = !signedIn
+                    if signedIn { onSignedIn() }
                 }
             }
             .buttonStyle(.settingsPrimary)
@@ -1108,14 +1125,7 @@ private struct CustomEndpointForm: View {
         guard !seeded else { return }
         seeded = true
         guard let existing else { return }
-        draft.endpointID = existing.endpoint.endpointID
-        draft.name = existing.name
-        draft.baseURL = existing.endpoint.baseURL
-        draft.apiMode = existing.endpoint.apiMode
-        draft.model = existing.endpoint.model
-        draft.models = existing.endpoint.models
-        // Saving sends the toggle, so an edit keeps the endpoint the default.
-        draft.makeDefault = existing.endpoint.isCurrent
+        draft = CustomEndpointDraft(editing: existing.name, endpoint: existing.endpoint)
     }
 
     /// The typed key goes up with the check and the save, nowhere else.
@@ -1123,11 +1133,7 @@ private struct CustomEndpointForm: View {
         var withKey = draft
         if withKey.endpointID.isEmpty {
             // A new endpoint's config key comes from its name.
-            // Clear of built-in providers' slugs too, so the endpoint never
-            // takes a built-in's catalog row.
-            let taken = Set(service.entries.compactMap { $0.endpoint?.endpointID })
-                .union(service.entries.filter { $0.endpoint == nil }.map { $0.id.lowercased() })
-            withKey.endpointID = CustomEndpointDraft.endpointID(forName: draft.trimmedName, taken: taken)
+            withKey.endpointID = service.newEndpointID(forName: draft.trimmedName)
         }
         let typed = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         withKey.key = typed.isEmpty ? nil : typed

@@ -161,6 +161,36 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(service.changes, 1)
     }
 
+    func testSharingSaysSoWhenACopyCouldNotBeRemoved() async throws {
+        let requester = FakeProviderRequester()
+        requester.pools["default"] = pool("openrouter", [("old", ProviderEntry.PoolRow.sharedLabel, "manual"),
+                                                         ("new", ProviderEntry.PoolRow.sharedLabel, "manual")])
+        requester.failingPools = ["bot"]
+        let service = ProviderSettingsService(requester: requester, profile: "default", profiles: { ["default", "bot", "work"] })
+        var entry = ProviderEntry(id: "openrouter", name: "OpenRouter")
+        entry.key = ProviderEntry.KeyAccess(vars: ["OPENROUTER_API_KEY"], savedVars: [],
+                                            sharedRows: [.init(id: "old", index: 1, label: ProviderEntry.PoolRow.sharedLabel)])
+
+        let cleaned = try await service.share(key: "sk-new", for: entry)
+
+        XCTAssertFalse(cleaned, "the key is saved, but a profile may still use the old copy")
+        XCTAssertTrue(requester.calls.contains { $0.method == "GET" && $0.path.hasSuffix("profile=work") },
+                      "one profile's failure doesn't stop the others")
+        XCTAssertEqual(service.changes, 1)
+    }
+
+    func testRemovingTheMainProfilesKeyGoesPastAVariableAlreadyGone() async throws {
+        let requester = FakeProviderRequester()
+        requester.envDeleteFailures = ["OPENROUTER_API_KEY": DashboardTicketBridgeError.http(status: 404, detail: "")]
+        let service = ProviderSettingsService(requester: requester, profile: "default")
+
+        try await service.remove(variables: ["OPENROUTER_API_KEY", "OPENROUTER_KEY_2"])
+
+        let deleted = requester.calls.filter { $0.method == "DELETE" }.compactMap { $0.body?["key"] as? String }
+        XCTAssertEqual(deleted, ["OPENROUTER_API_KEY", "OPENROUTER_KEY_2"])
+        XCTAssertEqual(service.changes, 1)
+    }
+
     func testSharingFromAnotherProfileClearsWhatComesAheadOfItThere() async throws {
         let requester = FakeProviderRequester()
         requester.pools["bot"] = pool("openrouter", [("stale", ProviderEntry.PoolRow.sharedLabel, "manual")])
@@ -274,6 +304,29 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(CustomEndpointDraft.endpointID(forName: "  ", taken: []), "endpoint")
     }
 
+    func testANewEndpointStaysClearOfTheCatalogsProviders() {
+        let service = ProviderSettingsService(requester: FakeProviderRequester(), profile: "default")
+        service.reserve(catalog: [
+            ProviderInfo(name: "openai-codex", models: [], displayName: "OpenAI", aliases: ["codex"]),
+            ProviderInfo(name: "custom:lab", models: []),
+        ])
+        XCTAssertEqual(service.newEndpointID(forName: "OpenAI"), "openai-2", "OpenAI is a built-in's display name")
+        XCTAssertEqual(service.newEndpointID(forName: "Codex"), "codex-2")
+        XCTAssertEqual(service.newEndpointID(forName: "Lab"), "lab-2", "custom:lab is an endpoint already")
+        XCTAssertEqual(service.newEndpointID(forName: "Lab vLLM"), "lab-vllm")
+    }
+
+    func testEditingTheDefaultEndpointKeepsItTheDefault() {
+        let endpoint = ProviderEntry.EndpointAccess(endpointID: "lab", baseURL: "http://lab/v1", model: "qwen", models: ["qwen"],
+                                                    apiMode: "", keySaved: true, isCurrent: true)
+        let draft = CustomEndpointDraft(editing: "Lab", endpoint: endpoint)
+        XCTAssertEqual(draft.endpointID, "lab")
+        XCTAssertEqual(draft.body(forCheck: false)["make_default"] as? Bool, true)
+        let other = CustomEndpointDraft(editing: "Lab", endpoint: .init(endpointID: "lab", baseURL: "", model: "", models: [],
+                                                                        apiMode: "", keySaved: false, isCurrent: false))
+        XCTAssertEqual(other.body(forCheck: false)["make_default"] as? Bool, false)
+    }
+
     func testAKeptEndpointAddressLeavesOutItsPath() {
         XCTAssertEqual(ProviderCatalog.keptAddress("https://user:pw@host.example:8443/v1/tok123?key=x"), "https://host.example:8443")
         XCTAssertEqual(ProviderCatalog.keptAddress("not a url"), "")
@@ -328,6 +381,10 @@ private final class FakeProviderRequester: DashboardJSONRequester {
     var envAnswer: [String: Any] = [:]
     /// Errors for GETs, by the path before its query.
     var failures: [String: Error] = [:]
+    /// Profiles whose credential pool can't be read.
+    var failingPools: Set<String> = []
+    /// Errors for `.env` removals, by variable.
+    var envDeleteFailures: [String: Error] = [:]
 
     func requestJSON(path: String, method: String, body: [String: Any]?, timeoutMilliseconds: Int, maxResponseBytes: Int) async throws -> [String: Any] {
         calls.append(Call(path: path, method: method, body: body))
@@ -336,7 +393,11 @@ private final class FakeProviderRequester: DashboardJSONRequester {
         if method == "GET", route == "/api/env" { return envAnswer }
         if method == "GET", path.hasPrefix("/api/credentials/pool?") {
             let profile = path.components(separatedBy: "profile=").last ?? ""
+            if failingPools.contains(profile) { throw DashboardTicketBridgeError.http(status: 500, detail: "") }
             return pools[profile] ?? ["providers": []]
+        }
+        if method == "DELETE", route == "/api/env", let key = body?["key"] as? String, let failure = envDeleteFailures[key] {
+            throw failure
         }
         return ["ok": true]
     }

@@ -368,6 +368,7 @@ struct ModelPickerView: View {
                     profile: appState.conversationIdentityProfile,
                     profileName: appState.profileDisplayName(appState.conversationIdentityProfile),
                     answers: appState.screenAnswers(profile: appState.conversationIdentityProfile),
+                    catalog: catalog.providers,
                     profiles: { appState.profiles }
                 )
                 .environmentObject(appState)

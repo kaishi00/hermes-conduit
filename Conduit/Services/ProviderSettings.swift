@@ -535,6 +535,16 @@ struct CustomEndpointDraft: Equatable {
     }
 }
 
+extension CustomEndpointDraft {
+    /// An edit of a saved endpoint. Saving sends the toggle, so an edit
+    /// keeps the endpoint the default when it is.
+    init(editing name: String, endpoint: ProviderEntry.EndpointAccess) {
+        self.init(endpointID: endpoint.endpointID, name: name, baseURL: endpoint.baseURL,
+                  apiMode: endpoint.apiMode, model: endpoint.model, models: endpoint.models,
+                  makeDefault: endpoint.isCurrent)
+    }
+}
+
 @MainActor
 final class ProviderSettingsService: ObservableObject {
     /// The kept summary's route. It is Conduit's own, not a read's answer.
@@ -555,6 +565,27 @@ final class ProviderSettingsService: ObservableObject {
     var isSharedProfile: Bool { profile == Self.sharedProfile }
     private let requester: DashboardJSONRequester
     private let answers: KeptAnswers?
+    /// The names Hermes' model catalog lists its providers under, lowercased.
+    /// A new endpoint's key stays clear of them, so it never takes a
+    /// built-in's catalog row, listed on this profile or not.
+    private(set) var catalogNames: Set<String> = []
+
+    func reserve(catalog providers: [ProviderInfo]) {
+        catalogNames = Set(providers.flatMap { row in
+            ([row.name, row.displayName ?? ""] + row.aliases).map(ProviderInfo.normalized)
+        }.filter { !$0.isEmpty })
+    }
+
+    /// The config key a new endpoint named `name` is saved under: clear of
+    /// the profile's endpoints, its listed providers and the catalog's names.
+    func newEndpointID(forName name: String) -> String {
+        let taken = Set(entries.compactMap { $0.endpoint?.endpointID })
+            .union(entries.filter { $0.endpoint == nil }.map { $0.id.lowercased() })
+            .union(catalogNames)
+            .union(catalogNames.compactMap { $0.hasPrefix("custom:") ? String($0.dropFirst(7)) : nil })
+        return CustomEndpointDraft.endpointID(forName: name, taken: taken)
+    }
+
     /// Raised after every change, so the model lists around the page read
     /// Hermes' catalog again.
     @Published private(set) var changes = 0
@@ -758,9 +789,10 @@ final class ProviderSettingsService: ObservableObject {
         await changed()
     }
 
-    func remove(variable: String) async throws {
-        _ = try await request(scoped("/api/env"), method: "DELETE", body: ["key": variable, "profile": profile])
-        await changed()
+    /// Takes the main profile's own key out of its `.env`: every variable,
+    /// one already gone included, then one reload.
+    func remove(variables: [String]) async throws {
+        try await afterWrite { try await removeVariables(variables) }
     }
 
     /// Removal names a row by its place, which shifts as rows go, so the
