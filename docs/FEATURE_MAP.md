@@ -1900,7 +1900,7 @@ ref (W1, W2), and hears back when one finishes, fails, waits on the user or
 has something ready for them to look at.
 Each bot turns it on for itself (`hermes -p <bot> conduit-push work on`). It's
 being built on the notifier's `bot-workstreams` branch (M0, notifier #484; M1
-from notifier #490), so
+from notifier #490 and #491), so
 none of it is on either main yet, and the app has no screen for it until M2.
 
 **Siblings:** the Bot Chat (the eight work tools, offered only there and only
@@ -1909,7 +1909,10 @@ fork's; the note on its turns listing open work; the work updates that come
 in as hidden turns, which the transcript leaves out as it does every hidden
 user turn) · a workstream's session (hidden, titled, on the bot's own
 profile, its steps journaled; its own `work_progress` checklist and ready
-mark, and its report written for you in its chat; a reply in it sends no push, the Bot Chat's
+mark, and its report written for you in its chat; its brief carries the
+coordinator's `work_note` notes (labelled as data, never your go-ahead) and
+the message of yours the Bot Chat is answering, quoted as yours (none when a
+work update started the turn), with what counts as your go-ahead under the bot's approval mode; a reply in it sends no push, the Bot Chat's
 reply to the update is the one push, and its turns start no Live Activity) · the `conduit://session/` link a work
 tool's answer and every work update carry, with the bot's profile (see Links
 in messages) · an
@@ -1944,10 +1947,11 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - The app's handling of an approval in a hidden workstream session is unchecked: the request goes to the user from that session, and nothing in the app opens it from the Bot Chat yet.
 - The Notifications entry gains a line for workstream turns' quiet pushes once this reaches main.
 - The first session Hermes builds on a secondary profile after the dashboard starts can come up without the work tools; the upstream test takes it with a warm-up session (2026-10-31 canary).
+- For Eric to confirm: workers report lasting facts for the coordinator to keep with `work_note`, rather than writing Hermes memory themselves as design C.11 had it, so one path keeps the notes (notifier #491).
 - The workstreams' own approval mode in Edit Bot (M3) isn't built; until then a workstream follows the bot's Hermes approval mode as any chat does.
 - The plugin's version is bumped when the branch merges to main.
 
-**Checked:** 2026-11-01, #1599 (notifier #490, C.11 rulings).
+**Checked:** 2026-11-01, #1602 (notifier #491).
 
 ## Composer Return key
 
