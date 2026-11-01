@@ -290,6 +290,8 @@ struct ModelPickerView: View {
     /// Whether the search field has had focus since the sheet opened, so
     /// the focus retry never pulls it back from a user who moved on.
     @State private var searchWasFocused = false
+    /// The Add a provider sheet is up; the models are read again when it closes.
+    @State private var addingProvider = false
 
     var body: some View {
         NavigationStack {
@@ -309,12 +311,14 @@ struct ModelPickerView: View {
                                     // The matches lead; reasoning stays
                                     // below them, still at hand.
                                     searchResultsSection
+                                    addProviderRow
                                     reasoningSection
                                 } else {
                                     // Reasoning changes most often and the model
                                     // list can be long, so reasoning comes first.
                                     reasoningSection
                                     modelSection
+                                    addProviderRow
                                 }
                                 runSettingsSection
                             }
@@ -357,6 +361,17 @@ struct ModelPickerView: View {
             }
         }
         .preferredColorScheme(appState.themePreference.colorScheme)
+        .sheet(isPresented: $addingProvider, onDismiss: { Task { await loadModels() } }) {
+            if let bridge = appState.dashboardTicketBridge {
+                AddProviderSheetHost(
+                    bridge: bridge,
+                    profile: appState.conversationIdentityProfile,
+                    answers: appState.screenAnswers(profile: appState.conversationIdentityProfile),
+                    profiles: { appState.profiles }
+                )
+                .environmentObject(appState)
+            }
+        }
         .onAppear {
             // Seeded here, not after the catalog loads, so a failed catalog
             // fetch still shows the real level.
@@ -563,6 +578,27 @@ struct ModelPickerView: View {
             }
 
             modelStatusRows
+        }
+    }
+
+    /// A model missing from the list may need its provider connected first.
+    @ViewBuilder
+    private var addProviderRow: some View {
+        if appState.dashboardTicketBridge != nil {
+            Button {
+                searchFocused = false
+                addingProvider = true
+            } label: {
+                Label(AppLocalization.string("Add a provider"), systemImage: "plus")
+                    .scaledFont(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.conduitAccent)
+            .background(rowFoundation, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityIdentifier("modelPicker.addProvider")
         }
     }
 
