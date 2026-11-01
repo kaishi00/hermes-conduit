@@ -224,7 +224,8 @@ extension AppState {
     /// Continue or Check first. No Bot Chat turn; the coordinator sees it
     /// in its next note. True when the plugin did it.
     @discardableResult
-    func actOnWorkstream(_ item: BotWorkItem, profile: String, action: BotWorkItem.Action, text: String? = nil) async -> Bool {
+    func actOnWorkstream(_ item: BotWorkItem, profile: String, action: BotWorkItem.Action, text: String? = nil,
+                         requestID: String? = nil) async -> Bool {
         guard botWork.begin(item.ref, profile: profile) else { return false }
         defer { botWork.end(item.ref, profile: profile) }
         botWork.setRefusal(nil, profile: profile)
@@ -232,7 +233,8 @@ extension AppState {
         botWork.noteAction(profile)
         let mark = botWork.mark(profile)
         do {
-            let updated = try await botWorkClient(profile: profile).act(ref: item.ref, action: action, text: text)
+            let updated = try await botWorkClient(profile: profile).act(ref: item.ref, action: action, text: text,
+                                                                         requestID: requestID)
             // After a server change the row isn't this server's.
             guard botWork.mark(profile).epoch == mark.epoch else { return false }
             botWork.noteAction(profile)
@@ -262,66 +264,36 @@ extension AppState {
         return false
     }
 
-    /// What a workstream that needs the user is asking to do: its approvals
-    /// waiting in Hermes, read as a job's are. Nil when they can't be read
-    /// (its chat answers them as before).
-    func workstreamApprovals(_ item: BotWorkItem, profile: String) async -> [ApprovalActivity]? {
-        guard item.kind == .workstream, !item.sessionID.isEmpty, isConnected else { return nil }
-        do {
-            let client = try await clientForVoiceRequest()
-            return try await client.pendingApprovals(sessionId: item.sessionID, profile: profile)
-                .filter { $0.status == .pending }
-        } catch {
-            return nil
-        }
-    }
-
-    /// Approve once or deny a workstream's approval from the Work panel, as
-    /// its chat's card would; the chat still offers it too. Only an
-    /// approval Hermes names by its request: one without would be answered
-    /// by the session's queue, which may by then ask something else, so
-    /// its chat answers it. When the workstream's chat is open, its card
-    /// answers it, so the card shows the answer. True when Hermes took it.
+    /// Approve once or deny the approval a workstream's "Needs you" card
+    /// shows, as its chat's card would; the chat still offers it too. The
+    /// plugin answers it by its request id, in the process the workstream
+    /// runs in (Hermes answers a session's approvals only there). When the
+    /// workstream's chat is open with that card, its card answers it, so the
+    /// card shows the answer. True when Hermes took it.
     @discardableResult
-    func answerWorkstreamApproval(_ approval: ApprovalActivity, item: BotWorkItem, profile: String,
-                                  choice: String) async -> Bool {
-        guard let requestID = approval.requestId else { return false }
-        guard botWork.begin(item.ref, profile: profile) else { return false }
-        defer { botWork.end(item.ref, profile: profile) }
-        botWork.setRefusal(nil, profile: profile)
-        botWork.noteAction(profile)
-        let mark = botWork.mark(profile)
-        var took = false
-        var reached = true
+    func answerWorkstreamApproval(_ approval: BotWorkItem.Approval, item: BotWorkItem, profile: String,
+                                  approve: Bool) async -> Bool {
         if let message = messages.first(where: { message in
             guard let shown = message.approval, shown.status == .pending || shown.status == .error else { return false }
-            return shown.requestId == requestID
+            return shown.requestId == approval.requestID
         }) {
-            await respondToApproval(messageId: message.id, choice: choice)
+            guard botWork.begin(item.ref, profile: profile) else { return false }
+            defer { botWork.end(item.ref, profile: profile) }
+            botWork.setRefusal(nil, profile: profile)
+            botWork.noteAction(profile)
+            await respondToApproval(messageId: message.id, choice: approve ? "once" : "deny")
             let status = messages.first { $0.id == message.id }?.approval?.status
-            took = status == .approved || status == .rejected
-            reached = status != .error
-        } else {
-            do {
-                let client = try await clientForVoiceRequest()
-                took = try await client.respondToApproval(sessionId: approval.sessionId, requestId: requestID,
-                                                          choice: choice, profile: profile)
-            } catch {
-                reached = false
+            let took = status == .approved || status == .rejected
+            if took { Haptics.success() } else {
+                Haptics.warning()
+                botWork.setRefusal(AppLocalization.string("\(item.ref) isn't waiting on that any more."),
+                                   profile: profile, ref: item.ref)
             }
+            Task { await refreshBotWork(profile: profile, afterAction: true) }
+            return took
         }
-        // After a server change the refusal isn't this server's.
-        guard botWork.mark(profile).epoch == mark.epoch else { return took }
-        if !reached {
-            botWork.setRefusal(AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."),
-                               profile: profile, ref: item.ref)
-        } else if !took {
-            botWork.setRefusal(AppLocalization.string("\(item.ref) isn't waiting on that any more."),
-                               profile: profile, ref: item.ref)
-        }
-        if took { Haptics.success() } else { Haptics.warning() }
-        Task { await refreshBotWork(profile: profile, afterAction: true) }
-        return took
+        return await actOnWorkstream(item, profile: profile, action: approve ? .approve : .deny,
+                                     requestID: approval.requestID)
     }
 
     /// The bot's Resolved list: its first page, or the next one (`more`).
