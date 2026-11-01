@@ -44,6 +44,7 @@ extension View {
 /// Under a Bot Chat's top bar while the bot has work.
 struct BotWorkStrip: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var work: BotWorkStore
     let profile: String
     let isPanelOpen: Bool
@@ -64,7 +65,7 @@ struct BotWorkStrip: View {
                         Text(text)
                             .scaledFont(.subheadline.weight(.semibold))
                             .foregroundStyle(Color.primary)
-                            .lineLimit(1)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                         Spacer(minLength: 4)
                         Image(systemName: isPanelOpen ? "chevron.up" : "chevron.down")
                             .scaledFont(.caption.weight(.bold))
@@ -191,6 +192,7 @@ private struct BotWorkRow: View {
     let isActing: Bool
     @Binding var expanded: Bool
     @Binding var reply: String
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var tint: Color {
         switch item.status {
@@ -283,7 +285,10 @@ private struct BotWorkRow: View {
 
     @ViewBuilder private var actions: some View {
         if item.kind == .workstream {
-            HStack(spacing: 8) {
+            // Stacked at accessibility Text Sizes, as the workstream bar is.
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(spacing: 8))
+            layout {
                 if !item.sessionID.isEmpty {
                     actionButton(AppLocalization.string("Open chat"), symbol: "bubble.left.and.bubble.right") {
                         appState.openWorkstream(item, profile: profile)
@@ -341,7 +346,7 @@ private struct BotWorkRow: View {
         } label: {
             Label(title, systemImage: symbol)
                 .scaledFont(.caption.weight(.semibold))
-                .lineLimit(1)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)

@@ -18,6 +18,19 @@ final class BotWorkStore: ObservableObject {
     private(set) var workstreamSessionIDs: Set<String> = []
     /// Bots whose list is being read, so two views showing it share one read.
     private var reading: Set<String> = []
+    /// Bumped by a server change (every bot) and by an action (its bot), so
+    /// a list read before either never lands over what came after it.
+    private var epoch = 0
+    private var actions: [String: Int] = [:]
+
+    struct ReadMark: Equatable {
+        let epoch: Int
+        let actions: Int
+    }
+
+    func mark(_ profile: String) -> ReadMark { ReadMark(epoch: epoch, actions: actions[profile, default: 0]) }
+    func isCurrent(_ mark: ReadMark, profile: String) -> Bool { mark == self.mark(profile) }
+    func noteAction(_ profile: String) { actions[profile, default: 0] += 1 }
 
     func snapshot(_ profile: String) -> BotWorkSnapshot? { snapshots[profile] }
 
@@ -36,6 +49,7 @@ final class BotWorkStore: ObservableObject {
         refusals = [:]
         acting = []
         reading = []
+        epoch += 1
     }
 
     func refusal(_ profile: String) -> String? { refusals[profile] }
@@ -113,8 +127,13 @@ extension AppState {
         }
         guard isConnected, botWork.beginReading(profile) else { return }
         defer { botWork.endReading(profile) }
+        let mark = botWork.mark(profile)
         do {
-            botWork.set(try await client.list(keptIn: answers))
+            let listed = try await client.list(keptIn: answers)
+            // Read before a server change or an action on this bot: the
+            // next read has what came after.
+            guard botWork.isCurrent(mark, profile: profile) else { return }
+            botWork.set(listed)
         } catch {
             // Kept as it was; the next refresh asks again.
         }
@@ -128,8 +147,15 @@ extension AppState {
         guard botWork.begin(item.ref, profile: profile) else { return false }
         defer { botWork.end(item.ref, profile: profile) }
         botWork.setRefusal(nil, profile: profile)
+        // A list read while this is on its way may predate it: it's dropped.
+        botWork.noteAction(profile)
+        let mark = botWork.mark(profile)
         do {
-            if let updated = try await botWorkClient(profile: profile).act(ref: item.ref, action: action, text: text) {
+            let updated = try await botWorkClient(profile: profile).act(ref: item.ref, action: action, text: text)
+            // After a server change the row isn't this server's.
+            guard botWork.mark(profile).epoch == mark.epoch else { return false }
+            botWork.noteAction(profile)
+            if let updated {
                 botWork.replace(updated, profile: profile)
             }
             Haptics.success()

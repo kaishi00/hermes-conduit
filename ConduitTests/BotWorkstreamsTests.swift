@@ -95,6 +95,17 @@ extension BotModeTests {
         XCTAssertNotNil(store.refusal("furina"))
         XCTAssertNil(store.refusal("nahida"))
 
+        let mark = store.mark("furina")
+        store.noteAction("nahida")
+        XCTAssertTrue(store.isCurrent(mark, profile: "furina"))  // another bot's action
+        store.noteAction("furina")
+        XCTAssertFalse(store.isCurrent(mark, profile: "furina"))  // read before this bot's action
+        let beforeSwitch = store.mark("nahida")
+        store.clear()
+        XCTAssertFalse(store.isCurrent(beforeSwitch, profile: "nahida"))  // read before a server change
+        store.set(try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina")))
+        store.setRefusal("W1 can't continue while it's running.", profile: "furina")
+
         XCTAssertTrue(store.beginReading("furina"))
         XCTAssertFalse(store.beginReading("furina"))  // the panel shares the strip's read
         store.endReading("furina")
