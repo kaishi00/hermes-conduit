@@ -643,6 +643,22 @@ final class AppState: ObservableObject {
     /// probe the gateway doesn't answer (#1624).
     private var quietReconnectFailure: Error?
 
+    /// As when the socket fails: the first retries run quietly (a
+    /// resume's first request often fails before the network is back). The
+    /// banner and the classified failure, which offers Repair, wait until
+    /// they have failed too, when the status already says the dashboard
+    /// looks down (#1624).
+    private func retryQuietlyAfterFailedRenewal(_ error: Error) {
+        isConnected = false
+        isConnecting = false
+        turnState = .reconnecting
+        quietReconnectFailure = error
+        if reconnectAttempts >= Self.quietReconnectAttempts {
+            surfaceQuietReconnectFailure()
+        }
+        scheduleReconnectAfterFailedSync()
+    }
+
     private func surfaceQuietReconnectFailure() {
         guard let error = quietReconnectFailure else { return }
         quietReconnectFailure = nil
@@ -19039,6 +19055,8 @@ final class AppState: ObservableObject {
                   activeDashboardID == renewalDashboardID else { return }
             connection = HermesConnection(baseUrl: savedConnection.baseUrl, ticket: ticket)
             self.connection = connection
+            // Only the latest step's failure may surface later.
+            quietReconnectFailure = nil
             if let dashboardID = renewalDashboardID {
                 KeychainHelper.saveConnection(connection, dashboardID: dashboardID)
             }
@@ -19086,6 +19104,13 @@ final class AppState: ObservableObject {
                         return
                     } catch {
                         guard refreshTransportContinuation() else { return }
+                        // A re-auth the network cut off (a slow link just
+                        // after a resume) says nothing about the sign-in:
+                        // retry quietly, as a failed ticket does (#1624).
+                        if DictationClipStore.isTransient(error) {
+                            retryQuietlyAfterFailedRenewal(error)
+                            return
+                        }
                         // The silent re-auth failure (429 throttle, 401
                         // rejection, 503 outage…) is the most diagnostic
                         // explanation for the forced sign-in; carry it to the
@@ -19111,19 +19136,7 @@ final class AppState: ObservableObject {
                 )
             } else {
                 guard refreshTransportContinuation() else { return }
-                isConnected = false
-                isConnecting = false
-                turnState = .reconnecting
-                // As when the socket fails: the first retries run quietly
-                // (a resume's first request often fails before the network
-                // is back). The banner and the classified failure, which
-                // offers Repair, wait until they have failed too, when the
-                // status already says the dashboard looks down (#1624).
-                quietReconnectFailure = error
-                if reconnectAttempts >= Self.quietReconnectAttempts {
-                    surfaceQuietReconnectFailure()
-                }
-                scheduleReconnectAfterFailedSync()
+                retryQuietlyAfterFailedRenewal(error)
             }
             return
         }
