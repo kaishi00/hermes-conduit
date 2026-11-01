@@ -219,6 +219,26 @@ extension BotModeTests {
         XCTAssertFalse(appState.botWork.isActing("W1", profile: "furina"))
     }
 
+    /// The panel answers only an approval Hermes names by its request: one
+    /// without would go to the session's queue, which its chat answers.
+    @MainActor
+    func testThePanelLeavesARequestlessApprovalToItsChat() async throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
+        appState.botWork.set(snapshot)
+        let item = try XCTUnwrap(snapshot.items.first { $0.ref == "W1" })
+        let approval = ApprovalActivity(sessionId: item.sessionID, requestId: nil, command: "rm -rf build",
+                                        description: "Delete the build folder", choices: nil, allowPermanent: false,
+                                        smartDenied: false, status: .pending, choice: nil, error: nil)
+        let took = await appState.answerWorkstreamApproval(approval, item: item, profile: "furina", choice: "once")
+        XCTAssertFalse(took)
+        XCTAssertNil(appState.botWork.refusal("furina"))  // nothing was sent
+        XCTAssertFalse(appState.botWork.isActing("W1", profile: "furina"))
+    }
+
     /// A read asked for after an action, while one was under way, makes
     /// that read go again once, and only once.
     @MainActor
@@ -255,8 +275,10 @@ extension BotModeTests {
         XCTAssertFalse(store.isActing("W1", profile: "furina"))
         XCTAssertTrue(store.isActing("W1", profile: "nahida"))
 
-        store.setRefusal("W1 can't continue while it's running.", profile: "furina")
-        XCTAssertNotNil(store.refusal("furina"))
+        store.setRefusal("W1 can't continue while it's running.", profile: "furina", ref: "W1")
+        XCTAssertNotNil(store.refusal("furina"))  // the panel shows it
+        XCTAssertNotNil(store.refusal("furina", ref: "W1"))  // and W1's bar
+        XCTAssertNil(store.refusal("furina", ref: "W2"))  // never W2's
         XCTAssertNil(store.refusal("nahida"))
 
         let mark = store.mark("furina")

@@ -18,7 +18,12 @@ final class BotWorkStore: ObservableObject {
     var onWorkstreamsChanged: (@MainActor () -> Void)?
     /// What the last action on each bot's work said when it did nothing
     /// ("W3 can't continue while it's running"), for its panel to show.
-    @Published private(set) var refusals: [String: String] = [:]
+    /// The last refusal per bot, with the workstream it was for.
+    struct Refusal: Equatable {
+        let ref: String?
+        let text: String
+    }
+    @Published private(set) var refusals: [String: Refusal] = [:]
     /// Each bot's Resolved list as far as it was read, while its panel
     /// shows it.
     @Published private(set) var resolvedLists: [String: ResolvedList] = [:]
@@ -91,11 +96,18 @@ final class BotWorkStore: ObservableObject {
         epoch += 1
     }
 
-    func refusal(_ profile: String) -> String? { refusals[profile] }
+    /// A bot's refusal for the panel; with `ref`, only one for that
+    /// workstream, so a late refusal for W1 never shows on W2's bar.
+    func refusal(_ profile: String, ref: String? = nil) -> String? {
+        guard let refusal = refusals[profile] else { return nil }
+        if let ref, refusal.ref != ref { return nil }
+        return refusal.text
+    }
 
-    func setRefusal(_ text: String?, profile: String) {
-        guard refusals[profile] != text else { return }
-        refusals[profile] = text
+    func setRefusal(_ text: String?, profile: String, ref: String? = nil) {
+        let refusal = text.map { Refusal(ref: ref, text: $0) }
+        guard refusals[profile] != refusal else { return }
+        refusals[profile] = refusal
     }
 
     static func actingKey(profile: String, ref: String) -> String { "\(profile)\u{1F}\(ref)" }
@@ -217,9 +229,10 @@ extension AppState {
             // After a server change the refusal isn't this server's either.
             guard botWork.mark(profile).epoch == mark.epoch else { return false }
             if case DashboardTicketBridgeError.http(_, let detail) = error, !detail.isEmpty {
-                botWork.setRefusal(detail, profile: profile)
+                botWork.setRefusal(detail, profile: profile, ref: item.ref)
             } else {
-                botWork.setRefusal(AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."), profile: profile)
+                botWork.setRefusal(AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."),
+                                   profile: profile, ref: item.ref)
             }
         }
         Haptics.warning()
@@ -243,25 +256,47 @@ extension AppState {
     }
 
     /// Approve once or deny a workstream's approval from the Work panel, as
-    /// its chat's card would; the chat still offers it too. True when Hermes
-    /// took the answer.
+    /// its chat's card would; the chat still offers it too. Only an
+    /// approval Hermes names by its request: one without would be answered
+    /// by the session's queue, which may by then ask something else, so
+    /// its chat answers it. When the workstream's chat is open, its card
+    /// answers it, so the card shows the answer. True when Hermes took it.
     @discardableResult
     func answerWorkstreamApproval(_ approval: ApprovalActivity, item: BotWorkItem, profile: String,
                                   choice: String) async -> Bool {
+        guard let requestID = approval.requestId else { return false }
         guard botWork.begin(item.ref, profile: profile) else { return false }
         defer { botWork.end(item.ref, profile: profile) }
         botWork.setRefusal(nil, profile: profile)
         botWork.noteAction(profile)
+        let mark = botWork.mark(profile)
         var took = false
-        do {
-            let client = try await clientForVoiceRequest()
-            took = try await client.respondToApproval(sessionId: approval.sessionId, requestId: approval.requestId,
-                                                      choice: choice, profile: profile)
-            if !took {
-                botWork.setRefusal(AppLocalization.string("\(item.ref) isn't waiting on that any more."), profile: profile)
+        var reached = true
+        if let message = messages.first(where: { message in
+            guard let shown = message.approval, shown.status == .pending || shown.status == .error else { return false }
+            return shown.requestId == requestID
+        }) {
+            await respondToApproval(messageId: message.id, choice: choice)
+            let status = messages.first { $0.id == message.id }?.approval?.status
+            took = status == .approved || status == .rejected
+            reached = status != .error
+        } else {
+            do {
+                let client = try await clientForVoiceRequest()
+                took = try await client.respondToApproval(sessionId: approval.sessionId, requestId: requestID,
+                                                          choice: choice, profile: profile)
+            } catch {
+                reached = false
             }
-        } catch {
-            botWork.setRefusal(AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."), profile: profile)
+        }
+        // After a server change the refusal isn't this server's.
+        guard botWork.mark(profile).epoch == mark.epoch else { return took }
+        if !reached {
+            botWork.setRefusal(AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."),
+                               profile: profile, ref: item.ref)
+        } else if !took {
+            botWork.setRefusal(AppLocalization.string("\(item.ref) isn't waiting on that any more."),
+                               profile: profile, ref: item.ref)
         }
         if took { Haptics.success() } else { Haptics.warning() }
         Task { await refreshBotWork(profile: profile, afterAction: true) }
@@ -270,8 +305,16 @@ extension AppState {
 
     /// The bot's Resolved list: its first page, or the next one (`more`).
     func loadResolvedWork(profile: String, more: Bool = false) async {
-        guard servesBotWorkstreams, isConnected else { return }
+        guard servesBotWorkstreams else { return }
         var list = botWork.resolvedList(profile) ?? BotWorkStore.ResolvedList()
+        guard isConnected else {
+            // Offline: say so, instead of a spinner nothing will end.
+            if !list.isLoading, !list.failed {
+                list.failed = true
+                botWork.setResolvedList(list, profile: profile)
+            }
+            return
+        }
         guard !list.isLoading else { return }
         let before = more ? list.items.last?.closedAt : nil
         list.isLoading = true

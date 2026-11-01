@@ -2049,14 +2049,14 @@ screens (not built)
 - An ask from another bot reaches the Bot Chat as a hidden turn, so the asked bot's transcript shows no "Furina asks" card; the ask is listed in its Work panel instead.
 - Search and All profiles leave out only the workstreams of bots whose work the app has read (opened, or kept from last time; one read later leaves the lists already shown at once); Hermes keeps them hidden from the Chats list itself.
 - The Work panel reads again every 5 seconds while work runs and every 20 otherwise, for as long as a bot's Bot Chat (its title line shown or not, so new work shows), its panel or a workstream's bar is open, once for a bot with workstreams off, and up to four times 3 seconds apart for a bot's chat its list doesn't name; there's no push for a change yet.
-- A workstream's approval is read and answered from the Work panel the way a voice job's is (`approval.pending` and `approval.respond` with the workstream's chat id); not yet tried on a device. The Bot Chat itself never answers it.
+- A workstream's approval is read and answered from the Work panel the way a voice job's is (`approval.pending` and `approval.respond` with the workstream's chat id, through the chat's card when that chat is open); not yet tried on a device. Only an approval Hermes names by its request shows there; one without (an older Hermes) is answered in its chat, which checks the session's queue first. The Bot Chat itself never answers it.
 - The Notifications entry gains a line for workstream turns' quiet pushes once this reaches main.
 - The first session Hermes builds on a secondary profile after the dashboard starts can come up without the work tools; the upstream test takes it with a warm-up session (2026-10-31 canary).
 - The workstreams' own approval mode in Edit Bot (M3) isn't built; until then a workstream follows the bot's Hermes approval mode as any chat does.
 - The plugin's version is bumped when the branch merges to main.
 - Two journal edges from M0 that recovery leans on (notifier #495's review): a step that starts while a compacted workstream's lineage is still unsettled isn't journaled or noted as missed, and a step's end with an unknown call id closes the oldest open step of that tool by name.
 
-**Checked:** 2026-11-01, #1629 (notifier #503; the UI pass: status under the title, the panel's cards and sections, pin, resolve and reopen with the Resolved list, a workstream's title, brief card and bar, the Started card's status).
+**Checked:** 2026-11-01, #1629 (notifier #503; the UI pass: status under the title, the panel's cards and sections, pin, resolve and reopen with the Resolved list, a workstream's title, brief card and bar, the Started card's status, approvals on the card).
 
 ## Composer Return key
 

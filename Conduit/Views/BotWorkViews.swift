@@ -813,7 +813,7 @@ struct WorkstreamBar: View {
     var body: some View {
         // A stack, not a Group, so the read runs while nothing shows.
         VStack(alignment: .leading, spacing: 0) {
-            let refusal = work.refusal(profile)
+            let refusal = work.refusal(profile, ref: item.ref)
             if !controls.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     if !controls.isEmpty {
@@ -1082,7 +1082,9 @@ private struct WorkstreamApprovalBox: View {
             }
         }
         .task(id: "\(profile)\u{1F}\(item.ref)\u{1F}\(item.updatedAt.timeIntervalSince1970)\u{1F}\(appState.isConnected)") {
-            approval = await appState.workstreamApprovals(item, profile: profile)?.first
+            // Only one Hermes names by its request: the panel never
+            // answers the session's queue, its chat does.
+            approval = await appState.workstreamApprovals(item, profile: profile)?.first { $0.requestId != nil }
         }
     }
 
