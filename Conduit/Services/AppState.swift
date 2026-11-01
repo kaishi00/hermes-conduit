@@ -19099,13 +19099,13 @@ final class AppState: ObservableObject {
                 isConnected = false
                 isConnecting = false
                 turnState = .reconnecting
-                lastConnectionFailure = ConnectionFailureClassifier.classify(error)
                 // As when the socket fails: the first retries run quietly
                 // (a resume's first request often fails before the network
-                // is back), and the banner waits until they have failed too,
-                // when the status already says the dashboard looks down.
-                // Repair still reads the classification above (#1624).
+                // is back). The banner and the classified failure, which
+                // offers Repair, wait until they have failed too, when the
+                // status already says the dashboard looks down (#1624).
                 if reconnectAttempts >= Self.quietReconnectAttempts {
+                    lastConnectionFailure = ConnectionFailureClassifier.classify(error)
                     errorMessage = AppLocalization.string("Failed to refresh the dashboard session: \(UserFacingError.message(for: error))")
                 }
                 scheduleReconnectAfterFailedSync()

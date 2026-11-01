@@ -511,11 +511,13 @@ private struct V2ConversationMenu: View {
     let onChooseRoomPicture: (GroupRoomPictureRequest) -> Void
     let onArtifacts: () -> Void
 
-    /// The dot stays calm while a reconnect back in the app is still kept
-    /// quiet, as the line under the title does; the menu's own words say
-    /// what is happening to anyone who opens it (#1624).
+    /// The dot stays a neutral grey while a reconnect back in the app is
+    /// still kept quiet, as the line under the title does: calm, without
+    /// claiming Connected. The menu's own words say what is happening to
+    /// anyone who opens it (#1624).
     private var statusColor: Color {
-        if appState.isConnected || appState.hidesBriefReconnect { return .green }
+        if appState.isConnected { return .green }
+        if appState.hidesBriefReconnect { return .secondary }
         return appState.isRecoveringConnection ? .orange : .red
     }
 

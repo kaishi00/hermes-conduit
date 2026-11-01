@@ -4950,16 +4950,19 @@ final class AppStateChatResumeTests: XCTestCase {
 
         await harness.appState.reconnectForRetry(purpose: .automaticReturn)
         XCTAssertNil(harness.appState.errorMessage)
-        XCTAssertEqual(harness.appState.lastConnectionFailure, ConnectionFailureClassifier.classify(URLError(.networkConnectionLost)),
-                       "Repair still knows what failed")
+        XCTAssertFalse(harness.appState.showsConnectionRepair, "No Repair while it's quiet")
         XCTAssertEqual(scheduler.scheduledCount, 1, "It retries")
 
         for retry in 1..<AppState.quietReconnectAttempts {
             await scheduler.runNew()
             XCTAssertNil(harness.appState.errorMessage, "Retry \(retry) fails quietly")
+            XCTAssertFalse(harness.appState.showsConnectionRepair, "Retry \(retry) offers no Repair")
         }
         await scheduler.runNew()
         XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to refresh the dashboard session") == true)
+        XCTAssertEqual(harness.appState.lastConnectionFailure, ConnectionFailureClassifier.classify(URLError(.networkConnectionLost)),
+                       "Repair routes from what failed")
+        XCTAssertTrue(harness.appState.showsConnectionRepair)
     }
 
     func testFailedColdAutomaticReconnectRetainsSavedSessionPurpose() async {
