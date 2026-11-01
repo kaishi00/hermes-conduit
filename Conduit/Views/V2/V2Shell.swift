@@ -496,7 +496,10 @@ struct V2Shell: View {
         func step() -> V2ReopenedConversation.RoomStep {
             launch.roomStep(
                 in: appState.shownGroupRooms,
-                listed: appState.groupRoomsListed || appState.groupChatPhase == .gatewayUnsupported,
+                // Only Hermes' whole list proves a room is gone; a partial
+                // page leaves it waiting.
+                listed: (appState.groupRoomsListed && appState.groupRoomsComplete)
+                    || appState.groupChatPhase == .gatewayUnsupported,
                 tab: selectedTab,
                 path: path(of: launch.tab),
                 roomOpen: appState.activeRoomSurface != nil

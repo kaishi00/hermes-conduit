@@ -11610,6 +11610,9 @@ final class AppState: ObservableObject {
     /// this dashboard (`shownGroupRooms`, #1533). Published so a room a
     /// launch waits on opens as soon as Hermes lists it (#1597).
     @Published private(set) var groupRoomsListed = false
+    /// The last `groups.list` answer was its last page: only then does a
+    /// room missing from `groupRooms` prove it's gone.
+    private(set) var groupRoomsComplete = false
     private var keptGroupRoomsMemo: (key: String, rooms: KeptGroupRooms?)?
     /// Hermes Desktop's group chats, read from its ui_meta projection on the
     /// `default` profile (refreshed with the bot roster). Read-only here:
@@ -11775,6 +11778,7 @@ final class AppState: ObservableObject {
         // Whether the gateway can make pictures is the outgoing one's answer.
         canGeneratePictures = false
         groupRoomsListed = false
+        groupRoomsComplete = false
         groupRooms = []
         desktopGroupChats = []
         groupRoomPictureData = [:]
@@ -12108,6 +12112,7 @@ final class AppState: ObservableObject {
                     self.groupRoomsListed = true
                 }
                 self.groupRooms = rooms.filter { !$0.isDisbanded }
+                self.groupRoomsComplete = nextOffset == nil
                 // Only a complete list proves a room is gone: a partial page
                 // (next_offset set) must not drop another room's retry key.
                 if nextOffset == nil {
