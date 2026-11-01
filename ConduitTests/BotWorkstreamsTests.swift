@@ -107,6 +107,38 @@ extension BotModeTests {
         XCTAssertEqual(back.resolvedCount, 4)
     }
 
+    /// A pin moves a row to Pinned; with only resolved work left the
+    /// title line still opens the panel; a reopen leaves the Resolved list.
+    @MainActor
+    func testPinnedAndResolvedWorkStayReachable() throws {
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
+        let pinned = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W2", "kind": "workstream", "status": "interrupted", "pinned": true,
+            "session_id": "20261101_w2", "manage": ["unpin", "resolve"],
+        ]))
+        let after = snapshot.replacing(pinned)
+        XCTAssertEqual(after.pinned.map(\.ref), ["W2"])
+        XCTAssertFalse(after.active.contains { $0.ref == "W2" })
+
+        let onlyResolved = try XCTUnwrap(BotWorkSnapshot(
+            response: ["ok": true, "policy": "strict", "work": [], "resolved_count": 2], profile: "furina"))
+        XCTAssertNotNil(onlyResolved.stripText)
+
+        let store = BotWorkStore()
+        let resolved = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W3", "kind": "workstream", "status": "done", "closed": true, "closed_at": 1_800_000_000.0,
+            "resolved_by": "bot", "session_id": "20261101_w3", "manage": ["reopen"],
+        ]))
+        XCTAssertFalse(resolved.needsYou)
+        store.setResolvedList(BotWorkStore.ResolvedList(items: [resolved]), profile: "furina")
+        XCTAssertEqual(store.workstream(forSession: ["20261101_w3"])?.item.ref, "W3")
+        let reopened = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W3", "kind": "workstream", "status": "done", "session_id": "20261101_w3", "manage": ["pin", "resolve"],
+        ]))
+        store.fileResolved(reopened, profile: "furina")
+        XCTAssertEqual(store.resolvedList("furina")?.items, [])
+    }
+
     func testAWorkstreamsBriefReadsAsItsTask() throws {
         let text = "You're working on a task for Hermes, who coordinates the user's work in their Bot Chat. "
             + "This chat is that workstream (W45: Disk).\n\nThe user's message that Hermes is answering now, as "

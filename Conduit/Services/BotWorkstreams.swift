@@ -102,7 +102,7 @@ struct BotWorkItem: Identifiable, Equatable {
 
     /// Waiting on the user: an approval or a question in its chat, or a
     /// restart that left it for them to decide.
-    var needsYou: Bool { kind == .workstream && (status == "needs_you" || status == "interrupted") }
+    var needsYou: Bool { kind == .workstream && !isClosed && (status == "needs_you" || status == "interrupted") }
 
     /// What it's doing now: its checklist's step in progress, else the tool
     /// step it's on.
@@ -251,7 +251,8 @@ struct BotWorkSnapshot: Equatable {
         if workingCount > 0 { parts.append(AppLocalization.string("\(workingCount) working")) }
         if needsYouCount > 0 { parts.append(AppLocalization.string("\(needsYouCount) needs you")) }
         if readyCount > 0 { parts.append(AppLocalization.string("\(readyCount) ready")) }
-        if parts.isEmpty, !items.isEmpty { return AppLocalization.string("Work") }
+        // Resolved work alone still opens the panel, for its Resolved list.
+        if parts.isEmpty, !items.isEmpty || resolvedCount > 0 { return AppLocalization.string("Work") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }

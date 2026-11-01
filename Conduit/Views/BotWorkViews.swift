@@ -120,6 +120,8 @@ struct BotWorkTitleLine: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                // Capped as the chat's other title lines are: the title
+                // bar has one line's room; the panel it opens scales fully.
                 .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                 .accessibilityLabel(text)
                 .accessibilityHint(AppLocalization.string("Shows this bot's work"))
@@ -162,6 +164,7 @@ struct WorkstreamTitleLine: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // Capped as the chat's other title lines are (one line's room).
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .accessibilityLabel(text)
         .accessibilityHint(AppLocalization.string("Back to \(botName)"))
@@ -230,7 +233,9 @@ struct BotWorkPanel: View {
                 manageButton(item, .unpin)
             }
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        // Resolve takes a tap after the swipe, so a long swipe never files
+        // work away by accident.
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if item.manage.contains(.resolve) {
                 manageButton(item, .resolve)
             } else if item.manage.contains(.reopen) {
@@ -394,7 +399,7 @@ struct BotWorkPanel: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 4, trailing: 16))
-                } else {
+                } else if snapshot.resolvedCount == 0 {
                     Text("No work yet")
                         .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
@@ -542,15 +547,15 @@ private struct BotWorkRow: View {
     /// The line under the title: what it's doing, else why it stopped,
     /// else where it stands.
     private var subtitle: String {
+        if item.isClosed {
+            return item.resolvedBy == "bot" ? AppLocalization.string("\(item.statusText) · resolved by the bot")
+                : AppLocalization.string("\(item.statusText) · resolved by you")
+        }
         if let doing = item.doing { return doing }
         if item.needsYou, !item.error.isEmpty {
             return AppLocalization.string("Needs you · \(item.error)")
         }
         if !item.error.isEmpty, item.status != "done" { return "\(item.statusText) · \(item.error)" }
-        if item.isClosed {
-            return item.resolvedBy == "bot" ? AppLocalization.string("\(item.statusText) · resolved by the bot")
-                : AppLocalization.string("\(item.statusText) · resolved by you")
-        }
         return item.statusText
     }
 
@@ -805,7 +810,7 @@ struct WorkstreamBar: View {
         // A stack, not a Group, so the read runs while nothing shows.
         VStack(alignment: .leading, spacing: 0) {
             let refusal = work.refusal(profile)
-            if !controls.isEmpty || refusal != nil {
+            if !controls.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     if !controls.isEmpty {
                         let layout = dynamicTypeSize.isAccessibilitySize
@@ -879,7 +884,9 @@ struct BotWorkHeader: View {
             // Its work shows under the title.
             EmptyView()
         } else if let workstream = appState.activeWorkstream {
+            // One bar per workstream: another's refusal never shows on it.
             WorkstreamBar(work: work, profile: workstream.profile, item: workstream.item)
+                .id("\(workstream.profile)\u{1F}\(workstream.item.ref)")
         } else if let id = appState.activeSessionId, !id.isEmpty,
                   appState.shownBotRoster.contains(where: { $0.name == appState.activeProfile }) {
             // A chat on a bot that its last list didn't name: a workstream
