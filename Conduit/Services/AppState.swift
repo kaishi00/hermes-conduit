@@ -642,6 +642,15 @@ final class AppState: ObservableObject {
     /// shown once they have failed, by the next ticket or by a readiness
     /// probe the gateway doesn't answer (#1624).
     private var quietReconnectFailure: Error?
+    /// A Reconnect someone asked for (the button, Settings, a gateway
+    /// restart) shows its failure at once, as before #1624: it is an
+    /// answer they are waiting for, not a resume.
+    private var surfacesRenewalFailureAtOnce = false
+    /// What a failure kept quiet would show, for a Siri launch that is
+    /// waiting on the connection: it fails at once on it, as before.
+    var quietReconnectFailureClass: ConnectionFailure? {
+        quietReconnectFailure.map { ConnectionFailureClassifier.classify($0) }
+    }
 
     /// As when the socket fails: the first retries run quietly (a
     /// resume's first request often fails before the network is back). The
@@ -653,7 +662,7 @@ final class AppState: ObservableObject {
         isConnecting = false
         turnState = .reconnecting
         quietReconnectFailure = error
-        if reconnectAttempts >= Self.quietReconnectAttempts {
+        if surfacesRenewalFailureAtOnce || reconnectAttempts >= Self.quietReconnectAttempts {
             surfaceQuietReconnectFailure()
         }
         scheduleReconnectAfterFailedSync()
@@ -18954,6 +18963,8 @@ final class AppState: ObservableObject {
             return
         }
         cancelChatResumeTransportRecovery()
+        surfacesRenewalFailureAtOnce = true
+        defer { surfacesRenewalFailureAtOnce = false }
         await executeReconnect(purpose: .preserveCurrent)
     }
 

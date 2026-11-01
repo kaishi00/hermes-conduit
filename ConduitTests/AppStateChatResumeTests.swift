@@ -4993,6 +4993,35 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(harness.appState.showsConnectionRepair)
     }
 
+    /// A tapped Reconnect is an answer someone is waiting for: its failed
+    /// ticket shows at once, as before #1624. A waiting Siri launch fails
+    /// at once on a quiet failure too.
+    func testTappedReconnectAndSiriSeeAFailedTicketAtOnce() async {
+        let scheduler = ControlledReconnectScheduler()
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                mintTicket: { _ in throw URLError(.networkConnectionLost) }
+            )
+        )
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        harness.appState.gatewayReadinessProbe = { _ in true }
+
+        await harness.appState.reconnectForRetry(purpose: .automaticReturn)
+        XCTAssertNil(harness.appState.errorMessage, "A resume stays quiet")
+        let siri = harness.appState.voiceLaunchConnectionSnapshot()
+        XCTAssertEqual(siri.phase, .stableFailure, "Siri doesn't wait out its budget")
+        XCTAssertEqual(siri.classifiedFailure, ConnectionFailureClassifier.classify(URLError(.networkConnectionLost)))
+
+        await harness.appState.reconnect()
+        XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to refresh the dashboard session") == true,
+                      "A tapped Reconnect shows its failure at once")
+        XCTAssertTrue(harness.appState.showsConnectionRepair)
+    }
+
     func testFailedColdAutomaticReconnectRetainsSavedSessionPurpose() async {
         let scheduler = ControlledReconnectScheduler()
         let reconnectSpy = ReconnectExecutionSpy()
