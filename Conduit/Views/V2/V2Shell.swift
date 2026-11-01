@@ -653,6 +653,11 @@ struct V2Shell: View {
             }
             .onChange(of: selectedTab) { _, tab in
                 visitedTabs.insert(tab)
+                // The reader left the tab a waiting room launch belongs to.
+                if let launch = roomToReopen, launch.tab != tab {
+                    roomToReopen = nil
+                    conversationOnLeave = conversationToReopen?.encoded ?? ""
+                }
                 // Only a tab the user picked clicks; a chat or link that
                 // switches tabs for them doesn't.
                 if programmaticTab == tab {
