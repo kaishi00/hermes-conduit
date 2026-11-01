@@ -534,6 +534,12 @@ struct V2Shell: View {
             roomToReopen = nil
             conversationOnLeave = conversationToReopen?.encoded ?? ""
         case .open(let room):
+            // A destination that came in while Hermes listed its rooms wins.
+            guard !appState.hasPendingExplicitNavigation else {
+                roomToReopen = nil
+                conversationOnLeave = conversationToReopen?.encoded ?? ""
+                return
+            }
             await appState.openGroupRoom(room)
             // Opened: its screen keeps the record from here. A failed or cut
             // short open stays kept, and tries again on the next connection.
