@@ -86,8 +86,10 @@ struct ProviderEntry: Identifiable, Equatable {
             // come ahead of a `.env` key once it reads it.
             guard let first = profileRows.first else {
                 // A pool of its own that holds only a sign-in: Hermes uses
-                // it, so no shared key is in use.
-                if profileSignIns > 0 { return saved ? .own : .none }
+                // it, so no shared key is in use, and no key of its own
+                // either ("Use the shared key" couldn't move it off the
+                // sign-in).
+                if profileSignIns > 0 { return .none }
                 return shared ? .shared : (saved ? .own : .none)
             }
             if sharedIDs.contains(first.id) { return .shared }
