@@ -25744,7 +25744,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ öğesini Kişiler'e ekle"
+            "value": "Kişiler'e %@ ekle"
           }
         },
         "zh-Hans": {
