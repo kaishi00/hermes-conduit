@@ -665,6 +665,13 @@ final class AppState: ObservableObject {
         isConnected = false
         isConnecting = false
         turnState = .reconnecting
+        noteQuietRenewalFailure(error)
+        scheduleReconnectAfterFailedSync()
+    }
+
+    /// Keeps a renewal's failure quiet, or shows it once the quiet retries
+    /// are spent.
+    private func noteQuietRenewalFailure(_ error: Error) {
         quietReconnectFailure = error
         quietRenewalFailures += 1
         // Quiet only on screen: off screen (CarPlay, a locked call, the
@@ -675,7 +682,6 @@ final class AppState: ObservableObject {
             || quietRenewalFailures > Self.quietReconnectAttempts {
             surfaceQuietReconnectFailure()
         }
-        scheduleReconnectAfterFailedSync()
     }
 
     /// Which silent re-auth failures retry quietly instead of asking to
@@ -13828,7 +13834,8 @@ final class AppState: ObservableObject {
         syncPurpose: ChatResumeSyncPurpose,
         cancelsResumeRestoration: Bool,
         automaticWorkToken existingAutomaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
-        automaticReconnectOperationID: UUID? = nil
+        automaticReconnectOperationID: UUID? = nil,
+        isRenewal: Bool = false
     ) async {
         if cancelsResumeRestoration {
             cancelChatResumeTransportRecovery()
@@ -14002,10 +14009,16 @@ final class AppState: ObservableObject {
             isConnecting = false
             isConnected = false
             turnState = .reconnecting
-            errorMessage = UserFacingError.message(for: error)
-            // The typed classification is retained for Repair Connection's
-            // seeding and routing; the raw error never reaches the UI.
-            lastConnectionFailure = ConnectionFailureClassifier.classify(error)
+            if isRenewal {
+                // A socket after a renewal's silent re-auth: quiet like the
+                // renewal itself (#1624).
+                noteQuietRenewalFailure(error)
+            } else {
+                errorMessage = UserFacingError.message(for: error)
+                // The typed classification is retained for Repair Connection's
+                // seeding and routing; the raw error never reaches the UI.
+                lastConnectionFailure = ConnectionFailureClassifier.classify(error)
+            }
             // Only an explicit dashboard 401/403 may return the user to the
             // sign-in screen. A transient gateway or WebKit startup failure
             // must retain the saved dashboard session and retry.
@@ -19138,7 +19151,8 @@ final class AppState: ObservableObject {
                             syncPurpose: continuationPurpose,
                             cancelsResumeRestoration: false,
                             automaticWorkToken: continuationAutomaticWorkToken,
-                            automaticReconnectOperationID: automaticOperationID
+                            automaticReconnectOperationID: automaticOperationID,
+                            isRenewal: true
                         )
                         guard refreshTransportContinuation() else { return }
                         return
