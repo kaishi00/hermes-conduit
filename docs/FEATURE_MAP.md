@@ -1960,7 +1960,7 @@ tool's answer and every work update carry, with the bot's profile (see Links
 in messages) · an
 approval in a workstream (marks it waiting on you and tells the Bot Chat) ·
 Bot mentions and teammate messages (`message_agent` refused in a coordinator
-in favour of `work_ask`) · asks between bots (`work_ask` and `work_reply`: an
+in favour of `work_ask`, and in a workstream) · asks between bots (`work_ask` and `work_reply`: an
 ask reaches the other bot's Bot Chat as a hidden, queued turn, and its answer
 goes into the asking workstream named in `for` or back to the asking Bot Chat
 as a work update; the digest lists open asks on both sides) · recovery after
@@ -1995,7 +1995,7 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - Asks between bots go coordinator to coordinator, only between the user's bots on one Hermes, and only to a bot whose workstreams are on. What one bot asks or answers reaches the other as data, never as the user's go-ahead, and each bot does the work with its own tools and approvals. An answer goes into the workstream named in `for` (queued, no extra Bot Chat turn), else to the asking Bot Chat; closing an ask unanswered tells the bot that asked (2026-11-01, notifier #493, design C.9).
 - After a restart a workstream is continued on its own only when its journal shows nothing that can change things in flight since its turn began (reads are an allow list; a `tool_call` counts by the tools it calls, and a step whose journal entry couldn't be written counts as one that changes things), only once until a turn of it ends, and only with the bot's `--after-restart continue` (the default; `ask` leaves it to the user). A step that can change things and was cut off is never re-run: the Bot Chat asks the user, with a Check first note that changes nothing. Hermes' own crash re-run is retired for workstreams, leaving a live sibling's marker alone (2026-11-01, notifier #495, design C.7). Starts and sends wait for the sweep to settle, and a stop lets a later restart continue the work again (2026-11-01, notifier #495's review).
 - A send the restart cut off that Hermes never stored is sent once more only into work recovery continued; into stopped or idle work it would start a turn nobody okayed, so the Bot Chat is told it may not have arrived instead (2026-11-01, notifier #495).
-- Only the Bot Chat asks: work_start and work_ask tell the coordinator to ask for a workstream with `for` rather than brief it to ask, and a workstream that tries is told to name the bot and the need in its report. An answer for a workstream a restart left waiting goes to the Bot Chat, not into the workstream (2026-11-01, notifier #497, from the .58 test).
+- Only the Bot Chat asks: work_start and work_ask tell the coordinator to ask for a workstream with `for` rather than brief it to ask, and a workstream that tries, with work_ask or Hermes' `message_agent`, is refused and told to name the bot and the need in its report. An answer for a workstream a restart left waiting goes to the Bot Chat, not into the workstream (2026-11-01, notifier #497, from the .58 test).
 - The loop guard: an ask never goes to a bot already waiting in its chain (a bot with an open ask from another can't ask that one back until it answers), a chain goes at most two bots deep, and one bot asks another at most 10 times an hour (2026-11-01, notifier #493).
 
 **Open gaps**
@@ -2006,7 +2006,6 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - For Eric to confirm: workers report lasting facts for the coordinator to keep with `work_note`, rather than writing Hermes memory themselves as design C.11 had it, so one path keeps the notes (notifier #491).
 - The workstreams' own approval mode in Edit Bot (M3) isn't built; until then a workstream follows the bot's Hermes approval mode as any chat does.
 - The plugin's version is bumped when the branch merges to main.
-- A workstream can still reach another bot with Hermes' `message_agent`, which is refused only in the Bot Chat, so it skips the asks' loop guard and limits (notifier #497's review). Refusing it in workstreams too is open.
 - Two journal edges from M0 that recovery leans on (notifier #495's review): a step that starts while a compacted workstream's lineage is still unsettled isn't journaled or noted as missed, and a step's end with an unknown call id closes the oldest open step of that tool by name.
 
 **Checked:** 2026-11-01, #1614 (notifier #497).
