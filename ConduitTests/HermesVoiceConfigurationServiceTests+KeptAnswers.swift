@@ -232,6 +232,76 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertTrue(picks.readFailed)
     }
 
+    /// A pick Hermes' price check asks about stays offered: Use It Anyway
+    /// writes it again with the user's yes, showing it meanwhile, and the
+    /// helper's slot goes with every write.
+    func testAPickThePriceCheckAsksAboutCanBeConfirmed() throws {
+        let chats = VoiceReplyModelSetting(task: "compression", provider: "auto", model: "", reasoningEffort: nil)
+        var picks = VoiceReplyModelPicks()
+        picks.hermesAnswered(chats, to: picks.readAsked())
+        XCTAssertNil(picks.confirmAsked(), "Nothing asked about yet")
+        picks.selection = VoiceJobModelSettingsSection.tag(provider: "openrouter", model: "big")
+        let pick = try XCTUnwrap(picks.writeAsked())
+        XCTAssertEqual(pick.task, "compression")
+        picks.writeEnded(pick, result: .needsConfirmation("big costs more."))
+        XCTAssertEqual(picks.refusal, "big costs more.")
+        XCTAssertEqual(picks.confirmable, pick)
+        XCTAssertEqual(picks.selection, VoiceReplyModelPicks.sameAsChats, "What Hermes holds until confirmed")
+
+        let confirmed = try XCTUnwrap(picks.confirmAsked())
+        XCTAssertEqual(confirmed, pick)
+        XCTAssertTrue(picks.writing)
+        XCTAssertNil(picks.refusal)
+        XCTAssertNil(picks.confirmable)
+        XCTAssertEqual(picks.selection, VoiceJobModelSettingsSection.tag(provider: "openrouter", model: "big"))
+        XCTAssertNil(picks.writeAsked(), "Showing it writes nothing more")
+        picks.writeEnded(confirmed, result: .saved)
+        XCTAssertEqual(picks.saved, pick)
+
+        // Another pick drops the offer.
+        picks.selection = VoiceReplyModelPicks.sameAsChats
+        let back = try XCTUnwrap(picks.writeAsked())
+        picks.writeEnded(back, result: .needsConfirmation("ask"))
+        picks.selection = VoiceJobModelSettingsSection.tag(provider: "openrouter", model: "other")
+        _ = picks.writeAsked()
+        XCTAssertNil(picks.confirmable)
+
+        let body = pick.assignmentBody(profile: "work", confirmed: true)
+        XCTAssertEqual(body["task"] as? String, "compression")
+        XCTAssertEqual(body["confirm_expensive_model"] as? Bool, true)
+        XCTAssertNil(pick.assignmentBody(profile: "work")["confirm_expensive_model"], "Hermes checks the price unless the user said yes")
+    }
+
+    /// Hermes' helper slots, as Models & providers lists them: built-ins
+    /// named by Conduit, plugin slots by their label, Pulse's left to
+    /// Settings > Pulse, a slot that follows another named after it.
+    func testHelperModelSlotsAreNamedAndPulsesIsLeftOut() {
+        let slots = HelperModelSlot.slots(in: ["tasks": [
+            ["task": "vision", "provider": "auto", "model": ""],
+            ["task": "title_generation", "provider": "openrouter", "model": "fast/titles", "reasoning_effort": "low"],
+            ["task": "brand_new_slot", "provider": "auto", "model": ""],
+            ["task": "pulse_memory", "provider": "auto", "model": "", "label": "Pulse memory", "plugin": "conduit_push"],
+            ["task": "conduit_predict", "provider": "auto", "model": "", "label": "Conduit predictions", "plugin": "conduit_push"],
+            ["task": "notes_digest", "provider": "auto", "model": "", "label": "Notes digest", "hint": "Digests notes.",
+             "plugin": "notes", "inherit_from": "compression"],
+            ["task": "compression", "provider": "auto", "model": ""],
+            ["task": ""],
+        ]])
+        XCTAssertEqual(slots.map(\.id), ["vision", "title_generation", "brand_new_slot", "conduit_predict", "notes_digest", "compression"])
+        XCTAssertEqual(slots[0].title, AppLocalization.string("Image reading"))
+        XCTAssertEqual(slots[0].value, AppLocalization.string("Same as chats"))
+        XCTAssertEqual(slots[1].value, "fast/titles")
+        XCTAssertEqual(slots[1].setting.reasoningEffort, "low")
+        XCTAssertEqual(slots[2].title, "Brand new slot", "a slot a newer Hermes added reads as its key")
+        XCTAssertEqual(slots[3].title, AppLocalization.string("Conduit predictions"))
+        XCTAssertEqual(slots[4].title, "Notes digest")
+        XCTAssertEqual(slots[4].caption, "Digests notes.")
+        let compaction = AppLocalization.string("Compaction")
+        XCTAssertEqual(slots[4].value, AppLocalization.string("Same as \(compaction)"))
+        XCTAssertEqual(slots[4].followTitle, AppLocalization.string("Same as \(compaction)"))
+        XCTAssertEqual(slots[5].followTitle, AppLocalization.string("Same as chats"))
+    }
+
     /// What a save wrote is what the page opens on next, as the other
     /// settings pages' saves are.
     func testAConfigSaveIsWhatThePageOpensOnNext() async {

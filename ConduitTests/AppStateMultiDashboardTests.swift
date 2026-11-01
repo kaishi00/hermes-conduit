@@ -1233,6 +1233,33 @@ extension AppStateMultiDashboardTests {
 
     /// Connected to Mac through a bridge whose requests the test answers;
     /// VPS is the dashboard switched to (authless, so nothing connects).
+    /// Helper models read the same kept slots as Voice replies, list
+    /// each slot but Pulse's, and a pick Hermes' price check asks about
+    /// comes back for the user to confirm, not as a refusal.
+    func testHelperModelsShareTheSlotsAndAskBeforeAnExpensivePick() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let load = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(1)
+        try await held.answer(["tasks": [
+            ["task": "title_generation", "provider": "auto", "model": ""],
+            ["task": "voice_chat", "provider": "openrouter", "model": "fast/model", "reasoning_effort": "none"],
+            ["task": "pulse_memory", "provider": "auto", "model": "", "label": "Pulse memory", "plugin": "conduit_push"],
+        ]])
+        let slots = try await load.value
+        XCTAssertEqual(slots.map(\.id), ["title_generation", "voice_chat"])
+        XCTAssertEqual(appState.keptHelperModels()?.map(\.id), ["title_generation", "voice_chat"])
+        XCTAssertEqual(appState.keptVoiceReplyModel()?.model, "fast/model", "Voice replies opens on the same read")
+        XCTAssertEqual(appState.keptHelperModel(task: "title_generation")?.followsChats, true)
+
+        let pick = VoiceReplyModelSetting(task: "title_generation", provider: "openrouter", model: "big/model", reasoningEffort: nil)
+        let save = Task { await appState.setHelperModel(pick, confirmed: false) }
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": false, "confirm_required": true, "confirm_message": "big/model costs $75 per million tokens."])
+        let result = await save.value
+        XCTAssertEqual(result, .needsConfirmation("big/model costs $75 per million tokens."))
+        XCTAssertEqual(held.sent.map(\.path), [AppState.KeptRoute.modelAuxiliary, "/api/model/set"])
+    }
+
     private func heldSwitchFixture() -> (appState: AppState, held: HeldDashboardRequests, vps: SavedDashboard) {
         let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
         let vps = dashboard("VPS", "https://vps-\(UUID().uuidString.lowercased()).invalid")
@@ -1998,8 +2025,8 @@ extension AppStateMultiDashboardTests {
         let save = Task { await appState.setVoiceReplyModel(fast) }
         try await held.waitForRequests(2)       // the save
         try await held.answer(at: 1)
-        let refusal = await save.value
-        XCTAssertNil(refusal)
+        let result = await save.value
+        XCTAssertEqual(result, .saved)
         try await held.waitForRequests(3)       // the read it asks for
         try await held.answer(["tasks": [["task": "voice_chat", "provider": "auto", "model": ""]]])
         _ = try await older.value

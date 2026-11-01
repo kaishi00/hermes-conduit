@@ -166,11 +166,11 @@ struct PredictiveSettingsPage: View {
             // Said once the host has answered; until then, nothing.
             if let status {
                 if let fast = status.fastModel {
-                    Text("Fast model on your host: \(fast).")
+                    Text("Fast model on your host: \(fast). Change it in Models & providers under Helper models.")
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Your host has no fast model set (auxiliary.conduit_predict), so the chat's own model answers.")
+                    Text("Your host has no fast model set, so the chat's own model answers. Pick one in Models & providers under Helper models, as Conduit predictions.")
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
