@@ -567,7 +567,8 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(signInOnly.state(onMainProfile: false), .none, "Hermes uses its own pool, not the shared key")
         var savedToo = signInOnly
         savedToo.savedVars = ["OPENROUTER_API_KEY"]
-        XCTAssertEqual(savedToo.state(onMainProfile: false), .none, "no Use the shared key: it couldn't move it off the sign-in")
+        XCTAssertEqual(savedToo.state(onMainProfile: false), .own, "its saved key stays its own, so it can be removed and saved over as its own")
+        XCTAssertEqual(savedToo.profileSignIns, 1, "the page offers Remove this profile's key, not Use the shared key")
         XCTAssertEqual(ProviderCatalog.entries(summary: ProviderCatalog.summary(ProviderCatalog.entries(
             env: env, accounts: nil, endpoints: nil, sharedPool: withSignIn, profilePool: ownSignIn, onMainProfile: false)))?
             .first { $0.id == "openrouter" }?.key?.state(onMainProfile: false), signInOnly.state(onMainProfile: false), "kept the same")

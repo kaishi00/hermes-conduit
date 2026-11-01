@@ -883,13 +883,13 @@ private struct ProviderKeyEditor: View {
                     Text(verbatim: AppLocalization.string("Conduit never shows a key, so you'd paste it again to use it.") + usageLine)
                 }
             }
-        } else if state == .own || state == .oldCopy, key.shared || keyRemovable, leavesItsOwnKey {
+        } else if state == .own || state == .oldCopy, goesToShared || keyRemovable, leavesItsOwnKey {
             // Back on the shared key the default model still runs; with no
             // shared key, removing this one would leave it none.
             Button {
-                if key.shared { run { try await service.useShared(entry) } } else { confirmingRemoveKey = true }
+                if goesToShared { run { try await service.useShared(entry) } } else { confirmingRemoveKey = true }
             } label: {
-                Text(key.shared ? AppLocalization.string("Use the shared key") : AppLocalization.string("Remove this profile's key"))
+                Text(goesToShared ? AppLocalization.string("Use the shared key") : AppLocalization.string("Remove this profile's key"))
             }
             .buttonStyle(.settings)
             .disabled(saving || !service.answered)
@@ -902,6 +902,10 @@ private struct ProviderKeyEditor: View {
             }
         }
     }
+
+    /// Removing this profile's key puts it on the shared one, unless its
+    /// own pool holds a sign-in, which Hermes keeps using.
+    private var goesToShared: Bool { key.shared && key.profileSignIns == 0 }
 
     /// Going back to the shared key changes what the profile uses: the row
     /// it uses first is one Conduit may remove, or there are no rows and a
