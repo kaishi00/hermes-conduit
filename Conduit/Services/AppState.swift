@@ -11607,8 +11607,9 @@ final class AppState: ObservableObject {
     @Published private(set) var groupRooms: [GroupRoom] = []
     /// `groups.list` has answered since the group state was last cleared:
     /// until then the Bots list shows the rooms kept from its last answer on
-    /// this dashboard (`shownGroupRooms`, #1533).
-    private(set) var groupRoomsListed = false
+    /// this dashboard (`shownGroupRooms`, #1533). Published so a room a
+    /// launch waits on opens as soon as Hermes lists it (#1597).
+    @Published private(set) var groupRoomsListed = false
     private var keptGroupRoomsMemo: (key: String, rooms: KeptGroupRooms?)?
     /// Hermes Desktop's group chats, read from its ui_meta projection on the
     /// `default` profile (refreshed with the bot roster). Read-only here:

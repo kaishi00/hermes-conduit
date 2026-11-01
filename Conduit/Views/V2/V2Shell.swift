@@ -617,7 +617,8 @@ struct V2Shell: View {
                 let value = kept?.encoded ?? ""
                 if conversationOnLeave != value { conversationOnLeave = value }
             }
-            .task(id: appState.isConnected) { await reopenRoomIfWaiting() }
+            // Again once Hermes lists its rooms, whichever screen asked.
+            .task(id: [appState.isConnected, appState.groupRoomsListed]) { await reopenRoomIfWaiting() }
             // A page tapped while a room waits takes the reader elsewhere too.
             .onChange(of: chatsPath) { giveUpRoomIfLeft() }
             .onChange(of: botsPath) { giveUpRoomIfLeft() }
