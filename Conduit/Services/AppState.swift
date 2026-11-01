@@ -30098,7 +30098,10 @@ final class AppState: ObservableObject {
                 // Only gateway-minted qids may address a question. A locally
                 // synthesized id (legacy scalar card) rides the request-level
                 // respond shape every gateway generation accepts.
-                questionId: question.isSyntheticID ? nil : question.id
+                questionId: question.isSyntheticID ? nil : question.id,
+                // The card is in the open chat: on the session authority its
+                // resume names a prompt this socket didn't see asked (#1618).
+                sessionId: activeSessionId
             )
             guard profile == activeProfile, self.client === client else { return nil }
             applyClarifyResponseOutcome(

@@ -1104,6 +1104,10 @@ final class HermesClient: ObservableObject {
     /// An open approval or clarify prompt's id → its session and the turn
     /// that asked, which the authority's answers name.
     private var authorityPrompts: [String: (sessionId: String, generation: Int)] = [:]
+    /// A prompt's session, kept across reconnects (the fences above are
+    /// not: a new socket reads them again), so an answer to a card shown
+    /// before a reconnect knows which chat to read its prompt from.
+    private var authorityPromptSessions: [String: String] = [:]
     private var closedIntentionally = false
     private var receiveTask: Task<Void, Never>?
     private var socketHasOpened = false
@@ -1357,6 +1361,7 @@ final class HermesClient: ObservableObject {
         executionGenerations.merge(predecessor.executionGenerations) { mine, _ in mine }
         sessionRevisions.merge(predecessor.sessionRevisions) { mine, _ in mine }
         authorityPrompts.merge(predecessor.authorityPrompts) { mine, _ in mine }
+        authorityPromptSessions.merge(predecessor.authorityPromptSessions) { mine, _ in mine }
         // Server requests still open on the socket come here, so a later
         // request.cancel still withdraws their cards.
         openServerRequestIDs.formUnion(predecessor.openServerRequestIDs)
@@ -2225,6 +2230,7 @@ final class HermesClient: ObservableObject {
               let generation = Self.exactIntValue(prompt["execution_generation"])
                 ?? executionGenerations[sessionId] else { return }
         authorityPrompts[id] = (sessionId: sessionId, generation: generation)
+        authorityPromptSessions[id] = sessionId
     }
 
     /// A snapshot (`session.create`, `session.resume`, `session.mutate`)
@@ -3299,7 +3305,8 @@ final class HermesClient: ObservableObject {
     func respondToClarification(
         requestId: String,
         answer: String,
-        questionId: String? = nil
+        questionId: String? = nil,
+        sessionId: String? = nil
     ) async throws -> ClarifyResponseOutcome {
         if isServerRequestID(requestId) {
             return try await respondToClarifyServerRequest(
@@ -3308,7 +3315,18 @@ final class HermesClient: ObservableObject {
                 questionId: questionId
             )
         }
-        if let prompt = authorityPrompts[requestId] {
+        var authorityPrompt = authorityPrompts[requestId]
+        if authorityPrompt == nil, speaksSessionAuthority,
+           let sessionId = sessionId ?? authorityPromptSessions[requestId], !sessionId.isEmpty {
+            // A card this socket never saw asked (shown before a reconnect):
+            // the chat's resume lists the prompts Hermes still waits on, with
+            // the turn that asked. One it no longer lists was answered or
+            // ended.
+            _ = try await resumeSessionObject(sessionId, omitMessages: true)
+            authorityPrompt = authorityPrompts[requestId]
+            if authorityPrompt == nil { return .expired }
+        }
+        if let prompt = authorityPrompt {
             // The authority asks one question per prompt and names the
             // turn that asked; its answer settles that prompt.
             let result = try await rpc("clarify.respond", params: [
@@ -3318,6 +3336,7 @@ final class HermesClient: ObservableObject {
                 "answer": answer
             ])
             authorityPrompts.removeValue(forKey: requestId)
+            authorityPromptSessions.removeValue(forKey: requestId)
             switch result.objectValue?["status"]?.stringValue?.lowercased() {
             case "expired": return .expired
             default: return .accepted(remaining: [])
@@ -3429,12 +3448,19 @@ final class HermesClient: ObservableObject {
     ) async throws -> Bool {
         let trimmedRequestId = requestId?.trimmingCharacters(in: .whitespacesAndNewlines)
         if speaksSessionAuthority, let trimmedRequestId, !trimmedRequestId.isEmpty {
-            // The authority names the prompt and the turn that asked (the
-            // session's running turn for a card this socket didn't see
-            // asked, from a notification); `already_resolved` is another
-            // surface's answer.
-            let prompt = authorityPrompts[trimmedRequestId]
-                ?? (sessionId: sessionId, generation: executionGenerations[sessionId] ?? 0)
+            // The authority names the prompt and the turn that asked;
+            // `already_resolved` is another surface's answer. A card this
+            // socket didn't see asked (shown before a reconnect) reads its
+            // prompt from the chat's resume, which lists the ones Hermes
+            // still waits on; one it no longer lists was answered or ended.
+            var cached = authorityPrompts[trimmedRequestId]
+            if cached == nil {
+                _ = try await resumeSessionObject(
+                    authorityPromptSessions[trimmedRequestId] ?? sessionId, omitMessages: true, profile: profile
+                )
+                cached = authorityPrompts[trimmedRequestId]
+            }
+            guard let prompt = cached else { return false }
             var params: [String: Any] = [
                 "session_id": prompt.sessionId,
                 "execution_generation": prompt.generation,
@@ -3444,6 +3470,7 @@ final class HermesClient: ObservableObject {
             if let profile, !profile.isEmpty { params["profile"] = profile }
             let result = try await rpc("approval.respond", params: params)
             authorityPrompts.removeValue(forKey: trimmedRequestId)
+            authorityPromptSessions.removeValue(forKey: trimmedRequestId)
             return result.objectValue?["status"]?.stringValue == "resolved"
         }
         var params: [String: Any] = [
@@ -3641,7 +3668,9 @@ final class HermesClient: ObservableObject {
             modelConfirmTokens.removeValue(forKey: key)
         }
         return ModelSwitchOutcome(
-            model: object["model"]?.stringValue ?? model,
+            // A pick waiting on confirmation names its resolved target as
+            // `target_model`, and has no `model` until it applies.
+            model: object["model"]?.stringValue ?? object["target_model"]?.stringValue ?? model,
             confirmRequired: confirmRequired,
             confirmMessage: object["confirm_message"]?.stringValue ?? "",
             deferred: object["deferred"]?.boolValue ?? false

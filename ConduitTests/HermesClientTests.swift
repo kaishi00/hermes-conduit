@@ -2119,6 +2119,89 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAuthorityModelPickAsksForConfirmationThenSendsItsToken() async throws {
+        let (client, socket) = try await authorityClient()
+        var count = socket.sentTexts.count
+        let ask = Task<ModelSwitchOutcome, Error> {
+            try await client.setModel("sess-1", model: "big", provider: "custom")
+        }
+        let first = try await answerRequest(on: socket, after: count, method: "session.mutate", result: [
+            "session_id": "sess-1", "operation": "model", "status": "confirmation_required",
+            "confirm_required": true, "confirm": "tok-1", "target_model": "big-resolved",
+            "target_provider": "custom", "confirm_message": "LARGE CONTEXT MODEL SWITCH"
+        ])
+        XCTAssertEqual(first["operation"] as? String, "model")
+        XCTAssertNotNil(first["expected_generation"], "Hermes refuses a model pick without the turn's generation")
+        XCTAssertNil((first["payload"] as? [String: Any])?["confirm"])
+        let asked = try await awaitResult(of: ask, "the guarded pick")
+        XCTAssertTrue(asked.confirmRequired)
+        XCTAssertEqual(asked.confirmMessage, "LARGE CONTEXT MODEL SWITCH")
+        XCTAssertEqual(asked.model, "big-resolved", "Nothing applied yet: the target is named as Hermes resolved it")
+
+        count = socket.sentTexts.count
+        let confirm = Task<ModelSwitchOutcome, Error> {
+            try await client.setModel("sess-1", model: "big", provider: "custom", confirmed: true)
+        }
+        let second = try await answerRequest(on: socket, after: count, method: "session.mutate", result: [
+            "session_id": "sess-1", "revision": 3, "execution_generation": 2, "operation": "model",
+            "model": "big-resolved", "provider": "custom"
+        ])
+        XCTAssertEqual((second["payload"] as? [String: Any])?["confirm"] as? String, "tok-1")
+        let applied = try await awaitResult(of: confirm, "the confirmed pick")
+        XCTAssertFalse(applied.confirmRequired)
+        XCTAssertEqual(applied.model, "big-resolved")
+        client.disconnect()
+    }
+
+    func testAnswersToPromptsThisSocketNeverSawReadThemFromTheResume() async throws {
+        let (client, socket) = try await authorityClient()
+        var count = socket.sentTexts.count
+        let approve = Task<Bool, Error> {
+            try await client.respondToApproval(sessionId: "sess-1", requestId: "p-9", choice: "deny")
+        }
+        try await answerRequest(on: socket, after: count, method: "session.resume", result: [
+            "session_id": "sess-1", "messages": [Any](), "running": true, "revision": 1, "execution_generation": 6,
+            "prompts": [["kind": "approval", "prompt_id": "p-9", "execution_generation": 6,
+                         "command": "rm -rf x", "choices": ["once", "deny"]]]
+        ])
+        let approval = try await answerRequest(on: socket, after: count + 1, method: "approval.respond",
+                                               result: ["status": "resolved", "prompt_id": "p-9"])
+        XCTAssertEqual(approval["prompt_id"] as? String, "p-9")
+        XCTAssertEqual(approval["execution_generation"] as? Int, 6)
+        let resolved = try await awaitResult(of: approve, "the approval answer")
+        XCTAssertTrue(resolved)
+
+        count = socket.sentTexts.count
+        let answer = Task<HermesClient.ClarifyResponseOutcome, Error> {
+            try await client.respondToClarification(requestId: "c-9", answer: "a", sessionId: "sess-1")
+        }
+        try await answerRequest(on: socket, after: count, method: "session.resume", result: [
+            "session_id": "sess-1", "messages": [Any](), "running": true, "revision": 1, "execution_generation": 6,
+            "prompts": [["kind": "clarify", "prompt_id": "c-9", "execution_generation": 6,
+                         "question": "Which one?", "choices": ["a", "b"]]]
+        ])
+        let clarify = try await answerRequest(on: socket, after: count + 1, method: "clarify.respond",
+                                              result: ["status": "resolved", "prompt_id": "c-9"])
+        XCTAssertEqual(clarify["prompt_id"] as? String, "c-9")
+        XCTAssertEqual(clarify["execution_generation"] as? Int, 6)
+        let clarifyOutcome = try await awaitResult(of: answer, "the clarify answer")
+        XCTAssertEqual(clarifyOutcome, .accepted(remaining: []))
+
+        // A prompt the resume no longer lists was answered elsewhere or ended.
+        count = socket.sentTexts.count
+        let late = Task<HermesClient.ClarifyResponseOutcome, Error> {
+            try await client.respondToClarification(requestId: "c-gone", answer: "a", sessionId: "sess-1")
+        }
+        try await answerRequest(on: socket, after: count, method: "session.resume", result: [
+            "session_id": "sess-1", "messages": [Any](), "running": false, "revision": 1,
+            "execution_generation": 6, "prompts": [Any]()
+        ])
+        let lateOutcome = try await awaitResult(of: late, "the late answer")
+        XCTAssertEqual(lateOutcome, .expired)
+        XCTAssertEqual(socket.sentTexts.count, count + 1, "Nothing is answered for a prompt Hermes no longer waits on")
+        client.disconnect()
+    }
+
     func testRefusalNamesTheVerbAndTheFieldsHermesRefused() throws {
         let data = Data(#"{"code":4001,"message":"invalid_params","data":{"reason":"invalid_params","fields":["submission_id","cols"],"revision":3,"execution_generation":2}}"#.utf8)
         var error = try JSONDecoder().decode(RpcError.self, from: data)

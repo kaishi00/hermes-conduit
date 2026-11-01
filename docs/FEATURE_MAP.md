@@ -4737,16 +4737,15 @@ README (Connecting, Architecture) · the website's FAQ
 - The socket's `gateway.ready` decides the shape (`session_authority: true` is the gateway's listener); a request built before it was read goes in the dashboard's shape, and one refused once the socket proved to be the authority's goes again, once, in the authority's. That is safe because the authority refuses the dashboard's shape before running anything, which the notifier's upstream leg checks (2026-11-01, #1618).
 - On the authority a prompt carries a `submission_id`, the same on any resend of that message; its receipt's `queued` is its place in line, so only a Queue send reads as held. Steer, redirect and interrupt name the running turn's `execution_generation`; a stale one reads the session again and goes once more only if a turn still runs (2026-11-01, #1618).
 - Rename, branch, compress, a model pick and Move to project are `session.mutate` on the authority, fenced by the session's revision, and by the turn's generation for all but rename; a `revision_conflict` or `stale_generation` that carries the current fences goes again once with them. A branch keeps rows through the reply's own row id (2026-11-01, #1618).
+- An approval or clarify card names its prompt and the turn that asked from the socket's event; one this socket never saw asked (shown before a reconnect) reads both from the chat's resume, which lists the prompts Hermes still waits on, and one it no longer lists reads as answered or ended. A guarded model pick answers `confirmation_required` with a token and its `target_model`; the confirmed pick sends that token back (2026-11-01, #1618, both tried on the canary and in the notifier's upstream leg).
 - Busy mode stays on the phone on the authority, which has no profile-wide busy setting: Conduit already sends steer, interrupt or Queue itself (2026-11-01, #1618).
 - A bare refusal token from Hermes ("invalid_params") is shown with the request and the keys Hermes named; Hermes' own sentences are shown as they are (2026-11-01, #1618).
 - Setup docs keep recommending `hermes dashboard`; the Webapp's address is mentioned as also working (2026-11-01, #1618).
 
 **Open gaps**
-- An expensive model's confirmation on the authority (`confirmation_required`, then the pick again with its token) is built but not tried against a real guarded model.
-- A clarify card answered on the socket names its prompt from the socket's event or the chat's resume; one the socket saw neither way (shown before a reconnect, in a chat not opened since) goes in the dashboard's shape and is refused until the chat is opened again. Notification answers go through the relay and the plugin, not the socket.
-- The plugin's features that drive Hermes themselves (Watch jobs, Local Live's Hermes turns, calls from Hermes) run inside the gateway's process when the Webapp serves the plugin, rather than in the dashboard's; only its routes answering there is checked so far.
+- The plugin's features that work on a chat's live session look for it in the dashboard's in-process chat registry, which doesn't hold chats the authority runs: on the listener Predictions answers "That chat isn't open on the host", takeover can't see a turn the authority runs, turn-surface records nothing, and Watch jobs and Local Live's Hermes turns would start chats outside the authority. Porting them is Eric's call (asked 2026-11-01).
 
-**Checked:** 2026-11-01, #1631 (seeded; issue #1618; probed against the 2026-11-01 canary).
+**Checked:** 2026-11-01, #1631 (seeded; issue #1618; probed against the 2026-11-01 canary; unseen prompts and the model confirm closed).
 
 ## Feature map rules
 
