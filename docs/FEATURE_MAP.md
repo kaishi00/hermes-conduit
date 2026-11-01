@@ -1952,7 +1952,7 @@ has something ready for them to look at.
 Each bot turns it on for itself (`hermes -p <bot> conduit-push work on`). It's
 being built on the `bot-workstreams` branches (M0, notifier #484; M1
 from notifier #490, #491, #493, #495, #497 and #498; M2, the app's Work
-panel, from notifier #499 and this repo's `bot-workstreams` branch), so
+panel, from notifier #499 and #1619), so
 none of it is on either main yet.
 
 **Siblings:** the Bot Chat (the work tools, offered only there and only
@@ -2033,7 +2033,7 @@ screens (not built)
 - The plugin's version is bumped when the branch merges to main.
 - Two journal edges from M0 that recovery leans on (notifier #495's review): a step that starts while a compacted workstream's lineage is still unsettled isn't journaled or noted as missed, and a step's end with an unknown call id closes the oldest open step of that tool by name.
 
-**Checked:** 2026-11-01, #1617 (notifier #498).
+**Checked:** 2026-11-01, #1619 (notifier #499).
 
 ## Composer Return key
 
