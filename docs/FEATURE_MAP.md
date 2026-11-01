@@ -1998,7 +1998,7 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - The plugin's version is bumped when the branch merges to main.
 - An ask or an answer waiting in the update batch when the dashboard stops isn't resent; the other bot's digest still lists the open ask on its next turn. The outbox replay comes with restart recovery, the next M1 PR.
 
-**Checked:** 2026-11-01, #1605 (notifier #493).
+**Checked:** 2026-11-01, #1607 (notifier #493).
 
 ## Composer Return key
 
