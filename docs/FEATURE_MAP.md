@@ -1950,9 +1950,10 @@ workstreams, hidden sessions of its own on the bot's profile, follows them by
 ref (W1, W2), and hears back when one finishes, fails, waits on the user or
 has something ready for them to look at.
 Each bot turns it on for itself (`hermes -p <bot> conduit-push work on`). It's
-being built on the notifier's `bot-workstreams` branch (M0, notifier #484; M1
-from notifier #490, #491, #493, #495, #497 and #498), so
-none of it is on either main yet, and the app has no screen for it until M2.
+being built on the `bot-workstreams` branches (M0, notifier #484; M1
+from notifier #490, #491, #493, #495, #497 and #498; M2, the app's Work
+panel, from notifier #499 and this repo's `bot-workstreams` branch), so
+none of it is on either main yet.
 
 **Siblings:** the Bot Chat (the work tools, offered only there and only
 with workstreams on; its policy, strict or lookups, holding its tools and a
@@ -1983,11 +1984,21 @@ replayed, and lost sends resent only into work recovery continued) · Opening a 
 how the plugin knows the coordinator) · Hermes Desktop's Bot Chat (the same
 plugin, the same tools) · the `hermes conduit-push work` commands · the tool
 descriptions, the worker's and the update's prompts, and the notifier's
-README section · M2's Work panel and Bots and Tasks screens (not built)
+README section · the app's Work strip under a Bot Chat's top bar ("2 working · 1
+needs you"), its Work panel (Active then Recent, each row's checklist, step,
+last result and actions; a sheet on a phone, a column beside the chat on a
+wide window), the bar over a workstream's own chat (Back to the bot, Stop,
+Continue, Check first), the work tools' transcript cards ("Started W3: Login
+bug", "Asked Nahida", with Open W3), and Chats search and All profiles
+leaving workstreams out · the plugin's `/workstreams` routes (the list and
+the user's own actions, which skip the Bot Chat's model; `?conduit_profile=`
+for a secondary bot) and the `bot-workstreams` capability · Bots and Tasks
+screens (not built)
 
 **Code**
 - Notifier, on its `bot-workstreams` branch (plain text until it reaches main): work_store.py (the registry, conduit/workstreams.db in the bot's home), work_broker.py (Hermes' session API in the dashboard's process), work_tool.py (the tools, the policy, the hooks' work, the note and the updates), __init__.py (the hook calls), cli.py (`work`), tests/test_work.py, upstream/test_bot_work.py
-- App: `Conduit/Services/HermesClient.swift` (normalizeMessages, which drops hidden rows from the transcript), `Conduit/Services/ConduitAppLink.swift` and `Conduit/Services/AppState.swift` (openAppLink, the link's profile)
+- Notifier routes: dashboard/api/workstreams.py (`GET /workstreams`, `POST /workstreams/<ref>/<action>`), work_tool.py's `app_list` and `app_act` (acting through the copy Hermes loaded for the bot, `copy_for`)
+- App: `Conduit/Services/BotWorkstreams.swift` (the list, the client, the transcript cards' `BotWorkCall`), `Conduit/Services/AppState+BotWorkstreams.swift` (`BotWorkStore`, refresh, actions, opening a workstream), `Conduit/Views/BotWorkViews.swift` (strip, panel, rows, workstream bar), `Conduit/Views/V2/V2ConversationScreen.swift` (where they show), `Conduit/Views/ChatView.swift` (ToolStep's work cards), `Conduit/Views/V2/V2ChatsView.swift` and `AppState.listAllProfilesCatalog` (search and All profiles), `ConduitTests/BotWorkstreamsTests.swift`; `Conduit/Services/HermesClient.swift` (normalizeMessages, which drops hidden rows from the transcript), `Conduit/Services/ConduitAppLink.swift` and `Conduit/Services/AppState.swift` (openAppLink, the link's profile)
 - Design: designs/bot-mode-coordinator (project files)
 
 **Rulings**
@@ -2008,10 +2019,13 @@ README section · M2's Work panel and Bots and Tasks screens (not built)
 - Only the Bot Chat asks: work_start and work_ask tell the coordinator to ask for a workstream with `for` rather than brief it to ask, and a workstream that tries, with work_ask or Hermes' `message_agent`, is refused and told to name the bot and the need in its report. An answer for an interrupted workstream (a restart or the user stopped its turn) goes to the Bot Chat, not into the workstream (2026-11-01, notifier #497, from the .58 test).
 - A clean restart is recovered like a crash: Hermes' own stop of every running turn on its way out isn't taken for the user's, and a step it cut off counts as never finished, so a change it may have made still waits for the user (2026-11-01, notifier #498, from the .58 restart test).
 - A workstream doesn't write the bot's memory: what's worth keeping goes in its report, and the coordinator decides what to remember, with `work_note` for what every workstream should know (2026-11-01, Eric, notifier #498).
+- The user's own actions from the Work panel go straight to the workstream, never through the Bot Chat's model: a reply is sent as the user's own words, as if typed in its chat; Continue and Check first say the user tapped them. Continue after a restart cut off a step that can change things tells the workstream the step may have run, so it checks before running it again; stopping interrupted work runs nothing (2026-11-01, notifier #499, design C.6 and C.7).
 - The loop guard: an ask never goes to a bot already waiting in its chain (a bot with an open ask from another can't ask that one back until it answers), a chain goes at most two bots deep, and one bot asks another at most 10 times an hour (2026-11-01, notifier #493).
 
 **Open gaps**
-- No screen in the app: workstreams show only as the Bot Chat's answers and their links until M2's Work panel, which shows each one's checklist and ready state. M2 builds on the cache-first screens and the transcript rewrite (see Screens that open on their last answer), checked with that work first.
+- An ask from another bot reaches the Bot Chat as a hidden turn, so the asked bot's transcript shows no "Furina asks" card; the ask is listed in its Work panel instead.
+- Search and All profiles leave out only the workstreams of bots whose work the app has read (opened, or kept from last time); Hermes keeps them hidden from the Chats list itself.
+- The Work panel reads again every 5 seconds while work runs and every 20 otherwise, only while it or the strip shows; there's no push for a change yet.
 - The app's handling of an approval in a hidden workstream session is unchecked: the request goes to the user from that session, and nothing in the app opens it from the Bot Chat yet.
 - The Notifications entry gains a line for workstream turns' quiet pushes once this reaches main.
 - The first session Hermes builds on a secondary profile after the dashboard starts can come up without the work tools; the upstream test takes it with a warm-up session (2026-10-31 canary).

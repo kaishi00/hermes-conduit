@@ -1250,9 +1250,13 @@ struct V2ChatsView: View, Equatable {
             activeProfile: appState.isAllProfilesChatsOn ? appState.activeProfile : "",
             owner: { session in appState.isAllProfilesChatsOn ? appState.rowProfile(session) : "" }
         )
+        // A bot's workstreams belong to its Work panel, as its Bot Chat does.
+        let shown = rows.filter { row in
+            !(row.session.map(appState.isWorkstreamRow) ?? appState.isWorkstreamSession(row.hit.sessionID))
+        }
         // Pulse's chat stays behind the Pulse screen, message matches too.
-        guard appState.showsPulseScreen, let home = appState.pulseHomeChat else { return rows }
-        return rows.filter { row in
+        guard appState.showsPulseScreen, let home = appState.pulseHomeChat else { return shown }
+        return shown.filter { row in
             row.session.map { !appState.isPulseHomeChat($0) }
                 ?? (row.hit.sessionID != home && appState.canonicalSessionID(for: row.hit.sessionID) != home)
         }

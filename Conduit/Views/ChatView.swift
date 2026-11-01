@@ -3323,8 +3323,11 @@ private struct SettledToolCardContent: View, Equatable {
     /// it; otherwise the step's own words.
     private func stepTitle(
         _ delivery: BotTeammateMessages.Delivery?,
+        work: BotWorkCall? = nil,
         running: Bool
     ) -> String {
+        // A Bot Chat's work tools draw as work cards ("Started W3: Login bug").
+        if let title = work?.title(running: running) { return title }
         guard let delivery else { return running ? label.runningTitle : label.doneTitle }
         let name = teammateName(delivery.target)
         return running
@@ -3343,6 +3346,7 @@ private struct SettledToolCardContent: View, Equatable {
             let style = ChatStepStyle(toolName: tool.name)
             let running = tool.status == .running
             let delivery = delivery(tool)
+            let work = BotWorkCall.parse(toolName: tool.name, input: tool.input, output: tool.output)
             VStack(alignment: .leading, spacing: 0) {
                 Button {
                     let opens = !expanded
@@ -3362,7 +3366,7 @@ private struct SettledToolCardContent: View, Equatable {
                             // Large text: the time goes under the words
                             // instead of squeezing them.
                             AdaptiveStack(spacing: 6) {
-                                Text(stepTitle(delivery, running: running))
+                                Text(stepTitle(delivery, work: work, running: running))
                                     .scaledFont(.body)
                                     .foregroundStyle(running ? Color.conduitAccent : Color.primary)
                                     .lineLimit(sizeCategory.isAccessibilityCategory ? nil : 1)
@@ -3414,6 +3418,18 @@ private struct SettledToolCardContent: View, Equatable {
                         Text(tool.name)
                             .scaledFont(.caption2.monospaced().weight(.semibold))
                             .foregroundStyle(.conduitTertiary)
+                        if let work, let session = work.sessionID, let ref = work.ref {
+                            // The workstream it started or reached, opened on its bot's profile.
+                            Button {
+                                Haptics.light()
+                                rowActions?.appState.openAppLink(.session(id: session, profile: work.profile))
+                            } label: {
+                                Label(AppLocalization.string("Open \(ref)"), systemImage: "arrow.up.right.square")
+                                    .scaledFont(.caption.weight(.semibold))
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
                         if let detail = label.detail {
                             Text(detail)
                                 .scaledFont(.caption)
