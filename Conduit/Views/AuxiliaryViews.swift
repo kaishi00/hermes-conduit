@@ -2135,7 +2135,8 @@ private struct ChatReturnBehaviorSettings: View {
     let persistSurface: (ChatReturnSurface) -> Void
     @State private var behavior: ChatResumeBehavior
     @State private var surface: ChatReturnSurface
-    /// V2 always opens on the Chats list, so it has no "Open to" choice.
+    /// V2 opens on Chats, or on the chat iOS closed it on (#1559), so it
+    /// has no "Open to" choice.
     @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
 
     init(
@@ -2156,9 +2157,15 @@ private struct ChatReturnBehaviorSettings: View {
             symbol: "arrow.uturn.backward.circle",
             tint: .conduitAccent
         ) {
-            Text("Stored only on this device, not in your Hermes profile. Choose which surface Conduit opens to and whether it preserves your exact reading position or follows the newest conversation.")
-                .scaledFont(.footnote)
-                .foregroundStyle(.secondary)
+            Group {
+                if usesV2 {
+                    Text("Stored only on this device, not in your Hermes profile. If iOS closes Conduit while you're away, it reopens a chat when you come back. If you swipe Conduit away, it opens on Chats. Choose whether that chat is the one you left, at your exact reading position, or the newest conversation.")
+                } else {
+                    Text("Stored only on this device, not in your Hermes profile. Choose which surface Conduit opens to and whether it preserves your exact reading position or follows the newest conversation.")
+                }
+            }
+            .scaledFont(.footnote)
+            .foregroundStyle(.secondary)
             if !usesV2 {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Open to")

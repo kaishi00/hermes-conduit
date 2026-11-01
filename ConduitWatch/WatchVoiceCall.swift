@@ -28,6 +28,14 @@ enum WatchCallEnd {
     /// watchOS gave the call's socket no network, and none ever opened
     /// (WatchNoNetwork, #1346).
     static let noNetwork = String(localized: "Your Watch couldn't get a network connection for the call. Keep your iPhone nearby with Bluetooth on, or join Wi-Fi on the Watch, and try again.")
+    /// watchOS 10 refuses every call socket (-1009) whatever the audio
+    /// route, headphones included (#1346): a call there ends before it
+    /// starts, and says so. Trying again can't help.
+    static let oldWatchOS = String(localized: "Calls from the Watch don't work on watchOS 10, which gives them no network connection. Talk to Hermes in Conduit on your iPhone instead.")
+
+    static func canRetry(_ reason: String?) -> Bool {
+        !isNormal(reason) && reason != oldWatchOS
+    }
 
     static func isNormal(_ reason: String?) -> Bool {
         guard let reason else { return true }
@@ -206,6 +214,13 @@ final class WatchVoiceCall: ObservableObject {
         transcript = []
         isMuted = false
         onPhone = false
+        guard Self.callsWork else {
+            WatchCallLog.shared.note("callNotOnThisWatchOS", ["engine": callEngine.rawValue])
+            endedAt = Date()
+            WKInterfaceDevice.current().play(.failure)
+            phase = .ended(WatchCallEnd.oldWatchOS)
+            return
+        }
         phase = .preparing
         previousModelCall = modelCallID
         switch callEngine {
@@ -215,6 +230,13 @@ final class WatchVoiceCall: ObservableObject {
         case .localLive: Task { await direct.start(engine: .localLive, ring: ring, answer: answer) }
         case .gptLive: Task { await bridge.start(ring: ring, answer: answer) }
         }
+    }
+
+    /// Watch calls can get a network here: not on watchOS 10 (#1346),
+    /// whose Watches (Series 4 and 5, SE 1st generation) can't update.
+    static var callsWork: Bool {
+        if #available(watchOS 11, *) { return true }
+        return false
     }
 
     /// The start a call on `engine` asks the iPhone for its session with,
@@ -352,14 +374,16 @@ final class WatchVoiceCall: ObservableObject {
             WatchCallLog.shared.note("callRequestDropped", ["source": source, "callOn": isActive, "hermesCall": HermesWatchCalls.shared.holdsCall])
             return
         }
-        WatchCallLog.shared.note("callStartedOnRequest", ["source": source, "engine": engine.rawValue])
+        // On watchOS 10, start() ends it at once and logs callNotOnThisWatchOS.
+        if Self.callsWork { WatchCallLog.shared.note("callStartedOnRequest", ["source": source, "engine": engine.rawValue]) }
         dismissEnded()
         start()
     }
 
     private func startOnOpenIfWanted() {
         // A call from Hermes ringing or answered is the call.
-        guard !isScreenshotFixture, startsOnOpen, !isActive, !HermesWatchCalls.shared.holdsCall else { return }
+        // On watchOS 10 the home screen says calls don't work there.
+        guard !isScreenshotFixture, Self.callsWork, startsOnOpen, !isActive, !HermesWatchCalls.shared.holdsCall else { return }
         // Back from the background is an open, however soon after a call
         // ended: reading the summary with the wrist down and up again
         // never leaves inactive. Return to Clock running out on the summary

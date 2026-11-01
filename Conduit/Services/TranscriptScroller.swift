@@ -19,6 +19,9 @@ protocol TranscriptScrollSurface: AnyObject {
     /// The least content height the layout's last pass gave the transcript:
     /// what `reserveContentHeight` asked for, once a pass has taken it.
     var reservedContentHeight: CGFloat { get }
+    /// The rows' own height, without the room: where the rows and the
+    /// padding under the last one end.
+    var rowsHeight: CGFloat { get }
     /// Reports back through `TranscriptScroller.surfaceScrolled` before it
     /// returns, as UIKit does. A write under a finger or during a fling
     /// leaves it moving from the new offset, as setting UIKit's
@@ -143,6 +146,11 @@ enum ChatReplyStartPreference {
 /// Long replies): the sent message moves to the top with room under it for
 /// the reply (#1436), and a reply that outgrows the screen leaves the
 /// reader browsing there. An unread chat opens at the same stop.
+///
+/// A group room's transcript is moved by one too (GroupChatView), by the
+/// same rules: its new member messages stop at their own start
+/// (`roomTranscriptChanged`), and it has no saved place or session to
+/// switch.
 ///
 /// Only the scroller writes the offset, and the recorder
 /// (ChatViewportTrace) names the rule behind each write.
@@ -274,7 +282,10 @@ final class TranscriptScroller: ObservableObject {
     private(set) var replyHoldArmed = false {
         didSet {
             if replyHoldArmed != oldValue { ChatViewportTrace.shared.log("hold \(replyHoldArmed ? "armed" : "disarmed")") }
-            if !replyHoldArmed { replyRoomArmed = false }
+            if !replyHoldArmed {
+                replyRoomArmed = false
+                roomReplyStartID = nil
+            }
             refreshReplyRoom()
         }
     }
@@ -298,9 +309,17 @@ final class TranscriptScroller: ObservableObject {
     private var replyRoomLaidOut = false
     /// The first move to the stop after a send is still to come.
     private var replyRoomLanding = false
+    /// The reader scrolled the room out of sight and it was dropped
+    /// (`dropReplyRoomOutOfSight`): the pass that lays the shorter content
+    /// out checks whether that left them at the new end.
+    private var replyRoomDropPending = false
     /// The user message the latest turn answers, by id, so a new one (a
     /// turn started on another device) arms the hold.
     private var latestUserRowID: String?
+    /// A group room's new member message the hold stops at the start of
+    /// (`roomTranscriptChanged`): the message itself goes to the top, where
+    /// a chat's stop puts the user's message above its reply.
+    private var roomReplyStartID: String?
     /// An unread chat just opened: once its transcript is in, it lands at
     /// the start of its latest reply instead of the end.
     private var replyStartLandingPending = false
@@ -428,6 +447,7 @@ final class TranscriptScroller: ObservableObject {
             }
         case .browsing:
             keepAnchor(on: surface, barChanged: barChanged)
+            relatchAfterReplyRoomDrop(on: surface)
             if mode == .browsing {
                 refreshTopVisibleRow(persist: true)
             } else if canPinWhileFollowing(surface) {
@@ -461,6 +481,7 @@ final class TranscriptScroller: ObservableObject {
         // it left them on.
         if mode == .browsing, writeDepth == 0 {
             captureAnchor(on: surface)
+            dropReplyRoomOutOfSight(on: surface)
         }
         if mode != .following {
             refreshTopVisibleRow(persist: mode == .browsing)
@@ -883,6 +904,43 @@ final class TranscriptScroller: ObservableObject {
         refreshJumpButton()
     }
 
+    // MARK: - Group rooms
+
+    /// Something new at a group room's end (an event, or the member
+    /// responding changed), told before the transcript lays it out
+    /// (GroupRoomTranscriptBox), with the room's events. `replyStart`, a
+    /// member message among new events (GroupRoomTranscript.replyStart), is
+    /// where a following room stops: at the message's start, which goes to
+    /// the top, and the reader is left browsing there once what came runs
+    /// past the screen, as a long chat reply stops at its start (#365).
+    /// Anything else new (a caption, a member starting its turn) is
+    /// followed to the end. As a chat's hold is, the stop is armed whatever
+    /// the reader is doing, and the pin's rules decide what moves: a reader
+    /// scrolled away isn't pinned, a fling's pin waits for it to rest, and
+    /// a reader already below the message's start goes on to the end. A
+    /// room makes no room under the message: members' messages arrive
+    /// whole.
+    func roomTranscriptChanged(eventIDs: Set<String>, replyStart: String?) {
+        roomEventsChanged(eventIDs)
+        if let replyStart, holdsRepliesAtStart() {
+            roomReplyStartID = replyStart
+            replyRoomArmed = false
+            replyHoldArmed = true
+        } else {
+            replyHoldArmed = false
+        }
+    }
+
+    /// A group room's events, the rows a reader can be taken to (the
+    /// "Replying to" jump). Changed with nothing new at the end (its oldest
+    /// rows trimmed, a gap filled), they leave the room where it is, its
+    /// stop too.
+    func roomEventsChanged(_ eventIDs: Set<String>) {
+        ChatViewportTrace.shared.log("room events n=\(eventIDs.count)")
+        ChatViewportWatch.shared.transcriptChanged()
+        targetIDs = eventIDs
+    }
+
     // MARK: - Automatic restoration
 
     /// A saved place to put the reader back at (the chat they left, its
@@ -1205,11 +1263,17 @@ final class TranscriptScroller: ObservableObject {
     /// offset that puts the user's latest message at the top of the
     /// viewport, `replyStartTopGap` below it, with the reply under it
     /// (#1436). A message taller than a third of the screen shows only its
-    /// last third there. Nil while unarmed, switched off, or for a message
-    /// the transcript doesn't draw (following then pins the end).
+    /// last third there. In a group room it's the new member message
+    /// itself that goes there. Nil while unarmed, switched off, or for a
+    /// message the transcript doesn't draw (following then pins the end).
     private func replyHoldOffset(on surface: TranscriptScrollSurface) -> CGFloat? {
-        guard replyHoldArmed, holdsRepliesAtStart(),
-              let id = latestUserRowID, let frame = surface.frame(ofRow: id) else { return nil }
+        guard replyHoldArmed, holdsRepliesAtStart() else { return nil }
+        // A group room's member message: its own start at the top.
+        if let id = roomReplyStartID {
+            guard let frame = surface.frame(ofRow: id) else { return nil }
+            return max(surface.minOffsetY, frame.minY - surface.insetTop - Self.replyStartTopGap)
+        }
+        guard let id = latestUserRowID, let frame = surface.frame(ofRow: id) else { return nil }
         let visibleHeight = surface.viewportHeight - surface.insetTop - surface.insetBottom
         let messageTop = frame.minY - surface.insetTop - Self.replyStartTopGap
         let messageTail = frame.maxY - surface.insetTop - visibleHeight / 3
@@ -1231,6 +1295,37 @@ final class TranscriptScroller: ObservableObject {
         ChatViewportTrace.shared.log(String(format: "replyRoom minContentHeight %.1f", height))
         replyRoomHeight = height
         surface?.reserveContentHeight(height)
+    }
+
+    /// The reader scrolled away from a stop with room under it, far enough
+    /// that none of the room shows: it goes, so coming back down ends at
+    /// the reply's last row above the composer, not at the stop over empty
+    /// space left from before (issue 1546). Nothing on screen moves: the
+    /// content shrinks only below what the reader sees. The hold stays
+    /// armed, so a reply still streaming stops at its start once it
+    /// outgrows the screen. Long replies switched off and on again
+    /// afterwards doesn't bring it back: the reader has left it.
+    private func dropReplyRoomOutOfSight(on surface: TranscriptScrollSurface) {
+        // Armed with Long replies off there is no room laid out, but it
+        // goes too: switched on later, it would come back under a reader
+        // who has left it.
+        guard replyRoomArmed, surface.visibleBand.upperBound <= surface.rowsHeight + 0.5 else { return }
+        ChatViewportTrace.shared.log("replyRoom out of sight")
+        replyRoomArmed = false
+        replyRoomDropPending = true
+    }
+
+    /// The shorter content a dropped room leaves is laid out: a reader at
+    /// rest within reach of its end follows again, as one who scrolled
+    /// there would. One still scrolling is weighed when they stop, against
+    /// the new end.
+    private func relatchAfterReplyRoomDrop(on surface: TranscriptScrollSurface) {
+        guard replyRoomDropPending, surface.reservedContentHeight <= 0.5 else { return }
+        replyRoomDropPending = false
+        guard mode == .browsing, !isUserScrolling,
+              surface.distanceFromBottom <= Self.nearBottomTolerance else { return }
+        setMode(.following)
+        emit(.persistSnapshot(renderedSessionKey))
     }
 
     private func disarmReplyHold() {

@@ -12,26 +12,28 @@ struct GroupChatView: View {
     /// transcript under soft edges, and the header's menu holds the room's
     /// actions.
     @Environment(\.v2ComposerRests) private var isV2
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showingDisbandConfirmation = false
     @State private var choosingPicture: GroupRoomPictureRequest?
-    /// Following the latest event, or browsing history (GroupRoomFollow).
-    /// The flag decides scrolling; the published copy draws the button.
-    @State private var followFlag = GroupRoomFollowFlag()
+    /// Moves the transcript by the chat's rules (#1533, the transcript
+    /// rewrite): it follows the latest event, stops at a new member
+    /// message's start, and keeps a reader browsing history on their row.
+    /// The jump button observes `scroller.chrome` on its own.
+    @StateObject private var scroller = TranscriptScroller()
+    /// The transcript's rows (GroupRoomTranscript), built again only when
+    /// what they draw changes.
+    @State private var roomTranscript = GroupRoomTranscriptBox()
+    /// A long message's "Show all" tells the scroller first, so the row
+    /// tapped stays where it is, as in a chat.
+    @State private var rowDisclosure = ChatRowDisclosure()
     /// The room's pictures, which a tapped one pages through.
     @State private var imageGallery = ImageGallerySource()
-    @State private var isFollowingLatest = true
-    /// Bumped by the jump-to-latest button; the transcript scrolls on it.
-    @State private var latestJumps = 0
-    /// The last row before the newest events, so a member message among
-    /// them can land at its top (GroupRoomFollow.replyStart).
-    @State private var lastSeenEventID: String?
-    /// Bumped to build the transcript's scroll view again when SwiftUI left
-    /// it blank (GroupRoomFollow.isBlank).
-    @State private var transcriptScrollID = 0
     /// The chat text size and style, and a wide window's steps
     /// (`readableChatColumn`): the room's messages draw as a chat's do.
     @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
     @AppStorage(ChatTypography.fontStylePreferenceKey) private var chatFontStyleRaw = ChatFontStyle.standard.rawValue
+    /// Settings > Chat's Long replies, which rooms share with chats.
+    @AppStorage(ChatReplyStartPreference.key) private var stopsAtReplyStart = ChatReplyStartPreference.defaultOn
     @Environment(\.chatWidthTextSteps) private var chatWidthTextSteps
     @Environment(\.columnText) private var columnText
 
@@ -95,26 +97,13 @@ struct GroupChatView: View {
             GroupRoomComposer(members: members)
         }
         .overlay(alignment: .topTrailing) {
-            if !isFollowingLatest {
-                jumpToLatestButton
-                    .alignmentGuide(.top) { $0[.bottom] + 10 }
+            // Shown while browsing, as on the chat screen.
+            GroupRoomJumpButton(chrome: scroller.chrome) {
+                ChatViewportWatch.shared.command("room latest (button)")
+                scroller.explicitLatestRequested(animated: true)
             }
+            .alignmentGuide(.top) { $0[.bottom] + 10 }
         }
-    }
-
-    /// Shown while browsing, as on the chat screen.
-    private var jumpToLatestButton: some View {
-        Button {
-            followLatest()
-            latestJumps += 1
-        } label: {
-            Image(systemName: "arrow.down")
-                .font(.system(size: 15, weight: .bold))
-                .frame(width: 44, height: 44)
-        }
-        .conduitGlassControl(cornerRadius: 22, tint: Color.conduitAccent.opacity(0.14))
-        .accessibilityLabel(AppLocalization.string("Scroll to latest message"))
-        .padding(.trailing, 18)
     }
 
     private var surface: AppState.GroupRoomSurface? { appState.activeRoomSurface }
@@ -124,12 +113,6 @@ struct GroupChatView: View {
         GroupRoomTurns.members(surface?.room.members ?? [], namedBy: appState.shownBotRoster)
     }
 
-    /// Log events that earn a row: a member turn that posted settles
-    /// silently, since its bubble already says so.
-    private var visibleEvents: [GroupEvent] {
-        appState.activeRoomReplay.events.filter(GroupRoomTurns.isVisible)
-    }
-
     /// The member whose turn is running (memoized by AppState).
     private var respondingMember: GroupMember? {
         appState.activeRoomResponder.flatMap { GroupRoomTurns.members([$0], namedBy: appState.shownBotRoster).first }
@@ -137,148 +120,44 @@ struct GroupChatView: View {
 
     // MARK: - Transcript
 
+    /// The room's transcript (#1533, the transcript rewrite): the chat's
+    /// collection view and scroller, so a room follows the latest event,
+    /// stops at a new member message and keeps a reader on their row by the
+    /// chat's rules. It fills the area under the bars around it and keeps
+    /// its rows clear of them with the safe area's insets.
     private var transcript: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                let rendered = self.visibleEvents
-                let _ = imageGallery.update { GroupRoomImageGallery.items(in: rendered) }
-                LazyVStack(spacing: 14) {
-                    ForEach(Array(rendered.enumerated()), id: \.element.id) { index, event in
-                        // A member's run of replies shows its picture and
-                        // name once, like a group thread in Messages.
-                        let previous = index > 0 ? rendered[index - 1] : nil
-                        GroupEventRow(
-                            event: event,
-                            members: members,
-                            continuesRun: previous.map { GroupEventRow.sameSpeaker($0, event) } ?? false
-                        )
-                        .reportsGroupRoomRowFrame(id: event.id)
-                    }
-                    if let pending = appState.pendingRoomMessage {
-                        GroupUserBubble(text: pending.text, members: members, timestamp: nil, eventID: pending.eventID) {
-                            if appState.activeRoomSendInFlight {
-                                Text(AppLocalization.string("Sending…"))
-                                    .scaledFont(.caption2)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                // Ambiguous outcome: the message may or may
-                                // not have landed. Retry reuses the SAME
-                                // event id, so the gateway deduplicates —
-                                // never a twin message.
-                                Button {
-                                    // A retry keeps its event id, so the
-                                    // send observer won't see it.
-                                    followLatest()
-                                    latestJumps += 1
-                                    Task { await appState.sendGroupRoomMessage(pending.text) }
-                                } label: {
-                                    Label(
-                                        AppLocalization.string("Not delivered — retry"),
-                                        systemImage: "arrow.clockwise"
-                                    )
-                                    .scaledFont(.caption.weight(.semibold))
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(Color.conduitAccent)
-                            }
-                        }
-                        .id("pending-row")
-                        .reportsGroupRoomRowFrame(id: "pending-row")
-                    }
-                    if let responder = respondingMember {
-                        GroupRespondingRow(member: responder)
-                            .id("responding-row")
-                            .reportsGroupRoomRowFrame(id: "responding-row")
-                    }
-                    if rendered.isEmpty && appState.pendingRoomMessage == nil && respondingMember == nil {
-                        emptyState
-                    }
-                }
-                .coordinateSpace(.named(GroupRoomFollow.coordinateSpaceName))
-                .environment(\.imageGallery, imageGallery)
-                .background { GroupRoomScrollLocator(flag: followFlag, isFollowing: $isFollowingLatest) }
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 18)
-            }
-            .id(transcriptScrollID)
-            .onPreferenceChange(GroupRoomRowFramesPreferenceKey.self) { frames in
-                ChatViewportTrace.shared.log("room rowFrames n=\(frames.count)")
-                ChatViewportWatch.shared.layoutPass()
-                let lostARow = followFlag.rowFrames.keys.contains { frames[$0] == nil }
-                followFlag.rowFrames = frames
-                // A stack that dropped its rows may change no size at all.
-                if frames.isEmpty || lostARow {
-                    followFlag.checkForBlankViewport?()
-                }
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .modifier(V2SoftTopScrollEdge(isOn: isV2, underChatHeader: true))
-            .simultaneousGesture(TapGesture().onEnded {
-                // A tap on the transcript puts the keyboard away.
-                UIApplication.shared.sendAction(
-                    #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
-                )
-            })
-            // New events and a member starting its turn move the transcript
-            // only while it follows the latest; a reader scrolled up stays.
-            .onChange(of: appState.activeRoomReplay.cursor) { _, _ in
-                ChatViewportTrace.shared.log("room events n=\(visibleEvents.count)")
-                ChatViewportWatch.shared.transcriptChanged()
-                let previousLastID = lastSeenEventID
-                lastSeenEventID = visibleEvents.last?.id
-                guard followFlag.isFollowing else { return }
-                if ChatReplyStartPreference.isOn,
-                   let start = GroupRoomFollow.replyStart(in: visibleEvents, after: previousLastID) {
-                    landAtTop(of: start, proxy)
-                } else {
-                    withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
-                }
-            }
-            .onChange(of: respondingMember?.identityKey) { _, _ in
-                ChatViewportWatch.shared.transcriptChanged()
-                guard followFlag.isFollowing else { return }
-                withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
-            }
-            // Sending returns to the latest, as in a chat.
-            .onChange(of: appState.pendingRoomMessage?.eventID) { _, eventID in
-                guard eventID != nil else { return }
-                followLatest()
-                withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
-            }
-            .onChange(of: latestJumps) { _, _ in
-                withAnimation(.easeOut(duration: 0.2)) { scrollToBottom(proxy) }
-            }
-            // A "Replying to" card's tap (issue 1420): the room stops
-            // following and shows the message it quoted.
-            .onChange(of: appState.pendingQuotedReplyJump) { _, jump in
-                guard let jump else { return }
-                appState.pendingQuotedReplyJump = nil
-                followFlag.isFollowing = false
-                isFollowingLatest = false
-                ChatViewportWatch.shared.command("room quotedReply")
-                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(jump.messageID, anchor: .top) }
-            }
-            .onAppear {
-                lastSeenEventID = visibleEvents.last?.id
-                followLatest()
-                scrollToBottom(proxy)
-                followFlag.lastRowID = { [weak appState = appState] in
-                    guard let appState else { return nil }
-                    if appState.activeRoomResponder != nil { return "responding-row" }
-                    if appState.pendingRoomMessage != nil { return "pending-row" }
-                    return appState.activeRoomReplay.events.last(where: GroupRoomTurns.isVisible)?.id
-                }
-                // The binding, not this view: the flag would keep its own
-                // view state alive through it.
-                let scrollID = $transcriptScrollID
-                followFlag.rebuild = { scrollID.wrappedValue &+= 1 }
-            }
+        let replay = appState.activeRoomReplay
+        // In the body, before the rows are laid out: the scroller hears of
+        // new events as they're built (GroupRoomTranscriptBox).
+        let rows = roomTranscript.update(
+            GroupRoomTranscriptBox.Input(
+                replay: replay,
+                members: members,
+                pending: appState.pendingRoomMessage,
+                isSending: appState.activeRoomSendInFlight,
+                responder: respondingMember
+            ),
+            scroller: scroller
+        )
+        imageGallery.update { GroupRoomImageGallery.items(in: replay.events.filter(GroupRoomTurns.isVisible)) }
+        return GeometryReader { proxy in
+            TranscriptView(
+                appState: appState,
+                scroller: scroller,
+                rows: rows,
+                rowContent: { row in AnyView(roomRow(row)) },
+                disclosure: rowDisclosure,
+                insets: proxy.safeAreaInsets,
+                conversation: "room:\(replay.roomID)",
+                composerFloats: isV2
+            )
+            .ignoresSafeArea()
         }
-        .background(Color.clear)
+        .modifier(V2SoftTopScrollEdge(isOn: isV2, underChatHeader: true, setsOwnEdge: true))
         // Cross-block selection chrome, and Quote on selected text into the
         // room's draft, as in a chat.
         .overlay { MarkdownSelectionChromeRoot() }
+        .environment(\.imageGallery, imageGallery)
         // As in a chat, text draws until a touch needs its text view, and
         // a drawn bubble sizes to its text.
         .environment(\.selectableTextDrawsUntilTouched, true)
@@ -296,61 +175,79 @@ struct GroupChatView: View {
                 appState?.showQuotedRoomMessage(quote, quotedIn: eventID) ?? false
             }
         )
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            GroupRoomIcon(
-                picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) },
-                members: members,
-                size: 56
-            )
-            Text(AppLocalization.string("No messages yet. Say something to the room."))
-                .scaledFont(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+        // Sending returns to the latest, as in a chat.
+        .onChange(of: appState.pendingRoomMessage?.eventID) { _, eventID in
+            guard eventID != nil else { return }
+            ChatViewportWatch.shared.command("room latest (send)")
+            scroller.explicitLatestRequested(animated: false)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 48)
-    }
-
-    private func followLatest() {
-        followFlag.isFollowing = true
-        isFollowingLatest = true
-    }
-
-    /// A new member message goes to the top of the screen, and the room
-    /// stops following there, as a long chat reply does (#365); one that
-    /// fits clamps at the bottom, where following picks up again.
-    private func landAtTop(of eventID: String, _ proxy: ScrollViewProxy) {
-        followFlag.isFollowing = false
-        followFlag.isLanding = true
-        followFlag.landingGeneration &+= 1
-        let generation = followFlag.landingGeneration
-        isFollowingLatest = false
-        ChatViewportWatch.shared.command("room replyStart")
-        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(eventID, anchor: .top) }
-        // Decide from where it lands once the animation is over (it may not
-        // move the offset at all).
-        Task { @MainActor [followFlag] in
-            try? await Task.sleep(for: .milliseconds(300))
-            guard followFlag.landingGeneration == generation else { return }
-            // Over even if the locator has gone (the room closed).
-            followFlag.isLanding = false
-            followFlag.reevaluate?()
+        // A "Replying to" card's tap (issue 1420): the message it quoted, at
+        // the top, the room browsing there.
+        .onChange(of: appState.pendingQuotedReplyJump) { _, jump in
+            guard let jump else { return }
+            appState.pendingQuotedReplyJump = nil
+            ChatViewportWatch.shared.command("room quotedReply")
+            scroller.explicitMessageRequested(id: jump.messageID)
         }
+        // In the background iOS still lays the room out for app-switcher
+        // snapshots; the scroller leaves the offset alone until it's back.
+        .onChange(of: scenePhase) { _, phase in
+            scroller.setPaused(phase == .background)
+        }
+        // Long replies switched, here or synced from another device: a
+        // room at a member message's stop goes on to the end now, not at
+        // its next layout, as a chat does.
+        .onChange(of: stopsAtReplyStart) { _, _ in
+            scroller.replyStartPreferenceChanged()
+        }
+        .onAppear {
+            rowDisclosure.scroller = scroller
+            scroller.holdsRepliesAtStart = { ChatReplyStartPreference.isOn }
+            scroller.setPaused(scenePhase == .background)
+        }
+        .onDisappear { scroller.viewDisappeared() }
     }
 
-    /// The bottom-most row: the responding member, else the pending send,
-    /// else the last visible event.
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        ChatViewportWatch.shared.command("room latest")
-        if respondingMember != nil {
-            proxy.scrollTo("responding-row", anchor: .bottom)
-        } else if appState.pendingRoomMessage != nil {
-            proxy.scrollTo("pending-row", anchor: .bottom)
-        } else if let last = visibleEvents.last {
-            proxy.scrollTo(last.id, anchor: .bottom)
+    /// One of the transcript's rows.
+    @ViewBuilder
+    private func roomRow(_ row: TranscriptRow) -> some View {
+        switch row.kind {
+        case .room(.event(let event, let members, let continuesRun)):
+            GroupEventRow(event: event, members: members, continuesRun: continuesRun)
+        case .room(.pending(let text, let members, let isSending)):
+            GroupUserBubble(text: text, members: members, timestamp: nil, eventID: row.id) {
+                if isSending {
+                    Text(AppLocalization.string("Sending…"))
+                        .scaledFont(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    // Ambiguous outcome: the message may or may not have
+                    // landed. Retry reuses the SAME event id, so the
+                    // gateway deduplicates — never a twin message.
+                    Button {
+                        // A retry keeps its event id, so the send observer
+                        // won't see it.
+                        ChatViewportWatch.shared.command("room latest (retry)")
+                        scroller.explicitLatestRequested(animated: false)
+                        Task { await appState.sendGroupRoomMessage(text) }
+                    } label: {
+                        Label(
+                            AppLocalization.string("Not delivered — retry"),
+                            systemImage: "arrow.clockwise"
+                        )
+                        .scaledFont(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.conduitAccent)
+                }
+            }
+        case .room(.responding(let member)):
+            GroupRespondingRow(member: member)
+        case .room(.empty(let roomID, let members)):
+            GroupRoomEmptyState(roomID: roomID, members: members)
+        default:
+            // A chat's rows (ChatView); a room has none.
+            EmptyView()
         }
     }
 
@@ -451,6 +348,48 @@ struct GroupChatView: View {
             return AppLocalization.string("\(count) members · working…")
         }
         return AppLocalization.string("\(count) members")
+    }
+}
+
+/// The room's jump-to-latest button, shown while the reader browses away
+/// from the latest event. It observes the scroller's chrome on its own, so
+/// the button coming and going redraws it and not the room.
+private struct GroupRoomJumpButton: View {
+    @ObservedObject var chrome: TranscriptScrollChrome
+    let jump: @MainActor () -> Void
+
+    var body: some View {
+        if chrome.inputs.showsJumpToLatest {
+            Button {
+                jump()
+            } label: {
+                Image(systemName: "arrow.down")
+                    .font(.system(size: 15, weight: .bold))
+                    .frame(width: 44, height: 44)
+            }
+            .conduitGlassControl(cornerRadius: 22, tint: Color.conduitAccent.opacity(0.14))
+            .accessibilityLabel(AppLocalization.string("Scroll to latest message"))
+            .padding(.trailing, 18)
+        }
+    }
+}
+
+/// A room with nothing in it yet: its picture over an invitation to start.
+private struct GroupRoomEmptyState: View {
+    @EnvironmentObject private var appState: AppState
+    let roomID: String
+    let members: [GroupMember]
+
+    var body: some View {
+        VStack(spacing: 12) {
+            GroupRoomIcon(picture: appState.groupRoomPicture(roomID: roomID), members: members, size: 56)
+            Text(AppLocalization.string("No messages yet. Say something to the room."))
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 48)
     }
 }
 
@@ -574,7 +513,7 @@ struct GroupApprovalCard: View {
                     Text(memberName)
                         .scaledFont(.subheadline.weight(.semibold))
                     if !approval.description.isEmpty {
-                        Text(verbatim: ApprovalDisplayText.revealingHidden(approval.description))
+                        Text(verbatim: ApprovalDisplayText.revealingHidden(HermesApprovalText.description(approval.description)))
                             .scaledFont(.subheadline)
                             .textSelection(.enabled)
                     }
@@ -592,7 +531,7 @@ struct GroupApprovalCard: View {
                     maxHeight: ApprovalCommandBox<EmptyView>.maxLines
                         * UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory, from: columnText).lineHeight
                 ) {
-                    Text(verbatim: ApprovalDisplayText.revealingHidden(approval.command))
+                    Text(verbatim: ApprovalDisplayText.revealingHidden(HermesApprovalText.command(approval.command)))
                         .scaledFont(.caption.monospaced())
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)

@@ -688,6 +688,92 @@ extension KanbanTests {
         XCTAssertEqual(try edit.formEntry()["args"] as? [String], ["--name", "", " x", "new"])
     }
 
+    func testAChangedNumberArgumentStaysANumber() throws {
+        var edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["--port", 8080, true]])
+        edit.arguments = "--port\n9090\nfalse"
+        let args = try XCTUnwrap(try edit.formEntry()["args"] as? [Any])
+        XCTAssertEqual(args[1] as? Int, 9090, "a number changed into a number stays one")
+        XCTAssertEqual(args[2] as? String, "false", "a flag isn't a number: the text typed")
+        edit.arguments = "--port\nauto\ntrue"
+        XCTAssertEqual((try edit.formEntry()["args"] as? [Any])?[1] as? String, "auto", "a number changed into words is the words")
+        // Lines moved: --verbose deleted above the port.
+        edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["--verbose", "--port", 8080]])
+        edit.arguments = "--port\n9090"
+        let shifted = try XCTUnwrap(try edit.formEntry()["args"] as? [Any])
+        XCTAssertEqual(shifted.count, 2)
+        XCTAssertEqual(shifted[1] as? Int, 9090, "the number is found however the lines moved")
+        // A number typed on a new line, after the number was changed into
+        // words, is text: it replaced nothing.
+        edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["--port", 8080]])
+        edit.arguments = "--port\n--debug\n3000"
+        let added = try XCTUnwrap(try edit.formEntry()["args"] as? [Any])
+        XCTAssertEqual(added[1] as? String, "--debug")
+        XCTAssertEqual(added[2] as? String, "3000")
+        edit = ConnectorServerEdit(name: "files", entry: ["command": "npx", "args": ["--verbose", "--port", 8080]])
+        // Only text that reads back as typed becomes a number.
+        for typed in ["007", "1.10", "1e3", "9090.0"] {
+            edit.arguments = "--port\n\(typed)"
+            XCTAssertEqual((try edit.formEntry()["args"] as? [Any])?[1] as? String, typed, "\(typed) stays as typed")
+        }
+    }
+
+    func testAnEditedServerShowsItsSavedEntryWhenTheListCantBeRead() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/config": ["mcp_servers": ["griply": ["url": "https://old"]]],
+            "/api/mcp/servers": ["ok": true, "servers": [["name": "griply", "transport": "http", "url": "https://old", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadConnectors()
+        let entry = try await store.serverConfig("griply")
+        requester.failures["GET /api/mcp/servers"] = DashboardTicketBridgeError.http(status: 502, detail: "Bad Gateway")
+        try await store.saveServer(original: "griply", loaded: entry, name: "griply", entry: ["url": "https://new", "enabled": false], openedOn: store.generation)
+        XCTAssertEqual(store.servers.map(\.name), ["griply"])
+        XCTAssertEqual(store.servers.first?.url, "https://new", "not the address from before the save")
+        XCTAssertEqual(store.servers.first?.enabled, false, "a server saved off isn't started by a re-test")
+        XCTAssertEqual(store.servers.first?.args, [], "a remote entry has no arguments")
+        XCTAssertFalse(requester.calls.contains { $0.method == "POST" && $0.path.contains("/test") })
+        try await store.saveServer(original: "griply", loaded: try await store.serverConfig("griply"), name: "griply", entry: ["command": "npx", "args": ["--port", 9090]], openedOn: store.generation)
+        XCTAssertEqual(store.servers.first?.args, ["--port", "9090"], "the saved row's arguments as written")
+    }
+
+    func testARenamedServerShowsWhenTheListCantBeReadAfterTheSave() async throws {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/config": ["mcp_servers": ["griply": ["url": "https://old"]]],
+            "/api/mcp/servers": ["ok": true, "servers": [["name": "griply", "transport": "http", "url": "https://old", "auth": "oauth", "enabled": true]]],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadConnectors()
+        XCTAssertEqual(store.servers.map(\.name), ["griply"])
+
+        let entry = try await store.serverConfig("griply")
+        requester.failures["GET /api/mcp/servers"] = DashboardTicketBridgeError.http(status: 502, detail: "Bad Gateway")
+        try await store.saveServer(original: "griply", loaded: entry, name: "Griply", entry: ["url": "https://new"], openedOn: store.generation)
+        let row = try XCTUnwrap(store.servers.first)
+        XCTAssertEqual(store.servers.map(\.name), ["Griply"], "the page follows the rename instead of saying it's gone")
+        XCTAssertFalse(store.connectorsError == nil, "the failed reload still says so")
+        XCTAssertEqual(store.servers.filter { $0.name == "Griply" }.count, 1, "one row under the saved name")
+        XCTAssertEqual(row.url, "https://new")
+        XCTAssertNil(row.auth, "the saved entry has no sign-in, whatever the old row had")
+        XCTAssertTrue(row.enabled)
+    }
+
+    func testAListRowShowsNumberArguments() {
+        let rows = ConnectorServer.list(from: ["servers": [["name": "files", "transport": "stdio", "command": "npx", "args": ["--port", 9090, "-y"]]]])
+        XCTAssertEqual(rows.first?.args, ["--port", "9090", "-y"])
+        // A JSON boolean reads as a word everywhere, not 1.
+        let decoded = try? JSONSerialization.jsonObject(with: Data(#"["--watch", true, 8080]"#.utf8)) as? [Any]
+        let entry: [String: Any] = ["command": "npx", "args": decoded ?? []]
+        XCTAssertEqual(ConnectorServer.saved(name: "files", entry: entry, replacing: nil).args, ["--watch", "true", "8080"])
+        XCTAssertEqual(ConnectorServerEdit(name: "files", entry: entry).arguments, "--watch\ntrue\n8080")
+        // The catalog's install sheet shows them the same way.
+        let catalog = ConnectorCatalogEntry.list(from: ["entries": [["name": "files", "transport": "stdio", "command": "npx", "args": decoded ?? []]]])
+        XCTAssertEqual(catalog.first?.args, ["--watch", "true", "8080"])
+    }
+
     func testAServerSaveSendsNothingAfterAProfileSwitch() async throws {
         let config: [String: [String: Any]] = [
             "/api/config": ["mcp_servers": ["griply": ["url": "https://old"]]],
@@ -830,7 +916,7 @@ extension KanbanTests {
         try await store.setServerEnabled("linear", enabled: true)
         held.forEach { $0.resume() }
         await plugins.value
-        await connectors.value
+        _ = await connectors.value
 
         XCTAssertTrue(store.plugins[0].isEnabled, "the refresh read the plugin before it was turned on")
         XCTAssertEqual(store.servers.first?.enabled, true, "the refresh read the server before it was turned on")

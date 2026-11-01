@@ -32,6 +32,26 @@ final class ChatReturnSurfaceTests: XCTestCase {
         XCTAssertFalse(harness.appState.showSidebar)
     }
 
+    func testV2IgnoresASessionsPickedUnderTheDrawerShell() {
+        // #1559: V2 hides "Open to", so a Sessions kept from the drawer
+        // shell must not close the chat on each return or launch.
+        let harness = makeHarness(surface: .sessions) { defaults in
+            defaults.set(true, forKey: V2ShellPreference.key)
+        }
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "ticket"
+        )
+
+        harness.appState.requestPreferredReturnSurfaceForColdLaunch()
+        harness.appState.handleScenePhase(.background)
+        harness.appState.handleScenePhase(.active)
+
+        XCTAssertEqual(harness.appState.preferredReturnSurfaceRequest, 0)
+        XCTAssertFalse(harness.appState.claimPreferredReturnSurfacePresentation())
+        XCTAssertFalse(harness.appState.showSidebar)
+    }
+
     func testSessionsPreferenceOnColdLaunchRequestsDrawer() {
         let harness = makeHarness(surface: .sessions)
 
@@ -578,6 +598,8 @@ private extension ChatReturnSurfaceTests {
         addTeardownBlock {
             defaults.removePersistentDomain(forName: suite)
         }
+        // "Open to" is the drawer shell's; V2 tests set the shell back on.
+        defaults.set(false, forKey: V2ShellPreference.key)
         configureDefaults(defaults)
         if surface != .conversation {
             defaults.set(surface.rawValue, forKey: AppState.chatReturnSurfaceKey)

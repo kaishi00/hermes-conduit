@@ -123,6 +123,9 @@ targets:
       # The iPhone's Local Live session, which a Watch call to the user's
       # own speech server runs through the host's audio bridge.
       - path: Shared/LocalLive
+      # Hermes' approval texts in the user's language (#1589), for the
+      # Watch's approval card.
+      - path: Shared/Approvals
       # GPT-Live's events, which the Watch reads and answers through the
       # host's audio bridge (designs/apple-watch-gpt-live.md).
       - path: Conduit/Voice/GPTLive/GPTLiveProtocol.swift
@@ -244,6 +247,7 @@ targets:
           - "Widgets/**"
           - "ShareDraft/**"
           - "Notifications/**"
+          - "Approvals/**"
     # Maps lookups the host asks this iPhone for run on MapKit
     # (Shared/Location/MapsEngine.swift, designs/maps-v1-contract.md).
     dependencies:

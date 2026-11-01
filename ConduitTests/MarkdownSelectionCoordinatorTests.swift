@@ -17,6 +17,36 @@ final class MarkdownSelectionCoordinatorTests: XCTestCase {
         )
     }
 
+    /// A table waits to mount under a key of its own, so a first cell that
+    /// is drawn text (a cell with a link) and waits under its segment
+    /// doesn't take its place, and both survive a segment update (#1596).
+    func testTableMountAndItsFirstCellsMountBothWait() {
+        let coordinator = MarkdownSelectionCoordinator()
+        let cell = "block-1-table-r0-c0"
+        coordinator.replaceSegments([
+            MarkdownSelectionSegmentDescriptor(id: "block-0", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: cell, order: 1, separatorBefore: "\n\n"),
+        ], revision: "r1")
+        let tableOwner = NSObject()
+        let cellOwner = NSObject()
+        let tableKey = MarkdownSelectionCoordinator.tableMountKey(forSegmentID: cell)
+        coordinator.deferRegistration(segmentID: tableKey, owner: tableOwner) {}
+        coordinator.deferRegistration(segmentID: cell, owner: cellOwner) {}
+
+        coordinator.replaceSegments([
+            MarkdownSelectionSegmentDescriptor(id: "block-0", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: cell, order: 1, separatorBefore: "\n\n"),
+        ], revision: "r1")
+
+        XCTAssertTrue(coordinator.hasDeferredRegistration(tableKey, owner: tableOwner))
+        XCTAssertTrue(coordinator.hasDeferredRegistration(cell, owner: cellOwner))
+
+        coordinator.replaceSegments([
+            MarkdownSelectionSegmentDescriptor(id: "block-0", order: 0, separatorBefore: ""),
+        ], revision: "r1")
+        XCTAssertFalse(coordinator.hasDeferredRegistration(tableKey, owner: tableOwner), "dropped with its segment")
+    }
+
     func testCopiedAttributedTextAcrossParagraphTableAndCodePreservesSeparatorsAndLinkAttributes() throws {
         let blocks = MarkdownParser.parse(
             "Before\n\n| A | B |\n| --- | --- |\n| [link](https://example.com) | 2 |\n\n```swift\nlet x = 1\n```\n\nAfter",

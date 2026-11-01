@@ -136,6 +136,8 @@ final class CapabilitiesStore {
     /// switch just flipped.
     @ObservationIgnored private var skillsEpoch = 0
     @ObservationIgnored private var connectorsEpoch = 0
+    /// The read whose list is showing.
+    @ObservationIgnored private var connectorsShownEpoch = 0
     /// Bumped when a server's entry is saved: a test that started before
     /// tested the old entry.
     @ObservationIgnored private var probeEpochs: [String: Int] = [:]
@@ -496,7 +498,9 @@ final class CapabilitiesStore {
 
     // MARK: Connectors
 
-    func loadConnectors() async {
+    /// True when this read put a fresh list in place.
+    @discardableResult
+    func loadConnectors() async -> Bool {
         let token = generation
         connectorsEpoch &+= 1
         let epoch = connectorsEpoch
@@ -509,8 +513,9 @@ final class CapabilitiesStore {
         do {
             let servers = ConnectorServer.list(from: try await serversResponse)
             let catalog = await catalogResponse
-            guard token == generation, epoch == connectorsEpoch else { return }
+            guard token == generation, epoch == connectorsEpoch else { return false }
             self.servers = servers
+            connectorsShownEpoch = epoch
             // A catalog read that fails keeps the catalog shown: a kept one
             // asks again when the tab next shows.
             if let catalog {
@@ -523,12 +528,15 @@ final class CapabilitiesStore {
             probes = probes.filter { names.contains($0.key) }
         } catch {
             _ = await catalogResponse
-            guard token == generation, epoch == connectorsEpoch else { return }
+            guard token == generation, epoch == connectorsEpoch else { return false }
             // A read cut off under it isn't the list failing: read again next time.
-            guard !(error is CancellationError) else { return }
+            guard !(error is CancellationError) else { return false }
             connectorsError = UserFacingError.message(for: error)
+            connectorsLoaded = true
+            return false
         }
         connectorsLoaded = true
+        return true
     }
 
     /// Tests every server that's on and hasn't been tested lately, a few at a
@@ -731,9 +739,24 @@ final class CapabilitiesStore {
         // A test of the old entry still running is discarded and run again.
         probeEpochs[original, default: 0] &+= 1
         probeEpochs[name, default: 0] &+= 1
+        let before = servers.first { $0.name == original }
         let wasKept = showsKept.contains(.connectors)
-        await loadConnectors()
+        let mine = connectorsEpoch &+ 1
+        let reloaded = await loadConnectors()
         guard token == generation else { return }
+        // A reload that failed, was cut off or was overtaken before a newer
+        // one landed leaves the list from before the save: show the saved
+        // server there, so a renamed page doesn't read as removed and the
+        // re-test goes by the saved entry. A newer read that landed is fresh.
+        let fresh = reloaded || connectorsShownEpoch > mine
+        if !fresh || !servers.contains(where: { $0.name == name }) {
+            let saved = ConnectorServer.saved(name: name, entry: entry, replacing: before)
+            // One row for it: the old name's place, any row already under
+            // the saved name dropped.
+            let at = servers.firstIndex { $0.name == original } ?? servers.firstIndex { $0.name == name }
+            servers.removeAll { $0.name == original || $0.name == name }
+            servers.insert(saved, at: min(at ?? servers.count, servers.count))
+        }
         // Tested again in the background: the editor closes on the save. A
         // kept list Hermes' answer took the place of has its servers tested
         // now, as the tab's open would have, the saved one with them.

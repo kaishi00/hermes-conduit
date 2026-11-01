@@ -2769,6 +2769,19 @@ final class PushNotificationService: ObservableObject {
         )
     }
 
+    /// The chat a delivered notification belongs to, to clear it once that
+    /// chat is read (#1579): the extension's note on a sealed push, which
+    /// outlives the envelope's day, else what the push itself routes to.
+    static func readChatTarget(from userInfo: [AnyHashable: Any], records: [E2EKeyRecord]) -> ConduitNotificationTarget? {
+        if let note = ReadChatHint.read(userInfo) { return target(from: note) }
+        return parseNotificationTarget(
+            from: userInfo,
+            records: records,
+            knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs,
+            keysProvisioned: NotificationSharedSettings.keysProvisioned
+        )
+    }
+
     private static func target(for evaluation: NotificationE2E.Evaluation, userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {
         switch evaluation {
         case .legacy:

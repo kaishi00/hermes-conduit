@@ -54,6 +54,10 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// The rows' bottom the next pass lays out, kept as rows change height
     /// between passes (`noteHeight`).
     private var pendingRowsBottom: CGFloat = 0
+    /// The rows' own height as the last pass laid them out, without the
+    /// room under a sent message (TranscriptScrollSurface): a row grown
+    /// since isn't drawn at its new height yet.
+    private(set) var rowsHeight: CGFloat = 0
     /// Whether the next pass asks for the content size: one invalidating
     /// everything or the rows' count does, one for some rows never does.
     private var asksContentSize = true
@@ -259,6 +263,7 @@ final class TranscriptLayout: UICollectionViewLayout {
         let rowsBottom = (rows.isEmpty ? Self.topPadding : itemTop[rows.count - 1] + itemHeight[rows.count - 1])
             + Self.bottomPadding
         pendingRowsBottom = rowsBottom
+        rowsHeight = rowsBottom
         asksContentSize = false
         appliedReserve = requestedReserve
         let height = max(rowsBottom, appliedReserve)
@@ -423,6 +428,25 @@ final class TranscriptLayout: UICollectionViewLayout {
             let attachments = CGFloat(message.attachments?.count ?? 0) * 200
             let width = message.role == .user ? width * 0.8 : width
             return rowGap + textHeight(message.content, width: width) + attachments
+        case .room(let roomRow):
+            return rowGap + estimatedHeight(of: roomRow, width: width)
+        }
+    }
+
+    /// A group room's row: a member's message has its picture beside it and
+    /// its name and buttons around it; a caption is a line.
+    private static func estimatedHeight(of row: GroupRoomRow, width: CGFloat) -> CGFloat {
+        switch row {
+        case .event(let event, _, _):
+            guard let text = event.messageText else { return 24 }
+            if event.isUserMessage { return textHeight(text, width: width * 0.8) }
+            return textHeight(text, width: width - 70) + 44
+        case .pending(let text, _, _):
+            return textHeight(text, width: width * 0.8)
+        case .responding:
+            return 60
+        case .empty:
+            return 160
         }
     }
 

@@ -50,7 +50,13 @@ struct WatchHomeView: View {
                 .accessibilityValue(notSetUp ? Text("Not set up on your Hermes host") : Text(call.engine.detail))
                 // Calls from Hermes ring the Watch only while its voice can
                 // start (WatchCallVoices).
-                if notSetUp, HermesWatchCalls.ringingBuilt, link.phoneContext?.callsRing == true {
+                if !WatchVoiceCall.callsWork {
+                    // #1346: say so before a call, not after it fails.
+                    oldWatchOSNote
+                        .font(.caption2)
+                        .foregroundStyle(Color.watchAttention)
+                        .multilineTextAlignment(.center)
+                } else if notSetUp, HermesWatchCalls.ringingBuilt, link.phoneContext?.callsRing == true {
                     Text("Calls from Hermes ring only your iPhone until \(call.engine.title) is set up. Voice settings in Conduit on your iPhone show what it needs.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -71,6 +77,14 @@ struct WatchHomeView: View {
                 .accessibilityLabel(Text("Settings"))
             }
         }
+    }
+
+    /// The iPhone rings for calls from Hermes only where they ring at all.
+    private var oldWatchOSNote: Text {
+        if HermesWatchCalls.ringingBuilt, link.phoneContext?.callsRing == true {
+            return Text("Calls from the Watch don't work on watchOS 10. Talk to Hermes in Conduit on your iPhone, which rings for calls from Hermes too.")
+        }
+        return Text("Calls from the Watch don't work on watchOS 10. Talk to Hermes in Conduit on your iPhone.")
     }
 
     @ViewBuilder
@@ -161,11 +175,14 @@ struct WatchSettingsView: View {
 
     var body: some View {
         List {
-            Section {
-                Toggle("Call on open", isOn: $call.startsOnOpen)
-                    .tint(accent)
-            } footer: {
-                Text("Opening Conduit starts a call right away. Turn this off to start each call with a tap.")
+            // Watch calls don't work on watchOS 10 (#1346): nothing to start.
+            if WatchVoiceCall.callsWork {
+                Section {
+                    Toggle("Call on open", isOn: $call.startsOnOpen)
+                        .tint(accent)
+                } footer: {
+                    Text("Opening Conduit starts a call right away. Turn this off to start each call with a tap.")
+                }
             }
             Section {
                 NavigationLink {
