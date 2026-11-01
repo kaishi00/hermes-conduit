@@ -1620,7 +1620,7 @@ iPad · selection across the reply · Copy response · links in cells (a cell wi
 - The pointer's Copy Table button covers the corner of the last header cell while the pointer is over the table.
 - A big table mounts its rows in batches (`LargeMarkdownTable`), and a selection copies only mounted cells, so a selection across a table past its first batch leaves the rest out until Show more; Copy Table copies every row.
 
-**Checked:** 2026-10-31, #1596 (a cell with a link draws as a selectable cell, so its link opens; Links in messages' Siblings); 2026-10-30, #1540 (the pointer's Copy Table button); #1535 (a selection in the message mounts the cells; VoiceOver's Copy Table kept).
+**Checked:** 2026-11-01, #1621 (the UI test finds a link cell as a Link or a TextView: a cell that's all link reads as a Link to accessibility); 2026-10-31, #1596 (a cell with a link draws as a selectable cell, so its link opens; Links in messages' Siblings); 2026-10-30, #1540 (the pointer's Copy Table button); #1535 (a selection in the message mounts the cells; VoiceOver's Copy Table kept).
 
 ## Attaching files
 
