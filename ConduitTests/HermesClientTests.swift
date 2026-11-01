@@ -2202,6 +2202,83 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAuthorityCompressMoveAndBusyModeTakeTheAuthorityShapes() async throws {
+        let (client, socket) = try await authorityClient()
+        var count = socket.sentTexts.count
+        let compress = Task<SessionCompressResult, Error> {
+            try await client.compressSession(sessionId: "sess-1", focusTopic: "names")
+        }
+        let compressed = try await answerRequest(on: socket, after: count, method: "session.mutate", result: [
+            "session_id": "sess-1", "operation": "compress", "status": "noop",
+            "summary": ["noop": true, "headline": "No changes from compression: 4 messages"]
+        ])
+        XCTAssertEqual(compressed["operation"] as? String, "compress")
+        XCTAssertEqual((compressed["payload"] as? [String: Any])?["focus"] as? String, "names")
+        XCTAssertNotNil(compressed["expected_generation"], "Hermes refuses a compress without the turn's generation")
+        let compressResult = try await awaitResult(of: compress, "the compress")
+        XCTAssertEqual(compressResult.summaryHeadline, "No changes from compression: 4 messages")
+        XCTAssertFalse(compressResult.hasMessagesPayload, "No transcript came back, so none is cleared")
+
+        count = socket.sentTexts.count
+        let move = Task<String, Error> { try await client.moveSessionWorkspace("sess-1", cwd: "/work/trip") }
+        let moved = try await answerRequest(on: socket, after: count, method: "session.mutate", result: [
+            "session_id": "sess-1", "revision": 2, "execution_generation": 1, "operation": "workspace", "cwd": "/work/trip"
+        ])
+        XCTAssertEqual(moved["operation"] as? String, "workspace")
+        XCTAssertEqual((moved["payload"] as? [String: Any])?["cwd"] as? String, "/work/trip")
+        XCTAssertNotNil(moved["expected_generation"])
+        let movedTo = try await awaitResult(of: move, "the move")
+        XCTAssertEqual(movedTo, "/work/trip")
+
+        // The authority has no profile-wide busy setting: Settings keeps it
+        // on the phone and nothing is sent.
+        count = socket.sentTexts.count
+        do {
+            _ = try await client.busyInputMode()
+            XCTFail("The authority's busy mode is kept on the phone")
+        } catch is HermesClient.BusyInputModeKeptOnPhone {}
+        try await client.setBusyInputMode(.queue)
+        XCTAssertEqual(socket.sentTexts.count, count, "No config.set busy on the authority")
+        client.disconnect()
+    }
+
+    func testAuthorityAnswerForATurnThatEndedReadsAsNoLongerWaiting() async throws {
+        let (client, socket) = try await authorityClient()
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "clarify.request", "session_id": "sess-1", "execution_generation": 2,
+                "payload": ["prompt_id": "c-2", "execution_generation": 2, "question": "Which?"]
+            ]
+        ], to: socket)
+        var count = socket.sentTexts.count
+        let stale = Task<HermesClient.ClarifyResponseOutcome, Error> {
+            try await client.respondToClarification(requestId: "c-2", answer: "A")
+        }
+        try await answerRequest(on: socket, after: count, method: "clarify.respond", error: [
+            "code": 4001, "message": "stale_generation", "data": ["reason": "stale_generation"]
+        ])
+        let staleOutcome = try await awaitResult(of: stale, "the stale answer")
+        XCTAssertEqual(staleOutcome, .expired)
+
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "clarify.request", "session_id": "sess-1", "execution_generation": 3,
+                "payload": ["prompt_id": "c-3", "execution_generation": 3, "question": "Which?"]
+            ]
+        ], to: socket)
+        count = socket.sentTexts.count
+        let elsewhere = Task<HermesClient.ClarifyResponseOutcome, Error> {
+            try await client.respondToClarification(requestId: "c-3", answer: "A")
+        }
+        try await answerRequest(on: socket, after: count, method: "clarify.respond",
+                                result: ["status": "already_resolved", "prompt_id": "c-3"])
+        let elsewhereOutcome = try await awaitResult(of: elsewhere, "the answer another surface beat")
+        XCTAssertEqual(elsewhereOutcome, .expired, "Another surface's answer stands; this one wasn't taken")
+        client.disconnect()
+    }
+
     func testRefusalNamesTheVerbAndTheFieldsHermesRefused() throws {
         let data = Data(#"{"code":4001,"message":"invalid_params","data":{"reason":"invalid_params","fields":["submission_id","cols"],"revision":3,"execution_generation":2}}"#.utf8)
         var error = try JSONDecoder().decode(RpcError.self, from: data)

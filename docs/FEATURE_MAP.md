@@ -4721,8 +4721,9 @@ its own shape.
 (chats, project chats, Bot Chat; the voice modes' turns and jobs, CarPlay
 and the Watch go through the same client) · approval and clarify answers
 (chat cards, notification actions, spoken answers) · rename, branch,
-compress, the Model sheet's pick and Move to project · busy mode in
-Settings · scheduled jobs (REST first, so neither socket verb is needed) ·
+compress, rewind (Edit and resend, /undo, /retry), the Model sheet's pick
+and Move to project · the session's reasoning, Fast and YOLO switches · busy
+mode in Settings · scheduled jobs (REST first, so neither socket verb is needed) ·
 the notifier's upstream contract leg (notifier/upstream/test_gateway_listener.py)
 and its routes, which the listener serves since it mounts the dashboard ·
 README (Connecting, Architecture) · the website's FAQ
@@ -4735,9 +4736,10 @@ README (Connecting, Architecture) · the website's FAQ
 
 **Rulings**
 - The socket's `gateway.ready` decides the shape (`session_authority: true` is the gateway's listener); a request built before it was read goes in the dashboard's shape, and one refused once the socket proved to be the authority's goes again, once, in the authority's. That is safe because the authority refuses the dashboard's shape before running anything, which the notifier's upstream leg checks (2026-11-01, #1618).
-- On the authority a prompt carries a `submission_id`, the same on any resend of that message; its receipt's `queued` is its place in line, so only a Queue send reads as held. Steer, redirect and interrupt name the running turn's `execution_generation`; a stale one reads the session again and goes once more only if a turn still runs (2026-11-01, #1618).
+- On the authority a prompt carries a `submission_id`, kept on the client's own resends of that send (a refused key, a reshape), so Hermes admits it once; its receipt's `queued` is its place in line, so only a Queue send reads as held. Steer, redirect and interrupt name the running turn's `execution_generation`; a stale one reads the session again and goes once more only if a turn still runs (2026-11-01, #1618).
 - Rename, branch, compress, a model pick and Move to project are `session.mutate` on the authority, fenced by the session's revision, and by the turn's generation for all but rename; a `revision_conflict` or `stale_generation` that carries the current fences goes again once with them. A branch keeps rows through the reply's own row id (2026-11-01, #1618).
-- An approval or clarify card names its prompt and the turn that asked from the socket's event; one this socket never saw asked (shown before a reconnect) reads both from the chat's resume, which lists the prompts Hermes still waits on, and one it no longer lists reads as answered or ended. A guarded model pick answers `confirmation_required` with a token and its `target_model`; the confirmed pick sends that token back (2026-11-01, #1618, both tried on the canary and in the notifier's upstream leg).
+- An approval or clarify answer whose turn ended (`stale_generation`), or that another surface answered first (`already_resolved`), reads as no longer waiting rather than as a refusal. An approval or clarify card names its prompt and the turn that asked from the socket's event; one this socket never saw asked (shown before a reconnect) reads both from the chat's resume, which lists the prompts Hermes still waits on, and one it no longer lists reads as answered or ended. A guarded model pick answers `confirmation_required` with a token and its `target_model`; the confirmed pick sends that token back (2026-11-01, #1618, both tried on the canary and in the notifier's upstream leg).
+- Rewind already speaks `session.mutate` with the resume's fences on both servers; its result's fences are kept for the next request. The session's reasoning, Fast and YOLO switches stay `config.set` with the session id, which the authority takes (scope `session`); only `model` moved to a mutation (2026-11-01, #1618, probed on the canary).
 - Busy mode stays on the phone on the authority, which has no profile-wide busy setting: Conduit already sends steer, interrupt or Queue itself (2026-11-01, #1618).
 - A bare refusal token from Hermes ("invalid_params") is shown with the request and the keys Hermes named; Hermes' own sentences are shown as they are (2026-11-01, #1618).
 - Setup docs keep recommending `hermes dashboard`; the Webapp's address is mentioned as also working (2026-11-01, #1618).

@@ -1284,6 +1284,8 @@ final class HermesClient: ObservableObject {
         executionGenerations = [:]
         sessionRevisions = [:]
         authorityPrompts = [:]
+        // A token binds the session's revision on the old socket's server.
+        modelConfirmTokens = [:]
 
         closedIntentionally = false
         socketHasOpened = false
@@ -1776,6 +1778,8 @@ final class HermesClient: ObservableObject {
                 let payload = eventObject?["payload"]?.objectValue
                 if let id = payload?["id"]?.stringValue {
                     openServerRequestIDs.remove(id)
+                    authorityPrompts.removeValue(forKey: id)
+                    authorityPromptSessions.removeValue(forKey: id)
                     if let session = clarifySessions.removeValue(forKey: id),
                        (eventObject?["session_id"]?.stringValue ?? "").isEmpty,
                        var patched = eventObject {
@@ -3329,18 +3333,27 @@ final class HermesClient: ObservableObject {
         if let prompt = authorityPrompt {
             // The authority asks one question per prompt and names the
             // turn that asked; its answer settles that prompt.
-            let result = try await rpc("clarify.respond", params: [
-                "session_id": prompt.sessionId,
-                "execution_generation": prompt.generation,
-                "prompt_id": requestId,
-                "answer": answer
-            ])
+            let result: AnyCodable
+            do {
+                result = try await rpc("clarify.respond", params: [
+                    "session_id": prompt.sessionId,
+                    "execution_generation": prompt.generation,
+                    "prompt_id": requestId,
+                    "answer": answer
+                ])
+            } catch let error as RpcError where error.reason == "stale_generation" {
+                // The turn that asked has ended: Hermes no longer waits.
+                authorityPrompts.removeValue(forKey: requestId)
+                authorityPromptSessions.removeValue(forKey: requestId)
+                return .expired
+            }
             authorityPrompts.removeValue(forKey: requestId)
             authorityPromptSessions.removeValue(forKey: requestId)
-            switch result.objectValue?["status"]?.stringValue?.lowercased() {
-            case "expired": return .expired
-            default: return .accepted(remaining: [])
-            }
+            // `already_resolved`: another surface answered first, so this
+            // answer wasn't taken.
+            return result.objectValue?["status"]?.stringValue?.lowercased() == "resolved"
+                ? .accepted(remaining: [])
+                : .expired
         }
         var params: [String: Any] = [
             "request_id": requestId,
@@ -3468,7 +3481,15 @@ final class HermesClient: ObservableObject {
                 "choice": choice
             ]
             if let profile, !profile.isEmpty { params["profile"] = profile }
-            let result = try await rpc("approval.respond", params: params)
+            let result: AnyCodable
+            do {
+                result = try await rpc("approval.respond", params: params)
+            } catch let error as RpcError where error.reason == "stale_generation" {
+                // The turn that asked has ended: nothing to approve.
+                authorityPrompts.removeValue(forKey: trimmedRequestId)
+                authorityPromptSessions.removeValue(forKey: trimmedRequestId)
+                return false
+            }
             authorityPrompts.removeValue(forKey: trimmedRequestId)
             authorityPromptSessions.removeValue(forKey: trimmedRequestId)
             return result.objectValue?["status"]?.stringValue == "resolved"
@@ -3780,6 +3801,13 @@ final class HermesClient: ObservableObject {
             params["profile"] = profile
         }
         let result = try await rpc("session.mutate", params: params)
+        // The authority's rewind moves both fences, which the next steer,
+        // answer or mutation names.
+        noteAuthorityFences(
+            sessionId: sessionId,
+            generation: Self.exactIntValue(result.objectValue?["execution_generation"]),
+            revision: Self.exactIntValue(result.objectValue?["revision"])
+        )
         return SessionRewindReceipt(result: result)
     }
 
