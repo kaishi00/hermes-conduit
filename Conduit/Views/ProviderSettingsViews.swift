@@ -268,6 +268,30 @@ private struct ProviderRow: View {
     }
 }
 
+/// A key section kept by a build that didn't count sign-ins: which key the
+/// profile uses waits for Hermes, and a read that fails says so.
+private struct KeyWaitingForHermes: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @ObservedObject var service: ProviderSettingsService
+    let retry: Bool
+
+    var body: some View {
+        if service.loadFailed {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(AppLocalization.string("Could not load providers."))
+                    .scaledFont(.footnote).foregroundStyle(.secondary)
+                if retry {
+                    Button(AppLocalization.string("Try Again")) { Task { await service.reload() } }
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .tint(.conduitAccent)
+                }
+            }
+        } else {
+            ProgressView().frame(maxWidth: .infinity).accessibilityLabel(AppLocalization.string("Loading…"))
+        }
+    }
+}
+
 /// The words for a provider's state, kept in one place.
 enum ProviderText {
     static func status(_ entry: ProviderEntry) -> String {
@@ -479,7 +503,11 @@ private struct ProviderConnectPage: View {
                 }
                 if let key = entry.key {
                     ConduitSettingsSection(title: AppLocalization.string("API key"), symbol: "key", tint: .conduitAura) {
-                        ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: onConnected)
+                        if key.signInsKnown {
+                            ProviderKeyEditor(service: service, entry: entry, key: key, onSaved: onConnected)
+                        } else {
+                            KeyWaitingForHermes(service: service, retry: true)
+                        }
                     }
                 }
                 ProviderSettingsRows(service: service, entry: entry)
@@ -556,7 +584,8 @@ struct ProviderDetailPage: View {
                                               keyRemovable: context.catalogAnswered && context.usageAnswered && !runsDefault(entry),
                                               usage: context.usage(entry))
                         } else {
-                            ProgressView().frame(maxWidth: .infinity).accessibilityLabel(AppLocalization.string("Loading…"))
+                            // The page's Try Again is above.
+                            KeyWaitingForHermes(service: service, retry: false)
                         }
                     }
                     if key.signInsKnown, key.keysInUse > 1, let order = context.keyOrder, KeyOrder.settingKey(for: entry.id) != nil {

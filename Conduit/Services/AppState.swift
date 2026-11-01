@@ -2837,7 +2837,9 @@ final class AppState: ObservableObject {
     /// The helper models read in flight. A reader asking meanwhile on the
     /// same profile and Hermes shares it: the Model page and its Helper
     /// models section open together. A save drops it, so a read asked
-    /// after the save isn't answered from before it.
+    /// after the save isn't answered from before it. A reader that leaves
+    /// doesn't cancel it: the next one joins it, and the bridge's request
+    /// timeout ends one Hermes never answers.
     private var helperModelsRead: (profile: String, owner: DashboardRuntimeOwner, task: Task<HelperModelsAnswer, Error>)?
 
     private func readHelperModels() async throws -> [String: Any] {
@@ -2950,8 +2952,10 @@ final class AppState: ObservableObject {
             // asked after it.
             NotificationCenter.default.post(name: HelperModelSlot.saved, object: nil)
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return .saved }
+            // The shared read, so the open lists' reads after the save
+            // join it.
             Task { [weak self] in
-                _ = try? await self?.readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner)
+                _ = try? await self?.readHelperModels()
             }
             return .saved
         } catch {
