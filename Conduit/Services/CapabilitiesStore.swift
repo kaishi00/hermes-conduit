@@ -842,35 +842,6 @@ final class CapabilitiesStore {
         if case .failed = connectorInstalls[name] { connectorInstalls[name] = nil }
     }
 
-    /// Starts a server's OAuth sign-in; the person finishes it in the
-    /// browser at the returned address.
-    func startSignIn(_ name: String) async throws -> (flowID: String, url: URL) {
-        let response = try await request(
-            scoped("/api/mcp/servers/\(Self.component(name))/auth"),
-            method: "POST",
-            timeout: 45_000
-        )
-        if let error = response["error"] as? String, !error.isEmpty {
-            throw CapabilitiesStoreError.declined(error)
-        }
-        guard let flowID = response["flow_id"] as? String,
-              let address = response["authorization_url"] as? String,
-              let url = URL(string: address) else {
-            throw CapabilitiesStoreError.declined(AppLocalization.string("Hermes didn't return a sign-in page."))
-        }
-        return (flowID, url)
-    }
-
-    /// starting, authorization_required, approved or error.
-    func signInStatus(_ flowID: String) async throws -> (status: String, error: String?) {
-        let response = try await request("/api/mcp/oauth/flows/\(Self.component(flowID))")
-        return (response["status"] as? String ?? "", (response["error"] as? String).flatMap { $0.isEmpty ? nil : $0 })
-    }
-
-    func cancelSignIn(_ flowID: String) async {
-        _ = try? await request("/api/mcp/oauth/flows/\(Self.component(flowID))", method: "DELETE")
-    }
-
     // MARK: Plugins
 
     func loadPlugins() async {
