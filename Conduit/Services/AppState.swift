@@ -19111,7 +19111,7 @@ final class AppState: ObservableObject {
                         // A re-auth the network cut off (a slow link just
                         // after a resume) says nothing about the sign-in:
                         // retry quietly, as a failed ticket does (#1624).
-                        if DictationClipStore.isTransient(error) {
+                        if DictationUploadRetry.isTransient(error) {
                             retryQuietlyAfterFailedRenewal(error)
                             return
                         }
