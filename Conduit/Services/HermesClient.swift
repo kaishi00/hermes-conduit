@@ -3485,6 +3485,9 @@ final class HermesClient: ObservableObject {
                 // Refused outright: nothing was taken.
                 unconfirmedAuthorityAnswers.remove(requestId)
                 throw error
+            } catch HermesError.notConnected {
+                // Never written: nothing was taken.
+                throw HermesError.notConnected
             } catch {
                 // No word back: it may have been taken.
                 unconfirmedAuthorityAnswers.insert(requestId)
@@ -3674,6 +3677,9 @@ final class HermesClient: ObservableObject {
                 // Refused outright: nothing was taken.
                 unconfirmedAuthorityAnswers.remove(trimmedRequestId)
                 throw error
+            } catch HermesError.notConnected {
+                // Never written: nothing was taken.
+                throw HermesError.notConnected
             } catch {
                 // No word back: it may have been taken.
                 unconfirmedAuthorityAnswers.insert(trimmedRequestId)
