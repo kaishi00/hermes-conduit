@@ -600,13 +600,13 @@ final class ProviderSettingsTests: XCTestCase {
         // waits for Hermes, and the card says connected without saying how.
         var older = ProviderCatalog.summary(ProviderCatalog.entries(
             env: unsetEnv, accounts: nil, endpoints: nil, sharedPool: withSignIn, profilePool: [:], onMainProfile: false))
-        var rows = try XCTUnwrap(older["providers"] as? [[String: Any]])
-        let index = try XCTUnwrap(rows.firstIndex { $0["id"] as? String == "openrouter" })
-        var access = try XCTUnwrap(rows[index]["env"] as? [String: Any])
+        var olderRows = try XCTUnwrap(older["providers"] as? [[String: Any]])
+        let index = try XCTUnwrap(olderRows.firstIndex { $0["id"] as? String == "openrouter" })
+        var access = try XCTUnwrap(olderRows[index]["env"] as? [String: Any])
         access["sign_ins_in_use"] = nil
         access["profile_sign_ins"] = nil
-        rows[index]["env"] = access
-        older["providers"] = rows
+        olderRows[index]["env"] = access
+        older["providers"] = olderRows
         let olderEntry = try XCTUnwrap(ProviderCatalog.entries(summary: older)?.first { $0.id == "openrouter" })
         XCTAssertEqual(olderEntry.key?.signInsKnown, false)
         XCTAssertTrue(olderEntry.keyUseUnknown)
