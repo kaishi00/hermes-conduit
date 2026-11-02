@@ -282,8 +282,10 @@ struct BotWorkSnapshot: Equatable {
             .union(knownSessionIDs)
     }
 
+    /// The workstream a chat is. A call's job isn't one: its chat stays a
+    /// Voice Jobs chat, with its own title, Back and Stop.
     func item(forSession ids: Set<String>) -> BotWorkItem? {
-        items.first { $0.kind == .workstream && ids.contains($0.sessionID) }
+        items.first { $0.kind == .workstream && $0.fromCall.isEmpty && ids.contains($0.sessionID) }
     }
 
     /// The words under the Bot Chat's title ("2 working · 1 needs you"),

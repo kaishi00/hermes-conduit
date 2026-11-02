@@ -83,6 +83,14 @@ extension BotModeTests {
         XCTAssertEqual(job.fromCall, "watch")
         XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W6", "kind": "workstream", "from_call": "car"])).fromCall, "")
         XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W7", "kind": "workstream"])).fromCall, "")
+        // Its chat stays a Voice Jobs chat, not a workstream's.
+        var response = workResponse()
+        var rows = response["work"] as? [[String: Any]] ?? []
+        rows[0]["from_call"] = "phone"
+        response["work"] = rows
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina"))
+        let session = try XCTUnwrap(rows[0]["session_id"] as? String)
+        XCTAssertNil(snapshot.item(forSession: [session]))
     }
 
     /// Pin, Resolve and Reopen: what the plugin offers, and the list as

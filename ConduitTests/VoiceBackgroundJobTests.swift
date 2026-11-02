@@ -258,6 +258,9 @@ extension VoiceConversationControllerTests {
         fake.storedIDs = false
         _ = await supervisor.performVoiceCommand(.start(instructions: "summarize today's email"))
         XCTAssertEqual(fake.kept.map(\.1), ["st-1", "rt-2"])
+        // A Watch call's job is the Watch's, whichever profile it names.
+        _ = await supervisor.startJob(instructions: "check the backups", profile: nil, callsModel: false, fromWatch: true)
+        XCTAssertEqual(fake.kept.last?.3, true)
     }
 
     func testJobsStartedInALiveCallAreAnchoredToItsTranscript() async {

@@ -149,7 +149,7 @@ final class BotWorkStore: ObservableObject {
         }
         // A resolved one, opened from the Resolved list.
         for (profile, list) in resolvedLists {
-            if let item = list.items.first(where: { $0.kind == .workstream && ids.contains($0.sessionID) }) {
+            if let item = list.items.first(where: { $0.kind == .workstream && $0.fromCall.isEmpty && ids.contains($0.sessionID) }) {
                 return (profile, item)
             }
         }

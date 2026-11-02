@@ -1361,12 +1361,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     /// `callsModel`: a Watch call's own job on its profile, which runs on
-    /// that profile's voice-job model (#1564).
+    /// that profile's voice-job model (#1564). `fromWatch`: any job a Watch
+    /// call started, named profile or not, as its bot's Work panel says.
     func startJob(
         instructions requested: String,
         profile spokenProfile: String?,
         joinsCall: Bool = false,
         callsModel: Bool,
+        fromWatch: Bool = false,
         onJobCreated: (@MainActor (UUID) -> Void)? = nil
     ) async -> String {
         if joinsCall, liveThread == nil {
@@ -1435,7 +1437,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             onJobSessionCreated?([runtimeID, ids.storedID].compactMap { $0 }.filter { !$0.isEmpty })
             backend.keepInRegistry(profile, ids.storedID.flatMap { $0.isEmpty ? nil : $0 } ?? runtimeID,
-                                   job.title, instructions, callsModel)
+                                   job.title, instructions, fromWatch)
             await backend.setTitle(runtimeID, job.title)
             guard startIsCurrent(job.id, generation: generation) else {
                 return await abandonStart(job, sessionID: runtimeID, generation: generation)
