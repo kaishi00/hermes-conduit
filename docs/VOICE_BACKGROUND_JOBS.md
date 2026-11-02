@@ -32,11 +32,11 @@ a job. At most three jobs run at once.
   (`work-adopt`) is also told of each job once Hermes takes its request, so
   the job shows in its bot's Work panel as a call's ("From a voice call" or
   "From a Watch call"), journaled, and waiting for the user after a Hermes
-  restart. It's one small request off the job's path, beside the session the
-  job makes anyway; the call and its results aren't saved mid-call, and how
-  results come back is unchanged. (That reads the "no writes to the host
-  mid-call" ruling as covering saves of the call and its results; the feature
-  map's "Job results during calls" asks Eric to confirm.) A start that fails
+  restart. It's a write to the host during the call, one small request off
+  the job's path beside the session the job makes anyway; how results come
+  back is unchanged. Whether the "no writes to the host mid-call" ruling
+  allows it is Eric's to confirm (feature map, "Job results during calls"):
+  if not, it moves to hang-up. A start that fails
   or is abandoned isn't kept. Watch relay jobs are kept by the plugin itself
   as they start.
 - During a live call, the call screen shows each job the call started: the
