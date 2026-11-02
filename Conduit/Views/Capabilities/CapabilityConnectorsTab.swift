@@ -369,10 +369,13 @@ struct ConnectorKeysSection: View {
                 drafts = [:]
                 note = AppLocalization.string("Key saved")
                 Haptics.success()
+                // The fields come back before the test, which can take a while.
+                saving = false
                 if Self.testsAfterSave(name, in: store.servers) { await store.probe(name) }
             } catch {
                 guard store.generation == generation else { return }
                 note = UserFacingError.message(for: error)
+                saving = false
                 // Keys Hermes took before the failure are tested too, so the
                 // page doesn't keep the old key's result.
                 if savedAny, Self.testsAfterSave(name, in: store.servers) { await store.probe(name) }
