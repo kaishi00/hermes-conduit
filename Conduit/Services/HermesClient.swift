@@ -3255,10 +3255,14 @@ final class HermesClient: ObservableObject {
         // user's next send of the same words in that chat after one whose
         // reply never came back, so one Hermes already admitted is that
         // admission again, never a second copy. Any other send is new.
+        // Only within a few minutes: a later send of the same words is the
+        // user meaning them again, never the lost one.
         let unanswered = Self.unansweredSubmissions[sessionId]
-        let submissionID = unanswered?.text == text && !hidden
-            ? unanswered!.id : UUID().uuidString.lowercased()
-        if !hidden { Self.unansweredSubmissions[sessionId] = (text: text, id: submissionID) }
+        let reuses = !hidden && unanswered.map {
+            $0.text == text && Date().timeIntervalSince($0.at) < Self.unansweredSubmissionWindow
+        } == true
+        let submissionID = reuses ? unanswered!.id : UUID().uuidString.lowercased()
+        if !hidden { Self.unansweredSubmissions[sessionId] = (text: text, id: submissionID, at: reuses ? unanswered!.at : Date()) }
         // The chat's staged images go with its next message, as the
         // dashboard sends its own held ones; a hidden turn isn't the
         // user's message.
@@ -4273,7 +4277,9 @@ final class HermesClient: ObservableObject {
     /// Per chat, the last send whose reply never came back (a timeout, a
     /// dropped socket) or that hasn't answered yet: its words and the
     /// `submission_id` it went with. A refusal or a receipt clears it.
-    @MainActor private static var unansweredSubmissions: [String: (text: String, id: String)] = [:]
+    @MainActor private static var unansweredSubmissions: [String: (text: String, id: String, at: Date)] = [:]
+    /// How long after an unanswered send the same words still count as it.
+    static let unansweredSubmissionWindow: TimeInterval = 5 * 60
     @MainActor private static var authorityStagedImages: [String: [[String: String]]] = [:]
 
     /// Takes back an image staged with `attachImage` before any prompt
