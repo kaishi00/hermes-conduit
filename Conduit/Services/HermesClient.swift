@@ -3244,7 +3244,6 @@ final class HermesClient: ObservableObject {
     /// A hidden prompt on a Hermes without `display_kind`.
     struct HiddenPromptUnsupportedError: Error {}
 
-    /// Queue on a Hermes without `prompt.submit`'s `queued` key.
     /// A branch on the authority names its reply by the row id Hermes gave
     /// it; a reply whose id never arrived (its completion missed in the
     /// background) gets it when the chat is read again.
@@ -3254,6 +3253,7 @@ final class HermesClient: ObservableObject {
         }
     }
 
+    /// Queue on a Hermes without `prompt.submit`'s `queued` key.
     struct QueueUnsupportedError: LocalizedError {
         var errorDescription: String? {
             AppLocalization.string("This Hermes can't queue messages. Update Hermes, or touch and hold send to steer or interrupt instead.")
