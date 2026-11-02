@@ -129,6 +129,32 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(IPhoneVoices.pickChangesSaved("ava", saved: nil))
     }
 
+    func testACantoneseReplySpeaksWithACantoneseVoice() {
+        // NLLanguageRecognizer can tell colloquial Cantonese apart as "yue".
+        let tag = OnDeviceSpeechStream.detectedTag("yue")
+        XCTAssertEqual(tag, "zh-HK")
+        XCTAssertEqual(IPhoneVoices.languageKey(tag), "zh-TW")
+        let mandarinTW = iPhoneVoice("meijia", "Meijia", "zh-TW", quality: 3)
+        let cantonese = iPhoneVoice("sinji", "Sinji", "zh-HK")
+        XCTAssertEqual(IPhoneVoices.pick([mandarinTW, cantonese], wanted: tag, chosen: nil, region: "US", systemDefault: nil), cantonese)
+        XCTAssertEqual(OnDeviceSpeechStream.detectedTag("de"), "de")
+    }
+
+    @MainActor
+    func testALanguageWithNoInstalledVoiceUsesIOSsOwn() {
+        let saved = IPhoneVoices.readInstalled
+        defer {
+            IPhoneVoices.readInstalled = saved
+            IPhoneVoices.forgetInstalled()
+        }
+        IPhoneVoices.readInstalled = { [] }
+        IPhoneVoices.forgetInstalled()
+        XCTAssertEqual(
+            IPhoneVoices.voice(for: "en-US")?.identifier,
+            AVSpeechSynthesisVoice(language: "en-US")?.identifier
+        )
+    }
+
     func testAScreenReaderVoiceNeverWinsOverAnyOtherVoice() {
         let eloquence = iPhoneVoice("com.apple.eloquence.en-US.Flo", "Flo", "en-US", quality: 2)
         let basic = iPhoneVoice("samantha", "Samantha", "en-US")

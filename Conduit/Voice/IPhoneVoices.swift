@@ -39,8 +39,9 @@ enum IPhoneVoices {
     static let choicesKey = "conduit.voice.iPhoneVoices.v1"
 
     /// "en-US", "en" and "EN_gb" all read as "en": one pick covers a language
-    /// in every region. Chinese keeps its scripts apart, since a reply is
-    /// told apart only by script (OnDeviceSpeechStream.language(of:)):
+    /// in every region. Chinese keeps its scripts apart, since replies are
+    /// told apart by script (OnDeviceSpeechStream.language(of:), which tags
+    /// a Cantonese one zh-HK):
     /// Simplified (zh-CN) and Traditional (zh-TW, where Cantonese voices go
     /// too, so a Hong Kong pick speaks Traditional replies).
     static func languageKey(_ language: String) -> String {

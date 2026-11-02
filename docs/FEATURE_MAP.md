@@ -2842,7 +2842,7 @@ Classic voice, and its calls speak with their live voices.
 
 **Rulings**
 - Siri's own voices aren't offered: iOS never lists them to apps (WWDC20 session 10022), and private ones would fail App Review. Settings says so and points to Premium voices, the closest there is (2026-11-02, from a tester's report of a robotic voice).
-- Automatic picks, for the reply's language: any voice but iOS 17's screen-reader voices (Eloquence: Eddy, Flo…), then Mandarin over Cantonese for Traditional Chinese, then Premium, then Enhanced, then iOS's default for the language, the exact language, the iPhone's region, and the name, so the pick never follows iOS's list order. Screen-reader voices are used, and listed in Settings, only when a language has nothing else; novelty voices and Personal Voice never.
+- Automatic picks, for the reply's language: any voice but iOS 17's screen-reader voices (Eloquence: Eddy, Flo…), then Mandarin over Cantonese for Traditional Chinese (a reply recognized as Cantonese the other way round), then Premium, then Enhanced, then iOS's default for the language, the exact language, the iPhone's region, and the name, so the pick never follows iOS's list order. Screen-reader voices are used, and listed in Settings, only when a language has nothing else or the user picked one, which stays until they change it; novelty voices and Personal Voice never.
 - A pick in Settings is per language (all its regions; Chinese by script, as replies are told apart: Simplified, and Traditional with Cantonese voices, so a Hong Kong pick speaks Traditional replies) and per device, not per profile: voices are installed per device. A picked voice that's deleted goes back to automatic.
 - The reply's language comes from its first sentence long enough to tell; until then ("OK.") it's the app's.
 - A voice downloaded or deleted while Conduit runs is used from the next sentence (iOS's voices-changed notice), and Settings reads the list again when it opens or Conduit comes back from iPhone Settings.
@@ -2851,7 +2851,7 @@ Classic voice, and its calls speak with their live voices.
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-02, #1664 (new entry: automatic skips screen-reader voices, a pick per language, newly downloaded voices used at once; review: Automatic clears a deleted pick, screen-reader voices listed only when alone, Chinese kept apart by script, screen-reader voices below any other, an app in Traditional Chinese falls back to Traditional, Mandarin over Cantonese unpicked, a short opening sentence no longer fixes the reply's language).
+**Checked:** 2026-11-02, #1664 (new entry: a reply recognized as Cantonese speaks with a Cantonese voice; automatic skips screen-reader voices, a pick per language, newly downloaded voices used at once; review: Automatic clears a deleted pick, screen-reader voices listed only when alone, Chinese kept apart by script, screen-reader voices below any other, an app in Traditional Chinese falls back to Traditional, Mandarin over Cantonese unpicked, a short opening sentence no longer fixes the reply's language).
 
 ## Providers and keys
 

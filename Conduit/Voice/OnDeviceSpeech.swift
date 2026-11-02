@@ -211,8 +211,15 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         case .simplifiedChinese: return "zh-CN"
         case .traditionalChinese: return "zh-TW"
         case .undetermined: return nil
-        default: return best.key.rawValue
+        default: return detectedTag(best.key.rawValue)
         }
+    }
+
+    /// The tag a detected language is spoken by. Cantonese ("yue") goes to
+    /// zh-HK, the tag iOS gives its Cantonese voices, so it reaches them and
+    /// a Traditional Chinese pick.
+    nonisolated static func detectedTag(_ raw: String) -> String {
+        raw.lowercased() == "yue" ? "zh-HK" : raw
     }
 
     nonisolated static var appLanguage: String? {
