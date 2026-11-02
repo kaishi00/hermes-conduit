@@ -387,13 +387,18 @@ final class ProfileDiscoveryTests: XCTestCase {
         try await held.waitForRequests(1)
         let newer = Task { await appState.loadProfileDisplayPreferencesForTesting() }
         try await held.waitForRequests(2)
-        try await held.answer(["display": ["tool_progress": "all"], "timezone": "Asia/Tokyo"], at: 1)
+        try await held.answer(Self.newerConfig, at: 1)
         await newer.value
-        try await held.answer(["display": ["tool_progress": "off"], "timezone": "Europe/Paris"])
+        try await held.answer([
+            "display": [
+                "show_reasoning": true, "tool_progress": "all",
+                "expand_tools": false, "memory_notifications": "all",
+            ],
+            "timezone": "Europe/Paris",
+        ])
         await older.value
 
-        XCTAssertTrue(appState.displayPreferences.showToolProgress)
-        XCTAssertEqual(appState.activeProfileTimeZoneSetting, "Asia/Tokyo")
+        assertNewerDisplaySettings(appState)
     }
 
     func testAnOlderDisplaySettingsReadFailingLastKeepsTheNewerSettings() async throws {
@@ -407,13 +412,30 @@ final class ProfileDiscoveryTests: XCTestCase {
         try await held.waitForRequests(1)
         let newer = Task { await appState.loadProfileDisplayPreferencesForTesting() }
         try await held.waitForRequests(2)
-        try await held.answer(["display": ["tool_progress": "off"], "timezone": "Asia/Tokyo"], at: 1)
+        try await held.answer(Self.newerConfig, at: 1)
         await newer.value
         try await held.answer(["error": "unavailable"], status: 503)
         await older.value
 
-        XCTAssertFalse(appState.displayPreferences.showToolProgress)
-        XCTAssertEqual(appState.activeProfileTimeZoneSetting, "Asia/Tokyo")
+        assertNewerDisplaySettings(appState)
+    }
+
+    /// Every display setting away from Hermes' default, and a zone.
+    private static let newerConfig: [String: Any] = [
+        "display": [
+            "show_reasoning": false, "tool_progress": "off",
+            "expand_tools": true, "memory_notifications": "off",
+        ],
+        "timezone": "Asia/Tokyo",
+    ]
+
+    private func assertNewerDisplaySettings(_ appState: AppState, file: StaticString = #filePath, line: UInt = #line) {
+        let shown = appState.displayPreferences
+        XCTAssertFalse(shown.showReasoning, file: file, line: line)
+        XCTAssertFalse(shown.showToolProgress, file: file, line: line)
+        XCTAssertTrue(shown.expandToolsByDefault, file: file, line: line)
+        XCTAssertFalse(shown.showReviews, file: file, line: line)
+        XCTAssertEqual(appState.activeProfileTimeZoneSetting, "Asia/Tokyo", file: file, line: line)
     }
 
     func testDegenerateEmptySuccessKeepsKnownProfiles() async throws {
