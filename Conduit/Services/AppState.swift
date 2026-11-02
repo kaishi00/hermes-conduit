@@ -34189,10 +34189,12 @@ final class AppState: ObservableObject {
                 }
             }
             if reasoning != nil || key.hasPrefix("display.") { displayPreferencesWriteRevision &+= 1 }
-            if key == ProfileTimeZone.configKey { timeZoneWriteRevision &+= 1 }
             // The write landed on its own profile; what's mirrored on screen
             // must still be that dashboard's and profile's.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return true }
+            // Only the zone on screen voids a settings read's zone: one saved
+            // for a profile switched away from leaves the new one's read alone.
+            if key == ProfileTimeZone.configKey { timeZoneWriteRevision &+= 1 }
             if key == ProfileTimeZone.configKey, let zone = value.textValue {
                 profileTimeZoneSetting = (profile, zone)
             }
