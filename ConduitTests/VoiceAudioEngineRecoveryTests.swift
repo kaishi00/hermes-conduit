@@ -286,10 +286,6 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(factory.startAttempts, 4)
     }
 
-    /// A configuration change settles the stream only when it comes from the
-    /// live engine and that engine stopped rendering under a lease: one from
-    /// a replaced engine (delivered after the rebuild) leaves the new stream
-    /// alone.
     /// Talk-over's echo-cancelling engine loops under CallKit's session
     /// (each start sets a session property whose route change stops it), so
     /// a call from Hermes takes the default audio; the user's own calls
@@ -302,6 +298,10 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertFalse(AppState.usesEchoCancellingVoiceAudio(talkOver: false, inHermesCall: true))
     }
 
+    /// A configuration change settles the stream only when it comes from the
+    /// live engine and that engine stopped rendering under a lease: one from
+    /// a replaced engine (delivered after the rebuild) leaves the new stream
+    /// alone.
     func testOnlyTheLiveEnginesConfigurationChangeSettlesPlayback() {
         typealias Service = AVSpeechPlaybackService
         XCTAssertTrue(Service.settlesOnConfigurationChange(from: 2, liveEngine: 2, holdsLease: true, engineRunning: false))

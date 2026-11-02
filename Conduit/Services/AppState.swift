@@ -25142,10 +25142,11 @@ final class AppState: ObservableObject {
         // ID for the notification's runtime/alternate ID. Otherwise the next
         // cold-start recovery only sees the old normal-session list and jumps
         // back to its newest entry.
-        // Do not share the sidebar refresh guard here. A tapped notification
-        // takes one authoritative read even if a visual refresh is already in
-        // progress, otherwise it can resolve against the stale catalog.
-        // A call from Hermes is answered with its caller waiting: when the
+        // Do not share the sidebar refresh guard here. A notification takes
+        // one authoritative read even if a visual refresh is already in
+        // progress, otherwise it can resolve against the stale catalog;
+        // only a call's open may skip it. A call from Hermes (answered, or
+        // its notification's Talk button) has its caller waiting: when the
         // list on hand already holds the call's chat, the route resolves
         // against that list. Reading the whole list again took 2-3 s of every
         // answered call on a long list (897 rows, Ul'dah 2026-11-02). A row
