@@ -1322,7 +1322,7 @@ struct VoiceSettingsView: View {
                     }
                 ))
                 .onChange(of: speakerTalkOver.enabled) { _, newValue in speakerTalkOverEnabled = newValue }
-                Text("Experimental. Keeps the microphone open while Hermes reads its reply on the phone's speaker or in the car, with iOS echo cancellation, so you can speak over it to start a new turn. Headphones and AirPods always allow this. Turn it off if Hermes keeps cutting itself off. Shared with Gemini Live and Grok Live. Applies to the next conversation.")
+                Text(AppLocalization.string("Experimental. Keeps the microphone open while Hermes reads its reply on the phone's speaker or in the car, with iOS echo cancellation, so you can speak over it to start a new turn. Headphones and AirPods always allow this. Turn it off if Hermes keeps cutting itself off. Shared with Gemini Live and Grok Live. Applies to the next conversation.") + " " + AppLocalization.string("Calls from Hermes don't use it, so their voice starts right away."))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }

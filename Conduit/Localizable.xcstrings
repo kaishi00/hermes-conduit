@@ -54713,6 +54713,88 @@
         }
       }
     },
+    "Calls from Hermes don't use it, so their voice starts right away.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anrufe von Hermes verwenden es nicht, damit ihre Stimme sofort einsetzt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las llamadas de Hermes no lo usan, así que su voz empieza enseguida."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les appels de Hermes ne l’utilisent pas, pour que leur voix démarre tout de suite."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panggilan dari Hermes tidak memakainya, jadi suaranya langsung terdengar."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le chiamate di Hermes non lo usano, così la voce parte subito."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes からの通話ではこの設定を使わないため、すぐに音声が始まります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes의 전화에는 이 설정을 쓰지 않으므로 음성이 바로 시작됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Połączenia od Hermesa z tego nie korzystają, więc głos zaczyna się od razu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As chamadas do Hermes não usam isso, então a voz começa na hora."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Звонки от Hermes это не используют, поэтому голос звучит сразу."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes'ten gelen aramalar bunu kullanmaz, böylece ses hemen başlar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自 Hermes 的通话不使用此功能，因此语音会立即开始。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "來自 Hermes 的通話不使用此功能，因此語音會立即開始。"
+          }
+        }
+      }
+    },
     "Calls from Hermes on the API key": {
       "localizations": {
         "de": {

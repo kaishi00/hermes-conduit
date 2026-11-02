@@ -668,3 +668,34 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertEqual(appState.relayGatewayIDs(of: dashboardA), ["gw-1"])
     }
 }
+
+/// A call from Hermes opens its chat from the list on hand when the list
+/// already holds it, instead of reading the whole list again first.
+extension NotificationDashboardOwnershipTests {
+    private func listedRow(_ id: String, stored: String? = nil, alternates: [String] = []) -> SessionSummary {
+        var row = SessionSummary(
+            id: id,
+            alternateIds: alternates,
+            title: id,
+            model: "Hermes",
+            updatedLabel: "now",
+            profile: "default",
+            source: .chat,
+            isActive: false,
+            isArchived: false,
+            lineageRootId: nil
+        )
+        row.storedSessionId = stored
+        return row
+    }
+
+    func testACallsChatIsFoundInTheListOnHandByAnyIdItsRowAnswersTo() {
+        let catalog = [listedRow("runtime-1", stored: "durable-1", alternates: ["alias-1"]), listedRow("other")]
+        XCTAssertTrue(AppState.catalogListsSession("runtime-1", in: catalog))
+        XCTAssertTrue(AppState.catalogListsSession(" durable-1 ", in: catalog), "ids are trimmed, as the identity index does")
+        XCTAssertTrue(AppState.catalogListsSession("alias-1", in: catalog))
+        XCTAssertFalse(AppState.catalogListsSession("unseen", in: catalog), "a chat the list lacks waits for the full read")
+        XCTAssertFalse(AppState.catalogListsSession("", in: catalog))
+        XCTAssertFalse(AppState.catalogListsSession("runtime-1", in: []))
+    }
+}
