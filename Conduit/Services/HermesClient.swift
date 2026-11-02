@@ -1111,6 +1111,12 @@ final class HermesClient: ObservableObject {
     /// can't name knows which chat to read it from. `connect()` clears it
     /// with the fences; a socket handoff carries it over (`adoptSocket`).
     private var authorityPromptSessions: [String: String] = [:]
+    /// Prompts this client sent an answer for that came back with neither a
+    /// status nor a refusal (the socket dropped, a timeout). If the answer
+    /// was taken, a retry hears `already_resolved`, which is then our own
+    /// answer, not another surface's. Kept across reconnects, since a drop
+    /// is the usual reason to retry.
+    private var unconfirmedAuthorityAnswers: Set<String> = []
     private var closedIntentionally = false
     private var receiveTask: Task<Void, Never>?
     private var socketHasOpened = false
@@ -3436,18 +3442,30 @@ final class HermesClient: ObservableObject {
                 // Named as the approval answer names it: a bot chat's own profile.
                 if let profile, !profile.isEmpty { params["profile"] = profile }
                 result = try await rpc("clarify.respond", params: params)
-            } catch let error as RpcError where error.reason == "stale_generation" {
-                // The turn that asked has ended: Hermes no longer waits.
-                authorityPrompts.removeValue(forKey: requestId)
-                authorityPromptSessions.removeValue(forKey: requestId)
-                return .ended
+            } catch let error as RpcError {
+                if error.reason == "stale_generation" {
+                    // The turn that asked has ended: Hermes no longer waits.
+                    unconfirmedAuthorityAnswers.remove(requestId)
+                    authorityPrompts.removeValue(forKey: requestId)
+                    authorityPromptSessions.removeValue(forKey: requestId)
+                    return .ended
+                }
+                // Refused outright: nothing was taken.
+                unconfirmedAuthorityAnswers.remove(requestId)
+                throw error
+            } catch {
+                // No word back: it may have been taken.
+                unconfirmedAuthorityAnswers.insert(requestId)
+                throw error
             }
+            let retried = unconfirmedAuthorityAnswers.remove(requestId) != nil
             authorityPrompts.removeValue(forKey: requestId)
             authorityPromptSessions.removeValue(forKey: requestId)
             switch result.objectValue?["status"]?.stringValue?.lowercased() {
             case "resolved": return .accepted(remaining: [])
-            // Another surface answered first, so this answer wasn't taken.
-            case "already_resolved": return .answeredElsewhere
+            // Another surface answered first, so this answer wasn't taken;
+            // after an earlier send that got no word back, it was ours.
+            case "already_resolved": return retried ? .accepted(remaining: []) : .answeredElsewhere
             // Any other word isn't a timeout either: no longer active.
             default: return .ended
             }
@@ -3605,17 +3623,29 @@ final class HermesClient: ObservableObject {
             let result: AnyCodable
             do {
                 result = try await rpc("approval.respond", params: params)
-            } catch let error as RpcError where error.reason == "stale_generation" {
-                // The turn that asked has ended: nothing to approve.
-                authorityPrompts.removeValue(forKey: trimmedRequestId)
-                authorityPromptSessions.removeValue(forKey: trimmedRequestId)
-                return .ended
+            } catch let error as RpcError {
+                if error.reason == "stale_generation" {
+                    // The turn that asked has ended: nothing to approve.
+                    unconfirmedAuthorityAnswers.remove(trimmedRequestId)
+                    authorityPrompts.removeValue(forKey: trimmedRequestId)
+                    authorityPromptSessions.removeValue(forKey: trimmedRequestId)
+                    return .ended
+                }
+                // Refused outright: nothing was taken.
+                unconfirmedAuthorityAnswers.remove(trimmedRequestId)
+                throw error
+            } catch {
+                // No word back: it may have been taken.
+                unconfirmedAuthorityAnswers.insert(trimmedRequestId)
+                throw error
             }
+            let retried = unconfirmedAuthorityAnswers.remove(trimmedRequestId) != nil
             authorityPrompts.removeValue(forKey: trimmedRequestId)
             authorityPromptSessions.removeValue(forKey: trimmedRequestId)
             switch result.objectValue?["status"]?.stringValue?.lowercased() {
             case "resolved": return .accepted
-            case "already_resolved": return .answeredElsewhere
+            // After an earlier send that got no word back, it was ours.
+            case "already_resolved": return retried ? .accepted : .answeredElsewhere
             // Any other word isn't a timeout either: no longer active.
             default: return .ended
             }

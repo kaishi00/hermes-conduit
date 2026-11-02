@@ -2339,6 +2339,65 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAuthorityRetryAfterNoWordBackReadsItsOwnAnswerAsTaken() async throws {
+        let (client, socket) = try await authorityClient()
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "approval.request", "session_id": "sess-1", "execution_generation": 4,
+                "payload": ["prompt_id": "p-4", "execution_generation": 4, "command": "rm x"]
+            ]
+        ], to: socket)
+        // The first answer goes out and nothing comes back: Hermes may have
+        // taken it.
+        var count = socket.sentTexts.count
+        let lost = Task<HermesClient.ApprovalResponseOutcome, Error> {
+            try await client.respondToApprovalOutcome(sessionId: "sess-1", requestId: "p-4", choice: "once")
+        }
+        await waitForSends(count + 1, on: socket)
+        lost.cancel()
+        do {
+            _ = try await lost.value
+            XCTFail("A cancelled answer throws")
+        } catch {}
+        // The retry hears already_resolved: that was this client's answer.
+        count = socket.sentTexts.count
+        let retry = Task<HermesClient.ApprovalResponseOutcome, Error> {
+            try await client.respondToApprovalOutcome(sessionId: "sess-1", requestId: "p-4", choice: "once")
+        }
+        try await answerRequest(on: socket, after: count, method: "approval.respond",
+                                result: ["status": "already_resolved", "prompt_id": "p-4"])
+        let retried = try await awaitResult(of: retry, "the retried approval")
+        XCTAssertEqual(retried, .accepted, "Our own earlier answer isn't another surface's")
+
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": [
+                "type": "clarify.request", "session_id": "sess-1", "execution_generation": 4,
+                "payload": ["prompt_id": "c-4", "execution_generation": 4, "question": "Which?"]
+            ]
+        ], to: socket)
+        count = socket.sentTexts.count
+        let lostAnswer = Task<HermesClient.ClarifyResponseOutcome, Error> {
+            try await client.respondToClarification(requestId: "c-4", answer: "A")
+        }
+        await waitForSends(count + 1, on: socket)
+        lostAnswer.cancel()
+        do {
+            _ = try await lostAnswer.value
+            XCTFail("A cancelled answer throws")
+        } catch {}
+        count = socket.sentTexts.count
+        let retryAnswer = Task<HermesClient.ClarifyResponseOutcome, Error> {
+            try await client.respondToClarification(requestId: "c-4", answer: "A")
+        }
+        try await answerRequest(on: socket, after: count, method: "clarify.respond",
+                                result: ["status": "already_resolved", "prompt_id": "c-4"])
+        let retriedAnswer = try await awaitResult(of: retryAnswer, "the retried answer")
+        XCTAssertEqual(retriedAnswer, .accepted(remaining: []))
+        client.disconnect()
+    }
+
     func testAuthoritySendIntoARunningTurnReadsAsHeldForTheNextTurn() async throws {
         let (client, socket) = try await authorityClient()
         // An idle send: its own turn can start before the receipt comes back.
