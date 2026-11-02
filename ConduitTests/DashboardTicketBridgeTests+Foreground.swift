@@ -117,9 +117,11 @@ extension DashboardTicketBridgeTests {
         let write = Task { try await held.bridge.requestJSON(path: "/api/sessions/s", method: "PATCH", body: ["title": "t"]) }
         try await held.waitForRequests(1)
         XCTAssertEqual(held.bridge.writesSent, 1)
+        XCTAssertEqual(held.bridge.writesOut, 1)
         try await held.answer([String: Any]())
         _ = try await write.value
         XCTAssertEqual(held.bridge.writesSent, 2)
+        XCTAssertEqual(held.bridge.writesOut, 0)
     }
 
     /// A bridge built before its dashboard is saved shares the default
@@ -214,6 +216,11 @@ extension DashboardTicketBridgeTests {
             reads.take("/g", through: held.bridge, fence: StartupReads.Fence(writes: 0, catalog: 0, display: 0, listings: 1), now: sentAt),
             "a newer chat list committed since"
         )
+        reads.clear()
+
+        let writeOut = StartupReads.Fence(writes: 1, catalog: 0, display: 0, writesOut: 1)
+        reads.send(["/h"], through: held.bridge, fence: writeOut, now: sentAt)
+        XCTAssertNil(reads.take("/h", through: held.bridge, fence: writeOut, now: sentAt), "a write was out when it was sent")
         reads.clear()
 
         reads.send(["/f"], through: held.bridge, fence: fence(), now: sentAt)

@@ -33780,7 +33780,8 @@ final class AppState: ObservableObject {
             writes: bridge.writesSent,
             catalog: sessionCatalogCache.mutationGeneration,
             display: displayPreferencesWriteRevision,
-            listings: chatList ? sessionCatalogCache.commits : 0
+            listings: chatList ? sessionCatalogCache.commits : 0,
+            writesOut: bridge.writesOut
         )
     }
 

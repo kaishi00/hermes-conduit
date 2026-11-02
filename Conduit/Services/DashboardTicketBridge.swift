@@ -792,7 +792,17 @@ final class DashboardTicketBridge: NSObject {
     /// starts and as it ends, so a read sent before one or while it was out
     /// isn't shown after it (StartupReads).
     private(set) var writesSent = 0
-    func noteWriteSent() { writesSent += 1 }
+    /// Writes started and not yet ended. An early read sent while one is out
+    /// may predate it, so it isn't taken (StartupReads).
+    private(set) var writesOut = 0
+    func noteWriteStarted() {
+        writesSent += 1
+        writesOut += 1
+    }
+    func noteWriteEnded() {
+        writesSent += 1
+        writesOut = max(0, writesOut - 1)
+    }
     /// Cookies the dashboard set on requests sent without the page, newest
     /// last, so a rotated session cookie is the one sent next.
     var backgroundIssuedCookies: [HTTPCookie] = []
@@ -1189,8 +1199,8 @@ final class DashboardTicketBridge: NSObject {
         // A ticket changes nothing a read shows, so it doesn't void the
         // reads sent with it.
         let countsAsWrite = !isRead && path != "/api/auth/ws-ticket"
-        if countsAsWrite { noteWriteSent() }
-        defer { if countsAsWrite { noteWriteSent() } }
+        if countsAsWrite { noteWriteStarted() }
+        defer { if countsAsWrite { noteWriteEnded() } }
         if let nativeOAuthSession {
             guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
             return try await nativeOAuthSession.requestJSON(

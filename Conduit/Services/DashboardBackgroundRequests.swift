@@ -27,8 +27,8 @@ extension DashboardTicketBridge {
         timeoutMilliseconds: Int = 12_000
     ) async throws -> [String: Any] {
         guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
-        noteWriteSent()
-        defer { noteWriteSent() }
+        noteWriteStarted()
+        defer { noteWriteEnded() }
         return try await DashboardTicketBridgeError.explainingPluginRefusal(path: path) { () async throws -> [String: Any] in
             if let nativeOAuthSession {
                 return try await nativeOAuthSession.requestJSON(

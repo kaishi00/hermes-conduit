@@ -24,6 +24,9 @@ final class StartupReads {
         let catalog: UInt64
         let display: Int
         var listings: UInt64 = 0
+        /// Writes still out when the read was sent: one is, the read may
+        /// predate it, so it is never taken.
+        var writesOut = 0
     }
 
     /// An answer, carried from the early read to the step that takes it.
@@ -80,6 +83,7 @@ final class StartupReads {
     func take(_ path: String, through bridge: DashboardTicketBridge, fence: Fence, now: Date = Date()) -> Task<Answer, Error>? {
         guard let entry = entries.removeValue(forKey: path) else { return nil }
         guard self.bridge === bridge,
+              entry.fence.writesOut == 0,
               entry.fence == fence,
               now.timeIntervalSince(entry.sentAt) < Self.lifetime else {
             // Not this step's: stop it rather than let it run out unread.
