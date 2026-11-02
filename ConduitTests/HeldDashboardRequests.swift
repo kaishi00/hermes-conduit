@@ -31,7 +31,10 @@ final class HeldDashboardRequests {
            let cookie = HTTPCookie(properties: [.name: "session", .value: "held", .domain: host, .path: "/"]) {
             bridge.backgroundIssuedCookies = [cookie]
         }
-        bridge.loadWithoutPageForTesting = { [unowned self] request in
+        // Weak: a request a test left running (an early read it didn't
+        // take, still in its cookie lookup) can reach here after the test.
+        bridge.loadWithoutPageForTesting = { [weak self] request in
+            guard let self else { throw URLError(.cancelled) }
             self.sent.append(Sent(
                 method: request.httpMethod ?? "GET",
                 path: request.url?.path ?? ""
