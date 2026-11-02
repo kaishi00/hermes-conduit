@@ -414881,6 +414881,88 @@
           }
         }
       }
+    },
+    "Sharing is off. %@ Conduit deletes the data there once it's on.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Teilen ist aus. %@ Conduit löscht die Daten dort, sobald es eingeschaltet ist."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compartir está desactivado. %@ Conduit borra los datos allí en cuanto esté activado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le partage est désactivé. %@ Conduit supprime les données là-bas dès qu’il est activé."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Berbagi nonaktif. %@ Conduit menghapus data di sana setelah plugin dinyalakan."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La condivisione è disattivata. %@ Conduit elimina i dati lì appena è attivo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "共有はオフです。%@ オンになると、Conduit がそこにあるデータを削除します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "공유가 꺼져 있습니다. %@ 켜지면 Conduit가 그곳의 데이터를 삭제합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Udostępnianie jest wyłączone. %@ Conduit usunie tam dane, gdy wtyczka zostanie włączona."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O compartilhamento está desativado. %@ O Conduit apaga os dados lá assim que estiver ativado."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Обмен выключен. %@ Conduit удалит там данные, как только плагин включат."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paylaşım kapalı. %@ Eklenti açıldığında Conduit oradaki verileri siler."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "共享已关闭。%@ 开启后，Conduit 会删除那里的数据。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分享已關閉。%@ 開啟後，Conduit 會刪除那裡的資料。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -147,6 +147,9 @@ final class HealthSyncEngine: ObservableObject {
     @Published private(set) var state: HealthSyncState
     @Published private(set) var isSyncing = false
     @Published private(set) var lastError: String?
+    /// What to do when the last turn-off's delete met a profile that turned
+    /// the plugin off (nothing was deleted), or nil (issue 1671).
+    private(set) var deleteRefusedPluginOff: String?
 
     let source: HealthDataSource
     private let store: HealthSyncStateStore
@@ -263,6 +266,7 @@ final class HealthSyncEngine: ObservableObject {
         // and the host alone rather than wipe or save under a new one.
         guard readStateIfNeeded() else { return false }
         var deleted = false
+        deleteRefusedPluginOff = nil
         if let request {
             do {
                 _ = try await request("\(Self.base)/wipe", "POST", ["device_id": state.deviceID])
@@ -274,6 +278,7 @@ final class HealthSyncEngine: ObservableObject {
                 deleted = true
             } catch {
                 lastError = Self.describe(error)
+                deleteRefusedPluginOff = DashboardTicketBridgeError.pluginOffDetail(of: error)
             }
         }
         state.startOver()

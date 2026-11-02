@@ -181,6 +181,9 @@ final class PhoneSyncEngine: ObservableObject {
     @Published private(set) var state: PhoneSyncState
     @Published private(set) var isSyncing = false
     @Published private(set) var lastError: String?
+    /// What to do when the last turn-off's delete met a profile that turned
+    /// the plugin off (nothing was deleted), or nil (issue 1671).
+    private(set) var deleteRefusedPluginOff: String?
     @Published private(set) var preferences: PhoneSyncPreferences
     /// Changes waiting for the user's answer, oldest first.
     @Published private(set) var prompts: [PhoneChangePrompt] = []
@@ -327,6 +330,7 @@ final class PhoneSyncEngine: ObservableObject {
         keys.clear()
         guard readStateIfNeeded() else { return false }
         var deleted = false
+        deleteRefusedPluginOff = nil
         if let request {
             do {
                 _ = try await request("\(Self.base)/wipe", "POST", ["device_id": state.deviceID])
@@ -336,6 +340,7 @@ final class PhoneSyncEngine: ObservableObject {
                 deleted = true
             } catch {
                 lastError = Self.describe(error)
+                deleteRefusedPluginOff = DashboardTicketBridgeError.pluginOffDetail(of: error)
             }
         }
         state.startOver()

@@ -533,7 +533,8 @@ enum VoiceCallbackRequestOutcome: Equatable {
 }
 
 extension VoiceCallbackAvailability {
-    /// Why Hermes can't call, for the live model. Not localized.
+    /// Why Hermes can't call, for the live model. Not localized, except
+    /// `pluginOff`'s steps: the bridge's words, also shown to the user.
     var refusal: String {
         switch self {
         case .available, .callsOff:

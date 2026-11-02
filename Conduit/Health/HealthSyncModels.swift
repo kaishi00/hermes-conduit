@@ -311,9 +311,9 @@ enum HealthSyncPause: Codable, Equatable {
     case pluginMissing
     /// Another dashboard is in use; sharing waits for its own.
     case otherDashboard
-    /// The host refused a batch for a reason a retry won't fix.
     /// The profile turned the plugin off: how to turn it on (issue 1671).
     case pluginOff(String)
+    /// The host refused a batch for a reason a retry won't fix.
     case refused(String)
 
     var message: String {
