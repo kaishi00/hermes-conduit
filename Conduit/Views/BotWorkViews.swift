@@ -877,15 +877,17 @@ struct WorkstreamBar: View {
             Haptics.light()
             Task { await appState.actOnWorkstream(item, profile: profile, action: action) }
         } label: {
-            // A small capsule, with a full-size place to tap.
+            // A small capsule, with a full-size place to tap that doesn't
+            // make the pill around it taller.
             Text(title)
                 .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(tint)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(Capsule().fill(tint.opacity(0.15)))
-                .frame(minHeight: 44)
+                .padding(.vertical, 8)
                 .contentShape(Rectangle())
+                .padding(.vertical, -8)
         }
         .buttonStyle(.plain)
     }
