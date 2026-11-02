@@ -10482,7 +10482,7 @@ final class AppState: ObservableObject {
             let key = signature(message)
             guard rebuiltCount[key] == 1, previousCount[key] == 1,
                   let shownIndex = previousIndex[key],
-                  Self.sameTime(previous[shownIndex].timestamp, message.timestamp) else { continue }
+                  MessageTimestampFormatter.sameMoment(previous[shownIndex].timestamp, message.timestamp) else { continue }
             candidates.append((rebuilt: index, previous: shownIndex))
         }
         let pairs = Self.risingRun(candidates)
@@ -10507,15 +10507,6 @@ final class AppState: ObservableObject {
         return result
     }
 
-    /// Whether two rows' times can be the same message's: true when either
-    /// doesn't say one, or they're within a couple of seconds (the two
-    /// sources spell Hermes' stored time differently). The same text at
-    /// another time is another message ("thanks" sent again later).
-    private static func sameTime(_ lhs: String, _ rhs: String) -> Bool {
-        guard let left = MessageTimestampFormatter.date(from: lhs),
-              let right = MessageTimestampFormatter.date(from: rhs) else { return true }
-        return abs(left.timeIntervalSince(right)) <= 2
-    }
 
     /// A live turn's resume rows, read with Hermes' stored rows of the same
     /// chat (`stored`): the ones Hermes has stored take those rows' ids, so

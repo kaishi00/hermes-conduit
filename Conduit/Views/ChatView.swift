@@ -3240,6 +3240,15 @@ enum MessageTimestampFormatter {
         return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
     }
 
+    /// Whether two rows' times can be the same message's: true when either
+    /// doesn't say one, or they're within a couple of seconds (Hermes'
+    /// stored rows and a resume's spell the same time differently). The
+    /// same text at another time is another message (#1648).
+    static func sameMoment(_ lhs: String, _ rhs: String) -> Bool {
+        guard let left = date(from: lhs), let right = date(from: rhs) else { return true }
+        return abs(left.timeIntervalSince(right)) <= 2
+    }
+
     static func date(from rawTimestamp: String) -> Date? {
         let value = rawTimestamp.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }

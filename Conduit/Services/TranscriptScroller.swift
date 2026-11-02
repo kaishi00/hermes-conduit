@@ -320,6 +320,7 @@ final class TranscriptScroller: ObservableObject {
     /// taken for a new one.
     private var latestUserRowText: String?
     private var latestUserStoredRowID: Int?
+    private var latestUserRowTime: String?
     /// A group room's new member message the hold stops at the start of
     /// (`roomTranscriptChanged`): the message itself goes to the top, where
     /// a chat's stop puts the user's message above its reply.
@@ -675,6 +676,7 @@ final class TranscriptScroller: ObservableObject {
         latestUserRowID = nil
         latestUserRowText = nil
         latestUserStoredRowID = nil
+        latestUserRowTime = nil
         if replyStartLandingGeneration == nil || replyStartLandingGeneration != viewportTransitionGeneration {
             replyStartLandingPending = false
         }
@@ -889,6 +891,7 @@ final class TranscriptScroller: ObservableObject {
         latestUserRowID = userRowID
         latestUserRowText = targets[userIndex].message.content
         latestUserStoredRowID = targets[userIndex].message.rowId
+        latestUserRowTime = targets[userIndex].message.timestamp
         replyHoldArmed = true
         // The reply is already there: no room under it.
         replyRoomArmed = false
@@ -1353,6 +1356,8 @@ final class TranscriptScroller: ObservableObject {
         let latest = latestTarget?.id
         let previousText = latestUserRowText
         let previousStoredRowID = latestUserStoredRowID
+        let previousTime = latestUserRowTime
+        latestUserRowTime = latestTarget?.message.timestamp
         // Kept current under the same id too: a row whose text fills in
         // later is compared by what it says now.
         latestUserRowText = latestTarget?.message.content
@@ -1363,15 +1368,16 @@ final class TranscriptScroller: ObservableObject {
         // No user message left to stop under (the transcript was cleared).
         if latest == nil { replyHoldArmed = false }
         // The same message: the old row is gone, the text is the same, and
-        // no stored row id says they differ. A send's own row (`local-`) is
-        // always new: a retry or an edit takes the last message away and
-        // sends the same words again.
+        // neither a stored row id nor the time says they differ. A send's
+        // own row (`local-`) is always new: a retry or an edit takes the
+        // last message away and sends the same words again.
         let storedRowsDiffer = previousStoredRowID != nil && latestTarget?.message.rowId != nil
             && previousStoredRowID != latestTarget?.message.rowId
         let rekeyed = latest?.hasPrefix("local-") == false
             && previous.map { !targetIDs.contains($0) } == true
             && latestTarget?.message.content == previousText
             && !storedRowsDiffer
+            && MessageTimestampFormatter.sameMoment(previousTime ?? "", latestTarget?.message.timestamp ?? "")
         if arming, previous != nil, latest != nil, !rekeyed {
             replyHoldArmed = true
             replyRoomArmed = true

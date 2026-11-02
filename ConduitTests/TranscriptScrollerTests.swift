@@ -1966,6 +1966,24 @@ final class TranscriptScrollerTests: XCTestCase {
         withExtendedLifetime(surface) {}
     }
 
+    /// The same words at another time are another message: a rewind on
+    /// another device that sends them again later arms the hold.
+    func testTheSameTextAtAnotherTimeArmsTheHold() {
+        let (scroller, surface) = makeScroller()
+        scroller.holdsRepliesAtStart = { true }
+        let shown = Self.messages(0..<10)
+        scroller.transcriptChanged(messages: shown, transcriptRevision: 2, viewportTransitionGeneration: 1)
+        XCTAssertFalse(scroller.replyHoldArmed)
+
+        var later = shown
+        var resent = shown[8].withID("12400.0")
+        resent.timestamp = "2026-01-01T01:00:00Z"
+        later[8] = resent
+        scroller.transcriptChanged(messages: later, transcriptRevision: 3, viewportTransitionGeneration: 1)
+        XCTAssertTrue(scroller.replyHoldArmed)
+        withExtendedLifetime(surface) {}
+    }
+
     /// A send's own row is new even with the words of the message it
     /// replaces: a retry takes the last message away and sends it again.
     func testASendRepeatingARemovedMessageArmsTheHold() {
