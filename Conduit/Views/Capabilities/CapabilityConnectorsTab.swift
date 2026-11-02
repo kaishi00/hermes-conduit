@@ -357,10 +357,14 @@ struct ConnectorKeysSection: View {
         note = nil
         Task {
             defer { saving = false }
+            var savedAny = false
             do {
                 // A key Hermes took leaves its field, so after a save that
                 // failed part way the field still filled is the one not saved.
-                try await store.setConnectorKeys(name, values, generation: generation) { drafts[$0] = nil }
+                try await store.setConnectorKeys(name, values, generation: generation) {
+                    drafts[$0] = nil
+                    savedAny = true
+                }
                 guard store.generation == generation else { return }
                 drafts = [:]
                 note = AppLocalization.string("Key saved")
@@ -369,6 +373,9 @@ struct ConnectorKeysSection: View {
             } catch {
                 guard store.generation == generation else { return }
                 note = UserFacingError.message(for: error)
+                // Keys Hermes took before the failure are tested too, so the
+                // page doesn't keep the old key's result.
+                if savedAny, Self.testsAfterSave(name, in: store.servers) { await store.probe(name) }
             }
         }
     }
