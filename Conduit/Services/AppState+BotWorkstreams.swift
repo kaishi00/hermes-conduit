@@ -284,7 +284,9 @@ extension AppState {
             await respondToApproval(messageId: message.id, choice: approve ? "once" : "deny")
             let status = messages.first { $0.id == message.id }?.approval?.status
             let took = status == .approved || status == .rejected
-            if took { Haptics.success() } else {
+            if took {
+                Haptics.success()
+            } else if status == .expired || status == .error {
                 Haptics.warning()
                 // Gone only when Hermes says so; a failed send leaves it to try again.
                 let text = status == .expired
@@ -292,6 +294,7 @@ extension AppState {
                     : AppLocalization.string("Couldn't reach this bot's work. Try again in a moment.")
                 botWork.setRefusal(text, profile: profile, ref: item.ref)
             }
+            // Otherwise (the chat changed meanwhile) the refresh below says where it is.
             Task { await refreshBotWork(profile: profile, afterAction: true) }
             return took
         }
