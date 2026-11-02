@@ -1425,8 +1425,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         defer { if callChatClaim?.jobID == job.id { callChatClaim = nil } }
         let generation = generation
         var createdSessionID: String?
+        var registryID: String?  // the id its bot's registry keeps it by
         // The bot the job is made on, before the wait for its session.
         let botProfile = profile ?? backend.activeProfile()
+        func keep() {
+            guard let registryID else { return }
+            backend.keepInRegistry(botProfile, registryID, job.title, self.job(job.id)?.instructions ?? instructions,
+                                   fromWatch)
+        }
         do {
             let ids = try await backend.createSession(profile, callsModel && profile != nil)
             createdSessionID = ids.runtimeID.isEmpty ? nil : ids.runtimeID
@@ -1441,6 +1447,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 $0.storedSessionID = ids.storedID
             }
             onJobSessionCreated?([runtimeID, ids.storedID].compactMap { $0 }.filter { !$0.isEmpty })
+            registryID = ids.storedID.flatMap { $0.isEmpty ? nil : $0 } ?? runtimeID
             await backend.setTitle(runtimeID, job.title)
             guard startIsCurrent(job.id, generation: generation) else {
                 return await abandonStart(job, sessionID: runtimeID, generation: generation)
@@ -1465,8 +1472,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             // Hermes took the request: the job is kept in its bot's work
             // registry. A start that failed or was abandoned isn't.
-            backend.keepInRegistry(botProfile, ids.storedID.flatMap { $0.isEmpty ? nil : $0 } ?? runtimeID,
-                                   job.title, request, fromWatch)
+            keep()
             if self.job(job.id)?.status == .starting {
                 update(job.id) { $0.status = .running }
             }
@@ -1482,6 +1488,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // turn (its events moved the job on) is not a failed start.
             switch self.job(job.id)?.status {
             case .running?, .needsInput?, .finished?:
+                keep()  // Hermes took it after all
                 if joinsCall { adoptCallChat(job.id) }
                 startPollingIfNeeded()
                 return startedReply(job)

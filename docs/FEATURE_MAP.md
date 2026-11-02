@@ -259,7 +259,7 @@ kept as a call's (see Bot workstreams) · `docs/VOICE_BACKGROUND_JOBS.md`
 
 **Rulings**
 - A result never talks over the user: it waits for a quiet moment, and the model answers what the user just said first (2026-10-04, #381).
-- Results show during the call as job cards on the call screen, on the phone only, with no writes to the host mid-call (2026-10-03, #364).
+- Results show during the call as job cards on the call screen, on the phone only, with no writes to the host mid-call (2026-10-03, #364) Pending Eric (2026-11-02, #1657): whether that covers the bot-workstreams registry request sent as a job starts; see Open gaps.
 - The saved transcript links each job the call started, drawn as a card (2026-10-03, #358; 2026-10-18, #758).
 - Local Live agent calls announce results; calls that hand each turn to Hermes drop them (2026-10-23, #1160).
 - A result that can't go out now is kept, never dropped: GPT-Live's quiet replies wait with the spoken ones, and replies still on their way when a conversation ends or is replaced go back to pending, as Gemini's unsent answers become text updates (2026-10-24, #1223).
@@ -2095,6 +2095,7 @@ screens (not built)
 - Turning workstreams off leaves running work running, and its Work panel and approvals reachable, as `work off` always has.
 - The plugin's version is bumped when the branch merges to main.
 - A relaunched phone still starts a call with an empty job list: the registry has the call's jobs, but the phone doesn't read them back yet (M5b). The phone and the Watch still run call jobs on their own engines, not the broker's (M5c, which needs a device test of every voice mode).
+- A call's later request that runs as a turn in a chat it already has gets no row of its own: a Watch call's later ordinary requests (`continueJob`) run in the chat its first job made, whose row follows that chat's turns (a turn reopens it), and a request that joins an attached call chat (`joinCallChat`) runs in the user's own chat, which isn't a job's. The registry keeps one row per session, so the Work panel shows the chat's job once, not each request (#1657).
 - Whether a call's jobs belong in the Work panel at all, marked as a call's and kept in Voice Jobs too, is Eric's call, asked 2026-11-02 and not yet answered; M5a is built on the recommended yes (notifier #511, #1657).
 - Two journal edges from M0 that recovery leans on (notifier #495's review): a step that starts while a compacted workstream's lineage is still unsettled isn't journaled or noted as missed, and a step's end with an unknown call id closes the oldest open step of that tool by name.
 

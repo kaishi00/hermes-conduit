@@ -280,6 +280,11 @@ extension VoiceConversationControllerTests {
         fake.submitError = HermesError.timeout("prompt.submit")
         _ = await supervisor.performVoiceCommand(.start(instructions: "check the weather"))
         XCTAssertEqual(fake.kept.count, keptBefore)
+        // A lost acknowledgement after Hermes started its turn: it's kept.
+        fake.onSubmit = { id in supervisor.observe(.messageStart(sessionId: id)) }
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        XCTAssertEqual(fake.kept.count, keptBefore + 1)
+        XCTAssertEqual(fake.kept.last?.2, "check the router")
     }
 
     func testJobsStartedInALiveCallAreAnchoredToItsTranscript() async {

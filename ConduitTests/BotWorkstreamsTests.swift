@@ -97,6 +97,16 @@ extension BotModeTests {
 
     /// Pin, Resolve and Reopen: what the plugin offers, and the list as
     /// each leaves it before the next read.
+    func testACallsJobIsKeptOnlyWhereThePluginKeepsBotWork() {
+        let keeps = NotifierPluginStatus(state: .reported(version: "0.130.0", capabilities: [BotWorkstreamsClient.adoptCapability]))
+        let older = NotifierPluginStatus(state: .reported(version: "0.120.0", capabilities: ["work"]))
+        XCTAssertEqual(AppState.voiceJobAdoptVia(plugin: keeps, sessionID: "s1", fromWatch: false), "phone")
+        XCTAssertEqual(AppState.voiceJobAdoptVia(plugin: keeps, sessionID: "s1", fromWatch: true), "watch")
+        XCTAssertNil(AppState.voiceJobAdoptVia(plugin: keeps, sessionID: "", fromWatch: false))
+        XCTAssertNil(AppState.voiceJobAdoptVia(plugin: older, sessionID: "s1", fromWatch: false))
+        XCTAssertNil(AppState.voiceJobAdoptVia(plugin: NotifierPluginStatus(state: .unknown), sessionID: "s1", fromWatch: false))
+    }
+
     func testFilingWorkMovesItBetweenTheLists() throws {
         var response = workResponse()
         response["resolved_count"] = 4

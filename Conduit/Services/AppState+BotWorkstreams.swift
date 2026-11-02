@@ -178,14 +178,21 @@ extension AppState {
     /// plugin without the route, or a bot whose work is off, keeps none.
     func keepVoiceJobInRegistry(profile: String?, sessionID: String, title: String, instructions: String,
                                 fromWatch: Bool) {
-        guard notifierPlugin.reports(BotWorkstreamsClient.adoptCapability), !sessionID.isEmpty else { return }
+        guard let via = Self.voiceJobAdoptVia(plugin: notifierPlugin, sessionID: sessionID, fromWatch: fromWatch)
+        else { return }
         let bot = profile ?? activeProfile
         let client = botWorkClient(profile: bot)
         // The panel's next read shows it.
         Task { @MainActor in
-            _ = try? await client.adopt(sessionID: sessionID, title: title, via: fromWatch ? "watch" : "phone",
-                                        goal: instructions)
+            _ = try? await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions)
         }
+    }
+
+    /// The call a job is kept as ("phone" or "watch"), or nil when none is
+    /// sent: a plugin that doesn't keep bot work (`work-adopt`), or no session.
+    nonisolated static func voiceJobAdoptVia(plugin: NotifierPluginStatus, sessionID: String, fromWatch: Bool) -> String? {
+        guard plugin.reports(BotWorkstreamsClient.adoptCapability), !sessionID.isEmpty else { return nil }
+        return fromWatch ? "watch" : "phone"
     }
 
     /// Whether the host's plugin serves Edit Bot > Work.
