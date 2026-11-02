@@ -2466,6 +2466,22 @@ final class HermesClientTests: XCTestCase {
         try await answerRequest(on: socket, after: count, method: "prompt.submit", result: ["status": "queued", "sequence": 3])
         let afterOutcome = try await awaitResult(of: after, "the send after the turn ended")
         XCTAssertEqual(afterOutcome, .accepted)
+
+        // A stopped turn: the next send starts its own, even before the
+        // stopped turn's end arrives.
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.start", "session_id": "sess-1", "execution_generation": 2]
+        ], to: socket)
+        count = socket.sentTexts.count
+        let stop = Task<Void, Error> { try await client.cancel("sess-1") }
+        try await answerRequest(on: socket, after: count, method: "session.interrupt", result: [:])
+        try await awaitResult(of: stop, "the interrupt")
+        count = socket.sentTexts.count
+        let afterStop = Task<PromptSubmissionOutcome, Error> { try await client.sendPrompt("sess-1", text: "fourth") }
+        try await answerRequest(on: socket, after: count, method: "prompt.submit", result: ["status": "queued", "sequence": 4])
+        let afterStopOutcome = try await awaitResult(of: afterStop, "the send after the interrupt")
+        XCTAssertEqual(afterStopOutcome, .accepted)
         client.disconnect()
     }
 
