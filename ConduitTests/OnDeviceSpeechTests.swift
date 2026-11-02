@@ -148,6 +148,9 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(OnDeviceSpeechStream.speechLanguage(of: Locale(identifier: "de-AT")), "de")
         XCTAssertEqual(IPhoneVoices.pick(chinese, wanted: "zh-TW", chosen: "sinji", region: "US", systemDefault: nil), cantonese)
         XCTAssertEqual(IPhoneVoices.pick(chinese, wanted: "zh-TW", chosen: nil, region: "US", systemDefault: nil), mandarinTW)
+        // Not even a Premium Cantonese voice speaks Mandarin replies unpicked.
+        let premiumCantonese = iPhoneVoice("sinji-premium", "Sinji", "zh-HK", quality: 3)
+        XCTAssertEqual(IPhoneVoices.pick([mandarinTW, premiumCantonese], wanted: "zh-TW", chosen: nil, region: "HK", systemDefault: nil), mandarinTW)
         XCTAssertEqual(IPhoneVoices.pick(chinese, wanted: "zh-CN", chosen: "sinji", region: "US", systemDefault: nil), mandarinCN)
         IPhoneVoices.setChosenVoice("daniel", for: "en-GB", defaults: defaults)
         IPhoneVoices.setChosenVoice("anna", for: "de", defaults: defaults)
@@ -172,6 +175,25 @@ extension HermesVoiceGatewayTimeoutTests {
         var chinese = "你好。今天"
         XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &chinese), "你好。")
         XCTAssertEqual(chinese, "今天")
+    }
+
+    func testAReplyTooShortToTellWaitsForASentenceThatSaysItsLanguage() async throws {
+        let synthesizer = FakeSpeechSynthesizer()
+        let stream = OnDeviceSpeechStream(
+            synthesizer: synthesizer,
+            fallbackLanguage: "en",
+            onStart: { _ in },
+            onPCM16: { _, _ in }
+        )
+        try await stream.append("42. ")
+        synthesizer.finishCurrent(audio: Data([1, 0]))
+        try await stream.append("Die Hauptstadt von Deutschland ist Berlin, und die Stadt ist im Sommer sehr schön. ")
+        await waitUntil { synthesizer.spoken.count == 2 }
+        synthesizer.finishCurrent(audio: Data([1, 0]))
+        try await stream.append("Danach kommt München. ")
+        await waitUntil { synthesizer.spoken.count == 3 }
+        XCTAssertEqual(synthesizer.languages, ["en", "de", "de"])
+        stream.cancel()
     }
 
     func testOnDeviceStreamSpeaksEverySentenceInOrderThenFinishes() async throws {
@@ -335,6 +357,7 @@ extension HermesVoiceGatewayTimeoutTests {
 @MainActor
 private final class FakeSpeechSynthesizer: OnDeviceSpeechSynthesizing {
     var spoken: [String] = []
+    var languages: [String?] = []
     var stopCount = 0
     private var onAudio: (@MainActor (Data, Double) -> Void)?
     private var onDone: (@MainActor () -> Void)?
@@ -346,6 +369,7 @@ private final class FakeSpeechSynthesizer: OnDeviceSpeechSynthesizing {
         onDone: @escaping @MainActor () -> Void
     ) {
         spoken.append(text)
+        languages.append(language)
         self.onAudio = onAudio
         self.onDone = onDone
     }

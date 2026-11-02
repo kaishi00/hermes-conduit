@@ -59,7 +59,7 @@ enum IPhoneVoices {
     }
 
     /// The best of `candidates` for `wanted`: anything but a screen-reader
-    /// voice, then Premium, then Enhanced, then iOS's own default for the
+    /// voice, then the same Chinese dialect, then Premium, then Enhanced, then iOS's own default for the
     /// language, then the exact language, then this iPhone's region. Names
     /// break the last ties so the pick never depends on iOS's list order.
     static func best(
@@ -71,6 +71,9 @@ enum IPhoneVoices {
         func rank(_ voice: IPhoneVoiceOption) -> [Int] {
             [
                 voice.isScreenReaderVoice ? 0 : 1,
+                // Cantonese voices share Traditional Chinese's key; they speak
+                // its replies only when picked or when nothing else is there.
+                isCantonese(voice.language) == isCantonese(wanted) ? 1 : 0,
                 voice.quality,
                 voice.id == systemDefault ? 1 : 0,
                 voice.language.caseInsensitiveCompare(wanted) == .orderedSame ? 1 : 0,
@@ -82,6 +85,12 @@ enum IPhoneVoices {
             if l != r { return l.lexicographicallyPrecedes(r) }
             return left.name > right.name
         }
+    }
+
+    private static func isCantonese(_ language: String) -> Bool {
+        let parts = language.split(whereSeparator: { $0 == "-" || $0 == "_" }).map { $0.uppercased() }
+        return parts.first == "ZH" && (parts.contains("HK") || parts.contains("MO"))
+            || parts.first == "YUE"
     }
 
     /// The picked voice when it's still installed, or else the best one.

@@ -66,6 +66,8 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
     private var queue: [String] = []
     private var speaking = false
     private var language: String?
+    /// The language is the app's, until a sentence is long enough to tell.
+    private var languageIsGuess = false
     private var sampleRate: Double?
     private var finishRequested = false
     private var terminal = false
@@ -127,7 +129,17 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         // Hermes' own speech strips them on the gateway; this voice is ours.
         let text = PreviewText.plain(queue.removeFirst())
         guard !text.isEmpty else { return speakNext() }
-        if language == nil { language = Self.language(of: text) ?? fallbackLanguage }
+        // A reply that opens too short to tell ("OK.", "42.") speaks in the
+        // app's language until a sentence says what the reply is in.
+        if language == nil || languageIsGuess {
+            if let detected = Self.language(of: text) {
+                language = detected
+                languageIsGuess = false
+            } else if language == nil {
+                language = fallbackLanguage
+                languageIsGuess = true
+            }
+        }
         speaking = true
         synthesizer.speak(
             text,
