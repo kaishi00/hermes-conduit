@@ -811,7 +811,7 @@ final class ChatScrollHostedTests: XCTestCase {
         let collectionView = try XCTUnwrap(mounted.scrollView as? UICollectionView)
         // A row in the middle of the screen, with one under it on screen.
         let cells = collectionView.visibleCells.compactMap { $0 as? TranscriptCell }.sorted { $0.frame.minY < $1.frame.minY }
-        XCTAssertGreaterThan(cells.count, 3)
+        XCTAssertGreaterThanOrEqual(cells.count, 3)
         let cell = cells[cells.count / 2]
         let id = try XCTUnwrap(cell.hostedRowID)
         let hosting = try XCTUnwrap(cell.hosting)

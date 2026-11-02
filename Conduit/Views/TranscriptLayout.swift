@@ -145,9 +145,19 @@ final class TranscriptLayout: UICollectionViewLayout {
         ChatViewportWatch.shared.rowResized()
         markDirty(from: index)
         let context = UICollectionViewLayoutInvalidationContext()
-        context.invalidateItems(at: [IndexPath(item: index, section: 0)])
+        context.invalidateItems(at: Self.items(from: index, count: rows.count))
         context.contentSizeAdjustment = CGSize(width: 0, height: adjustment)
         invalidateLayout(with: context)
+    }
+
+    /// The row at `index` and every row under it: its new height moves
+    /// them all, and UIKit asks again only for the items a context names,
+    /// keeping the frames it has for the rest. Naming the resized row
+    /// alone left the rows under it where they were (an opened Thinking
+    /// row drawn over them, a closed one's old height left empty) until a
+    /// scroll or another visit laid them out afresh.
+    private static func items(from index: Int, count: Int) -> [IndexPath] {
+        (index..<max(index + 1, count)).map { IndexPath(item: $0, section: 0) }
     }
 
     /// Keeps a row's new height and returns how much the content's height
@@ -342,7 +352,12 @@ final class TranscriptLayout: UICollectionViewLayout {
         context.contentOffsetAdjustment = .zero
         context.contentSizeAdjustment = CGSize(width: 0, height: preferredAdjustment)
         preferredAdjustment = 0
-        markDirty(from: originalAttributes.indexPath.item)
+        let index = originalAttributes.indexPath.item
+        // The rows under it move too (`items(from:count:)`).
+        if index + 1 < rows.count {
+            context.invalidateItems(at: Self.items(from: index + 1, count: rows.count))
+        }
+        markDirty(from: index)
         return context
     }
 
