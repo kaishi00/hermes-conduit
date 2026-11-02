@@ -38,11 +38,18 @@ enum IPhoneVoices {
     /// installed per device, not per profile or dashboard.
     static let choicesKey = "conduit.voice.iPhoneVoices.v1"
 
-    /// "en-US", "en" and "EN_gb" all read as "en". One pick covers a
-    /// language in every region and script.
+    /// "en-US", "en" and "EN_gb" all read as "en": one pick covers a language
+    /// in every region. Chinese keeps three: Mandarin in Simplified (zh-CN),
+    /// Mandarin in Traditional (zh-TW) and Cantonese (zh-HK) need different
+    /// voices.
     static func languageKey(_ language: String) -> String {
-        let base = language.split(whereSeparator: { $0 == "-" || $0 == "_" }).first.map(String.init) ?? language
-        return base.lowercased()
+        let parts = language.split(whereSeparator: { $0 == "-" || $0 == "_" }).map { String($0) }
+        let base = (parts.first ?? language).lowercased()
+        guard base == "zh" else { return base }
+        let rest = parts.dropFirst().map { $0.uppercased() }
+        if rest.contains("HK") || rest.contains("MO") { return "zh-HK" }
+        if rest.contains("TW") || rest.contains("HANT") { return "zh-TW" }
+        return "zh-CN"
     }
 
     /// The installed voices for `language`'s key.

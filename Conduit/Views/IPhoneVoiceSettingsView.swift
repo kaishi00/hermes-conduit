@@ -133,6 +133,6 @@ struct IPhoneVoiceSettingsView: View {
     private var displayLocale: Locale { AppLanguage.current.locale ?? .current }
 
     private func languageName(_ key: String) -> String {
-        displayLocale.localizedString(forLanguageCode: key) ?? key
+        displayLocale.localizedString(forIdentifier: key) ?? key
     }
 }

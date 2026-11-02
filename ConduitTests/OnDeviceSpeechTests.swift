@@ -99,7 +99,15 @@ extension HermesVoiceGatewayTimeoutTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         XCTAssertEqual(IPhoneVoices.languageKey("en-US"), "en")
         XCTAssertEqual(IPhoneVoices.languageKey("EN_gb"), "en")
-        XCTAssertEqual(IPhoneVoices.languageKey("zh-TW"), "zh")
+        // Chinese keeps Simplified Mandarin, Traditional Mandarin and Cantonese apart.
+        XCTAssertEqual(IPhoneVoices.languageKey("zh-TW"), "zh-TW")
+        XCTAssertEqual(IPhoneVoices.languageKey("zh-Hant-TW"), "zh-TW")
+        XCTAssertEqual(IPhoneVoices.languageKey("zh-HK"), "zh-HK")
+        XCTAssertEqual(IPhoneVoices.languageKey("zh-CN"), "zh-CN")
+        XCTAssertEqual(IPhoneVoices.languageKey("zh"), "zh-CN")
+        let mandarinTW = iPhoneVoice("meijia", "Meijia", "zh-TW")
+        let cantonese = iPhoneVoice("sinji", "Sinji", "zh-HK", quality: 3)
+        XCTAssertEqual(IPhoneVoices.pick([mandarinTW, cantonese], wanted: "zh-TW", chosen: "sinji", region: "US", systemDefault: nil), mandarinTW)
         IPhoneVoices.setChosenVoice("daniel", for: "en-GB", defaults: defaults)
         IPhoneVoices.setChosenVoice("anna", for: "de", defaults: defaults)
         XCTAssertEqual(IPhoneVoices.chosenVoice(for: "en", defaults: defaults), "daniel")
