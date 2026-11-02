@@ -209,10 +209,16 @@ extension AppState {
     func voiceCallLeftChat(profile: String?, chat: String) {
         guard notifierPlugin.reports(BotWorkstreamsClient.callEndedCapability), !chat.isEmpty else { return }
         let client = botWorkClient(profile: profile ?? activeProfile)
-        Task { @MainActor in
-            do { try await client.callEnded(chat: chat) } catch {
-                botWorkLogger.notice("Telling the bot's work a call ended failed: \(String(describing: type(of: error)), privacy: .public)")
-            }
+        let dashboard = activeDashboardID
+        Task { @MainActor [weak self] in
+            _ = await AppState.adoptOnce(
+                stillCurrent: { AppState.sameDashboard(madeOn: dashboard, now: self?.activeDashboardID, appAlive: self != nil) },
+                send: { try await client.callEnded(chat: chat) },
+                wait: { try? await Task.sleep(for: .seconds(3)) },
+                failed: { attempt, error in
+                    botWorkLogger.notice("Telling the bot's work a call ended failed (try \(attempt, privacy: .public)): \(String(describing: type(of: error)), privacy: .public)")
+                }
+            )
         }
     }
 
