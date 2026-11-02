@@ -791,12 +791,14 @@ protocol SpeechPlaybackService: AnyObject {
     func drain() async
     func stop()
     /// Holds the current audio in place (Now Playing pause, #373). Returns
-    /// false when nothing is playing that can be paused. Scheduled and
-    /// newly enqueued audio waits until `resume()`.
+    /// false when nothing is playing that can be paused; a stream whose
+    /// engine a route change just stopped still pauses. Scheduled and newly
+    /// enqueued audio waits until `resume()`.
     func pause() -> Bool
     func resume()
-    /// Whether audio is currently held by `pause()`. A stream restart (route
-    /// change) clears it even though nobody resumed.
+    /// Whether audio is currently held by `pause()`. A route change keeps
+    /// it (the fresh engine starts paused); a stream that settles clears it
+    /// even though nobody resumed.
     var isPaused: Bool { get }
     /// Builds every stream so `changeRate` can retime it while it plays
     /// (Read Aloud's player, #759). Off for conversations, which keep the
