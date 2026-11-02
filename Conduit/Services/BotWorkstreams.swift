@@ -19,6 +19,19 @@ struct BotWorkItem: Identifiable, Equatable {
     enum Action: String, CaseIterable {
         case send, stop, `continue`, check
         case pin, unpin, resolve, reopen
+        /// Answers the approval its "Needs you" card shows (`approval`).
+        case approve, deny
+    }
+
+    /// The approval a workstream waits on, as the plugin read it from
+    /// Hermes: one named by its request, so an answer reaches only it.
+    struct Approval: Equatable {
+        let requestID: String
+        let command: String
+        let description: String
+        /// The card shows the whole command as written, so Approve approves
+        /// what it showed. False for an empty or cut one: deny only here.
+        var isApprovable = true
     }
 
     /// A line of the workstream's own checklist (`work_progress`).
@@ -60,6 +73,9 @@ struct BotWorkItem: Identifiable, Equatable {
     let actions: [Action]
     /// Pin or Unpin, Resolve, or Reopen.
     let manage: [Action]
+    /// What it's waiting on the user to approve; nil when nothing, or when
+    /// only its chat can answer it.
+    let approval: Approval?
 
     var id: String { ref }
 
@@ -90,6 +106,16 @@ struct BotWorkItem: Identifiable, Equatable {
         isUncertain = row["uncertain"] as? Bool ?? false
         actions = (row["actions"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         manage = (row["manage"] as? [String] ?? []).compactMap(Action.init(rawValue:))
+        if let asked = row["approval"] as? [String: Any], let requestID = asked["request_id"] as? String,
+           !requestID.isEmpty {
+            let command = asked["command"] as? String ?? ""
+            approval = Approval(requestID: requestID, command: command,
+                                description: asked["description"] as? String ?? "",
+                                isApprovable: (asked["approvable"] as? Bool ?? true)
+                                    && !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } else {
+            approval = nil
+        }
     }
 
     /// Still the bot's or the user's to finish: a restart's cut-off waits
@@ -330,11 +356,13 @@ final class BotWorkstreamsClient {
 
     /// The user's action on a workstream; the row as it is now.
     @MainActor
-    func act(ref: String, action: BotWorkItem.Action, text: String? = nil) async throws -> BotWorkItem? {
+    func act(ref: String, action: BotWorkItem.Action, text: String? = nil,
+             requestID: String? = nil) async throws -> BotWorkItem? {
         guard let encoded = DashboardPath.encodedQueryComponent(ref) else { throw Failure.malformed }
         let path = DashboardPath.withProfile("\(Self.path)/\(encoded)/\(action.rawValue)", profile: profile, parameter: parameter)
         var body: [String: Any] = [:]
         if let text { body["text"] = text }
+        if let requestID { body["request_id"] = requestID }
         let response = try await request(path, "POST", body)
         guard response["ok"] as? Bool == true else { throw Failure.malformed }
         return (response["work"] as? [String: Any]).flatMap(BotWorkItem.init(row:))
@@ -478,6 +506,59 @@ struct BotWorkCall: Equatable {
     }
 }
 
+/// The links to its work a Bot Chat's reply carries ("[Open W46](conduit://
+/// session/…)", which the plugin hands the bot): drawn as work cards under
+/// the reply instead of plain links among its words.
+enum BotWorkLinks {
+    struct Link: Equatable {
+        let ref: String
+        let sessionID: String
+        let profile: String?
+        let url: URL
+    }
+
+    private static let pattern = try! NSRegularExpression(
+        pattern: #"\[(?:Open )?(W\d+)\]\((conduit://session/[^)\s]+)\)"#)
+
+    /// The reply's text without those links, and the links in order (each
+    /// workstream once); nil when it has none.
+    static func split(_ text: String) -> (text: String, links: [Link])? {
+        guard text.contains("conduit://session/") else { return nil }
+        let range = NSRange(text.startIndex..., in: text)
+        var links: [Link] = []
+        var kept = text
+        for match in pattern.matches(in: text, range: range).reversed() {
+            guard let refRange = Range(match.range(at: 1), in: text),
+                  let urlRange = Range(match.range(at: 2), in: text),
+                  let whole = Range(match.range, in: kept),
+                  let url = URL(string: String(text[urlRange])),
+                  case .session(let id, let profile, _) = ConduitAppLink(url: url) else { continue }
+            let ref = String(text[refRange])
+            if !links.contains(where: { $0.ref == ref }) {
+                links.insert(Link(ref: ref, sessionID: id, profile: profile, url: url), at: 0)
+            }
+            // The spaces before it go too, and the "(…)" around it once it's
+            // empty; the rest of the reply stays as written.
+            var lower = spacesBefore(whole.lowerBound, in: kept)
+            var upper = whole.upperBound
+            if lower > kept.startIndex, kept[kept.index(before: lower)] == "(",
+               upper < kept.endIndex, kept[upper] == ")" {
+                lower = spacesBefore(kept.index(before: lower), in: kept)
+                upper = kept.index(after: upper)
+            }
+            kept.removeSubrange(lower..<upper)
+        }
+        guard !links.isEmpty else { return nil }
+        return (kept.trimmingCharacters(in: .whitespacesAndNewlines), links)
+    }
+
+    private static func spacesBefore(_ index: String.Index, in text: String) -> String.Index {
+        var lower = index
+        while lower > text.startIndex, text[text.index(before: lower)] == " " { lower = text.index(before: lower) }
+        return lower
+    }
+}
+
 /// A workstream's first message: the brief its coordinator wrote (the
 /// plugin's `WORKER_PROMPT`). Its chat shows it as a card, the task first,
 /// rather than as something the user typed.
@@ -514,5 +595,16 @@ struct WorkstreamBrief: Equatable {
             words = said.isEmpty ? nil : said
         }
         return WorkstreamBrief(bot: bot, task: trimmed, userWords: words)
+    }
+}
+
+extension ChatMessage {
+    /// The same row showing other words: a Bot Chat reply with its work
+    /// links drawn as cards (BotWorkLinks).
+    func withContent(_ text: String) -> ChatMessage {
+        var copy = self
+        copy.content = text
+        copy.rawContent = copy.rawContent.map { _ in text }
+        return copy
     }
 }

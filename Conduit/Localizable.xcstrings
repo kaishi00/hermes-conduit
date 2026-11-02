@@ -341668,6 +341668,94 @@
         }
       }
     },
+    "This card can’t show all of it. Approve it in its chat, or deny it here.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Karte kann nicht alles zeigen. Genehmige es im Chat oder lehne es hier ab."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This card can’t show all of it. Approve it in its chat, or deny it here."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta tarjeta no puede mostrarlo entero. Apruébalo en su chat o recházalo aquí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette carte ne peut pas tout afficher. Approuvez-le dans son chat ou refusez-le ici."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kartu ini tidak bisa menampilkan semuanya. Setujui di chat-nya, atau tolak di sini."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questa scheda non può mostrarlo tutto. Approvalo nella sua chat o rifiutalo qui."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このカードでは全体を表示できません。チャットで承認するか、ここで拒否してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 카드에는 전부 표시할 수 없습니다. 해당 채팅에서 승인하거나 여기서 거부하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ta karta nie może pokazać całości. Zatwierdź to w jego czacie albo odrzuć tutaj."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este cartão não consegue mostrar tudo. Aprove no chat dele ou recuse aqui."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Эта карточка не может показать всё. Одобрите это в его чате или отклоните здесь."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu kart tamamını gösteremiyor. Sohbetinde onaylayın ya da burada reddedin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此卡片无法显示全部内容。请在其聊天中批准，或在此拒绝。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此卡片無法顯示全部內容。請在其聊天中核准，或在此拒絕。"
+          }
+        }
+      }
+    },
     "This chat": {
       "localizations": {
         "de": {

@@ -140,6 +140,11 @@ extension BotModeTests {
         ]))
         store.fileResolved(reopened, profile: "furina")
         XCTAssertEqual(store.resolvedList("furina")?.items, [])
+        // Resolved with no Resolved list read yet: its chat still knows it.
+        let fresh = BotWorkStore()
+        fresh.fileResolved(resolved, profile: "furina")
+        XCTAssertEqual(fresh.workstream(forSession: ["20261101_w3"])?.item.ref, "W3")
+        XCTAssertEqual(fresh.resolvedList("furina")?.more, true)  // the rest pages in after it
     }
 
     func testAWorkstreamsBriefReadsAsItsTask() throws {
@@ -222,24 +227,56 @@ extension BotModeTests {
         XCTAssertFalse(appState.botWork.isActing("W1", profile: "furina"))
     }
 
-    /// The panel answers only an approval Hermes names by its request: one
-    /// without would go to the session's queue, which its chat answers.
-    @MainActor
-    func testThePanelLeavesARequestlessApprovalToItsChat() async throws {
-        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
-        let appState = AppState(defaults: defaults, loadSavedConnection: false)
-        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
-        appState.botWork.set(snapshot)
-        let item = try XCTUnwrap(snapshot.items.first { $0.ref == "W1" })
-        let approval = ApprovalActivity(sessionId: item.sessionID, requestId: nil, command: "rm -rf build",
-                                        description: "Delete the build folder", choices: nil, allowPermanent: false,
-                                        smartDenied: false, status: .pending, choice: nil, error: nil)
-        let took = await appState.answerWorkstreamApproval(approval, item: item, profile: "furina", choice: "once")
-        XCTAssertFalse(took)
-        XCTAssertNil(appState.botWork.refusal("furina"))  // nothing was sent
-        XCTAssertFalse(appState.botWork.isActing("W1", profile: "furina"))
+    /// A "Needs you" card's approval comes from the plugin, named by its
+    /// request; a row without one (or with a requestless one) offers none.
+    func testANeedsYouCardReadsItsApprovalFromThePlugin() throws {
+        let asked = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W46", "kind": "workstream", "status": "needs_you", "session_id": "20261101_w46",
+            "actions": ["send", "stop"],
+            "approval": ["request_id": "appr-2", "command": "rm -f /tmp/conduit-approval-test.txt",
+                         "description": "delete a file"],
+        ]))
+        XCTAssertEqual(asked.approval, BotWorkItem.Approval(requestID: "appr-2",
+                                                            command: "rm -f /tmp/conduit-approval-test.txt",
+                                                            description: "delete a file"))
+        XCTAssertEqual(asked.actions, [.send, .stop])  // approve and deny aren't controls
+        let requestless = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W47", "kind": "workstream", "status": "needs_you", "approval": ["command": "rm x"],
+        ]))
+        XCTAssertNil(requestless.approval)
+        // A command the plugin cut, or an empty one, is denied only.
+        let cut = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W48", "kind": "workstream", "status": "needs_you",
+            "approval": ["request_id": "appr-3", "command": "x…", "description": "", "approvable": false],
+        ]))
+        XCTAssertEqual(cut.approval?.isApprovable, false)
+        let empty = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W49", "kind": "workstream", "status": "needs_you",
+            "approval": ["request_id": "appr-4", "command": " \n", "approvable": true],
+        ]))
+        XCTAssertEqual(empty.approval?.isApprovable, false)
+        XCTAssertEqual(asked.approval?.isApprovable, true)
+    }
+
+    /// A Bot Chat reply's links to its work become cards under it; other
+    /// links stay in its words.
+    func testWorkLinksInABotChatReplyBecomeCards() throws {
+        let text = "Started W46 to create and delete the file. [Open W46](conduit://session/20261101_w46?profile=furina) "
+            + "See [the docs](https://example.com) too."
+        let split = try XCTUnwrap(BotWorkLinks.split(text))
+        XCTAssertEqual(split.text, "Started W46 to create and delete the file. See [the docs](https://example.com) too.")
+        XCTAssertEqual(split.links.map(\.ref), ["W46"])
+        XCTAssertEqual(split.links.first?.sessionID, "20261101_w46")
+        XCTAssertEqual(split.links.first?.profile, "furina")
+        let two = try XCTUnwrap(BotWorkLinks.split(
+            "W1 is done ([Open W1](conduit://session/a)), W2 too [W2](conduit://session/b)."))
+        XCTAssertEqual(two.text, "W1 is done, W2 too.")
+        XCTAssertEqual(two.links.map(\.ref), ["W1", "W2"])
+        XCTAssertNil(BotWorkLinks.split("Open [the file](conduit://file?path=/tmp/x)"))
+        XCTAssertNil(BotWorkLinks.split("No links here."))
+        // Only the link's own place changes: code elsewhere stays as written.
+        let code = try XCTUnwrap(BotWorkLinks.split("Run `ls -a .` then f() , see [Open W3](conduit://session/c)"))
+        XCTAssertEqual(code.text, "Run `ls -a .` then f() , see")
     }
 
     /// A read asked for after an action, while one was under way, makes

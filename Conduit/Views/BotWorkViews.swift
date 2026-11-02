@@ -817,43 +817,49 @@ struct WorkstreamBar: View {
     private var controls: [BotWorkItem.Action] { [.check, .continue, .stop].filter { item.actions.contains($0) } }
 
     var body: some View {
-        // A stack, not a Group, so the read runs while nothing shows.
-        VStack(alignment: .leading, spacing: 0) {
+        // A stack, not a Group, so the read runs while nothing shows. A
+        // compact pill under the title, not a strip across the chat.
+        VStack(spacing: 4) {
             let refusal = work.refusal(profile, ref: item.ref)
             if !controls.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    if !controls.isEmpty {
-                        let layout = dynamicTypeSize.isAccessibilitySize
-                            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(spacing: 8))
-                        layout {
-                            if item.needsYou {
-                                Text(AppLocalization.string("Needs you"))
-                                    .scaledFont(.footnote.weight(.semibold))
-                                    .foregroundStyle(Color.orange)
-                                    .lineLimit(1)
-                            }
-                            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 4) }
-                            ForEach(controls, id: \.self) { action in
-                                barButton(action)
-                            }
+                let layout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(spacing: 6)) : AnyLayout(HStackLayout(spacing: 10))
+                layout {
+                    HStack(spacing: 6) {
+                        Image(systemName: BotWorkLook.symbol(item))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(BotWorkLook.tint(item))
+                            .accessibilityHidden(true)
+                        Text(item.needsYou ? AppLocalization.string("Needs you") : item.statusText)
+                            .scaledFont(.footnote.weight(.semibold))
+                            .foregroundStyle(item.needsYou ? Color.orange : Color.secondary)
+                            .lineLimit(1)
+                    }
+                    HStack(spacing: 6) {
+                        ForEach(controls, id: \.self) { action in
+                            barButton(action)
                         }
-                        .disabled(work.isActing(item.ref, profile: profile) || !appState.isConnected)
                     }
-                    if let refusal {
-                        Text(refusal)
-                            .scaledFont(.footnote)
-                            .foregroundStyle(Color.orange)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                    .disabled(work.isActing(item.ref, profile: profile) || !appState.isConnected)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .conduitGlassSurface(cornerRadius: 16)
-                .padding(.horizontal, 12)
-                .padding(.top, 4)
+                .padding(.leading, 14)
+                .padding(.trailing, 6)
+                .padding(.vertical, 5)
+                .conduitGlassSurface(cornerRadius: 20)
+                .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("workstream.bar")
+                if let refusal {
+                    Text(refusal)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(Color.orange)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
             }
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
         .refreshesBotWork(profile: profile)
         .onDisappear { work.setRefusal(nil, profile: profile) }
     }
@@ -872,6 +878,7 @@ struct WorkstreamBar: View {
         }
         .scaledFont(.footnote.weight(.semibold))
         .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
         .tint(action == .stop ? .red : .conduitAccent)
         .controlSize(.small)
     }
@@ -1052,6 +1059,58 @@ struct WorkStartStatusLine: View {
     }
 }
 
+/// A link to a workstream in a Bot Chat reply, drawn as a card under it:
+/// its mark, ref and task, where it is now, and a tap opens its chat.
+struct BotWorkLinkCard: View {
+    @ObservedObject var work: BotWorkStore
+    let link: BotWorkLinks.Link
+    let profile: String
+    let open: () -> Void
+
+    private var item: BotWorkItem? {
+        work.snapshot(profile)?.items.first { $0.ref == link.ref }
+            ?? work.resolvedList(profile)?.items.first { $0.ref == link.ref }
+    }
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 12) {
+                let item = item
+                Image(systemName: item.map(BotWorkLook.symbol) ?? "arrow.triangle.branch")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(item.map(BotWorkLook.tint) ?? .conduitAccent)
+                    .frame(width: 30, height: 30)
+                    .background((item.map(BotWorkLook.tint) ?? .conduitAccent).opacity(0.16), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(verbatim: link.ref)
+                            .scaledFont(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Text(item?.shownTitle ?? AppLocalization.string("Open \(link.ref)’s chat"))
+                            .scaledFont(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+                    WorkStartStatusLine(work: work, profile: profile, ref: link.ref)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.primary.opacity(0.06)))
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(AppLocalization.string("Open \(link.ref)’s chat"))
+        .accessibilityIdentifier("botWork.link.\(link.ref)")
+    }
+}
+
 /// A workstream's approval on its Work panel card: what it wants to run,
 /// with Approve and Deny. Its chat keeps the same card, so either answers
 /// it. Shows nothing while none can be read.
@@ -1060,56 +1119,56 @@ private struct WorkstreamApprovalBox: View {
     let item: BotWorkItem
     let profile: String
     let isActing: Bool
-    @State private var approval: ApprovalActivity?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let approval {
-                VStack(alignment: .leading, spacing: 10) {
-                    if !approval.description.isEmpty {
-                        Text(approval.description)
-                            .scaledFont(.footnote.weight(.semibold))
-                            .foregroundStyle(Color.primary)
-                    }
-                    if !approval.command.isEmpty {
-                        Text(approval.command)
-                            .scaledFont(.caption.monospaced())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(4)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(Color.primary.opacity(0.06)))
-                    }
-                    let layout = dynamicTypeSize.isAccessibilitySize
-                        ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
-                    layout {
-                        answerButton(AppLocalization.string("Approve"), choice: "once", prominent: true)
-                        answerButton(AppLocalization.string("Deny"), choice: "deny", prominent: false)
-                    }
-                    .disabled(isActing || !appState.isConnected)
+        // The plugin reads it from Hermes with the list: only one Hermes
+        // names by its request, which an answer reaches alone.
+        if let approval = item.approval {
+            VStack(alignment: .leading, spacing: 10) {
+                if !approval.description.isEmpty {
+                    // Drawn as the chat's card draws it, hidden characters shown.
+                    Text(ApprovalDisplayText.revealingHidden(HermesApprovalText.description(approval.description)))
+                        .scaledFont(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.primary)
                 }
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("botWork.approval.\(item.ref)")
+                if !approval.command.isEmpty {
+                    // Whole, as written: Approve approves what it shows.
+                    Text(ApprovalDisplayText.revealingHidden(HermesApprovalText.command(approval.command)))
+                        .scaledFont(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.primary.opacity(0.06)))
+                }
+                let layout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+                if !approval.isApprovable {
+                    Text(AppLocalization.string("This card can’t show all of it. Approve it in its chat, or deny it here."))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                layout {
+                    if approval.isApprovable {
+                        answerButton(approval, AppLocalization.string("Approve"), approve: true)
+                    }
+                    answerButton(approval, AppLocalization.string("Deny"), approve: false)
+                }
+                .disabled(isActing || !appState.isConnected)
             }
-        }
-        .task(id: "\(profile)\u{1F}\(item.ref)\u{1F}\(item.updatedAt.timeIntervalSince1970)\u{1F}\(appState.isConnected)") {
-            // Only one Hermes names by its request: the panel never
-            // answers the session's queue, its chat does.
-            approval = await appState.workstreamApprovals(item, profile: profile)?.first { $0.requestId != nil }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("botWork.approval.\(item.ref)")
         }
     }
 
-    private func answerButton(_ title: String, choice: String, prominent: Bool) -> some View {
-        Button {
+    private func answerButton(_ approval: BotWorkItem.Approval, _ title: String, approve: Bool) -> some View {
+        let prominent = approve
+        return Button {
             Haptics.light()
-            guard let approval else { return }
-            Task {
-                if await appState.answerWorkstreamApproval(approval, item: item, profile: profile, choice: choice) {
-                    self.approval = nil
-                }
-            }
+            Task { await appState.answerWorkstreamApproval(approval, item: item, profile: profile, approve: approve) }
         } label: {
             Text(title)
                 .scaledFont(.subheadline.weight(.semibold))
