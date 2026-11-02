@@ -2802,14 +2802,16 @@ and Read Aloud speak through Hermes's speech stream or the user's speech
 server.
 
 **Siblings:** the Hermes speech stream · the speech-server speech stream ·
-the one-shot fallback a Hermes stream falls back to before any audio · the
-speech-server transcription stream (listening, not speaking)
+the one-shot fallback a Hermes stream falls back to before any audio, and
+this iPhone's voice it falls back to (see iPhone voice) · the speech-server
+transcription stream (listening, not speaking)
 
 **Code**
 - Hermes speech: `Conduit/Voice/HermesVoiceGateway.swift` (HermesSpeechStream: pathLostError, armFinishIdleTimeout, socketWentSilent, the fallback)
 - Speech server: `Conduit/Voice/SpeechServerSpeech.swift` (SpeechServerSpeechStream)
 - Listening: `Conduit/Voice/SpeechServerTranscription.swift`
 - Keepalive: `Conduit/Voice/VoiceSocketKeepalive.swift`
+- The iPhone fallback: `Conduit/Voice/OnDeviceSpeech.swift` (FallbackSpeechStream)
 
 **Rulings**
 - A dead Hermes speech stream is reported as a lost connection, not a timeout: "Lost the connection to Hermes speech." "Timed out" is only for a live stream that went quiet after some audio (2026-10-24, from #980's review, #1190). The speech-server speech stream can't tell yet (Open gaps); listening on a speech server says "Lost the connection to your speech server." when a send fails or the server closes early.
@@ -2818,7 +2820,7 @@ speech-server transcription stream (listening, not speaking)
 **Open gaps**
 - The speech-server speech stream has no keepalive, so a dead path there shows as "Your speech server stopped speaking." after its idle timeout.
 
-**Checked:** 2026-10-24, at #1208, carried in #1229.
+**Checked:** 2026-11-02, #1664 (the iPhone fallback's voice is the iPhone voice entry's); 2026-10-24, at #1208, carried in #1229.
 
 ## iPhone voice
 
