@@ -360,7 +360,10 @@ struct ConnectorKeysSection: View {
                 drafts = [:]
                 note = AppLocalization.string("Key saved")
                 Haptics.success()
-                if testsAfterSave { await store.probe(name) }
+                // Read again: the server may have been turned off meanwhile.
+                if testsAfterSave, store.servers.first(where: { $0.name == name })?.enabled == true {
+                    await store.probe(name)
+                }
             } catch {
                 guard store.generation == generation else { return }
                 note = UserFacingError.message(for: error)
