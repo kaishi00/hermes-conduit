@@ -3690,11 +3690,15 @@ nightly run covers.
 
 **Siblings:** the pinned lists and their caps · the change's own unit classes
 · the source contracts · the UI targeted retry · the step summary · the
-nightly partition, which runs everything Smoke leaves out · docs/CI.md
+nightly partition, which runs everything Smoke leaves out · how a PR's newer
+run supersedes its older ones (the concurrency group and the plan job's
+cancel step; the reviews supersede their own way, in opencode-review.yml) ·
+docs/CI.md, its Budget section included
 
 **Code**
 - Lists and caps: `scripts/smoke-suite.json`; validation and the change's own classes: `scripts/plan-tests.py` (`smoke`)
 - Workflow steps: `.github/workflows/ci.yml` (the plan job's selection, the Smoke job's unit and UI steps; the self-test job's nightly partition check)
+- Superseded runs: `.github/workflows/ci.yml` (`concurrency:` and the plan job's "Cancel this PR's older runs"); its tests in `scripts/tests/test_ci_workflow_contract.py` (`test_a_pr_run_never_waits_for_its_superseded_run`, `test_the_cancel_step_cancels_only_this_prs_older_unfinished_runs`)
 - UI retry: `scripts/smoke-retry-classes.py`; step summary: `scripts/smoke-summary.py`
 - Nightly partition: `scripts/hosted-suite.json`, `.github/workflows/nightly.yml`; the app-only overlay its unit shards build: `project-tests.yml`
 - Tests: `scripts/tests/test_ci_workflow_contract.py`, `scripts/tests/test_smoke_job_runner.py`, `scripts/tests/test_hosted_ci.py`
