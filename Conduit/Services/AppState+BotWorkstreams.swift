@@ -180,7 +180,7 @@ extension AppState {
     /// panel lists it as a call's. Best effort, off the job's path: a
     /// plugin without the route, or a bot whose work is off, keeps none.
     func keepVoiceJobInRegistry(profile: String?, sessionID: String, title: String, instructions: String,
-                                fromWatch: Bool, callChat: String? = nil) {
+                                fromWatch: Bool, callChat: String? = nil, endedWith: String? = nil) {
         guard let via = Self.voiceJobAdoptVia(plugin: notifierPlugin, sessionID: sessionID, fromWatch: fromWatch)
         else { return }
         let bot = profile ?? activeProfile
@@ -191,7 +191,7 @@ extension AppState {
             await AppState.adoptOnce(
                 stillCurrent: { AppState.sameDashboard(madeOn: dashboard, now: self?.activeDashboardID, appAlive: self != nil) },
                 send: { _ = try await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions,
-                                                   chat: callChat) },
+                                                   chat: callChat, result: endedWith) },
                 wait: { try? await Task.sleep(for: .seconds(3)) },
                 failed: { attempt, error in
                     botWorkLogger.notice("Keeping a voice job in its bot's work registry failed (try \(attempt, privacy: .public)): \(String(describing: type(of: error)), privacy: .public) \(String(describing: error))")

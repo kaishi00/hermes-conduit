@@ -380,12 +380,15 @@ final class BotWorkstreamsClient {
     /// the job's request: the Work panel lists it as a call's. `via`
     /// is "phone" or "watch". The row, or nil when the plugin kept none.
     @MainActor
-    func adopt(sessionID: String, title: String, via: String, goal: String, chat: String? = nil) async throws -> BotWorkItem? {
+    func adopt(sessionID: String, title: String, via: String, goal: String, chat: String? = nil,
+               result: String? = nil) async throws -> BotWorkItem? {
         let path = DashboardPath.withProfile("\(Self.path)/adopt", profile: profile, parameter: parameter)
         var body: [String: Any] = ["session_id": sessionID, "title": title, "via": via,
                                    "goal": String(goal.prefix(2_000))]
         // The chat the call is kept with: the Bot Chat's makes it the coordinator's own.
         if let chat, !chat.isEmpty { body["chat"] = chat }
+        // A turn that ended before it was kept: the row settles with its reply.
+        if let result { body["result"] = String(result.prefix(8_000)) }
         let response = try await request(path, "POST", body)
         guard response["ok"] as? Bool == true else { throw Failure.malformed }
         return (response["work"] as? [String: Any]).flatMap(BotWorkItem.init(row:))

@@ -88,6 +88,8 @@ final class FakeVoiceJobBackend {
     private(set) var kept: [(String?, String, String, Bool)] = []
     /// The call's chat each kept job named, as kept.
     private(set) var keptChats: [String?] = []
+    /// The reply each kept job had already ended with, if any.
+    private(set) var keptEndings: [String?] = []
     /// Chats that are workstreams', and what their calls sent there.
     var workstreamChats: Set<String> = []
     private(set) var workstreamSends: [(String, String)] = []
@@ -151,9 +153,10 @@ final class FakeVoiceJobBackend {
                 return ("rt-\(self.created)", self.storedIDs ? "st-\(self.created)" : nil, madeOn)
             },
             setTitle: { [self] id, title in self.titles.append((id, title)) },
-            keepInRegistry: { [self] profile, id, title, _, fromWatch, chat in
+            keepInRegistry: { [self] profile, id, title, _, fromWatch, chat, endedWith in
                 self.kept.append((profile, id, title, fromWatch))
                 self.keptChats.append(chat)
+                self.keptEndings.append(endedWith)
             },
             sendToCallWorkstream: { [self] thread, request in
                 guard self.workstreamChats.contains(thread.runtimeSessionID) else { return nil }
@@ -306,6 +309,15 @@ extension VoiceConversationControllerTests {
         _ = await lost.performVoiceCommand(.start(instructions: "check the router"))
         XCTAssertEqual(lostFake.kept.count, 1)
         XCTAssertEqual(lostFake.kept.last?.2, "check the router")
+        XCTAssertTrue(fake.keptEndings.allSatisfy { $0 == nil }, "still running: nothing to settle with")
+        // A turn that ended during its submit: kept with its reply, so its row settles.
+        let (quick, quickFake) = makeSupervisor()
+        quickFake.onSubmit = { id in
+            quick.observe(.messageStart(sessionId: id))
+            quick.observe(.messageComplete(sessionId: id, messageId: nil, content: "Rain from three.", reasoning: nil))
+        }
+        _ = await quick.performVoiceCommand(.start(instructions: "is it raining"))
+        XCTAssertEqual(quickFake.keptEndings, ["Rain from three."])
     }
 
     /// Bot workstreams M5: a call's job stopped from its bot's Work panel

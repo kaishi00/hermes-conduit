@@ -299,8 +299,11 @@ struct VoiceBackgroundJobBackend {
     /// user. Fire and forget: the job never waits on it. `fromWatch`: a
     /// Watch call's job on the phone. `callChat`: the chat the call is kept
     /// with, so a Bot Chat call's job is its coordinator's own workstream.
+    /// `endedWith`: the reply of a job whose turn already ended (during its
+    /// submit), so its row settles with it.
     var keepInRegistry: @MainActor (_ profile: String?, _ sessionID: String, _ title: String,
-                                    _ instructions: String, _ fromWatch: Bool, _ callChat: String?) -> Void = { _, _, _, _, _, _ in }
+                                    _ instructions: String, _ fromWatch: Bool, _ callChat: String?,
+                                    _ endedWith: String?) -> Void = { _, _, _, _, _, _, _ in }
     /// A call kept with one of a bot's workstreams' chats stays in that
     /// session (Eric 2026-11-02): its requests go to the workstream, as an
     /// interrupt while it works, and never make a job of their own. What to
@@ -1442,8 +1445,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             guard let registryID else { return }
             let chat = liveThread.flatMap { thread in [thread.storedSessionID, thread.runtimeSessionID]
                 .compactMap { $0 }.first { !$0.isEmpty } }
-            backend.keepInRegistry(botProfile, registryID, job.title, self.job(job.id)?.instructions ?? instructions,
-                                   fromWatch, chat)
+            let now = self.job(job.id)
+            backend.keepInRegistry(botProfile, registryID, job.title, now?.instructions ?? instructions,
+                                   fromWatch, chat, now?.status == .finished ? (now?.result ?? "") : nil)
         }
         do {
             let ids = try await backend.createSession(profile, callsModel && profile != nil)
