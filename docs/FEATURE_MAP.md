@@ -4742,7 +4742,7 @@ compress, rewind (Edit and resend, /undo, /retry), the Model sheet's pick
 and Move to project · the session's reasoning, Fast and YOLO switches · busy
 mode in Settings · Predictions' hidden follow-up turn · side agents (/btw,
 /background, which step summaries use), a delegate's steer and stop, Context
-and Stop all processes · Bot Chat's open and create (Bot Chat lookup) and its chats in other profiles · Linked Rooms' notes into a room chat (through Pulse's send) · scheduled jobs (REST first, so neither socket verb is needed) ·
+and Stop all processes · Bot Chat's open and create (Bot Chat lookup) and its chats in other profiles · Linked Rooms' notes into a room chat (through Pulse's send) · reactions, slash commands, attachments and the list verbs (not needed: probed, the same shapes) · scheduled jobs (REST first, so neither socket verb is needed) ·
 the notifier's upstream contract leg (notifier/upstream/test_gateway_listener.py)
 and its routes, which the listener serves since it mounts the dashboard ·
 the plugin's features that read or drive a chat on the host: turn surface
@@ -4772,6 +4772,7 @@ README (Connecting, Architecture) · the website's FAQ
 - A redirect on the authority answers `redirected`, `queued` or `rejected` (with `delivered: false` when no agent could take it, the contract's "queue it as the next prompt"), the words SessionRedirectOutcome already reads (probed, notifier #504's listener leg) (2026-11-01, #1631).
 - On the authority a chat's runtime id and stored key are the same (`local-…`, the create's `session_id` and `stored_session_id`), so Move to project and the other mutations that name a chat by its stored key find the fences its events and snapshots keyed (2026-11-01, #1631).
 - A question another surface answered first reads "This question was answered elsewhere." (or the batch form), as an approval does (2026-11-01, #1631).
+- Reactions (`message.react`), slash commands (`slash.exec`, `commands.catalog`), attachments and the list verbs keep the dashboard's shapes on the authority, which takes them unchanged (probed on the 2026-11-01 canary). The authority's resume names waiting prompts under `prompts`, never `open_requests`, so an answer to one always takes the authority's `approval.respond` or `clarify.respond` (2026-11-01, #1631).
 - A folder chat's create sends `cwd` on both servers: the authority's create takes it (`CREATE_FIELDS` in Hermes' gateway/session_policy.py, listed by `runtime.describe`) (2026-11-01, #1631).
 - `approval.respond` and `clarify.respond` answer only `resolved` or `already_resolved` on the authority (their result contract is closed to those two), so any other answer can only come from a Hermes that broke it and reads as no longer active (2026-11-01, #1631).
 - A branch on the authority names its reply by Hermes' row id; a reply whose id never arrived (its completion missed in the background) asks the user to open the chat again, which reads the ids, rather than branching by copied text as the dashboard does (2026-11-01, #1631).
