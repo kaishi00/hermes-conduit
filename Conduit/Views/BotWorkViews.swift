@@ -872,15 +872,22 @@ struct WorkstreamBar: View {
             default: return AppLocalization.string("Stop")
             }
         }()
-        return Button(title) {
+        let tint: Color = action == .stop ? .red : .conduitAccent
+        return Button {
             Haptics.light()
             Task { await appState.actOnWorkstream(item, profile: profile, action: action) }
+        } label: {
+            // A small capsule, with a full-size place to tap.
+            Text(title)
+                .scaledFont(.footnote.weight(.semibold))
+                .foregroundStyle(tint)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(tint.opacity(0.15)))
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
         }
-        .scaledFont(.footnote.weight(.semibold))
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.capsule)
-        .tint(action == .stop ? .red : .conduitAccent)
-        .controlSize(.small)
+        .buttonStyle(.plain)
     }
 }
 
@@ -1066,6 +1073,7 @@ struct BotWorkLinkCard: View {
     let link: BotWorkLinks.Link
     let profile: String
     let open: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var item: BotWorkItem? {
         work.snapshot(profile)?.items.first { $0.ref == link.ref }
@@ -1090,7 +1098,7 @@ struct BotWorkLinkCard: View {
                         Text(item?.shownTitle ?? AppLocalization.string("Open \(link.ref)’s chat"))
                             .scaledFont(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
-                            .lineLimit(1)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     }
                     WorkStartStatusLine(work: work, profile: profile, ref: link.ref)
                 }
