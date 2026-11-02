@@ -39,16 +39,16 @@ enum IPhoneVoices {
     static let choicesKey = "conduit.voice.iPhoneVoices.v1"
 
     /// "en-US", "en" and "EN_gb" all read as "en": one pick covers a language
-    /// in every region. Chinese keeps three: Mandarin in Simplified (zh-CN),
-    /// Mandarin in Traditional (zh-TW) and Cantonese (zh-HK) need different
-    /// voices.
+    /// in every region. Chinese keeps its scripts apart, since a reply is
+    /// told apart only by script (OnDeviceSpeechStream.language(of:)):
+    /// Simplified (zh-CN) and Traditional (zh-TW, where Cantonese voices go
+    /// too, so a Hong Kong pick speaks Traditional replies).
     static func languageKey(_ language: String) -> String {
         let parts = language.split(whereSeparator: { $0 == "-" || $0 == "_" }).map { String($0) }
         let base = (parts.first ?? language).lowercased()
         guard base == "zh" else { return base }
         let rest = parts.dropFirst().map { $0.uppercased() }
-        if rest.contains("HK") || rest.contains("MO") { return "zh-HK" }
-        if rest.contains("TW") || rest.contains("HANT") { return "zh-TW" }
+        if rest.contains(where: { ["TW", "HK", "MO", "HANT"].contains($0) }) { return "zh-TW" }
         return "zh-CN"
     }
 
@@ -58,8 +58,8 @@ enum IPhoneVoices {
         return all.filter { $0.languageKey == key }
     }
 
-    /// The best of `candidates` for `wanted`: Premium, then Enhanced, then
-    /// anything but a screen-reader voice, then iOS's own default for the
+    /// The best of `candidates` for `wanted`: anything but a screen-reader
+    /// voice, then Premium, then Enhanced, then iOS's own default for the
     /// language, then the exact language, then this iPhone's region. Names
     /// break the last ties so the pick never depends on iOS's list order.
     static func best(
@@ -70,8 +70,8 @@ enum IPhoneVoices {
     ) -> IPhoneVoiceOption? {
         func rank(_ voice: IPhoneVoiceOption) -> [Int] {
             [
-                voice.quality,
                 voice.isScreenReaderVoice ? 0 : 1,
+                voice.quality,
                 voice.id == systemDefault ? 1 : 0,
                 voice.language.caseInsensitiveCompare(wanted) == .orderedSame ? 1 : 0,
                 region.map { voice.language.uppercased().hasSuffix("-" + $0.uppercased()) } == true ? 1 : 0,
@@ -138,9 +138,12 @@ enum IPhoneVoices {
         cachedInstalled = nil
     }
 
+    /// What installed() reads; tests swap it.
+    @MainActor static var readInstalled: () -> [IPhoneVoiceOption] = readSystemVoices
+
     /// Novelty voices and Personal Voice are left out: one is a joke, the
     /// other the user's own voice.
-    private static func readInstalled() -> [IPhoneVoiceOption] {
+    private static func readSystemVoices() -> [IPhoneVoiceOption] {
         AVSpeechSynthesisVoice.speechVoices().compactMap { voice in
             guard !voice.voiceTraits.contains(.isNoveltyVoice),
                   !voice.voiceTraits.contains(.isPersonalVoice) else { return nil }

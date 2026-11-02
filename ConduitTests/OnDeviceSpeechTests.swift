@@ -80,6 +80,37 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(IPhoneVoices.best([basic, enhanced, premiumUS, premiumAU], wanted: "en-US", region: "AU", systemDefault: nil), premiumUS)
     }
 
+    @MainActor
+    func testInstalledVoicesAreKeptUntilForgotten() {
+        let saved = IPhoneVoices.readInstalled
+        defer {
+            IPhoneVoices.readInstalled = saved
+            IPhoneVoices.forgetInstalled()
+        }
+        var reads = 0
+        var listed = [iPhoneVoice("samantha", "Samantha", "en-US")]
+        IPhoneVoices.readInstalled = {
+            reads += 1
+            return listed
+        }
+        IPhoneVoices.forgetInstalled()
+        XCTAssertEqual(IPhoneVoices.installed().map(\.id), ["samantha"])
+        // A voice downloaded meanwhile is read once the list is forgotten.
+        listed.append(iPhoneVoice("ava", "Ava", "en-US", quality: 3))
+        XCTAssertEqual(IPhoneVoices.installed().map(\.id), ["samantha"])
+        XCTAssertEqual(reads, 1)
+        IPhoneVoices.forgetInstalled()
+        XCTAssertEqual(IPhoneVoices.installed().map(\.id), ["samantha", "ava"])
+        XCTAssertEqual(reads, 2)
+    }
+
+    func testAScreenReaderVoiceNeverWinsOverAnyOtherVoice() {
+        let eloquence = iPhoneVoice("com.apple.eloquence.en-US.Flo", "Flo", "en-US", quality: 2)
+        let basic = iPhoneVoice("samantha", "Samantha", "en-US")
+        XCTAssertEqual(IPhoneVoices.best([eloquence, basic], wanted: "en", region: "US", systemDefault: nil), basic)
+        XCTAssertEqual(IPhoneVoices.best([eloquence], wanted: "en", region: "US", systemDefault: nil), eloquence)
+    }
+
     func testPickedVoiceSpeaksItsLanguageUntilItsDeleted() {
         let ava = iPhoneVoice("ava", "Ava", "en-US", quality: 3)
         let daniel = iPhoneVoice("daniel", "Daniel", "en-GB")
@@ -102,12 +133,18 @@ extension HermesVoiceGatewayTimeoutTests {
         // Chinese keeps Simplified Mandarin, Traditional Mandarin and Cantonese apart.
         XCTAssertEqual(IPhoneVoices.languageKey("zh-TW"), "zh-TW")
         XCTAssertEqual(IPhoneVoices.languageKey("zh-Hant-TW"), "zh-TW")
-        XCTAssertEqual(IPhoneVoices.languageKey("zh-HK"), "zh-HK")
+        XCTAssertEqual(IPhoneVoices.languageKey("zh-HK"), "zh-TW")
         XCTAssertEqual(IPhoneVoices.languageKey("zh-CN"), "zh-CN")
         XCTAssertEqual(IPhoneVoices.languageKey("zh"), "zh-CN")
+        // Replies are told apart by script only, so a Cantonese pick speaks
+        // the Traditional replies language(of:) tags zh-TW, never Simplified.
+        let mandarinCN = iPhoneVoice("tingting", "Tingting", "zh-CN", quality: 3)
         let mandarinTW = iPhoneVoice("meijia", "Meijia", "zh-TW")
-        let cantonese = iPhoneVoice("sinji", "Sinji", "zh-HK", quality: 3)
-        XCTAssertEqual(IPhoneVoices.pick([mandarinTW, cantonese], wanted: "zh-TW", chosen: "sinji", region: "US", systemDefault: nil), mandarinTW)
+        let cantonese = iPhoneVoice("sinji", "Sinji", "zh-HK")
+        let chinese = [mandarinCN, mandarinTW, cantonese]
+        XCTAssertEqual(IPhoneVoices.pick(chinese, wanted: "zh-TW", chosen: "sinji", region: "US", systemDefault: nil), cantonese)
+        XCTAssertEqual(IPhoneVoices.pick(chinese, wanted: "zh-TW", chosen: nil, region: "US", systemDefault: nil), mandarinTW)
+        XCTAssertEqual(IPhoneVoices.pick(chinese, wanted: "zh-CN", chosen: "sinji", region: "US", systemDefault: nil), mandarinCN)
         IPhoneVoices.setChosenVoice("daniel", for: "en-GB", defaults: defaults)
         IPhoneVoices.setChosenVoice("anna", for: "de", defaults: defaults)
         XCTAssertEqual(IPhoneVoices.chosenVoice(for: "en", defaults: defaults), "daniel")

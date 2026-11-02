@@ -40,7 +40,11 @@ struct IPhoneVoiceSettingsView: View {
                     Text("Speaks with").foregroundStyle(.secondary)
                 }
             }
-            if loaded, !candidates.contains(where: \.isNatural) {
+            if loaded, candidates.isEmpty {
+                Text(AppLocalization.string("No voice for \(languageName(language)) is installed on this iPhone yet. To download one, search iPhone Settings for “Voices”."))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.orange)
+            } else if loaded, !candidates.contains(where: \.isNatural) {
                 Text(AppLocalization.string("This iPhone has no Enhanced or Premium voice for \(languageName(language)) yet, so replies use a basic one. To download one, search iPhone Settings for “Voices”; it shows up here once it's done."))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
@@ -133,6 +137,8 @@ struct IPhoneVoiceSettingsView: View {
     private var displayLocale: Locale { AppLanguage.current.locale ?? .current }
 
     private func languageName(_ key: String) -> String {
-        displayLocale.localizedString(forIdentifier: key) ?? key
+        // Chinese is split by script, the way its keys are.
+        let identifier = ["zh-CN": "zh-Hans", "zh-TW": "zh-Hant"][key] ?? key
+        return displayLocale.localizedString(forIdentifier: identifier) ?? key
     }
 }

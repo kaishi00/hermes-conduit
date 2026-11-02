@@ -1,6 +1,88 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "No voice for %@ is installed on this iPhone yet. To download one, search iPhone Settings for “Voices”.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Für %@ ist auf diesem iPhone noch keine Stimme installiert. Suche zum Laden in den iPhone-Einstellungen nach „Stimmen“."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este iPhone aún no tiene ninguna voz para %@. Para descargar una, busca «Voces» en Ajustes del iPhone."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucune voix pour %@ n'est encore installée sur cet iPhone. Pour en télécharger une, cherche « Voix » dans Réglages."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Belum ada suara untuk %@ yang terpasang di iPhone ini. Untuk mengunduhnya, cari “Suara” di Pengaturan iPhone."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Su questo iPhone non c'è ancora nessuna voce per %@. Per scaricarne una, cerca “Voci” in Impostazioni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このiPhoneには%@の声がまだインストールされていません。ダウンロードするには、iPhoneの「設定」で「声」を検索してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone에는 아직 %@ 음성이 설치되어 있지 않습니다. 다운로드하려면 iPhone 설정에서 '음성'을 검색하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na tym iPhonie nie ma jeszcze głosu dla języka %@. Aby go pobrać, wyszukaj „Głosy” w Ustawieniach iPhone’a."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não há nenhuma voz para %@ instalada neste iPhone. Para baixar uma, busque “Vozes” nos Ajustes do iPhone."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "На этом iPhone пока нет голоса для языка «%@». Чтобы загрузить его, найдите «Голоса» через поиск в Настройках iPhone."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu iPhone'da %@ için henüz yüklü bir ses yok. İndirmek için iPhone Ayarlar'da “Sesler” diye arayın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 还没有安装%@的声音。要下载，请在 iPhone 的“设置”中搜索“声音”。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這部 iPhone 尚未安裝%@的聲音。要下載，請在 iPhone 的「設定」中搜尋「聲音」。"
+          }
+        }
+      }
+    },
     "Speaks with": {
       "localizations": {
         "de": {
