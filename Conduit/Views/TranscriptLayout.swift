@@ -157,7 +157,7 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// row drawn over them, a closed one's old height left empty) until a
     /// scroll or another visit laid them out afresh.
     private static func items(from index: Int, count: Int) -> [IndexPath] {
-        (index..<max(index + 1, count)).map { IndexPath(item: $0, section: 0) }
+        (index..<count).map { IndexPath(item: $0, section: 0) }
     }
 
     /// Keeps a row's new height and returns how much the content's height
