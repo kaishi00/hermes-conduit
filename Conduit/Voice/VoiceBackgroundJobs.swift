@@ -2791,8 +2791,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// by its end, a message typed while it ran (Hermes runs it next) sits
     /// unanswered in the transcript and would pass for its prompt.
     private var turnAsked: [String: AskedFor] = [:]
-    /// The last message a Bot Chat's turn took as its prompt, by session.
-    private var lastTakenPrompt: [String: String] = [:]
+    /// The last message a Bot Chat's turn took as its prompt, by session:
+    /// its words and which time they were sent ("yes" twice is two prompts).
+    private var lastTakenPrompt: [String: (words: String, occurrence: Int)] = [:]
 
     /// A Bot Chat turn starts: it answers the first message no earlier turn
     /// took, or nobody (the plugin's hidden work update). Not open on this
@@ -2806,20 +2807,25 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         func words(_ message: ChatMessage) -> String { message.content.trimmingCharacters(in: .whitespacesAndNewlines) }
         let prompts = messages.indices.filter { messages[$0].role == .user }
+        func taking(_ index: Int) -> (words: String, occurrence: Int) {
+            let text = words(messages[index])
+            return (text, prompts.filter { $0 <= index && words(messages[$0]) == text }.count)
+        }
         let firstNew: Int
-        if let taken = lastTakenPrompt[sessionID], let index = prompts.last(where: { words(messages[$0]) == taken }) {
+        if let taken = lastTakenPrompt[sessionID],
+           let index = prompts.filter({ words(messages[$0]) == taken.words }).dropFirst(taken.occurrence - 1).first {
             firstNew = index + 1
         } else {
             firstNew = messages.lastIndex(where: { $0.role == .assistant }).map { $0 + 1 } ?? messages.startIndex
         }
         // Everything above it is taken, whoever this turn answers.
-        if let taken = prompts.last(where: { $0 < firstNew }) { lastTakenPrompt[sessionID] = words(messages[taken]) }
+        if let taken = prompts.last(where: { $0 < firstNew }) { lastTakenPrompt[sessionID] = taking(taken) }
         guard let next = prompts.first(where: { $0 >= firstNew }) else {
             turnAsked[sessionID] = .nobody
             return
         }
         let message = messages[next]
-        lastTakenPrompt[sessionID] = words(message)
+        lastTakenPrompt[sessionID] = taking(next)
         let prompt = AppState.liveVoiceTypedPrompt(message)
         turnAsked[sessionID] = prompt.isEmpty ? .unknown
             : prompt.hasPrefix(Self.threadTurnText(for: "")) ? .voice : .typed(prompt)

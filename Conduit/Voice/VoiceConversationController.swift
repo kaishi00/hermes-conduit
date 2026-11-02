@@ -1092,9 +1092,14 @@ final class VoiceConversationController: ObservableObject {
            expectedAssistantSessionIDs.contains(sessionID), let backgroundJobs {
             let reply = (content ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             // The supervisor filters it for speech, as for every mode.
-            if !reply.isEmpty, reply != lastOwnReply, backgroundJobs.noteChatReport(reply, sessionID: sessionID) {
+            if reply.isEmpty {
+            } else if reply == lastOwnReply {
+                lastOwnReply = nil  // only its replay is skipped: the same words later are new
+            } else if backgroundJobs.noteChatReport(reply, sessionID: sessionID) {
                 lastOwnReply = reply  // a replay of it isn't said twice
                 deliverPendingBackgroundJobNoticeIfIdle()
+            } else {
+                lastOwnReply = nil
             }
             return
         }

@@ -1414,6 +1414,20 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(supervisor.noteChatReport("W2: logs rotated.", sessionID: "rt-chat"))
         supervisor.observe(.messageStart(sessionId: "rt-chat"))
         XCTAssertFalse(supervisor.noteChatReport("Rotated last night.", sessionID: "rt-chat"), "the typed one's reply")
+        fake.openMessages?.append(message("a4", .assistant, "W2: logs rotated."))
+        fake.openMessages?.append(message("a5", .assistant, "Rotated last night."))
+
+        // The same words sent again are a prompt of their own.
+        fake.openMessages?.append(message("q4", .user, "yes"))
+        supervisor.observe(.messageStart(sessionId: "rt-chat"))
+        XCTAssertFalse(supervisor.noteChatReport("Done.", sessionID: "rt-chat"))
+        fake.openMessages?.append(message("a6", .assistant, "Done."))
+        fake.openMessages?.append(message("q5", .user, "yes"))
+        supervisor.observe(.messageStart(sessionId: "rt-chat"))
+        XCTAssertFalse(supervisor.noteChatReport("Done again.", sessionID: "rt-chat"), "a second yes is still typed")
+        fake.openMessages?.append(message("a7", .assistant, "Done again."))
+        supervisor.observe(.messageStart(sessionId: "rt-chat"))
+        XCTAssertTrue(supervisor.noteChatReport("W3: tests pass.", sessionID: "rt-chat"), "then a work update")
     }
 
     func testAReplayedCompletionIsNotedOnce() {
@@ -3401,6 +3415,8 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(spy.texts.isEmpty, "no turn of its own")
         controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Still 7.6 GB free. 💾"))
         XCTAssertEqual(jobs.reports.count, 1, "a replay isn't said twice")
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Still 7.6 GB free. 💾"))
+        XCTAssertEqual(jobs.reports.count, 2, "the same words again later are a new report")
     }
 
     func testFailedHandBackSubmissionSpeaksTheFallback() async {
