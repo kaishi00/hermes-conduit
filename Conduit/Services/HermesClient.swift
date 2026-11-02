@@ -3464,6 +3464,8 @@ final class HermesClient: ObservableObject {
             // The authority asks one question per prompt and names the
             // turn that asked; its answer settles that prompt.
             let result: AnyCodable
+            // Cancelled before anything was written: nothing to remember.
+            try Task.checkCancellation()
             do {
                 var params: [String: Any] = [
                     "session_id": prompt.sessionId,
@@ -3664,6 +3666,8 @@ final class HermesClient: ObservableObject {
             ]
             if let profile, !profile.isEmpty { params["profile"] = profile }
             let result: AnyCodable
+            // Cancelled before anything was written: nothing to remember.
+            try Task.checkCancellation()
             do {
                 result = try await rpc("approval.respond", params: params)
             } catch let error as RpcError {
