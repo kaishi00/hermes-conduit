@@ -878,6 +878,31 @@ struct ChatMessage: Identifiable, Equatable {
         self.reactions = reactions
     }
 
+    /// The same message under another id.
+    func withID(_ id: String) -> ChatMessage {
+        var copy = ChatMessage(
+            id: id,
+            role: role,
+            content: content,
+            rawContent: rawContent,
+            timestamp: timestamp,
+            author: author,
+            reasoning: reasoning,
+            tool: tool,
+            review: review,
+            clarify: clarify,
+            approval: approval,
+            inputPrompt: inputPrompt,
+            attachments: attachments,
+            code: code,
+            displayKind: displayKind,
+            rowId: rowId,
+            reactions: reactions
+        )
+        copy.stepDuration = stepDuration
+        return copy
+    }
+
     /// Hermes' `display_kind` for a mid-turn steer row, also used for the
     /// local row Conduit shows the moment a steer is accepted (issue #337).
     static let steerDisplayKind = "steer"

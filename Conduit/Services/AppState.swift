@@ -10423,6 +10423,64 @@ final class AppState: ObservableObject {
         restoredPendingDecisionCardsAwaitingConfirmation = nil
     }
 
+    /// A transcript of the same chat rebuilt from the gateway's rows, with
+    /// each message `previous` already showed under another id taking that
+    /// id back (#1648). Hermes' stored rows carry their database ids, while
+    /// a resume during a running turn numbers its rows by position ("0",
+    /// "1-reasoning", ...): a refresh that switched source re-keyed every
+    /// row, so the transcript drew and measured them all again from
+    /// guesses, lost the reader's place, and took a re-keyed latest user
+    /// message for a new turn. Rows are matched in order by role, text and
+    /// tool call. A row whose id `durableIDs` holds (Hermes' stored id,
+    /// which the delivery checks look up) keeps it, and an id goes to at
+    /// most one row and never to a row whose id is still in use.
+    static func keepingRowIDs(
+        from previous: [ChatMessage],
+        in rebuilt: [ChatMessage],
+        durableIDs: Set<String>
+    ) -> [ChatMessage] {
+        let previousIDs = Set(previous.map(\.id))
+        let rebuiltIDs = Set(rebuilt.map(\.id))
+        struct Signature: Hashable {
+            let role: MessageRole
+            let content: String
+            let tool: String?
+        }
+        func signature(_ message: ChatMessage) -> Signature {
+            let tool = message.tool.map { tool in
+                tool.id.flatMap { $0.isEmpty ? nil : $0 } ?? tool.name
+            }
+            return Signature(role: message.role, content: message.content, tool: tool)
+        }
+        // The previous rows the rebuilt ones no longer name, by signature,
+        // in order.
+        var candidates: [Signature: [Int]] = [:]
+        for (index, message) in previous.enumerated() where !rebuiltIDs.contains(message.id) {
+            candidates[signature(message), default: []].append(index)
+        }
+        guard !candidates.isEmpty else { return rebuilt }
+        var cursors: [Signature: Int] = [:]
+        var lastMatched = -1
+        var taken: Set<String> = []
+        var result = rebuilt
+        for (index, message) in rebuilt.enumerated() {
+            guard !previousIDs.contains(message.id), !durableIDs.contains(message.id) else { continue }
+            let key = signature(message)
+            guard let list = candidates[key] else { continue }
+            var cursor = cursors[key] ?? 0
+            while cursor < list.count, list[cursor] <= lastMatched { cursor += 1 }
+            cursors[key] = cursor
+            guard cursor < list.count else { continue }
+            let id = previous[list[cursor]].id
+            guard !taken.contains(id) else { continue }
+            taken.insert(id)
+            lastMatched = list[cursor]
+            cursors[key] = cursor + 1
+            result[index] = message.withID(id)
+        }
+        return result
+    }
+
     /// The chat's own notes (slash command output, /btw and /background
     /// answers), which Hermes never stores, carried from `previous` into a
     /// transcript of the same chat rebuilt from the gateway's rows. Each goes
@@ -18044,7 +18102,12 @@ final class AppState: ObservableObject {
         let isSameChat = previousSessionID.map {
             !chatOwnSessionIDs(for: $0).union([$0]).isDisjoint(with: resumedIDs)
         } ?? false
-        let rebuilt = isSameChat ? Self.keepingLocalNotes(from: previousMessages, in: restored) : restored
+        // The same messages from the other source (Hermes' stored rows or a
+        // resume's) keep the ids they're drawn under (#1648).
+        let rekeyed = isSameChat
+            ? Self.keepingRowIDs(from: previousMessages, in: restored, durableIDs: durablePersistedRowIDs)
+            : restored
+        let rebuilt = isSameChat ? Self.keepingLocalNotes(from: previousMessages, in: rekeyed) : rekeyed
         messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: rebuilt, sessionId: result.sessionId), sessionId: result.sessionId)
         if result.snapshot.running == false {
             sessionPresentationCache.removePendingTools(
