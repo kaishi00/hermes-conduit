@@ -33798,9 +33798,10 @@ final class AppState: ObservableObject {
             )
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
             let display = config["display"] as? [String: Any] ?? [:]
-            profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
-            // A display save that landed while this read was out is newer.
+            // A display or time-zone save that landed while this read was out
+            // is newer.
             guard revision == displayPreferencesWriteRevision else { return }
+            profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
             let reasoning = ReasoningDisplayMode(display: display)
             displayPreferences = ProfileDisplayPreferences(
                 showReasoning: reasoning == .show,
@@ -34181,7 +34182,11 @@ final class AppState: ObservableObject {
                     self?.setProfileSettingValue(value, in: &config, key: key)
                 }
             }
-            if reasoning != nil || key.hasPrefix("display.") { displayPreferencesWriteRevision &+= 1 }
+            // The time zone comes back in the same config read as the display
+            // settings, so its save also voids an early or in-flight read.
+            if reasoning != nil || key.hasPrefix("display.") || key == ProfileTimeZone.configKey {
+                displayPreferencesWriteRevision &+= 1
+            }
             // The write landed on its own profile; what's mirrored on screen
             // must still be that dashboard's and profile's.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return true }
