@@ -3694,7 +3694,7 @@ nightly partition, which runs everything Smoke leaves out · docs/CI.md
 
 **Code**
 - Lists and caps: `scripts/smoke-suite.json`; validation and the change's own classes: `scripts/plan-tests.py` (`smoke`)
-- Workflow steps: `.github/workflows/ci.yml` (the plan job's selection, the Smoke job's unit and UI steps)
+- Workflow steps: `.github/workflows/ci.yml` (the plan job's selection, the Smoke job's unit and UI steps; the self-test job's nightly partition check)
 - UI retry: `scripts/smoke-retry-classes.py`; step summary: `scripts/smoke-summary.py`
 - Nightly partition: `scripts/hosted-suite.json`, `.github/workflows/nightly.yml`; the app-only overlay its unit shards build: `project-tests.yml`
 - Tests: `scripts/tests/test_ci_workflow_contract.py`, `scripts/tests/test_smoke_job_runner.py`, `scripts/tests/test_hosted_ci.py`
@@ -3704,13 +3704,15 @@ nightly partition, which runs everything Smoke leaves out · docs/CI.md
 - Smoke pins single tests (Class/testMethod), never whole classes, under `max_unit_tests` (70) and `max_ui_tests` (4); `plan-tests.py smoke` fails a whole-class entry, a test its class doesn't declare, a pinned nightly-only timing family and a list over its cap. Add coverage by swapping a test; raising a cap is a deliberate change with its reason in the PR (Eric, 2026-10-29, #1508: whole classes let unit smoke grow from 195 s to 240 s with the list unchanged).
 - The source contracts and the change's own unit classes run whole; a changed class runs in place of the tests pinned from it (2026-10-29, #1508).
 - Everything Smoke leaves out runs every night; the nightly run is the exhaustive authority (CI v5, #739).
+- A PR's Smoke runs the unit tests only; the pinned UI tests run on pushes (main's run after each merge, and `linked-rooms`), and the whole UI suite nightly. A PR still builds every UI test, and the unit tests run inside the app, so a broken launch still fails it (Eric, 2026-11-02, #PRNUM: UI smoke was 3-5 of a PR's 18-22 minutes and its flakiest step).
+- Smoke waits only for the plan job's selection and skip decision; the Linux checks run in the self-test job beside the build (2026-11-02, #PRNUM).
 - Smoke builds the full app (`project.yml`) on every PR and push, from the cache main's latest merge saved; the app-only overlay (`project-tests.yml`) is built only by the nightly unit shards and the App Store screenshots capture job (`.github/workflows/app-store-screenshots.yml`). An app-only PR build restored only nightly's cache and recompiled the day's main: 682 s to a finished build against 537 s, medians of 275 runs 2026-10-22..29 (2026-10-29, #1513).
 
 **Open gaps**
 - A changed UI test class doesn't join Smoke: a UI test a PR adds or edits first runs at night. UI tests are the slow ones (36-150 s each) and the list is capped at 4 (2026-10-29, #1508).
 - A changed unit class with no timing baseline is charged 3 s of `changed_budget_s`, and `scripts/test-timings.json` was last seeded in August, so a PR adding several slow new classes isn't held to the budget (2026-10-29, #1508).
 
-**Checked:** 2026-10-29, #1513 (Smoke builds the full app); #1508.
+**Checked:** 2026-11-02, #PRNUM (UI smoke on pushes only, Smoke starts beside the checks); #1513; #1508.
 
 ## Settings connection page
 
@@ -4741,7 +4743,7 @@ point at the map and its check
 - Reviewers: `.github/workflows/opencode-review.yml` (the Connected features focus area)
 - Notifier: `notifier/CONTRIBUTING.md`, `notifier/.github/pull_request_template.md`, `notifier/.github/workflows/opencode-review.yml`
 - Map check: `scripts/check-feature-map.py` (paths, entry shape, and on a PR the Checked line of each entry it edits; on a PR into `pulse` or `linked-rooms` that merges main, main's maps where the PR and its base meet main tell which entries came from main), `scripts/tests/test_check_feature_map.py`, run by `.github/workflows/ci.yml` (Feature map paths exist; a PR into `pulse` or `linked-rooms` runs that branch's copy, whose trigger lists it), its PR number, base map and main's maps pinned by `scripts/tests/test_ci_workflow_contract.py`
-- Pointers: `README.md` (Architecture), `docs/CI.md` (the plan job under Jobs)
+- Pointers: `README.md` (Architecture), `docs/CI.md` (the self-test job under Jobs)
 
 **Rulings**
 - A checked-in map, a Siblings section in every PR, and rulings in each entry; a sibling left out without a reason is a major review finding (2026-10-23, #1167, Eric).
@@ -4759,4 +4761,4 @@ point at the map and its check
 - On a merge of main into `pulse` or `linked-rooms`, an entry both sides changed that the merge settles on main's copy keeps main's Checked line, so CI doesn't flag dropping the branch's edit; a reviewer checks that choice. CI only sees content, and that copy is main's word for word.
 - If GitHub can't say whether a PR into `pulse` or `linked-rooms` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
 
-**Checked:** 2026-10-26, #1314.
+**Checked:** 2026-11-02, #PRNUM (docs/CI.md names the self-test job for the map check); #1314.

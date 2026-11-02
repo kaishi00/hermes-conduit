@@ -10,7 +10,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tests-dir", default=os.path.join(os.path.dirname(__file__), "tests"))
     args = parser.parse_args()
-    # The plan job's skip flag must never suppress a hosted self-test.
+    # The local skip flag (CONTRIBUTING.md's checks) must never suppress a hosted self-test.
     os.environ.pop("CONDUIT_CI_SKIP_BASH_WRAPPER_TESTS", None)
     loader = unittest.TestLoader()
     suite = loader.discover(os.path.abspath(args.tests_dir), pattern="test_*.py")

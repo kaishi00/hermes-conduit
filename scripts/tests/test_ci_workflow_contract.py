@@ -144,7 +144,10 @@ class WorkflowContractTests(unittest.TestCase):
 
     # --- the plan job owns every test-to-run mapping -----------------------
 
-    def test_plan_job_selects_the_smoke_suite_and_validates_the_nightly_partition(self):
+    def test_plan_job_selects_the_smoke_suite_and_nothing_else(self):
+        """Smoke waits only for what it needs: the plan job holds the smoke
+        selection and the skip decision, and the Linux checks run in the
+        self-test job beside the build (Eric, 2026-11-02)."""
         plan = self._job_text("plan")
         self.assertIn("plan-tests.py smoke", plan,
                       "the plan job owns the smoke selection")
@@ -153,15 +156,27 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("ui-csv: \"${{ steps.smoke.outputs.ui-csv }}\"", plan)
         self.assertIn("echo \"unit-csv=$(jq -r '.unit_csv' ci-artifacts/smoke.json)\"", plan)
         self.assertIn("echo \"ui-csv=$(jq -r '.ui_csv' ci-artifacts/smoke.json)\"", plan)
+        self.assertIn("smoke-summary.py", plan)
+        for check in ("plan-tests.py validate", "plan-tests.py hosted", "check-l10n-coverage.py",
+                      "check-plugin-version.py", "check-feature-map.py", "unittest discover"):
+            self.assertNotIn(check, plan, f"{check} runs beside the build, not before it")
+
+    def test_self_test_job_runs_the_linux_checks_beside_the_build(self):
+        checks = self._job_text("self-test")
+        self.assertNotIn("needs:", checks, "the checks never delay the build")
         # A renamed nightly-only class, or a class in no list, must fail the
         # PR that caused it, not the next night.
-        self.assertIn("plan-tests.py hosted", plan)
-        self.assertIn("--suite scripts/hosted-suite.json", plan)
-        self.assertIn("plan-tests.py validate", plan)
-        self.assertIn("smoke-summary.py", plan)
-        self.assertIn("check-l10n-coverage.py", plan)
-        self.assertIn("check-plugin-version.py", plan)
-        self.assertIn("check-feature-map.py", plan)
+        self.assertIn("plan-tests.py hosted", checks)
+        self.assertIn("--suite scripts/hosted-suite.json", checks)
+        self.assertIn("plan-tests.py validate", checks)
+        self.assertIn("check-l10n-coverage.py", checks)
+        self.assertIn("check-fixed-text-sizes.py", checks)
+        self.assertIn("check-transcript-environment.py", checks)
+        self.assertIn("check-plugin-version.py", checks)
+        self.assertIn("check-card-schema.py", checks)
+        self.assertIn("check-feature-map.py", checks)
+        # The feature map check reads the base's map at HEAD^1.
+        self.assertIn("fetch-depth: 2", checks)
 
     def test_the_smoke_skip_builds_for_anything_the_app_or_ci_reads(self):
         step = _step_text(self._job_text("plan"), "Does the change need the macOS build")
@@ -211,7 +226,7 @@ class WorkflowContractTests(unittest.TestCase):
         and for a PR into pulse or linked-rooms, main's maps where the PR and
         its base meet main, so the entries a merge of main brings in keep
         main's Checked lines."""
-        step = _step_text(self._job_text("plan"), "Feature map paths exist")
+        step = _step_text(self._job_text("self-test"), "Feature map paths exist")
         self.assertIn("PR_NUMBER: ${{ github.event.pull_request.number }}", step)
         self.assertIn("git show HEAD^1:docs/FEATURE_MAP.md", step)
         self.assertIn('--pr "$PR_NUMBER"', step)
@@ -262,11 +277,14 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertLess(unit, ui)
 
     def test_a_unit_smoke_failure_does_not_skip_the_ui_step(self):
-        """Both verdicts are visible on every run: the UI step runs after a
-        failed unit step (any failed step still fails the job), and only a
-        failed build or a cancelled run skips it."""
+        """Both verdicts are visible on every push run: the UI step runs after
+        a failed unit step (any failed step still fails the job), and only a
+        failed build or a cancelled run skips it. A PR runs no UI smoke
+        (Eric, 2026-11-02): main's run after the merge and the nightly do."""
         ui = _step_text(self._job_text("smoke"), "Run the curated UI smoke suite")
-        self.assertIn("if: ${{ !cancelled() && steps.build.outcome == 'success' }}", ui)
+        self.assertIn("if: ${{ !cancelled() && steps.build.outcome == 'success' && github.event_name == 'push' }}", ui)
+        remove = _step_text(self._job_text("smoke"), "Remove the app before UI smoke")
+        self.assertIn("if: ${{ !cancelled() && steps.build.outcome == 'success' && github.event_name == 'push' }}", remove)
         unit = _step_text(self._job_text("smoke"), "Run the curated unit smoke classes")
         self.assertNotIn("if:", unit, "the unit step runs only after a good build")
         self.assertNotIn("continue-on-error", self._job_text("smoke"),
