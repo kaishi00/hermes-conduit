@@ -110,6 +110,11 @@ extension BotModeTests {
         sent = await AppState.adoptOnce(stillCurrent: { current }, send: { throw Dropped() },
                                         wait: { current = false }, failed: { _, _ in })
         XCTAssertEqual(sent, 1, "switched dashboards before the retry")
+        let here = UUID()
+        XCTAssertTrue(AppState.sameDashboard(madeOn: here, now: here, appAlive: true))
+        XCTAssertFalse(AppState.sameDashboard(madeOn: here, now: UUID(), appAlive: true), "another dashboard")
+        XCTAssertFalse(AppState.sameDashboard(madeOn: here, now: nil, appAlive: true), "no dashboard")
+        XCTAssertFalse(AppState.sameDashboard(madeOn: here, now: here, appAlive: false), "the app is gone")
     }
 
     /// A call's job is sent to its bot's registry only where the plugin keeps bot work.

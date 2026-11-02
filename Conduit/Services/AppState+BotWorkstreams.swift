@@ -189,7 +189,7 @@ extension AppState {
         // The panel's next read shows it.
         Task { @MainActor [weak self] in
             await AppState.adoptOnce(
-                stillCurrent: { self != nil && self?.activeDashboardID == dashboard },
+                stillCurrent: { AppState.sameDashboard(madeOn: dashboard, now: self?.activeDashboardID, appAlive: self != nil) },
                 send: { _ = try await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions) },
                 wait: { try? await Task.sleep(for: .seconds(3)) },
                 failed: { attempt, error in
@@ -219,6 +219,12 @@ extension AppState {
             }
         }
         return sent
+    }
+
+    /// Whether an adopt still goes to the dashboard its job was made on:
+    /// never once the app moved to another, or is gone.
+    nonisolated static func sameDashboard(madeOn: UUID?, now: UUID?, appAlive: Bool) -> Bool {
+        appAlive && now == madeOn
     }
 
     /// The call a job is kept as ("phone" or "watch"), or nil when none is
