@@ -533,6 +533,9 @@ extension KanbanTests {
         turnedOff[0].enabled = false
         XCTAssertFalse(ConnectorKeysSection.testsAfterSave("linear", in: turnedOff), "turned off meanwhile")
         XCTAssertFalse(ConnectorKeysSection.testsAfterSave("gone", in: store.servers))
+        // A save that failed part way tests only if a key was taken.
+        XCTAssertTrue(ConnectorKeysSection.testsAfterSave("linear", in: store.servers, savedAny: true))
+        XCTAssertFalse(ConnectorKeysSection.testsAfterSave("linear", in: store.servers, savedAny: false), "nothing saved")
     }
 
     /// A test already running when a key is saved read the old key: it runs

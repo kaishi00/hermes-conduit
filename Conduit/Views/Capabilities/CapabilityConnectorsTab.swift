@@ -293,8 +293,9 @@ struct ConnectorKeysSection: View {
     /// Whether a save tests the server: only while it's on as the save
     /// ends, read then, since it may have been turned on or off meanwhile
     /// (a test starts it on the host).
-    static func testsAfterSave(_ name: String, in servers: [ConnectorServer]) -> Bool {
-        servers.first { $0.name == name }?.enabled == true
+    /// A save that failed part way tests only when a key was taken.
+    static func testsAfterSave(_ name: String, in servers: [ConnectorServer], savedAny: Bool = true) -> Bool {
+        savedAny && servers.first { $0.name == name }?.enabled == true
     }
 
     /// The keys a catalog entry signs in with, or nil when it takes none
@@ -378,7 +379,7 @@ struct ConnectorKeysSection: View {
                 saving = false
                 // Keys Hermes took before the failure are tested too, so the
                 // page doesn't keep the old key's result.
-                if savedAny, Self.testsAfterSave(name, in: store.servers) { await store.probe(name) }
+                if Self.testsAfterSave(name, in: store.servers, savedAny: savedAny) { await store.probe(name) }
             }
         }
     }
