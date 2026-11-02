@@ -309,6 +309,11 @@ struct VoiceBackgroundJobBackend {
     /// interrupt while it works, and never make a job of their own. What to
     /// tell the call, or nil when the chat isn't a workstream's.
     var sendToCallWorkstream: @MainActor (_ thread: VoiceThreadTarget, _ request: String) async -> String? = { _, _ in nil }
+    /// A call that kept a job with its chat (`callChat`) left it: when the
+    /// chat is the Bot Chat, the updates its workstreams held go out. Every
+    /// voice mode ends this way, Classic too, which never saves its turns
+    /// with the chat.
+    var callLeftChat: @MainActor (_ profile: String?, _ chat: String) -> Void = { _, _ in }
     /// The active profile, read as a job without one is made, so a switch
     /// while its session is made can't file it under another bot.
     var activeProfile: @MainActor () -> String? = { nil }
@@ -442,6 +447,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The chat the running live call is attached to, if any. Published so
     /// the minimised call's bar can name it.
     @Published var liveThread: VoiceThreadTarget?
+    /// The chat this call kept a job with, and its bot: told when the call leaves it.
+    private var keptCallChat: (profile: String?, chat: String)?
     /// The job whose chat an unattached call took as its own (#1250): the
     /// call's first ordinary request. Its chat is `liveThread`.
     private(set) var callChatJobID: UUID?
@@ -1454,6 +1461,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             let now = self.job(job.id)
             backend.keepInRegistry(botProfile, registryID, job.title, now?.instructions ?? instructions,
                                    fromWatch, chat, now?.status == .finished ? (now?.result ?? "") : nil)
+            if let chat { keptCallChat = (botProfile, chat) }
         }
         do {
             let ids = try await backend.createSession(profile, callsModel && profile != nil)
@@ -1880,6 +1888,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     func detachLiveThread() {
         liveThread = nil
+        if let kept = keptCallChat {
+            keptCallChat = nil
+            backend.callLeftChat(kept.profile, kept.chat)
+        }
         let callChatJob = callChatJobID
         // A first request still starting is the call's too.
         let claimedJob = callChatClaim?.jobID

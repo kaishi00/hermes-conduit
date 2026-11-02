@@ -203,6 +203,19 @@ extension AppState {
         }
     }
 
+    /// A call that kept a job with `chat` ended: the bot's plugin sends what
+    /// its Bot Chat's call held (Classic never saves its turns with the
+    /// chat, so this is its only end). Best effort, on the dashboard in use.
+    func voiceCallLeftChat(profile: String?, chat: String) {
+        guard notifierPlugin.reports(BotWorkstreamsClient.callEndedCapability), !chat.isEmpty else { return }
+        let client = botWorkClient(profile: profile ?? activeProfile)
+        Task { @MainActor in
+            do { try await client.callEnded(chat: chat) } catch {
+                botWorkLogger.notice("Telling the bot's work a call ended failed: \(String(describing: type(of: error)), privacy: .public)")
+            }
+        }
+    }
+
     /// A request from a call kept with one of a bot's workstreams' chats
     /// (Eric 2026-11-02): it goes into the workstream's own session through
     /// its bot's plugin, which takes it as an interrupt while the

@@ -319,6 +319,7 @@ final class BotWorkstreamsClient {
     static let capability = "bot-workstreams"
     /// The plugin keeps a voice call's jobs too (`POST /workstreams/adopt`).
     static let adoptCapability = "work-adopt"
+    static let callEndedCapability = "work-call-ended"
     static let path = "/api/plugins/conduit_push/workstreams"
 
     typealias Request = WorkspaceFilesClient.Request
@@ -392,6 +393,13 @@ final class BotWorkstreamsClient {
         let response = try await request(path, "POST", body)
         guard response["ok"] as? Bool == true else { throw Failure.malformed }
         return (response["work"] as? [String: Any]).flatMap(BotWorkItem.init(row:))
+    }
+
+    /// A call kept with `chat` ended: a Bot Chat's held updates go out.
+    func callEnded(chat: String) async throws {
+        let path = DashboardPath.withProfile("\(Self.path)/call-ended", profile: profile, parameter: parameter)
+        let response = try await request(path, "POST", ["chat": chat])
+        guard response["ok"] as? Bool == true else { throw Failure.malformed }
     }
 
     /// The user's action on a workstream; the row as it is now.

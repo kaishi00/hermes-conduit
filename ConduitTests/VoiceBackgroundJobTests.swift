@@ -93,6 +93,7 @@ final class FakeVoiceJobBackend {
     /// Chats that are workstreams', and what their calls sent there.
     var workstreamChats: Set<String> = []
     private(set) var workstreamSends: [(String, String)] = []
+    private(set) var leftChats: [(String?, String)] = []
     var activeProfile: String? = "default"
     private(set) var submissions: [(String, String)] = []
     private(set) var cancelled: [String] = []
@@ -163,6 +164,7 @@ final class FakeVoiceJobBackend {
                 self.workstreamSends.append((thread.runtimeSessionID, request))
                 return "sent to the workstream"
             },
+            callLeftChat: { [self] profile, chat in self.leftChats.append((profile, chat)) },
             activeProfile: { [self] in self.activeProfile },
             submit: { [self] id, text in
                 self.submissions.append((id, text))
@@ -343,6 +345,12 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.createdProfiles, ["furina"], "the coordinator's bot runs it")
         XCTAssertEqual(fake.kept.map(\.0), ["furina"])
         XCTAssertEqual(fake.keptChats, ["st-bot"])
+        // Its end, in any voice mode, lets the bot's plugin send what it held.
+        supervisor.detachLiveThread()
+        XCTAssertEqual(fake.leftChats.map(\.1), ["st-bot"])
+        XCTAssertEqual(fake.leftChats.first?.0, "furina")
+        supervisor.detachLiveThread()
+        XCTAssertEqual(fake.leftChats.count, 1, "said once")
     }
 
     /// A Bot Chat call's job that names another bot is that bot's call job:

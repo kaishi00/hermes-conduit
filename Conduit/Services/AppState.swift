@@ -4630,6 +4630,9 @@ final class AppState: ObservableObject {
             sendToCallWorkstream: { [weak self] thread, request in
                 await self?.sendCallRequestToWorkstream(thread, request)
             },
+            callLeftChat: { [weak self] profile, chat in
+                self?.voiceCallLeftChat(profile: profile, chat: chat)
+            },
             activeProfile: { [weak self] in self?.activeProfile },
             submit: { [weak self] sessionID, text in
                 guard let self else { throw HermesError.notConnected }
