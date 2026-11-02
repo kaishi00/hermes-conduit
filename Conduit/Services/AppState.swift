@@ -4744,7 +4744,7 @@ final class AppState: ObservableObject {
     /// echo-cancelling engine when speaker talk-over is on, chosen for each
     /// conversation.
     lazy var voiceConversationAudio = VoiceConversationAudioSelector(
-        wantsEchoCancellation: { [weak self] in self?.liveVoiceSpeakerBargeInEnabled ?? false },
+        wantsEchoCancellation: { [weak self] in self?.usesEchoCancellingVoiceAudio ?? false },
         standardCapture: AVAudioCaptureService(),
         standardPlayback: AVSpeechPlaybackService(),
         makeEchoCancelling: { EchoCancellingLiveVoiceAudio(outputSampleRate: GeminiLiveProtocol.outputSampleRate) }
@@ -7862,6 +7862,27 @@ final class AppState: ObservableObject {
         loadVoiceProfilePreferences(profile: activeProfile).liveVoiceSpeakerBargeIn ?? false
     }
 
+    /// Whether the conversation starting now runs on the echo-cancelling
+    /// engine: talk-over is on and no call from Hermes is up in CallKit.
+    var usesEchoCancellingVoiceAudio: Bool {
+        Self.usesEchoCancellingVoiceAudio(
+            talkOver: liveVoiceSpeakerBargeInEnabled,
+            inHermesCall: VoiceAudioSessionCoordinator.shared.isInNativeCall
+        )
+    }
+
+    /// A call from Hermes always takes the default audio. Under CallKit's
+    /// session every voice-processing engine that starts sets a session
+    /// property that changes the route's configuration, which stops that
+    /// engine a moment later; rebuilding it set the property again. The
+    /// call stayed silent for 20 seconds while it looped, or for good when
+    /// the last engine kept running with no speaker side (Ul'dah's logs,
+    /// 2026-11-01/02). The call starts on the earpiece, where talk-over
+    /// adds nothing; the user's own calls keep it.
+    nonisolated static func usesEchoCancellingVoiceAudio(talkOver: Bool, inHermesCall: Bool) -> Bool {
+        talkOver && !inHermesCall
+    }
+
     /// Applies from the next call.
     func setLiveVoiceSpeakerBargeInEnabled(_ enabled: Bool) {
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
@@ -7963,7 +7984,7 @@ final class AppState: ObservableObject {
     /// each call.
     private func makeLiveVoiceAudio(outputSampleRate: Double) -> LiveVoiceAudioSelector {
         LiveVoiceAudioSelector(
-            wantsEchoCancellation: { [weak self] in self?.liveVoiceSpeakerBargeInEnabled ?? false },
+            wantsEchoCancellation: { [weak self] in self?.usesEchoCancellingVoiceAudio ?? false },
             makeStandard: {
                 (CaptureServiceGeminiLiveInput(capture: AVAudioCaptureService()),
                  PlaybackServiceGeminiLiveOutput(playback: AVSpeechPlaybackService()))
@@ -24817,6 +24838,33 @@ final class AppState: ObservableObject {
         return outcome == .opened
     }
 
+    /// Every notification tap rereads the chat list, a call notification's
+    /// included. The open of a call answered in CallKit has its caller
+    /// waiting on the voice, so it rereads only when the list on hand lacks
+    /// the call's chat. Runtime and alias ids are never handed to another
+    /// chat, so a row they match is the call's chat.
+    nonisolated static func notificationOpenNeedsAuthoritativeRead(
+        target: ConduitNotificationTarget,
+        callAnswered: Bool,
+        catalog: [SessionSummary]
+    ) -> Bool {
+        // The route resolves to the payload's durable id first, so that id
+        // must be on hand too, or the bot-chat check would miss its row.
+        guard callAnswered, target.call != nil, catalogListsSession(target.sessionId, in: catalog) else { return true }
+        if let durable = target.durableSessionID, !catalogListsSession(durable, in: catalog) { return true }
+        return false
+    }
+
+    /// Whether `sessionID` names a row of `catalog`: its id, stored id or
+    /// one of its alternates.
+    nonisolated static func catalogListsSession(_ sessionID: String, in catalog: [SessionSummary]) -> Bool {
+        guard let wanted = ChatScrollIdentityNormalization.sessionID(sessionID) else { return false }
+        return catalog.contains { row in
+            ([row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds)
+                .contains { ChatScrollIdentityNormalization.sessionID($0) == wanted }
+        }
+    }
+
     /// Routes a notification to its originating profile/session without
     /// allowing the ordinary cold-start session restoration to win first.
     func openNotificationTargetOutcome(_ target: ConduitNotificationTarget) async -> NotificationOpenOutcome {
@@ -25099,14 +25147,31 @@ final class AppState: ObservableObject {
         // ID for the notification's runtime/alternate ID. Otherwise the next
         // cold-start recovery only sees the old normal-session list and jumps
         // back to its newest entry.
-        // Do not share the sidebar refresh guard here. The notification route
-        // needs one authoritative read even if a visual refresh is already in
-        // progress, otherwise it can resolve against the stale catalog.
-        traceStage = "session list"
-        guard await loadSessions(
-            forceRefresh: true,
-            requiredViewportTransitionGeneration: transitionGeneration
-        ) else { return .retry }
+        // Do not share the sidebar refresh guard here. A notification takes
+        // one authoritative read even if a visual refresh is already in
+        // progress, otherwise it can resolve against the stale catalog;
+        // only the open of a call answered in CallKit may skip it. That call
+        // has its caller waiting: when the
+        // list on hand already holds the call's chat, the route resolves
+        // against that list. Reading the whole list again took 2-3 s of every
+        // answered call on a long list (897 rows, Ul'dah 2026-11-02). A row
+        // that matches the call's id by any of its ids is the call's chat
+        // even if the host has since rotated its runtime id, and the chat
+        // sync the call's connection starts refreshes it. A chat the list
+        // lacks still waits for the authoritative read.
+        if !Self.notificationOpenNeedsAuthoritativeRead(
+            target: target,
+            callAnswered: isNativeHermesCallAnswered,
+            catalog: sessions + cronSessions
+        ) {
+            traceStage = "session list (on hand)"
+        } else {
+            traceStage = "session list"
+            guard await loadSessions(
+                forceRefresh: true,
+                requiredViewportTransitionGeneration: transitionGeneration
+            ) else { return .retry }
+        }
         traceStage = "bot chat check"
         guard notificationOpenAttemptIsCurrent(
             id: notificationAttemptID,
@@ -25115,8 +25180,9 @@ final class AppState: ObservableObject {
             return .retry
         }
         let requestedID = target.sessionId
-        // The fresh catalog was just published (its labeled rows are already
-        // committed to the identity index), so resolution runs through the
+        // The catalog is fresh, or (for an answered call) already lists the
+        // call's chat; its labeled rows are committed to the identity index,
+        // so resolution runs through the
         // evidence hierarchy: explicit durable id from the payload, catalog
         // alias, confirmed index alias — and only then the legacy raw
         // runtime resume. An unknown runtime id is never reinterpreted as

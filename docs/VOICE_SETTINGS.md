@@ -122,7 +122,7 @@ In Classic Voice, when Hermes says it's on something ("Checking your calendar no
 
 In the car, a phone call, Siri or another app that takes the audio ends a Classic Voice conversation; once the audio comes back, CarPlay listens again on its own.
 
-"Talk over it on the speaker" (in the Gemini Live and Grok Live sections, shared by both, off by default) is the experimental way out: the call runs its microphone and speaker on one iOS voice-processing engine, so the agent's own voice is cancelled out of the microphone, and the microphone stays open on every route. If the agent keeps cutting itself off, turn it off. It applies from the next call. Classic Voice is unchanged.
+"Talk over it on the speaker" (in the Gemini Live, Grok Live and Classic Voice sections, one setting shared by all of them and Qwen Live, off by default) is the experimental way out: the call runs its microphone and speaker on one iOS voice-processing engine, so the agent's own voice is cancelled out of the microphone, and the microphone stays open on every route. If the agent keeps cutting itself off, turn it off. It applies from the next call. Calls from Hermes don't use it: under the phone call iOS kept restarting that engine, which held up the call's voice, so those calls use the default audio and close the microphone while the agent talks on the speaker or in the car.
 
 ## Live call style
 

@@ -601,7 +601,14 @@ final class HermesNativeCalls: NSObject {
     }
 
     /// Whether Conduit is on screen within a moment of the answer.
+    /// A locked phone (its protected data shut) can't bring Conduit on
+    /// screen until it's unlocked, so the call opens from here at once:
+    /// it waited out the whole `phoneScreenWait` on every locked answer
+    /// (1.9 s before the chat opened, Ul'dah 2026-11-02).
     private func waitForPhoneScreen() async -> Bool {
+        guard UIApplication.shared.isProtectedDataAvailable else {
+            return PhoneScenePresence.isInForeground
+        }
         let until = ContinuousClock.now + Self.phoneScreenWait
         while !PhoneScenePresence.isInForeground {
             guard ContinuousClock.now < until else { return false }
