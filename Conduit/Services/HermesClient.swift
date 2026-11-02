@@ -207,6 +207,15 @@ struct RpcError: Decodable, Error, LocalizedError, Sendable {
         if code == 4001, reason == "invalid_params" { return fields?.contains(key) ?? false }
         return code == 4000 && message.contains("invalid params") && message.contains(key)
     }
+    /// The session authority refused a request's shape before running it:
+    /// its contract check (`invalid_params`), a verb it doesn't have
+    /// (-32601), or the dashboard's own contract form. What a request built
+    /// before the ready goes again for; any other refusal stands.
+    var refusesShape: Bool {
+        (code == 4001 && reason == "invalid_params")
+            || code == HermesClient.methodNotFoundCode
+            || (code == 4000 && message.contains("invalid params"))
+    }
 }
 
 extension RpcError {
@@ -2247,7 +2256,7 @@ final class HermesClient: ObservableObject {
         let request = try build(authority)
         do {
             return try await rpc(request.method, params: request.params, timeout: timeout)
-        } catch let error as RpcError where !authority && speaksSessionAuthority {
+        } catch let error as RpcError where !authority && speaksSessionAuthority && error.refusesShape {
             logger.notice("Resending \(request.method, privacy: .public) in the session authority's shape after \(error.message, privacy: .public)")
             let reshaped = try build(true)
             return try await rpc(reshaped.method, params: reshaped.params, timeout: timeout)
@@ -2684,7 +2693,7 @@ final class HermesClient: ObservableObject {
                     "session_key": sessionKey,
                     "cwd": cwd
                 ])
-            } catch is RpcError where speaksSessionAuthority {}
+            } catch let error as RpcError where speaksSessionAuthority && error.refusesShape {}
         }
         if result == nil {
             result = try await authorityMutation(
@@ -3091,7 +3100,7 @@ final class HermesClient: ObservableObject {
             do {
                 _ = try await rpc("session.title", params: params)
                 return
-            } catch is RpcError where speaksSessionAuthority {}
+            } catch let error as RpcError where speaksSessionAuthority && error.refusesShape {}
         }
         _ = try await authorityMutation(sessionId: sessionId, operation: "rename", payload: ["title": title], profile: profile)
     }
@@ -3552,7 +3561,7 @@ final class HermesClient: ObservableObject {
         let builtForDashboard = !speaksSessionAuthority
         do {
             result = try await rpc("clarify.respond", params: params)
-        } catch is RpcError where builtForDashboard && speaksSessionAuthority {
+        } catch let error as RpcError where builtForDashboard && speaksSessionAuthority && error.refusesShape {
             // Sent before the ready was read, to the authority, which refuses
             // this shape before anything runs: answer it in its own.
             return try await respondToClarification(
@@ -3752,15 +3761,17 @@ final class HermesClient: ObservableObject {
         if speaksSessionAuthority {
             // The authority names every approval it asks. A card without an
             // id (one answered before the ready was read, which goes again
-            // here) answers the oldest the chat still waits on, as the
-            // dashboard's requestless answer settles its queue's head; none
-            // waiting means nothing to answer.
+            // here) answers the one the chat still waits on; none waiting
+            // means nothing to answer.
             let waiting = try await pendingApprovals(sessionId: sessionId, profile: profile)
                 .compactMap { $0.requestId?.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
-            guard let oldest = waiting.first else { return .ended }
+            guard let only = waiting.first else { return .ended }
+            // With several waiting, nothing says which one the card shows:
+            // the user answers it once the cards carry their ids.
+            guard waiting.count == 1 else { throw HermesError.severalApprovalsWaiting }
             return try await respondToApprovalOutcome(
-                sessionId: sessionId, requestId: oldest, choice: choice, profile: profile
+                sessionId: sessionId, requestId: only, choice: choice, profile: profile
             )
         }
         var params: [String: Any] = [
@@ -3778,7 +3789,7 @@ final class HermesClient: ObservableObject {
         let builtForDashboard = !speaksSessionAuthority
         do {
             result = try await rpc("approval.respond", params: params)
-        } catch is RpcError where builtForDashboard && speaksSessionAuthority {
+        } catch let error as RpcError where builtForDashboard && speaksSessionAuthority && error.refusesShape {
             // Sent before the ready was read, to the authority, which refuses
             // this shape before anything runs: answer it in its own.
             return try await respondToApprovalOutcome(
@@ -4120,7 +4131,7 @@ final class HermesClient: ObservableObject {
             do {
                 let result = try await rpc("session.compress", params: params, timeout: timeout)
                 return SessionCompressResult(from: result)
-            } catch is RpcError where speaksSessionAuthority {}
+            } catch let error as RpcError where speaksSessionAuthority && error.refusesShape {}
         }
         var payload: [String: Any] = [:]
         if let trimmedTopic, !trimmedTopic.isEmpty { payload["focus"] = trimmedTopic }
@@ -4625,6 +4636,8 @@ enum HermesError: Error, LocalizedError {
     case connectionClosed
     case timeout(String)
     case steerRejected
+    /// A card without an id, answered while its chat waits on more than one.
+    case severalApprovalsWaiting
 
     var errorDescription: String? {
         switch self {
@@ -4641,6 +4654,8 @@ enum HermesError: Error, LocalizedError {
         case .timeout:
             return Self.timeoutMessage
         case .steerRejected: return AppLocalization.string("Hermes could not steer the active response.")
+        case .severalApprovalsWaiting:
+            return AppLocalization.string("This chat is waiting on more than one approval. Open the chat and answer the one you mean.")
         }
     }
 

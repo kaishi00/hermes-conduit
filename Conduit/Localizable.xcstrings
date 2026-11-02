@@ -338352,6 +338352,88 @@
         }
       }
     },
+    "This chat is waiting on more than one approval. Open the chat and answer the one you mean.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Chat wartet auf mehr als eine Freigabe. Öffne den Chat und beantworte die gewünschte."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este chat está esperando más de una aprobación. Abre el chat y responde la que quieras."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette discussion attend plus d'une approbation. Ouvrez-la et répondez à celle que vous visez."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat ini menunggu lebih dari satu persetujuan. Buka chat dan jawab yang Anda maksud."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questa chat è in attesa di più di un'approvazione. Apri la chat e rispondi a quella che intendi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このチャットは複数の承認を待っています。チャットを開いて、目的の承認に応答してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 채팅은 승인을 두 개 이상 기다리고 있어요. 채팅을 열고 원하는 승인에 답하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten czat czeka na więcej niż jedną zgodę. Otwórz czat i odpowiedz na tę, o którą chodzi."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este chat está aguardando mais de uma aprovação. Abra o chat e responda a que você quer."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Этот чат ждёт больше одного подтверждения. Откройте чат и ответьте на нужное."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu sohbet birden fazla onay bekliyor. Sohbeti açıp istediğiniz onayı yanıtlayın."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此聊天正在等待多个批准。请打开聊天并回答你要处理的那个。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此聊天正在等待多個核准。請開啟聊天並回覆你要處理的那個。"
+          }
+        }
+      }
+    },
     "This chat is yours now. Send your message again.": {
       "localizations": {
         "de": {

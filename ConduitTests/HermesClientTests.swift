@@ -2430,6 +2430,23 @@ final class HermesClientTests: XCTestCase {
         try await answerRequest(on: socket, after: again, method: "approval.pending", result: ["approvals": [Any]()])
         let noneOutcome = try await awaitResult(of: none, "the requestless approval with nothing waiting")
         XCTAssertEqual(noneOutcome, .ended)
+
+        // Several waiting: nothing says which the card shows, so none is answered.
+        let several = socket.sentTexts.count
+        let ambiguous = Task<HermesClient.ApprovalResponseOutcome, Error> {
+            try await client.respondToApprovalOutcome(sessionId: "sess-1", choice: "once")
+        }
+        try await answerRequest(on: socket, after: several, method: "approval.pending", result: [
+            "approvals": [["prompt_id": "p-a", "command": "a"], ["prompt_id": "p-b", "command": "b"]]
+        ])
+        do {
+            _ = try await ambiguous.value
+            XCTFail("An answer with several waiting isn't sent")
+        } catch HermesError.severalApprovalsWaiting {
+        } catch {
+            XCTFail("Unexpected \(error)")
+        }
+        XCTAssertEqual(socket.sentTexts.count, several + 1, "No approval.respond went out")
         client.disconnect()
     }
 
